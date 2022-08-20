@@ -79,7 +79,7 @@ class TorchBackend(Backend):
                                             async_op=async_op)
 
     def all_gather_base(self, output_tensor, input_tensor, group=None, async_op=False):
-        if self.has_allgather_base:
+        if self.has_allgather_base and torch.distributed.get_backend() != "gloo":
             return torch.distributed.distributed_c10d._all_gather_base(
                 output_tensor=output_tensor,
                 input_tensor=input_tensor,
@@ -88,7 +88,7 @@ class TorchBackend(Backend):
         else:
             utils.logger.warning(
                 "unable to find torch.distributed._all_gather_base. will fall back to "
-                "torch.distributed.reduce_scatter which will result in suboptimal performance. "
+                "torch.distributed.all_gather which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
             pass
 
@@ -97,7 +97,7 @@ class TorchBackend(Backend):
                             input_tensor,
                             group=None,
                             async_op=False):
-        if self.has_reduce_scatter_base:
+        if self.has_reduce_scatter_base and torch.distributed.get_backend() != "gloo":
             return torch.distributed._reduce_scatter_base(output_tensor,
                                                           input_tensor,
                                                           group=group,

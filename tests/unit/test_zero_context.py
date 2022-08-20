@@ -10,6 +10,10 @@ import deepspeed.comm as dist
 
 from .common import distributed_test, get_master_port
 
+pytestmark = pytest.mark.skipif(
+    not torch.cuda.is_available(),
+    reason='zero3 tests are not supported on CPU-only builds')
+
 
 def setup_serial_env():
     # Setup for a serial run
@@ -65,17 +69,19 @@ def test_gather_update():
         assert torch.equal(l.weight, torch.zeros_like(l.weight))
 
 
+use_gpu = torch.cuda.is_available()
 config = {
     "train_batch_size": 1,
     "steps_per_print": 1,
     "optimizer": {
         "type": "Adam",
         "params": {
-            "lr": 0.00015
+            "lr": 0.00015,
+            "torch_adam": not use_gpu
         }
     },
     "fp16": {
-        "enabled": True,
+        "enabled": use_gpu,
         "loss_scale": 138.
     },
     "zero_optimization": {

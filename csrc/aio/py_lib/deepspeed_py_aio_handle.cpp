@@ -235,6 +235,8 @@ int deepspeed_aio_handle_t::pread(const torch::Tensor& buffer,
 
     if (async) { return 0; }
 
+    std::cout << "ABOUT TO WAIT" << std::endl;
+
     return wait();
 }
 
@@ -263,7 +265,7 @@ int deepspeed_aio_handle_t::pwrite(const torch::Tensor& buffer,
 
 int deepspeed_aio_handle_t::sync_pread(torch::Tensor& buffer, const char* filename)
 {
-    return pread(buffer, filename, false, false);
+    return pread(buffer, filename, true, false);
 }
 
 int deepspeed_aio_handle_t::sync_pwrite(const torch::Tensor& buffer, const char* filename)

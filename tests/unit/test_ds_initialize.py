@@ -20,18 +20,35 @@ def test_no_optim(zero_stage, world_size):
     if zero_stage == 3 and not required_torch_version():
         pytest.skip("zero-3 param offload requires at least torch 1.8")
 
-    ds_config = {
-        'train_batch_size': world_size,
-        'fp16': {
-            'enabled': True
-        },
-        'zero_optimization': {
-            "stage": zero_stage,
-            "offload_param": {
-                "device": "cpu"
+    if zero_stage == 3 and not torch.cuda.is_available():
+        pytest.skip("zero-3 param offload requires CUDA support")
+
+    if torch.cuda.is_available():
+        ds_config = {
+            'train_batch_size': world_size,
+            'fp16': {
+                'enabled': True
+            },
+            'zero_optimization': {
+                "stage": zero_stage,
+                "offload_param": {
+                    "device": "cpu"
+                }
             }
         }
-    }
+    else:
+        ds_config = {
+            'train_batch_size': world_size,
+            'fp16': {
+                'enabled': False
+            },
+            'zero_optimization': {
+                "stage": zero_stage,
+                "offload_param": {
+                    "device": "cpu"
+                }
+            }
+        }
     # 20B test
     #hidden_dim = 16 * 1024
     hidden_dim = 4
@@ -45,11 +62,15 @@ def test_no_optim(zero_stage, world_size):
         see_memory_usage('pre-init', force=True)
         model, _, _, _ = deepspeed.initialize(model=model, config=ds_config)
         see_memory_usage('post-init', force=True)
+        if torch.cuda.is_available():
+            dtype = torch.half
+        else:
+            dtype = torch.float
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
                                         device=model.device,
-                                        dtype=torch.half)
+                                        dtype=dtype)
         print(f"optimizer={model.optimizer}")
         for batch in data_loader:
             model(batch[0], batch[1])
@@ -60,6 +81,9 @@ def test_no_optim(zero_stage, world_size):
 
 @pytest.mark.parametrize('optimizer_type', [None, Optimizer, Callable])
 def test_client_optimizer(tmpdir, optimizer_type):
+    if optimizer_type is None and not torch.cuda.is_available():
+        pytest.skip("Fused kernel not available without CUDA")
+
     def _optimizer_callable(params) -> Optimizer:
         return AdamW(params=params)
 
@@ -113,6 +137,9 @@ def test_client_optimizer(tmpdir, optimizer_type):
                           (Callable,
                            Callable)])
 def test_client_lr_scheduler(tmpdir, scheduler_type, optimizer_type):
+    if optimizer_type is None and not torch.cuda.is_available():
+        pytest.skip("Fused kernel not available without CUDA")
+
     def _my_lambda(epoch):
         return epoch // 10
 

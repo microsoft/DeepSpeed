@@ -49,8 +49,11 @@ class TestDataLoaderDropLast(DistributedTest):
                                                                 training_data=train_dataset,
                                                                 optimizer=optimizer)
         for n, batch in enumerate(training_dataloader):
-            x = batch[0].to(torch.cuda.current_device())
-            y = batch[1].to(torch.cuda.current_device())
+            x = batch[0]
+            y = batch[1]
+            if torch.cuda.is_available():
+                x = x.to(torch.cuda.current_device())
+                y = y.to(torch.cuda.current_device())
             loss = model(x, y)
             model.backward(loss)
             model.step()

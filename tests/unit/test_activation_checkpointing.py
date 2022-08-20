@@ -39,7 +39,7 @@ def _prep_inputs(*inputs):
 
     for inp in inputs:
         inp = deepcopy(inp)
-        if torch.is_tensor(inp):
+        if torch.is_tensor(inp) and torch.cuda.is_available():
             inp = inp.cuda()
         _inputs.append(inp)
 
@@ -64,7 +64,8 @@ def _match_outputs(ref, tgt):
 @distributed_test(world_size=1)
 def _test_activation_checkpoint(module, *inputs):
     # Move to device
-    module.cuda()
+    if torch.cuda.is_available():
+        module.cuda()
 
     # Get rid of dropouts until we fork the RNG between tests.
     module.eval()
@@ -87,7 +88,8 @@ def _test_activation_checkpoint(module, *inputs):
 @distributed_test(world_size=1)
 def _test_activation_checkpoint_ordering(module, expected_ordering, *inputs):
     # Move to device
-    module.cuda()
+    if torch.cuda.is_available():
+        module.cuda()
 
     # Get rid of dropouts until we fork the RNG between tests.
     module.eval()

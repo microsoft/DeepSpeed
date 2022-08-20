@@ -197,7 +197,8 @@ class PipelineModule(nn.Module):
 
         #with torch.random.fork_rng(devices=[torch.cuda.current_device()]):
         self._build()
-        self.to(f'cuda:{self.local_rank}')
+        if torch.cuda.is_available():
+            self.to(f'cuda:{self.local_rank}')
 
         self.tied_comms = self._index_tied_modules()
         self._synchronize_tied_weights()

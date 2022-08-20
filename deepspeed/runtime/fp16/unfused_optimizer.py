@@ -428,17 +428,17 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
         return repr(self.optimizer)
 
     def initialize_optimizer_states(self):
+        if torch.cuda.is_available():
+            device = torch.cuda.current_device()
+        else:
+            device = torch.device("cpu")
         for i, group in enumerate(self.fp16_groups):
             for param in group:
-                param.grad = torch.zeros(param.size(),
-                                         dtype=param.dtype,
-                                         device=torch.cuda.current_device())
+                param.grad = torch.zeros(param.size(), dtype=param.dtype, device=device)
 
         for i, group in enumerate(self.fp32_groups):
             for param in group:
-                param.grad = torch.zeros(param.size(),
-                                         dtype=param.dtype,
-                                         device=torch.cuda.current_device())
+                param.grad = torch.zeros(param.size(), dtype=param.dtype, device=device)
 
         self.optimizer.step()
 

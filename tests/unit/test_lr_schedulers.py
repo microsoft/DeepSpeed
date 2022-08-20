@@ -43,13 +43,15 @@ def _verify_staircase_increase(values, step_size):
                           (LR_RANGE_TEST,
                            {})])
 def test_get_lr_before_train(tmpdir, scheduler_type, params):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             },
         },
         "scheduler": {
@@ -68,11 +70,12 @@ def test_get_lr_before_train(tmpdir, scheduler_type, params):
         model, _, _, lr_scheduler = deepspeed.initialize(args=args,
                                                          model=model,
                                                          model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.float)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=50,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
         for n, batch in enumerate(data_loader):
             # get lr before training starts
             lr_scheduler.get_lr()
@@ -103,13 +106,15 @@ def test_get_lr_before_train(tmpdir, scheduler_type, params):
                               WARMUP_LINEAR_RATE),
                          ])
 def test_lr_warmup_schedule(tmpdir, warmup_num_steps, warmup_type):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             },
         },
         "scheduler": {
@@ -137,11 +142,12 @@ def test_lr_warmup_schedule(tmpdir, warmup_num_steps, warmup_type):
                                                          model=model,
                                                          model_parameters=model.parameters())
 
-        data_loader = random_dataloader(model=model,
-                                        total_samples=num_steps * 2,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.float)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=num_steps * 2,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
         step_lrs = []
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -187,13 +193,15 @@ def test_lr_warmup_schedule(tmpdir, warmup_num_steps, warmup_type):
                               WARMUP_LINEAR_RATE),
                          ])
 def test_lr_warmup_decay_schedule(tmpdir, warmup_num_steps, warmup_type):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             },
         },
         "scheduler": {
@@ -224,11 +232,12 @@ def test_lr_warmup_decay_schedule(tmpdir, warmup_num_steps, warmup_type):
                                                          model=model,
                                                          model_parameters=model.parameters())
 
-        data_loader = random_dataloader(model=model,
-                                        total_samples=num_steps * 2,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.float)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=num_steps * 2,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
         step_lrs = []
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -282,13 +291,15 @@ def test_lr_warmup_decay_schedule(tmpdir, warmup_num_steps, warmup_type):
                                LR_RANGE_TEST_STEP_SIZE: 1
                            })])
 def test_scheduler_optimizer_parity(tmpdir, scheduler_type, params):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             },
         },
         "scheduler": {
@@ -307,11 +318,12 @@ def test_scheduler_optimizer_parity(tmpdir, scheduler_type, params):
         model, _, _, lr_scheduler = deepspeed.initialize(args=args,
                                                          model=model,
                                                          model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.float)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=50,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -330,13 +342,15 @@ def test_scheduler_optimizer_parity(tmpdir, scheduler_type, params):
                           (1e-2, 1e-2, 19, False)
                            ])# yapf: disable
 def test_lr_range_test(tmpdir, min_lr, step_rate, step_size, staircase):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             },
         },
         "scheduler": {
@@ -360,12 +374,13 @@ def test_lr_range_test(tmpdir, min_lr, step_rate, step_size, staircase):
         model, _, _, lr_scheduler = deepspeed.initialize(args=args,
                                                          model=model,
                                                          model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=max(50,
-                                                          step_size * 2),
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.float)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=max(50,
+                              step_size * 2),
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
 
         step_lrs = []
         for _, batch in enumerate(data_loader):
@@ -406,13 +421,15 @@ def test_onecycle_lr(tmpdir,
                      decay_rate,
                      cycle_step_size,
                      decay_step_size):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             },
         },
         "scheduler": {
@@ -443,12 +460,13 @@ def test_onecycle_lr(tmpdir,
         model, _, _, lr_scheduler = deepspeed.initialize(args=args,
                                                          model=model,
                                                          model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=max(50,
-                                                          step_size * 3),
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.float)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=max(50,
+                              step_size * 3),
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
 
         step_lrs = []
         for _, batch in enumerate(data_loader):
@@ -490,13 +508,15 @@ def test_onecycle_lr(tmpdir,
                              (0.08, 0.09, 0, 21),
                          ]) # yapf: disable
 def test_onecycle_mom(tmpdir, min_mom, max_mom, decay_rate, step_size):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             },
         },
         "scheduler": {
@@ -529,12 +549,13 @@ def test_onecycle_mom(tmpdir, min_mom, max_mom, decay_rate, step_size):
         model, _, _, lr_scheduler = deepspeed.initialize(args=args,
                                                          model=model,
                                                          model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=max(50,
-                                                          step_size * 3),
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.float)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=max(50,
+                              step_size * 3),
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
 
         step_moms = []
         for _, batch in enumerate(data_loader):

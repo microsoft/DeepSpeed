@@ -4,6 +4,9 @@ from tests.unit.simple_model import SimpleModel
 from deepspeed import OnDevice
 from packaging import version as pkg_version
 
+pytestmark = pytest.mark.skipif(not torch.cuda.is_available(),
+                                reason='fp16 tests are not supported on CPU-only builds')
+
 
 @pytest.mark.parametrize('device', ['meta', 'cuda:0'])
 def test_on_device(device):

@@ -212,9 +212,11 @@ def checkpoint_correctness_verification(args,
         compare_lr_scheduler_states(trained_model, loaded_model)
 
 
-@pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
+@pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME]
+                    or not torch.cuda.is_available(),
                     reason="lamb is not compatible")
 def test_checkpoint_unfused_optimizer(tmpdir):
+    print(deepspeed.ops.__compatible_ops__)
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -274,6 +276,8 @@ def test_checkpoint_unfused_optimizer(tmpdir):
 
 
 def test_checkpoint_fused_optimizer(tmpdir):
+    if not torch.cuda.is_available():
+        pytest.skip("Fused kernel not available without CUDA")
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -338,6 +342,10 @@ def test_checkpoint_fused_optimizer(tmpdir):
 def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
+    if zero_stage == 3 and not torch.cuda.is_available():
+        pytest.skip("zero stage 3 not supported on CPU-only builds")
+
+    use_gpu = torch.cuda.is_available()
 
     config_dict = {
         "train_batch_size": 2,
@@ -349,11 +357,12 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_opt
                 "betas": [0.8,
                           0.999],
                 "eps": 1e-8,
-                "weight_decay": 3e-7
+                "weight_decay": 3e-7,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         },
         "wall_clock_breakdown": True,
@@ -380,6 +389,7 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_opt
                                             models,
                                             hidden_dim,
                                             tmpdir,
+                                            fp16=config_dict['fp16']['enabled'],
                                             load_optimizer_states=load_optimizer_states)
 
     _test_checkpoint_zero_optimizer(args=args,
@@ -410,7 +420,10 @@ def test_checkpoint_zero_no_optimizer(tmpdir,
                                       adam_optimizer):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
+    if zero_stage == 3 and not torch.cuda.is_available():
+        pytest.skip("zero stage 3 not supported on CPU-only builds")
 
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -421,11 +434,12 @@ def test_checkpoint_zero_no_optimizer(tmpdir,
                 "betas": [0.8,
                           0.999],
                 "eps": 1e-8,
-                "weight_decay": 3e-7
+                "weight_decay": 3e-7,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True
+            "enabled": use_gpu
         },
         "zero_optimization": {
             "stage": zero_stage,
@@ -452,6 +466,7 @@ def test_checkpoint_zero_no_optimizer(tmpdir,
                                             models,
                                             hidden_dim,
                                             tmpdir,
+                                            fp16=config_dict['fp16']['enabled'],
                                             load_optimizer_states=load_optimizer_states)
 
     _test_checkpoint_zero_no_optimizer(args=args,
@@ -482,7 +497,10 @@ def test_checkpoint_zero_no_optimizer(tmpdir,
 def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
+    if zero_stage == 3 and not torch.cuda.is_available():
+        pytest.skip("zero stage 3 not supported on CPU-only builds")
 
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -493,11 +511,12 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optim
                 "betas": [0.8,
                           0.999],
                 "eps": 1e-8,
-                "weight_decay": 3e-7
+                "weight_decay": 3e-7,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True
+            "enabled": use_gpu
         },
         "zero_optimization": {
             "stage": zero_stage,
@@ -534,6 +553,7 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optim
             models,
             hidden_dim,
             tmpdir,
+            fp16=config_dict['fp16']['enabled'],
             load_optimizer_states=load_optimizer_states,
             load_lr_scheduler_states=load_lr_scheduler_states)
 
@@ -566,6 +586,10 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optim
 def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
+    if zero_stage == 3 and not torch.cuda.is_available():
+        pytest.skip("zero stage 3 not supported on CPU-only builds")
+
+    use_gpu = torch.cuda.is_available()
 
     config_dict = {
         "train_batch_size": 2,
@@ -573,11 +597,12 @@ def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_op
         "optimizer": {
             "type": 'Adam',
             "params": {
-                "lr": 1e-5
+                "lr": 1e-5,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True
+            "enabled": use_gpu
         },
         "zero_optimization": {
             "stage": zero_stage,
@@ -612,6 +637,7 @@ def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_op
             models,
             hidden_dim,
             tmpdir,
+            fp16=config_dict['fp16']['enabled'],
             load_optimizer_states=load_optimizer_states,
             load_lr_scheduler_states=load_lr_scheduler_states)
 
@@ -623,6 +649,7 @@ def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_op
 
 
 def test_checkpoint_fp32_optimizer(tmpdir):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -633,7 +660,8 @@ def test_checkpoint_fp32_optimizer(tmpdir):
                 "betas": [0.8,
                           0.999],
                 "eps": 1e-8,
-                "weight_decay": 3e-7
+                "weight_decay": 3e-7,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
@@ -659,6 +687,7 @@ def test_checkpoint_fp32_optimizer(tmpdir):
 
 @pytest.mark.parametrize("zero_stage", [0, 1])
 def test_checkpoint_pipe_engine(zero_stage, tmpdir, stages=2):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "train_micro_batch_size_per_gpu": 1,
@@ -666,14 +695,15 @@ def test_checkpoint_pipe_engine(zero_stage, tmpdir, stages=2):
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 1e-5
+                "lr": 1e-5,
+                "torch_adam": not use_gpu
             }
         },
         "zero_optimization": {
             "stage": zero_stage
         },
         "fp16": {
-            "enabled": zero_stage > 0
+            "enabled": zero_stage > 0 and use_gpu
         },
         "scheduler": {
             "type": "OneCycle",
@@ -766,6 +796,7 @@ def test_checkpoint_pipe_module(base_topo, test_topo, tmpdir):
 
 @pytest.mark.parametrize('zero_stage', [1, 2])
 def test_checkpoint_zero_hybrid_optimizer_state(tmpdir, zero_stage):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_micro_batch_size_per_gpu": 2,
         "gradient_accumulation_steps": 2,
@@ -775,7 +806,7 @@ def test_checkpoint_zero_hybrid_optimizer_state(tmpdir, zero_stage):
         },
         "zero_allow_untested_optimizer": True,
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         }
     }
@@ -795,6 +826,7 @@ def test_checkpoint_zero_hybrid_optimizer_state(tmpdir, zero_stage):
                                             base_optimizers=optimizers,
                                             hidden_dim=hidden_dim,
                                             tmpdir=tmpdir,
+                                            fp16=config_dict['fp16']['enabled'],
                                             load_optimizer_states=True)
 
     _test_checkpoint_zero_hybrid_optimizer_state(args=args,
@@ -804,13 +836,15 @@ def test_checkpoint_zero_hybrid_optimizer_state(tmpdir, zero_stage):
 
 
 def test_checkpoint_latest(tmpdir):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             }
         }
     }
@@ -833,13 +867,15 @@ def test_checkpoint_latest(tmpdir):
 
 
 def test_checkpoint_missing_latest(tmpdir):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             }
         }
     }
@@ -861,13 +897,15 @@ def test_checkpoint_missing_latest(tmpdir):
 
 @pytest.mark.parametrize('valid_mode', ["FAIL", "WARN", "IGNORE"])
 def test_checkpoint_unique_tag(tmpdir, valid_mode):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             }
         },
         "checkpoint": {
@@ -894,13 +932,15 @@ def test_checkpoint_unique_tag(tmpdir, valid_mode):
 
 
 def test_checkpoint_unknown_tag_validation(tmpdir):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             }
         },
         "checkpoint": {
@@ -924,6 +964,7 @@ def test_checkpoint_unknown_tag_validation(tmpdir):
 
 @pytest.mark.parametrize("ep_size", [4])
 def test_checkpoint_moe(tmpdir, ep_size):
+    use_gpu = torch.cuda.is_available()
     if not required_torch_version():
         pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
@@ -931,7 +972,7 @@ def test_checkpoint_moe(tmpdir, ep_size):
         "train_batch_size": 8,
         "steps_per_print": 1,
         "fp16": {
-            "enabled": True
+            "enabled": use_gpu
         }
     }
     hidden_dim = 16
@@ -969,6 +1010,7 @@ def test_checkpoint_moe(tmpdir, ep_size):
                           (2,
                            False)])
 def test_checkpoint_moe_and_zero(tmpdir, ep_size, load_optim_states):
+    use_gpu = torch.cuda.is_available()
     if not required_torch_version():
         pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
@@ -982,11 +1024,12 @@ def test_checkpoint_moe_and_zero(tmpdir, ep_size, load_optim_states):
                 "betas": [0.8,
                           0.999],
                 "eps": 1e-8,
-                "weight_decay": 3e-7
+                "weight_decay": 3e-7,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         },
         "zero_optimization": {
@@ -1029,13 +1072,20 @@ def test_checkpoint_moe_and_zero(tmpdir, ep_size, load_optim_states):
 
 @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
 def test_checkpoint_load_module_only(tmpdir, zero_stage):
+    if zero_stage == 3 and not torch.cuda.is_available():
+        pytest.skip("zero stage 3 not supported on CPU-only builds")
+
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "optimizer": {
-            "type": 'Adam'
+            "type": 'Adam',
+            "params": {
+                "torch_adam": not use_gpu
+            }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         },
         "zero_optimization": {
@@ -1057,6 +1107,7 @@ def test_checkpoint_load_module_only(tmpdir, zero_stage):
                                             models,
                                             hidden_dim,
                                             tmpdir,
+                                            fp16=config_dict['fp16']['enabled'],
                                             load_module_only=True)
 
     _go(args, zero_stage, hidden_dim)
@@ -1161,13 +1212,20 @@ def test_non_strict_load_sparse(tmpdir,
                                              [True,
                                               False]]))
 def test_checkpoint_zero_elastic(tmpdir, elastic_save, elastic_load, load_optim):
-    ds_config = {
+    # Temporary skip until CPU elasticity is explored further
+    if not torch.cuda.is_available():
+        pytest.skip("Zero elastic not supported on CPU-only builds")
+    use_gpu = torch.cuda.is_available()
+    config_dict = {
         "train_batch_size": 2,
         "optimizer": {
-            "type": 'Adam'
+            "type": 'Adam',
+            "params": {
+                "torch_adam": not use_gpu
+            }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         },
         "zero_optimization": {
@@ -1185,13 +1243,15 @@ def test_checkpoint_zero_elastic(tmpdir, elastic_save, elastic_load, load_optim)
         expected_mismatch_keys = [] if required_minimum_torch_version(1,
                                                                       4) else ['params']
         models = [SimpleModel(hidden_dim) for _ in range(2)]
-        model, _, _, _ = deepspeed.initialize(config=ds_config,
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=models[0],
                                               model_parameters=models[0].parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=8,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=8,
+            hidden_dim=hidden_dim,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+            device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -1202,8 +1262,8 @@ def test_checkpoint_zero_elastic(tmpdir, elastic_save, elastic_load, load_optim)
                                     'opt-state-dict'))
         model.save_checkpoint(tmpdir)
 
-        ds_config["zero_optimization"]["elastic_checkpoint"] = elastic_load
-        model, _, _, _ = deepspeed.initialize(config=ds_config,
+        config_dict["zero_optimization"]["elastic_checkpoint"] = elastic_load
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=models[1],
                                               model_parameters=models[1].parameters())
         model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
@@ -1216,10 +1276,12 @@ def test_checkpoint_zero_elastic(tmpdir, elastic_save, elastic_load, load_optim)
                                      saved_param_group,
                                      expected_mismatch_keys)
 
-        data_loader = random_dataloader(model=model,
-                                        total_samples=8,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=8,
+            hidden_dim=hidden_dim,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+            device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -1241,13 +1303,20 @@ def test_checkpoint_zero_elastic_dp_change(tmpdir,
                                            elastic_save,
                                            elastic_load,
                                            load_optim):
-    ds_config = {
+    # Temporary skip until CPU elasticity is explored further
+    if not torch.cuda.is_available():
+        pytest.skip("Zero elastic not supported on CPU-only builds")
+    use_gpu = torch.cuda.is_available()
+    config_dict = {
         "train_batch_size": 4,
         "optimizer": {
-            "type": 'Adam'
+            "type": 'Adam',
+            "params": {
+                "torch_adam": not use_gpu
+            }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         },
         "zero_optimization": {
@@ -1260,13 +1329,15 @@ def test_checkpoint_zero_elastic_dp_change(tmpdir,
 
     @distributed_test(world_size=[4])
     def _go2(models):
-        model, _, _, _ = deepspeed.initialize(config=ds_config,
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=models[0],
                                               model_parameters=models[0].parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=8,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=8,
+            hidden_dim=hidden_dim,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+            device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -1282,8 +1353,8 @@ def test_checkpoint_zero_elastic_dp_change(tmpdir,
 
     @distributed_test(world_size=[2])
     def _go1(models):
-        ds_config["zero_optimization"]["elastic_checkpoint"] = elastic_load
-        model, _, _, _ = deepspeed.initialize(config=ds_config,
+        config_dict["zero_optimization"]["elastic_checkpoint"] = elastic_load
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                                   model=models[1],
                                                   model_parameters=models[1].parameters())
         if load_optim:
@@ -1297,13 +1368,20 @@ def test_checkpoint_zero_elastic_dp_change(tmpdir,
 
 @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
 def test_immediate_save_load(tmpdir, zero_stage):
+    if zero_stage == 3 and not torch.cuda.is_available():
+        pytest.skip("zero stage 3 not supported on CPU-only builds")
+
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 4,
         "optimizer": {
-            "type": 'Adam'
+            "type": 'Adam',
+            "params": {
+                "torch_adam": not use_gpu
+            }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         },
         "zero_optimization": {
@@ -1329,13 +1407,20 @@ def test_immediate_save_load(tmpdir, zero_stage):
 
 @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
 def test_load_immediate_save(tmpdir, zero_stage):
+    if zero_stage == 3 and not torch.cuda.is_available():
+        pytest.skip("zero stage 3 not supported on CPU-only builds")
+
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 4,
         "optimizer": {
-            "type": 'Adam'
+            "type": 'Adam',
+            "params": {
+                "torch_adam": not use_gpu
+            }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         },
         "zero_optimization": {
@@ -1350,13 +1435,13 @@ def test_load_immediate_save(tmpdir, zero_stage):
     def _test_load_immediate_save(args, model, tmpdir):
 
         # 1. pretrain a model and save it
-        dtype = torch.half
         ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
-        data_loader = random_dataloader(model=ds_model,
-                                        total_samples=1,
-                                        hidden_dim=hidden_dim,
-                                        device=ds_model.device,
-                                        dtype=dtype)
+        data_loader = random_dataloader(
+            model=ds_model,
+            total_samples=1,
+            hidden_dim=hidden_dim,
+            device=ds_model.device,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32)
         for n, batch in enumerate(data_loader):
             loss = ds_model(batch[0], batch[1])
             ds_model.backward(loss)
@@ -1376,12 +1461,19 @@ def test_load_immediate_save(tmpdir, zero_stage):
 
 @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
 def test_save_before_accum_grad_is_done(tmpdir, zero_stage):
+    if zero_stage == 3 and not torch.cuda.is_available():
+        pytest.skip("zero stage 3 not supported on CPU-only builds")
+
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "optimizer": {
-            "type": 'Adam'
+            "type": 'Adam',
+            "params": {
+                "torch_adam": not use_gpu
+            }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         },
         "zero_optimization": {
@@ -1404,11 +1496,13 @@ def test_save_before_accum_grad_is_done(tmpdir, zero_stage):
         # So we config grad_accum=2 and step only once and save_16bit_model
         ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
 
-        data_loader = random_dataloader(model=ds_model,
-                                        total_samples=2,
-                                        hidden_dim=hidden_dim,
-                                        device=ds_model.device,
-                                        dtype=torch.half)
+        data_loader = random_dataloader(
+            model=ds_model,
+            total_samples=2,
+            hidden_dim=hidden_dim,
+            device=ds_model.device,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+        )
 
         batch = next(iter(data_loader))
         loss = ds_model(batch[0], batch[1])

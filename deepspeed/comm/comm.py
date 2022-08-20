@@ -574,7 +574,7 @@ def get_global_rank(group=None, group_rank=0):
 
 
 # Main DeepSpeed Comms. public API.
-def init_distributed(dist_backend="nccl",
+def init_distributed(dist_backend="nccl" if torch.cuda.is_available() else 'gloo',
                      auto_mpi_discovery=True,
                      distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT,
                      verbose=True,

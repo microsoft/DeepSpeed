@@ -217,8 +217,9 @@ class DeepSpeedZeRoOffload(object):
         self._prefetch_bucket_sz = int(prefetch_bucket_size)
         self._max_reuse_distance_in_numel = int(max_reuse_distance)
         self._max_available_parameters_in_numel = int(max_live_parameters)
-        self.__allgather_stream = Stream(
-        ) if overlap_comm else torch.cuda.default_stream()
+        if torch.cuda.is_available():
+            self.__allgather_stream = Stream(
+            ) if overlap_comm else torch.cuda.default_stream()
 
         self.forward_hooks = []
         self.backward_hooks = []

@@ -8,6 +8,9 @@ from deepspeed.ops.op_builder import CPUAdamBuilder
 from .simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict, create_deepspeed_args, SimpleMoEModel, sequence_dataloader
 from .util import required_torch_version
 
+pytestmark = pytest.mark.skipif(not torch.cuda.is_available(),
+                                reason='fp16 tests are not supported on CPU-only builds')
+
 try:
     from apex import amp  # noqa: F401
     _amp_available = True

@@ -92,7 +92,8 @@ def wait():
         op.wait()
     _async = []
 
-    torch.cuda.synchronize()
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
 
 
 def send_obj(msg: typing.Any, dest: int):
@@ -110,10 +111,14 @@ def send_obj(msg: typing.Any, dest: int):
     # serialize the message
     msg = pickle.dumps(msg)
     # construct a tensor to send
-    msg = torch.ByteTensor(torch.ByteStorage.from_buffer(msg)).cuda()
+    msg = torch.ByteTensor(torch.ByteStorage.from_buffer(msg))
+    if torch.cuda.is_available():
+        msg = msg.cuda()
 
     # Send meta and message
-    length_tensor = torch.tensor([len(msg)], dtype=torch.long).cuda()
+    length_tensor = torch.tensor([len(msg)], dtype=torch.long)
+    if torch.cuda.is_available():
+        length_tensor = length_tensor.cuda()
     dist.send(length_tensor, dst=dest)
     dist.send(msg, dst=dest)
 
@@ -128,18 +133,22 @@ def recv_obj(sender: int) -> typing.Any:
         sender (int): The rank sending the message.
     """
     # Get message meta
-    length = torch.tensor([0], dtype=torch.long).cuda()
+    length = torch.tensor([0], dtype=torch.long)
+    if torch.cuda.is_available():
+        length = length.cuda()
     dist.recv(length, src=sender)
 
     # Receive and deserialize
-    msg = torch.empty(length.item(), dtype=torch.uint8).cuda()
+    msg = torch.empty(length.item(), dtype=torch.uint8)
+    if torch.cuda.is_available():
+        msg = msg.cuda()
     dist.recv(msg, src=sender)
 
     msg = pickle.loads(msg.cpu().numpy().tobytes())
 
     def _to(x):
         """Recursively move to the current device."""
-        if torch.is_tensor(x):
+        if torch.is_tensor(x) and torch.cuda.is_available():
             return x.cuda()
         if isinstance(x, (tuple, list)):
             ret = [_to(x_) for x_ in x]

@@ -97,13 +97,22 @@ except ImportError:
 
 
 def split_half_float_double_sparse(tensors):
-    supported_types = [
-        "torch.cuda.HalfTensor",
-        "torch.cuda.FloatTensor",
-        "torch.cuda.DoubleTensor",
-        "torch.cuda.BFloat16Tensor",
-        SparseTensor.type()
-    ]
+    if torch.cuda.is_available():
+        supported_types = [
+            "torch.cuda.HalfTensor",
+            "torch.cuda.FloatTensor",
+            "torch.cuda.DoubleTensor",
+            "torch.cuda.BFloat16Tensor",
+            SparseTensor.type()
+        ]
+    else:
+        supported_types = [
+            "torch.HalfTensor",
+            "torch.FloatTensor",
+            "torch.DoubleTensor",
+            "torch.BFloat16Tensor",
+            SparseTensor.type()
+        ]
 
     for t in tensors:
         assert t.type() in supported_types, f"attempting to reduce an unsupported grad type: {t.type()}"
@@ -215,7 +224,7 @@ class DeepSpeedEngine(Module):
         self.eigenvalue = None
         self.block_eigenvalue = None
         self.gas_boundary_ctr = 0
-        self.dist_backend = "nccl"
+        self.dist_backend = "nccl" if torch.cuda.is_available() else 'gloo'
         self.has_moe_layers = False
         self.num_experts = []
         self.gate_modules = []
@@ -849,14 +858,20 @@ class DeepSpeedEngine(Module):
             args,
             'device_rank') else self.local_rank
         if device_rank >= 0:
-            torch.cuda.set_device(device_rank)
-            self.device = torch.device("cuda", device_rank)
+            if torch.cuda.is_available():
+                torch.cuda.set_device(device_rank)
+                self.device = torch.device("cuda", device_rank)
+            else:
+                self.device = torch.device("cpu", device_rank)
             self.world_size = dist.get_world_size()
             self.global_rank = dist.get_rank()
         else:
             self.world_size = 1
             self.global_rank = 0
-            self.device = torch.device("cuda")
+            if torch.cuda.is_available():
+                self.device = torch.device("cuda")
+            else:
+                self.device = torch.device("cpu")
 
     # Configure based on command line arguments
     def _configure_with_arguments(self, args, mpu):

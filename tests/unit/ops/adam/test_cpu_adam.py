@@ -7,8 +7,11 @@ import deepspeed
 from deepspeed.ops.adam import FusedAdam
 from deepspeed.ops.op_builder import CPUAdamBuilder
 
-if not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
-    pytest.skip("cpu-adam is not compatible", allow_module_level=True)
+pytestmark = pytest.mark.skipif(
+    not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME],
+    reason='cpu-adam is not compatible')
+pytestmark = pytest.mark.skipif(not torch.cuda.is_available(),
+                                reason='cpu-adam is not supported on CPU-only builds')
 
 pytest.cpu_vendor = get_cpu_info()["vendor_id_raw"].lower()
 
@@ -46,7 +49,9 @@ def test_cpu_adam_opt(dtype, model_size):
     param1_data = torch.randn(model_size, device=device)
     param1 = torch.nn.Parameter(param1_data)
     torch.set_rng_state(rng_state)
-    param2_data = torch.randn(model_size, device=device).to(dtype).cuda()
+    param2_data = torch.randn(model_size, device=device).to(dtype)
+    if torch.cuda.is_available():
+        param2_data = param2_data.cuda()
     param2 = torch.nn.Parameter(param2_data)
 
     optimizer1 = torch.optim.AdamW([param1])
@@ -59,7 +64,9 @@ def test_cpu_adam_opt(dtype, model_size):
         torch.set_rng_state(rng_state)
         param1.grad = torch.randn(model_size, device=device)
         torch.set_rng_state(rng_state)
-        param2.grad = torch.randn(model_size, device=device).to(dtype).cuda()
+        param2.grad = torch.randn(model_size, device=device).to(dtype)
+        if torch.cuda.is_available():
+            param2.grad = param2.grad.cuda()
 
         optimizer.step()
         optimizer2.step()
@@ -78,7 +85,7 @@ def test_cpu_adam_opt(dtype, model_size):
 def test_cpu_adam_gpu_error():
     model_size = 64
     from deepspeed.ops.adam import DeepSpeedCPUAdam
-    device = 'cuda:0'
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     param = torch.nn.Parameter(torch.randn(model_size, device=device))
     optimizer = DeepSpeedCPUAdam([param])
 

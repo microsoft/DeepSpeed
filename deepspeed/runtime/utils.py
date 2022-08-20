@@ -191,7 +191,10 @@ class CheckOverflow(object):
     def check_using_norm(self, norm_group, reduce_overflow=True):
         # TODO: I don't think reduce_overflow is needed if mpu is None
         overflow = -1 in norm_group
-        overflow_gpu = torch.cuda.FloatTensor([overflow])
+        if torch.cuda.is_available():
+            overflow_gpu = torch.cuda.FloatTensor([overflow])
+        else:
+            overflow_gpu = torch.FloatTensor([overflow])
         if self.has_moe_params:
             # In this case, we need to do an all_reduce across
             # the expert_parallel_group, so that if there was
@@ -242,7 +245,10 @@ class CheckOverflow(object):
         overflow = self.has_overflow_serial(params)
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
-        overflow_gpu = torch.cuda.ByteTensor([overflow])
+        if torch.cuda.is_available():
+            overflow_gpu = torch.cuda.ByteTensor([overflow])
+        else:
+            overflow_gpu = torch.ByteTensor([overflow])
         # deepspeeed.comm.all_reduce(overflow_gpu,
         #                             op=deepspeed.comm.ReduceOp.MAX,
         #                             group=mpu.get_model_parallel_group())
@@ -352,7 +358,10 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
     norm_type = float(norm_type)
     if norm_type == inf:
         total_norm = max(p.grad.data.abs().max() for p in parameters)
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        if torch.cuda.is_available():
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        else:
+            total_norm_cuda = torch.FloatTensor([float(total_norm)])
         # Take max across all GPUs.
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
@@ -372,7 +381,10 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
                 total_norm += param_norm.item()**norm_type
 
         # Sum across all model parallel GPUs.
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        if torch.cuda.is_available():
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        else:
+            total_norm_cuda = torch.FloatTensor([float(total_norm)])
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
@@ -383,7 +395,10 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
     pg = groups._get_data_parallel_group()
     scaled_norm = total_norm * 1.0 / float(dist.get_world_size(group=pg))
 
-    scaled_norm_tensor = torch.cuda.FloatTensor([float(scaled_norm)])
+    if torch.cuda.is_available():
+        scaled_norm_tensor = torch.cuda.FloatTensor([float(scaled_norm)])
+    else:
+        scaled_norm_tensor = torch.FloatTensor([float(scaled_norm)])
     dist.all_reduce(scaled_norm_tensor, group=pg)
     total_norm = scaled_norm_tensor.item()
 
@@ -418,7 +433,10 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
     norm_type = float(norm_type)
     if norm_type == inf:
         total_norm = max(p.grad.data.abs().max() for p in parameters)
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        if torch.cuda.is_available():
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        else:
+            total_norm_cuda = torch.FloatTensor([float(total_norm)])
         # Take max across all GPUs.
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
@@ -442,7 +460,10 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
             total_norm += param_norm.item()**norm_type
 
         # Sum across all model parallel GPUs.
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        if torch.cuda.is_available():
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        else:
+            total_norm_cuda = torch.FloatTensor([float(total_norm)])
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
@@ -488,7 +509,10 @@ def get_grad_zeros(parameters, mpu=None):
         total_zeros += count_zeros.item()
 
     # Sum across all model parallel GPUs.
-    total_zeros_cuda = torch.cuda.FloatTensor([float(total_zeros)])
+    if torch.cuda.is_available():
+        total_zeros_cuda = torch.cuda.FloatTensor([float(total_zeros)])
+    else:
+        total_zeros_cuda = torch.FloatTensor([float(total_zeros)])
     if mpu is not None:
         dist.all_reduce(total_zeros_cuda,
                         op=dist.ReduceOp.SUM,
@@ -521,7 +545,10 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
     norm_type = float(norm_type)
     if norm_type == inf:
         total_norm = max(p.data.abs().max() for p in parameters)
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        if torch.cuda.is_available():
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        else:
+            total_norm_cuda = torch.FloatTensor([float(total_norm)])
         # Take max across all GPUs.
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
@@ -545,7 +572,10 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
             total_norm += param_norm**norm_type
 
         # Sum across all model parallel GPUs.
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        if torch.cuda.is_available():
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        else:
+            total_norm_cuda = torch.FloatTensor([float(total_norm)])
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
@@ -669,7 +699,11 @@ class PartitionedTensor:
         self.local_data, self.partition = self._partition_tensor(tensor)
 
     @classmethod
-    def from_meta(cls, meta, local_part, group, device='cuda'):
+    def from_meta(cls,
+                  meta,
+                  local_part,
+                  group,
+                  device='cuda' if torch.cuda.is_available() else 'cpu'):
         assert meta.dtype == torch.long
         dummy = torch.ones(dist.get_world_size(group=group))
         part_obj = cls(tensor=dummy, group=group)
@@ -837,8 +871,9 @@ def see_memory_usage(message, force=False):
         f'CPU Virtual Memory:  used = {used_GB} GB, percent = {vm_stats.percent}%')
 
     # get the peak memory to report correct data, so reset the counter for the next call
-    if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+
-        torch.cuda.reset_peak_memory_stats()
+    if torch.cuda.is_available():
+        if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+
+            torch.cuda.reset_peak_memory_stats()
 
 
 def call_to_str(base, *args, **kwargs):
@@ -912,7 +947,10 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None):
     norm_type = float(norm_type)
     if norm_type == inf:
         total_norm = max(t.data.abs().max() for t in input_tensors)
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        if torch.cuda.is_available():
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        else:
+            total_norm_cuda = torch.FloatTensor([float(total_norm)])
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.MAX,
@@ -921,7 +959,10 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None):
     else:
         total_norm = sum(
             [t.data.float().norm(norm_type).item()**norm_type for t in input_tensors])
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        if torch.cuda.is_available():
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        else:
+            total_norm_cuda = torch.FloatTensor([float(total_norm)])
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,

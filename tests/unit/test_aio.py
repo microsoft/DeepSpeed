@@ -64,7 +64,9 @@ def test_parallel_read(tmpdir, single_submit, overlap_events):
     def _test_parallel_read(single_submit, overlap_events):
         ref_file, _ = _do_ref_write(tmpdir)
 
-        aio_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device='cpu').pin_memory()
+        aio_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device='cpu')
+        if torch.cuda.is_available():
+            aio_buffer = aio_buffer.pin_memory()
         h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE,
                                                QUEUE_DEPTH,
                                                single_submit,
@@ -78,6 +80,8 @@ def test_parallel_read(tmpdir, single_submit, overlap_events):
 
         with open(ref_file, 'rb') as f:
             ref_buffer = list(f.read())
+        #import time
+        #time.sleep(10)
         assert ref_buffer == aio_buffer.tolist()
 
     _test_parallel_read(single_submit, overlap_events)

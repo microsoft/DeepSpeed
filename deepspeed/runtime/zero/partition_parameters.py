@@ -191,7 +191,8 @@ def zero_wrapper_for_fp_tensor_constructor(fn: Callable,
                                            target_fp_dtype: torch.dtype) -> Callable:
     def wrapped_fn(*args, **kwargs) -> Tensor:
         if kwargs.get("device", None) is None:
-            kwargs['device'] = torch.device('cuda:{}'.format(os.environ["LOCAL_RANK"]))
+            kwargs['device'] = torch.device('cuda:{}'.format(os.environ["LOCAL_RANK"])
+                                            if torch.cuda.is_available() else 'cpu')
         tensor: Tensor = fn(*args, **kwargs)
         if tensor.is_floating_point():
             tensor = tensor.to(target_fp_dtype)
@@ -505,7 +506,9 @@ class AllGatherCoalescedHandle:
         if self.__complete:
             return
 
-        instrument_w_nvtx(self.__allgather_handle.wait)()
+        # The __allgather_handle is not used (and set to None) if GPUs aren't present
+        if torch.cuda.is_available():
+            instrument_w_nvtx(self.__allgather_handle.wait)()
 
         # split the single tensor out into individual tensors
         param_offset = 0
@@ -525,8 +528,9 @@ class AllGatherCoalescedHandle:
             param.data = instrument_w_nvtx(torch.cat)(partitions).view(param.ds_shape)
             param.ds_status = ZeroParamStatus.AVAILABLE
 
-            for part_to_copy in partitions:
-                part_to_copy.record_stream(torch.cuda.current_stream())
+            if torch.cuda.is_available():
+                for part_to_copy in partitions:
+                    part_to_copy.record_stream(torch.cuda.current_stream())
 
             param_offset += param.ds_tensor.ds_numel
 
@@ -672,7 +676,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         # Local device is the device where the parameters are consumed, must be default device.
         # It is the device where parameters are fully instantiated using allgather
-        self.local_device = torch.device('cuda:{}'.format(os.environ["LOCAL_RANK"]))
+        self.local_device = torch.device('cuda:{}'.format(os.environ["LOCAL_RANK"])
+                                         if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.local_device)
 
         if _ds_config is not None and _ds_config.zero_config.offload_param is not None:
@@ -853,10 +858,14 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 return AllGatherHandle(handle, param)
             else:
                 partition_sz = sum(p.ds_tensor.ds_numel for p in params)
+                if torch.cuda.is_available():
+                    device = torch.cuda.current_device()
+                else:
+                    device = torch.device("cpu")
                 flat_tensor = torch.empty(partition_sz * self.world_size,
                                           dtype=get_only_unique_item(p.dtype
                                                                      for p in params),
-                                          device=torch.cuda.current_device(),
+                                          device=device,
                                           requires_grad=False)
                 partitions: List[Parameter] = []
                 for i in range(self.world_size):
@@ -865,9 +874,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                            partition_sz * i,
                                            partition_sz))
 
-                instrument_w_nvtx(torch.cat)(
-                    [p.ds_tensor.to(torch.cuda.current_device()) for p in params],
-                    out=partitions[self.rank])
+                instrument_w_nvtx(torch.cat)([p.ds_tensor.to(device) for p in params],
+                                             out=partitions[self.rank])
                 handle = _dist_allgather_fn(partitions[self.rank],
                                             flat_tensor,
                                             self.ds_process_group)

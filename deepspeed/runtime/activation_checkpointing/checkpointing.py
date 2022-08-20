@@ -554,8 +554,9 @@ class CheckpointFunction(torch.autograd.Function):
                 logger.info(f"----Synchronization {SYNCHRONIZE}")
                 logger.info(f"----Profiling time in checkpointing {PROFILE_TIME}")
 
-            cuda_device = torch.cuda.current_device()
-            transport_stream = torch.cuda.Stream(device=cuda_device)
+            if torch.cuda.is_available():
+                cuda_device = torch.cuda.current_device()
+                transport_stream = torch.cuda.Stream(device=cuda_device)
 
         if PARTITION_ACTIVATIONS:
             inputs = partition_activations(args,
@@ -573,8 +574,9 @@ class CheckpointFunction(torch.autograd.Function):
 
         # Copy the rng states.
         ctx.fwd_cpu_rng_state = torch.get_rng_state()
-        ctx.fwd_cuda_rng_state = torch.cuda.get_rng_state()
-        ctx.fwd_cuda_rng_state_tracker = get_cuda_rng_tracker().get_states()
+        if torch.cuda.is_available():
+            ctx.fwd_cuda_rng_state = torch.cuda.get_rng_state()
+            ctx.fwd_cuda_rng_state_tracker = get_cuda_rng_tracker().get_states()
 
         see_memory_usage("Before running forward on the layer", force=False)
         # ctx.save_for_backward(*args)
@@ -600,7 +602,7 @@ class CheckpointFunction(torch.autograd.Function):
         if PROFILE_TIME:
             timers('forward').stop()
             timers.log(['forward'])
-        if SYNCHRONIZE:
+        if SYNCHRONIZE and torch.cuda.is_available():
             torch.cuda.synchronize()
 
         # Tensors returned from forward() may not be differentiable.
@@ -627,7 +629,7 @@ class CheckpointFunction(torch.autograd.Function):
         # removing pointers to the contiguous buffer memory
         # so that they can be garbage collected once the checkpoints
         # have been used
-        if SYNCHRONIZE:
+        if SYNCHRONIZE and torch.cuda.is_available():
             torch.cuda.synchronize()
         if PROFILE_TIME:
             timers('backward').start()
@@ -675,13 +677,15 @@ class CheckpointFunction(torch.autograd.Function):
 
         # Store the current states.
         bwd_cpu_rng_state = torch.get_rng_state()
-        bwd_cuda_rng_state = torch.cuda.get_rng_state()
-        bwd_cuda_rng_state_tracker = get_cuda_rng_tracker().get_states()
+        if torch.cuda.is_available():
+            bwd_cuda_rng_state = torch.cuda.get_rng_state()
+            bwd_cuda_rng_state_tracker = get_cuda_rng_tracker().get_states()
 
         # Set the states to what it used to be before the forward pass.
         torch.set_rng_state(ctx.fwd_cpu_rng_state)
-        _set_cuda_rng_state(ctx.fwd_cuda_rng_state)
-        get_cuda_rng_tracker().set_states(ctx.fwd_cuda_rng_state_tracker)
+        if torch.cuda.is_available():
+            _set_cuda_rng_state(ctx.fwd_cuda_rng_state)
+            get_cuda_rng_tracker().set_states(ctx.fwd_cuda_rng_state_tracker)
 
         # if PARTITION_ACTIVATIONS:
         #     current_stream=torch.cuda.current_stream()
@@ -695,8 +699,9 @@ class CheckpointFunction(torch.autograd.Function):
         see_memory_usage("In backward checkpointing code after forward", force=False)
         # Set the states back to what it was at the start of this function.
         torch.set_rng_state(bwd_cpu_rng_state)
-        _set_cuda_rng_state(bwd_cuda_rng_state)
-        get_cuda_rng_tracker().set_states(bwd_cuda_rng_state_tracker)
+        if torch.cuda.is_available():
+            _set_cuda_rng_state(bwd_cuda_rng_state)
+            get_cuda_rng_tracker().set_states(bwd_cuda_rng_state_tracker)
 
         if isinstance(outputs, torch.Tensor):
             outputs = (outputs, )
@@ -728,7 +733,7 @@ class CheckpointFunction(torch.autograd.Function):
         if PROFILE_TIME:
             timers('backward').stop()
             timers.log(['backward'])
-        if SYNCHRONIZE:
+        if SYNCHRONIZE and torch.cuda.is_available():
             torch.cuda.synchronize()
         ret_list = [None, None]  # first None for ctx
         for inp in detached_inputs:

@@ -68,9 +68,12 @@ class TestDistAllReduce(DistributedTest):
     world_size = [1, 2, 4]
 
     def test(self):
-        x = torch.ones(1, 3).cuda() * (dist.get_rank() + 1)
+        x = torch.ones(1, 3) * (dist.get_rank() + 1)
         sum_of_ranks = (dist.get_world_size() * (dist.get_world_size() + 1)) // 2
-        result = torch.ones(1, 3).cuda() * sum_of_ranks
+        result = torch.ones(1, 3) * sum_of_ranks
+        if torch.cuda.is_available():
+            result = result.cuda()
+            x = x.cuda()
         dist.all_reduce(x)
         assert torch.all(x == result)
 

@@ -7,6 +7,8 @@ from deepspeed import comm as dist
 from torch._six import inf
 from packaging import version as pkg_version
 
+from contextlib import ExitStack
+
 from deepspeed.runtime import ZeROOptimizer
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import (bwc_tensor_model_parallel_rank,
@@ -43,12 +45,20 @@ def input(msg):
 
 
 def split_half_float_double(tensors):
-    dtypes = [
-        "torch.cuda.HalfTensor",
-        "torch.cuda.FloatTensor",
-        "torch.cuda.DoubleTensor",
-        "torch.cuda.BFloat16Tensor"
-    ]
+    if torch.cuda.is_available():
+        dtypes = [
+            "torch.cuda.HalfTensor",
+            "torch.cuda.FloatTensor",
+            "torch.cuda.DoubleTensor",
+            "torch.cuda.BFloat16Tensor"
+        ]
+    else:
+        dtypes = [
+            "torch.HalfTensor",
+            "torch.FloatTensor",
+            "torch.DoubleTensor",
+            "torch.BFloat16Tensor"
+        ]
     buckets = []
     for i, dtype in enumerate(dtypes):
         bucket = [t for t in tensors if t.type() == dtype]
@@ -168,7 +178,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         self.deepspeed_adam_offload = cpu_offload
 
-        self.device = torch.cuda.current_device() if not self.cpu_offload else 'cpu'
+        self.device = torch.cuda.current_device(
+        ) if not self.cpu_offload and torch.cuda.is_available() else 'cpu'
 
         self.dp_process_group = dp_process_group
 
@@ -305,14 +316,23 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.round_robin_bit16_indices.append(round_robin_indices)
 
             # create flat buffer in CPU and move to GPU
-            self.bit16_groups_flat.append(
-                self.flatten_dense_tensors_aligned(
-                    self.round_robin_bit16_groups[i],
-                    self.nccl_start_alignment_factor *
-                    dist.get_world_size(group=self.real_dp_process_group[i])).cuda(
-                        torch.cuda.current_device()))
-            see_memory_usage(f"After flattening and moving param group {i} to GPU",
-                             force=False)
+            if torch.cuda.is_available():
+                self.bit16_groups_flat.append(
+                    self.flatten_dense_tensors_aligned(
+                        self.round_robin_bit16_groups[i],
+                        self.nccl_start_alignment_factor *
+                        dist.get_world_size(group=self.real_dp_process_group[i])).cuda(
+                            torch.cuda.current_device()))
+
+                see_memory_usage(f"After flattening and moving param group {i} to GPU",
+                                 force=False)
+            # if no GPU, just create the flat buffer in CPU
+            else:
+                self.bit16_groups_flat.append(
+                    self.flatten_dense_tensors_aligned(
+                        self.round_robin_bit16_groups[i],
+                        self.nccl_start_alignment_factor *
+                        dist.get_world_size(group=self.real_dp_process_group[i])))
 
             # Record padding required for alignment
             if partition_id == dist.get_world_size(
@@ -389,10 +409,12 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.reduce_bucket_size = int(reduce_bucket_size)
         self.allgather_bucket_size = int(allgather_bucket_size)
 
-        self.reduction_event = torch.cuda.Event(enable_timing=False, blocking=False)
-        self.reduction_stream = torch.cuda.Stream()
-        self.cpu_computation_stream = torch.cuda.Stream()
-        self.copy_grad_stream = torch.cuda.Stream()
+        if torch.cuda.is_available():
+            self.reduction_event = torch.cuda.Event(enable_timing=False, blocking=False)
+            self.reduction_stream = torch.cuda.Stream()
+            self.cpu_computation_stream = torch.cuda.Stream()
+            self.copy_grad_stream = torch.cuda.Stream()
+
         self.callback_queued = False
 
         self.param_dict = {}
@@ -437,14 +459,15 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.norm_for_param_grads = {}
             self.local_overflow = False
             self.grad_position = {}
-            self.temp_grad_buffer_for_cpu_offload = torch.zeros(
-                largest_param_numel,
-                device=self.device,
-                dtype=self.dtype).pin_memory()
-            self.temp_grad_buffer_for_gpu_offload = torch.zeros(
-                largest_param_numel,
-                device=torch.cuda.current_device(),
-                dtype=self.dtype)
+            self.temp_grad_buffer_for_cpu_offload = torch.zeros(largest_param_numel,
+                                                                device=self.device,
+                                                                dtype=self.dtype)
+            if torch.cuda.is_available():
+                self.temp_grad_buffer_for_cpu_offload = self.temp_grad_buffer_for_cpu_offload.pin_memory(
+                )
+            self.temp_grad_buffer_for_gpu_offload = torch.zeros(largest_param_numel,
+                                                                device=self.device,
+                                                                dtype=self.dtype)
             for i, params_group in enumerate(self.bit16_groups):
                 self.get_grad_position(i,
                                        self.params_in_partition[i],
@@ -595,9 +618,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 int(self.partition_size[i]),
                 dtype=self.single_partition_of_fp32_groups[i].dtype,
                 device=self.device)
-            self.single_partition_of_fp32_groups[
-                i].grad = single_grad_partition.pin_memory(
-                ) if self.cpu_offload else single_grad_partition
+            if self.cpu_offload:
+                self.single_partition_of_fp32_groups[i].grad = single_grad_partition
+                if torch.cuda.is_available():
+                    self.single_partition_of_fp32_groups[
+                        i].grad = self.single_partition_of_fp32_groups[
+                            i].grad.pin_memory()
+            else:
+                self.single_partition_of_fp32_groups[i].grad = single_grad_partition
 
         self.optimizer.step()
 
@@ -619,7 +647,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.ipg_buffer = []
             buf_0 = torch.empty(int(self.reduce_bucket_size),
                                 dtype=self.dtype,
-                                device=torch.cuda.current_device())
+                                device=torch.cuda.current_device()
+                                if torch.cuda.is_available() else 'cpu')
             self.ipg_buffer.append(buf_0)
             self.ipg_index = 0
 
@@ -693,15 +722,18 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                         self.first_offset[i],
                         self.partition_size[i],
                         dtype=self.dtype,
-                        device=torch.cuda.current_device(),
+                        device=torch.cuda.current_device()
+                        if torch.cuda.is_available() else 'cpu',
                         return_tensor_list=True)
                 else:
-                    avg_new = self.get_flat_partition(self.params_in_partition[i],
-                                                      self.first_offset[i],
-                                                      self.partition_size[i],
-                                                      dtype=self.dtype,
-                                                      device=torch.cuda.current_device(),
-                                                      return_tensor_list=True)
+                    avg_new = self.get_flat_partition(
+                        self.params_in_partition[i],
+                        self.first_offset[i],
+                        self.partition_size[i],
+                        dtype=self.dtype,
+                        device=torch.cuda.current_device()
+                        if torch.cuda.is_available() else 'cpu',
+                        return_tensor_list=True)
 
                     for accumulated_grad, new_avg_grad in zip(self.averaged_gradients[i], avg_new):
                         accumulated_grad.add_(new_avg_grad)
@@ -893,13 +925,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         return tensor
 
     def average_tensor(self, tensor):
-        if self.overlap_comm:
-            torch.cuda.synchronize()
-            stream = self.reduction_stream
-        else:
-            stream = torch.cuda.current_stream()
+        if torch.cuda.is_available():
+            if self.overlap_comm:
+                torch.cuda.synchronize()
+                stream = self.reduction_stream
+            else:
+                stream = torch.cuda.current_stream()
 
-        with torch.cuda.stream(stream):
+        with torch.cuda.stream(stream) if torch.cuda.is_available() else ExitStack():
             if not self.reduce_scatter:
                 self.gradient_reduction_w_predivide(tensor)
                 return
@@ -1038,9 +1071,12 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         #buffer for storing gradients for this parameter in CPU
         def buffer_to_accumulate_to_in_cpu():
             if not self.fp16_master_weights_and_gradients:
-                return torch.zeros(param.numel(),
-                                   dtype=param.dtype,
-                                   device=self.device).pin_memory()
+                retval = torch.zeros(param.numel(),
+                                     dtype=param.dtype,
+                                     device=self.device)
+                if torch.cuda.is_available():
+                    retval = retval.pin_memory()
+                return retval
             else:
                 return self.single_partition_of_fp32_groups[i].grad.view(-1).narrow(
                     0,
@@ -1159,7 +1195,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     """
 
         # Sum across all model parallel GPUs.
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        if torch.cuda.is_available():
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        else:
+            total_norm_cuda = torch.FloatTensor([float(total_norm)])
         dist.all_reduce(total_norm_cuda,
                         op=dist.ReduceOp.SUM,
                         group=self.dp_process_group)
@@ -1200,7 +1239,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             see_memory_usage(f"before copying {total_size} gradients into partition")
             self.grads_in_partition = torch.empty(int(total_size),
                                                   dtype=self.dtype,
-                                                  device=torch.cuda.current_device())
+                                                  device=torch.cuda.current_device() if
+                                                  torch.cuda.is_available() else 'cpu')
             see_memory_usage(f"after copying {total_size} gradients into partition")
 
         # The allreduce buffer will be rewritten. Copy the gradients in partition to a new buffer
@@ -1230,17 +1270,18 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 self.grads_in_ipg_bucket,
                 elements_per_buffer=self.elements_in_ipg_bucket)
 
-        if self.overlap_comm:
-            stream = self.reduction_stream
-        elif self.cpu_offload:
-            # TODO: copy_grad_stream is disabled because of race with reduce. This hurts perf and should be fixed.
-            #            torch.cuda.synchronize()
-            #            stream = self.copy_grad_stream
-            stream = torch.cuda.current_stream()
-        else:
-            stream = torch.cuda.current_stream()
+        if torch.cuda.is_available():
+            if self.overlap_comm:
+                stream = self.reduction_stream
+            elif self.cpu_offload:
+                # TODO: copy_grad_stream is disabled because of race with reduce. This hurts perf and should be fixed.
+                #            torch.cuda.synchronize()
+                #            stream = self.copy_grad_stream
+                stream = torch.cuda.current_stream()
+            else:
+                stream = torch.cuda.current_stream()
 
-        with torch.cuda.stream(stream):
+        with torch.cuda.stream(stream) if torch.cuda.is_available() else ExitStack():
             for _, param, param_id in self.params_in_ipg_bucket:
 
                 assert self.params_already_reduced[param_id] == False, \
@@ -1381,15 +1422,17 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     # if rank is specified do a reduction instead of an allreduce
     def allreduce_and_copy(self, small_bucket, rank=None, log=None):
-        if self.overlap_comm:
-            torch.cuda.synchronize()
-            # It is safe to clear the previously reduced grads of other partitions
-            self._clear_previous_reduced_grads()
-            stream = self.reduction_stream
-        else:
-            stream = torch.cuda.current_stream()
+        if torch.cuda.is_available():
+            if self.overlap_comm:
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                # It is safe to clear the previously reduced grads of other partitions
+                self._clear_previous_reduced_grads()
+                stream = self.reduction_stream
+            else:
+                stream = torch.cuda.current_stream()
 
-        with torch.cuda.stream(stream):
+        with torch.cuda.stream(stream) if torch.cuda.is_available() else ExitStack():
             allreduced = self.allreduce_bucket(small_bucket, rank=rank, log=log)
             if rank is None or rank == dist.get_rank(group=self.dp_process_group):
                 for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
@@ -1527,7 +1570,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         norm_type = float(norm_type)
         if norm_type == inf:
             total_norm = max(g.data.abs().max() for g in gradients)
-            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+            if torch.cuda.is_available():
+                total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+            else:
+                total_norm_cuda = torch.FloatTensor([float(total_norm)])
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.MAX,
                             group=self.dp_process_group)
@@ -1547,7 +1593,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     param_norm = g.data.double().norm(2)
                     total_norm += param_norm.item()**2
             # Sum across all model parallel GPUs.
-            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+            if torch.cuda.is_available():
+                total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+            else:
+                total_norm_cuda = torch.FloatTensor([float(total_norm)])
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
                             group=self.dp_process_group)
@@ -1831,9 +1880,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             if self.is_moe_param_group[i]:
                 scaled_norm = norm * 1.0 / float(
                     dist.get_world_size(group=self.real_dp_process_group[i]))
-                scaled_norm_tensor = torch.tensor(scaled_norm,
-                                                  device='cuda',
-                                                  dtype=torch.float)
+                scaled_norm_tensor = torch.tensor(
+                    scaled_norm,
+                    device='cuda' if torch.cuda.is_available() else 'cpu',
+                    dtype=torch.float)
                 dist.all_reduce(scaled_norm_tensor, group=self.real_dp_process_group[i])
                 norm_groups[i] = scaled_norm_tensor.item()
 
@@ -1876,7 +1926,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if partition_gradients:
             overflow = self.local_overflow if self.cpu_offload else self.has_overflow_partitioned_grads_serial(
             )
-            overflow_gpu = torch.cuda.ByteTensor([overflow])
+            if torch.cuda.is_available():
+                overflow_gpu = torch.cuda.ByteTensor([overflow])
+            else:
+                overflow_gpu = torch.ByteTensor([overflow])
             '''This will capture overflow across all data parallel and expert parallel process
             Since expert parallel process are a subset of data parallel process'''
             dist.all_reduce(overflow_gpu,
@@ -1890,7 +1943,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     params.append(param)
 
             overflow = self.has_overflow_serial(params, is_grad_list=partition_gradients)
-            overflow_gpu = torch.cuda.ByteTensor([overflow])
+            if torch.cuda.is_available():
+                overflow_gpu = torch.cuda.ByteTensor([overflow])
+            else:
+                overflow_gpu = torch.ByteTensor([overflow])
 
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
@@ -1935,14 +1991,16 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.ipg_buffer = []
             buf_0 = torch.empty(int(self.reduce_bucket_size),
                                 dtype=self.dtype,
-                                device=torch.cuda.current_device())
+                                device=torch.cuda.current_device()
+                                if torch.cuda.is_available() else 'cpu')
             self.ipg_buffer.append(buf_0)
 
             # Use double buffers to avoid data access conflict when overlap_comm is enabled.
             if self.overlap_comm:
                 buf_1 = torch.empty(int(self.reduce_bucket_size),
                                     dtype=self.dtype,
-                                    device=torch.cuda.current_device())
+                                    device=torch.cuda.current_device()
+                                    if torch.cuda.is_available() else 'cpu')
                 self.ipg_buffer.append(buf_1)
             self.ipg_index = 0
 

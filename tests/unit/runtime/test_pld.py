@@ -1,6 +1,7 @@
 import numpy as np
 import deepspeed
 import pytest
+import torch
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 
 from tests.unit.common import DistributedTest
@@ -24,6 +25,7 @@ class TestPLDModel(DistributedTest):
     world_size = 1
 
     def test_pld_model(self, theta):
+        use_gpu = torch.cuda.is_available()
         gamma = 0.001
         config_dict = {
             "train_batch_size": 1,
@@ -31,11 +33,12 @@ class TestPLDModel(DistributedTest):
             "optimizer": {
                 "type": 'Adam',
                 "params": {
-                    "lr": 0.0001
+                    "lr": 0.0001,
+                    "torch_adam": not use_gpu
                 }
             },
             "fp16": {
-                "enabled": True
+                "enabled": use_gpu
             },
             "progressive_layer_drop": {
                 "enabled": True,
@@ -50,10 +53,12 @@ class TestPLDModel(DistributedTest):
                                               model=model,
                                               model_parameters=model.parameters())
 
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=50,
+            hidden_dim=hidden_dim,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+            device=model.device)
 
         for i, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -69,6 +74,7 @@ class TestNonPLDModel(DistributedTest):
     world_size = 1
 
     def test_non_pld_model(self):
+        use_gpu = torch.cuda.is_available()
         gamma = 0.001
         theta = 0.5
         config_dict = {
@@ -77,11 +83,12 @@ class TestNonPLDModel(DistributedTest):
             "optimizer": {
                 "type": 'Adam',
                 "params": {
-                    "lr": 0.0001
+                    "lr": 0.0001,
+                    "torch_adam": not use_gpu
                 }
             },
             "fp16": {
-                "enabled": True
+                "enabled": use_gpu
             },
             "progressive_layer_drop": {
                 "enabled": True,
@@ -96,10 +103,12 @@ class TestNonPLDModel(DistributedTest):
                                               model=model,
                                               model_parameters=model.parameters())
 
-        data_loader = random_dataloader(model=model,
-                                        total_samples=1,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=1,
+            hidden_dim=hidden_dim,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+            device=model.device)
 
         for i, batch in enumerate(data_loader):
             with pytest.raises(TypeError):

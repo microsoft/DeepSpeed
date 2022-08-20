@@ -1,9 +1,11 @@
 import deepspeed
 from .common import distributed_test
 from .simple_model import Curriculum_SimpleModel, random_dataloader, args_from_dict
+import torch
 
 
 def test_curriculum_scheduler_fixed_discrete(tmpdir):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -11,12 +13,13 @@ def test_curriculum_scheduler_fixed_discrete(tmpdir):
             "type": "Adam",
             "params": {
                 "lr": 0.00015,
-                "weight_decay": 0.01
+                "weight_decay": 0.01,
+                "torch_adam": not use_gpu
             }
         },
         "gradient_clipping": 1.0,
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "loss_scale": 0,
             "initial_scale_power": 16
         },
@@ -49,10 +52,12 @@ def test_curriculum_scheduler_fixed_discrete(tmpdir):
         model, _, _, _ = deepspeed.initialize(args=args,
                                               model=model,
                                               model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=20,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=20,
+            hidden_dim=hidden_dim,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+            device=model.device)
         for n, batch in enumerate(data_loader):
             loss, seqlen = model(batch[0], batch[1])
             model.backward(loss)
@@ -69,6 +74,7 @@ def test_curriculum_scheduler_fixed_discrete(tmpdir):
 
 
 def test_curriculum_scheduler_fixed_linear(tmpdir):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -76,12 +82,13 @@ def test_curriculum_scheduler_fixed_linear(tmpdir):
             "type": "Adam",
             "params": {
                 "lr": 0.00015,
-                "weight_decay": 0.01
+                "weight_decay": 0.01,
+                "torch_adam": not use_gpu
             }
         },
         "gradient_clipping": 1.0,
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "loss_scale": 0,
             "initial_scale_power": 16
         },
@@ -107,10 +114,12 @@ def test_curriculum_scheduler_fixed_linear(tmpdir):
         model, _, _, _ = deepspeed.initialize(args=args,
                                               model=model,
                                               model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=20,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=20,
+            hidden_dim=hidden_dim,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+            device=model.device)
         for n, batch in enumerate(data_loader):
             loss, seqlen = model(batch[0], batch[1])
             model.backward(loss)

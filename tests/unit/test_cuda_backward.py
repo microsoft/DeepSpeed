@@ -14,6 +14,10 @@ from .modelingpreln import BertEncoder as BertEncoderPreln
 #    "transformer kernels are temporarily disabled because of unexplained failures",
 #    allow_module_level=True)
 
+pytestmark = pytest.mark.skipif(
+    not torch.cuda.is_available(),
+    reason='cuda_backward tests are not supported on CPU-only builds')
+
 
 def check_equal(first, second, atol=1e-2, verbose=False):
     diction_x = {}

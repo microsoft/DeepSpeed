@@ -45,6 +45,9 @@ def dump_state_dict(model):
 
 @pytest.mark.parametrize('zero_stage', [1, 2, 3])
 def test_zero_unbalanced_gradients(tmpdir, zero_stage):
+    if not torch.cuda.is_available() and zero_stage == 3:
+        pytest.skip("Zero3 not supported on CPU-only builds")
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_micro_batch_size_per_gpu": 2,
         "gradient_accumulation_steps": 2,
@@ -55,11 +58,12 @@ def test_zero_unbalanced_gradients(tmpdir, zero_stage):
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 1e-3
+                "lr": 1e-3,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         }
     }
@@ -73,10 +77,12 @@ def test_zero_unbalanced_gradients(tmpdir, zero_stage):
         model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=16,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=16,
+            hidden_dim=hidden_dim,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+            device=model.device)
 
         run_unbalanced_gradients(model, data_loader)
 
@@ -86,8 +92,10 @@ def test_zero_unbalanced_gradients(tmpdir, zero_stage):
 # testing the fix https://github.com/microsoft/DeepSpeed/pull/1227
 @pytest.mark.parametrize('zero_stage', [3])
 def test_zero3_repeat_forward_loop(tmpdir, zero_stage):
-
+    if not torch.cuda.is_available():
+        pytest.skip("Zero3 not supported on CPU-only builds")
     # force all params to be partitioned by forcing threshold=0
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_micro_batch_size_per_gpu": 2,
         "gradient_accumulation_steps": 2,
@@ -99,11 +107,12 @@ def test_zero3_repeat_forward_loop(tmpdir, zero_stage):
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 1e-3
+                "lr": 1e-3,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         }
     }
@@ -130,10 +139,12 @@ def test_zero3_repeat_forward_loop(tmpdir, zero_stage):
         model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=16,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=16,
+            hidden_dim=hidden_dim,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+            device=model.device)
 
         for i, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -147,10 +158,12 @@ def test_zero3_repeat_forward_loop(tmpdir, zero_stage):
 # also reproduces the https://github.com/microsoft/DeepSpeed/pull/1372
 @pytest.mark.parametrize('zero_stage', [2, 3])
 def test_zero_to_fp32_1_param_group(tmpdir, zero_stage):
-
+    if not torch.cuda.is_available() and zero_stage == 3:
+        pytest.skip("Zero elastic not supported on CPU-only builds")
     # XXX: ideally refactor with the 2_param_group test as 75% is the same
 
     # force all params to be partitioned by forcing threshold=0
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_micro_batch_size_per_gpu": 2,
         "gradient_accumulation_steps": 2,
@@ -162,11 +175,12 @@ def test_zero_to_fp32_1_param_group(tmpdir, zero_stage):
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 1e-3
+                "lr": 1e-3,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         }
     }
@@ -203,10 +217,12 @@ def test_zero_to_fp32_1_param_group(tmpdir, zero_stage):
         model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=16,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=16,
+            hidden_dim=hidden_dim,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+            device=model.device)
 
         for i, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -245,11 +261,13 @@ def test_zero_to_fp32_1_param_group(tmpdir, zero_stage):
 
 @pytest.mark.parametrize('zero_stage', [2, 3])
 def test_zero_to_fp32_2_param_groups(tmpdir, zero_stage):
-
+    if not torch.cuda.is_available() and zero_stage == 3:
+        pytest.skip("Zero elastic not supported on CPU-only builds")
     # TODO:
     # - need to test with multiple param groups
 
     # force all params to be partitioned by forcing threshold=0
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_micro_batch_size_per_gpu": 2,
         "gradient_accumulation_steps": 2,
@@ -262,11 +280,12 @@ def test_zero_to_fp32_2_param_groups(tmpdir, zero_stage):
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 1e-3
+                "lr": 1e-3,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         }
     }
@@ -310,10 +329,12 @@ def test_zero_to_fp32_2_param_groups(tmpdir, zero_stage):
                                               optimizer=optim,
                                               config=config_dict
         )
-        data_loader = random_dataloader(model=model,
-                                        total_samples=16,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=16,
+            hidden_dim=hidden_dim,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+            device=model.device)
 
         for i, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -352,6 +373,7 @@ def test_zero_to_fp32_2_param_groups(tmpdir, zero_stage):
 
 @pytest.mark.parametrize('zero_stage, allgather_bucket_size', [(2, 1000), (2, 1001)])
 def test_incorrect_allgather_bucket_size(tmpdir, zero_stage, allgather_bucket_size):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_micro_batch_size_per_gpu": 2,
         "gradient_accumulation_steps": 2,
@@ -363,11 +385,12 @@ def test_incorrect_allgather_bucket_size(tmpdir, zero_stage, allgather_bucket_si
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 1e-3
+                "lr": 1e-3,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         }
     }
@@ -395,6 +418,7 @@ def test_incorrect_allgather_bucket_size(tmpdir, zero_stage, allgather_bucket_si
 
 @pytest.mark.parametrize('zero_stage, world_size', [(2, 2), (2, 3), (2, 4)])
 def test_partition_nccl_alignment(tmpdir, zero_stage, world_size):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_micro_batch_size_per_gpu": 2,
         "gradient_accumulation_steps": 2,
@@ -405,11 +429,12 @@ def test_partition_nccl_alignment(tmpdir, zero_stage, world_size):
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 1e-3
+                "lr": 1e-3,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         }
     }
@@ -555,6 +580,9 @@ def test_zero3_param_partitioning_base(
     zero_grad: bool,
     prefetching: bool,
 ) -> None:
+    if not torch.cuda.is_available():
+        pytest.skip("Zero3 not supported on CPU-only builds")
+
     @distributed_test(world_size=[2])
     def _test_zero3_param_partitioning():
         if offload_optimizer and not contiguous_gradients:
@@ -565,6 +593,7 @@ def test_zero3_param_partitioning_base(
         weights = [Parameter(torch.zeros((m, n), dtype=torch.float32)) for _ in range(3)]
         model = EltwiseMultiplicationTestNetwork(*weights)
         prefetch_bucket_size = sum([p.numel() for p in model.parameters(recurse=True)])
+        use_gpu = torch.cuda.is_available()
         cfg = {
             "train_micro_batch_size_per_gpu": 1,
             "zero_optimization": {
@@ -577,7 +606,8 @@ def test_zero3_param_partitioning_base(
             "optimizer": {
                 "type": "Adam",
                 "params": {
-                    "lr": 1.
+                    "lr": 1.,
+                    "torch_adam": not use_gpu
                 }
             },
             "fp16": {
@@ -761,6 +791,9 @@ def test_zero3_param_partitioning_base(
 def test_zero3_param_partitioning_large_param(world_sz: int,
                                               param_sz: int,
                                               init_context_manager: bool) -> None:
+    if not torch.cuda.is_available():
+        pytest.skip("Zero3 not supported on CPU-only builds")
+
     class LargeParamModel(Module):
         def __init__(self):
             super().__init__()
@@ -781,6 +814,7 @@ def test_zero3_param_partitioning_large_param(world_sz: int,
 
     @distributed_test(world_size=[world_sz])
     def _distributed_test():
+        use_gpu = torch.cuda.is_available()
         ds_config = {
             "train_micro_batch_size_per_gpu": 1,
             "zero_optimization": {
@@ -792,11 +826,12 @@ def test_zero3_param_partitioning_large_param(world_sz: int,
             "optimizer": {
                 "type": "Adam",
                 "params": {
-                    "lr": 1.
+                    "lr": 1.,
+                    "torch_adam": not use_gpu
                 }
             },
             "fp16": {
-                "enabled": True,
+                "enabled": use_gpu,
                 "loss_scale": 1.,
             }
         }
@@ -843,6 +878,9 @@ def test_zero3_param_partitioning_many_params(world_sz: int,
                                               param_sz: int,
                                               n_layers: int,
                                               init_context_manager: bool) -> None:
+    if not torch.cuda.is_available():
+        pytest.skip("Zero3 not supported on CPU-only builds")
+
     class ManyParamModel(Module):
         def __init__(self) -> None:
             super().__init__()
@@ -876,6 +914,7 @@ def test_zero3_param_partitioning_many_params(world_sz: int,
 
     @distributed_test(world_size=[world_sz])
     def _distributed_test():
+        use_gpu = torch.cuda.is_available()
         ds_cfg = {
             "train_micro_batch_size_per_gpu": 1,
             "zero_optimization": {
@@ -887,11 +926,12 @@ def test_zero3_param_partitioning_many_params(world_sz: int,
             "optimizer": {
                 "type": "Adam",
                 "params": {
-                    "lr": 1.
+                    "lr": 1.,
+                    "torch_adam": not use_gpu
                 }
             },
             "fp16": {
-                "enabled": True,
+                "enabled": use_gpu,
                 "loss_scale": 1.,
             }
         }
@@ -953,6 +993,7 @@ def test_zero3_init_for_parent_weight_initialization(world_sz):
 
     @distributed_test(world_size=[world_sz])
     def _distributed_test():
+        use_gpu = torch.cuda.is_available()
         ds_cfg = {
             "train_micro_batch_size_per_gpu": 1,
             "zero_optimization": {
@@ -964,11 +1005,12 @@ def test_zero3_init_for_parent_weight_initialization(world_sz):
             "optimizer": {
                 "type": "Adam",
                 "params": {
-                    "lr": 1.
+                    "lr": 1.,
+                    "torch_adam": not use_gpu
                 }
             },
             "fp16": {
-                "enabled": True,
+                "enabled": use_gpu,
                 "loss_scale": 1.,
             }
         }
@@ -1010,6 +1052,7 @@ def test_zero3_param_partitioning_base_bf16(
         weights = [Parameter(torch.zeros((m, n), dtype=torch.float32)) for _ in range(3)]
         model = EltwiseMultiplicationTestNetwork(*weights)
 
+        use_gpu = torch.cuda.is_available()
         cfg = {
             "train_micro_batch_size_per_gpu": 1,
             "zero_optimization": {
@@ -1021,7 +1064,8 @@ def test_zero3_param_partitioning_base_bf16(
             "optimizer": {
                 "type": "Adam",
                 "params": {
-                    "lr": 1.
+                    "lr": 1.,
+                    "torch_adam": not use_gpu
                 }
             },
             "bf16": {
@@ -1191,6 +1235,7 @@ def test_zero3_param_partitioning_base_bf16(
 
 
 def test_zero_offload_stage1():
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 4,
         "gradient_accumulation_steps": 2,
@@ -1198,11 +1243,12 @@ def test_zero_offload_stage1():
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 1e-4
+                "lr": 1e-4,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True
+            "enabled": use_gpu
         },
         "zero_optimization": {
             "stage": 1,
@@ -1220,10 +1266,12 @@ def test_zero_offload_stage1():
         model, _, _, _ = deepspeed.initialize(model=model,
                                               model_parameters=model.parameters(),
                                               config=config_dict)
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=50,
+            hidden_dim=hidden_dim,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+            device=model.device)
         dist.barrier()
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -1235,17 +1283,21 @@ def test_zero_offload_stage1():
 
 @pytest.mark.parametrize('return_type', [tuple, list, dict])
 def test_z3_dict_fwd(return_type):
+    if not torch.cuda.is_available():
+        pytest.skip("Zero3 not supported on CPU-only builds")
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 4,
         "steps_per_print": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 1e-4
+                "lr": 1e-4,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True
+            "enabled": use_gpu
         },
         "zero_optimization": {
             "stage": 3
@@ -1280,10 +1332,12 @@ def test_z3_dict_fwd(return_type):
         model, _, _, _ = deepspeed.initialize(model=model,
                                               model_parameters=model.parameters(),
                                               config=config_dict)
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=50,
+            hidden_dim=hidden_dim,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+            device=model.device)
         dist.barrier()
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -1299,8 +1353,10 @@ def test_z3_dict_fwd(return_type):
 
 @pytest.mark.parametrize('zero_stage', [1, 2, 3])
 def test_zero_adam_optimizer_step_count(tmpdir, zero_stage):
-
+    if not torch.cuda.is_available() and zero_stage == 3:
+        pytest.skip("Zero3 not supported on CPU-only builds")
     # force all params to be partitioned by forcing threshold=0
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_micro_batch_size_per_gpu": 2,
         "gradient_accumulation_steps": 2,
@@ -1313,11 +1369,12 @@ def test_zero_adam_optimizer_step_count(tmpdir, zero_stage):
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 1e-3
+                "lr": 1e-3,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         }
     }
@@ -1331,10 +1388,12 @@ def test_zero_adam_optimizer_step_count(tmpdir, zero_stage):
         model, optimizer, _, _ = deepspeed.initialize(config=config_dict,
                                                       model=model,
                                                       model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=16,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=16,
+            hidden_dim=hidden_dim,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32,
+            device=model.device)
 
         for i, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])

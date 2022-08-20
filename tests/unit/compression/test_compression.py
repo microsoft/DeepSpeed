@@ -231,6 +231,8 @@ class TestCompression:
             'num_attention_heads': 8,
             'max_position_embeddings': 128,
         }
+        if not torch.cuda.is_available():
+            pytest.skip("Megatron not supported on CPU-only builds")
 
         model = get_gpt2_model(args_defaults)
         compressed_model = init_compression(model, self.get_ds_config(), mpu=mpu)

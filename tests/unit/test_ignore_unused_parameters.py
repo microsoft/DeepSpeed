@@ -2,6 +2,7 @@ import pytest
 from .common import distributed_test
 from .simple_model import UnusedParametersModel, random_dataloader, args_from_dict
 from deepspeed.ops.op_builder import CPUAdamBuilder
+import torch
 
 import deepspeed
 
@@ -13,6 +14,7 @@ def test_stage2_ignore_unused_parameters(tmpdir, ignore_unused_parameters):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
 
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_micro_batch_size_per_gpu": 2,
         "gradient_accumulation_steps": 2,
@@ -25,11 +27,12 @@ def test_stage2_ignore_unused_parameters(tmpdir, ignore_unused_parameters):
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 1e-3
+                "lr": 1e-3,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True,
+            "enabled": use_gpu,
             "initial_scale_power": 8
         }
     }
@@ -45,10 +48,12 @@ def test_stage2_ignore_unused_parameters(tmpdir, ignore_unused_parameters):
                                                   model=model,
                                                   model_parameters=model.parameters())
 
-        data_loader = random_dataloader(model=model,
-                                        total_samples=10,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=10,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32)
 
         def _loop():
             for n, batch in enumerate(data_loader):

@@ -14,9 +14,8 @@ import deepspeed.comm as dist
 import deepspeed
 from deepspeed.runtime.config import DeepSpeedConfig, get_bfloat16_enabled
 
-
-def test_cuda():
-    assert (torch.cuda.is_available())
+#def test_cuda():
+#    assert (torch.cuda.is_available())
 
 
 def test_check_version():
@@ -142,16 +141,18 @@ def test_get_bfloat16_enabled(bf16_key):
 
 
 def test_deprecated_deepscale_config(tmpdir):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True
+            "enabled": use_gpu
         }
     }
 
@@ -167,13 +168,19 @@ def test_deprecated_deepscale_config(tmpdir):
 
     @distributed_test(world_size=[1])
     def _test_deprecated_deepscale_config(args, model, hidden_dim):
+        #print(f"BEFORE DEVICE: {model.device}")
         model, _, _,_ = deepspeed.initialize(args=args,
                                              model=model,
                                              model_parameters=model.parameters())
+        if torch.cuda.is_available():
+            dtype = torch.half
+        else:
+            dtype = torch.float
         data_loader = random_dataloader(model=model,
                                         total_samples=5,
                                         hidden_dim=hidden_dim,
-                                        device=model.device)
+                                        device=model.device,
+                                        dtype=dtype)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -183,16 +190,18 @@ def test_deprecated_deepscale_config(tmpdir):
 
 
 def test_dist_init_true(tmpdir):
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True
+            "enabled": use_gpu
         }
     }
 
@@ -212,10 +221,15 @@ def test_dist_init_true(tmpdir):
                                              model=model,
                                              model_parameters=model.parameters(),
                                              dist_init_required=True)
+        if torch.cuda.is_available():
+            dtype = torch.half
+        else:
+            dtype = torch.float
         data_loader = random_dataloader(model=model,
                                         total_samples=5,
                                         hidden_dim=hidden_dim,
-                                        device=model.device)
+                                        device=model.device,
+                                        dtype=dtype)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -225,8 +239,8 @@ def test_dist_init_true(tmpdir):
 
 
 def test_init_no_optimizer(tmpdir):
-
-    config_dict = {"train_batch_size": 1, "fp16": {"enabled": True}}
+    use_gpu = torch.cuda.is_available()
+    config_dict = {"train_batch_size": 1, "fp16": {"enabled": use_gpu}}
     config_path = create_config_from_dict(tmpdir, config_dict)
 
     @distributed_test(world_size=1)
@@ -241,10 +255,15 @@ def test_init_no_optimizer(tmpdir):
         model = SimpleModel(hidden_dim=hidden_dim)
 
         model, _, _, _ = deepspeed.initialize(args=args, model=model)
+        if torch.cuda.is_available():
+            dtype = torch.half
+        else:
+            dtype = torch.float
         data_loader = random_dataloader(model=model,
                                         total_samples=5,
                                         hidden_dim=hidden_dim,
-                                        device=model.device)
+                                        device=model.device,
+                                        dtype=dtype)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             with pytest.raises(AssertionError):
@@ -256,16 +275,18 @@ def test_init_no_optimizer(tmpdir):
 
 
 def test_none_args(tmpdir):
+    use_gpu = torch.cuda.is_available()
     config = {
         "train_batch_size": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True
+            "enabled": use_gpu
         }
     }
 
@@ -273,10 +294,15 @@ def test_none_args(tmpdir):
     def _helper():
         model = SimpleModel(hidden_dim=10)
         model, _, _, _ = deepspeed.initialize(args=None, model=model, config=config)
+        if torch.cuda.is_available():
+            dtype = torch.half
+        else:
+            dtype = torch.float
         data_loader = random_dataloader(model=model,
                                         total_samples=5,
                                         hidden_dim=10,
-                                        device=model.device)
+                                        device=model.device,
+                                        dtype=dtype)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
 
@@ -284,16 +310,18 @@ def test_none_args(tmpdir):
 
 
 def test_no_args(tmpdir):
+    use_gpu = torch.cuda.is_available()
     config = {
         "train_batch_size": 1,
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.00015
+                "lr": 0.00015,
+                "torch_adam": not use_gpu
             }
         },
         "fp16": {
-            "enabled": True
+            "enabled": use_gpu
         }
     }
 
@@ -301,10 +329,15 @@ def test_no_args(tmpdir):
     def _helper():
         model = SimpleModel(hidden_dim=10)
         model, _, _, _ = deepspeed.initialize(model=model, config=config)
+        if torch.cuda.is_available():
+            dtype = torch.half
+        else:
+            dtype = torch.float
         data_loader = random_dataloader(model=model,
                                         total_samples=5,
                                         hidden_dim=10,
-                                        device=model.device)
+                                        device=model.device,
+                                        dtype=dtype)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
 

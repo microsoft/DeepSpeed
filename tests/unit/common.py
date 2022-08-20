@@ -218,9 +218,14 @@ def distributed_test(world_size=2, backend='nccl'):
             # turn off NCCL logging if set
             os.environ.pop('NCCL_DEBUG', None)
 
-            set_cuda_visibile()
+            if torch.cuda.is_available():
+                set_cuda_visibile()
+
+            if not torch.cuda.is_available():
+                backend = "gloo"
 
             deepspeed.init_distributed(dist_backend=backend)
+
             #dist.init_process_group(backend=backend)
             dist.barrier()
 

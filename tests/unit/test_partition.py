@@ -21,7 +21,9 @@ def test_partitioned_tensor():
     rows = world * 4
     cols = 3
 
-    full = torch.rand(rows, cols).cuda()
+    full = torch.rand(rows, cols)
+    if torch.cuda.is_available():
+        full = full.cuda()
     dist.broadcast(full, src=0, group=group)
     part = PartitionedTensor(full, group=group)
 
@@ -42,7 +44,9 @@ def test_partitioned_tensor_meta():
     rows = world * 7
     cols = 3
 
-    full = torch.rand(rows, cols).cuda()
+    full = torch.rand(rows, cols)
+    if torch.cuda.is_available():
+        full = full.cuda()
     dist.broadcast(full, src=0, group=group)
     part = PartitionedTensor(full, group=group)
 

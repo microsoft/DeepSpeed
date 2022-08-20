@@ -169,14 +169,17 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.__inf_or_nan_tracker: Tensor = torch.zeros(
             1,
             dtype=torch.bool,
-            device=torch.cuda.current_device(),
+            device=torch.cuda.current_device() if torch.cuda.is_available() else 'cpu',
             requires_grad=False)
 
         self.deepspeed_adam_offload = (self.offload_optimizer
                                        and type(init_optimizer) == DeepSpeedCPUAdam)
 
-        self.device = torch.cuda.current_device(
-        ) if not self.offload_optimizer else OffloadDeviceEnum.cpu
+        if torch.cuda.is_available():
+            self.device = torch.cuda.current_device(
+            ) if not self.offload_optimizer else OffloadDeviceEnum.cpu
+        else:
+            self.device = 'cpu'
         ### streams used for overlapping computation with communication
         self.__reduce_and_partition_stream = Stream(
         ) if overlap_comm else torch.cuda.default_stream()
@@ -372,7 +375,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.__ipg_bucket_flat_buffer: Tensor = torch.empty(
                 self.reduce_bucket_size,
                 dtype=self.dtype,
-                device=torch.cuda.current_device())
+                device=torch.cuda.current_device()
+                if torch.cuda.is_available() else 'cpu')
 
         grad_partitions_flat_buffer = None
         self.__param_id_to_grad_partition: Dict[int, Tensor] = {}

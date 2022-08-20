@@ -9,6 +9,10 @@ from .modelingpreln import BertEncoder as BertEncoderPreln
 from .modeling import BertLayerNorm, BertConfig, BertEncoder as BertEncoderPostln
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 
+pytestmark = pytest.mark.skipif(
+    not torch.cuda.is_available(),
+    reason='cuda_forward tests are not supported on CPU-only builds')
+
 
 def check_equal(first, second, atol=1e-2, verbose=False):
     if verbose:

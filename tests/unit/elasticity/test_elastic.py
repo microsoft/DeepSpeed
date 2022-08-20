@@ -4,6 +4,7 @@ from tests.unit.common import DistributedTest
 from deepspeed.git_version_info import version as ds_version
 import os
 from tests.unit.simple_model import SimpleModel
+import torch
 
 
 @pytest.fixture
@@ -179,6 +180,8 @@ class TestNonElasticBatchParams(DistributedTest):
     world_size = 2
 
     def test(self):
+        if not torch.cuda.is_available():
+            pytest.skip("Fused kernel not available without CUDA")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -216,6 +219,8 @@ class TestNonElasticBatchParamsWithOverride(DistributedTest):
     world_size = 2
 
     def test(self):
+        if not torch.cuda.is_available():
+            pytest.skip("Fused kernel not available without CUDA")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -252,6 +257,8 @@ class TestElasticConfigChanged(DistributedTest):
     world_size = 2
 
     def test(self):
+        if not torch.cuda.is_available():
+            pytest.skip("Fused kernel not available without CUDA")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,

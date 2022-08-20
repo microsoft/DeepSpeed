@@ -29,6 +29,7 @@ def sequential_model():
 
 @pytest.fixture
 def simple_config():
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 1,
         "train_micro_batch_size_per_gpu": 1,
@@ -40,7 +41,8 @@ def simple_config():
                 "betas": [0.9,
                           0.999],
                 "eps": 1e-8,
-                "weight_decay": 3e-7
+                "weight_decay": 3e-7,
+                "torch_adam": not use_gpu
             }
         },
         "pipeline": {
@@ -70,7 +72,9 @@ class TestPipeModuleSequential(DistributedTest):
 
         # Ensure all parameters are accounted for.
         my_params = sum(p.numel() for p in pipe_model.parameters())
-        total_pipe_params = torch.LongTensor([my_params]).to('cuda')
+        total_pipe_params = torch.LongTensor([my_params])
+        if torch.cuda.is_available():
+            total_pipe_params = total_pipe_params.to('cuda')
         dist.all_reduce(total_pipe_params)
         total_pipe_params = total_pipe_params.item()
         assert total_pipe_params == base_params
@@ -81,7 +85,9 @@ class TestPipeModuleSequential(DistributedTest):
             model_parameters=[p for p in pipe_model.parameters()])
 
         if pipe_model.is_first_stage or pipe_model.is_last_stage:
-            pipe_input = base_input.clone().detach().to('cuda')
+            pipe_input = base_input.clone().detach()
+            if torch.cuda.is_available():
+                pipe_input = pipe_input.to('cuda')
             # label 0 is meaningless
             dataset = [(pipe_input, 0)]
             loader = RepeatingLoader(dataset)

@@ -4,6 +4,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 
 import time
 import torch
+import copy
 from numpy import mean
 from deepspeed.utils.logging import log_dist
 from deepspeed import comm as dist
@@ -42,21 +43,32 @@ class SynchronizedWallClockTimer:
         def start(self):
             """Start the timer."""
             assert not self.started_, f"{self.name_} timer has already been started"
-            self.start_event = torch.cuda.Event(enable_timing=True)
-            self.start_event.record()
+            if torch.cuda.is_available():
+                self.start_event = torch.cuda.Event(enable_timing=True)
+                self.start_event.record()
+            else:  # If we're using CPU, just record the start and stop times
+                self.start_event = time.time()
             self.started_ = True
 
         def stop(self, reset=False, record=False):
             """Stop the timer."""
             assert self.started_, "timer is not started"
-            end_event = torch.cuda.Event(enable_timing=True)
-            end_event.record()
-            self.event_timers.append(CudaEventTimer(self.start_event, end_event))
+            if torch.cuda.is_available():
+                end_event = torch.cuda.Event(enable_timing=True)
+                end_event.record()
+                self.event_timers.append(CudaEventTimer(self.start_event, end_event))
+            else:
+                self.event_timers.append(time.time() - self.start_event)
             self.start_event = None
             self.started_ = False
 
         def _get_elapsed_msec(self):
-            self.elapsed_records = [et.get_elapsed_msec() for et in self.event_timers]
+            if torch.cuda.is_available():
+                self.elapsed_records = [
+                    et.get_elapsed_msec() for et in self.event_timers
+                ]
+            else:
+                self.elapsed_records = copy.deepcopy(self.event_timers)
             self.event_timers.clear()
             return sum(self.elapsed_records)
 
@@ -176,7 +188,8 @@ class ThroughputTimer:
         self._init_timer()
         self.started = True
         if self.total_step_count >= self.start_step:
-            torch.cuda.synchronize()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
             self.start_time = time.time()
 
     def stop(self, report_speed=True):
@@ -186,7 +199,8 @@ class ThroughputTimer:
         self.total_step_count += 1
         self.local_step_count += 1
         if self.total_step_count > self.start_step:
-            torch.cuda.synchronize()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
             self.end_time = time.time()
             duration = self.end_time - self.start_time
             self.total_elapsed_time += duration

@@ -36,10 +36,15 @@ class TestClibGradNorm(DistributedTest):
         groups._create_expert_and_data_parallel(2)
 
         norm = ds_utils.clip_grad_norm_(parameters, max_norm=0.1)
-        norm = torch.Tensor([norm]).to(dist.get_rank())
+        norm = torch.Tensor([norm])
+        if torch.cuda.is_available():
+            norm = norm.to(dist.get_rank())
 
         world_size = dist.get_world_size()
-        gathered_norm = [torch.zeros(1).cuda() for i in range(world_size)]
+        if torch.cuda.is_available():
+            gathered_norm = [torch.zeros(1).cuda() for i in range(world_size)]
+        else:
+            gathered_norm = [torch.zeros(1) for i in range(world_size)]
 
         dist.all_gather(gathered_norm, norm)
 

@@ -38,6 +38,8 @@ class TestAdamConfigs(DistributedTest):
              torch_adam,
              adam_w_mode,
              resulting_optimizer):
+        if not torch_adam and not torch.cuda.is_available():
+            pytest.skip("Fused kernels not available without CUDA")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,

@@ -23,6 +23,7 @@ class TestFlopsProfilerInDSTraining(DistributedTest):
     world_size = 1
 
     def test(self):
+        use_gpu = torch.cuda.is_available()
         config_dict = {
             "train_batch_size": 1,
             "steps_per_print": 1,
@@ -30,13 +31,14 @@ class TestFlopsProfilerInDSTraining(DistributedTest):
                 "type": "Adam",
                 "params": {
                     "lr": 0.001,
+                    "torch_adam": not use_gpu
                 }
             },
             "zero_optimization": {
                 "stage": 0
             },
             "fp16": {
-                "enabled": True,
+                "enabled": use_gpu,
             },
             "flops_profiler": {
                 "enabled": True,
@@ -52,11 +54,12 @@ class TestFlopsProfilerInDSTraining(DistributedTest):
                                             model=model,
                                             model_parameters=model.parameters())
 
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.half)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=50,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)

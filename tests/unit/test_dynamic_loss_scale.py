@@ -3,6 +3,7 @@ import deepspeed
 import numpy as np
 from .common import distributed_test
 from .simple_model import SimpleModel, args_from_dict
+import pytest
 
 
 def run_model_step(model, gradient_list):
@@ -14,6 +15,8 @@ def run_model_step(model, gradient_list):
 
 
 def test_fused_no_overflow(tmpdir):
+    if not torch.cuda.is_available():
+        pytest.skip("ADAM fused kernel not available without CUDA")
     config_dict = {
         "train_batch_size": 1,
         "steps_per_print": 1,
@@ -58,6 +61,8 @@ def test_fused_no_overflow(tmpdir):
 
 
 def test_fused_all_overflow(tmpdir):
+    if not torch.cuda.is_available():
+        pytest.skip("ADAM fused kernel not available without CUDA")
     config_dict = {
         "train_batch_size": 1,
         "steps_per_print": 1,
@@ -100,6 +105,8 @@ def test_fused_all_overflow(tmpdir):
 
 
 def test_fused_some_overflow(tmpdir):
+    if not torch.cuda.is_available():
+        pytest.skip("ADAM fused kernel not available without CUDA")
     config_dict = {
         "train_batch_size": 1,
         "steps_per_print": 1,
@@ -162,6 +169,8 @@ def test_fused_some_overflow(tmpdir):
 
 
 def test_unfused_no_overflow(tmpdir):
+    if not torch.cuda.is_available():
+        pytest.skip("LAMB fused kernel not available without CUDA")
     config_dict = {
         "train_batch_size": 1,
         "steps_per_print": 1,
@@ -205,6 +214,8 @@ def test_unfused_no_overflow(tmpdir):
 
 
 def test_unfused_all_overflow(tmpdir):
+    if not torch.cuda.is_available():
+        pytest.skip("LAMB fused kernel is not available without CUDA")
     config_dict = {
         "train_batch_size": 1,
         "steps_per_print": 1,
@@ -250,6 +261,8 @@ def test_unfused_all_overflow(tmpdir):
 
 
 def test_unfused_some_overflow(tmpdir):
+    if not torch.cuda.is_available():
+        pytest.skip("LAMB fused kernel not available without CUDA")
     config_dict = {
         "train_batch_size": 1,
         "steps_per_print": 1,

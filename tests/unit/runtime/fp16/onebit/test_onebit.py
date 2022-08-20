@@ -16,6 +16,10 @@ from tests.unit.alexnet_model import AlexNetPipe, train_cifar
 
 PipeTopo = PipeDataParallelTopology
 
+pytestmark = pytest.mark.skipif(
+    not torch.cuda.is_available(),
+    reason='onebit tests are not supported on CPU-only builds')
+
 TORCH_MAJOR = int(torch.__version__.split(".")[0])
 TORCH_MINOR = int(torch.__version__.split(".")[1])
 if TORCH_MAJOR < 1 or TORCH_MINOR < 8:

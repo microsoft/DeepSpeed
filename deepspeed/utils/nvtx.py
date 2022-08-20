@@ -4,7 +4,7 @@ import torch
 def instrument_w_nvtx(func):
     """decorator that causes an NVTX range to be recorded for the duration of the
     function call."""
-    if hasattr(torch.cuda.nvtx, "range"):
+    if hasattr(torch.cuda.nvtx, "range") and torch.cuda.is_available():
 
         def wrapped_fn(*args, **kwargs):
             with torch.cuda.nvtx.range(func.__qualname__):

@@ -26,11 +26,12 @@ def test_moe(tmpdir, ep_size, use_residual):
     if not required_torch_version():
         pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 8,
         "steps_per_print": 1,
         "fp16": {
-            "enabled": True
+            "enabled": use_gpu
         }
     }
     args = args_from_dict(tmpdir, config_dict)
@@ -48,10 +49,12 @@ def test_moe(tmpdir, ep_size, use_residual):
                                               dist_init_required=False)
         #dist_init_required=False -- parameterize to True/False?
 
-        data_loader = sequence_dataloader(model=model,
-                                          total_samples=50,
-                                          hidden_dim=hidden_dim,
-                                          device=model.device)
+        data_loader = sequence_dataloader(
+            model=model,
+            total_samples=50,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
 
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -69,11 +72,12 @@ def test_pr_moe(tmpdir, ep_size, use_residual):
     if not required_torch_version():
         pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
+    use_gpu = torch.cuda.is_available()
     config_dict = {
         "train_batch_size": 8,
         "steps_per_print": 1,
         "fp16": {
-            "enabled": True
+            "enabled": use_gpu
         }
     }
     args = args_from_dict(tmpdir, config_dict)
@@ -91,10 +95,12 @@ def test_pr_moe(tmpdir, ep_size, use_residual):
                                               optimizer=optimizer,
                                               dist_init_required=False)
 
-        data_loader = sequence_dataloader(model=model,
-                                          total_samples=50,
-                                          hidden_dim=hidden_dim,
-                                          device=model.device)
+        data_loader = sequence_dataloader(
+            model=model,
+            total_samples=50,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
 
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
