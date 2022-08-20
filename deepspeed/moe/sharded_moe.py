@@ -506,6 +506,7 @@ class MOELayer(Base):
         reshaped_input = input[0].reshape(-1, d_model)
 
         if self.drop_duplicates_before_gating:  ## sm -> (s/tp)m
+            assert not groups._get_expert_model_parallel_world_size() > 1
             reshaped_input = drop_tokens(reshaped_input, dim=0)
 
         if self.use_tutel:
@@ -576,7 +577,13 @@ class MOELayer(Base):
         if self.wall_clock_breakdown:
             self.timers('salltoall').start()
 
+        if groups._get_expert_model_parallel_world_size() > 1:  # ecm -> e(c/tp)m
+            expert_output = drop_tokens(expert_output, dim=2)
+
         expert_output = _AllToAll.apply(self.ep_group, expert_output)
+
+        if groups._get_expert_model_parallel_world_size() > 1:  # ecm -> e(c/tp)m
+            expert_output = gather_tokens(expert_output, dim=2)
 
         if self.wall_clock_breakdown:
             self.timers('salltoall').stop()
