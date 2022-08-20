@@ -2048,8 +2048,7 @@ class DeepSpeedEngine(Module):
                     self._write_monitor()
 
                 if self.has_moe_layers:
-                    fwd_time = self.timers(FORWARD_GLOBAL_TIMER).elapsed(
-                        reset=False)
+                    fwd_time = self.timers(FORWARD_GLOBAL_TIMER).elapsed(reset=False)
                     self.print_forward_breakdown(fwd_time=fwd_time)
 
                 self.timers.log(self.engine_timers.global_timers)
