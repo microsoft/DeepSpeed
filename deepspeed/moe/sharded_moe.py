@@ -93,8 +93,11 @@ class _AllToAll(torch.autograd.Function):
             ctx: Any,
             # TODO: replace with DS process group
             group: torch.distributed.ProcessGroup,
-            input: Tensor) -> Tensor:  # type: ignore
+            input: Tensor,
+            stashed_output=None) -> Tensor:  # type: ignore
         ctx.group = group
+        if stashed_output is not None:
+            return stashed_output
         input = input.contiguous()
         output = torch.empty_like(input)
         dist.all_to_all_single(output, input, group=group)
@@ -102,7 +105,7 @@ class _AllToAll(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx: Any, *grad_output: Tensor) -> Tuple[None, Tensor]:
-        return (None, _AllToAll.apply(ctx.group, *grad_output))
+        return (None, _AllToAll.apply(ctx.group, *grad_output), None)
 
 
 # einsum rewrites are on par or more performant
@@ -461,7 +464,8 @@ class MOELayer(Base):
                  ep_size,
                  num_local_experts: int,
                  use_tutel: bool = False,
-                 drop_duplicates_before_gating: bool = False) -> None:
+                 drop_duplicates_before_gating: bool = False,
+                 ckp_aware_a2a: bool = True) -> None:
         super().__init__()
         self.gate = gate
         self.experts = experts
@@ -477,6 +481,9 @@ class MOELayer(Base):
         self.timers = SynchronizedWallClockTimer()
         self.wall_clock_breakdown = False
         self.drop_duplicates_before_gating = drop_duplicates_before_gating
+        self.ckp_aware_a2a = ckp_aware_a2a
+        self.is_stashed = [False, False]
+        self.a2a_stash = [None, None]
 
         self.use_tutel = use_tutel and TUTEL_INSTALLED and gate.k == 1
         if self.use_tutel:
@@ -554,7 +561,17 @@ class MOELayer(Base):
         if self.wall_clock_breakdown:
             self.timers('falltoall').start()
 
-        dispatched_input = _AllToAll.apply(self.ep_group, dispatched_input)
+        dispatched_input = _AllToAll.apply(self.ep_group,
+                                           dispatched_input,
+                                           self.a2a_stash[0])
+
+        if self.ckp_aware_a2a and self.training:
+            if not self.is_stashed[0]:
+                self.a2a_stash[0] = dispatched_input
+                self.is_stashed[0] = True
+            else:
+                self.a2a_stash[0] = None
+                self.is_stashed[0] = False
 
         if self.wall_clock_breakdown:
             self.timers('falltoall').stop()
@@ -580,7 +597,15 @@ class MOELayer(Base):
         if groups._get_expert_model_parallel_world_size() > 1:  # ecm -> e(c/tp)m
             expert_output = drop_tokens(expert_output, dim=2)
 
-        expert_output = _AllToAll.apply(self.ep_group, expert_output)
+        expert_output = _AllToAll.apply(self.ep_group, expert_output, self.a2a_stash[1])
+
+        if self.ckp_aware_a2a and self.training:
+            if not self.is_stashed[1]:
+                self.a2a_stash[1] = expert_output
+                self.is_stashed[1] = True
+            else:
+                self.a2a_stash[1] = None
+                self.is_stashed[1] = False
 
         if groups._get_expert_model_parallel_world_size() > 1:  # ecm -> e(c/tp)m
             expert_output = gather_tokens(expert_output, dim=2)

@@ -1064,6 +1064,11 @@ class DeepSpeedEngine(Module):
                 self.has_moe_layers = True
                 self.num_experts.append(module.num_experts)
 
+        self.row_parallel_modules = []
+        for module in self.module.modules():
+            if hasattr(module, 'rpl') and module.rpl == True:
+                self.row_parallel_modules.append(module)
+
         if self.has_moe_layers:
             for _, module in self.module.named_modules():
                 if isinstance(module, TopKGate):
@@ -1723,11 +1728,16 @@ class DeepSpeedEngine(Module):
         all_gather = 0.0
         einsum = 0.0
         drop_tokens = 0.0
+        rpl_all_reduce = 0.0
 
         for gate in self.gate_modules:
             #logger.info(f"Individual TopK gate time: {gate.gate_time:.2f} ms")
             gate_time += gate.gate_time
             gate.gate_time = 0
+
+        for rpl_module in self.row_parallel_modules:
+            rpl_all_reduce += rpl_module.time_all_reduce
+            rpl_module.time_all_reduce = 0
 
         for l in self.moe_layers:
             #logger.info(f"MoE layer; total: {l.time_moe:.2f} ms, first alltoall: {l.time_falltoall:.2f}, second alltoall: {l.time_salltoall:.2f}")
@@ -1743,7 +1753,7 @@ class DeepSpeedEngine(Module):
 
         # if deepspeed.comm.get_rank() == 0:
         log_dist(
-            f"rank={dist.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, compute: {compute:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f}, all-gather: {all_gather:.2f}, einsum: {einsum:.2f}, drop_tokens: {drop_tokens:.2f})",
+            f"rank={dist.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, compute: {compute:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f}, all-gather: {all_gather:.2f}, einsum: {einsum:.2f}, drop_tokens: {drop_tokens:.2f}), rpl_all_reduce: {rpl_all_reduce:.2f}",
             ranks=[0])
         log_dist(f"Network counter data = {self.network_counters.get_profile()}",
                  ranks=[0])

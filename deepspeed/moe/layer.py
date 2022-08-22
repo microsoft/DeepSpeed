@@ -49,6 +49,7 @@ class MoE(torch.nn.Module):
         """
 
         super(MoE, self).__init__()
+        use_tutel = True
         self.use_residual = use_residual
         self.enable_expert_tensor_parallelism = enable_expert_tensor_parallelism
         assert num_experts % ep_size == 0, f"Number of experts ({num_experts}) should be divisible by expert parallel size ({ep_size})"
