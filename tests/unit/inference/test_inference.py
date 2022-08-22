@@ -291,6 +291,12 @@ class TestLMCorrectness(DistributedTest):
     world_size = 1
 
     def test(self, model_family, model_name, task):
+        # imports here to avoid import errors when pytest collects tests
+        import lm_eval
+        import lm_eval.models
+        import lm_eval.tasks
+        import lm_eval.evaluator
+
         local_rank = os.getenv("LOCAL_RANK", "0")
         device = torch.device(f"cuda:{local_rank}")
         dtype = torch.float

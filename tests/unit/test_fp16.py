@@ -444,54 +444,6 @@ class TestZeroStaticScale(DistributedTest):
             model.step()
 
 
-#TODO: WHAT DOES THIS TEST?
-'''
-def test_zero_static_scale_deprecated_format(tmpdir):
-    config_dict = {
-        "train_batch_size": 4,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "Adam",
-            "params": {
-                "lr": 0.00015
-            }
-        },
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 138.
-        },
-        "zero_optimization": {
-            "stage": 1
-        }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-
-    @distributed_test(world_size=2)
-    def _test_zero_static_scale(args):
-        hidden_dim = 10
-        model = SimpleModel(hidden_dim)
-        model, optim, _, _ = deepspeed.initialize(args=args,
-                                                  model=model,
-                                                  model_parameters=model.parameters())
-
-        # Ensure the static scaler is configured.
-        assert optim.dynamic_loss_scale == False
-        assert optim.loss_scaler.loss_scale == 138.
-
-        # Now make sure things work..
-        data_loader = random_dataloader(model=model,
-                                        total_samples=10,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
-        for n, batch in enumerate(data_loader):
-            loss = model(batch[0], batch[1])
-            model.backward(loss)
-            model.step()
-
-    _test_zero_static_scale(args)
-'''
-
-
 @pytest.mark.parametrize("zero_stage", [1, 2, 3])
 @pytest.mark.parametrize("use_cpu_offload", [True, False])
 class TestZeroAllowUntestedOptimizer(DistributedTest):
