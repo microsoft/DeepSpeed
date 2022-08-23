@@ -89,6 +89,8 @@ class TestClientOptimizer(DistributedTest):
 @pytest.mark.parametrize("scheduler_type", [None, _LRScheduler, Callable])
 @pytest.mark.parametrize("optimizer_type", [None, Optimizer, Callable])
 class TestClientLrScheduler(DistributedTest):
+    world_size = 1
+
     def test(self, scheduler_type, optimizer_type):
         def _my_lambda(epoch):
             return epoch // 10

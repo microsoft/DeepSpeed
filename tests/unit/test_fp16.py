@@ -796,7 +796,7 @@ class TestZero3LazyScatter(DistributedTest):
 
 @pytest.mark.parametrize('stage', [1, 2, 3])
 class TestZeroEmptyGrad(DistributedTest):
-    world_size = 2
+    world_size = 1
 
     def test(self, stage):
         config_dict = {

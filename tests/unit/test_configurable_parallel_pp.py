@@ -68,7 +68,7 @@ class TestConfigurablePP(ConfigurablePP):
     pp_size = 2
     world_size = 4  # mp_size * pp_size
 
-    def test_pp_basic(self, tmpdir):
+    def test_pp_basic(self, inputs, tmpdir):
         # basic test case, mp_size=2, pp_size=2, verify ckpt saving/loading.
         args_defaults = {
             'num_layers': 8,
@@ -94,7 +94,6 @@ class TestConfigurablePP(ConfigurablePP):
         model.save_checkpoint(tmpdir, tag=tag, client_state=state_dict)
 
         if model.is_first_stage() or model.is_last_stage():
-            inputs = self.get_inputs()
             loader = RepeatingLoader([(inputs[0], 0)])
             data_iter = iter(loader)
         else:

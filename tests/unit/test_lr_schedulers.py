@@ -81,7 +81,7 @@ class TestGetLrBeforeTrain(DistributedTest):
 
 
 @pytest.mark.parametrize("warmup_num_steps", [10, 15, 19, 33])
-@pytest.mark.parametrize("warnup_type", [WARMUP_LOG_RATE, WARMUP_LINEAR_RATE])
+@pytest.mark.parametrize("warmup_type", [WARMUP_LOG_RATE, WARMUP_LINEAR_RATE])
 class TestLrSchedule(DistributedTest):
     world_size = 1
 
@@ -300,7 +300,7 @@ class TestLrRange(DistributedTest):
 
         step_lrs = []
         for _, batch in enumerate(data_loader):
-            step_lrs.append(lr_scheduler.get_lr())
+            step_lrs.extend(lr_scheduler.get_lr())
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
@@ -364,7 +364,7 @@ class TestOneCycle(DistributedTest):
 
         step_lrs = []
         for _, batch in enumerate(data_loader):
-            step_lrs.append(lr_scheduler.get_lr())
+            step_lrs.extend(lr_scheduler.get_lr())
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
