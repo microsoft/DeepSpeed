@@ -20,6 +20,7 @@ from typing import Callable, Dict, Union, Iterable
 import deepspeed
 
 from deepspeed.runtime.utils import see_memory_usage, DummyOptim
+from .zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
@@ -646,7 +647,9 @@ class DeepSpeedEngine(Module):
         return self._config.zero_config.offload_param
 
     def zero_cpu_offload(self):
-        return self._config.zero_config.offload_optimizer is not None
+        if self._config.zero_config.offload_optimizer is not None:
+            return self._config.zero_config.offload_optimizer.device == OffloadDeviceEnum.cpu
+        return False
 
     def zero_sub_group_size(self):
         return self._config.zero_config.sub_group_size
@@ -2922,11 +2925,12 @@ class DeepSpeedEngine(Module):
             self.optimizer.checkpoint_event_epilogue()
 
         # Save latest checkpoint tag
-        dist.barrier()
         self.checkpoint_engine.commit(tag)
         if save_latest and self.global_rank == 0:
             with open(os.path.join(save_dir, 'latest'), 'w') as fd:
                 fd.write(tag)
+
+        dist.barrier()
 
         return True
 
