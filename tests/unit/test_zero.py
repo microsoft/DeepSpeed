@@ -949,7 +949,7 @@ class TestZero3InitForParentWeightInitialization(DistributedTest):
                                               1))
 
 
-@pytest.skip("not working")
+@pytest.mark.skip("not working")
 @pytest.mark.parametrize("param_persistence_threshold", [0, 10])
 @pytest.mark.parametrize("contiguous_gradients", [True, False])
 @pytest.mark.parametrize("offload_optimizer", [True, False])
