@@ -21,6 +21,7 @@ from typing import Callable, Dict, Union, Iterable
 import deepspeed
 
 from deepspeed.runtime.utils import see_memory_usage, DummyOptim
+from .zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
@@ -668,7 +669,9 @@ class DeepSpeedEngine(Module):
         return self._config.zero_config.offload_param
 
     def zero_cpu_offload(self):
-        return self._config.zero_config.offload_optimizer is not None
+        if self._config.zero_config.offload_optimizer is not None:
+            return self._config.zero_config.offload_optimizer.device == OffloadDeviceEnum.cpu
+        return False
 
     def zero_sub_group_size(self):
         return self._config.zero_config.sub_group_size
@@ -2334,9 +2337,6 @@ class DeepSpeedEngine(Module):
         return sparse_list
 
     def sparse_allreduce(self, sparse, dp_group):
-        # Pre-divide for fp16 stability
-        sparse.values.mul_(1.0 / dist.get_world_size(group=dp_group))
-
         original_data_type = sparse.values.dtype
         if self.communication_data_type != sparse.values.dtype:
             if self.communication_data_type in (torch.float16, torch.bfloat16):
@@ -2347,6 +2347,13 @@ class DeepSpeedEngine(Module):
         else:
             indices = sparse.indices
             values = sparse.values
+
+        if self.postscale_gradients():
+            if self.gradient_average:
+                values.mul_(self.gradient_predivide_factor() /
+                            dist.get_world_size(group=dp_group))
+        else:
+            values.mul_(1. / dist.get_world_size(group=dp_group))
 
         indices_device_list = self.sparse_all_gather(indices, dp_group)
         values_device_list = self.sparse_all_gather(values, dp_group)

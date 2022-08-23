@@ -147,7 +147,6 @@ def replace_transformer_layer(orig_layer_impl,
                               mp_group=None,
                               ep_group=None,
                               expert_mp_group=None,
-                              preln=True,
                               fp16=True,
                               local_rank=-1,
                               stochastic_mode=True,
@@ -204,13 +203,8 @@ def replace_transformer_layer(orig_layer_impl,
                             policy_cls,
                             triangular_masking,
                             inference=False,
-                            preln=True,
                             layer_id=0):
-        preln = False if policy_cls is HFBertLayerPolicy else preln
-        if policy_cls is HFBertLayerPolicy:
-            policy = policy_cls(child, inference=inference, preln=preln)
-        else:
-            policy = policy_cls(child, inference=inference)
+        policy = policy_cls(child, inference=inference)
 
         if inference:
             hidden_size, num_attention_heads = policy.get_hidden_heads()
@@ -275,7 +269,7 @@ def replace_transformer_layer(orig_layer_impl,
                         config,
                         'layer_norm_eps') else 1e-12,
                     fp16=fp16,
-                    pre_layer_norm=preln,
+                    pre_layer_norm=policy.pre_attn_norm,
                     mp_size=mp_size,
                     q_int8=quantize,
                     moe_experts=local_ep_size,
@@ -297,7 +291,7 @@ def replace_transformer_layer(orig_layer_impl,
                      if hasattr(config,
                                 'layernorm_epsilon') else 1.0e-12),
                     fp16=fp16,
-                    pre_layer_norm=preln,
+                    pre_layer_norm=policy.pre_attn_norm,
                     mp_size=mp_size,
                     q_int8=quantize,
                     return_tuple=(return_tuple or (policy_cls is HFBertLayerPolicy)),
@@ -309,6 +303,7 @@ def replace_transformer_layer(orig_layer_impl,
                                                                'window_size') else 1),
                     rotary_dim=rotary_dim,
                     mlp_after_attn=(rotary_dim is None or rotary_dim < 0),
+                    mlp_act_func_type=policy.mlp_act_func_type,
                     training_mp_size=training_mp_size,
                     bigscience_bloom=bigscience_bloom)
 
@@ -483,8 +478,16 @@ def replace_transformer_layer(orig_layer_impl,
                         attn_block.attn_ow = mp_replace.copy(attn_block.attn_ow, dense_w)
                         attn_block.attn_ob = mp_replace.copy(attn_block.attn_ob, dense_b)
             else:
-                attn_block.attn_qkvw = mp_replace.copy(attn_block.attn_qkvw, qkvw)
-                attn_block.attn_qkvb = mp_replace.copy(attn_block.attn_qkvb, qkvb)
+                if bigscience_bloom:
+                    attn_block.attn_qkvw = mp_replace.copy(attn_block.attn_qkvw, qkvw)
+                    attn_block.attn_qkvb = mp_replace.copy(attn_block.attn_qkvb, qkvb)
+                else:
+                    attn_block.attn_qkvw = mp_replace.qkv_copy(
+                        attn_block.attn_qkvw,
+                        qkvw)
+                    attn_block.attn_qkvb = mp_replace.qkv_copy(
+                        attn_block.attn_qkvb,
+                        qkvb)
 
                 attn_block.attn_ow = mp_replace.copy(attn_block.attn_ow, dense_w)
                 attn_block.attn_ob = mp_replace.copy(attn_block.attn_ob, dense_b)
@@ -594,7 +597,7 @@ def replace_transformer_layer(orig_layer_impl,
                     'layer_norm_eps') else 1e-12,
                 seed=seed,
                 fp16=fp16,
-                pre_layer_norm=(False if policy_cls is HFBertLayerPolicy else preln),
+                pre_layer_norm=policy.pre_attn_norm,
                 return_tuple=return_tuple,
                 local_rank=local_rank,
                 stochastic_mode=stochastic_mode,
@@ -758,10 +761,7 @@ def replace_transformer_layer(orig_layer_impl,
     def replace_fn(child, _policy, layer_id=0):
         if training:
             # copy relevant state from child -> new module
-            new_module = replace_with_policy(child,
-                                             _policy,
-                                             triangular_masking,
-                                             preln=preln)
+            new_module = replace_with_policy(child, _policy, triangular_masking)
 
         else:
             # copy relevant state from child -> new module
@@ -770,8 +770,6 @@ def replace_transformer_layer(orig_layer_impl,
                                                  _policy,
                                                  triangular_masking,
                                                  inference=True,
-                                                 preln=(_policy
-                                                        is not HFBertLayerPolicy),
                                                  layer_id=layer_id)
             else:
                 new_module = replace_wo_policy(child, _policy)
@@ -783,10 +781,10 @@ def replace_transformer_layer(orig_layer_impl,
                                      replace_fn=replace_fn,
                                      _replace_policy=policy)
 
+    world_size = dist.get_world_size() if dist.is_initialized() else 1
+    rank = dist.get_rank() if dist.is_initialized() else 0
     if checkpoint_dict is not None:
         start_time = time.time()
-        rank = dist.get_rank() if dist.is_initialized() else 0
-        world_size = dist.get_world_size() if dist.is_initialized() else 1
         checkpoint = checkpoint_dict['checkpoints']
         ckpt_type = checkpoint_dict.get('parallelization', 'pp')
         ckpt_mp_size = checkpoint_dict.get('mp_size', mp_size)
@@ -828,12 +826,22 @@ def replace_transformer_layer(orig_layer_impl,
         from collections import OrderedDict
         import json
 
-        ckpt_name = checkpoint_dict['type']
+        if checkpoint_dict is None:
+            ckpt_name = "ds_model"
+            try:
+                from transformers.models.bloom.modeling_bloom import BloomForCausalLM
+                if isinstance(model, BloomForCausalLM):
+                    ckpt_name = "bloom"
+            except ImportError:
+                ckpt_name = "ds_model"
+        else:
+            ckpt_name = checkpoint_dict['type']
         if dist.is_initialized():
             dist.barrier()
         transformer_name = get_transformer_name(replaced_module)
         non_tp_ckpt_name = f'{ckpt_name}-non-tp.pt'
         ckpt_files = [non_tp_ckpt_name] * world_size
+        os.makedirs(save_mp_checkpoint_path, exist_ok=True)
         if not dist.is_initialized() or dist.get_rank() == 0:
             print("Saving tp-sharded checkpoints")
             torch.save(
