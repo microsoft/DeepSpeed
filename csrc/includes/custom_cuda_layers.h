@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cuda.h>
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -301,3 +302,25 @@ void launch_fuse_transpose_bias_kernel(const T* inp,
 
 void launch_param_update(const float* input, __half* output, int size, cudaStream_t stream);
 void launch_param_update_half(const float* input, __half* output, int size, cudaStream_t stream);
+
+template <typename T>
+void launch_softmax_dropout(T* out,
+                            T* vals,
+                            const bool* attn_mask,
+                            const T* rel_pos,
+                            int bsz,
+                            int heads,
+                            int seq_length,
+                            int softmax_length,
+                            float ratio,
+                            cudaStream_t stream);
+template <typename T>
+void launch_softmax_dropout_grad(T* vals,
+                                 const T* input,
+                                 const T* mask,
+                                 int bsz,
+                                 int heads,
+                                 int seq_length,
+                                 int softmax_length,
+                                 float ratio,
+                                 cudaStream_t stream);

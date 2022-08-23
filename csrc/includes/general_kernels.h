@@ -16,7 +16,7 @@
 #define THREADS 256
 #define TILE_DIM 32
 
-#define minus_infinity -1 * std::numeric_limits<float>::infinity()
+#define minus_infinity -10000.0
 
 #define FINAL_MASK 0xffffffff
 

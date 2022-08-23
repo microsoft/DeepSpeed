@@ -1,9 +1,11 @@
 #pragma once
 
 #include <ATen/cuda/CUDAContext.h>
+#include <ATen/cuda/CUDAGeneratorImpl.h>
 #include <cuda_runtime_api.h>
 #include <cassert>
 #include <iostream>
+#include <stack>
 #include <vector>
 #include "cublas_v2.h"
 #include "cuda.h"
@@ -41,7 +43,7 @@ inline int DS_GET_BLOCKS(const int N)
 
 class Context {
 public:
-    Context() : _workspace(nullptr), _seed(42), _curr_offset(0)
+    Context() : _workspace(nullptr), _seed(42), _curr_offset(0), _rand_gen_extracted(false)
     {
         curandCreateGenerator(&_gen, CURAND_RNG_PSEUDO_DEFAULT);
         curandSetPseudoRandomGeneratorSeed(_gen, 123);
@@ -85,10 +87,29 @@ public:
 
     cublasHandle_t GetCublasHandle() { return _cublasHandle; }
 
-    std::pair<uint64_t, uint64_t> IncrementOffset(uint64_t offset_inc)
+    std::pair<uint64_t, uint64_t> IncrementOffset(uint64_t offset_inc, bool store_offset = false)
     {
         uint64_t offset = _curr_offset;
+        if (store_offset) _stack.push(offset);
         _curr_offset += offset_inc;
+        return std::pair<uint64_t, uint64_t>(_seed, offset);
+    }
+    inline void extract_rng_seed_offset(c10::optional<at::Generator> gen_)
+    {
+        if (_rand_gen_extracted) return;
+        auto _gen = at::get_generator_or_default<at::CUDAGeneratorImpl>(
+            gen_, at::cuda::detail::getDefaultCUDAGenerator());
+        std::pair<uint64_t, uint64_t> rng_engine_inputs;
+        std::lock_guard<std::mutex> lock(_gen->mutex_);
+        rng_engine_inputs = _gen->philox_engine_inputs(0);
+        _seed = std::get<0>(rng_engine_inputs);
+        _curr_offset = std::get<1>(rng_engine_inputs);
+        _rand_gen_extracted = true;
+    }
+    std::pair<uint64_t, uint64_t> RestoreOffset()
+    {
+        uint64_t offset = _stack.top();
+        _stack.pop();
         return std::pair<uint64_t, uint64_t>(_seed, offset);
     }
 
@@ -168,4 +189,6 @@ private:
     uint64_t _seed;
     uint64_t _curr_offset;
     std::vector<std::array<int, 3>> _gemm_algos;
+    std::stack<uint64_t> _stack;
+    bool _rand_gen_extracted;
 };
