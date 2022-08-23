@@ -1,7 +1,7 @@
 """
 Copyright 2022 The Microsoft DeepSpeed Team
 """
-import types 
+import types
 from deepspeed.utils import get_full_hp_param, get_hp_fragment_mapping
 
 
@@ -11,27 +11,21 @@ def link_hp_params(lp_param_list,
                    partition_size,
                    partition_optimizer_state,
                    dp_group):
-    local_lp_param_and_offset = _init_lp_to_hp_mapping(
-        lp_param_list,
-        partition_start,
-        partition_size,
-        dp_group)
+    local_lp_param_and_offset = _init_lp_to_hp_mapping(lp_param_list,
+                                                       partition_start,
+                                                       partition_size,
+                                                       dp_group)
 
     for lp_param, lp_start in local_lp_param_and_offset:
-        lp_param._hp_mapping = get_hp_fragment_mapping(
-            lp_param,
-            lp_start,
-            flat_hp_partition,
-            partition_start,
-            partition_size,
-            partition_optimizer_state
-        )
+        lp_param._hp_mapping = get_hp_fragment_mapping(lp_param,
+                                                       lp_start,
+                                                       flat_hp_partition,
+                                                       partition_start,
+                                                       partition_size,
+                                                       partition_optimizer_state)
 
 
-def _init_lp_to_hp_mapping(lp_param_list,
-                            partition_start,
-                            partition_size,
-                            dp_group):
+def _init_lp_to_hp_mapping(lp_param_list, partition_start, partition_size, dp_group):
     current_offset = 0
     param_and_offset_list = []
     partition_end = partition_start + partition_size

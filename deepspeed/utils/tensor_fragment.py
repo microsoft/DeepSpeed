@@ -2,7 +2,7 @@
 Copyright 2022 The Microsoft DeepSpeed Team
 """
 
-import torch 
+import torch
 from dataclasses import dataclass
 from deepspeed import comm as dist
 
@@ -58,12 +58,11 @@ def get_full_hp_param(self, optim_state_key=None):
     return reduce_buffer.reshape_as(self)
 
 
-
-def get_hp_fragment_mapping(lp_param, 
-                            lp_start, 
-                            flat_hp_partition, 
-                            partition_start, 
-                            partition_size, 
+def get_hp_fragment_mapping(lp_param,
+                            lp_start,
+                            flat_hp_partition,
+                            partition_start,
+                            partition_size,
                             optimizer_state_dict):
     lp_end = lp_param.numel() + lp_start
     hp_start = partition_start
@@ -79,30 +78,28 @@ def get_hp_fragment_mapping(lp_param,
 
     fragment_numel = fragment_end - fragment_start
     hp_frag_address = fragment_address(start=fragment_start - hp_start,
-                                    numel=fragment_numel)
+                                       numel=fragment_numel)
     hp_fragment_tensor = flat_hp_partition.narrow(0,
-                                                hp_frag_address.start,
-                                                hp_frag_address.numel)
+                                                  hp_frag_address.start,
+                                                  hp_frag_address.numel)
 
     optim_fragment = {
         key: value.narrow(0,
-                        hp_frag_address.start,
-                        hp_frag_address.numel)
+                          hp_frag_address.start,
+                          hp_frag_address.numel)
         for key,
         value in optimizer_state_dict.items()
         if torch.is_tensor(value) and value.dim() > 0
     }
 
     lp_frag_address = fragment_address(start=fragment_start - lp_start,
-                                    numel=fragment_numel)
+                                       numel=fragment_numel)
     lp_fragment_tensor = lp_param.flatten().narrow(0,
-                                                lp_frag_address.start,
-                                                lp_frag_address.numel)
+                                                   lp_frag_address.start,
+                                                   lp_frag_address.numel)
 
     return tensor_fragment(lp_fragment=lp_fragment_tensor,
                            lp_fragment_address=lp_frag_address,
                            hp_fragment=hp_fragment_tensor,
                            hp_fragment_address=hp_frag_address,
                            optim_fragment=optim_fragment)
-
-

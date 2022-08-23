@@ -1,16 +1,15 @@
 """
 Copyright 2022 The Microsoft DeepSpeed Team
 """
-import os 
-import torch 
-import types 
+import os
+import torch
+import types
 
-from .constants import (
-    FP32_WEIGHT_KEY,
-    PARAM,
-    VOCAB_DIVISIBILITY_PADDING_TENSOR,
-    CAT_DIM
-)
+from .constants import (FP32_WEIGHT_KEY,
+                        PARAM,
+                        VOCAB_DIVISIBILITY_PADDING_TENSOR,
+                        CAT_DIM)
+
 
 def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
     hp_mapping = self._hp_mapping
@@ -107,4 +106,5 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
 
 def enable_universal_checkpoint(param_list):
     for param in param_list:
-        param.load_hp_checkpoint_state = types.MethodType(load_hp_checkpoint_state, param)
+        param.load_hp_checkpoint_state = types.MethodType(load_hp_checkpoint_state,
+                                                          param)
