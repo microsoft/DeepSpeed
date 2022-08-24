@@ -3,6 +3,7 @@ import deepspeed.ops.transformer as transformer_inference
 from ..runtime.zero import GatheredParameters
 from .layers import LinearLayer, Normalize, EmbeddingLayer
 import torch
+from deepspeed.accelerator import runtime as accel_runtime
 
 
 def load_model_with_checkpoint(r_module, sd, mp_replace, ckpt_type, rank=0):
@@ -48,13 +49,13 @@ def load_model_with_checkpoint(r_module, sd, mp_replace, ckpt_type, rank=0):
                                         sd[prefix + n],
                                         dst_shape[0],
                                         dim=0)[rank].to(
-                                            torch.cuda.current_device()).contiguous()
+                                            accel_runtime.current_device()).contiguous()
                                 else:
                                     weight_split = torch.split(
                                         sd[prefix + n],
                                         dst_shape[1],
                                         dim=1)[rank].to(
-                                            torch.cuda.current_device()).contiguous()
+                                            accel_runtime.current_device()).contiguous()
                                 p.data.copy_(weight_split.contiguous())
                         else:
                             if src_shape[0] == dst_shape[0]:
@@ -63,7 +64,7 @@ def load_model_with_checkpoint(r_module, sd, mp_replace, ckpt_type, rank=0):
                                 bias_split = torch.split(
                                     sd[prefix + n],
                                     dst_shape[-1])[rank].to(
-                                        torch.cuda.current_device()).contiguous()
+                                        accel_runtime.current_device()).contiguous()
                                 p.data.copy_(bias_split)
 
             load_parameters(module, prefix)

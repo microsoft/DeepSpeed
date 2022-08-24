@@ -4,6 +4,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from torch.nn.parameter import Parameter
+from deepspeed.accelerator import runtime as accel_runtime
 
 
 class LinearAllreduce(nn.Module):
@@ -32,11 +33,11 @@ class LinearLayer(nn.Module):
             self.weight = Parameter(
                 torch.empty(weight_shape,
                             dtype=dtype,
-                            device=torch.cuda.current_device()))
+                            device=accel_runtime.current_device()))
             self.bias = Parameter(
                 torch.empty(weight_shape[0],
                             dtype=dtype,
-                            device=torch.cuda.current_device()))
+                            device=accel_runtime.current_device()))
 
     def forward(self, input):
         output = torch.matmul(input, self.weight.transpose(-1, -2))
@@ -48,7 +49,7 @@ class LinearLayer(nn.Module):
 class Normalize(nn.Module):
     def __init__(self, dim, dtype=torch.float, eps=1e-5):
         super(Normalize, self).__init__()
-        self.norm = nn.LayerNorm(dim, eps=eps).to(dtype).to(torch.cuda.current_device())
+        self.norm = nn.LayerNorm(dim, eps=eps).to(dtype).to(accel_runtime.current_device())
         self.weight = self.norm.weight
         self.bias = self.norm.bias
 
@@ -63,7 +64,7 @@ class EmbeddingLayer(nn.Module):
             torch.empty(weight_shape[0],
                         weight_shape[1],
                         dtype=dtype,
-                        device=torch.cuda.current_device()))
+                        device=accel_runtime.current_device()))
 
     def forward(self, input):
         return F.embedding(input, self.weight)

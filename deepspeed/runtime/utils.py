@@ -23,6 +23,7 @@ from deepspeed.utils import groups, logger
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from numpy import prod
 from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator import literal_device
 
 torch_memory_reserved = accel_runtime.memory_reserved
 torch_max_memory_reserved = accel_runtime.max_memory_reserved
@@ -663,7 +664,7 @@ class PartitionedTensor:
         self.local_data, self.partition = self._partition_tensor(tensor)
 
     @classmethod
-    def from_meta(cls, meta, local_part, group, device='cuda'):
+    def from_meta(cls, meta, local_part, group, device=literal_device()):
         assert meta.dtype == torch.long
         dummy = torch.ones(dist.get_world_size(group=group))
         part_obj = cls(tensor=dummy, group=group)

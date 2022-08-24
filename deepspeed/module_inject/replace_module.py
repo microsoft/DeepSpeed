@@ -3,14 +3,8 @@ import torch
 import tqdm
 import deepspeed
 import deepspeed.ops.transformer as transformer_inference
-<<<<<<< HEAD
 from deepspeed.accelerator import runtime as accel_runtime
-from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, HFGPTJLayerPolicy
-||||||| 828ab718
-from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, HFGPTJLayerPolicy
-=======
 from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, BLOOMLayerPolicy
->>>>>>> 202208-base
 from .replace_policy import replace_policies
 from ..runtime.weight_quantizer import WeightQuantization
 from deepspeed import comm as dist
@@ -523,8 +517,7 @@ def replace_transformer_layer(orig_layer_impl,
                         accel_runtime.current_device())
                     new_module.res_mlp.output_b.data = _res_4hh_b.to(
                         accel_runtime.current_device())
-                    new_module.res_coef.data = _res_coef.to(
-                        accel_runtime.current_device())
+                    new_module.res_coef.data = _res_coef.to( accel_runtime.current_device())
             else:
 
                 if _4hh_w.numel() == 0 or _4hh_w.is_meta:

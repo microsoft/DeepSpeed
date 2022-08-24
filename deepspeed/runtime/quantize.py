@@ -2,7 +2,6 @@ import torch
 import math
 from deepspeed.utils import logger
 from deepspeed.ops.quantizer import ds_quantizer
-from deepspeed.accelerator import runtime as accel_runtime
 
 TWO_D_PARAMS = 6
 

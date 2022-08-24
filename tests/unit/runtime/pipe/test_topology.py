@@ -180,7 +180,7 @@ class TestDistributedTopology(DistributedTest):
         assert torch.all(rank_tensor == sum(pipe_group))
 
         # Test collectives along the data parallel process groups
-        rank_tensor = torch.LongTensor(data=[rank]).cuda()
+        rank_tensor = torch.LongTensor(data=[rank]).to(literal_device())
         dist.all_reduce(rank_tensor, group=grid.get_data_parallel_group())
         data_group = grid.dp_group
         assert torch.all(rank_tensor == sum(data_group))

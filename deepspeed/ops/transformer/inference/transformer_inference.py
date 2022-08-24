@@ -9,6 +9,7 @@ from ... import op_builder
 import torch.nn as nn
 from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
+from deepspeed.accelerator import runtime as accel_runtime
 
 # Cuda modules will be imported if needed
 inference_cuda_module = None
@@ -191,7 +192,7 @@ class DeepSpeedSelfAttentionFunction(Function):
             return tensor_list
 
         def backup_attention(mixed_x_layer, layer_past, alibi, input_mask, norm_factor):
-            alibi = alibi.to(torch.cuda.current_device())
+            alibi = alibi.to(accel_runtime.current_device())
             head_dim = hidden_size_per_partition // num_attention_heads_per_partition
             new_tensor_shape = mixed_x_layer.size()[:-1] + (
                 num_attention_heads_per_partition,
@@ -486,7 +487,7 @@ class DeepSpeedSelfAttention(nn.Module):
         data_type = torch.half if config.fp16 else torch.float
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
-        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
+        device = accel_runtime.current_device() if config.bigscience_bloom else 'cpu'
         self.attn_qkvw = nn.Parameter(
             torch.empty(self.config.hidden_size,
                         (self.config.hidden_size // self.config.mp_size) * 3,
@@ -664,7 +665,7 @@ class DeepSpeedMLP(nn.Module):
 
         self.config = config
         data_type = torch.half if config.fp16 else torch.float
-        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
+        device = accel_runtime.current_device() if config.bigscience_bloom else 'cpu'
         self.attn_nw = nn.Parameter(
             torch.empty(self.config.hidden_size,
                         dtype=data_type,
@@ -784,7 +785,7 @@ class DeepSpeedTransformerInference(nn.Module):
                                 merge_count,
                                 mlp_extra_grouping)
 
-        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
+        device = accel_runtime.current_device() if config.bigscience_bloom else 'cpu'
         self.norm_w = nn.Parameter(
             torch.empty(self.config.hidden_size,
                         dtype=data_type,

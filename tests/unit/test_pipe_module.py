@@ -14,6 +14,7 @@ PipeTopo = PipeDataParallelTopology
 
 from deepspeed.pipe import PipelineModule
 from deepspeed.utils import RepeatingLoader
+from deepspeed.accelerator import literal_device
 
 from .common import distributed_test
 from .simple_model import args_from_dict
@@ -73,7 +74,7 @@ def test_pipe_module_sequential(sequential_model, simple_args):
 
         # Ensure all parameters are accounted for.
         my_params = sum(p.numel() for p in pipe_model.parameters())
-        total_pipe_params = torch.LongTensor([my_params]).to('cuda')
+        total_pipe_params = torch.LongTensor([my_params]).to(literal_device())
         dist.all_reduce(total_pipe_params)
         total_pipe_params = total_pipe_params.item()
         assert total_pipe_params == base_params
@@ -84,7 +85,7 @@ def test_pipe_module_sequential(sequential_model, simple_args):
             model_parameters=[p for p in pipe_model.parameters()])
 
         if pipe_model.is_first_stage or pipe_model.is_last_stage:
-            pipe_input = base_input.clone().detach().to('cuda')
+            pipe_input = base_input.clone().detach().to(literal_device())
             # label 0 is meaningless
             dataset = [(pipe_input, 0)]
             loader = RepeatingLoader(dataset)

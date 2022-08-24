@@ -20,6 +20,7 @@ from ..moe.utils import has_moe_layers
 from ..runtime.zero import GatheredParameters
 from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
 from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator import literal_device
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -97,7 +98,7 @@ class InferenceEngine(Module):
         self.checkpoint_engine = TorchCheckpointEngine()
         self._init_quantization_setting(quantization_setting)
 
-        if enable_cuda_graph:
+        if  literal_device() == 'cuda' and enable_cuda_graph:
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
                 "If you want to use cuda graph, please upgrade torch to at least v1.10"
 
@@ -148,9 +149,9 @@ class InferenceEngine(Module):
         self.module.to(device)
 
         if self.mp_world_size > 1:
-            _rng_state = torch.cuda.get_rng_state().to(torch.cuda.current_device())
+            _rng_state = accel_runtime.get_rng_state().to(accel_runtime.current_device())
             dist.broadcast(_rng_state, 0)
-            torch.cuda.set_rng_state(_rng_state.cpu())
+            accel_runtime.set_rng_state(_rng_state.cpu())
 
         if self.mp_world_size > 1:
             self.model_orig_fwd = self.module.forward
@@ -281,7 +282,7 @@ class InferenceEngine(Module):
                             state_dict[prefix + 'bias'])
                     else:
                         data = state_dict[prefix + 'bias']
-                        data = data.to(torch.cuda.current_device())
+                        data = data.to(accel_runtime.current_device())
                         module.bias = self.mp_replace.copy(module.bias, data)
 
         layer_policies = {
@@ -403,7 +404,7 @@ class InferenceEngine(Module):
             for i in range(1, len(sd_loader)):
                 if not dist.is_initialized() or dist.get_rank() == 0:
                     print(f"loading checkpoint ({i})")
-                self.sd = torch.load(sd_loader[i], map_location='cuda')
+                self.sd = torch.load(sd_loader[i], map_location=literal_device())
                 self.key_list = list(self.sd.keys())
                 self.load_model_with_checkpoint(self.module)
         else:
@@ -470,12 +471,12 @@ class InferenceEngine(Module):
 
     def _create_cuda_graph(self, *inputs, **kwargs):
         # warmup to create the workspace and cublas handle
-        cuda_stream = torch.cuda.Stream()
-        cuda_stream.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(cuda_stream):
+        cuda_stream = accel_runtime.Stream()
+        cuda_stream.wait_stream(accel_runtime.current_stream())
+        with accel_runtime.stream(cuda_stream):
             for i in range(3):
                 ret = self.module(*inputs, **kwargs)
-        torch.cuda.current_stream().wait_stream(cuda_stream)
+        accel_runtime.current_stream().wait_stream(cuda_stream)
 
         # create cuda_graph and assign static_inputs and static_outputs
         self._cuda_graphs = torch.cuda.CUDAGraph()
@@ -521,7 +522,7 @@ class InferenceEngine(Module):
                         dist.broadcast(kwargs[k], 0)
             outputs = self.model_orig_fwd(*inputs, **kwargs)
         else:
-            if self.enable_cuda_graph:
+            if literal_device()=='cuda' and self.enable_cuda_graph:
                 if self.cuda_graph_created:
                     outputs = self._graph_replay(*inputs, **kwargs)
                 else:

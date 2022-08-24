@@ -124,7 +124,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # - flat by groups, not keeping state. TODO: remove state explicitly?
         # - master grad and unflat master weight never exist. TODO: a way to save out unflat master?
         if not accel_runtime.is_available():
-            raise SystemError("Cannot use fp16 without CUDA.")
+            raise SystemError("Cannot use fp16 without accelerator.")
 
         self.optimizer = init_optimizer
 
@@ -180,7 +180,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         ) if not self.offload_optimizer else OffloadDeviceEnum.cpu
         ### streams used for overlapping computation with communication
         self.__reduce_and_partition_stream = accel_runtime.Stream(
-        ) if overlap_comm else torch.cuda.default_stream()
+        ) if overlap_comm else accel_runtime.default_stream()
 
         ############################################################################
 

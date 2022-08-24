@@ -18,8 +18,8 @@ from torch.nn.parameter import Parameter
 from torch.nn import init
 from torch.nn.modules.module import Module
 from deepspeed.runtime.utils import noop_decorator
-from deepspeed.accelerator import literal_device
 from deepspeed import comm as dist
+from deepspeed.accelerator import literal_device
 
 tensor_map = {}
 

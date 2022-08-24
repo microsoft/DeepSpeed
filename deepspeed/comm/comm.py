@@ -31,6 +31,7 @@ import os
 
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
 from .constants import *
+from deepspeed.accelerator import runtime as accel_runtime
 
 
 class ReduceOp(Enum):
@@ -127,7 +128,7 @@ def timed_op(func):
         finally:
             if comms_logger.enabled:
                 # Need to make op blocking for accurate logging
-                torch.cuda.synchronize()
+                accel_runtime.synchronize()
                 # If we're using MPI, we can't simply sync the stream
                 if cdb.using_mpi:
                     cdb.barrier()

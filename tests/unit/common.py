@@ -160,13 +160,13 @@ class DistributedTest(ABC):
         # turn off NCCL logging if set
         os.environ.pop('NCCL_DEBUG', None)
 
-        set_cuda_visibile()
+        set_accelerator_visibile()
 
         deepspeed.init_distributed(dist_backend=self.backend)
         dist.barrier()
 
-        if torch.cuda.is_available():
-            torch.cuda.set_device(local_rank)
+        if accel_runtime.is_available():
+            accel_runtime.set_device(local_rank)
 
         try:
             self.current_test(**self.test_kwargs)

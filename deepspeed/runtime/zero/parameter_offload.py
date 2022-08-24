@@ -5,7 +5,6 @@ Licensed under the MIT license.
 
 import sys
 import torch
-from torch.cuda import Stream
 from collections import OrderedDict
 from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
@@ -208,9 +207,9 @@ class DeepSpeedZeRoOffload(object):
         self._prefetch_bucket_sz = int(prefetch_bucket_size)
         self._max_reuse_distance_in_numel = int(max_reuse_distance)
         self._max_available_parameters_in_numel = int(max_live_parameters)
-        self.__allgather_stream = Stream(
-        ) if overlap_comm else torch.cuda.default_stream()
-
+        self.__allgather_stream = accel_runtime.Stream(
+        ) if overlap_comm else accel_runtime.default_stream()
+        
         self.forward_hooks = []
         self.backward_hooks = []
         self.setup_zero_stage3_hooks()

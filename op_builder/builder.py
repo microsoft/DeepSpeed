@@ -128,7 +128,6 @@ class OpBuilder(ABC):
         '''
         pass
 
-    #@abstractmethod
     def sycl_sources(self):
         '''
         Returns list of sycl source files for your op, relative to root of deepspeed package
@@ -195,11 +194,11 @@ class OpBuilder(ABC):
 
         _is_xpu_pytorch = False
         try:
-            from intel_extension_for_pytorch.xpu.utils import DPCPPExtension
+            from intel_extension_for_pytorch.xpu.cpp_extension import DPCPPExtension
         except ImportError:
             pass
         else:
-            # Hardcode temporarily
+            # TODO: check whether xpu device is installed on the system
             _is_xpu_pytorch = True
 
         OpBuilder._is_xpu_pytorch = _is_xpu_pytorch
@@ -563,7 +562,7 @@ class OpBuilder(ABC):
 class SYCLOpBuilder(OpBuilder):
     def builder(self):
         if self.is_xpu_pytorch():
-            from intel_extension_for_pytorch.xpu.utils import DPCPPExtension
+            from intel_extension_for_pytorch.xpu.cpp_extension import DPCPPExtension
 
             dpcpp_ext = DPCPPExtension(
                 name=self.absolute_name(),
