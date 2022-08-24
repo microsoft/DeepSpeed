@@ -126,7 +126,7 @@ class TestWrite(DistributedTest):
         assert filecmp.cmp(ref_file, aio_file, shallow=False)
 
     @pytest.mark.parametrize("cuda_device", [True, False])
-    def test_async_write(tmpdir, single_submit, overlap_events, cuda_device):
+    def test_async_write(self, tmpdir, single_submit, overlap_events, cuda_device):
         ref_file, ref_buffer = _do_ref_write(tmpdir)
         aio_file, aio_buffer = _get_test_file_and_buffer(tmpdir, ref_buffer, cuda_device)
 
