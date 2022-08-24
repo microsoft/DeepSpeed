@@ -1,10 +1,9 @@
-import os
 import copy
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 import pytest
 
@@ -13,8 +12,7 @@ import deepspeed.runtime.utils as ds_utils
 from deepspeed.accelerator import literal_device
 from deepspeed.accelerator import runtime as accel_runtime
 
-
-from deepspeed.runtime.pipe.topology import PipeDataParallelTopology, PipeModelDataParallelTopology
+from deepspeed.runtime.pipe.topology import PipeDataParallelTopology
 
 PipeTopo = PipeDataParallelTopology
 from deepspeed.runtime.pipe.module import PipelineModule, LayerSpec

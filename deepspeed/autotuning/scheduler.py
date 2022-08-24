@@ -1,17 +1,11 @@
 import copy
-from re import I
 
 from numpy import BUFSIZE
-from deepspeed.env_report import SUCCESS
-from enum import Flag
 import json
-import os
 import subprocess
 import sys
 import threading
 import time
-from pathlib import Path
-from typing import List
 
 import hjson
 from tqdm import tqdm
@@ -25,9 +19,7 @@ thread-0: loop over experiment queue dispatching experiments if they become avai
 thread-N: start each experiment in its own thread
 """
 
-import torch.distributed as dist
-
-from datetime import datetime
+from deepspeed import comm as dist
 
 TIMEOUT = 5
 

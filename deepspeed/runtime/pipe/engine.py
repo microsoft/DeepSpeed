@@ -1,29 +1,19 @@
 # Copyright 2019 The Microsoft DeepSpeed Team
 
-import time
-import logging
-import copy
-import os
-
 from types import MethodType
 
-from numpy import prod
-
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.distributed as dist
+from deepspeed import comm as dist
 
-from deepspeed.utils.logging import logger
-from deepspeed.utils.timer import SynchronizedWallClockTimer, ThroughputTimer
+from deepspeed.utils import logger
+from deepspeed.utils.timer import ThroughputTimer
 from deepspeed.accelerator import runtime as accel_runtime
 
-from deepspeed.inference.engine import InferenceEngine
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
-from ..utils import PartitionedTensor, ensure_directory_exists
+from ..utils import PartitionedTensor
 from ..dataloader import RepeatingLoader
 
-from .module import PipelineModule, PipelineError, TiedLayerSpec
+from .module import PipelineModule, PipelineError
 from . import p2p
 from . import schedule
 
@@ -81,8 +71,10 @@ class PipelineEngine(DeepSpeedEngine):
         # used to disable the pipeline all-reduce when used with 1-bit Adam/1-bit LAMB
         self.pipeline_enable_backward_allreduce = True
 
-        assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
-            " with pipeline parallelism."
+        if self.elasticity_enabled():
+            if not self.is_elastic_model_parallel_supported():
+                assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
+                " with pipeline parallelism."
 
         # pipeline step for logging
         self.log_batch_step_id = -1
@@ -366,16 +358,12 @@ class PipelineEngine(DeepSpeedEngine):
                       f'iter time (s): {iter_time:0.3f} '
                       f'samples/sec: {tput:0.3f}')
 
-        # Tensorboard
-        if self.tensorboard_enabled():
-            if self.global_rank == 0:
-                self.summary_events = [(f'Train/Samples/train_loss',
-                                        self.agg_train_loss.mean().item(),
-                                        self.global_samples)]
-                for event in self.summary_events:  # write_summary_events
-                    self.summary_writer.add_scalar(event[0], event[1], event[2])
-                if self.global_steps % self.steps_per_print() == 0:
-                    self.summary_writer.flush()
+        # Monitoring
+        if self.global_rank == 0 and self.monitor.enabled:
+            self.summary_events = [(f'Train/Samples/train_loss',
+                                    self.agg_train_loss.mean().item(),
+                                    self.global_samples)]
+            self.monitor.write_events(self.summary_events)
 
         if self.wall_clock_breakdown(
         ) and self.global_steps % self.steps_per_print() == 0:
@@ -459,14 +447,11 @@ class PipelineEngine(DeepSpeedEngine):
         if compute_loss:
             eval_output = self._bcast_pipe_scalar(eval_output)
 
-        if self.tensorboard_enabled():
-            if self.global_rank == 0:
-                self.summary_events = [(f'Train/Samples/eval_loss',
-                                        eval_output.mean().item(),
-                                        self.global_samples)]
-                for event in self.summary_events:  # write_summary_events
-                    self.summary_writer.add_scalar(event[0], event[1], event[2])
-                self.summary_writer.flush()
+        if self.global_rank == 0 and self.monitor.enabled:
+            self.summary_events = [(f'Train/Samples/eval_loss',
+                                    eval_output.mean().item(),
+                                    self.global_samples)]
+            self.monitor.write_events(self.summary_events)
 
         # Restore the training iterator
         self.set_dataiterator(train_iterator)
@@ -595,6 +580,11 @@ class PipelineEngine(DeepSpeedEngine):
             self.data_iterator = iterator
 
     def set_batch_fn(self, fn):
+        """Execute a post-processing function on input data.
+
+        Args:
+            fn (function): The function to run.
+        """
         self.batch_fn = fn
 
     def is_gradient_accumulation_boundary(self):
@@ -1172,17 +1162,15 @@ class PipelineEngine(DeepSpeedEngine):
 
         self.mem_status('AFTER STEP')
 
-        if self.tensorboard_enabled():
-            if self.global_rank == 0:
-                self.summary_events = [(f'Train/Samples/lr',
-                                        self.get_lr()[0],
-                                        self.global_samples)]
-                if self.fp16_enabled() and hasattr(self.optimizer, 'cur_scale'):
-                    self.summary_events.append((f'Train/Samples/loss_scale',
-                                                self.optimizer.cur_scale,
-                                                self.global_samples))
-                for event in self.summary_events:  # write_summary_events
-                    self.summary_writer.add_scalar(event[0], event[1], event[2])
+        if self.global_rank == 0 and self.monitor.enabled:
+            self.summary_events = [(f'Train/Samples/lr',
+                                    self.get_lr()[0],
+                                    self.global_samples)]
+            if self.fp16_enabled() and hasattr(self.optimizer, 'cur_scale'):
+                self.summary_events.append((f'Train/Samples/loss_scale',
+                                            self.optimizer.cur_scale,
+                                            self.global_samples))
+            self.monitor.write_events(self.summary_events)
 
         if self.wall_clock_breakdown():
             self.timers('step_microstep').stop()
@@ -1330,7 +1318,8 @@ class PipelineEngine(DeepSpeedEngine):
         assert self._curr_ckpt_path is not None, \
             "PipelineEngine expects module_state_dict() to be called from save_checkpoint()"
 
-        self.module.save_state_dict(self._curr_ckpt_path)
+        self.module.save_state_dict(self._curr_ckpt_path,
+                                    checkpoint_engine=self.checkpoint_engine)
         return None
 
     def load_module_state_dict(self, state_dict, strict=True, custom_load_fn=None):
@@ -1349,7 +1338,9 @@ class PipelineEngine(DeepSpeedEngine):
             super().load_module_state_dict(state_dict, strict)
             return
 
-        self.module.load_state_dir(load_dir=self._curr_ckpt_path, strict=strict)
+        self.module.load_state_dir(load_dir=self._curr_ckpt_path,
+                                   strict=strict,
+                                   checkpoint_engine=self.checkpoint_engine)
 
     # A map of PipeInstruction types to methods. Each method will be executed with the
     # kwargs provided to the PipeInstruction from the scheduler.
@@ -1383,11 +1374,3 @@ class PipelineEngine(DeepSpeedEngine):
                 # Equivalent to: self._exec_forward_pass(buffer_id=0)
                 self._exec_instr = MethodType(self._INSTRUCTION_MAP[type(cmd)], self)
                 self._exec_instr(**cmd.kwargs)
-
-    def set_batch_fn(self, fn):
-        """Execute a post-processing function on input data.
-
-        Args:
-            fn (function): The function to run.
-        """
-        self.batch_fn = fn

@@ -1,6 +1,5 @@
 import pytest
 import torch
-import deepspeed
 from deepspeed.runtime.zero.linear import LinearModuleForZeroStage3
 from deepspeed.accelerator import literal_device
 
@@ -11,7 +10,7 @@ def _skip_autocast_test():
         return True
 
     try:
-        from torch.cuda.amp import custom_fwd, custom_bwd
+        from torch.cuda.amp import custom_fwd, custom_bwd  # noqa: F401
     except (ImportError, AttributeError) as exp:
         return True
 

@@ -15,6 +15,7 @@ from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW,
 from deepspeed.utils import logger
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
 from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed import comm as dist
 
 
 class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
@@ -37,7 +38,7 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
         self.fused_lamb_legacy = fused_lamb_legacy
         self._global_grad_norm = 0.
 
-        if torch.distributed.get_rank() == 0:
+        if dist.get_rank() == 0:
             logger.info(f'Fused Lamb Legacy : {self.fused_lamb_legacy} ')
 
         if not accel_runtime.is_available():

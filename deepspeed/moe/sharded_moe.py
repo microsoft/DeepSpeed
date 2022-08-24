@@ -12,17 +12,16 @@ Copyright 2021 The Microsoft DeepSpeed Team
 # This source code is licensed under the BSD license found in the
 # LICENSE file in the root directory of this source tree.
 
-from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
-from deepspeed.utils import logger, log_dist
-from typing import Callable, Dict, TYPE_CHECKING, Any, Optional, Tuple, Union, cast
+from deepspeed.utils.timer import SynchronizedWallClockTimer
+from deepspeed.utils import logger
+from typing import Callable, Dict, TYPE_CHECKING, Any, Optional, Tuple
 
-import time
-from time import perf_counter
 import torch
 from torch import Tensor
-import torch.distributed as dist
-from torch.nn import Module, ModuleList
+from torch.nn import Module
 import torch.nn.functional as F
+from deepspeed.utils import groups
+from .mappings import drop_tokens, gather_tokens
 
 if TYPE_CHECKING:
     Base = Module[Tensor]
@@ -80,12 +79,20 @@ def gumbel_rsample(shape: Tuple, device: torch.device) -> Tensor:
     return gumbel(shape)
 
 
+from deepspeed import comm as dist
+
+# einsum dimensions: (g)roup, (s)equence, (e)xpert, (m)odel, (c)apacity
+# See https://arxiv.org/pdf/2006.16668.pdf for details.
+
+
 # Based on https://github.com/pytorch/pytorch/pull/40762
 class _AllToAll(torch.autograd.Function):
     @staticmethod
-    def forward(ctx: Any,
-                group: dist.ProcessGroup,
-                input: Tensor) -> Tensor:  # type: ignore
+    def forward(
+            ctx: Any,
+            # TODO: replace with DS process group
+            group: torch.distributed.ProcessGroup,
+            input: Tensor) -> Tensor:  # type: ignore
         ctx.group = group
         input = input.contiguous()
         output = torch.empty_like(input)
@@ -206,7 +213,7 @@ def top1gating(logits: Tensor,
     # if we don't want to drop any tokens
     if not drop_tokens:
         new_capacity = torch.max(exp_counts).to(logits.device)
-        dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.group.WORLD)
+        dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.get_world_group())
         capacity = new_capacity
 
     # Compute l_aux
@@ -466,13 +473,17 @@ class MOELayer(Base):
         self.timers = SynchronizedWallClockTimer()
         self.wall_clock_breakdown = False
 
-        self.use_tutel = use_tutel and TUTEL_INSTALLED
+        self.use_tutel = use_tutel and TUTEL_INSTALLED and gate.k == 1
 
         if self.use_tutel:
             logger.info('Using Tutel optimizations.')
         elif use_tutel and not TUTEL_INSTALLED:
             logger.warning("Tutel optimization requested but not installed. "
                            "Proceeding without Tutel.")
+        elif use_tutel and TUTEL_INSTALLED and gate.k != 1:
+            logger.warning(
+                "To enable Tutel optimization, use top-1 instead of top-2 gate. "
+                "Proceeding without Tutel.")
 
     def _set_ep_group(self, ep_group):
         self.ep_group = ep_group
@@ -511,6 +522,15 @@ class MOELayer(Base):
         if self.wall_clock_breakdown:
             self.timers('falltoall').start()
 
+        if groups._get_expert_model_parallel_world_size() == 1:
+            # If the non-expert is tensor-parallel, it will create
+            # duplicate tokens on the tensor-parallel ranks.
+            # Since our experts are not tensor-parallel, these duplicates
+            # need to be dropped to ensure correctness.
+            # this also doubles up as a communication optimization as we are
+            # reducing the all-to-all communication volume.
+            dispatched_input = drop_tokens(dispatched_input, dim=1)
+
         dispatched_input = _AllToAll.apply(self.ep_group, dispatched_input)
 
         if self.wall_clock_breakdown:
@@ -538,6 +558,12 @@ class MOELayer(Base):
         expert_output = expert_output.reshape(self.ep_size * self.num_local_experts,
                                               -1,
                                               d_model)
+
+        if groups._get_expert_model_parallel_world_size() == 1:
+            # the dropped duplicate tokens need to be gathered on each
+            # tensor parallel rank again for the tensor-parallel
+            # non-expert of the next layer.
+            expert_output = gather_tokens(expert_output, dim=1)
 
         if self.use_tutel:
             combined_output = self._tutel_dispatcher.decode(expert_output.view(E * C, M))

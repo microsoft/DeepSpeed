@@ -1,8 +1,6 @@
 import torch
 from deepspeed.pt.deepspeed_linear import LinearModuleForZeroStage3
-from deepspeed.pt.deepspeed_utils import see_memory_usage
 from deepspeed.pt.log_utils import logger
-import deepspeed
 from deepspeed.accelerator import literal_device
 from deepspeed.accelerator import runtime as accel_runtime
 
