@@ -1837,7 +1837,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 scaled_norm = norm * 1.0 / float(
                     dist.get_world_size(group=self.real_dp_process_group[i]))
                 scaled_norm_tensor = torch.tensor(scaled_norm,
-                                                  device='cuda',
+                                                  device=literal_device(),
                                                   dtype=torch.float)
                 dist.all_reduce(scaled_norm_tensor, group=self.real_dp_process_group[i])
                 norm_groups[i] = scaled_norm_tensor.item()

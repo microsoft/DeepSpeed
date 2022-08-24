@@ -1,6 +1,7 @@
 import torch
 from benchmarks.communication.utils import *
 from benchmarks.communication.constants import *
+from deepspeed.accelerator import literal_device
 
 import time
 
@@ -64,7 +65,7 @@ def run_broadcast(local_rank, args):
                 mat = torch.ones(world_size,
                                  M,
                                  dtype=getattr(torch,
-                                               args.dtype)).cuda(local_rank)
+                                               args.dtype)).to(literal_device(local_rank))
                 sync_all()
                 input = ((mat.mul_(float(global_rank))).view(-1))
             except RuntimeError as e:
@@ -87,7 +88,7 @@ def run_broadcast(local_rank, args):
         try:
             mat = torch.ones(elements_per_gpu,
                              dtype=getattr(torch,
-                                           args.dtype)).cuda(local_rank)
+                                           args.dtype)).to(literal_device(local_rank))
             input = ((mat.mul_(float(global_rank))).view(-1))
         except RuntimeError as e:
             if 'out of memory' in str(e):

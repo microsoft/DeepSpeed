@@ -13,6 +13,7 @@ import torch
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator import literal_device
 
 from apex_C import flatten as flatten_apex
 from apex_C import unflatten as unflatten_apex

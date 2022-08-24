@@ -1,5 +1,7 @@
 from benchmarks.communication.utils import *
 from benchmarks.communication.constants import *
+from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator import literal_device
 
 import time
 
@@ -62,7 +64,7 @@ def run_all_to_all(local_rank, args):
                 mat = torch.ones(world_size,
                                  M,
                                  dtype=getattr(torch,
-                                               args.dtype)).cuda(local_rank)
+                                               args.dtype)).to(literal_device(local_rank))
                 assert mat.numel() % world_size == 0, f"tensor cannot be divided in {world_size} chunks"
                 sync_all()
                 input = ((mat.mul_(float(global_rank))).view(-1))
@@ -86,15 +88,15 @@ def run_all_to_all(local_rank, args):
         try:
             mat = torch.ones(elements_per_gpu,
                              dtype=getattr(torch,
-                                           args.dtype)).cuda(local_rank)
+                                           args.dtype)).to(literal_device(local_rank))
             assert mat.numel() % world_size == 0, f"tensor with {mat.numel()} elements cannot be divided in {world_size} chunks"
             input = ((mat.mul_(float(global_rank))).view(-1))
             # Delete original mat to avoid OOM
             del mat
-            torch.cuda.empty_cache()
+            accel_runtime.empty_cache()
             output = torch.zeros(elements_per_gpu,
                                  dtype=getattr(torch,
-                                               args.dtype)).cuda(local_rank)
+                                               args.dtype)).to(literal_device(local_rank))
         except RuntimeError as e:
             if 'out of memory' in str(e):
                 if dist.get_rank() == 0:

@@ -13,6 +13,10 @@ from deepspeed.runtime.pipe.module import PipelineModule
 from tests.unit.common import DistributedTest
 from tests.unit.simple_model import SimpleModel, random_dataloader
 from tests.unit.alexnet_model import AlexNetPipe, train_cifar
+from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator import literal_device
+
+
 
 PipeTopo = PipeDataParallelTopology
 
@@ -1244,7 +1248,7 @@ class TestCompressedAllReduceBasic(DistributedTest):
         rank = dist.get_rank()
         backend = NcclBackend()
         local_rank = dist.get_rank()
-        device = torch.device("cuda", dist.get_rank())
+        device = torch.device(literal_device(), dist.get_rank())
 
         # A simulated compression function using deepspeed.comm
         def torch_sim(a):
@@ -1266,7 +1270,7 @@ class TestCompressedAllReduceBasic(DistributedTest):
                 [server_scale[i] * a_sign_list[i] for i in range(dist.get_world_size())])
             rank = dist.get_rank()
             server_error = a_list[rank] - server_scale[rank] * a_sign_list[rank]
-            torch.cuda.synchronize()
+            accel_runtime.synchronize()
             dist.barrier()
             return a_server_compressed, worker_error, server_error
 
@@ -1286,7 +1290,7 @@ class TestCompressedAllReduceBasic(DistributedTest):
         server_error = torch.zeros(right_server_size, device=device)
 
         a_torch, worker_error_torch, server_error_torch = torch_sim(a)
-        torch.cuda.empty_cache()
+        accel_runtime.empty_cache()
 
         a_after = backend.compressed_allreduce(a, worker_error, server_error, local_rank)
 

@@ -6,6 +6,7 @@ import deepspeed
 import deepspeed.comm as dist
 from deepspeed.ops.aio import AsyncIOBuilder
 from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator import literal_device
 from .common import distributed_test
 
 MEGA_BYTE = 1024**2
@@ -112,7 +113,7 @@ def test_async_read(tmpdir, single_submit, overlap_events, cuda_device):
         ref_file, _ = _do_ref_write(tmpdir)
 
         if cuda_device:
-            aio_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device='cuda')
+            aio_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device=literal_device())
         else:
             aio_buffer = torch.empty(IO_SIZE,
                                      dtype=torch.uint8,
@@ -251,7 +252,7 @@ def test_async_queue_read(tmpdir, async_queue, cuda_device):
         aio_buffers = []
         for i in range(async_queue):
             if cuda_device:
-                buf = torch.empty(IO_SIZE, dtype=torch.uint8, device='cuda')
+                buf = torch.empty(IO_SIZE, dtype=torch.uint8, device=literal_device())
             else:
                 buf = torch.empty(IO_SIZE, dtype=torch.uint8, device='cpu').pin_memory()
             aio_buffers.append(buf)

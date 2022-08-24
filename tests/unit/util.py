@@ -1,6 +1,5 @@
 import torch
 from deepspeed.git_version_info import torch_info
-from deepspeed.accelerator import runtime as accel_runtime
 
 
 def required_torch_version():

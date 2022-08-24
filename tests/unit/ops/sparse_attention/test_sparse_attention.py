@@ -93,7 +93,7 @@ def init_softmax_inputs(Z, H, M, N, scale, rho, block, dtype, dense_x=True, layo
     if layout is None:
         layout = make_layout(rho, (H, M // block, N // block))
     if dense_x:
-        x = torch.rand((Z, H, M, N), dtype=dtype, requires_grad=True, device='cuda')
+        x = torch.rand((Z, H, M, N), dtype=dtype, requires_grad=True, device=literal_device())
     else:
         x = torch.rand((Z,
                         layout.sum(),
@@ -101,7 +101,7 @@ def init_softmax_inputs(Z, H, M, N, scale, rho, block, dtype, dense_x=True, layo
                         block),
                        dtype=dtype,
                        requires_grad=True,
-                       device='cuda')
+                       device=literal_device())
     dx = torch.rand_like(x)
     bool_attn_mask = torch.randint(low=0,
                                    high=2,
@@ -109,7 +109,7 @@ def init_softmax_inputs(Z, H, M, N, scale, rho, block, dtype, dense_x=True, layo
                                          N),
                                    dtype=torch.bool,
                                    requires_grad=False,
-                                   device='cuda')
+                                   device=literal_device())
     fp_attn_mask = bool_attn_mask.type(dtype)
     kp_mask = torch.randint(low=0,
                             high=2,
@@ -117,7 +117,7 @@ def init_softmax_inputs(Z, H, M, N, scale, rho, block, dtype, dense_x=True, layo
                                   N),
                             dtype=dtype,
                             requires_grad=False,
-                            device='cuda')
+                            device=literal_device())
     kp_mask[kp_mask == 1.] = float('-inf')
     return layout, x, dx, bool_attn_mask, fp_attn_mask, kp_mask
 
@@ -198,9 +198,9 @@ def init_matmul_inputs(Z, H, M, N, K, rho, mode, trans_a, trans_b, block, dtype,
     BS0 = N if trans_b else K
     BS1 = K if trans_b else N
     shape = {'sdd': (M, N), 'dsd': (AS0, AS1), 'dds': (BS0, BS1)}[mode]
-    x = torch.rand((Z, H, AS0, AS1), dtype=dtype, requires_grad=True, device='cuda')
-    w = torch.rand((Z, H, BS0, BS1), dtype=dtype, requires_grad=True, device='cuda')
-    dy = torch.rand((Z, H, M, N), dtype=dtype, device='cuda')
+    x = torch.rand((Z, H, AS0, AS1), dtype=dtype, requires_grad=True, device=literal_device())
+    w = torch.rand((Z, H, BS0, BS1), dtype=dtype, requires_grad=True, device=literal_device())
+    dy = torch.rand((Z, H, M, N), dtype=dtype, device=literal_device())
     if layout is None:
         layout = make_layout(rho, (H, shape[0] // block, shape[1] // block))
     else:
