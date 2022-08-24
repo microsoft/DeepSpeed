@@ -4,6 +4,6 @@ numpy
 packaging
 psutil
 py-cpuinfo
-pydantic
+pydantic==1.10.0a2
 torch
 tqdm
