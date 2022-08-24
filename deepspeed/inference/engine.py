@@ -100,6 +100,7 @@ class InferenceEngine(Module):
         self.cuda_graph_created = False
         self.checkpoint_engine = TorchCheckpointEngine()
         self._init_quantization_setting(quantization_setting)
+        self._add_ds_inference_flag()
 
         if enable_cuda_graph:
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
@@ -167,6 +168,10 @@ class InferenceEngine(Module):
     def _get_model_config_generate(self, config):
         self.config = getattr(self.module, 'config', None) if config is None else config
         self.generate = getattr(self.module, 'generate', None)
+
+    def _add_ds_inference_flag(self):
+        if hasattr(self.module, 'transformer'):
+            setattr(self.module.transformer, 'ds_inference', True)
 
     def _create_model_parallel_group(self):
         # Call the init process

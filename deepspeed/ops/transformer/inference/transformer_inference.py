@@ -206,16 +206,6 @@ class DeepSpeedSelfAttentionFunction(Function):
              value_layer) = split_tensor_along_last_dim(mixed_x_layer,
                                                         3)
 
-            if layer_past is not None:
-                past_key, past_value = layer_past
-                # concatenate along seq_length dimension -> [batch_size, qk_length, num_heads, head_dim]
-                key_layer = torch.cat((past_key.type_as(key_layer), key_layer), dim=1)
-                value_layer = torch.cat((past_value.type_as(value_layer),
-                                         value_layer),
-                                        dim=1)
-
-            presents = (key_layer, value_layer)
-
             # [batch_size, head_dim, q_length, k_length]
             output_size = (query_layer.size(0),
                            query_layer.size(2),
@@ -223,24 +213,39 @@ class DeepSpeedSelfAttentionFunction(Function):
                            key_layer.size(1))
             # [batch_size, q_length, num_heads, head_dim] -> [q_length, batch_size * num_heads, head_dim]
             query_layer = query_layer.transpose(1,
-                                                0).reshape(
-                                                    output_size[2],
+                                                2).reshape(
                                                     output_size[0] * output_size[1],
+                                                    output_size[2],
                                                     -1)
             # [batch_size, k_length, num_heads, head_dim] -> [k_length, batch_size * num_heads, head_dim]
             key_layer = key_layer.transpose(1,
-                                            0).reshape(output_size[3],
-                                                       output_size[0] * output_size[1],
-                                                       -1)
+                                            2).reshape(output_size[0] * output_size[1],
+                                                       output_size[3],
+                                                       -1).transpose(-1,
+                                                                     -2)
+            value_layer = value_layer.transpose(1,
+                                                2).reshape(
+                                                    output_size[0] * output_size[1],
+                                                    output_size[3],
+                                                    -1)
+            if layer_past is not None:
+                past_key, past_value = layer_past
+                #if config.layer_id == 0:
+                #    import pdb;pdb.set_trace()
+                # concatenate along seq_length dimension -> [batch_size, qk_length, num_heads, head_dim]
+                key_layer = torch.cat((past_key.type_as(key_layer), key_layer), dim=-1)
+                value_layer = torch.cat((past_value.type_as(value_layer),
+                                         value_layer),
+                                        dim=-2)
 
+            presents = (key_layer, value_layer)
             # Raw attention scores. [batch_size * num_heads, q_length, k_length]
-            matmul_result = torch.matmul(query_layer.transpose(1,
-                                                               0),
-                                         key_layer.transpose(1,
-                                                             0).transpose(1,
-                                                                          2))
+            matmul_result = torch.matmul(query_layer, key_layer)
             # change view to [batch_size, num_heads, q_length, k_length]
-            attention_scores = matmul_result.view(*output_size)
+            attention_scores = matmul_result.view(output_size[0],
+                                                  output_size[1],
+                                                  output_size[2],
+                                                  -1)
 
             offset = dist.get_rank(
             ) * num_attention_heads_per_partition if dist.is_initialized() else 0
@@ -261,12 +266,7 @@ class DeepSpeedSelfAttentionFunction(Function):
             attention_probs_reshaped = attention_probs.view(*matmul_result.shape)
 
             # matmul: [batch_size * num_heads, q_length, head_dim]
-            context_layer = torch.bmm(
-                attention_probs_reshaped,
-                value_layer.transpose(1,
-                                      2).reshape(-1,
-                                                 value_layer.size(1),
-                                                 value_layer.size(3)))
+            context_layer = torch.bmm(attention_probs_reshaped, value_layer)
 
             # change view [batch_size, num_heads, q_length, head_dim]
             context_layer = context_layer.view(

@@ -856,7 +856,11 @@ def replace_transformer_layer(orig_layer_impl,
 
             for i in range(len(checkpoint)):
 
-                sd = [torch.load(checkpoint[i], map_location='cpu')]
+                sd = [
+                    torch.load(os.path.join(base_dir1,
+                                            checkpoint[i]),
+                               map_location='cpu')
+                ]
                 load_model_with_checkpoint(
                     replaced_module,
                     sd,
