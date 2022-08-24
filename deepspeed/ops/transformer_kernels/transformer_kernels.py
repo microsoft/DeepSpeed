@@ -21,19 +21,15 @@ class softmax_dropout_func(torch.autograd.Function):
                                         rel_pos,
                                         heads)
 
-        ctx.save_for_backward(attn, mask, torch.Tensor([ratio]))
+        ctx.save_for_backward(attn, torch.Tensor([ratio]))
         ctx.rel_pos_shape = rel_pos.shape
         return out
 
     @staticmethod
     def backward(ctx, grad_output):
-        attn, mask, ratio = ctx.saved_tensors
+        attn, ratio = ctx.saved_tensors
         ratio = ratio.item()
-        inp_grad = cuda_module.softd_backward(grad_output,
-                                              attn,
-                                              torch.empty(1) if mask is None else mask,
-                                              ratio,
-                                              mask is None)
+        inp_grad = cuda_module.softd_backward(grad_output, attn, ratio)
         return inp_grad, inp_grad.reshape(ctx.rel_pos_shape), None, None, None, None
 
 

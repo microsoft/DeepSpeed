@@ -782,11 +782,11 @@ __global__ void softmax_dropout_kernel(const int seq_length,
                            (wid * tb_blocks + lane / tbSize) * seq_length;
     unsigned mask_offset = blockIdx.x * seq_length;
 
-    float4* out_cast = reinterpret_cast<float4*>(out);
-    const float4* rel_pos_cast = reinterpret_cast<const float4*>(rel_pos);
-    float4* val_cast = reinterpret_cast<float4*>(Xdata);
-    const float2* attn_mask_cast;
-    if (attn_mask) attn_mask_cast = reinterpret_cast<const float2*>(attn_mask);
+    float2* out_cast = reinterpret_cast<float2*>(out);
+    const float2* rel_pos_cast = reinterpret_cast<const float2*>(rel_pos);
+    float2* val_cast = reinterpret_cast<float2*>(Xdata);
+    const float* attn_mask_cast;
+    if (attn_mask) attn_mask_cast = reinterpret_cast<const float*>(attn_mask);
 
     val_cast += data_offset;
     rel_pos += data_offset;
@@ -795,8 +795,6 @@ __global__ void softmax_dropout_kernel(const int seq_length,
 
     float2 low_data[MAX_THREAD_ITERATIONS];
     float2 high_data[MAX_THREAD_ITERATIONS];
-    float2 low_data1[MAX_THREAD_ITERATIONS];
-    float2 high_data1[MAX_THREAD_ITERATIONS];
 
     const float scale = 1. / (1. - ratio);
     __half2 h_scale = __float2half2_rn(scale);
@@ -808,47 +806,31 @@ __global__ void softmax_dropout_kernel(const int seq_length,
     for (int i = 0; i < iterations; i++) {
         unsigned data_id = i * iteration_stride + (lane % tbSize);
         if (data_id < seq_length) {
-            float4 data = val_cast[data_id];
-            float4 rel_pos_data = rel_pos_cast[data_id];
-            float2 mask_data = attn_mask_cast[data_id];
+            float2 data = val_cast[data_id];
+            float2 rel_pos_data = rel_pos_cast[data_id];
+            float mask_data = attn_mask_cast[data_id];
             bool* mask_bool = reinterpret_cast<bool*>(&mask_data);
             __half2* data_arr = reinterpret_cast<__half2*>(&data);
             __half2* rel_pos_arr = reinterpret_cast<__half2*>(&rel_pos_data);
             data_arr[0] = data_arr[0] + rel_pos_arr[0];
             data_arr[1] = data_arr[1] + rel_pos_arr[1];
-            data_arr[2] = data_arr[2] + rel_pos_arr[2];
-            data_arr[3] = data_arr[3] + rel_pos_arr[3];
             data_arr[0].x = mask_bool[0] ? data_arr[0].x : h_inf;
             data_arr[0].y = mask_bool[1] ? data_arr[0].y : h_inf;
             data_arr[1].x = mask_bool[2] ? data_arr[1].x : h_inf;
             data_arr[1].y = mask_bool[3] ? data_arr[1].y : h_inf;
-            data_arr[2].x = mask_bool[4] ? data_arr[2].x : h_inf;
-            data_arr[2].y = mask_bool[5] ? data_arr[2].y : h_inf;
-            data_arr[3].x = mask_bool[6] ? data_arr[3].x : h_inf;
-            data_arr[3].y = mask_bool[7] ? data_arr[3].y : h_inf;
             val_cast[data_id] = data;
+
             low_data[i] = __half22float2(data_arr[0]);
             high_data[i] = __half22float2(data_arr[1]);
-            low_data1[i] = __half22float2(data_arr[2]);
-            high_data1[i] = __half22float2(data_arr[3]);
+            float maxes[2];
+            maxes[0] = (low_data[i].x > low_data[i].y ? low_data[i].x : low_data[i].y);
+            maxes[1] = (high_data[i].x > high_data[i].y ? high_data[i].x : high_data[i].y);
+            maxes[0] = (maxes[0] > maxes[1] ? maxes[0] : maxes[1]);
+            max_val = (maxes[0] > max_val ? maxes[0] : max_val);
         } else {
             low_data[i] = {minus_infinity, minus_infinity};
             high_data[i] = {minus_infinity, minus_infinity};
-            low_data1[i] = {minus_infinity, minus_infinity};
-            high_data1[i] = {minus_infinity, minus_infinity};
         }
-    }
-
-    for (int i = 0; i < iterations; i++) {
-        float maxes[4];
-        maxes[0] = (low_data[i].x > low_data[i].y ? low_data[i].x : low_data[i].y);
-        maxes[1] = (high_data[i].x > high_data[i].y ? high_data[i].x : high_data[i].y);
-        maxes[2] = (low_data1[i].x > low_data1[i].y ? low_data1[i].x : low_data1[i].y);
-        maxes[3] = (high_data1[i].x > high_data1[i].y ? high_data1[i].x : high_data1[i].y);
-        maxes[0] = (maxes[0] > maxes[1] ? maxes[0] : maxes[1]);
-        maxes[2] = (maxes[2] > maxes[3] ? maxes[2] : maxes[3]);
-        max_val = (maxes[0] > max_val ? maxes[0] : max_val);
-        max_val = (maxes[2] > max_val ? maxes[2] : max_val);
     }
 
     for (int i = 1; i < tbSize; i *= 2) {
@@ -862,19 +844,14 @@ __global__ void softmax_dropout_kernel(const int seq_length,
         low_data[i].y = __expf(low_data[i].y - max_val);
         high_data[i].x = __expf(high_data[i].x - max_val);
         high_data[i].y = __expf(high_data[i].y - max_val);
-        low_data1[i].x = __expf(low_data1[i].x - max_val);
-        low_data1[i].y = __expf(low_data1[i].y - max_val);
-        high_data1[i].x = __expf(high_data1[i].x - max_val);
-        high_data1[i].y = __expf(high_data1[i].y - max_val);
         sum += (low_data[i].x + low_data[i].y + high_data[i].x + high_data[i].y);
-        sum += (low_data1[i].x + low_data1[i].y + high_data1[i].x + high_data1[i].y);
     }
 
     for (int i = 1; i < tbSize; i *= 2) { sum += g.shfl_xor(sum, i); }
     sum += 1e-6;
 
-    int idx = (((blockIdx.x * gridDim.y + blockIdx.y) * warp_num) + wid) * (seq_length << 3) +
-              (lane << 3);
+    int idx = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x + threadIdx.x;
+
     curandStatePhilox4_32_10_t state;
     curand_init(seed.first, idx, seed.second, &state);
 
@@ -885,32 +862,21 @@ __global__ void softmax_dropout_kernel(const int seq_length,
             low_data[i].y /= sum;
             high_data[i].x /= sum;
             high_data[i].y /= sum;
-            low_data1[i].x /= sum;
-            low_data1[i].y /= sum;
-            high_data1[i].x /= sum;
-            high_data1[i].y /= sum;
 
-            float4 result_f;
+            float2 result_f;
             __half2* result_h = reinterpret_cast<__half2*>(&result_f);
             result_h[0] = __float22half2_rn(low_data[i]);
             result_h[1] = __float22half2_rn(high_data[i]);
-            result_h[2] = __float22half2_rn(low_data1[i]);
-            result_h[3] = __float22half2_rn(high_data1[i]);
 
             float4 rand = curand_uniform4(&state);
-            float4 rand1 = curand_uniform4(&state);
+
             result_h[0].x = (rand.x > ratio) ? result_h[0].x : h_zero;
             result_h[0].y = (rand.y > ratio) ? result_h[0].y : h_zero;
             result_h[1].x = (rand.z > ratio) ? result_h[1].x : h_zero;
             result_h[1].y = (rand.w > ratio) ? result_h[1].y : h_zero;
-            result_h[2].x = (rand1.x > ratio) ? result_h[2].x : h_zero;
-            result_h[2].y = (rand1.y > ratio) ? result_h[2].y : h_zero;
-            result_h[3].x = (rand1.z > ratio) ? result_h[3].x : h_zero;
-            result_h[3].y = (rand1.w > ratio) ? result_h[3].y : h_zero;
+
             result_h[0] = result_h[0] * h_scale;
             result_h[1] = result_h[1] * h_scale;
-            result_h[2] = result_h[2] * h_scale;
-            result_h[3] = result_h[3] * h_scale;
 
             out_cast[data_id] = result_f;
         }
@@ -929,8 +895,8 @@ void launch_softmax_dropout(T* out,
                             float ratio,
                             cudaStream_t stream)
 {
-    int threads = 256;
-    int stride = 8;
+    int threads = 512;
+    int stride = 4;
     int warp_num = threads / WARP_SIZE;
     int pow_soft = (int)pow(2.0, ceil(log2((float)(softmax_length / stride))));
     dim3 grid_dim((bsz / heads),
@@ -938,9 +904,8 @@ void launch_softmax_dropout(T* out,
     dim3 block_dim(threads);
     int total_count = bsz * heads * seq_length * softmax_length;
 
-    uint64_t inc =
-        (total_count - 1) / ((grid_dim.x * grid_dim.y) * (warp_num * softmax_length)) + 1;
-    std::pair<uint64_t, uint64_t> seed = Context::Instance().IncrementOffset(inc, true);
+    uint64_t inc = (total_count - 1) / ((grid_dim.x * grid_dim.y) * threads) + 1;
+    std::pair<uint64_t, uint64_t> seed = Context::Instance().IncrementOffset(inc << 2, true);
     if (softmax_length <= (stride * 2))
         softmax_dropout_kernel<2><<<grid_dim, block_dim, 0, stream>>>(
             softmax_length / stride, ratio, out, vals, attn_mask, rel_pos, seed, WARP_SIZE / 2);
@@ -993,7 +958,6 @@ __global__ void dropout_softmax_grad_kernel(const int N,
                                             const float scale,
                                             float* Xdata,
                                             const float* input,
-                                            const float* attn_mask,
                                             std::pair<uint64_t, uint64_t> seed)
 {
     // TODO: Add float version
@@ -1003,7 +967,6 @@ __global__ void dropout_softmax_grad_kernel(const int seq_length,
                                             const float ratio,
                                             __half* Xdata,
                                             const __half* input,
-                                            const __half* attn_mask,
                                             std::pair<uint64_t, uint64_t> seed)
 {
     unsigned warp_num = blockDim.x >> 5;
@@ -1019,11 +982,8 @@ __global__ void dropout_softmax_grad_kernel(const int seq_length,
     unsigned wid = threadIdx.x >> 5;
     unsigned lane = threadIdx.x & 0x1f;
 
-    unsigned batch = blockIdx.x;
-    unsigned row = blockIdx.y;
-
-    unsigned data_offset = batch * (gridDim.y * block_width) + row * block_width + wid * seq_length;
-    unsigned mask_offset = batch * seq_length;
+    unsigned data_offset =
+        blockIdx.x * (gridDim.y * block_width) + blockIdx.y * block_width + wid * seq_length;
 
     const float2* val_cast = reinterpret_cast<const float2*>(input);
     float2* grad_cast = reinterpret_cast<float2*>(Xdata);
@@ -1141,7 +1101,6 @@ __global__ void dropout_softmax_grad_kernel(const int seq_length,
                                             const float ratio,
                                             __nv_bfloat16* Xdata,
                                             const __nv_bfloat16* input,
-                                            const __nv_bfloat16* attn_mask,
                                             std::pair<uint64_t, uint64_t> seed)
 {
     unsigned warp_num = blockDim.x >> 5;
@@ -1160,15 +1119,12 @@ __global__ void dropout_softmax_grad_kernel(const int seq_length,
     unsigned batch = blockIdx.x;
     unsigned row = blockIdx.y;
 
-    unsigned data_offset = batch * (gridDim.y * block_width) + row * block_width + wid * seq_length;
-    unsigned mask_offset = batch * seq_length;
+    unsigned data_offset =
+        blockIdx.x * (gridDim.y * block_width) + row * block_width + wid * seq_length;
+    unsigned mask_offset = blockIdx.x * seq_length;
 
     const float2* val_cast = reinterpret_cast<const float2*>(input);
     float2* grad_cast = reinterpret_cast<float2*>(Xdata);
-    const float2* attn_mask_cast;
-    if (attn_mask) attn_mask_cast = reinterpret_cast<const float2*>(attn_mask);
-
-    if (attn_mask) attn_mask_cast += mask_offset;
 
     val_cast += data_offset;
     grad_cast += data_offset;
@@ -1200,18 +1156,6 @@ __global__ void dropout_softmax_grad_kernel(const int seq_length,
             low_data[i] = __bfloat1622float2(data_arr[0]);
             high_data[i] = __bfloat1622float2(data_arr[1]);
 
-            if (attn_mask) {
-                float2 mask = attn_mask_cast[data_id];
-                __nv_bfloat162* mask_arr = reinterpret_cast<__nv_bfloat162*>(&mask);
-
-                float2 low_mask = __bfloat1622float2(mask_arr[0]);
-                float2 high_mask = __bfloat1622float2(mask_arr[1]);
-
-                low_data[i].x += low_mask.x;
-                low_data[i].y += low_mask.y;
-                high_data[i].x += high_mask.x;
-                high_data[i].y += high_mask.y;
-            }
             max_val = (low_data[i].x > max_val ? low_data[i].x : max_val);
             max_val = (low_data[i].y > max_val ? low_data[i].y : max_val);
             max_val = (high_data[i].x > max_val ? high_data[i].x : max_val);
@@ -1293,7 +1237,6 @@ __global__ void dropout_softmax_grad_kernel(const int seq_length,
 template <typename T>
 void launch_softmax_dropout_grad(T* vals,
                                  const T* input,
-                                 const T* mask,
                                  int bsz,
                                  int heads,
                                  int seq_length,
@@ -1302,16 +1245,15 @@ void launch_softmax_dropout_grad(T* vals,
                                  cudaStream_t stream)
 {
     dim3 grid_dim(bsz, (heads * seq_length) / 8);
-    dim3 block_dim(256);
+    dim3 block_dim(512);
 
     auto seed = Context::Instance().RestoreOffset();
     dropout_softmax_grad_kernel<<<grid_dim, block_dim, 0, stream>>>(
-        softmax_length / 4, ratio, vals, input, mask, seed);
+        softmax_length / 4, ratio, vals, input, seed);
 }
 
 template void launch_softmax_dropout_grad(float* vals,
                                           const float* input,
-                                          const float* mask,
                                           int bsz,
                                           int heads,
                                           int seq_length,
@@ -1320,7 +1262,6 @@ template void launch_softmax_dropout_grad(float* vals,
                                           cudaStream_t stream);
 template void launch_softmax_dropout_grad(__nv_bfloat16* vals,
                                           const __nv_bfloat16* input,
-                                          const __nv_bfloat16* mask,
                                           int bsz,
                                           int heads,
                                           int seq_length,
@@ -1329,7 +1270,6 @@ template void launch_softmax_dropout_grad(__nv_bfloat16* vals,
                                           cudaStream_t stream);
 template void launch_softmax_dropout_grad(__half* vals,
                                           const __half* input,
-                                          const __half* mask,
                                           int bsz,
                                           int heads,
                                           int seq_length,

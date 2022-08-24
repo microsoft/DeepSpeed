@@ -25,7 +25,7 @@ at::Tensor ds_softmax_dropout(at::Tensor& attn_scores,
 
     // int heads = 1;
     // if (len > 3) heads = attn_scores_c.size(1);
-    Context::Instance().extract_rng_seed_offset(gen_);
+    // Context::Instance().extract_rng_seed_offset(gen_);
     if (attn_scores_c.scalar_type() == at::kFloat)
         launch_softmax_dropout((float*)out.data_ptr(),
                                (float*)attn_scores_c.data_ptr(),
@@ -63,11 +63,7 @@ at::Tensor ds_softmax_dropout(at::Tensor& attn_scores,
     return out;
 }
 
-at::Tensor ds_softmax_dropout_backward(at::Tensor& out_grad,
-                                       at::Tensor& attn_scores,
-                                       at::Tensor& attn_mask,
-                                       float ratio,
-                                       bool bidirectional)
+at::Tensor ds_softmax_dropout_backward(at::Tensor& out_grad, at::Tensor& attn_scores, float ratio)
 {
     auto out_grad_c = out_grad.contiguous();
     auto attn_scores_c = attn_scores.contiguous();
@@ -82,11 +78,9 @@ at::Tensor ds_softmax_dropout_backward(at::Tensor& out_grad,
 
     int heads = 1;
     if (len > 3) heads = attn_scores_c.size(1);
-
     if (attn_scores_c.scalar_type() == at::kFloat)
         launch_softmax_dropout_grad((float*)out_grad_c.data_ptr(),
                                     (float*)attn_scores_c.data_ptr(),
-                                    (bidirectional ? nullptr : (float*)attn_mask.data_ptr()),
                                     bsz,
                                     heads,
                                     seq_len,
@@ -96,7 +90,6 @@ at::Tensor ds_softmax_dropout_backward(at::Tensor& out_grad,
     else if (attn_scores_c.scalar_type() == at::kHalf)
         launch_softmax_dropout_grad((__half*)out_grad_c.data_ptr(),
                                     (__half*)attn_scores_c.data_ptr(),
-                                    (bidirectional ? nullptr : (__half*)attn_mask.data_ptr()),
                                     bsz,
                                     heads,
                                     seq_len,
@@ -104,16 +97,14 @@ at::Tensor ds_softmax_dropout_backward(at::Tensor& out_grad,
                                     ratio,
                                     at::cuda::getCurrentCUDAStream());
     else
-        launch_softmax_dropout_grad(
-            (__nv_bfloat16*)out_grad_c.data_ptr(),
-            (__nv_bfloat16*)attn_scores_c.data_ptr(),
-            (bidirectional ? nullptr : (__nv_bfloat16*)attn_mask.data_ptr()),
-            bsz,
-            heads,
-            seq_len,
-            soft_len,
-            ratio,
-            at::cuda::getCurrentCUDAStream());
+        launch_softmax_dropout_grad((__nv_bfloat16*)out_grad_c.data_ptr(),
+                                    (__nv_bfloat16*)attn_scores_c.data_ptr(),
+                                    bsz,
+                                    heads,
+                                    seq_len,
+                                    soft_len,
+                                    ratio,
+                                    at::cuda::getCurrentCUDAStream());
 
     return out_grad;
 }

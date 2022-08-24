@@ -317,7 +317,6 @@ void launch_softmax_dropout(T* out,
 template <typename T>
 void launch_softmax_dropout_grad(T* vals,
                                  const T* input,
-                                 const T* mask,
                                  int bsz,
                                  int heads,
                                  int seq_length,
