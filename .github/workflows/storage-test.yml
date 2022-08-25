@@ -5,9 +5,7 @@ on:
     branches:
       - 'master'
       - 'staging**'
-  pull_request:
-    branches:
-      '**'
+  pull_request_target
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
