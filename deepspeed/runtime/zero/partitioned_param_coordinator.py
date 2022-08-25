@@ -43,15 +43,42 @@ class ZeRoTraceMode(Enum):
     INVALID = 3
 
 
+def get_direction_name(forward):
+    return 'forward' if forward else 'backward'
+
+
+def make_fetch_event_name(forward, fetch, submit):
+    pass_str = get_direction_name(forward)
+    fetch_str = 'fetch' if fetch else 'prefetch'
+    submit_str = 'submit' if submit else 'wait'
+    return f'{pass_str}_{fetch_str}_{submit_str}'
+
+
+def make_gather_event_name(forward):
+    pass_str = get_direction_name(forward)
+    return f'{pass_str}_all_gather'
+
+
 class PartitionedParameterCoordinator:
-    FORWARD_FETCH_SUBMIT = 'forward_fetch_submit'
-    FORWARD_FETCH_WAIT = 'forward_fetch_wait'
-    FORWARD_PREFETCH_SUBMIT = 'forward_prefetch_submit'
-    BACKWARD_FETCH_SUBMIT = 'backward_fetch_submit'
-    BACKWARD_FETCH_WAIT = 'backward_fetch_wait'
-    BACKWARD_PREFETCH_SUBMIT = 'backward_prefetch_wait'
-    FORWARD_ALL_GATHER = 'forward_all_gather'
-    BACKWARD_ALL_GATHER = 'backward_all_gather'
+    FORWARD_FETCH_SUBMIT = make_fetch_event_name(True,
+                                                 True,
+                                                 True)  # 'forward_fetch_submit'
+    FORWARD_FETCH_WAIT = make_fetch_event_name(True, True, False)  # 'forward_fetch_wait'
+    FORWARD_PREFETCH_SUBMIT = make_fetch_event_name(True,
+                                                    False,
+                                                    True)  # 'forward_prefetch_submit'
+    FORWARD_ALL_GATHER = make_gather_event_name(True)  # 'forward_all_gather'
+
+    BACKWARD_FETCH_SUBMIT = make_fetch_event_name(False,
+                                                  True,
+                                                  True)  # 'backward_fetch_submit'
+    BACKWARD_FETCH_WAIT = make_fetch_event_name(False,
+                                                True,
+                                                False)  # 'backward_fetch_wait'
+    BACKWARD_PREFETCH_SUBMIT = make_fetch_event_name(False,
+                                                     False,
+                                                     True)  # 'backward_prefetch_submit'
+    BACKWARD_ALL_GATHER = make_gather_event_name(False)  # 'backward_all_gather'
     """Handles partitioning and gathering of parameters."""
     class __InflightParamRegistry(UserDict):
         """registry for parameters in flight"""
