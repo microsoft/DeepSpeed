@@ -1376,7 +1376,6 @@ class DeepSpeedEngine(Module):
             # Overlap and contiguous grads are meaningless in stage 1 and are ignored
             if zero_stage == ZeroStageEnum.optimizer_states:
                 overlap_comm = False
-                contiguous_gradients = False
                 round_robin_gradients = False
 
             if isinstance(self.module, PipelineModule):
@@ -2925,11 +2924,12 @@ class DeepSpeedEngine(Module):
             self.optimizer.checkpoint_event_epilogue()
 
         # Save latest checkpoint tag
-        dist.barrier()
         self.checkpoint_engine.commit(tag)
         if save_latest and self.global_rank == 0:
             with open(os.path.join(save_dir, 'latest'), 'w') as fd:
                 fd.write(tag)
+
+        dist.barrier()
 
         return True
 
