@@ -59,7 +59,6 @@ extras_require = {
     'dev': fetch_requirements('requirements/requirements-dev.txt'),
     'autotuning': fetch_requirements('requirements/requirements-autotuning.txt'),
     'autotuning_ml': fetch_requirements('requirements/requirements-autotuning-ml.txt'),
-    'sparse_attn': fetch_requirements('requirements/requirements-sparse_attn.txt'),
     'inf': fetch_requirements('requirements/requirements-inf.txt')
 }
 
@@ -228,11 +227,12 @@ nccl_version = "0.0"
 hip_version = "0.0"
 if torch_available and torch.version.cuda is not None:
     cuda_version = ".".join(torch.version.cuda.split('.')[:2])
-    if isinstance(torch.cuda.nccl.version(), int):
-        # This will break if minor version > 9
-        nccl_version = ".".join(str(torch.cuda.nccl.version())[:2])
-    else:
-        nccl_version = ".".join(map(str, torch.cuda.nccl.version()[:2]))
+    if sys.platform != "win32":
+        if isinstance(torch.cuda.nccl.version(), int):
+            # This will break if minor version > 9
+            nccl_version = ".".join(str(torch.cuda.nccl.version())[:2])
+        else:
+            nccl_version = ".".join(map(str, torch.cuda.nccl.version()[:2]))
     if hasattr(torch.cuda, 'is_bf16_supported') and torch.cuda.is_available():
         bf16_support = torch.cuda.is_bf16_supported()
 if torch_available and hasattr(torch.version, 'hip') and torch.version.hip is not None:
