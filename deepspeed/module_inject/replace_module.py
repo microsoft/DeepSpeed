@@ -870,6 +870,7 @@ def replace_transformer_layer(orig_layer_impl,
                     quantizer,
                 )
         else:
+            import gc
             num_checkpoints = len(ckpt_list) // ckpt_mp_size
             tp_split_size = (world_size / ckpt_mp_size)
             sd_offset = int(rank / tp_split_size)
@@ -896,6 +897,8 @@ def replace_transformer_layer(orig_layer_impl,
                                            ckpt_type,
                                            quantizer,
                                            int(rank % tp_split_size))
+                sds = [None for _ in sds]
+                gc.collect()
 
             if "non_tp" in checkpoint:
                 pbar = tqdm.tqdm(
@@ -914,6 +917,8 @@ def replace_transformer_layer(orig_layer_impl,
                                                ckpt_type,
                                                quantizer,
                                                int(rank % tp_split_size))
+                    sds = [None for _ in sds]
+                    gc.collect()
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
 
     if save_mp_checkpoint_path is not None:

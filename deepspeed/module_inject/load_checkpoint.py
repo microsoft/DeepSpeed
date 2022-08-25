@@ -3,6 +3,7 @@ import deepspeed.ops.transformer as transformer_inference
 from ..runtime.zero import GatheredParameters
 from .layers import LinearLayer, Normalize, EmbeddingLayer
 import torch
+import gc
 
 
 def load_model_with_checkpoint(r_module,
@@ -33,6 +34,8 @@ def load_model_with_checkpoint(r_module,
                                                 sd[0][prefix + 'weight'])
             if prefix + 'bias' in sd[0].keys():
                 module.bias = mp_replace.copy(module.bias.data, sd[0][prefix + 'bias'])
+        args = None
+        gc.collect()
 
     def load_transformer_layer(module, prefix):
         if ckpt_type == "tp":
@@ -41,10 +44,10 @@ def load_model_with_checkpoint(r_module,
                 for n, p in module.named_parameters():
                     if prefix + n in sd[0] and len(n.split('.')) == 1:
                         if type(sd[0][prefix + n]) is list:
-                            tmp_data, scale = sd[0][prefix + n]
+                            tmp_data, scale = sd[0][prefix + n].to(torch.cuda.current_device())
                             scale = scale.to(torch.cuda.current_device())
                         else:
-                            tmp_data = sd[0][prefix + n]
+                            tmp_data = sd[0][prefix + n].to(torch.cuda.current_device())
                             scale = None
                         src_shape = tmp_data.shape
                         dst_shape = p.shape
@@ -83,13 +86,16 @@ def load_model_with_checkpoint(r_module,
                                         '''Merging of the checkpoints are not supported when using INT8 checkpoint! \
                                            Please use a as many GPUs as TP-size for the checkpoint'''
                                     all_data = [
-                                        sd[j][prefix + n] for j in range(len(sd))
+                                        sd[j][prefix +
+                                              n] if type(sd[j][prefix + n]) is list else
+                                        sd[j][prefix + n].to(torch.cuda.current_device())
+                                        for j in range(len(sd))
                                     ]
-                                    weight_partition = torch.cat(
-                                        [(ad[0] if type(ad) is list else ad).to(
-                                            torch.cuda.current_device())
-                                         for ad in all_data],
-                                        dim=dim)
+                                    weight_partition = torch.cat([
+                                        ad[0].to(torch.cuda.current_device())
+                                        if type(ad) is list else ad for ad in all_data
+                                    ],
+                                                                 dim=dim)
                                     if tmp_data.dtype == torch.int8:
                                         scale = torch.cat([
                                             ad[1].to(torch.cuda.current_device())
@@ -230,3 +236,4 @@ def load_model_with_checkpoint(r_module,
     for sd_ in sd:
         del sd_
     sd = None
+    gc.collect()
