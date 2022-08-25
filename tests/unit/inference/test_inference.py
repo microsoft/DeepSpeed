@@ -276,16 +276,7 @@ class TestModelTask(DistributedTest):
 
 
 @pytest.mark.inference
-@pytest.mark.parametrize("model_w_task",
-                         [("gpt2",
-                           "text-generation"),
-                          ("roberta-large",
-                           "fill-mask"),
-                          ("bert-large-cased",
-                           "fill-mask")],
-                         ids=["gpt2",
-                              "roberta-large",
-                              "bert-large-cased"])
+@pytest.mark.parametrize("model_w_task", [("gpt2", "text-generation")], ids=["gpt2"])
 class TestMPSize(DistributedTest):
     world_size = 2
 
