@@ -939,8 +939,8 @@ def replace_transformer_layer(orig_layer_impl,
         if dist.is_initialized():
             dist.barrier()
         transformer_name = get_transformer_name(replaced_module)
-        non_tp_ckpt_name = f'{ckpt_name}-non-tp.pt'
-        ckpt_files = [non_tp_ckpt_name]  #* world_size
+        non_tp_ckpt_name = f'non-tp.pt'
+        ckpt_files = [non_tp_ckpt_name]
         os.makedirs(save_mp_checkpoint_path, exist_ok=True)
         if not dist.is_initialized() or dist.get_rank() == 0:
             print("Saving tp-sharded checkpoints")
@@ -952,7 +952,6 @@ def replace_transformer_layer(orig_layer_impl,
                     if transformer_name not in k
                 }),
                 f'{save_mp_checkpoint_path}/{non_tp_ckpt_name}')
-            #ckpt_files += [f'{ckpt_name}-tp_{r:0>2d}.pt' for r in range(world_size)]
             config = json.dumps({
                 'type': ckpt_name,
                 'base_dir': f'{save_mp_checkpoint_path}',
@@ -960,13 +959,13 @@ def replace_transformer_layer(orig_layer_impl,
                     "non_tp":
                     ckpt_files,
                     "tp": [
-                        f'{ckpt_name}-tp_{r:0>2d}_{m:0>2d}.pt'
-                        for m in range(num_partitions) for r in range(world_size)
+                        f'tp_{r:0>2d}_{m:0>2d}.pt' for m in range(num_partitions)
+                        for r in range(world_size)
                     ]
                 },
                 'version': 1.0,
                 'parallelization': 'tp',
-                'mp_size': world_size
+                'tp_size': world_size
             })
             with open(f"{save_mp_checkpoint_path}/{ckpt_name}_ds-inference_config.json",
                       "w") as cfg:
