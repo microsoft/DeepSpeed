@@ -257,7 +257,9 @@ def replace_transformer_layer(orig_layer_impl,
 
         #expert_mp_replace = ReplaceWithTensorSlicing(mp_group=expert_mp_group)
 
-        if inference:
+        # TODO: here is a workaround, to use Tranining kernels for BERT inference, @Reza will fix inference kernels later.
+        #if inference:
+        if inference and not isinstance(policy, HFBertLayerPolicy):
             if moe:
                 ep_world_size = dist.get_world_size()
                 local_ep_size = 1 if num_experts < ep_world_size else num_experts // ep_world_size
