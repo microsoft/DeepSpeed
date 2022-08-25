@@ -94,7 +94,7 @@ public:
         _curr_offset += offset_inc;
         return std::pair<uint64_t, uint64_t>(_seed, offset);
     }
-    inline void extract_rng_seed_offset(c10::optional<at::Generator> gen_)
+    /*inline void extract_rng_seed_offset(c10::optional<at::Generator> gen_)
     {
         if (_rand_gen_extracted) return;
         auto _gen = at::get_generator_or_default<at::CUDAGeneratorImpl>(
@@ -105,7 +105,7 @@ public:
         _seed = std::get<0>(rng_engine_inputs);
         _curr_offset = std::get<1>(rng_engine_inputs);
         _rand_gen_extracted = true;
-    }
+    }*/
     std::pair<uint64_t, uint64_t> RestoreOffset()
     {
         uint64_t offset = _stack.top();
