@@ -895,7 +895,7 @@ void launch_softmax_dropout(T* out,
                             float ratio,
                             cudaStream_t stream)
 {
-    int threads = 512;
+    int threads = 256;
     int stride = 4;
     int warp_num = threads / WARP_SIZE;
     int pow_soft = (int)pow(2.0, ceil(log2((float)(softmax_length / stride))));
@@ -1245,7 +1245,7 @@ void launch_softmax_dropout_grad(T* vals,
                                  cudaStream_t stream)
 {
     dim3 grid_dim(bsz, (heads * seq_length) / 8);
-    dim3 block_dim(512);
+    dim3 block_dim(256);
 
     auto seed = Context::Instance().RestoreOffset();
     dropout_softmax_grad_kernel<<<grid_dim, block_dim, 0, stream>>>(
