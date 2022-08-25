@@ -112,9 +112,10 @@ class ReplaceWithTensorSlicing:
             if src_shape[0] == dst_shape[0]:
                 dst.data.copy_(src)
             else:
-                bias_split = torch.split(src.data,
-                                         dst_shape[-1])[self.gpu_index].to(
-                                             accel_runtime.current_device()).contiguous()
+                bias_split = torch.split(
+                    src.data,
+                    dst_shape[-1])[self.gpu_index].to(
+                        accel_runtime.current_device()).contiguous()
                 dst.data.copy_(bias_split)
 
         return torch.nn.parameter.Parameter(dst, requires_grad=False)
@@ -520,7 +521,8 @@ def replace_transformer_layer(orig_layer_impl,
                         accel_runtime.current_device())
                     new_module.res_mlp.output_b.data = _res_4hh_b.to(
                         accel_runtime.current_device())
-                    new_module.res_coef.data = _res_coef.to( accel_runtime.current_device())
+                    new_module.res_coef.data = _res_coef.to(
+                        accel_runtime.current_device())
             else:
 
                 if _4hh_w.numel() == 0 or _4hh_w.is_meta:

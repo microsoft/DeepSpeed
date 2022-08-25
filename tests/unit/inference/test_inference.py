@@ -14,7 +14,6 @@ from deepspeed.accelerator import runtime as accel_runtime
 from deepspeed.accelerator import literal_device
 
 
-
 # Fixture avoids problems with missing imports when pytest collects tests when
 # running non-inference tests
 @pytest.fixture(scope="module", autouse=True)

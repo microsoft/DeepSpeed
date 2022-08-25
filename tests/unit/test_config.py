@@ -1,5 +1,4 @@
 # A test on its own
-import torch
 import pytest
 import json
 import argparse

@@ -2,7 +2,6 @@
 Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
-import torch
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from deepspeed.accelerator import runtime as accel_runtime

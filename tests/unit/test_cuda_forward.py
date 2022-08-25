@@ -12,7 +12,6 @@ from deepspeed.accelerator import literal_device
 from deepspeed.accelerator import runtime as accel_runtime
 
 
-
 def check_equal(first, second, atol=1e-2, verbose=False):
     if verbose:
         print()

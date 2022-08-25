@@ -6,7 +6,6 @@ from tests.unit.common import DistributedTest, get_master_port
 from tests.unit.simple_model import SimpleModel
 from deepspeed.accelerator import literal_device
 
-
 import pytest
 
 

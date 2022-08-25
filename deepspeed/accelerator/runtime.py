@@ -15,7 +15,6 @@ def simple_accel_runtime_api(method):
                 or method.__name__ == 'current_stream'
                 or method.__name__ == 'memory_allocated'
                 or method.__name__ == 'max_memory_allocated'
-                or method.__name__ == 'max_memory_cached'
                 or method.__name__ == 'reset_max_memory_allocated'
                 or method.__name__ == 'reset_max_memory_cached'
                 or method.__name__ == 'empty_cache' or method.__name__ == 'stream'
@@ -69,11 +68,6 @@ def memory_allocated():
 
 @simple_accel_runtime_api
 def max_memory_allocated():
-    pass
-
-
-@simple_accel_runtime_api
-def max_memory_cached():
     pass
 
 

@@ -10,7 +10,6 @@ from deepspeed.compression.basic_layer import LinearLayer_Compress, ColumnParall
 from deepspeed.compression.helper import convert_conv1d_to_linear
 from deepspeed.accelerator import runtime as accel_runtime
 
-
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])
 pytestmark = pytest.mark.skipif(

@@ -12,6 +12,7 @@ from deepspeed import comm as dist
 from packaging.version import Version
 from deepspeed.git_version_info import torch_info
 from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator import literal_device
 
 _groups = None
 _grid = None

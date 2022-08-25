@@ -49,7 +49,8 @@ class LinearLayer(nn.Module):
 class Normalize(nn.Module):
     def __init__(self, dim, dtype=torch.float, eps=1e-5):
         super(Normalize, self).__init__()
-        self.norm = nn.LayerNorm(dim, eps=eps).to(dtype).to(accel_runtime.current_device())
+        self.norm = nn.LayerNorm(dim,
+                                 eps=eps).to(dtype).to(accel_runtime.current_device())
         self.weight = self.norm.weight
         self.bias = self.norm.bias
 

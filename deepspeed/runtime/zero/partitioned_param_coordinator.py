@@ -7,7 +7,6 @@ from dataclasses import dataclass
 import collections
 from collections import UserDict
 from typing import Deque, Set
-import deepspeed
 
 from deepspeed import comm as dist
 from deepspeed.utils.logging import logger

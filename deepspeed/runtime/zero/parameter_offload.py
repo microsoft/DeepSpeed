@@ -218,7 +218,7 @@ class DeepSpeedZeRoOffload(object):
         self._max_available_parameters_in_numel = int(max_live_parameters)
         self.__allgather_stream = accel_runtime.Stream(
         ) if overlap_comm else accel_runtime.default_stream()
-        
+
         self.forward_hooks = []
         self.backward_hooks = []
         self.setup_zero_stage3_hooks()

@@ -3,8 +3,6 @@ Copyright 2019 The Microsoft DeepSpeed Team
 """
 
 import time
-import torch
-import deepspeed
 from numpy import mean
 from deepspeed.utils.logging import log_dist
 from deepspeed.accelerator import runtime as accel_runtime

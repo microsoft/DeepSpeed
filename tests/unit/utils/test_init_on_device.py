@@ -6,7 +6,6 @@ from packaging import version as pkg_version
 from deepspeed.accelerator import literal_device
 
 
-
 @pytest.mark.parametrize('device', ['meta', literal_device(0)])
 def test_on_device(device):
     if device == "meta" and pkg_version.parse(

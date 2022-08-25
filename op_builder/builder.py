@@ -193,7 +193,7 @@ class OpBuilder(ABC):
 
         _is_xpu_pytorch = False
         try:
-            from intel_extension_for_pytorch.xpu.cpp_extension import DPCPPExtension
+            from intel_extension_for_pytorch.xpu.cpp_extension import DPCPPExtension  # noqa: F401
         except ImportError:
             pass
         else:
@@ -577,15 +577,7 @@ class SYCLOpBuilder(OpBuilder):
             raise Exception(f"Unknown SYCL sub type.")
 
     def xpu_cxx_args(self):
-        return [
-            '-O3',
-            '-g',
-            '-std=c++20',
-            '-w',
-            '-fPIC',
-            '-DMKL_ILP64',
-            '-DSYCL_KERNEL'
-        ]
+        return ['-O3', '-g', '-std=c++20', '-w', '-fPIC', '-DMKL_ILP64', '-DSYCL_KERNEL']
 
     def xpu_extra_ldflags(self):
         return ['-fPIC', '-Wl,-export-dynamic']

@@ -102,7 +102,7 @@ class InferenceEngine(Module):
         self.checkpoint_engine = TorchCheckpointEngine()
         self._init_quantization_setting(quantization_setting)
 
-        if  literal_device() == 'cuda' and enable_cuda_graph:
+        if literal_device() == 'cuda' and enable_cuda_graph:
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
                 "If you want to use cuda graph, please upgrade torch to at least v1.10"
 
@@ -526,7 +526,7 @@ class InferenceEngine(Module):
                         dist.broadcast(kwargs[k], 0)
             outputs = self.model_orig_fwd(*inputs, **kwargs)
         else:
-            if literal_device()=='cuda' and self.enable_cuda_graph:
+            if literal_device() == 'cuda' and self.enable_cuda_graph:
                 if self.cuda_graph_created:
                     outputs = self._graph_replay(*inputs, **kwargs)
                 else:

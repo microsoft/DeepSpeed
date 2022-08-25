@@ -93,7 +93,13 @@ def init_softmax_inputs(Z, H, M, N, scale, rho, block, dtype, dense_x=True, layo
     if layout is None:
         layout = make_layout(rho, (H, M // block, N // block))
     if dense_x:
-        x = torch.rand((Z, H, M, N), dtype=dtype, requires_grad=True, device=literal_device())
+        x = torch.rand((Z,
+                        H,
+                        M,
+                        N),
+                       dtype=dtype,
+                       requires_grad=True,
+                       device=literal_device())
     else:
         x = torch.rand((Z,
                         layout.sum(),
@@ -198,8 +204,20 @@ def init_matmul_inputs(Z, H, M, N, K, rho, mode, trans_a, trans_b, block, dtype,
     BS0 = N if trans_b else K
     BS1 = K if trans_b else N
     shape = {'sdd': (M, N), 'dsd': (AS0, AS1), 'dds': (BS0, BS1)}[mode]
-    x = torch.rand((Z, H, AS0, AS1), dtype=dtype, requires_grad=True, device=literal_device())
-    w = torch.rand((Z, H, BS0, BS1), dtype=dtype, requires_grad=True, device=literal_device())
+    x = torch.rand((Z,
+                    H,
+                    AS0,
+                    AS1),
+                   dtype=dtype,
+                   requires_grad=True,
+                   device=literal_device())
+    w = torch.rand((Z,
+                    H,
+                    BS0,
+                    BS1),
+                   dtype=dtype,
+                   requires_grad=True,
+                   device=literal_device())
     dy = torch.rand((Z, H, M, N), dtype=dtype, device=literal_device())
     if layout is None:
         layout = make_layout(rho, (H, shape[0] // block, shape[1] // block))

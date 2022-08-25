@@ -86,7 +86,8 @@ def run_all_gather(local_rank, args):
                 mat = torch.ones(world_size,
                                  M,
                                  dtype=getattr(torch,
-                                               args.dtype)).to(literal_device(local_rank))
+                                               args.dtype)).to(
+                                                   literal_device(local_rank))
                 sync_all()
                 input = ((mat.mul_(float(global_rank))).view(-1))
                 # Delete original mat to avoid OOM
@@ -94,7 +95,8 @@ def run_all_gather(local_rank, args):
                 accel_runtime.empty_cache()
                 output = torch.zeros(input.nelement() * world_size,
                                      dtype=getattr(torch,
-                                                   args.dtype)).to(literal_device(local_rank))
+                                                   args.dtype)).to(
+                                                       literal_device(local_rank))
             except RuntimeError as e:
                 if 'out of memory' in str(e):
                     if dist.get_rank() == 0:
@@ -131,7 +133,8 @@ def run_all_gather(local_rank, args):
             accel_runtime.empty_cache()
             output = torch.zeros(elements_per_gpu * world_size,
                                  dtype=getattr(torch,
-                                               args.dtype)).to(literal_device(local_rank))
+                                               args.dtype)).to(
+                                                   literal_device(local_rank))
         except RuntimeError as e:
             if 'out of memory' in str(e):
                 if dist.get_rank() == 0:

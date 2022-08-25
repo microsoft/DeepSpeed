@@ -65,7 +65,8 @@ def run_broadcast(local_rank, args):
                 mat = torch.ones(world_size,
                                  M,
                                  dtype=getattr(torch,
-                                               args.dtype)).to(literal_device(local_rank))
+                                               args.dtype)).to(
+                                                   literal_device(local_rank))
                 sync_all()
                 input = ((mat.mul_(float(global_rank))).view(-1))
             except RuntimeError as e:

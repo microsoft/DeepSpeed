@@ -16,8 +16,6 @@ from tests.unit.alexnet_model import AlexNetPipe, train_cifar
 from deepspeed.accelerator import runtime as accel_runtime
 from deepspeed.accelerator import literal_device
 
-
-
 PipeTopo = PipeDataParallelTopology
 
 TORCH_MAJOR = int(torch.__version__.split(".")[0])
