@@ -296,7 +296,7 @@ class TestModelTask(DistributedTest):
                               "gpt-neox",
                               "bloom"])
 class TestMPSize(DistributedTest):
-    world_size = 2
+    world_size = 4
 
     def test(
         self,
