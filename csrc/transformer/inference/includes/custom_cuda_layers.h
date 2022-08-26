@@ -175,22 +175,3 @@ void launch_bias_add_transform_0213(T* outputs,
                                     bool rotate_every_two,
                                     cudaStream_t stream,
                                     int trans_count);
-
-void run_gemm(void* A,
-              void* B,
-              void* C,
-              void* a,
-              void* aa,
-              int M,
-              int N,
-              int K,
-              int groups,
-              int groups1,
-              cudaStream_t stream);
-
-void launch_me(int8_t* output,
-               float* scales,
-               __half* input,
-               int intermediate_size,
-               int batch_size,
-               cudaStream_t stream);
