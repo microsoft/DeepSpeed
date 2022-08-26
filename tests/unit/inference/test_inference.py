@@ -52,7 +52,7 @@ _gpt_models = [
     "distilgpt2",
     "Norod78/hebrew-bad_wiki-gpt_neo-tiny",
     "EleutherAI/gpt-j-6B",
-    "bigscience/bloom-560m",
+    "bigscience/bloom-350m",
 ]
 _opt_models = [
     "facebook/opt-125m",        # 125m, 1.7B, ..., 175B variants have the same model architecture.
@@ -282,8 +282,7 @@ class TestModelTask(DistributedTest):
         assert assert_fn(bs_output, ds_output)
 
 
-@pytest.mark.inference
-@pytest.mark.sequential
+@pytest.mark.seq_inference
 @pytest.mark.parametrize("model_w_task",
                          [("gpt2",
                            "text-generation"),
