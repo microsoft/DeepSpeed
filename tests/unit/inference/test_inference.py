@@ -122,6 +122,8 @@ def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
         msg = "CUDA Graph is only available in torch versions >= 1.10"
     elif ("gpt-j-6B" in model) and (dtype == torch.float):
         msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
+    elif ("gpt-neox-20B" in model) and (dtype == torch.float):
+        msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
     else:
         msg = ""
     return msg
