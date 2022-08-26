@@ -278,6 +278,7 @@ class TestModelTask(DistributedTest):
 
 
 @pytest.mark.inference
+@pytest.mark.sequential
 @pytest.mark.parametrize("model_w_task",
                          [("gpt2",
                            "text-generation"),
