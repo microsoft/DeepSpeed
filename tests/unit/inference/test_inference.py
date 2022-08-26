@@ -52,7 +52,7 @@ _gpt_models = [
     "distilgpt2",
     "Norod78/hebrew-bad_wiki-gpt_neo-tiny",
     "EleutherAI/gpt-j-6B",
-    "bigscience/bloom-350m",
+    "bigscience/bloom-560m",
 ]
 _opt_models = [
     "facebook/opt-125m",        # 125m, 1.7B, ..., 175B variants have the same model architecture.
@@ -272,13 +272,24 @@ class TestModelTask(DistributedTest):
         # These performance tests are only measuring the time for a single
         # inference request, we just want to check that performance isn't terrible
         #assert ds_time <= (bs_time * 1.1)
+        print(bs_output)
+        print(ds_output)
         assert assert_fn(bs_output, ds_output)
 
 
 @pytest.mark.inference
-@pytest.mark.parametrize("model_w_task", [("gpt2", "text-generation")], ids=["gpt2"])
+@pytest.mark.parametrize("model_w_task",
+                         [("gpt2",
+                           "text-generation"),
+                          ("EleutherAI/gpt-neox-20b",
+                           "text-generation"),
+                          ("bigscience/bloom-3b",
+                           "text-generation")],
+                         ids=["gpt2",
+                              "gpt-neox",
+                              "bloom"])
 class TestMPSize(DistributedTest):
-    world_size = 2
+    world_size = 4
 
     def test(
         self,
@@ -296,7 +307,8 @@ class TestMPSize(DistributedTest):
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
-        pipe = pipeline(task, model=model, device=local_rank, framework="pt")
+        # We have to load these large models on CPU with pipeline
+        pipe = pipeline(task, model=model, device=-1, framework="pt")
         if dtype == torch.half:
             pipe.model.half()
 
