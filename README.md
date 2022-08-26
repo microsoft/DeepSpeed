@@ -84,7 +84,7 @@ DeepSpeed has been used to train many different large-scale models, below is a l
   * [YaLM (100B)](https://github.com/yandex/YaLM-100B)
   * [GPT-NeoX (20B)](https://github.com/EleutherAI/gpt-neox)
   * [AlexaTM (20B)](https://www.amazon.science/blog/20b-parameter-alexa-model-sets-new-marks-in-few-shot-learning)
-  * [Turing NLG (17B](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft/)
+  * [Turing NLG (17B)](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft/)
   * [METRO-LM (5.4B)](https://arxiv.org/pdf/2204.06644.pdf)
 
 DeepSpeed has been integrated with several different popular open-source DL frameworks such as:
@@ -220,5 +220,6 @@ Conduct](https://opensource.microsoft.com/codeofconduct/). For more information 
     * [ZeRO & Fastest BERT: Increasing the scale and speed of deep learning training in DeepSpeed](https://note.microsoft.com/MSR-Webinar-DeepSpeed-Registration-On-Demand.html).
 3. [DeepSpeed on AzureML](https://youtu.be/yBVXR8G8Bg8)
 4. Community Tutorials
-    * [DeepSpeed: All the tricks to scale to gigantic models](https://www.youtube.com/watch?v=pDGI668pNg0)
-    * [Turing-NLG, DeepSpeed and the ZeRO optimizer](https://www.youtube.com/watch?v=tC01FRB0M7w)
+    * [DeepSpeed: All the tricks to scale to gigantic models (Mark Saroufim)](https://www.youtube.com/watch?v=pDGI668pNg0)
+    * [Turing-NLG, DeepSpeed and the ZeRO optimizer (Yannic Kilcher)](https://www.youtube.com/watch?v=tC01FRB0M7w)
+    * [Ultimate Guide To Scaling ML Models (The AI Epiphany)](https://www.youtube.com/watch?v=hc0u4avAkuM)

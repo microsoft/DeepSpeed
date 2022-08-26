@@ -4,7 +4,7 @@
 #define HALF_PRECISION_AVAILABLE = 1
 #include <hip/hip_cooperative_groups.h>
 #else
-#if __CUDA_ARCH__ >= 700
+#if __CUDA_ARCH__ >= 530
 #define HALF_PRECISION_AVAILABLE = 1
 #endif
 #include <cooperative_groups.h>
@@ -50,6 +50,15 @@ void launch_bias_gelu(T* input,
                       int intermediate_size,
                       int batch_size,
                       cudaStream_t stream);
+
+// Fused bias add with relu activation
+template <typename T>
+void launch_bias_relu(T* input,
+                      const T* bias,
+                      int intermediate_size,
+                      int batch_size,
+                      cudaStream_t stream);
+
 template <typename T>
 void launch_bias_add(T* input, const T* bias, int hidden_size, int batch_size, cudaStream_t stream);
 
