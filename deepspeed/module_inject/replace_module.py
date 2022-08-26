@@ -953,8 +953,10 @@ def replace_transformer_layer(orig_layer_impl,
                 }),
                 f'{save_mp_checkpoint_path}/{non_tp_ckpt_name}')
             config = json.dumps({
-                'type': ckpt_name,
-                'base_dir': f'{save_mp_checkpoint_path}',
+                'type':
+                ckpt_name,
+                'base_dir':
+                f'{save_mp_checkpoint_path}',
                 'checkpoints': {
                     "non_tp":
                     ckpt_files,
@@ -963,12 +965,16 @@ def replace_transformer_layer(orig_layer_impl,
                         for r in range(world_size)
                     ]
                 },
-                'version': 1.0,
-                'parallelization': 'tp',
-                'tp_size': world_size
+                'version':
+                1.0,
+                'parallelization':
+                'tp',
+                'mp_size':
+                world_size,
+                'dtype':
+                'int8' if quantize else ('float16' if fp16 else 'float32')
             })
-            with open(f"{save_mp_checkpoint_path}/{ckpt_name}_ds-inference_config.json",
-                      "w") as cfg:
+            with open(f"{save_mp_checkpoint_path}/ds-inference_config.json", "w") as cfg:
                 cfg.write(config)
 
         rep_sd = replaced_module.state_dict()
@@ -986,7 +992,7 @@ def replace_transformer_layer(orig_layer_impl,
                     for k in keys[m * partition_size:(m + 1) * partition_size]
                     if transformer_name in k
                 }),
-                f'{save_mp_checkpoint_path}/{ckpt_name}-tp_{rank:0>2d}_{m:0>2d}.pt')
+                f'{save_mp_checkpoint_path}/tp_{rank:0>2d}_{m:0>2d}.pt')
 
     return replaced_module
 

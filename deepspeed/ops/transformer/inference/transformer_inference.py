@@ -230,8 +230,6 @@ class DeepSpeedSelfAttentionFunction(Function):
                                                     -1)
             if layer_past is not None:
                 past_key, past_value = layer_past
-                #if config.layer_id == 0:
-                #    import pdb;pdb.set_trace()
                 # concatenate along seq_length dimension -> [batch_size, qk_length, num_heads, head_dim]
                 key_layer = torch.cat((past_key.type_as(key_layer), key_layer), dim=-1)
                 value_layer = torch.cat((past_value.type_as(value_layer),

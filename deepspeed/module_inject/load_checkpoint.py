@@ -44,7 +44,8 @@ def load_model_with_checkpoint(r_module,
                 for n, p in module.named_parameters():
                     if prefix + n in sd[0] and len(n.split('.')) == 1:
                         if type(sd[0][prefix + n]) is list:
-                            tmp_data, scale = sd[0][prefix + n].to(torch.cuda.current_device())
+                            tmp_data, scale = sd[0][prefix + n]
+                            tmp_data = tmp_data.to(torch.cuda.current_device())
                             scale = scale.to(torch.cuda.current_device())
                         else:
                             tmp_data = sd[0][prefix + n].to(torch.cuda.current_device())

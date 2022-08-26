@@ -100,7 +100,9 @@ class InferenceEngine(Module):
         self.cuda_graph_created = False
         self.checkpoint_engine = TorchCheckpointEngine()
         self._init_quantization_setting(quantization_setting)
-        self._add_ds_inference_flag()
+
+        # This is a hack to remove the prepare_mask function on HF side for BLOOM architecture
+        self.remove_mask_prepare_for_bloom()
 
         if enable_cuda_graph:
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
@@ -169,9 +171,10 @@ class InferenceEngine(Module):
         self.config = getattr(self.module, 'config', None) if config is None else config
         self.generate = getattr(self.module, 'generate', None)
 
-    def _add_ds_inference_flag(self):
+    def remove_mask_prepare_for_bloom(self):
         if hasattr(self.module, 'transformer'):
-            setattr(self.module.transformer, 'ds_inference', True)
+            if hasattr(self.module.transformer, '_prepare_attn_mask'):
+                self.module.transformer._prepare_attn_mask = lambda attention_mask, *args, **kwargs: attention_mask
 
     def _create_model_parallel_group(self):
         # Call the init process
