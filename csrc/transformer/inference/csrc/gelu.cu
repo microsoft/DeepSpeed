@@ -327,15 +327,15 @@ __global__ void gptj_residual_add(float* input,
 
         if (attnbias) {
             float4 attn_bias = attnbias_cast[offset % intermediate_size];
-            data.x += attn_bias.x;
-            data.y += attn_bias.y;
-            data.z += attn_bias.z;
-            data.w += attn_bias.w;
+            data.x += attn_bias.x * mp_scale;
+            data.y += attn_bias.y * mp_scale;
+            data.z += attn_bias.z * mp_scale;
+            data.w += attn_bias.w * mp_scale;
         }
-        data.x = data.x * mp_scale + (out.x + res_vec.x + bias_data.x);
-        data.y = data.y * mp_scale + (out.y + res_vec.y + bias_data.y);
-        data.z = data.z * mp_scale + (out.z + res_vec.z + bias_data.z);
-        data.w = data.w * mp_scale + (out.w + res_vec.w + bias_data.w);
+        data.x = out.x + res_vec.x + (data.x + bias_data.x) * mp_scale;
+        data.y = out.y + res_vec.y + (data.y + bias_data.y) * mp_scale;
+        data.z = out.z + res_vec.z + (data.z + bias_data.z) * mp_scale;
+        data.w = out.w + res_vec.w + (data.w + bias_data.w) * mp_scale;
 
         output_cast[offset] = data;
     }
