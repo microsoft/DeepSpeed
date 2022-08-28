@@ -45,7 +45,7 @@ def load_model_with_checkpoint(r_module,
                     if prefix + n in sd[0] and len(n.split('.')) == 1:
                         if type(sd[0][prefix + n]) is list:
                             tmp_data, scale = sd[0][prefix + n]
-                            tmp_data = tmp_data.to(torch.cuda.current_device())
+                            tmp_data = tmp_data
                             scale = scale.to(torch.cuda.current_device())
                         else:
                             tmp_data = sd[0][prefix + n].to(torch.cuda.current_device())
@@ -62,7 +62,8 @@ def load_model_with_checkpoint(r_module,
                                         transpose(tmp_data) if weight_quantizer.
                                         q_int8 else tmp_data)
                                 else:
-                                    p = tmp_data
+                                    p = torch.nn.parameter.Parameter(tmp_data,
+                                                                     requires_grad=False)
                                     p.scale = scale
                                 setattr(module, n, p)
                             else:
