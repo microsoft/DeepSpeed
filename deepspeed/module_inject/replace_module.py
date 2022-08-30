@@ -848,7 +848,8 @@ def replace_transformer_layer(orig_layer_impl,
         checkpoint = checkpoint_dict['checkpoints']
         ckpt_list = checkpoint["tp"] if type(checkpoint) is dict else checkpoint
         ckpt_type = checkpoint_dict.get('parallelization', 'pp')
-        ckpt_mp_size = checkpoint_dict.get('mp_size', len(ckpt_list))
+        ckpt_mp_size = checkpoint_dict.get('tp_size', len(ckpt_list))
+        ckpt_mp_size = checkpoint_dict.get('mp_size', ckpt_mp_size)
         base_dir1 = checkpoint_dict.get('base_dir', base_dir)
 
         if ckpt_type == 'pp' and type(checkpoint) is list:
@@ -969,7 +970,7 @@ def replace_transformer_layer(orig_layer_impl,
                 1.0,
                 'parallelization':
                 'tp',
-                'mp_size':
+                'tp_size':
                 world_size,
                 'dtype':
                 'int8' if quantize else ('float16' if fp16 else 'float32')
