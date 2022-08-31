@@ -212,12 +212,37 @@ __device__ __forceinline__ void load_global<4, LoadPolicy::CacheStreaming>(void*
 }
 
 /////////// Load Shared ///////////
+namespace internal {
+
+#ifdef PTX_AVAILABLE
+__device__ __forceinline__ unsigned convert_to_shared(const void* ptr)
+{
+#if __CUDACC_VER_MAJOR__ >= 11
+    // In CUDA 11 we have a builtin intrinsic
+    return __cvta_generic_to_shared(ptr);
+#else
+    int ret_val;
+    asm volatile(
+        "{\n"
+        "\t.reg .u64 p1;\n"
+        "\tcvta.to.shared.u64 p1, %1\n"
+        "\tcta.u32.u64 %0, p1;\n"
+        "}\n"
+        : "=r"(ret_val)
+        : "l"(ptr));
+    return ret_val;
+#endif
+}
+#endif
+
+}  // namespace internal
+
 template <>
 __device__ __forceinline__ void load_shared<16>(void* dst, const void* src)
 {
     uint4* data = reinterpret_cast<uint4*>(dst);
 #ifdef PTX_AVAILABLE
-    unsigned src_shr = __cvta_generic_to_shared(src);
+    unsigned src_shr = internal::convert_to_shared(src);
 
     asm volatile("ld.shared.v4.u32 {%0, %1, %2, %3}, [%4];\n"
                  : "=r"(data[0].x), "=r"(data[0].y), "=r"(data[0].z), "=r"(data[0].w)
@@ -233,7 +258,7 @@ __device__ __forceinline__ void load_shared<8>(void* dst, const void* src)
 {
     uint2* data = reinterpret_cast<uint2*>(dst);
 #ifdef PTX_AVAILABLE
-    unsigned src_shr = __cvta_generic_to_shared(src);
+    unsigned src_shr = internal::convert_to_shared(src);
 
     asm volatile("ld.shared.v2.u32 {%0, %1}, [%2];\n"
                  : "=r"(data[0].x), "=r"(data[0].y)
@@ -249,7 +274,7 @@ __device__ __forceinline__ void load_shared<4>(void* dst, const void* src)
 {
     int32_t* data = reinterpret_cast<int32_t*>(dst);
 #ifdef PTX_AVAILABLE
-    unsigned src_shr = __cvta_generic_to_shared(src);
+    unsigned src_shr = internal::convert_to_shared(src);
 
     asm volatile("ld.shared.u32 {%0}, [%1];\n" : "=r"(*data) : "r"(src_shr));
 #else
@@ -396,7 +421,7 @@ __device__ __forceinline__ void store_shared<16>(void* dst, const void* src)
 {
     const uint4* data = reinterpret_cast<const uint4*>(src);
 #ifdef PTX_AVAILABLE
-    unsigned dst_int = __cvta_generic_to_shared(dst);
+    unsigned dst_int = internal::convert_to_shared(dst);
 
     asm volatile("st.shared.v4.u32 [%0], {%1, %2, %3, %4};\n"
                  :
@@ -412,7 +437,7 @@ __device__ __forceinline__ void store_shared<8>(void* dst, const void* src)
 {
     const uint2* data = reinterpret_cast<const uint2*>(src);
 #ifdef PTX_AVAILABLE
-    unsigned dst_int = __cvta_generic_to_shared(dst);
+    unsigned dst_int = internal::convert_to_shared(dst);
 
     asm volatile("st.shared.v2.u32 [%0], {%1, %2};\n"
                  :
@@ -428,7 +453,7 @@ __device__ __forceinline__ void store_shared<4>(void* dst, const void* src)
 {
     const int32_t* data = reinterpret_cast<const int32_t*>(src);
 #ifdef PTX_AVAILABLE
-    unsigned dst_int = __cvta_generic_to_shared(dst);
+    unsigned dst_int = internal::convert_to_shared(dst);
 
     asm volatile("st.shared.u32 [%0], %1;\n" : : "r"(dst_int), "r"(*data));
 #else
@@ -444,7 +469,7 @@ template <int AccessSize>
 __device__ __forceinline__ void memcpy_async(void* shr, const void* gbl)
 {
     static_assert((AccessSize == 4 || AccessSize == 8 || AccessSize == 16));
-    unsigned shr_int = __cvta_generic_to_shared(shr);
+    unsigned shr_int = internal::convert_to_shared(shr);
 
     asm volatile("cp.async.ca.shared.global [%0], [%1], %2;\n"
                  :
@@ -455,7 +480,7 @@ template <int AccessSize>
 __device__ __forceinline__ void memcpy_async_nop(void* shr, const void* gbl, bool predicate)
 {
     static_assert((AccessSize == 4 || AccessSize == 8 || AccessSize == 16));
-    unsigned shr_int = __cvta_generic_to_shared(shr);
+    unsigned shr_int = internal::convert_to_shared(shr);
 
     asm volatile(
         "{\n"
@@ -471,7 +496,7 @@ template <int AccessSize>
 __device__ __forceinline__ void memcpy_async_zero(void* shr, const void* gbl, bool predicate)
 {
     static_assert((AccessSize == 4 || AccessSize == 8 || AccessSize == 16));
-    unsigned shr_int = __cvta_generic_to_shared(shr);
+    unsigned shr_int = internal::convert_to_shared(shr);
     int bytes_to_copy = (predicate ? AccessSize : 0);
 
     asm volatile("cp.async.ca.shared.global [%0], [%1], %2, %3;\n"
@@ -486,7 +511,7 @@ __device__ __forceinline__ void memcpy_async_zero_nop(void* shr,
                                                       bool nop_predicate)
 {
     static_assert((AccessSize == 4 || AccessSize == 8 || AccessSize == 16));
-    unsigned shr_int = __cvta_generic_to_shared(shr);
+    unsigned shr_int = internal::convert_to_shared(shr);
     int bytes_to_copy = (zero_predicate ? AccessSize : 0);
 
     asm volatile(
@@ -502,14 +527,14 @@ __device__ __forceinline__ void memcpy_async_zero_nop(void* shr,
 // Cache global variants. Separate interface to require deliberate use of them.
 __device__ __forceinline__ void memcpy_async_cg(void* shr, const void* gbl)
 {
-    unsigned shr_int = __cvta_generic_to_shared(shr);
+    unsigned shr_int = internal::convert_to_shared(shr);
 
     asm volatile("cp.async.cg.shared.global [%0], [%1], 16;\n" : : "r"(shr_int), "l"(gbl));
 }
 
 __device__ __forceinline__ void memcpy_async_nop_cg(void* shr, const void* gbl, bool predicate)
 {
-    unsigned shr_int = __cvta_generic_to_shared(shr);
+    unsigned shr_int = internal::convert_to_shared(shr);
 
     asm volatile(
         "{\n"
@@ -523,7 +548,7 @@ __device__ __forceinline__ void memcpy_async_nop_cg(void* shr, const void* gbl, 
 
 __device__ __forceinline__ void memcpy_async_zero_cg(void* shr, const void* gbl, bool predicate)
 {
-    unsigned shr_int = __cvta_generic_to_shared(shr);
+    unsigned shr_int = internal::convert_to_shared(shr);
     int bytes_to_copy = (predicate ? 16 : 0);
 
     asm volatile("cp.async.cg.shared.global [%0], [%1], 16, %2;\n"
@@ -536,7 +561,7 @@ __device__ __forceinline__ void memcpy_async_zero_nop_cg(void* shr,
                                                          bool zero_predicate,
                                                          bool nop_predicate)
 {
-    unsigned shr_int = __cvta_generic_to_shared(shr);
+    unsigned shr_int = internal::convert_to_shared(shr);
     int bytes_to_copy = (zero_predicate ? 16 : 0);
 
     asm volatile(
