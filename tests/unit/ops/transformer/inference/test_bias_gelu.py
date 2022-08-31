@@ -10,7 +10,6 @@ if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
 inference_module = None
 torch_minor_version = None
 
-
 def allclose(x, y):
     assert x.dtype == y.dtype
     rtol, atol = {torch.float32: (5e-4, 5e-5), torch.float16: (3e-2, 2e-3)}[x.dtype]
@@ -44,6 +43,7 @@ def run_bias_gelu_ds(activations, bias):
         return inference_module.bias_gelu_fp32(activations, bias)
 
 
+@pytest.mark.inference
 @pytest.mark.parametrize("batch", [1, 2])
 @pytest.mark.parametrize("sequence", [1, 128, 255])
 @pytest.mark.parametrize("channels", [512, 1232, 4096])
