@@ -221,7 +221,7 @@ __device__ __forceinline__ unsigned convert_to_shared(const void* ptr)
     // In CUDA 11 we have a builtin intrinsic
     return __cvta_generic_to_shared(ptr);
 #else
-    int ret_val;
+    unsigned ret_val;
     asm volatile(
         "{\n"
         "\t.reg .u64 p1;\n"
