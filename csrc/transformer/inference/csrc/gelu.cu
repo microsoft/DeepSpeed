@@ -29,9 +29,7 @@ __global__ void fused_bias_gelu(float* input,
         mem_access::load_global<granularity>(data_bias, bias + (offset % intermediate_size));
 
 #pragma unroll
-        for (int i = 0; i < vals_per_access; i++) {
-            data[i] = gelu(data[i] + data_bias[i]);
-        }
+        for (int i = 0; i < vals_per_access; i++) { data[i] = gelu(data[i] + data_bias[i]); }
 
         mem_access::store_global<granularity>(input + offset, data);
     }

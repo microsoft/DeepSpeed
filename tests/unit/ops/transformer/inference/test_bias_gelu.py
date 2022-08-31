@@ -9,20 +9,26 @@ if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
 
 inference_module = InferenceBuilder().load()
 
+
 def allclose(x, y):
     assert x.dtype == y.dtype
     rtol, atol = {torch.float32: (5e-4, 5e-5), torch.float16: (3e-2, 2e-3)}[x.dtype]
     return torch.allclose(x, y, rtol=rtol, atol=atol)
 
+
 def run_bias_gelu_reference(activations, bias):
     # Expected behavior is that of casting to float32 internally and using the tanh approximation
-    return torch.nn.functional.gelu(activations.to(torch.float32) + bias.to(torch.float32), approximate='tanh').to(activations.dtype)
+    return torch.nn.functional.gelu(activations.to(torch.float32) +
+                                    bias.to(torch.float32),
+                                    approximate='tanh').to(activations.dtype)
+
 
 def run_bias_gelu_ds(activations, bias):
     if activations.dtype == torch.float16:
         return inference_module.bias_gelu_fp16(activations, bias)
     else:
         return inference_module.bias_gelu_fp32(activations, bias)
+
 
 @pytest.mark.parametrize("batch", [1, 2])
 @pytest.mark.parametrize("sequence", [1, 128, 255])
@@ -37,4 +43,4 @@ def test_bias_gelu(batch, sequence, channels, dtype):
 
     ds_out = run_bias_gelu_ds(activations_ds, bias_ds)
     ref_out = run_bias_gelu_reference(activations_ref, bias_ref)
-    assert(allclose(ds_out, ref_out))
+    assert (allclose(ds_out, ref_out))

@@ -15,15 +15,15 @@
 namespace mem_access {
 
 enum class LoadPolicy {
-    CacheAll, // Cache at all levels
-    CacheGlobal, // Cache at L2 only
-    CacheStreaming // Cache with evict first policy
+    CacheAll,       // Cache at all levels
+    CacheGlobal,    // Cache at L2 only
+    CacheStreaming  // Cache with evict first policy
 };
 
 enum class StorePolicy {
-    Writeback, // Cache in L1, write-back on eviction
-    CacheGlobal, // Bypass L1, write-back on eviction
-    CacheStreaming // Allocate cache line with evict first policy
+    Writeback,      // Cache in L1, write-back on eviction
+    CacheGlobal,    // Bypass L1, write-back on eviction
+    CacheStreaming  // Allocate cache line with evict first policy
 };
 
 template <int AccessSize, LoadPolicy policy = LoadPolicy::CacheAll>
@@ -52,7 +52,7 @@ __device__ __forceinline__ void memcpy_async_zero(void* shr, const void* gbl, bo
 
 __device__ __forceinline__ void memcpy_async_fence();
 
-template<int stages>
+template <int stages>
 __device__ __forceinline__ void memcpy_async_wait();
 
 template <int stages>
@@ -83,7 +83,7 @@ __device__ __forceinline__ uint32_t lane_id()
     asm volatile("mov.u32 %0, %%laneid;" : "=r"(lane_id));
     return lane_id;
 #else
-    return threadIdx.x & (warpSize - 1); // Portable
+    return threadIdx.x & (warpSize - 1);  // Portable
 #endif
 }
 
@@ -97,7 +97,7 @@ __device__ __forceinline__ void load_global<16>(void* dst, const void* src)
                  : "=r"(data[0].x), "=r"(data[0].y), "=r"(data[0].z), "=r"(data[0].w)
                  : "l"(src));
 #else
-    const uint4 * src_cast = reinterpret_cast<const uint4*>(src);
+    const uint4* src_cast = reinterpret_cast<const uint4*>(src);
     data[0] = src_cast[0];
 #endif
 }
@@ -111,13 +111,14 @@ __device__ __forceinline__ void load_global<16, LoadPolicy::CacheGlobal>(void* d
                  : "=r"(data[0].x), "=r"(data[0].y), "=r"(data[0].z), "=r"(data[0].w)
                  : "l"(src));
 #else
-    const uint4 * src_cast = reinterpret_cast<const uint4*>(src);
+    const uint4* src_cast = reinterpret_cast<const uint4*>(src);
     data[0] = src_cast[0];
 #endif
 }
 
 template <>
-__device__ __forceinline__ void load_global<16, LoadPolicy::CacheStreaming>(void* dst, const void* src)
+__device__ __forceinline__ void load_global<16, LoadPolicy::CacheStreaming>(void* dst,
+                                                                            const void* src)
 {
     uint4* data = reinterpret_cast<uint4*>(dst);
 #ifdef PTX_AVAILABLE
@@ -125,7 +126,7 @@ __device__ __forceinline__ void load_global<16, LoadPolicy::CacheStreaming>(void
                  : "=r"(data[0].x), "=r"(data[0].y), "=r"(data[0].z), "=r"(data[0].w)
                  : "l"(src));
 #else
-    const uint4 * src_cast = reinterpret_cast<const uint4*>(src);
+    const uint4* src_cast = reinterpret_cast<const uint4*>(src);
     data[0] = src_cast[0];
 #endif
 }
@@ -139,7 +140,7 @@ __device__ __forceinline__ void load_global<8>(void* dst, const void* src)
                  : "=r"(data[0].x), "=r"(data[0].y)
                  : "l"(src));
 #else
-    const uint2 * src_cast = reinterpret_cast<const uint2*>(src);
+    const uint2* src_cast = reinterpret_cast<const uint2*>(src);
     data[0] = src_cast[0];
 #endif
 }
@@ -153,13 +154,14 @@ __device__ __forceinline__ void load_global<8, LoadPolicy::CacheGlobal>(void* ds
                  : "=r"(data[0].x), "=r"(data[0].y)
                  : "l"(src));
 #else
-    const uint2 * src_cast = reinterpret_cast<const uint2*>(src);
+    const uint2* src_cast = reinterpret_cast<const uint2*>(src);
     data[0] = src_cast[0];
 #endif
 }
 
 template <>
-__device__ __forceinline__ void load_global<8, LoadPolicy::CacheStreaming>(void* dst, const void* src)
+__device__ __forceinline__ void load_global<8, LoadPolicy::CacheStreaming>(void* dst,
+                                                                           const void* src)
 {
     uint2* data = reinterpret_cast<uint2*>(dst);
 #ifdef PTX_AVAILABLE
@@ -167,7 +169,7 @@ __device__ __forceinline__ void load_global<8, LoadPolicy::CacheStreaming>(void*
                  : "=r"(data[0].x), "=r"(data[0].y)
                  : "l"(src));
 #else
-    const uint2 * src_cast = reinterpret_cast<const uint2*>(src);
+    const uint2* src_cast = reinterpret_cast<const uint2*>(src);
     data[0] = src_cast[0];
 #endif
 }
@@ -179,7 +181,7 @@ __device__ __forceinline__ void load_global<4>(void* dst, const void* src)
 #ifdef PTX_AVAILABLE
     asm volatile("ld.global.ca.u32 {%0}, [%1];\n" : "=r"(*data) : "l"(src));
 #else
-    const int32_t * src_cast = reinterpret_cast<const int32_t*>(src);
+    const int32_t* src_cast = reinterpret_cast<const int32_t*>(src);
     data[0] = src_cast[0];
 #endif
 }
@@ -191,19 +193,20 @@ __device__ __forceinline__ void load_global<4, LoadPolicy::CacheGlobal>(void* ds
 #ifdef PTX_AVAILABLE
     asm volatile("ld.global.cg.u32 {%0}, [%1];\n" : "=r"(*data) : "l"(src));
 #else
-    const int32_t * src_cast = reinterpret_cast<const int32_t*>(src);
+    const int32_t* src_cast = reinterpret_cast<const int32_t*>(src);
     data[0] = src_cast[0];
 #endif
 }
 
 template <>
-__device__ __forceinline__ void load_global<4, LoadPolicy::CacheStreaming>(void* dst, const void* src)
+__device__ __forceinline__ void load_global<4, LoadPolicy::CacheStreaming>(void* dst,
+                                                                           const void* src)
 {
     int32_t* data = reinterpret_cast<int32_t*>(dst);
 #ifdef PTX_AVAILABLE
     asm volatile("ld.global.cs.u32 {%0}, [%1];\n" : "=r"(*data) : "l"(src));
 #else
-    const int32_t * src_cast = reinterpret_cast<const int32_t*>(src);
+    const int32_t* src_cast = reinterpret_cast<const int32_t*>(src);
     data[0] = src_cast[0];
 #endif
 }
@@ -220,7 +223,7 @@ __device__ __forceinline__ void load_shared<16>(void* dst, const void* src)
                  : "=r"(data[0].x), "=r"(data[0].y), "=r"(data[0].z), "=r"(data[0].w)
                  : "r"(src_shr));
 #else
-    const uint4 * src_cast = reinterpret_cast<const uint4*>(src);
+    const uint4* src_cast = reinterpret_cast<const uint4*>(src);
     data[0] = src_cast[0];
 #endif
 }
@@ -236,7 +239,7 @@ __device__ __forceinline__ void load_shared<8>(void* dst, const void* src)
                  : "=r"(data[0].x), "=r"(data[0].y)
                  : "r"(src_shr));
 #else
-    const uint2 * src_cast = reinterpret_cast<const uint2*>(src);
+    const uint2* src_cast = reinterpret_cast<const uint2*>(src);
     data[0] = src_cast[0];
 #endif
 }
@@ -250,7 +253,7 @@ __device__ __forceinline__ void load_shared<4>(void* dst, const void* src)
 
     asm volatile("ld.shared.u32 {%0}, [%1];\n" : "=r"(*data) : "r"(src_shr));
 #else
-    const int32_t * src_cast = reinterpret_cast<const int32_t*>(src);
+    const int32_t* src_cast = reinterpret_cast<const int32_t*>(src);
     data[0] = src_cast[0];
 #endif
 }
@@ -273,7 +276,8 @@ __device__ __forceinline__ void store_global<16>(void* dst, const void* src)
 }
 
 template <>
-__device__ __forceinline__ void store_global<16, StorePolicy::CacheGlobal>(void* dst, const void* src)
+__device__ __forceinline__ void store_global<16, StorePolicy::CacheGlobal>(void* dst,
+                                                                           const void* src)
 {
     const uint4* data = reinterpret_cast<const uint4*>(src);
 #ifdef PTX_AVAILABLE
@@ -288,7 +292,8 @@ __device__ __forceinline__ void store_global<16, StorePolicy::CacheGlobal>(void*
 }
 
 template <>
-__device__ __forceinline__ void store_global<16, StorePolicy::CacheStreaming>(void* dst, const void* src)
+__device__ __forceinline__ void store_global<16, StorePolicy::CacheStreaming>(void* dst,
+                                                                              const void* src)
 {
     const uint4* data = reinterpret_cast<const uint4*>(src);
 #ifdef PTX_AVAILABLE
@@ -307,7 +312,9 @@ __device__ __forceinline__ void store_global<8>(void* dst, const void* src)
 {
     const uint2* data = reinterpret_cast<const uint2*>(src);
 #ifdef PTX_AVAILABLE
-    asm volatile("st.global.wb.v2.u32 [%0], {%1, %2};\n" : : "l"(dst), "r"(data[0].x), "r"(data[0].y));
+    asm volatile("st.global.wb.v2.u32 [%0], {%1, %2};\n"
+                 :
+                 : "l"(dst), "r"(data[0].x), "r"(data[0].y));
 #else
     uint2* dst_cast = reinterpret_cast<uint2*>(dst);
     dst_cast[0] = data[0];
@@ -315,11 +322,14 @@ __device__ __forceinline__ void store_global<8>(void* dst, const void* src)
 }
 
 template <>
-__device__ __forceinline__ void store_global<8, StorePolicy::CacheGlobal>(void* dst, const void* src)
+__device__ __forceinline__ void store_global<8, StorePolicy::CacheGlobal>(void* dst,
+                                                                          const void* src)
 {
     const uint2* data = reinterpret_cast<const uint2*>(src);
 #ifdef PTX_AVAILABLE
-    asm volatile("st.global.cg.v2.u32 [%0], {%1, %2};\n" : : "l"(dst), "r"(data[0].x), "r"(data[0].y));
+    asm volatile("st.global.cg.v2.u32 [%0], {%1, %2};\n"
+                 :
+                 : "l"(dst), "r"(data[0].x), "r"(data[0].y));
 #else
     uint2* dst_cast = reinterpret_cast<uint2*>(dst);
     dst_cast[0] = data[0];
@@ -327,11 +337,14 @@ __device__ __forceinline__ void store_global<8, StorePolicy::CacheGlobal>(void* 
 }
 
 template <>
-__device__ __forceinline__ void store_global<8, StorePolicy::CacheStreaming>(void* dst, const void* src)
+__device__ __forceinline__ void store_global<8, StorePolicy::CacheStreaming>(void* dst,
+                                                                             const void* src)
 {
     const uint2* data = reinterpret_cast<const uint2*>(src);
 #ifdef PTX_AVAILABLE
-    asm volatile("st.global.cs.v2.u32 [%0], {%1, %2};\n" : : "l"(dst), "r"(data[0].x), "r"(data[0].y));
+    asm volatile("st.global.cs.v2.u32 [%0], {%1, %2};\n"
+                 :
+                 : "l"(dst), "r"(data[0].x), "r"(data[0].y));
 #else
     uint2* dst_cast = reinterpret_cast<uint2*>(dst);
     dst_cast[0] = data[0];
@@ -351,7 +364,8 @@ __device__ __forceinline__ void store_global<4>(void* dst, const void* src)
 }
 
 template <>
-__device__ __forceinline__ void store_global<4, StorePolicy::CacheGlobal>(void* dst, const void* src)
+__device__ __forceinline__ void store_global<4, StorePolicy::CacheGlobal>(void* dst,
+                                                                          const void* src)
 {
     const int32_t* data = reinterpret_cast<const int32_t*>(src);
 #ifdef PTX_AVAILABLE
@@ -363,7 +377,8 @@ __device__ __forceinline__ void store_global<4, StorePolicy::CacheGlobal>(void* 
 }
 
 template <>
-__device__ __forceinline__ void store_global<4, StorePolicy::CacheStreaming>(void* dst, const void* src)
+__device__ __forceinline__ void store_global<4, StorePolicy::CacheStreaming>(void* dst,
+                                                                             const void* src)
 {
     const int32_t* data = reinterpret_cast<const int32_t*>(src);
 #ifdef PTX_AVAILABLE
@@ -544,8 +559,8 @@ __device__ __forceinline__ void memcpy_async_wait()
     asm volatile("cp.async.wait_group %0;\n" : : "n"(stages));
 }
 
-// TODO: The tail complete should be a known compile time artifact, should try and induce this without
-// all of the branches from the call-site. This is a hacky solution.
+// TODO: The tail complete should be a known compile time artifact, should try and induce this
+// without all of the branches from the call-site. This is a hacky solution.
 template <>
 __device__ __forceinline__ void tail_complete_wait<1>(int remaining_stages)
 {
