@@ -226,7 +226,7 @@ __device__ __forceinline__ unsigned convert_to_shared(const void* ptr)
         "{\n"
         "\t.reg .u64 p1;\n"
         "\tcvta.to.shared.u64 p1, %1\n"
-        "\tcta.u32.u64 %0, p1;\n"
+        "\tcvt.u32.u64 %0, p1;\n"
         "}\n"
         : "=r"(ret_val)
         : "l"(ptr));
