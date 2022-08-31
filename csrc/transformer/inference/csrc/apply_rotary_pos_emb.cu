@@ -1,4 +1,4 @@
-#include "custom_cuda_layers.h"
+#include "inference_cuda_layers.h"
 
 #ifndef __HIP_PLATFORM_HCC__
 #include <cuda_profiler_api.h>

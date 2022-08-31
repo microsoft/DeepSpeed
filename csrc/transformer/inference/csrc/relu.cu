@@ -1,4 +1,4 @@
-#include "custom_cuda_layers.h"
+#include "inference_cuda_layers.h"
 
 #define MAX_CAP 4
 #define MAX_SEQ 2048
