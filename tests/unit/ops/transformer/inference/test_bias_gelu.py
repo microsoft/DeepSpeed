@@ -10,6 +10,7 @@ if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
 inference_module = None
 torch_minor_version = None
 
+
 def allclose(x, y):
     assert x.dtype == y.dtype
     rtol, atol = {torch.float32: (5e-4, 5e-5), torch.float16: (3e-2, 2e-3)}[x.dtype]
