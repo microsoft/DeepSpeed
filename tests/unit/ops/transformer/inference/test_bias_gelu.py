@@ -8,6 +8,7 @@ if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
                 allow_module_level=True)
 
 inference_module = None
+torch_minor_version = None
 
 
 def allclose(x, y):
@@ -16,11 +17,21 @@ def allclose(x, y):
     return torch.allclose(x, y, rtol=rtol, atol=atol)
 
 
+def version_appropriate_gelu(activations):
+    global torch_minor_version
+    if torch_minor_version is None:
+        torch_minor_version = int(torch.__version__.split('.')[1])
+    # If torch version = 1.12
+    if torch_minor_version < 12:
+        return torch.nn.functional.gelu(activations)
+    else:
+        return torch.nn.functional.gelu(activations, approximate='tanh')
+
+
 def run_bias_gelu_reference(activations, bias):
     # Expected behavior is that of casting to float32 internally and using the tanh approximation
-    return torch.nn.functional.gelu(activations.to(torch.float32) +
-                                    bias.to(torch.float32),
-                                    approximate='tanh').to(activations.dtype)
+    return version_appropriate_gelu(
+        activations.to(torch.float32) + bias.to(torch.float32)).to(activations.dtype)
 
 
 def run_bias_gelu_ds(activations, bias):
