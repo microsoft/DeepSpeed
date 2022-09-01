@@ -1,3 +1,7 @@
+/*
+Copyright 2022 The Microsoft DeepSpeed Team
+*/
+
 #include "inference_cuda_layers.h"
 
 #define MAX_CAP 4

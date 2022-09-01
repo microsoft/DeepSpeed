@@ -1,3 +1,6 @@
+/*
+Copyright 2022 The Microsoft DeepSpeed Team
+*/
 
 #include <c10/cuda/CUDAStream.h>
 #include <torch/extension.h>
