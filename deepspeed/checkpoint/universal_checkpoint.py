@@ -55,12 +55,6 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
             padded_target_vocab_size = self.shape[0] * tp_world_size
             if padded_target_vocab_size > full_hp_param.shape[0]:
                 # Need to expand
-                if dist.get_rank() == 0:
-                    print(
-                        f'{vocab_divisibility_padding_tensor.shape=}, {padded_target_vocab_size=}'
-                    )
-                    print(f'{tp_world_size=}, {self.shape[0]=}, {self.shape=}')
-                    print(f'{full_hp_param.shape=}, {full_hp_param.shape[0]=}')
                 padding_size = padded_target_vocab_size - full_hp_param.shape[0]
                 # Implement the following concat in efficient way using pad
                 #full_hp_param = torch.cat((full_hp_param, padding_tensor), 0)
