@@ -5,6 +5,7 @@ from .constants import (BASE_OPTIMIZER_STATE,
                         OPTIMIZER_STATE_DICT,
                         PARTITION_COUNT,
                         ZERO_FILE_PREFIX,
+                        FP16_ZERO_FILE_PREFIX,
                         BF16_ZERO_FILE_PREFIX)
 
 from .reshape_utils import (basic_folder_validation,
@@ -140,7 +141,9 @@ class ZeROCheckpoint(object):
 
     def _get_zero_files(self, dir):
         file_list = get_files(dir)
-        zero_files = get_files_with_prefix(file_list, ZERO_FILE_PREFIX)
-        if len(zero_files) > 0:
-            return zero_files
-        return get_files_with_prefix(file_list, BF16_ZERO_FILE_PREFIX)
+        for prefix in [ZERO_FILE_PREFIX, FP16_ZERO_FILE_PREFIX, BF16_ZERO_FILE_PREFIX]:
+            zero_files = get_files_with_prefix(file_list, prefix)
+            if len(zero_files) > 0:
+                return zero_files
+
+        return []

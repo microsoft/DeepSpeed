@@ -1394,6 +1394,7 @@ class DeepSpeedEngine(Module):
                     overlap_comm = False
             optimizer = DeepSpeedZeroOptimizer(
                 optimizer,
+                self.param_names,
                 timers=timers,
                 static_loss_scale=self.loss_scale(),
                 dynamic_loss_scale=self.dynamic_loss_scale(),
