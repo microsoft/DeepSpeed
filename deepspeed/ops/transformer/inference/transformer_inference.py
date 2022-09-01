@@ -413,18 +413,19 @@ class DeepSpeedSelfAttentionFunction(Function):
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32
-                qkv_out = qkv_func(
-                    input,
-                    attn_qkvw,
-                    attn_qkvw.scale,
-                    (attn_qkvb if attn_qkvb is not None else norm_b),
-                    norm_w,
-                    norm_b,
-                    config.epsilon,
-                    (attn_qkvb is not None),
-                    1 if config.bigscience_bloom else
-                    DeepSpeedTransformerInference.layer_id,
-                    config.q_int8)
+                qkv_out = qkv_func(input,
+                                   attn_qkvw,
+                                   attn_qkvw.scale,
+                                   (attn_qkvb if attn_qkvb is not None else norm_b),
+                                   norm_w,
+                                   norm_b,
+                                   config.epsilon,
+                                   (attn_qkvb is not None),
+                                   DeepSpeedTransformerInference.layer_id,
+                                   config.bigscience_bloom,
+                                   config.mp_size,
+                                   dist.get_rank() if dist.is_initialized() else 0,
+                                   config.q_int8)
             context_layer, key_layer, value_layer = compute_attention(qkv_out[0] if isinstance(qkv_out, list) else qkv_out, input_mask)
             output = vector_matmul_func(context_layer,
                                         attn_ow,
@@ -495,20 +496,18 @@ class DeepSpeedSelfAttention(nn.Module):
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
         device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
-        self.attn_qkvw = nn.Parameter(torch.empty(
-            self.config.hidden_size,
-            (self.config.hidden_size // self.config.mp_size) * 3,
-            dtype=data_type,
-            device=device),
+        qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
+        self.attn_qkvw = nn.Parameter(torch.empty(self.config.hidden_size,
+                                                  qkv_size_per_partition,
+                                                  dtype=data_type,
+                                                  device=device),
                                       requires_grad=False)
-        self.attn_qkvb = nn.Parameter(torch.empty(
-            (self.config.hidden_size // self.config.mp_size) * 3,
-            dtype=data_type_fp,
-            device=device),
+        self.attn_qkvb = nn.Parameter(torch.empty(qkv_size_per_partition,
+                                                  dtype=data_type_fp,
+                                                  device=device),
                                       requires_grad=False)
-
-        self.attn_ow = nn.Parameter(torch.empty(self.config.hidden_size //
-                                                self.config.mp_size,
+        out_size_per_partition = self.config.hidden_size // self.config.mp_size
+        self.attn_ow = nn.Parameter(torch.empty(out_size_per_partition,
                                                 self.config.hidden_size,
                                                 dtype=data_type,
                                                 device=device),
@@ -612,10 +611,11 @@ class DeepSpeedMLPFunction(Function):
                                      config.pre_layer_norm,
                                      False)
         else:
-            intermediate, residual_add = mlp_gemm_func(input,
+            output, residual_add = mlp_gemm_func(input,
                                              residual,
                                              bias,
                                              inter_w,
+                                             output_w,
                                              inter_b,
                                              attn_nw,
                                              attn_nb,
@@ -623,13 +623,9 @@ class DeepSpeedMLPFunction(Function):
                                              config.pre_layer_norm,
                                              config.mlp_after_attn,
                                              inter_w.scale,
+                                             output_w.scale,
                                              config.q_int8,
                                              config.mlp_act_func_type)
-            output = vector_matmul_func(intermediate,
-                                        output_w,
-                                        False,
-                                        output_w.scale,
-                                        config.q_int8)
         inference_cuda_module.residual_add(
             output,
             residual if config.pre_layer_norm else residual_add,
@@ -641,8 +637,8 @@ class DeepSpeedMLPFunction(Function):
             bias is not None,
             config.pre_layer_norm)
         if mp_group is not None and dist.get_world_size(group=mp_group) > 1:
-            dist.all_reduce(output, group=mp_group)
-        return output
+            dist.all_reduce(residual, group=mp_group)
+        return residual
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -672,22 +668,20 @@ class DeepSpeedMLP(nn.Module):
                                                 dtype=data_type_fp,
                                                 device=device),
                                     requires_grad=False)
+        intm_size_per_partition = self.config.intermediate_size // self.config.mp_size
         self.inter_w = nn.Parameter(torch.empty(self.config.hidden_size,
-                                                self.config.intermediate_size //
-                                                self.config.mp_size,
+                                                intm_size_per_partition,
                                                 dtype=data_type,
                                                 device=device),
                                     requires_grad=False)
-        self.inter_b = nn.Parameter(torch.empty(self.config.intermediate_size //
-                                                self.config.mp_size,
+        self.inter_b = nn.Parameter(torch.empty(intm_size_per_partition,
                                                 dtype=data_type_fp,
                                                 device=device),
                                     requires_grad=False)
-        self.output_w = nn.Parameter(torch.empty(
-            (self.config.intermediate_size // self.config.mp_size),
-            self.config.hidden_size,
-            dtype=data_type,
-            device=device),
+        self.output_w = nn.Parameter(torch.empty(intm_size_per_partition,
+                                                 self.config.hidden_size,
+                                                 dtype=data_type,
+                                                 device=device),
                                      requires_grad=False)
         self.output_b = nn.Parameter(torch.empty(self.config.hidden_size,
                                                  dtype=data_type_fp,

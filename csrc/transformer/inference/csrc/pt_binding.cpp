@@ -64,14 +64,15 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
 
 template <typename T>
 void allocate_workspace(size_t hidden_dim,
-                        size_t max_seq_len,
                         size_t batch_size,
                         unsigned num_layers,
+                        unsigned mp_size = 1,
+                        bool external_cache = false,
+                        unsigned rank = 0,
                         size_t head_size = 128)
 {
-    size_t _workSpaceSize = 16 * (hidden_dim * batch_size * max_seq_len) +
-                            (num_layers * batch_size * max_seq_len * hidden_dim * 2);  // KV-cache
-    Context::Instance().GenWorkSpace(_workSpaceSize * sizeof(T));
+    Context::Instance().GenWorkSpace(
+        num_layers, batch_size, hidden_dim, mp_size, head_size, external_cache, sizeof(T), rank);
 }
 
 template <typename T>
@@ -559,16 +560,17 @@ void ds_layernorm_internal(T* workspace,
 }
 
 template <typename T>
-void quantized_gemm(at::Tensor& output,
+void quantized_gemm(void* output,
                     T* input,
                     at::Tensor& weight,
                     at::Tensor& qscale,
                     int groups,
                     int bsz)
 {
-    auto weight16 = at::empty({weight.size(0), weight.size(1)}, output.options());
+    T* weight16 = (T*)Context::Instance().GetWorkSpace() +
+                  12 * Context::Instance().GetMaxTokenLenght() * weight.size(1);
 
-    launch_dequantize((T*)weight16.data_ptr(),
+    launch_dequantize(weight16,
                       (int8_t*)weight.data_ptr(),
                       (float*)qscale.data_ptr(),
                       weight.size(0),
@@ -586,9 +588,9 @@ void quantized_gemm(at::Tensor& output,
                    weight.size(1),
                    &alpha,
                    &gemm_beta,
-                   (T*)weight16.data_ptr(),
+                   weight16,
                    (T*)input,
-                   (T*)output.data_ptr(),
+                   (T*)output,
 #ifdef __HIP_PLATFORM_HCC__
                    rocblas_gemm_algo_standard);
 #else
@@ -612,10 +614,9 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
     T* workspace = (T*)Context::Instance().GetWorkSpace();
     workspace += (3 * bsz * input.size(2));
     ds_layernorm_internal<T>(workspace, input, gamma, beta, epsilon);
-    // cudaEventRecord(Context::Instance().GetCompEvent(1), Context::Instance().GetCurrentStream());
 
     if (q_int8) {
-        quantized_gemm<T>(output, workspace, weight, q_scale, q_scale.size(0), bsz);
+        quantized_gemm<T>(output.data_ptr(), workspace, weight, q_scale, q_scale.size(0), bsz);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -658,17 +659,20 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
                                     const float epsilon,
                                     bool add_bias,
                                     unsigned num_layers,
+                                    bool external_cache,
+                                    unsigned mp_size,
+                                    unsigned rank,
                                     bool q_int8)
 {
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
     int out_size = q_int8 ? weight.size(0) : weight.size(1);
-    if (!workspace) {
+    if (!workspace)
         cublasSetStream(Context::Instance().GetCublasHandle(),
                         Context::Instance().GetCurrentStream());
-        allocate_workspace<T>(input.size(2), MAX_OUT_TOKES, input.size(0), num_layers);
-        workspace = (T*)Context::Instance().GetWorkSpace();
-    }
+    allocate_workspace<T>(input.size(2), input.size(0), num_layers, mp_size, external_cache, rank);
+    workspace = (T*)Context::Instance().GetWorkSpace();
+
     auto options = at::TensorOptions()
                        .dtype(input.options().dtype())
                        .layout(at::kStrided)
@@ -847,18 +851,20 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
                             at::Tensor& q_scale,
                             bool q_int8)
 {
-    auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
-                       .dtype(input_cont.options().dtype())
+                       .dtype(input.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
                        .requires_grad(false);
 
     int out_size = q_int8 ? weight.size(0) : weight.size(1);
-    int bsz = input_cont.size(0) * input_cont.size(1);
-    auto output = at::empty({input_cont.size(0), input_cont.size(1), out_size}, options);
+    int bsz = input.size(0) * input.size(1);
+
+    T* workspace = (T*)Context::Instance().GetWorkSpace();
+    auto output = at::from_blob(workspace, {input.size(0), input.size(1), out_size}, options);
     if (q_int8) {
-        quantized_gemm<T>(output, (T*)input_cont.data_ptr(), weight, q_scale, q_scale.size(0), bsz);
+        quantized_gemm<T>(
+            output.data_ptr(), (T*)input.data_ptr(), weight, q_scale, q_scale.size(0), bsz);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -869,11 +875,11 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
                        CUBLAS_OP_N,
                        weight.size(1),
                        bsz,
-                       input_cont.size(2),
+                       input.size(2),
                        &alpha,
                        &gemm_beta,
                        (T*)weight.data_ptr(),
-                       (T*)input_cont.data_ptr(),
+                       (T*)input.data_ptr(),
                        (T*)output.data_ptr(),
 #ifdef __HIP_PLATFORM_HCC__
                        rocblas_gemm_algo_standard);
@@ -910,6 +916,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                               at::Tensor& residual,
                               at::Tensor& input_bias,
                               at::Tensor& weight,
+                              at::Tensor& weight1,
                               at::Tensor& bias,
                               at::Tensor& gamma,
                               at::Tensor& beta,
@@ -917,13 +924,15 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                               bool preLayerNorm,
                               bool mlp_after_attn,
                               at::Tensor& q_scale,
+                              at::Tensor& q_scale1,
                               bool q_int8,
                               ActivationFuncType act_func_type)
 {
     int bsz = input.size(0) * input.size(1);
-    auto inp_norm = at::empty_like(input);
-
-    launch_residual_layer_norm((T*)inp_norm.data_ptr(),
+    T* inp_norm =
+        (T*)Context::Instance().GetWorkSpace() + torch::numel(input) + torch::numel(output);
+    T* intermediate = inp_norm + torch::numel(input);
+    launch_residual_layer_norm((T*)inp_norm,
                                (T*)nullptr,
                                (T*)input.data_ptr(),
                                (T*)residual.data_ptr(),
@@ -938,7 +947,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                                Context::Instance().GetCurrentStream());
 
     if (q_int8) {
-        quantized_gemm<T>(output, (T*)inp_norm.data_ptr(), weight, q_scale, q_scale.size(0), bsz);
+        quantized_gemm<T>(intermediate, inp_norm, weight, q_scale, q_scale.size(0), bsz);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -953,8 +962,8 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                        &alpha,
                        &gemm_beta,
                        (T*)weight.data_ptr(),
-                       (T*)inp_norm.data_ptr(),
-                       (T*)output.data_ptr(),
+                       inp_norm,
+                       intermediate,
 #ifdef __HIP_PLATFORM_HCC__
                        rocblas_gemm_algo_standard);
 #else
@@ -962,20 +971,45 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
 #endif
     }
     if (act_func_type == ActivationFuncType::GELU) {
-        launch_bias_gelu((T*)output.data_ptr(),
+        launch_bias_gelu(intermediate,
                          (T*)bias.data_ptr(),
                          q_int8 ? weight.size(0) : weight.size(1),
                          bsz,
                          Context::Instance().GetCurrentStream());
     } else if (act_func_type == ActivationFuncType::ReLU) {
-        launch_bias_relu((T*)output.data_ptr(),
+        launch_bias_relu(intermediate,
                          (T*)bias.data_ptr(),
                          q_int8 ? weight.size(0) : weight.size(1),
                          bsz,
                          Context::Instance().GetCurrentStream());
     }
+    if (q_int8) {
+        quantized_gemm<T>(
+            output.data_ptr(), intermediate, weight1, q_scale1, q_scale1.size(0), bsz);
+    } else {
+        float alpha = (T)1.0;
+        float gemm_beta = (T)0.0;
+        cublasSetStream(Context::Instance().GetCublasHandle(),
+                        Context::Instance().GetCurrentStream());
+        cublas_gemm_ex(Context::Instance().GetCublasHandle(),
+                       CUBLAS_OP_N,
+                       CUBLAS_OP_N,
+                       weight1.size(1),
+                       bsz,
+                       weight1.size(0),
+                       &alpha,
+                       &gemm_beta,
+                       (T*)weight1.data_ptr(),
+                       intermediate,
+                       (T*)output.data_ptr(),
+#ifdef __HIP_PLATFORM_HCC__
+                       rocblas_gemm_algo_standard);
+#else
+                       CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+#endif
+    }
 
-    return inp_norm;
+    return torch::from_blob(inp_norm, input.sizes(), input.options());
 }
 
 template <typename T>
@@ -983,6 +1017,7 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                     at::Tensor& residual,
                                     at::Tensor& input_bias,
                                     at::Tensor& weight,
+                                    at::Tensor& weight1,
                                     at::Tensor& bias,
                                     at::Tensor& gamma,
                                     at::Tensor& beta,
@@ -990,21 +1025,21 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                     bool preLayerNorm,
                                     bool mlp_after_attn,
                                     at::Tensor& q_scale,
+                                    at::Tensor& q_scale1,
                                     bool q_int8,
                                     int activation_type)
 {
-    auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
-                       .dtype(input_cont.options().dtype())
+                       .dtype(input.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
                        .requires_grad(false);
 
     int out_size = q_int8 ? weight.size(0) : weight.size(1);
-    auto output = at::from_blob((T*)Context::Instance().GetWorkSpace(),
-                                {input_cont.size(0), input_cont.size(1), out_size},
+    auto output = at::from_blob((T*)Context::Instance().GetWorkSpace() + torch::numel(input),
+                                {input.size(0), input.size(1), out_size},
                                 options);
-    int bsz = input_cont.size(0) * input_cont.size(1);
+    int bsz = input.size(0) * input.size(1);
 
     auto act_func_type = static_cast<ActivationFuncType>(activation_type);
     auto res_add = mlp_unfused_cublas<T>(output,
@@ -1012,6 +1047,7 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                          residual,
                                          input_bias,
                                          weight,
+                                         weight1,
                                          bias,
                                          gamma,
                                          beta,
@@ -1019,6 +1055,7 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                          preLayerNorm,
                                          mlp_after_attn,
                                          q_scale,
+                                         q_scale1,
                                          q_int8,
                                          act_func_type);
 
