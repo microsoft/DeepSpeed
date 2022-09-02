@@ -314,12 +314,19 @@ class TestMPSize(DistributedTest):
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
-        # We have to load these large models on CPU with pipeline because not
-        # enough GPU memory
-        pipe = pipeline(task, model=model, device=-1, framework="pt")
-        # Commenting this out for now because no half-precision on CPU
-        #if dtype == torch.half:
-        #    pipe.model.half()
+        if "gpt-j-6B" in model:
+            _model = AutoModelForCausalLM.from_pretrained(model,
+                                                          revision="float16",
+                                                          torch_dtype=torch.float16)
+            _tokenizer = AutoTokenizer.from_pretrained(model)
+            pipe = pipeline(task, model=model, device=local_rank, framework="pt")
+        else:
+            # We have to load these large models on CPU with pipeline because not
+            # enough GPU memory
+            pipe = pipeline(task, model=model, device=local_rank, framework="pt")
+            # Commenting this out for now because no half-precision on CPU
+            if dtype == torch.half:
+                pipe.model.half()
 
         bs_output = pipe(query, **inf_kwargs)
 
