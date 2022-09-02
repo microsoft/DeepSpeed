@@ -21,20 +21,9 @@ def allclose(x, y):
     return torch.allclose(x, y, rtol=rtol, atol=atol)
 
 
-def version_appropriate_relu(activations):
-    global torch_minor_version
-    if torch_minor_version is None:
-        torch_minor_version = int(torch.__version__.split('.')[1])
-    # If torch version = 1.12
-    if torch_minor_version < 12:
-        return torch.nn.functional.relu(activations)
-    else:
-        return torch.nn.functional.relu(activations)
-
-
 def run_bias_relu_reference(activations, bias):
-    # Expected behavior is that of casting to float32 internally and using the tanh approximation
-    return version_appropriate_relu(
+    # Expected behavior is that of casting to float32 internally
+    return  torch.nn.functional.relu(
         activations.to(torch.float32) + bias.to(torch.float32)).to(activations.dtype)
 
 
