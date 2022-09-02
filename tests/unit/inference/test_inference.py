@@ -323,10 +323,10 @@ class TestMPSize(DistributedTest):
         else:
             # We have to load these large models on CPU with pipeline because not
             # enough GPU memory
-            pipe = pipeline(task, model=model, device=local_rank, framework="pt")
+            pipe = pipeline(task, model=model, device=-1, framework="pt")
             # Commenting this out for now because no half-precision on CPU
-            if dtype == torch.half:
-                pipe.model.half()
+            #if dtype == torch.half:
+            #    pipe.model.half()
 
         bs_output = pipe(query, **inf_kwargs)
 
