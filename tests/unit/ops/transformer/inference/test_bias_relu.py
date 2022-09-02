@@ -29,7 +29,7 @@ def version_appropriate_relu(activations):
     if torch_minor_version < 12:
         return torch.nn.functional.relu(activations)
     else:
-        return torch.nn.functional.relu(activations, approximate='tanh')
+        return torch.nn.functional.relu(activations)
 
 
 def run_bias_relu_reference(activations, bias):
