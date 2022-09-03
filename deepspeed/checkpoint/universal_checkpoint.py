@@ -60,7 +60,7 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
                                                         (0,
                                                          0,
                                                          0,
-                                                         padding_size),                                                         
+                                                         padding_size),
                                                         "constant",
                                                         0)
                 full_hp_param[:-padding_size, :] = vocab_divisibility_padding_tensor
