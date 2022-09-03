@@ -4,7 +4,6 @@ Copyright 2022 The Microsoft DeepSpeed Team
 import os
 import torch
 import types
-import deepspeed.comm as dist
 from .constants import (FP32_WEIGHT_KEY,
                         PARAM,
                         VOCAB_DIVISIBILITY_PADDING_TENSOR,
@@ -22,7 +21,6 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
 
     for key in hp_keys:
         ckpt_file = checkpoint_files[key]
-        print(f'rank {dist.get_rank()} reading checkpoint file {ckpt_file}')
         ckpt_dict = torch.load(ckpt_file)
         full_hp_param = ckpt_dict[PARAM]
 
@@ -62,7 +60,7 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
                                                         (0,
                                                          0,
                                                          0,
-                                                         padding_size), # padding_tensor.shape[0]),
+                                                         padding_size),                                                         
                                                         "constant",
                                                         0)
                 full_hp_param[:-padding_size, :] = vocab_divisibility_padding_tensor
