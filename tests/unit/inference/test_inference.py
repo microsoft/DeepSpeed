@@ -230,7 +230,9 @@ class TestModelTask(DistributedTest):
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
         if "gpt-j-6B" in model and dtype == torch.half:
-            _model = AutoModelForCausalLM.from_pretrained(model)
+            _model = AutoModelForCausalLM.from_pretrained(model,
+                                                          revision="float16",
+                                                          torch_dtype=torch.float16)
             tokenizer = AutoTokenizer.from_pretrained(model)
             _model.half()
             pipe = pipeline(
