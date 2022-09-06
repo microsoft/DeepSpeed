@@ -487,6 +487,22 @@ at::Tensor ds_bias_gelu(at::Tensor& input, at::Tensor& bias)
 }
 
 template <typename T>
+at::Tensor ds_bias_add(at::Tensor& input, at::Tensor& bias)
+{
+    auto input_cont = input.contiguous();
+
+    int bsz = input_cont.size(0) * input_cont.size(1);
+    int hidden_size = input_cont.size(2);
+
+    launch_bias_add((T*)input_cont.data_ptr(),
+                    (T*)bias.data_ptr(),
+                    hidden_size,
+                    bsz,
+                    Context::Instance().GetCurrentStream());
+    return input_cont;
+}
+
+template <typename T>
 at::Tensor ds_bias_residual(at::Tensor& input, at::Tensor& residual, at::Tensor& bias)
 {
     auto input_cont = input.contiguous();
@@ -1195,7 +1211,7 @@ at::Tensor moe_res_matmul(at::Tensor& moe_res, at::Tensor& coef, at::Tensor& out
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("softmax_fp32", &ds_softmax<float>, "DeepSpeed SoftMax with fp32 (CUDA)");
-    m.def("softmax_fp16", &ds_softmax<__half>, "DeepSpeed SoftMax with fp32 (CUDA)");
+    m.def("softmax_fp16", &ds_softmax<__half>, "DeepSpeed SoftMax with fp16 (CUDA)");
     m.def(
         "softmax_context_fp32", &ds_softmax_context<float>, "DeepSpeed attention with fp32 (CUDA)");
     m.def("softmax_context_fp16",
@@ -1205,7 +1221,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           &ds_softmax_context1<__half>,
           "DeepSpeed attention with fp32 (CUDA)");
     m.def("bias_gelu_fp32", &ds_bias_gelu<float>, "DeepSpeed Gelu with fp32 (CUDA)");
-    m.def("bias_gelu_fp16", &ds_bias_gelu<__half>, "DeepSpeed Gelu with fp32 (CUDA)");
+    m.def("bias_gelu_fp16", &ds_bias_gelu<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
+    m.def("bias_add_fp32", &ds_bias_add<float>, "DeepSpeed Bias Add with fp32 (CUDA)");
+    m.def("bias_add_fp16", &ds_bias_add<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
     m.def("bias_residual_fp32",
           &ds_bias_residual<float>,
           "DeepSpeed residual-bias add with fp32 (CUDA)");
