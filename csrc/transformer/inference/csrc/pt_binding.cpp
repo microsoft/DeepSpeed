@@ -1344,10 +1344,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         "softmax_context_fp32", &ds_softmax_context<float>, "DeepSpeed attention with fp32 (CUDA)");
     m.def("softmax_context_fp16",
           &ds_softmax_context<__half>,
-          "DeepSpeed attention with fp32 (CUDA)");
+          "DeepSpeed attention with fp16 (CUDA)");
     m.def("softmax_context_int8",
           &ds_softmax_context1<__half>,
-          "DeepSpeed attention with fp32 (CUDA)");
+          "DeepSpeed attention with int8 (CUDA)");
     m.def("bias_gelu_fp32", &ds_bias_gelu<float>, "DeepSpeed Gelu with fp32 (CUDA)");
     m.def("bias_gelu_fp16", &ds_bias_gelu<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
     m.def("bias_add_fp32", &ds_bias_add<float>, "DeepSpeed Bias Add with fp32 (CUDA)");
@@ -1359,7 +1359,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           "DeepSpeed residual-bias add with fp32 (CUDA)");
     m.def("bias_residual_fp16",
           &ds_bias_residual<__half>,
-          "DeepSpeed residual-bias add with fp32 (CUDA)");
+          "DeepSpeed residual-bias add with fp16 (CUDA)");
     m.def("layer_norm_fp32", &ds_layernorm<float>, "DeepSpeed layer-norm with fp32 (CUDA)");
     m.def("layer_norm_fp16", &ds_layernorm<__half>, "DeepSpeed layer-norm with fp16 (CUDA)");
     m.def("qkv_gemm_fp32", &ds_qkv_gemm<float>, "DeepSpeed qkv gemm with fp32 (CUDA)");
