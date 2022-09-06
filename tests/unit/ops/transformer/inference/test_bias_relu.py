@@ -23,7 +23,7 @@ def allclose(x, y):
 
 def run_bias_relu_reference(activations, bias):
     # Expected behavior is that of casting to float32 internally
-    return  torch.nn.functional.relu(
+    return torch.nn.functional.relu(
         activations.to(torch.float32) + bias.to(torch.float32)).to(activations.dtype)
 
 
