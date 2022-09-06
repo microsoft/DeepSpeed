@@ -555,10 +555,10 @@ at::Tensor ds_bias_add(at::Tensor& input, at::Tensor& bias)
     int hidden_size = input_cont.size(2);
 
     launch_bias_add((T*)input_cont.data_ptr(),
-                     (T*)bias.data_ptr(),
-                     hidden_size,
-                     bsz,
-                     Context::Instance().GetCurrentStream());
+                    (T*)bias.data_ptr(),
+                    hidden_size,
+                    bsz,
+                    Context::Instance().GetCurrentStream());
     return input_cont;
 }
 
