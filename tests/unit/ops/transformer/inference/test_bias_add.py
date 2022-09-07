@@ -18,7 +18,6 @@ def allclose(x, y):
 
 
 def run_bias_add_reference(activations, bias):
-    # Expected behavior is that of casting to float32 internally and using the tanh approximation
     return activations + bias
 
 
