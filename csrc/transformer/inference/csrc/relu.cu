@@ -36,45 +36,56 @@ __global__ void fused_bias_relu(float* input,
     }
 }
 
+__global__ void fused_bias_relu(float* input,
+                                const float* bias,
+                                int total_count,
+                                int intermediate_size)
+{
+    // Input restriction: intermediate_size % vals_per_access == 0
+    constexpr int granularity = 16;
+    constexpr int vals_per_access = granularity / sizeof(float);
+    const int offset = (blockIdx.x * blockDim.x + threadIdx.x) * vals_per_access;
+
+    if (offset < total_count) {
+        float data[vals_per_access];
+        float data_bias[vals_per_access];
+        mem_access::load_global<granularity>(data, input + offset);
+        mem_access::load_global<granularity>(data_bias, bias + (offset % intermediate_size));
+
+#pragma unroll
+        for (int i = 0; i < vals_per_access; i++) { data[i] = relu(data[i] + data_bias[i]); }
+
+        mem_access::store_global<granularity>(input + offset, data);
+    }
+}
+
 __global__ void fused_bias_relu(__half* input,
                                 const __half* bias,
                                 int total_count,
                                 int intermediate_size)
 {
+    // Input restriction: intermediate_size % vals_per_access == 0
+    // This kernel doubles the per-thread ALU workload as compared to the float implementation
 #ifdef HALF_PRECISION_AVAILABLE
-
-    float2* input_cast = reinterpret_cast<float2*>(input);
-    const float2* bias_cast = reinterpret_cast<const float2*>(bias);
-
-    int offset = blockIdx.x * blockDim.x + threadIdx.x;
+    constexpr int granularity = 16;
+    constexpr int vals_per_access = granularity / sizeof(__half);
+    int offset = (blockIdx.x * blockDim.x + threadIdx.x) * vals_per_access;
 
     if (offset < total_count) {
-        float2 vals_vec = input_cast[offset];
-        float2 bias_vec = bias_cast[offset % intermediate_size];
+        // Divide by 2 since we store two values per __half2
+        __half2 data[vals_per_access / 2];
+        __half2 bias_data[vals_per_access / 2];
+        mem_access::load_global<granularity>(data, input + offset);
+        mem_access::load_global<granularity>(bias_data, bias + (offset % intermediate_size));
 
-        __half2* vals_half = reinterpret_cast<__half2*>(&vals_vec);
-        __half2* bias_half = reinterpret_cast<__half2*>(&bias_vec);
+#pragma unroll
+        for (int i = 0; i < vals_per_access / 2; i++) {
+            float2 data_f = __half22float2(data[i]);
+            float2 bias_f = __half22float2(bias_data[i]);
+            data[i] = __floats2half2_rn(relu(data_f.x + bias_f.x), relu(data_f.y + bias_f.y));
+        }
 
-        float2 low_data = __half22float2(vals_half[0]);
-        float2 high_data = __half22float2(vals_half[1]);
-
-        float2 low_bias = __half22float2(bias_half[0]);
-        float2 high_bias = __half22float2(bias_half[1]);
-
-        low_data.x += low_bias.x;
-        low_data.y += low_bias.y;
-        high_data.x += high_bias.x;
-        high_data.y += high_bias.y;
-
-        low_data.x = relu(low_data.x);
-        low_data.y = relu(low_data.y);
-        high_data.x = relu(high_data.x);
-        high_data.y = relu(high_data.y);
-
-        vals_half[0] = __float22half2_rn(low_data);
-        vals_half[1] = __float22half2_rn(high_data);
-
-        input_cast[offset] = vals_vec;
+        mem_access::store_global<granularity>(input + offset, data);
     }
 #endif
 }
