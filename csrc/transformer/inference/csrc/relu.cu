@@ -14,33 +14,6 @@ __global__ void fused_bias_relu(float* input,
                                 int total_count,
                                 int intermediate_size)
 {
-    float4* input_cast = reinterpret_cast<float4*>(input);
-    const float4* bias_cast = reinterpret_cast<const float4*>(bias);
-    int offset = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (offset < total_count) {
-        float4 data = input_cast[offset];
-        float4 bias_data = bias_cast[offset % intermediate_size];
-
-        data.x += bias_data.x;
-        data.y += bias_data.y;
-        data.z += bias_data.z;
-        data.w += bias_data.w;
-
-        data.x = relu(data.x);
-        data.y = relu(data.y);
-        data.z = relu(data.z);
-        data.w = relu(data.w);
-
-        input_cast[offset] = data;
-    }
-}
-
-__global__ void fused_bias_relu(float* input,
-                                const float* bias,
-                                int total_count,
-                                int intermediate_size)
-{
     // Input restriction: intermediate_size % vals_per_access == 0
     constexpr int granularity = 16;
     constexpr int vals_per_access = granularity / sizeof(float);
