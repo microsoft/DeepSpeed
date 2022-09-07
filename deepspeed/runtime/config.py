@@ -829,6 +829,9 @@ class DeepSpeedConfig(object):
         self.fp16_auto_cast = get_fp16_auto_cast(param_dict)
         self.bfloat16_enabled = get_bfloat16_enabled(param_dict)
         assert not (self.fp16_enabled and self.bfloat16_enabled), 'bfloat16 and fp16 modes cannot be simultaneously enabled'
+        if self.fp16_enabled and not torch.cuda.is_available():
+            self.fp16_enabled = False
+            logger.info("fp16 is not compatible with CPU. Disabling fp16.")
         self.fp16_master_weights_and_gradients = get_fp16_master_weights_and_grads_enabled(
             param_dict)
         self.amp_enabled = get_amp_enabled(param_dict)

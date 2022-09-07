@@ -16,6 +16,7 @@ import base64
 import time
 import signal
 import psutil
+import torch
 from collections import defaultdict
 from typing import Dict
 from argparse import ArgumentParser, REMAINDER
@@ -154,8 +155,9 @@ def main():
             curr_global_rank += 1
     logger.info(f"global_rank_mapping={global_rank_mapping}")
     logger.info(f"dist_world_size={dist_world_size}")
-    current_env["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, local_gpu_ids))
-    logger.info(f"Setting CUDA_VISIBLE_DEVICES={current_env['CUDA_VISIBLE_DEVICES']}")
+    if torch.cuda.is_available():
+        current_env["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, local_gpu_ids))
+        logger.info(f"Setting CUDA_VISIBLE_DEVICES={current_env['CUDA_VISIBLE_DEVICES']}")
 
     # set PyTorch distributed related environmental variables
     current_env["MASTER_ADDR"] = args.master_addr

@@ -16,7 +16,9 @@ import collections
 from copy import deepcopy
 import signal
 import time
-import torch.cuda
+import torch
+if torch.cuda.is_available():
+    import torch.cuda
 
 from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner
 from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER
@@ -356,30 +358,34 @@ def main(args=None):
 
     resource_pool = fetch_hostfile(args.hostfile)
 
-    # respect CUDA_VISIBLE_DEVICES for a single node and no explicit resource filters
-    cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
-    if not resource_pool and len(cuda_visible_devices):
-        detected_str = f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices}"
-        if len(args.include) or len(
-                args.exclude) or args.num_nodes > 1 or args.num_gpus > 0:
-            print(
-                f"{detected_str} but ignoring it because one or several of --include/--exclude/--num_gpus/--num_nodes cl args were used. If you want to use CUDA_VISIBLE_DEVICES don't pass any of these arguments to deepspeed."
-            )
-        else:
-            args.include = f"localhost:{cuda_visible_devices}"
-            print(f"{detected_str}: setting --include={args.include}")
-        del os.environ["CUDA_VISIBLE_DEVICES"]
+    if torch.cuda.is_available():
+        # respect CUDA_VISIBLE_DEVICES for a single node and no explicit resource filters
+        cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+        if not resource_pool and len(cuda_visible_devices):
+            detected_str = f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices}"
+            if len(args.include) or len(
+                    args.exclude) or args.num_nodes > 1 or args.num_gpus > 0:
+                print(
+                    f"{detected_str} but ignoring it because one or several of --include/--exclude/--num_gpus/--num_nodes cl args were used. If you want to use CUDA_VISIBLE_DEVICES don't pass any of these arguments to deepspeed."
+                )
+            else:
+                args.include = f"localhost:{cuda_visible_devices}"
+                print(f"{detected_str}: setting --include={args.include}")
+            del os.environ["CUDA_VISIBLE_DEVICES"]
 
-    if args.num_nodes >= 0 or args.num_gpus >= 0:
-        if args.include != "" or args.exclude != "":
-            raise ValueError("Cannot specify num_nodes/gpus with include/exclude")
+        if args.num_nodes >= 0 or args.num_gpus >= 0:
+            if args.include != "" or args.exclude != "":
+                raise ValueError("Cannot specify num_nodes/gpus with include/exclude")
 
     multi_node_exec = True
     if not resource_pool:
         resource_pool = {}
-        device_count = torch.cuda.device_count()
+        if torch.cuda.is_available():
+            device_count = torch.cuda.device_count()
+        else:
+            device_count = os.cpu_count()
         if device_count == 0:
-            raise RuntimeError("Unable to proceed, no GPU resources available")
+            raise RuntimeError("Unable to proceed, no GPU/CPU resources available")
         resource_pool['localhost'] = device_count
         args.master_addr = "127.0.0.1"
         multi_node_exec = False
@@ -426,7 +432,7 @@ def main(args=None):
             updated_active_resources[hostname] = active_resources[hostname]
         active_resources = updated_active_resources
 
-    if args.num_gpus > 0:
+    if args.num_gpus > 0 and torch.cuda.is_available():
         updated_active_resources = collections.OrderedDict()
         for hostname in active_resources.keys():
             updated_active_resources[hostname] = list(range(args.num_gpus))

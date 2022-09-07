@@ -1188,6 +1188,12 @@ class DeepSpeedEngine(Module):
             torch_adam = optimizer_parameters.pop(TORCH_ADAM_PARAM, False)
             adam_w_mode = optimizer_parameters.pop(ADAM_W_MODE, ADAM_W_MODE_DEFAULT)
 
+            if not torch_adam and not torch.cuda.is_available():
+                torch_adam = True
+                logger.warning(
+                    f"The fused ADAM optimizer is not supported in CPU-only builds. Defaulting to PyTorch's ADAM."
+                )
+
             # Optimizer name of Adam forces AdamW logic unless adam_w_mode is explicitly set
             effective_adam_w_mode = self.optimizer_name(
             ) == ADAMW_OPTIMIZER or adam_w_mode
