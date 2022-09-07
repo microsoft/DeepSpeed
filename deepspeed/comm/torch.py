@@ -79,7 +79,9 @@ class TorchBackend(Backend):
                                             async_op=async_op)
 
     def all_gather_base(self, output_tensor, input_tensor, group=None, async_op=False):
-        if self.has_allgather_base and torch.distributed.get_backend(group=group) == "nccl": # Currently, only torch's NCCL backend supports all_gather_base. We have to check it here because torch.distributed.get_backend requires the pg to be initialized.
+        if self.has_allgather_base and torch.distributed.get_backend(
+                group=group
+        ) == "nccl":  # Currently, only torch's NCCL backend supports all_gather_base. We have to check it here because torch.distributed.get_backend requires the pg to be initialized.
             return torch.distributed.distributed_c10d._all_gather_base(
                 output_tensor=output_tensor,
                 input_tensor=input_tensor,
@@ -92,17 +94,19 @@ class TorchBackend(Backend):
                 "please consider upgrading your pytorch installation.")
             output_tensors = list(torch.chunk(output_tensor, self.get_world_size(group)))
             return self.all_gather(output_tensors,
-                              input_tensor,
-                              group=group,
-                              async_op=async_op,
-                              debug=debug)
+                                   input_tensor,
+                                   group=group,
+                                   async_op=async_op,
+                                   debug=debug)
 
     def reduce_scatter_base(self,
                             output_tensor,
                             input_tensor,
                             group=None,
                             async_op=False):
-        if self.has_reduce_scatter_base and torch.distributed.get_backend(group=group) == "nccl": # Currently, only torch's NCCL backend supports reduce_scatter. We have to check it here because torch.distributed.get_backend requires the pg to be initialized.
+        if self.has_reduce_scatter_base and torch.distributed.get_backend(
+                group=group
+        ) == "nccl":  # Currently, only torch's NCCL backend supports reduce_scatter. We have to check it here because torch.distributed.get_backend requires the pg to be initialized.
             return torch.distributed._reduce_scatter_base(output_tensor,
                                                           input_tensor,
                                                           group=group,
@@ -112,8 +116,12 @@ class TorchBackend(Backend):
                 "unable to find torch.distributed._reduce_scatter_base. will fall back to "
                 "torch.distributed.reduce_scatter which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
-            input_tensor_lst = list(torch.chunk(input_tensor, self.get_world_size(group)))
-            return self.reduce_scatter(output_tensor, input_tensor_lst, group=group, async_op=async_op)
+            input_tensor_lst = list(torch.chunk(input_tensor,
+                                                self.get_world_size(group)))
+            return self.reduce_scatter(output_tensor,
+                                       input_tensor_lst,
+                                       group=group,
+                                       async_op=async_op)
 
     def all_to_all_single(self,
                           output,

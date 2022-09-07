@@ -3,11 +3,14 @@
 import torch
 import deepspeed.comm as dist
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced
+import pytest
 
 from .common import distributed_test
 
-pytestmark = pytest.mark.skipif(not torch.cuda.is_available(),
-                                reason='coalesced collectives are not supported on CPU-only builds')
+pytestmark = pytest.mark.skipif(
+    not torch.cuda.is_available(),
+    reason='coalesced collectives are not supported on CPU-only builds')
+
 
 @distributed_test(world_size=2)
 def test_reduce_scatter_coalesced_single_input():
