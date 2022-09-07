@@ -1,6 +1,6 @@
 import pytest
 import deepspeed
-from tests.unit.common import DistributedTest
+from unit.common import DistributedTest
 from deepspeed.git_version_info import version as ds_version
 import os
 from tests.unit.simple_model import SimpleModel
