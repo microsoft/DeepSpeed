@@ -66,7 +66,7 @@ def set_cuda_visibile():
 class DistributedTest(ABC):
     is_dist_test = True
     world_size = 2
-    backend = "nccl"
+    backend = "nccl" if torch.cuda.is_available() else 'gloo'
     init_distributed = True
     set_dist_env = True
 
@@ -164,7 +164,8 @@ class DistributedTest(ABC):
         # turn off NCCL logging if set
         os.environ.pop('NCCL_DEBUG', None)
 
-        set_cuda_visibile()
+        if torch.cuda.is_available():
+            set_cuda_visibile()
 
         if self.init_distributed:
             deepspeed.init_distributed(dist_backend=self.backend)

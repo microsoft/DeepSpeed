@@ -6,6 +6,8 @@ from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesce
 
 from .common import distributed_test
 
+pytestmark = pytest.mark.skipif(not torch.cuda.is_available(),
+                                reason='coalesced collectives are not supported on CPU-only builds')
 
 @distributed_test(world_size=2)
 def test_reduce_scatter_coalesced_single_input():
@@ -16,11 +18,7 @@ def test_reduce_scatter_coalesced_single_input():
         dtype=torch.half,
         device=torch.cuda.current_device() if torch.cuda.is_available() else 'cpu')
 
-    print(f'RANK: {dist.get_rank()} INPUT: {input}')
-
     (output, ) = reduce_scatter_coalesced([input], dist.get_world_group())
-
-    print(f'RANK: {dist.get_rank()} OUTPUT: {output}')
 
     assert output.shape == (3, )
     assert torch.allclose(output, torch.full_like(output, 0.5))
@@ -30,7 +28,7 @@ def test_reduce_scatter_coalesced_single_input():
 def test_reduce_scatter_coalesced_two_inputs():
     tensor_kwargs = {
         "device": torch.cuda.current_device() if torch.cuda.is_available() else 'cpu',
-        "dtype": torch.half
+        "dtype": torch.half if torch.cuda.is_available() else torch.float
     }
     inputs = [
         dist.get_rank() * torch.arange(0,

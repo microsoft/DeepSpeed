@@ -83,24 +83,10 @@ def reduce_scatter_coalesced(
         tensor_partition_flat_buffer,
         world_sz)
 
-    print(
-        f'RANK: {dist.get_rank()} BEFORE tensor_partition_flat_buffer: {tensor_partition_flat_buffer}'
-    )
-    print(
-        f'RANK: {dist.get_rank()} BEFORE tensor_partition_buffer_for_each_rank[this_rank]: {tensor_partition_buffer_for_each_rank[this_rank]}'
-    )
-
     # batched reduce-scatter call
     _torch_reduce_scatter_fn(tensor_partition_flat_buffer,
                              tensor_partition_buffer_for_each_rank[this_rank],
                              group=group)
-
-    print(
-        f'RANK: {dist.get_rank()} AFTER tensor_partition_flat_buffer: {tensor_partition_flat_buffer}'
-    )
-    print(
-        f'RANK: {dist.get_rank()} AFTER tensor_partition_buffer_for_each_rank[this_rank]: {tensor_partition_buffer_for_each_rank[this_rank]}'
-    )
 
     # reverse procedure of the interleaving done previously, done on the
     # result of the batched reduce-scatter
