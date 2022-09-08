@@ -159,7 +159,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             max_live_parameters=max_live_parameters,
             param_persistence_threshold=param_persistence_threshold,
             model_persistence_threshold=model_persistence_threshold,
-            offload_param_config=offload_optimizer_config)
+            offload_param_config=offload_optimizer_config,
+            mpu=mpu)
 
         self.persistent_parameters = self.parameter_offload.persistent_parameters
         self._configure_offloading(offload_optimizer_config, offload_param_config)
@@ -1240,6 +1241,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     def __partition_grads(self,
                           params_to_release: List[Parameter],
                           grad_partitions: List[Tensor]) -> None:
+        offload_fp32_gradients = {}
+        offload_fp32_offsets = {}
         for param, grad_partition in zip(params_to_release, grad_partitions):
             if param.partition_numel() * dist.get_rank(
                     self.dp_process_group) > param.ds_numel:
@@ -1281,8 +1284,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             # offload the gradient partition if applicable
             if self.offload_optimizer:
                 i, dest_offset, _ = self.grad_position[self.get_param_id(param)]
-                offload_fp32_gradients = {}
-                offload_fp32_offsets = {}
 
                 if self.is_gradient_accumulation_boundary:
                     self.norm_for_param_grads[self.get_param_id(

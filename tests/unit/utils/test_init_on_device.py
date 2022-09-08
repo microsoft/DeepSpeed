@@ -1,6 +1,6 @@
 import torch
 import pytest
-from tests.unit.simple_model import SimpleModel
+from unit.simple_model import SimpleModel
 from deepspeed import OnDevice
 from packaging import version as pkg_version
 from deepspeed.accelerator import literal_device

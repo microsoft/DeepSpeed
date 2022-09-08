@@ -7,7 +7,7 @@ import deepspeed.runtime.utils as ds_utils
 import deepspeed.utils.groups as groups
 from deepspeed.accelerator import literal_device
 
-from tests.unit.common import DistributedTest
+from unit.common import DistributedTest
 
 
 def test_call_to_str():

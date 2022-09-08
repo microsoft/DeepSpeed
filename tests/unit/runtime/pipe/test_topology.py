@@ -8,7 +8,7 @@ from deepspeed.runtime.pipe.topology import ProcessTopology as Topo
 from deepspeed.runtime.pipe.topology import _prime_factors
 
 from deepspeed.accelerator import literal_device
-from tests.unit.common import DistributedTest
+from unit.common import DistributedTest
 
 
 def test_topology_2d():
