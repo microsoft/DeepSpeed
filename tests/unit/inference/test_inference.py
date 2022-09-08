@@ -120,10 +120,15 @@ def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
     elif enable_cuda_graph and pkg_version.parse(
             torch.__version__) < pkg_version.parse("1.10"):
         msg = "CUDA Graph is only available in torch versions >= 1.10"
-    elif ("gpt-j-6B" in model) and (dtype == torch.float):
+    elif "gpt-j-6B" in model:
+        if dtype != torch.half:
+            msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
+        elif enable_cuda_graph:
+            msg = f"Not enough GPU memory to run {model} with CUDA Graph enabled"
+    elif ("gpt-neox-20B" in model) and (dtype != torch.half):
         msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
-    elif ("gpt-neox-20B" in model) and (dtype == torch.float):
-        msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
+    elif ("bloom" in model) and (dtype != torch.half):
+        msg = f"Bloom models only support half precision, cannot use dtype {dtype}"
     else:
         msg = ""
     return msg
@@ -316,20 +321,9 @@ class TestMPSize(DistributedTest):
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
-        if "gpt-j-6B" in model:
-            _model = AutoModelForCausalLM.from_pretrained(model,
-                                                          revision="float16",
-                                                          torch_dtype=torch.float16)
-            _tokenizer = AutoTokenizer.from_pretrained(model)
-            pipe = pipeline(task, model=model, device=local_rank, framework="pt")
-        else:
-            # We have to load these large models on CPU with pipeline because not
-            # enough GPU memory
-            pipe = pipeline(task, model=model, device=-1, framework="pt")
-            # Commenting this out for now because no half-precision on CPU
-            #if dtype == torch.half:
-            #    pipe.model.half()
-
+        # We have to load these large models on CPU with pipeline because not
+        # enough GPU memory
+        pipe = pipeline(task, model=model, device=-1, framework="pt")
         bs_output = pipe(query, **inf_kwargs)
 
         pipe.model = deepspeed.init_inference(
@@ -344,8 +338,8 @@ class TestMPSize(DistributedTest):
         pipe.device = torch.device(f"cuda:{local_rank}")
         ds_output = pipe(query, **inf_kwargs)
 
-        print(bs_output)
-        print(ds_output)
+        print(local_rank, "baseline", bs_output)
+        print(local_rank, "deepspeed", ds_output)
         assert assert_fn(bs_output, ds_output)
 
 
