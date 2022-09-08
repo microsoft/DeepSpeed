@@ -52,7 +52,7 @@ _gpt_models = [
     "distilgpt2",
     "Norod78/hebrew-bad_wiki-gpt_neo-tiny",
     "EleutherAI/gpt-j-6B",
-    "bigscience/bloom-350m",
+    "bigscience/bloom-560m",
 ]
 _opt_models = [
     "facebook/opt-125m",        # 125m, 1.7B, ..., 175B variants have the same model architecture.
@@ -126,7 +126,7 @@ def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
             msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
         elif enable_cuda_graph:
             msg = f"Not enough GPU memory to run {model} with CUDA Graph enabled"
-    elif ("gpt-neox-20B" in model) and (dtype != torch.half):
+    elif ("gpt-neox-20b" in model) and (dtype != torch.half):
         msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
     elif ("bloom" in model) and (dtype != torch.half):
         msg = f"Bloom models only support half precision, cannot use dtype {dtype}"
