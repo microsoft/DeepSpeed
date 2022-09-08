@@ -166,7 +166,7 @@ def query(model_w_task):
 def inf_kwargs(model_w_task):
     model, task = model_w_task
     if task == "text-generation":
-        return {"do_sample": False, "max_new_tokens": 20}
+        return {"do_sample": False, "max_length": 20}
     else:
         return {}
 
@@ -300,7 +300,7 @@ class TestModelTask(DistributedTest):
                               "gpt-neox",
                               "bloom"])
 class TestMPSize(DistributedTest):
-    world_size = 2
+    world_size = 4
 
     def test(
         self,
