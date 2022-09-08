@@ -111,6 +111,7 @@ This fixture will validate the configuration
 @pytest.fixture()
 def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
     model, task = model_w_task
+    msg = ""
     if pkg_version.parse(torch.__version__) <= pkg_version.parse("1.2"):
         msg = "DS inference injection doesn't work well on older torch versions"
     elif model not in pytest.all_models[task]:
@@ -129,8 +130,6 @@ def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
         msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
     elif ("bloom" in model) and (dtype != torch.half):
         msg = f"Bloom models only support half precision, cannot use dtype {dtype}"
-    else:
-        msg = ""
     return msg
 
 
