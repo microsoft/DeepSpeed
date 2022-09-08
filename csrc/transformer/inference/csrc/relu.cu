@@ -72,13 +72,16 @@ void launch_bias_relu(T* input,
                       int batch_size,
                       cudaStream_t stream)
 {
-    int total_count = batch_size * (intermediate_size / 4);
-    int threads = 1024;  // intermediate_size / iterations / 4;
+    constexpr int threads = 1024;
+    constexpr int granularity = 16;
+
+    const int total_count = batch_size * intermediate_size;
+    const int elems_per_block = threads * (granularity / sizeof(T));
     dim3 block_dims(threads);
-    dim3 grid_dims(((total_count - 1) / 1024 + 1));  // (batch_size);
+    dim3 grid_dims((total_count + elems_per_block - 1) / elems_per_block);
 
     fused_bias_relu<<<grid_dims, block_dims, 0, stream>>>(
-        input, bias, total_count, intermediate_size / 4);
+        input, bias, total_count, intermediate_size);
 }
 
 template void launch_bias_relu<float>(float*, const float*, int, int, cudaStream_t);
