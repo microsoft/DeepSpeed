@@ -163,9 +163,6 @@ class InferenceEngine(Module):
 
         if self.mp_world_size > 1:
             assert not self.enable_cuda_graph, "Cuda graph is not supported for model parallelism"
-        elif self.enable_cuda_graph:
-            self.model_orig_fwd = self.module.forward
-            self.module.forward = self.forward
 
     def _get_model_config_generate(self, config):
         self.config = getattr(self.module, 'config', None) if config is None else config
