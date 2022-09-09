@@ -302,17 +302,16 @@ void launch_fuse_transpose_bias_kernel(const T* inp,
 void launch_param_update(const float* input, __half* output, int size, cudaStream_t stream);
 void launch_param_update_half(const float* input, __half* output, int size, cudaStream_t stream);
 
-
 template <typename T>
 void quantize_kernel1(int8_t* vals_int,
-                     const T* vals,
-                     T* min,
-                     T* max,
-                    float* zero_point,
-                    float* scale,
-                    int total_count,
-                    int num_bits,
-                    cudaStream_t stream);
+                      const T* vals,
+                      T* min,
+                      T* max,
+                      float* zero_point,
+                      float* scale,
+                      int total_count,
+                      int num_bits,
+                      cudaStream_t stream);
 
 template <typename T>
 void quantize_kernel(int8_t* vals_int,
@@ -321,25 +320,24 @@ void quantize_kernel(int8_t* vals_int,
                      T* max,
                      float* q_scale_d,
                      float* q_zero_point,
-                    //  int groups,
+                     //  int groups,
                      int total_count,
                      int num_bits,
                      cudaStream_t stream);
 
 template <typename T>
 void dequantize_kernel(int8_t* vals_int,
-                     T* vals,
-                     float* q_scale_d,
-                     float* q_zero_point,
-                     int total_count,
-                     cudaStream_t stream);
-
+                       T* vals,
+                       float* q_scale_d,
+                       float* q_zero_point,
+                       int total_count,
+                       cudaStream_t stream);
 
 template <typename T>
 void dequantize_chunks_kernel(int8_t* vals_int,
-                     T* vals,
-                     float* zero_point_stats,
-                     float* scale_stats,
-                     unsigned int total_count,
-                     unsigned int quant_stats_size,
-                     cudaStream_t stream);
+                              T* vals,
+                              float* zero_point_stats,
+                              float* scale_stats,
+                              unsigned int total_count,
+                              unsigned int quant_stats_size,
+                              cudaStream_t stream);
