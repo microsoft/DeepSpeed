@@ -5,9 +5,9 @@ import pytest
 import random
 import numpy as np
 import deepspeed.comm as dist
-from tests.unit.common import DistributedTest, DistributedFixture
-from tests.unit.megatron_model import get_megatron_version
-from tests.unit.megatron_model import MockGPT2ModelPipe as GPT2ModelPipe
+from unit.common import DistributedTest, DistributedFixture
+from unit.megatron_model import get_megatron_version
+from unit.megatron_model import MockGPT2ModelPipe as GPT2ModelPipe
 from deepspeed.utils import RepeatingLoader
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])

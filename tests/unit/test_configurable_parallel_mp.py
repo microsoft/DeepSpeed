@@ -5,8 +5,8 @@ import pytest
 import random
 import numpy as np
 import deepspeed.comm as dist
-from tests.unit.common import DistributedTest, DistributedFixture
-from tests.unit.megatron_model import get_gpt2_model, get_megatron_version
+from unit.common import DistributedTest, DistributedFixture
+from unit.megatron_model import get_gpt2_model, get_megatron_version
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])

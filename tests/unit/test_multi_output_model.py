@@ -1,8 +1,8 @@
 import torch
 import deepspeed
 from pytest import approx
-from tests.unit.common import DistributedTest
-from tests.unit.multi_output_model import MultiOutputModel, multi_output_dataloader
+from unit.common import DistributedTest
+from unit.multi_output_model import MultiOutputModel, multi_output_dataloader
 
 
 def create_config_dict(micro_batch_size, grad_accumulation_steps, world_size):

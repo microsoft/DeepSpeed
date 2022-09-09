@@ -6,8 +6,8 @@ import argparse
 
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 
-from tests.unit.common import DistributedTest, get_test_path
-from tests.unit.simple_model import SimpleModel, create_config_from_dict, random_dataloader
+from unit.common import DistributedTest, get_test_path
+from unit.simple_model import SimpleModel, create_config_from_dict, random_dataloader
 import deepspeed.comm as dist
 
 # A test on its own

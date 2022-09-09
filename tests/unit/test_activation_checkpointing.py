@@ -4,7 +4,7 @@ import pytest
 import torch
 import deepspeed
 from copy import deepcopy
-from tests.unit.common import DistributedTest
+from unit.common import DistributedTest
 
 ckpt = deepspeed.checkpointing.checkpoint
 

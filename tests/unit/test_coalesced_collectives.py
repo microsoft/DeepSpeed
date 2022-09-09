@@ -4,7 +4,7 @@ import torch
 import deepspeed.comm as dist
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced
 
-from tests.unit.common import DistributedTest
+from unit.common import DistributedTest
 
 
 class TestReduceScatterCoalesced(DistributedTest):

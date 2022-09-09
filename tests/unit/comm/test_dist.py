@@ -3,7 +3,7 @@ import torch
 import deepspeed.comm as dist
 import deepspeed
 
-from unit.common import DistributedTest, get_master_port
+from unit.common import DistributedTest, DistributedFixture, get_master_port
 from unit.simple_model import SimpleModel
 
 import pytest

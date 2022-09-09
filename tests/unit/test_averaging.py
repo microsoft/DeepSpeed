@@ -1,6 +1,6 @@
 import torch
 import deepspeed
-from tests.unit.common import DistributedTest
+from unit.common import DistributedTest
 
 
 class Model(torch.nn.Module):

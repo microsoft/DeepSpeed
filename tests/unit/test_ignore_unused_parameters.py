@@ -1,6 +1,6 @@
 import pytest
-from tests.unit.common import DistributedTest
-from tests.unit.simple_model import UnusedParametersModel, random_dataloader
+from unit.common import DistributedTest
+from unit.simple_model import UnusedParametersModel, random_dataloader
 from deepspeed.ops.op_builder import CPUAdamBuilder
 
 import deepspeed

@@ -1,6 +1,6 @@
 import deepspeed
-from tests.unit.common import DistributedTest
-from tests.unit.simple_model import Curriculum_SimpleModel, random_dataloader
+from unit.common import DistributedTest
+from unit.simple_model import Curriculum_SimpleModel, random_dataloader
 
 
 class TestCurriculumScheduler(DistributedTest):

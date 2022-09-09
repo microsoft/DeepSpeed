@@ -5,7 +5,7 @@ import torch
 import deepspeed
 import deepspeed.comm as dist
 from deepspeed.ops.aio import AsyncIOBuilder
-from tests.unit.common import DistributedTest
+from unit.common import DistributedTest
 
 MEGA_BYTE = 1024**2
 BLOCK_SIZE = MEGA_BYTE

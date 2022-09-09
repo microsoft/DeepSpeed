@@ -9,8 +9,8 @@ from torch.nn.modules.container import ModuleList
 from torch.nn.modules.loss import L1Loss
 from torch.nn.parameter import Parameter
 
-from tests.unit.common import DistributedTest
-from tests.unit.simple_model import SimpleModel, random_dataloader
+from unit.common import DistributedTest
+from unit.simple_model import SimpleModel, random_dataloader
 
 import deepspeed
 from deepspeed.runtime.engine import DeepSpeedEngine

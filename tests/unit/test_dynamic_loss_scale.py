@@ -1,8 +1,8 @@
 import torch
 import deepspeed
 import numpy as np
-from tests.unit.common import DistributedTest
-from tests.unit.simple_model import SimpleModel
+from unit.common import DistributedTest
+from unit.simple_model import SimpleModel
 
 
 def run_model_step(model, gradient_list):

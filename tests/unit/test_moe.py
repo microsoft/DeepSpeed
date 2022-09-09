@@ -1,9 +1,9 @@
 import torch
 import deepspeed
 import pytest
-from tests.unit.common import DistributedTest
-from tests.unit.simple_model import SimplePRMoEModel, SimpleMoEModel, sequence_dataloader
-from tests.unit.util import required_torch_version
+from unit.common import DistributedTest
+from unit.simple_model import SimplePRMoEModel, SimpleMoEModel, sequence_dataloader
+from unit.util import required_torch_version
 
 
 @pytest.mark.parametrize("ep_size", [2, 4])
