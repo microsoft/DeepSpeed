@@ -9,6 +9,7 @@ from ... import op_builder
 import torch.nn as nn
 from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
+from deepspeed.utils.types import ActivationFuncType
 
 # Cuda modules will be imported if needed
 inference_cuda_module = None
@@ -71,6 +72,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  rotate_every_two=True,
                  return_tuple=True,
                  mlp_after_attn=True,
+                 mlp_act_func_type=ActivationFuncType.GELU,
                  training_mp_size=1,
                  bigscience_bloom=False):
         super(DeepSpeedInferenceConfig,
@@ -95,6 +97,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.rotate_every_two = rotate_every_two
         self.return_tuple = return_tuple
         self.mlp_after_attn = mlp_after_attn
+        self.mlp_act_func_type = mlp_act_func_type
         self.specialized_mode = False
         self.training_mp_size = training_mp_size
         self.bigscience_bloom = bigscience_bloom
@@ -203,16 +206,6 @@ class DeepSpeedSelfAttentionFunction(Function):
              value_layer) = split_tensor_along_last_dim(mixed_x_layer,
                                                         3)
 
-            if layer_past is not None:
-                past_key, past_value = layer_past
-                # concatenate along seq_length dimension -> [batch_size, qk_length, num_heads, head_dim]
-                key_layer = torch.cat((past_key.type_as(key_layer), key_layer), dim=1)
-                value_layer = torch.cat((past_value.type_as(value_layer),
-                                         value_layer),
-                                        dim=1)
-
-            presents = (key_layer, value_layer)
-
             # [batch_size, head_dim, q_length, k_length]
             output_size = (query_layer.size(0),
                            query_layer.size(2),
@@ -220,24 +213,37 @@ class DeepSpeedSelfAttentionFunction(Function):
                            key_layer.size(1))
             # [batch_size, q_length, num_heads, head_dim] -> [q_length, batch_size * num_heads, head_dim]
             query_layer = query_layer.transpose(1,
-                                                0).reshape(
-                                                    output_size[2],
+                                                2).reshape(
                                                     output_size[0] * output_size[1],
+                                                    output_size[2],
                                                     -1)
             # [batch_size, k_length, num_heads, head_dim] -> [k_length, batch_size * num_heads, head_dim]
             key_layer = key_layer.transpose(1,
-                                            0).reshape(output_size[3],
-                                                       output_size[0] * output_size[1],
-                                                       -1)
+                                            2).reshape(output_size[0] * output_size[1],
+                                                       output_size[3],
+                                                       -1).transpose(-1,
+                                                                     -2)
+            value_layer = value_layer.transpose(1,
+                                                2).reshape(
+                                                    output_size[0] * output_size[1],
+                                                    output_size[3],
+                                                    -1)
+            if layer_past is not None:
+                past_key, past_value = layer_past
+                # concatenate along seq_length dimension -> [batch_size, qk_length, num_heads, head_dim]
+                key_layer = torch.cat((past_key.type_as(key_layer), key_layer), dim=-1)
+                value_layer = torch.cat((past_value.type_as(value_layer),
+                                         value_layer),
+                                        dim=-2)
 
+            presents = (key_layer, value_layer)
             # Raw attention scores. [batch_size * num_heads, q_length, k_length]
-            matmul_result = torch.matmul(query_layer.transpose(1,
-                                                               0),
-                                         key_layer.transpose(1,
-                                                             0).transpose(1,
-                                                                          2))
+            matmul_result = torch.matmul(query_layer, key_layer)
             # change view to [batch_size, num_heads, q_length, k_length]
-            attention_scores = matmul_result.view(*output_size)
+            attention_scores = matmul_result.view(output_size[0],
+                                                  output_size[1],
+                                                  output_size[2],
+                                                  -1)
 
             offset = dist.get_rank(
             ) * num_attention_heads_per_partition if dist.is_initialized() else 0
@@ -258,12 +264,7 @@ class DeepSpeedSelfAttentionFunction(Function):
             attention_probs_reshaped = attention_probs.view(*matmul_result.shape)
 
             # matmul: [batch_size * num_heads, q_length, head_dim]
-            context_layer = torch.bmm(
-                attention_probs_reshaped,
-                value_layer.transpose(1,
-                                      2).reshape(-1,
-                                                 value_layer.size(1),
-                                                 value_layer.size(3)))
+            context_layer = torch.bmm(attention_probs_reshaped, value_layer)
 
             # change view [batch_size, num_heads, q_length, head_dim]
             context_layer = context_layer.view(
@@ -415,15 +416,21 @@ class DeepSpeedSelfAttentionFunction(Function):
                 qkv_out = qkv_func(
                     input,
                     attn_qkvw,
+                    attn_qkvw.scale,
                     (attn_qkvb if attn_qkvb is not None else norm_b),
                     norm_w,
                     norm_b,
                     config.epsilon,
                     (attn_qkvb is not None),
                     1 if config.bigscience_bloom else
-                    DeepSpeedTransformerInference.layer_id)
+                    DeepSpeedTransformerInference.layer_id,
+                    config.q_int8)
             context_layer, key_layer, value_layer = compute_attention(qkv_out[0] if isinstance(qkv_out, list) else qkv_out, input_mask)
-            output = vector_matmul_func(context_layer, attn_ow, False)
+            output = vector_matmul_func(context_layer,
+                                        attn_ow,
+                                        False,
+                                        attn_ow.scale,
+                                        config.q_int8)
 
             return output, key_layer, value_layer, context_layer, qkv_out[-1]
 
@@ -455,7 +462,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                                               (merge_count))
             return output, key_layer, value_layer, context_layer
 
-        if config.q_int8:
+        if False:  #config.q_int8:
             output, key_layer, value_layer, context_layer = selfAttention_int8()
         else:
             output, key_layer, value_layer, context_layer, inp_norm = selfAttention_fp()
@@ -483,30 +490,34 @@ class DeepSpeedSelfAttention(nn.Module):
                  qkv_merging=False):
         super(DeepSpeedSelfAttention, self).__init__()
         self.config = config
-        data_type = torch.half if config.fp16 else torch.float
+        data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.float
+        data_type_fp = torch.half if config.fp16 else torch.float
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
         device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
-        self.attn_qkvw = nn.Parameter(
-            torch.empty(self.config.hidden_size,
-                        (self.config.hidden_size // self.config.mp_size) * 3,
-                        dtype=data_type,
-                        device=device))
-        self.attn_qkvb = nn.Parameter(
-            torch.empty((self.config.hidden_size // self.config.mp_size) * 3,
-                        dtype=data_type,
-                        device=device))
+        self.attn_qkvw = nn.Parameter(torch.empty(
+            self.config.hidden_size,
+            (self.config.hidden_size // self.config.mp_size) * 3,
+            dtype=data_type,
+            device=device),
+                                      requires_grad=False)
+        self.attn_qkvb = nn.Parameter(torch.empty(
+            (self.config.hidden_size // self.config.mp_size) * 3,
+            dtype=data_type_fp,
+            device=device),
+                                      requires_grad=False)
 
-        self.attn_ow = nn.Parameter(
-            torch.empty(self.config.hidden_size // self.config.mp_size,
-                        self.config.hidden_size,
-                        dtype=data_type,
-                        device=device))
+        self.attn_ow = nn.Parameter(torch.empty(self.config.hidden_size //
+                                                self.config.mp_size,
+                                                self.config.hidden_size,
+                                                dtype=data_type,
+                                                device=device),
+                                    requires_grad=False)
 
-        self.attn_ob = nn.Parameter(
-            torch.empty(self.config.hidden_size,
-                        dtype=data_type,
-                        device=device))
+        self.attn_ob = nn.Parameter(torch.empty(self.config.hidden_size,
+                                                dtype=data_type_fp,
+                                                device=device),
+                                    requires_grad=False)
 
         self.num_attention_heads_per_partition = self.config.heads // self.config.mp_size
         self.hidden_size_per_partition = self.config.hidden_size // self.config.mp_size
@@ -589,38 +600,19 @@ class DeepSpeedMLPFunction(Function):
                 mlp_gemm_func,
                 fused_gemm_gelu,
                 vector_matmul_func,
-                bias_residual_func):
+                bias_residual_func,
+                activation_func_type=ActivationFuncType.GELU):
 
-        if config.q_int8:
-            (intermediate,
-             residual_add) = inference_cuda_module.mlp_gemm_int8(
-                 input,
-                 residual,
-                 bias,
-                 inter_w,
-                 inter_b,
-                 attn_nw,
-                 attn_nb,
-                 config.epsilon,
-                 q_scales[2],
-                 (q_groups * (2**merge_count)),
-                 config.pre_layer_norm)
-            output = inference_cuda_module.vector_matmul_int8(intermediate,
-                                                              output_w,
-                                                              q_scales[3],
-                                                              q_groups,
-                                                              (merge_count))
+        if attn_nw is None:
+            output = fused_gemm_gelu(residual_norm,
+                                     inter_w,
+                                     inter_b,
+                                     output_w,
+                                     config.epsilon,
+                                     config.pre_layer_norm,
+                                     False)
         else:
-            if attn_nw is None:
-                output = fused_gemm_gelu(residual_norm,
-                                         inter_w,
-                                         inter_b,
-                                         output_w,
-                                         config.epsilon,
-                                         config.pre_layer_norm,
-                                         False)
-            else:
-                intermediate, residual_add = mlp_gemm_func(input,
+            intermediate, residual_add = mlp_gemm_func(input,
                                              residual,
                                              bias,
                                              inter_w,
@@ -629,9 +621,15 @@ class DeepSpeedMLPFunction(Function):
                                              attn_nb,
                                              config.epsilon,
                                              config.pre_layer_norm,
-                                             config.mlp_after_attn)
-                output = vector_matmul_func(intermediate, output_w, False)
-
+                                             config.mlp_after_attn,
+                                             inter_w.scale,
+                                             config.q_int8,
+                                             config.mlp_act_func_type)
+            output = vector_matmul_func(intermediate,
+                                        output_w,
+                                        False,
+                                        output_w.scale,
+                                        config.q_int8)
         inference_cuda_module.residual_add(
             output,
             residual if config.pre_layer_norm else residual_add,
@@ -663,34 +661,38 @@ class DeepSpeedMLP(nn.Module):
         super(DeepSpeedMLP, self).__init__()
 
         self.config = config
-        data_type = torch.half if config.fp16 else torch.float
+        data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.float
+        data_type_fp = torch.half if config.fp16 else torch.float
         device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
-        self.attn_nw = nn.Parameter(
-            torch.empty(self.config.hidden_size,
-                        dtype=data_type,
-                        device=device))
-        self.attn_nb = nn.Parameter(
-            torch.empty(self.config.hidden_size,
-                        dtype=data_type,
-                        device=device))
-        self.inter_w = nn.Parameter(
-            torch.empty(self.config.hidden_size,
-                        self.config.intermediate_size // self.config.mp_size,
-                        dtype=data_type,
-                        device=device))
-        self.inter_b = nn.Parameter(
-            torch.empty(self.config.intermediate_size // self.config.mp_size,
-                        dtype=data_type,
-                        device=device))
-        self.output_w = nn.Parameter(
-            torch.empty((self.config.intermediate_size // self.config.mp_size),
-                        self.config.hidden_size,
-                        dtype=data_type,
-                        device=device))
-        self.output_b = nn.Parameter(
-            torch.empty(self.config.hidden_size,
-                        dtype=data_type,
-                        device=device))
+        self.attn_nw = nn.Parameter(torch.empty(self.config.hidden_size,
+                                                dtype=data_type_fp,
+                                                device=device),
+                                    requires_grad=False)
+        self.attn_nb = nn.Parameter(torch.empty(self.config.hidden_size,
+                                                dtype=data_type_fp,
+                                                device=device),
+                                    requires_grad=False)
+        self.inter_w = nn.Parameter(torch.empty(self.config.hidden_size,
+                                                self.config.intermediate_size //
+                                                self.config.mp_size,
+                                                dtype=data_type,
+                                                device=device),
+                                    requires_grad=False)
+        self.inter_b = nn.Parameter(torch.empty(self.config.intermediate_size //
+                                                self.config.mp_size,
+                                                dtype=data_type_fp,
+                                                device=device),
+                                    requires_grad=False)
+        self.output_w = nn.Parameter(torch.empty(
+            (self.config.intermediate_size // self.config.mp_size),
+            self.config.hidden_size,
+            dtype=data_type,
+            device=device),
+                                     requires_grad=False)
+        self.output_b = nn.Parameter(torch.empty(self.config.hidden_size,
+                                                 dtype=data_type_fp,
+                                                 device=device),
+                                     requires_grad=False)
 
         # used for quantization
         self.q_scales = q_scales
@@ -785,31 +787,36 @@ class DeepSpeedTransformerInference(nn.Module):
                                 mlp_extra_grouping)
 
         device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
-        self.norm_w = nn.Parameter(
-            torch.empty(self.config.hidden_size,
-                        dtype=data_type,
-                        device=device))
-        self.norm_b = nn.Parameter(
-            torch.empty(self.config.hidden_size,
-                        dtype=data_type,
-                        device=device))
+        self.norm_w = nn.Parameter(torch.empty(self.config.hidden_size,
+                                               dtype=data_type,
+                                               device=device),
+                                   requires_grad=False)
+        self.norm_b = nn.Parameter(torch.empty(self.config.hidden_size,
+                                               dtype=data_type,
+                                               device=device),
+                                   requires_grad=False)
         self.layer_past = None
 
-    def forward(self,
-                input,
-                input_mask=None,
-                attention_mask=None,
-                head_mask=None,
-                layer_past=None,
-                get_key_value=False,
-                get_present=False,
-                encoder_output=None,
-                enc_dec_attn_mask=None,
-                encoder_hidden_states=None,
-                encoder_attention_mask=None,
-                use_cache=False,
-                alibi=None,
-                output_attentions=False):
+    def forward(
+            self,
+            input,
+            input_mask=None,
+            attention_mask=None,
+            head_mask=None,
+            layer_past=None,
+            get_key_value=False,
+            get_present=False,
+            encoder_output=None,
+            enc_dec_attn_mask=None,
+            encoder_hidden_states=None,
+            encoder_attention_mask=None,
+            use_cache=False,
+            alibi=None,
+            output_attentions=False,
+            # TODO(arashb): 'layer_head_mask' and 'past_key_value' are only added to satisfy the OPT models API.
+            # This needs to be redesigned later!
+            layer_head_mask=None,
+            past_key_value=None):
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 
@@ -817,6 +824,7 @@ class DeepSpeedTransformerInference(nn.Module):
         if input.shape[1] > 1:
             self.layer_past = None
         layer_past = layer_past if layer_past is not None else self.layer_past
+        head_mask = layer_head_mask if layer_head_mask is not None else head_mask
 
         attn_mask = None
         if isinstance(input, tuple):
