@@ -85,7 +85,12 @@ public:
             cudaMalloc(&_workspace, size);
         }
 
-        if (!_workspace) { throw std::runtime_error("Workspace is null."); }
+        if (!_workspace) {
+            size_t total_size, free_size;
+            cudaMemGetInfo(&free_size, &total_size);
+            printf("Requested:\t%lu\nFree:\t%lu\nTotal:\t%lu\n", size, free_size, total_size);
+            throw std::runtime_error("Workspace is null.");
+        }
         _workSpaceSize = size;
     }
 
