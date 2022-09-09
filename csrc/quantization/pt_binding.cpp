@@ -59,7 +59,6 @@ at::Tensor ds_sr_quantize_asym(at::Tensor& vals, int groups, int bits)
     return vals;
 }
 
-
 std::vector<torch::Tensor> ds_quantizer(torch::Tensor& A, int num_bits)
 {
     int groups = 1;
@@ -88,17 +87,16 @@ std::vector<torch::Tensor> ds_quantizer(torch::Tensor& A, int num_bits)
     auto scale = torch::tensor(0, float_options);
     auto zero_point = torch::tensor(0, float_options);
 
-
     quantize_kernel((int8_t*)Q_A.data_ptr(),
-                (__half*)A.data_ptr(),
-                (__half*)min.data_ptr(),
-                (__half*)max.data_ptr(),
-                (float*)scale.data_ptr(),
-                (float*)zero_point.data_ptr(),
-                // groups,
-                input_size,
-                num_bits,
-                at::cuda::getCurrentCUDAStream());
+                    (__half*)A.data_ptr(),
+                    (__half*)min.data_ptr(),
+                    (__half*)max.data_ptr(),
+                    (float*)scale.data_ptr(),
+                    (float*)zero_point.data_ptr(),
+                    // groups,
+                    input_size,
+                    num_bits,
+                    at::cuda::getCurrentCUDAStream());
 
     // if (groups < M)
     // {
@@ -127,58 +125,50 @@ std::vector<torch::Tensor> ds_quantizer(torch::Tensor& A, int num_bits)
     //                 num_bits,
     //                 at::cuda::getCurrentCUDAStream());
     // }
-    return {Q_A, zero_point,scale};
+    return {Q_A, zero_point, scale};
 }
 
-
-torch::Tensor ds_dequantizer(torch::Tensor& A,torch::Tensor& zero_point,torch::Tensor& scale, std::string dtype)
+torch::Tensor ds_dequantizer(torch::Tensor& A,
+                             torch::Tensor& zero_point,
+                             torch::Tensor& scale,
+                             std::string dtype)
 {
     unsigned input_size = 1;
     for (auto& s : A.sizes()) input_size *= s;
 
     torch::Dtype dtype_;
-    if (dtype == "torch.float32" or dtype == "torch.cuda.FloatTensor")
-    {
-        dtype_=torch::kFloat;
-    }
-    else if (dtype == "torch.float16")
-    {
-        dtype_=torch::kHalf;
-    }
-    else
-    {
-        throw std::runtime_error("Got unsupported dtype:"+dtype);
+    if (dtype == "torch.float32" or dtype == "torch.cuda.FloatTensor") {
+        dtype_ = torch::kFloat;
+    } else if (dtype == "torch.float16") {
+        dtype_ = torch::kHalf;
+    } else {
+        throw std::runtime_error("Got unsupported dtype:" + dtype);
     }
 
     auto dequantize_options = torch::TensorOptions()
-                            .dtype(dtype_)
-                            .layout(torch::kStrided)
-                            .device(torch::kCUDA)
-                            .requires_grad(false);
+                                  .dtype(dtype_)
+                                  .layout(torch::kStrided)
+                                  .device(torch::kCUDA)
+                                  .requires_grad(false);
 
     auto Q_A = torch::empty_like(A, dequantize_options);
-    if (dtype_ == torch::kFloat)
-    {
-        throw std::runtime_error("Got unsupported dtype:"+dtype);
+    if (dtype_ == torch::kFloat) {
+        throw std::runtime_error("Got unsupported dtype:" + dtype);
         // dequantize_kernel((int8_t*)Q_A.data_ptr(),
         //             (float*)A.data_ptr(),
         //             (float*)scale.data_ptr(),
         //             (float*)zero_point.data_ptr(),
         //             input_size,
         //             at::cuda::getCurrentCUDAStream());
-    }
-    else if (dtype_ == torch::kHalf)
-    {
+    } else if (dtype_ == torch::kHalf) {
         dequantize_kernel((int8_t*)A.data_ptr(),
-                    (__half*)Q_A.data_ptr(),
-                    (float*)scale.data_ptr(),
-                    (float*)zero_point.data_ptr(),
-                    input_size,
-                    at::cuda::getCurrentCUDAStream());
-    }
-    else
-    {
-        throw std::runtime_error("Got unsupported dtype:"+dtype);
+                          (__half*)Q_A.data_ptr(),
+                          (float*)scale.data_ptr(),
+                          (float*)zero_point.data_ptr(),
+                          input_size,
+                          at::cuda::getCurrentCUDAStream());
+    } else {
+        throw std::runtime_error("Got unsupported dtype:" + dtype);
     }
     // dequantize_kernel((int8_t*)A.data_ptr(),
     //             (__half*)Q_A.data_ptr(),
@@ -190,9 +180,10 @@ torch::Tensor ds_dequantizer(torch::Tensor& A,torch::Tensor& zero_point,torch::T
     return Q_A;
 }
 
-
-
-torch::Tensor ds_dequantizer_chunks(torch::Tensor& A,torch::Tensor& zero_point_stats,torch::Tensor& scale_stats, std::string dtype)
+torch::Tensor ds_dequantizer_chunks(torch::Tensor& A,
+                                    torch::Tensor& zero_point_stats,
+                                    torch::Tensor& scale_stats,
+                                    std::string dtype)
 {
     unsigned input_size = 1;
     for (auto& s : A.sizes()) input_size *= s;
@@ -202,41 +193,33 @@ torch::Tensor ds_dequantizer_chunks(torch::Tensor& A,torch::Tensor& zero_point_s
     unsigned num_chunks = quant_stat_size;
     unsigned numel_per_chunk = input_size / num_chunks;
 
-
     torch::Dtype dtype_;
-    if (dtype == "torch.float32" or dtype == "torch.cuda.FloatTensor")
-    {
-        dtype_=torch::kFloat;
-    }
-    else if (dtype == "torch.float16")
-    {
-        dtype_=torch::kHalf;
-    }
-    else
-    {
-        throw std::runtime_error("Got unsupported dtype:"+dtype);
+    if (dtype == "torch.float32" or dtype == "torch.cuda.FloatTensor") {
+        dtype_ = torch::kFloat;
+    } else if (dtype == "torch.float16") {
+        dtype_ = torch::kHalf;
+    } else {
+        throw std::runtime_error("Got unsupported dtype:" + dtype);
     }
 
     auto dequantize_options = torch::TensorOptions()
-                            .dtype(dtype_)
-                            .layout(torch::kStrided)
-                            .device(torch::kCUDA)
-                            .requires_grad(false);
+                                  .dtype(dtype_)
+                                  .layout(torch::kStrided)
+                                  .device(torch::kCUDA)
+                                  .requires_grad(false);
 
     auto Q_A = torch::empty_like(A, dequantize_options);
 
-
     dequantize_chunks_kernel((int8_t*)A.data_ptr(),
-                (__half*)Q_A.data_ptr(),
-                (float*)zero_point_stats.data_ptr(),
-                (float*)scale_stats.data_ptr(),
-                input_size,
-                numel_per_chunk,
-                at::cuda::getCurrentCUDAStream());
+                             (__half*)Q_A.data_ptr(),
+                             (float*)zero_point_stats.data_ptr(),
+                             (float*)scale_stats.data_ptr(),
+                             input_size,
+                             numel_per_chunk,
+                             at::cuda::getCurrentCUDAStream());
 
     return Q_A;
 }
-
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
@@ -253,12 +236,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("ds_sr_quantize_asym_fp16",
           &ds_sr_quantize_asym<__half>,
           "DeepSpeed Quantize with fp16 (CUDA)");
-    m.def("ds_quantizer",
-          &ds_quantizer,
-          "DeepSpeed Quantize with fp16 (CUDA)");
-    m.def("ds_dequantizer",
-          &ds_dequantizer,
-          "DeepSpeed Dequantize with fp16 (CUDA)");
+    m.def("ds_quantizer", &ds_quantizer, "DeepSpeed Quantize with fp16 (CUDA)");
+    m.def("ds_dequantizer", &ds_dequantizer, "DeepSpeed Dequantize with fp16 (CUDA)");
     m.def("ds_dequantizer_chunks",
           &ds_dequantizer_chunks,
           "DeepSpeed Dequantize with fp16 (CUDA) with respect to chunks");
