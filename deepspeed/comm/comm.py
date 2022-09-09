@@ -32,6 +32,7 @@ import os
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
 from .constants import *
 from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator import literal_device
 
 
 class ReduceOp(Enum):
@@ -575,7 +576,7 @@ def get_global_rank(group=None, group_rank=0):
 
 
 # Main DeepSpeed Comms. public API.
-def init_distributed(dist_backend="nccl",
+def init_distributed(dist_backend=None,
                      auto_mpi_discovery=True,
                      distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT,
                      verbose=True,
@@ -630,6 +631,11 @@ def init_distributed(dist_backend="nccl",
                 utils.logger.info('Distributed backend already initialized')
         else:
             assert isinstance(timeout, timedelta)
+            if dist_backend == None:
+                if literal_device() == 'xpu':
+                    dist_backend = 'ccl'
+                else:
+                    dist_backend = 'nccl'
             if int(os.getenv('RANK', '0')) == 0:
                 utils.logger.info(
                     'Initializing TorchBackend in DeepSpeed with backend {}'.format(

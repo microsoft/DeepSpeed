@@ -37,7 +37,8 @@ def _get_test_file_and_buffer(tmpdir, ref_buffer, cuda_device, index=0):
     if cuda_device:
         test_buffer = accel_runtime.ByteTensor(list(ref_buffer))
     else:
-        test_buffer = torch.ByteTensor(list(ref_buffer)).pin_memory()
+        test_buffer = torch.ByteTensor(
+            list(ref_buffer)).pin_memory(device=accel_runtime.current_device())
 
     return test_file, test_buffer
 
@@ -66,7 +67,10 @@ def test_parallel_read(tmpdir, single_submit, overlap_events):
     def _test_parallel_read(single_submit, overlap_events):
         ref_file, _ = _do_ref_write(tmpdir)
 
-        aio_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device='cpu').pin_memory()
+        aio_buffer = torch.empty(
+            IO_SIZE,
+            dtype=torch.uint8,
+            device='cpu').pin_memory(device=accel_runtime.current_device())
         h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE,
                                                QUEUE_DEPTH,
                                                single_submit,
@@ -115,9 +119,10 @@ def test_async_read(tmpdir, single_submit, overlap_events, cuda_device):
         if cuda_device:
             aio_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device=literal_device())
         else:
-            aio_buffer = torch.empty(IO_SIZE,
-                                     dtype=torch.uint8,
-                                     device='cpu').pin_memory()
+            aio_buffer = torch.empty(
+                IO_SIZE,
+                dtype=torch.uint8,
+                device='cpu').pin_memory(device=accel_runtime.current_device())
 
         h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE,
                                                QUEUE_DEPTH,
@@ -254,7 +259,10 @@ def test_async_queue_read(tmpdir, async_queue, cuda_device):
             if cuda_device:
                 buf = torch.empty(IO_SIZE, dtype=torch.uint8, device=literal_device())
             else:
-                buf = torch.empty(IO_SIZE, dtype=torch.uint8, device='cpu').pin_memory()
+                buf = torch.empty(
+                    IO_SIZE,
+                    dtype=torch.uint8,
+                    device='cpu').pin_memory(device=accel_runtime.current_device())
             aio_buffers.append(buf)
 
         single_submit = True

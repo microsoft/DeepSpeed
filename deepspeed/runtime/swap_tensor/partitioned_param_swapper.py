@@ -10,7 +10,7 @@ import shutil
 from enum import Enum
 import torch
 from deepspeed import comm as dist
-
+from deepspeed.accelerator import runtime as accel_runtime
 from deepspeed.ops.aio import AsyncIOBuilder
 from .constants import *
 from .utils import swap_in_tensors, swap_out_tensors, MIN_AIO_BYTES, AIO_ALIGNED_BYTES, print_object, SwapBufferPool
@@ -393,9 +393,10 @@ class AsyncPartitionedParameterSwapper(object):
     def reserve_partitioned_swap_space(self, partition_num_elems):
         aligned_numel = sum(
             [self._io_aligned_numel(numel) for numel in partition_num_elems])
-        self.partitioned_swap_buffer = torch.zeros(aligned_numel,
-                                                   device='cpu',
-                                                   dtype=self.dtype).pin_memory()
+        self.partitioned_swap_buffer = torch.zeros(
+            aligned_numel,
+            device='cpu',
+            dtype=self.dtype).pin_memory(device=accel_runtime.current_device())
         self.partitioned_swap_pool = SwapBufferPool([self.partitioned_swap_buffer])
 
     def swap_out_partitioned_params(self, dst_fp16_params, src_fp32_params):

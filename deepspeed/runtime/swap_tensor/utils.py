@@ -7,6 +7,7 @@ Functionality of swapping tensors to/from (NVMe) storage devices.
 
 import torch
 from deepspeed.utils.logging import logger
+from deepspeed.accelerator import runtime as accel_runtime
 
 from deepspeed import comm as dist
 
@@ -181,7 +182,8 @@ class SwapBufferManager(object):
         self.all_buffers = [
             torch.zeros(num_elems,
                         device='cpu',
-                        dtype=dtype).pin_memory() for _ in range(count)
+                        dtype=dtype).pin_memory(device=accel_runtime.current_device())
+            for _ in range(count)
         ]
         self.free_buffer_index = [i for i in range(count)]
         self.used_buffer_index = {}
