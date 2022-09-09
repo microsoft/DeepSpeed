@@ -126,7 +126,7 @@ def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
             msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
         elif enable_cuda_graph:
             msg = f"Not enough GPU memory to run {model} with CUDA Graph enabled"
-    elif "gpt-neox-20b" in model: # TODO: remove this when neox issues resolved
+    elif "gpt-neox-20b" in model:  # TODO: remove this when neox issues resolved
         msg = "Skipping gpt-neox-20b for now"
     elif ("gpt-neox-20b" in model) and (dtype != torch.half):
         msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
