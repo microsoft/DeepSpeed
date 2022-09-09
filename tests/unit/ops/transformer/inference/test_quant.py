@@ -11,7 +11,7 @@ def allclose(x, y):
     return torch.allclose(x, y, rtol=rtol, atol=atol)
 
 
-def quantize_ref(inputs, bit, num_groups=1):
+def quantize_dequantize_ref(inputs, bit, num_groups=1):
     q_range = 2**bit
     input_flat = inputs.float().reshape(num_groups, -1).contiguous()
     input_flat = torch.nan_to_num(input_flat, nan=0.0)
@@ -29,8 +29,9 @@ def quantize_ref(inputs, bit, num_groups=1):
 @pytest.mark.parametrize("input_tensor", torch.rand(8, 8, dtype=torch.float16).cuda())
 def test_quant_dequant(input_tensor):
     ref_input = input_tensor.clone().detach()
-    ref_out = quantize_ref(ref_input, 8)
+    ref_out = quantize_dequantize_ref(ref_input, 8)
 
+    # ds_quantize will do quantize then dequantize and return the dequantized value.
     ds_out = quantizer_cuda_module.ds_quantize_fp16(input_tensor, 1, 8)
 
     assert (allclose(ds_out, ref_out))
