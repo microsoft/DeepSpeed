@@ -194,7 +194,7 @@ class TestZeROCheckpoint(DistributedTest):
 class ws4_model_checkpoint(DistributedFixture):
     world_size = 4
 
-    def run(self, class_tmpdir, elastic_save):
+    def run(self, class_tmpdir, elastic_save, load_optim):
         ds_config = {
             "train_batch_size": 4,
             "optimizer": {
@@ -333,9 +333,9 @@ class TestZeROElasticCheckpoint(DistributedTest):
                                                 model_parameters=model.parameters())
         if load_optim:
             with pytest.raises(deepspeed.runtime.zero.utils.ZeRORuntimeException):
-                model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
+                model.load_checkpoint(class_tmpdir, load_optimizer_states=load_optim)
         else:
-            model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
+            model.load_checkpoint(class_tmpdir, load_optimizer_states=load_optim)
 
 
 class TestZeROSaveLoadEdgeCase(DistributedTest):
