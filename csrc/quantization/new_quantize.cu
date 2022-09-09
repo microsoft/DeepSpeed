@@ -412,7 +412,7 @@ __global__ void quantize_data_1(const __half *vals,
         id += (blockDim.x);
     }
 // printf("first reduce in warp starts\n");
-// delete [] data; 
+// delete [] data;
 // printf("newton pointer right\n");
 #pragma unroll
     for (int i = 1; i < WARP_SIZE; i <<= 1)
