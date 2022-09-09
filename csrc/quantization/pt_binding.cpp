@@ -202,7 +202,7 @@ torch::Tensor ds_dequantizer_chunks(torch::Tensor& A,torch::Tensor& zero_point_s
     unsigned num_chunks = quant_stat_size;
     unsigned numel_per_chunk = input_size / num_chunks;
 
-    
+
     torch::Dtype dtype_;
     if (dtype == "torch.float32" or dtype == "torch.cuda.FloatTensor")
     {
