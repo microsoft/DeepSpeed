@@ -1,10 +1,14 @@
+/*
+Copyright 2022 The Microsoft DeepSpeed Team
+*/
+
 #pragma once
 
 #ifdef __HIP_PLATFORM_HCC__
 #define HALF_PRECISION_AVAILABLE = 1
 #include <hip/hip_cooperative_groups.h>
 #else
-#if __CUDA_ARCH__ >= 700
+#if __CUDA_ARCH__ >= 530
 #define HALF_PRECISION_AVAILABLE = 1
 #endif
 #include <cooperative_groups.h>
@@ -108,6 +112,14 @@ void launch_dequantize(T* output,
                        unsigned merge_count,
                        cudaStream_t stream);
 
+template <typename T>
+void launch_dequantize(T* output,
+                       const int8_t* input,
+                       const float* qscale,
+                       unsigned output_size,
+                       unsigned hidden_dim,
+                       unsigned groups,
+                       cudaStream_t stream);
 template <typename T>
 void launch_gptj_residual_add(T* input,
                               T* output,
