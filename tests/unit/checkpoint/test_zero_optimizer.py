@@ -1,7 +1,7 @@
 import deepspeed
 from deepspeed.ops.op_builder import CPUAdamBuilder
 
-from unit.common import DistributedTest
+from unit.common import DistributedTest, DistributedFixture
 from unit.simple_model import *
 from unit.util import required_minimum_torch_version
 
