@@ -9,7 +9,7 @@
 #define HALF_PRECISION_AVAILABLE = 1
 #include <hip/hip_cooperative_groups.h>
 #else
-#if __CUDA_ARCH__ >= 530
+#if __CUDA_ARCH__ >= 700
 #define HALF_PRECISION_AVAILABLE = 1
 #endif
 #include <cooperative_groups.h>
@@ -301,3 +301,46 @@ void launch_fuse_transpose_bias_kernel(const T* inp,
 
 void launch_param_update(const float* input, __half* output, int size, cudaStream_t stream);
 void launch_param_update_half(const float* input, __half* output, int size, cudaStream_t stream);
+
+
+template <typename T>
+void quantize_kernel1(int8_t* vals_int,
+                     const T* vals,
+                     T* min,
+                     T* max,
+                    float* zero_point,
+                    float* scale,
+                    int total_count,
+                    int num_bits,
+                    cudaStream_t stream);
+
+template <typename T>
+void quantize_kernel(int8_t* vals_int,
+                     const T* vals,
+                     T* min,
+                     T* max,
+                     float* q_scale_d,
+                     float* q_zero_point,
+                    //  int groups,
+                     int total_count,
+                     int num_bits,
+                     cudaStream_t stream);
+                     
+template <typename T>
+void dequantize_kernel(int8_t* vals_int,
+                     T* vals,
+                     float* q_scale_d,
+                     float* q_zero_point,
+                     int total_count,
+                     cudaStream_t stream);
+
+
+template <typename T>
+void dequantize_chunks_kernel(int8_t* vals_int,
+                     T* vals,
+                     float* zero_point_stats,
+                     float* scale_stats,
+                     unsigned int total_count,
+                     unsigned int quant_stats_size,
+                     cudaStream_t stream);
+                     

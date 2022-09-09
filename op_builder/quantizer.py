@@ -16,7 +16,14 @@ class QuantizerBuilder(CUDAOpBuilder):
         return [
             'csrc/quantization/pt_binding.cpp',
             'csrc/quantization/quantizer.cu',
+            'csrc/quantization/new_quantize.cu',
         ]
 
     def include_paths(self):
         return ['csrc/includes']
+        
+    def extra_ldflags(self):
+        if not self.is_rocm_pytorch():
+            return ['-lcurand']
+        else:
+            return []
