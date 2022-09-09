@@ -1,10 +1,14 @@
+/*
+Copyright 2022 The Microsoft DeepSpeed Team
+*/
 
 #include <c10/cuda/CUDAStream.h>
 #include <torch/extension.h>
+#include <stdexcept>
 #include <vector>
-#include "context.h"
-#include "cublas_wrappers.h"
-#include "custom_cuda_layers.h"
+#include "inference_context.h"
+#include "inference_cublas_wrappers.h"
+#include "inference_cuda_layers.h"
 
 std::array<int, 3> gemm_algos = std::array<int, 3>({99, 99, 99});
 
@@ -12,6 +16,41 @@ std::array<int, 3> gemm_algos = std::array<int, 3>({99, 99, 99});
 // with the python counterpart, otherwise the casting from python binding
 // will be incorrect.
 enum class ActivationFuncType { UNKNOWN = 0, GELU = 1, ReLU = 2 };
+
+enum class TransformerType : uint8_t { UNKNOWN = 0, GPTType = 1, BERTType = 2 };
+
+// NOTE: this is a temporary and dodgy solution to distinguish GPT and BERT style models
+// based on the dimensions of the corresponding attention mask.
+inline auto infer_transformer_type(at::Tensor& attn_mask) -> TransformerType
+{
+    auto attn_mask_num_dims = attn_mask.sizes().size();
+
+    if (attn_mask_num_dims > 2) {
+        return TransformerType::GPTType;
+    } else if (attn_mask_num_dims == 2) {
+        return TransformerType::BERTType;
+    } else {
+        return TransformerType::UNKNOWN;
+    }
+}
+
+// infer stride of attention mask memory layout based on the model type.
+inline auto get_attn_mask_stride(at::Tensor& attn_mask) -> int
+{
+    auto trnsfrmr_type = infer_transformer_type(attn_mask);
+
+    if (trnsfrmr_type == TransformerType::GPTType) {
+        return attn_mask.size(2);
+    } else if (trnsfrmr_type == TransformerType::BERTType) {
+        // Bert style models have always a mask stride of 1.
+        return 1;
+    } else if (trnsfrmr_type == TransformerType::UNKNOWN) {
+        throw std::runtime_error("Unknown transformer type.");
+    }
+
+    // this is just to make the compiler happy.
+    return 0;
+}
 
 template <typename T>
 at::Tensor ds_softmax(at::Tensor& attn_scores,
@@ -39,8 +78,7 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
     int heads = 1;
     if (len > 1) heads = attn_scores_c.size(1);
 
-    int mask_stride = 1;
-    if (attn_mask.sizes().size() > 2) mask_stride = attn_mask.size(2);
+    auto mask_stride = get_attn_mask_stride(attn_mask);
 
     launch_attn_softmax_v2((T*)attn_scores_c.data_ptr(),
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
@@ -146,8 +184,9 @@ void attention_unfused(at::Tensor& prev_key_cont,
     float gemm_beta = 0.0;
     auto attn_score = at::empty({bsz, heads, seq_len, soft_len}, options);
     int k = prev_value_cont.size(2) / heads;
-    int mask_stride = heads;
-    if (attn_mask.sizes().size() > 2 && attn_mask.size(2) == 1) mask_stride *= seq_len;
+
+    auto mask_stride = get_attn_mask_stride(attn_mask);
+
     cublasSetStream(Context::Instance().GetCublasHandle(), Context::Instance().GetCurrentStream());
     cublas_strided_batched_gemm(Context::Instance().GetCublasHandle(),
                                 soft_len,
@@ -275,8 +314,8 @@ void ds_softmax_internal(T* attn_scores,
                          int soft_len,
                          int heads)
 {
-    int mask_stride = 1;
-    if (attn_mask.sizes().size() > 2) mask_stride = attn_mask.size(2);
+    auto mask_stride = get_attn_mask_stride(attn_mask);
+
     launch_attn_softmax_v2((T*)attn_scores,
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
                            (alibi.sizes().size() > 1 ? (T*)alibi.data_ptr() : nullptr),
@@ -519,6 +558,22 @@ at::Tensor ds_bias_relu(at::Tensor& input, at::Tensor& bias)
                      intermediate_size,
                      bsz,
                      Context::Instance().GetCurrentStream());
+    return input_cont;
+}
+
+template <typename T>
+at::Tensor ds_bias_add(at::Tensor& input, at::Tensor& bias)
+{
+    auto input_cont = input.contiguous();
+
+    int bsz = input_cont.size(0) * input_cont.size(1);
+    int hidden_size = input_cont.size(2);
+
+    launch_bias_add((T*)input_cont.data_ptr(),
+                    (T*)bias.data_ptr(),
+                    hidden_size,
+                    bsz,
+                    Context::Instance().GetCurrentStream());
     return input_cont;
 }
 
@@ -1307,17 +1362,19 @@ at::Tensor moe_res_matmul(at::Tensor& moe_res, at::Tensor& coef, at::Tensor& out
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("softmax_fp32", &ds_softmax<float>, "DeepSpeed SoftMax with fp32 (CUDA)");
-    m.def("softmax_fp16", &ds_softmax<__half>, "DeepSpeed SoftMax with fp32 (CUDA)");
+    m.def("softmax_fp16", &ds_softmax<__half>, "DeepSpeed SoftMax with fp16 (CUDA)");
     m.def(
         "softmax_context_fp32", &ds_softmax_context<float>, "DeepSpeed attention with fp32 (CUDA)");
     m.def("softmax_context_fp16",
           &ds_softmax_context<__half>,
-          "DeepSpeed attention with fp32 (CUDA)");
+          "DeepSpeed attention with fp16 (CUDA)");
     m.def("softmax_context_int8",
           &ds_softmax_context1<__half>,
-          "DeepSpeed attention with fp32 (CUDA)");
+          "DeepSpeed attention with int8 (CUDA)");
     m.def("bias_gelu_fp32", &ds_bias_gelu<float>, "DeepSpeed Gelu with fp32 (CUDA)");
     m.def("bias_gelu_fp16", &ds_bias_gelu<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
+    m.def("bias_add_fp32", &ds_bias_add<float>, "DeepSpeed Bias Add with fp32 (CUDA)");
+    m.def("bias_add_fp16", &ds_bias_add<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
     m.def("bias_relu_fp32", &ds_bias_relu<float>, "DeepSpeed ReLU with fp32 (CUDA)");
     m.def("bias_relu_fp16", &ds_bias_relu<__half>, "DeepSpeed ReLU with fp16 (CUDA)");
     m.def("bias_residual_fp32",
@@ -1325,7 +1382,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           "DeepSpeed residual-bias add with fp32 (CUDA)");
     m.def("bias_residual_fp16",
           &ds_bias_residual<__half>,
-          "DeepSpeed residual-bias add with fp32 (CUDA)");
+          "DeepSpeed residual-bias add with fp16 (CUDA)");
     m.def("layer_norm_fp32", &ds_layernorm<float>, "DeepSpeed layer-norm with fp32 (CUDA)");
     m.def("layer_norm_fp16", &ds_layernorm<__half>, "DeepSpeed layer-norm with fp16 (CUDA)");
     m.def("qkv_gemm_fp32", &ds_qkv_gemm<float>, "DeepSpeed qkv gemm with fp32 (CUDA)");
