@@ -325,7 +325,7 @@ void quantize_kernel(int8_t* vals_int,
                      int total_count,
                      int num_bits,
                      cudaStream_t stream);
-                     
+
 template <typename T>
 void dequantize_kernel(int8_t* vals_int,
                      T* vals,
@@ -343,4 +343,3 @@ void dequantize_chunks_kernel(int8_t* vals_int,
                      unsigned int total_count,
                      unsigned int quant_stats_size,
                      cudaStream_t stream);
-                     
