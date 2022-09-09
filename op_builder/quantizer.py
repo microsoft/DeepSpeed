@@ -21,7 +21,7 @@ class QuantizerBuilder(CUDAOpBuilder):
 
     def include_paths(self):
         return ['csrc/includes']
-        
+
     def extra_ldflags(self):
         if not self.is_rocm_pytorch():
             return ['-lcurand']
