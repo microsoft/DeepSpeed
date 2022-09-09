@@ -1,6 +1,5 @@
 import math
 from deepspeed.utils import log_dist
-from deepspeed.comm.config import DeepSpeedCommsConfig
 
 
 def get_caller_func(frame=3):
@@ -56,6 +55,8 @@ def calc_bw_log(comm_op, size, duration):
 
 class CommsLogger:
     def __init__(self):
+        from deepspeed.comm.config import DeepSpeedCommsConfig
+
         self.comms_dict = {}
         self.comms_config = DeepSpeedCommsConfig()
         self.verbose = self.comms_config.verbose
