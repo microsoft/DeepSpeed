@@ -30,7 +30,6 @@ import torch
 import os
 
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
-from .constants import *
 
 
 class ReduceOp(Enum):
