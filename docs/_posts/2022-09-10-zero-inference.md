@@ -1,7 +1,7 @@
 ---
 title: "ZeRO-Inference: Democratizing massive model inference"
 excerpt: ""
-date: 2022-08-27 00:09:00
+date: 2022-09-10 00:09:00
 tags: inference ZeRO
 ---
 
@@ -73,10 +73,11 @@ We measure the performance impact of the number of output tokens since the memor
 
 ![Token-count-batch-size](/assets/images/zero_inference_token_count_batch_size.png){: .align-center}
 
-Next, we measure the impact on generation throughput using four V100-32GB GPUs. The results summarized in *Table 6* show that generating more output tokens reduces throughput proportionally to the batch size reduction.
+Next, we measure the impact on generation throughput using four V100-32GB GPUs. The results are presented in Table 6 for CPU offload, and Table 7 for NVMe-Offload. We observe an impact that is consistent across models and offload memory, which is that increasing the number of output tokens reduces throughput proportionally to batch size reduction. These results also demonstrate the importance of large batch sizes to the performance of ZeRO-Inference.
 
-![Token-count-throughput](/assets/images/zero_inference_token_count_cpu_throughput.png){: .align-center}
+![Token-count-cpu-throughput](/assets/images/zero_inference_token_count_cpu_throughput.png){: .align-center}
 
+![Token-count-nvme-throughput](/assets/images/zero_inference_token_count_nvme_throughput.png){: .align-center}
 
 ## Using ZeRO-Inference
 We briefly discuss how users can determine when ZeRO-Inference is suitable for their application and how to enable ZeRO-Inference in DeepSpeed.
