@@ -28,10 +28,6 @@ __global__ void bias_add_transform_0213(float* output,
     int d1_stride = hidden_dim;
     int d2_stride = hidden_dim / heads;
 
-    int d0_out_stride = d0_stride;
-    int d1_out_stride = d2_stride;
-    // int d2_out_stride = d2_stride * seq_length;
-
     int d0 = blockIdx.x;                                                  // Batch
     int d1 = blockIdx.y;                                                  // Sequence ID (0-127)
     int cnt = blockIdx.z / head_ext;                                      // Hidden count
@@ -39,6 +35,7 @@ __global__ void bias_add_transform_0213(float* output,
     int d3 = threadIdx.x;                                                 // Values (groups of 4)
 
     int d2_out_stride = d2_stride * (cnt == 0 ? seq_length : MAX_OUT_TOKES);
+    int d0_out_stride = hidden_dim * (cnt == 0 ? seq_length : MAX_OUT_TOKES);
 
     const float4* vals_vec = reinterpret_cast<const float4*>(vals);
     float4* output_vec =
@@ -50,7 +47,7 @@ __global__ void bias_add_transform_0213(float* output,
     vals_vec += (d2 * d2_stride);
 
     output_vec += (d1 * d2_stride);
-    output_vec += (d0 * d0_stride);
+    output_vec += (d0 * d0_out_stride);
     output_vec += (d2 * d2_out_stride);
 
     unsigned seq_id = d1 + seq_offset;
@@ -105,6 +102,8 @@ __global__ void bias_add_transform_0213(__half* output,  // q
     int d3 = threadIdx.x;                                                 // Values (groups of 4)
 
     int d2_out_stride = d2_stride * (cnt == 0 ? seq_length : MAX_OUT_TOKES);
+    int d0_out_stride = hidden_dim * (cnt == 0 ? seq_length : MAX_OUT_TOKES);
+
     float4 vals_arr;
     float4 output_arr;
 
@@ -121,7 +120,7 @@ __global__ void bias_add_transform_0213(__half* output,  // q
     vals_vec += (d2 * d2_stride);
 
     output_vec += (d1 * d2_stride);
-    output_vec += (d0 * d0_stride);
+    output_vec += (d0 * d0_out_stride);
     output_vec += (d2 * d2_out_stride);
 
     unsigned seq_id = d1 + seq_offset;
