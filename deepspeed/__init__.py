@@ -24,7 +24,7 @@ from .runtime.activation_checkpointing import checkpointing
 from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from .module_inject import replace_transformer_layer, revert_transformer_layer
 
-from .utils import log_dist
+from .utils import log_dist, OnDevice
 from .comm.comm import init_distributed
 
 from .runtime import zero
@@ -114,6 +114,9 @@ def initialize(args=None,
         __git_hash__,
         __git_branch__),
              ranks=[0])
+
+    # Disable zero.Init context if it's currently enabled
+    zero.partition_parameters.shutdown_init_context()
 
     assert model is not None, "deepspeed.initialize requires a model"
 
@@ -238,7 +241,9 @@ def init_inference(model,
                    moe_experts=1,
                    moe_type='standard',
                    args=None,
-                   enable_cuda_graph=False):
+                   enable_cuda_graph=False,
+                   save_mp_checkpoint_path=None,
+                   base_dir=""):
     """Initialize the DeepSpeed InferenceEngine.
 
     Arguments:
@@ -274,7 +279,19 @@ def init_inference(model,
             of groups used in quantization. A tuple is passed in if we want to mention that there is extra-grouping
             for the MLP part of a Transformer layer (e.g. (True, 8) shows we quantize the model using 8 groups for
             all the network except the MLP part that we use 8 extra grouping).
-        replace_with_kernel_inject: If set we inject kernel as we initialize the inference-engine
+        replace_with_kernel_inject: this flag need to be set to true to inject inference kernels for models such as, Bert, GPT2, GPT-Neo and GPT-J. Otherwise,
+            the injection_dict provides the names of two linear layers as a tuple: (attention_output projection, transformer output projection)
+        return_tuple: Specify whether or not the transformer layers need to return a tuple or a Tensor. It is set to True by default (returning a tuple).
+        ep_size: The expert-parallelism size which is used for partitioning the experts across the GPUs in the expert-parallel group.
+        moe: Specify if the type of Transformer is MoE. It is set to False by default.
+        moe_experts: The global number of experts used in an MoE layer.
+        moe_type: Specify the type of MoE layer. We have two types of MoE layer: 'Standard' and 'Residual'. It is set to 'Standard' type by default.
+        args: All the arguments used for launching the inference api that can be useful at the inference-engine for injecting the optimizations.
+        enable_cuda_graph: use this flag for capturing the CUDA-Graph of the inference ops, so that it can run faster using the graph replay method,
+            this is set to False by default
+        save_mp_checkpoint_path: The path for which we want to save the loaded model with a checkpoint. This feature is used for adjusting the
+            parallelism degree to help alleviate the model loading overhead. It does not save any new checkpoint if no path is passed.
+        base_dir: This shows the root directory under which all the checkpoint files exists. This can be passed through the json config too.
 
     Returns:
         A deepspeed.InferenceEngine wrapped model.
@@ -304,6 +321,8 @@ def init_inference(model,
                              moe_experts,
                              moe_type,
                              args,
-                             enable_cuda_graph)
+                             enable_cuda_graph,
+                             save_mp_checkpoint_path,
+                             base_dir)
 
     return engine

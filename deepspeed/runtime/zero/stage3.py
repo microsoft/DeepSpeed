@@ -3,36 +3,24 @@
 Licensed under the MIT license.
 """
 
+import sys
 import gc
-from dataclasses import dataclass
-import functools
-import os
 import collections
-from collections import OrderedDict, UserDict
-import itertools
-from typing import Deque, Dict, Iterable, Set, Tuple
-import torch
+from typing import Deque, Dict, Tuple
 from torch.cuda import Event, Stream
-from torch.nn import Module, Parameter
-from deepspeed import comm as dist
-import math
 from torch._six import inf
-from torch.nn import Module
-from torch.nn.parameter import Parameter
 
 from deepspeed.runtime import ZeROOptimizer
-from deepspeed.utils.logging import logger
+from deepspeed.utils import logger
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced
-from deepspeed.runtime.utils import get_global_norm, see_memory_usage, is_model_parallel_parameter
+from deepspeed.runtime.utils import get_global_norm, is_model_parallel_parameter
 from deepspeed.runtime.zero.partition_parameters import *
-from deepspeed.runtime.zero.partition_parameters import _init_external_params
+from deepspeed.runtime.zero.config import ZeroStageEnum
+from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
-from deepspeed.runtime.zero.constants import ZERO_OPTIMIZATION_WEIGHTS
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
-from deepspeed.runtime.zero.offload_constants import *
-from deepspeed.runtime.zero.partitioned_param_coordinator import PartitionedParameterCoordinator, iter_params
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.runtime.swap_tensor.partitioned_optimizer_swapper import PartitionedOptimizerSwapper
 from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedOptimizerSwapper
@@ -41,8 +29,6 @@ from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUP
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
 pg_correctness_test = False
-
-from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id, debug_param2name_id_numel, debug_param2name_id_shape_device, debug_module2name_class, printflock, log_rank_file
 
 
 def print_rank_0(message, debug=False, force=False):
@@ -103,6 +89,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                  max_reuse_distance=1000000000,
                  max_live_parameters=1000000000,
                  param_persistence_threshold=100000,
+                 model_persistence_threshold=sys.maxsize,
                  dp_process_group=None,
                  reduce_scatter=True,
                  overlap_comm=False,
@@ -161,15 +148,19 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.params_in_nvme_and_cpu = False
         self.max_params_in_cpu = 0
 
-        self.parameter_offload = DeepSpeedZeRoOffload(module,
-                                                      timers,
-                                                      ds_config,
-                                                      overlap_comm,
-                                                      prefetch_bucket_size,
-                                                      max_reuse_distance,
-                                                      max_live_parameters,
-                                                      param_persistence_threshold,
-                                                      offload_param_config)
+        self.parameter_offload = DeepSpeedZeRoOffload(
+            module=module,
+            timers=timers,
+            ds_config=ds_config,
+            overlap_comm=overlap_comm,
+            prefetch_bucket_size=prefetch_bucket_size,
+            max_reuse_distance=max_reuse_distance,
+            max_live_parameters=max_live_parameters,
+            param_persistence_threshold=param_persistence_threshold,
+            model_persistence_threshold=model_persistence_threshold,
+            offload_param_config=offload_optimizer_config,
+            mpu=mpu)
+
         self.persistent_parameters = self.parameter_offload.persistent_parameters
         self._configure_offloading(offload_optimizer_config, offload_param_config)
 
@@ -186,7 +177,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                        and type(init_optimizer) == DeepSpeedCPUAdam)
 
         self.device = torch.cuda.current_device(
-        ) if not self.offload_optimizer else OFFLOAD_CPU_DEVICE
+        ) if not self.offload_optimizer else OffloadDeviceEnum.cpu
         ### streams used for overlapping computation with communication
         self.__reduce_and_partition_stream = Stream(
         ) if overlap_comm else torch.cuda.default_stream()
@@ -456,37 +447,30 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _configure_offloading(self, offload_optimizer_config, offload_param_config):
         ###################### offload optimizer setup ##################################
-        if offload_optimizer_config is not None:
+        if offload_optimizer_config is not None and offload_optimizer_config.device != OffloadDeviceEnum.none:
             self.offload_optimizer = True
-            self.offload_optimizer_pin_memory = offload_optimizer_config[
-                OFFLOAD_OPTIMIZER_PIN_MEMORY]
-            self.swap_optimizer = offload_optimizer_config[
-                OFFLOAD_OPTIMIZER_DEVICE] == OFFLOAD_NVME_DEVICE
-            self.offload_optimizer_fast_init = offload_optimizer_config[
-                OFFLOAD_OPTIMIZER_FAST_INIT]
+            self.offload_optimizer_pin_memory = offload_optimizer_config.pin_memory
+            self.swap_optimizer = offload_optimizer_config.device == OffloadDeviceEnum.nvme
+            self.offload_optimizer_fast_init = offload_optimizer_config.fast_init
 
         ###################### offload param setup ##################################
-        if offload_param_config is not None:
+        if offload_param_config is not None and offload_param_config.device != OffloadDeviceEnum.none:
             self.offload_param = True
-            self.offload_param_pin_memory = offload_param_config[
-                OFFLOAD_PARAM_PIN_MEMORY]
-            self.params_in_nvme_and_cpu = offload_param_config[
-                OFFLOAD_PARAM_DEVICE] == OFFLOAD_NVME_DEVICE
-            self.max_params_in_cpu = offload_param_config[OFFLOAD_PARAM_MAX_IN_CPU]
+            self.offload_param_pin_memory = offload_param_config.pin_memory
+            self.params_in_nvme_and_cpu = offload_param_config.device == OffloadDeviceEnum.nvme
+            self.max_params_in_cpu = offload_param_config.max_in_cpu
             print_rank_0(
                 f"FP16 params swapping is {self.params_in_nvme_and_cpu}, Max params in CPU is {self.max_params_in_cpu}",
                 force=False)
 
     def _configure_tensor_swapping(self, offload_optimizer_config, aio_config):
-        nvme_swap_folder = os.path.join(
-            offload_optimizer_config[OFFLOAD_OPTIMIZER_NVME_PATH],
-            'zero_stage_3')
+        nvme_swap_folder = os.path.join(offload_optimizer_config.nvme_path,
+                                        'zero_stage_3')
         os.makedirs(nvme_swap_folder, exist_ok=True)
         if dist.get_rank() == 0:
             logger.info(f'Tensor Swapping: Adding optimizer tensors')
 
-        swapper_type = PipelinedOptimizerSwapper if offload_optimizer_config[
-            OFFLOAD_OPTIMIZER_PIPELINE] else PartitionedOptimizerSwapper
+        swapper_type = PipelinedOptimizerSwapper if offload_optimizer_config.pipeline else PartitionedOptimizerSwapper
 
         self.optimizer_swapper = swapper_type(
             swap_config=offload_optimizer_config,
@@ -1256,6 +1240,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     def __partition_grads(self,
                           params_to_release: List[Parameter],
                           grad_partitions: List[Tensor]) -> None:
+        offload_fp32_gradients = {}
+        offload_fp32_offsets = {}
         for param, grad_partition in zip(params_to_release, grad_partitions):
             if param.partition_numel() * dist.get_rank(
                     self.dp_process_group) > param.ds_numel:
@@ -1297,8 +1283,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             # offload the gradient partition if applicable
             if self.offload_optimizer:
                 i, dest_offset, _ = self.grad_position[self.get_param_id(param)]
-                offload_fp32_gradients = {}
-                offload_fp32_offsets = {}
 
                 if self.is_gradient_accumulation_boundary:
                     self.norm_for_param_grads[self.get_param_id(
@@ -1401,11 +1385,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     ######################Reduction Related Methods##############################
 
-    def allreduce_bucket(self,
-                         bucket,
-                         communication_data_type=torch.float16,
-                         rank=None,
-                         log=None):
+    def allreduce_bucket(self, bucket, rank=None, log=None):
         rank = None
         tensor = self.flatten(bucket)
 
@@ -1413,6 +1393,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         if pg_correctness_test:
             communication_data_type = torch.float32
+        else:
+            communication_data_type = self.communication_data_type
 
         if communication_data_type != tensor.dtype:
             tensor_to_allreduce = tensor.to(communication_data_type)
@@ -2211,7 +2193,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _rigid_state_dict(self):
         state_dict = {}
-        state_dict[ZERO_STAGE] = ZERO_OPTIMIZATION_WEIGHTS
+        state_dict[ZERO_STAGE] = ZeroStageEnum.weights
         state_dict['loss_scaler'] = self.loss_scaler
         state_dict['dynamic_loss_scale'] = self.dynamic_loss_scale
         state_dict['overflow'] = self.overflow
@@ -2357,7 +2339,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     def load_state_dict(self,
                         state_dict_list,
                         load_optimizer_states=True,
-                        load_from_fp32_weights=False):
+                        load_from_fp32_weights=False,
+                        checkpoint_folder=None):
         r"""Loading a ZeRO checkpoint
         Arguments:
             state_dict_list: List of all saved ZeRO checkpoints, one for each saved partition.
@@ -2479,9 +2462,6 @@ def model_to_params(model):
     return total_params, largest_layer_params
 
 
-import math
-
-
 def estimate_zero3_model_states_mem_needs_all_live(model,
                                                    num_gpus_per_node=1,
                                                    num_nodes=1,
@@ -2539,11 +2519,11 @@ def estimate_zero3_model_states_mem_needs_all_cold(total_params,
     """
     def format_options(cpu_offload, cpu_offload_params, zero_init):
         enabled = []
-        padded_cpu_str = f'{OFFLOAD_CPU_DEVICE:4}'
+        padded_cpu_str = f'{OffloadDeviceEnum.cpu:4}'
         param_device = padded_cpu_str if cpu_offload_params else "none"
-        enabled.append(f"{OFFLOAD_PARAM}={param_device}")
+        enabled.append(f"offload_param={param_device}")
         optimizer_device = padded_cpu_str if cpu_offload else "none"
-        enabled.append(f"{OFFLOAD_OPTIMIZER}={optimizer_device}")
+        enabled.append(f"offload_optimizer={optimizer_device}")
         enabled.append(f"zero_init={1 if zero_init else 0}")
         return ", ".join(enabled)
 

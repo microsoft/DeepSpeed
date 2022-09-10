@@ -4,7 +4,6 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import os
 import sys
 import time
-import json
 import importlib
 from pathlib import Path
 import subprocess
@@ -73,15 +72,14 @@ cuda_minor_mismatch_ok = {
         "10.1",
         "10.2",
     ],
-    11: [
-        "11.0",
-        "11.1",
-        "11.2",
-        "11.3",
-        "11.4",
-        "11.5",
-        "11.6",
-    ],
+    11: ["11.0",
+         "11.1",
+         "11.2",
+         "11.3",
+         "11.4",
+         "11.5",
+         "11.6",
+         "11.7"],
 }
 
 
@@ -111,6 +109,7 @@ class OpBuilder(ABC):
     def __init__(self, name):
         self.name = name
         self.jit_mode = False
+        self.error_log = None
 
     @abstractmethod
     def absolute_name(self):
@@ -189,8 +188,15 @@ class OpBuilder(ABC):
         ROCM_MINOR = '0'
         if OpBuilder.is_rocm_pytorch():
             from torch.utils.cpp_extension import ROCM_HOME
-            with open('/opt/rocm/.info/version-dev', 'r') as file:
-                ROCM_VERSION_DEV_RAW = file.read()
+            rocm_ver_file = Path(ROCM_HOME).joinpath(".info/version-dev")
+            if rocm_ver_file.is_file():
+                with open(rocm_ver_file, 'r') as file:
+                    ROCM_VERSION_DEV_RAW = file.read()
+            elif "rocm" in torch.__version__:
+                ROCM_VERSION_DEV_RAW = torch.__version__.split("rocm")[1]
+            else:
+                assert False, "Could not detect ROCm version"
+            assert ROCM_VERSION_DEV_RAW != "", "Could not detect ROCm version"
             ROCM_MAJOR = ROCM_VERSION_DEV_RAW.split('.')[0]
             ROCM_MINOR = ROCM_VERSION_DEV_RAW.split('.')[1]
         OpBuilder._rocm_version = (int(ROCM_MAJOR), int(ROCM_MINOR))
@@ -433,6 +439,7 @@ class OpBuilder(ABC):
         return valid
 
     def warning(self, msg):
+        self.error_log = f"{msg}"
         print(f"{WARNING} {msg}")
 
     def deepspeed_src_path(self, code_path):
@@ -465,10 +472,10 @@ class OpBuilder(ABC):
     def jit_load(self, verbose=True):
         if not self.is_compatible(verbose):
             raise RuntimeError(
-                f"Unable to JIT load the {self.name} op due to it not being compatible due to hardware/software issue."
+                f"Unable to JIT load the {self.name} op due to it not being compatible due to hardware/software issue. {self.error_log}"
             )
         try:
-            import ninja
+            import ninja  # noqa: F401
         except ImportError:
             raise RuntimeError(
                 f"Unable to JIT load the {self.name} op due to ninja not being installed."
@@ -479,13 +486,6 @@ class OpBuilder(ABC):
 
         self.jit_mode = True
         from torch.utils.cpp_extension import load
-
-        # Ensure directory exists to prevent race condition in some cases
-        ext_path = os.path.join(
-            os.environ.get('TORCH_EXTENSIONS_DIR',
-                           DEFAULT_TORCH_EXTENSION_PATH),
-            self.name)
-        os.makedirs(ext_path, exist_ok=True)
 
         start_build = time.time()
         sources = [self.deepspeed_src_path(path) for path in self.sources()]

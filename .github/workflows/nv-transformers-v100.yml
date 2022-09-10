@@ -24,6 +24,7 @@ jobs:
 
       - name: environment
         run: |
+          echo "JobID: $AISC_NODE_INSTANCE_ID"
           nvidia-smi
           which python
           python --version
@@ -34,6 +35,8 @@ jobs:
           pip install torch==1.8.2+cu111 torchvision==0.9.2+cu111 -f https://download.pytorch.org/whl/lts/1.8/torch_lts.html
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+          sudo apt-get update
+          sudo apt-get install -y libaio-dev
 
       - name: Python environment
         run: |
@@ -62,4 +65,4 @@ jobs:
           # force protobuf version due to issues
           pip install "protobuf<4.21.0"
           pip list
-          TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --color=yes --durations=0 --verbose tests/deepspeed
+          WANDB_DISABLED=true TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --color=yes --durations=0 --verbose tests/deepspeed

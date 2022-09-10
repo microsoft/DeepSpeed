@@ -4,18 +4,15 @@ Licensed under the MIT license.
 """
 
 from dataclasses import dataclass
-import functools
 import collections
-from collections import OrderedDict, UserDict
-from typing import Deque, Dict, Iterable, Set, Tuple
-import torch
+from collections import UserDict
+from typing import Deque, Set
 from torch.cuda import Event, Stream
-from torch.nn import Module, Parameter
 
 from deepspeed import comm as dist
 from deepspeed.utils.logging import logger
+from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.partition_parameters import *
-from deepspeed.runtime.zero.offload_constants import *
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id
 
@@ -313,7 +310,7 @@ class PartitionedParameterCoordinator:
                 if param.nvme_swapper is None:
                     return False
 
-                return param.ds_tensor.final_location == OFFLOAD_NVME_DEVICE \
+                return param.ds_tensor.final_location == OffloadDeviceEnum.nvme \
                     and param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE
 
             # kick off all gather for params in the next few submodules (prefetch)
@@ -402,6 +399,16 @@ class PartitionedParameterCoordinator:
             for param in partitioned_params:
                 assert param.ds_status == ZeroParamStatus.INFLIGHT, param.ds_summary()
                 self.__inflight_param_registry[param] = handle
+
+            # Release swap buffers for persisted params on nvme since they will never be partitioned or evicted from GPU
+            swap_persisted_params = [
+                p for p in partitioned_params
+                if p.ds_persist and p.ds_tensor.final_location == OffloadDeviceEnum.nvme
+            ]
+            if swap_persisted_params:
+                swap_persisted_params[
+                    0].nvme_swapper.remove_partition_and_release_buffers(
+                        swap_persisted_params)
 
     @instrument_w_nvtx
     def __release_param(self, param: Parameter) -> None:

@@ -1,28 +1,18 @@
 # Copyright 2019 The Microsoft DeepSpeed Team
 
-import time
-import logging
-import copy
-import os
-
 from types import MethodType
 
-from numpy import prod
-
 import torch
-import torch.nn as nn
-import torch.optim as optim
 from deepspeed import comm as dist
 
-from deepspeed.utils.logging import logger
-from deepspeed.utils.timer import SynchronizedWallClockTimer, ThroughputTimer
+from deepspeed.utils import logger
+from deepspeed.utils.timer import ThroughputTimer
 
-from deepspeed.inference.engine import InferenceEngine
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
-from ..utils import PartitionedTensor, ensure_directory_exists
+from ..utils import PartitionedTensor
 from ..dataloader import RepeatingLoader
 
-from .module import PipelineModule, PipelineError, TiedLayerSpec
+from .module import PipelineModule, PipelineError
 from . import p2p
 from . import schedule
 
@@ -80,8 +70,10 @@ class PipelineEngine(DeepSpeedEngine):
         # used to disable the pipeline all-reduce when used with 1-bit Adam/1-bit LAMB
         self.pipeline_enable_backward_allreduce = True
 
-        assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
-            " with pipeline parallelism."
+        if self.elasticity_enabled():
+            if not self.is_elastic_model_parallel_supported():
+                assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
+                " with pipeline parallelism."
 
         # pipeline step for logging
         self.log_batch_step_id = -1
@@ -587,6 +579,11 @@ class PipelineEngine(DeepSpeedEngine):
             self.data_iterator = iterator
 
     def set_batch_fn(self, fn):
+        """Execute a post-processing function on input data.
+
+        Args:
+            fn (function): The function to run.
+        """
         self.batch_fn = fn
 
     def is_gradient_accumulation_boundary(self):
@@ -1320,7 +1317,8 @@ class PipelineEngine(DeepSpeedEngine):
         assert self._curr_ckpt_path is not None, \
             "PipelineEngine expects module_state_dict() to be called from save_checkpoint()"
 
-        self.module.save_state_dict(self._curr_ckpt_path)
+        self.module.save_state_dict(self._curr_ckpt_path,
+                                    checkpoint_engine=self.checkpoint_engine)
         return None
 
     def load_module_state_dict(self, state_dict, strict=True, custom_load_fn=None):
@@ -1339,7 +1337,9 @@ class PipelineEngine(DeepSpeedEngine):
             super().load_module_state_dict(state_dict, strict)
             return
 
-        self.module.load_state_dir(load_dir=self._curr_ckpt_path, strict=strict)
+        self.module.load_state_dir(load_dir=self._curr_ckpt_path,
+                                   strict=strict,
+                                   checkpoint_engine=self.checkpoint_engine)
 
     # A map of PipeInstruction types to methods. Each method will be executed with the
     # kwargs provided to the PipeInstruction from the scheduler.
@@ -1373,11 +1373,3 @@ class PipelineEngine(DeepSpeedEngine):
                 # Equivalent to: self._exec_forward_pass(buffer_id=0)
                 self._exec_instr = MethodType(self._INSTRUCTION_MAP[type(cmd)], self)
                 self._exec_instr(**cmd.kwargs)
-
-    def set_batch_fn(self, fn):
-        """Execute a post-processing function on input data.
-
-        Args:
-            fn (function): The function to run.
-        """
-        self.batch_fn = fn

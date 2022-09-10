@@ -3,14 +3,16 @@
 Licensed under the MIT license.
 """
 
+import sys
 import torch
 from torch.cuda import Stream
 from collections import OrderedDict
 from deepspeed.runtime.utils import see_memory_usage
+from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.partition_parameters import _init_external_params
 from deepspeed.runtime.zero.partition_parameters import *
-from deepspeed.runtime.zero.offload_constants import *
 from deepspeed.runtime.zero.partitioned_param_coordinator import PartitionedParameterCoordinator, iter_params
+from deepspeed import comm as dist
 
 FWD_MODULE_STACK = list()
 
@@ -18,6 +20,10 @@ FWD_MODULE_STACK = list()
 def is_builtin_type(obj):
     # https://stackoverflow.com/a/17795199
     return obj.__class__.__module__ == '__builtin__' or obj.__class__.__module__ == "builtins"
+
+
+# ensure we only warn once, otherwise every iteration will trigger a warning
+warned = False
 
 
 #apply torch.autograd.Function that calls a backward_function to tensors in output
@@ -44,10 +50,13 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
         return functional.apply(module, backward_function, outputs)
     else:
         if not is_builtin_type(outputs):
-            logger.warning(
-                f"A module has unknown inputs or outputs type ({type(outputs)}) and the tensors embedded in it cannot be detected. "
-                "The ZeRO-3 hooks designed to trigger before or after backward pass of the module relies on knowing the input and "
-                "output tensors and therefore may not get triggered properly.")
+            global warned
+            if not warned and dist.get_rank() == 0:
+                logger.warning(
+                    f"A module has unknown inputs or outputs type ({type(outputs)}) and the tensors embedded in it cannot be detected. "
+                    "The ZeRO-3 hooks designed to trigger before or after backward pass of the module relies on knowing the input and "
+                    "output tensors and therefore may not get triggered properly.")
+                warned = True
         return outputs
 
 
@@ -173,10 +182,11 @@ class DeepSpeedZeRoOffload(object):
                  max_reuse_distance=1000000000,
                  max_live_parameters=1000000000,
                  param_persistence_threshold=100000,
+                 model_persistence_threshold=sys.maxsize,
                  offload_param_config=None,
                  mpu=None):
 
-        see_memory_usage("TensorOffload initialize beginning", force=True)
+        see_memory_usage("DeepSpeedZeRoOffload initialize [begin]", force=True)
 
         print_rank_0(f"initialized {__class__.__name__} with args: {locals()}",
                      force=False)
@@ -185,10 +195,10 @@ class DeepSpeedZeRoOffload(object):
         self.dtype = list(module.parameters())[0].dtype
         self.offload_device = None
         self.offload_param_pin_memory = False
-        if offload_param_config is not None:
-            self.offload_device = offload_param_config[OFFLOAD_PARAM_DEVICE]
-            self.offload_param_pin_memory = offload_param_config[
-                OFFLOAD_PARAM_PIN_MEMORY]
+
+        if offload_param_config is not None and offload_param_config.device != OffloadDeviceEnum.none:
+            self.offload_device = offload_param_config.device
+            self.offload_param_pin_memory = offload_param_config.pin_memory
 
         self._convert_to_zero_parameters(ds_config, module, mpu)
 
@@ -197,8 +207,11 @@ class DeepSpeedZeRoOffload(object):
 
         _inject_parameters(module, ZeROOrderedDict)
 
-        self.persistence_threshold = int(param_persistence_threshold)
-        self.persistent_parameters = self.mark_persistent_parameters()
+        self.param_numel_persistence_threshold = int(param_persistence_threshold)
+        self.model_persistence_threshold = int(model_persistence_threshold)
+        self.persistent_parameters = self.mark_persistent_parameters(
+            self.param_numel_persistence_threshold,
+            self.model_persistence_threshold)
 
         self.param_coordinators = {}
         self._prefetch_bucket_sz = int(prefetch_bucket_size)
@@ -213,6 +226,8 @@ class DeepSpeedZeRoOffload(object):
         print_rank_0(
             f'Created module hooks: forward = {len(self.forward_hooks)}, backward = {len(self.backward_hooks)}',
             force=False)
+
+        see_memory_usage("DeepSpeedZeRoOffload initialize [end]", force=True)
 
     @instrument_w_nvtx
     def partition_all_parameters(self):
@@ -233,7 +248,7 @@ class DeepSpeedZeRoOffload(object):
                 max_available_parameters_in_numel=self.
                 _max_available_parameters_in_numel,
                 allgather_stream=self.__allgather_stream,
-                prefetch_nvme=self.offload_device == OFFLOAD_NVME_DEVICE,
+                prefetch_nvme=self.offload_device == OffloadDeviceEnum.nvme,
             )
 
         return self.param_coordinators[training]
@@ -292,12 +307,15 @@ class DeepSpeedZeRoOffload(object):
         global FWD_MODULE_STACK
         FWD_MODULE_STACK.append(self.module)
 
-    def mark_persistent_parameters(self):
+    def mark_persistent_parameters(self, param_threshold, model_threshold):
         persistent_params = []
         total_persistent_parameters = 0
         params_count = 0
         for _, param in self.module.named_parameters(recurse=True):
-            if param.ds_numel < self.persistence_threshold:
+            if param.ds_numel + total_persistent_parameters > model_threshold:
+                continue
+
+            if param.ds_numel < param_threshold:
                 params_count += 1
                 param.ds_persist = True
                 persistent_params.append(param)
@@ -305,7 +323,7 @@ class DeepSpeedZeRoOffload(object):
 
         print_rank_0(
             f"Parameter Offload: Total persistent parameters: {total_persistent_parameters} in {params_count} params",
-            force=False)
+            force=True)
 
         return persistent_params
 

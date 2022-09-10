@@ -1,4 +1,10 @@
+"""
+Copyright 2022 The Microsoft DeepSpeed Team
+"""
+
+from collections import OrderedDict
 import torch
+import os
 from deepspeed import comm as dist
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from deepspeed.ops.op_builder import UtilsBuilder
@@ -15,66 +21,21 @@ from deepspeed.runtime.utils import (get_global_norm_of_tensors,
                                      is_model_parallel_parameter,
                                      see_memory_usage)
 
+from deepspeed.utils import link_hp_params
+from deepspeed.checkpoint import enable_universal_checkpoint
 from deepspeed.checkpoint.constants import (DS_VERSION,
                                             PARTITION_COUNT,
                                             BASE_OPTIMIZER_STATE,
                                             SINGLE_PARTITION_OF_FP32_GROUPS,
                                             CLIP_GRAD,
-                                            GROUPS_PADDING)
-
-import types
-
-from dataclasses import dataclass
-
-
-@dataclass
-class fragment_address:
-    numel: int
-    start: int
-
-
-@dataclass
-class tensor_fragment:
-    lp_fragment: torch.Tensor
-    lp_fragment_address: fragment_address
-    hp_fragment: torch.Tensor
-    hp_fragment_address: fragment_address
-    optim_fragment: {}
-
-    def update_hp(self):
-        self.hp_fragment.data.copy_(self.lp_fragment.data)
-
-    def update_lp(self):
-        self.lp_fragment.data.copy_(self.hp_fragment.data)
-
-    def get_optim_state_fragment(self, key):
-        if key in self.optim_fragment:
-            return self.optim_fragment[key]
-        else:
-            raise ValueError(f'{key} not found in optimizer state fragment')
-
-
-def get_full_hp_param(self, optim_state_key=None):
-    reduce_buffer = torch.zeros_like(self, dtype=torch.float32).flatten()
-    if self._hp_mapping is not None:
-        lp_frag_address = self._hp_mapping.lp_fragment_address
-        reduce_fragment = torch.narrow(reduce_buffer,
-                                       0,
-                                       lp_frag_address.start,
-                                       lp_frag_address.numel)
-        if optim_state_key is None:
-            hp_fragment = self._hp_mapping.hp_fragment
-        else:
-            hp_fragment = self._hp_mapping.get_optim_state_fragment(optim_state_key)
-
-        reduce_fragment.data.copy_(hp_fragment.data)
-    dist.all_reduce(reduce_buffer, group=self._dp_group)
-    return reduce_buffer.reshape_as(self)
+                                            GROUP_PADDINGS,
+                                            PARAM_SLICE_MAPPINGS)
 
 
 class BF16_Optimizer(ZeROOptimizer):
     def __init__(self,
                  init_optimizer,
+                 param_names,
                  mpu=None,
                  clip_grad=0.0,
                  norm_type=2,
@@ -85,6 +46,7 @@ class BF16_Optimizer(ZeROOptimizer):
         see_memory_usage('begin bf16_optimizer', force=True)
         self.timers = timers
         self.optimizer = init_optimizer
+        self.param_names = param_names
         self.using_real_optimizer = not isinstance(self.optimizer, DummyOptim)
 
         self.clip_grad = clip_grad
@@ -120,7 +82,7 @@ class BF16_Optimizer(ZeROOptimizer):
         self.fp32_groups_has_gradients = []
 
         self.step_count = 0
-        self.groups_padding = []
+        self.group_paddings = []
 
         if self.using_real_optimizer:
             self._setup_for_real_optimizer()
@@ -205,7 +167,7 @@ class BF16_Optimizer(ZeROOptimizer):
             else:
                 padding = 0
 
-            self.groups_padding.append(padding)
+            self.group_paddings.append(padding)
 
             # update optimizer param groups to reference fp32 params partition
             param_group['params'] = [self.fp32_groups_flat_partition[i]]
@@ -218,94 +180,40 @@ class BF16_Optimizer(ZeROOptimizer):
 
         # Need optimizer states initialized before linking lp to optimizer state
         self._link_all_hp_params()
+        self._enable_universal_checkpoint()
+        self._param_slice_mappings = self._create_param_mapping()
+
+    def _enable_universal_checkpoint(self):
+        for lp_param_group in self.bf16_groups:
+            enable_universal_checkpoint(param_list=lp_param_group)
+
+    def _create_param_mapping(self):
+        param_mapping = []
+        for i, _ in enumerate(self.optimizer.param_groups):
+            param_mapping_per_group = OrderedDict()
+            for lp in self.bf16_groups[i]:
+                if lp._hp_mapping is not None:
+                    lp_name = self.param_names[lp]
+                    param_mapping_per_group[
+                        lp_name] = lp._hp_mapping.get_hp_fragment_address()
+            param_mapping.append(param_mapping_per_group)
+
+        return param_mapping
 
     def _link_all_hp_params(self):
         dp_world_size = dist.get_world_size(group=self.dp_process_group)
-        for i, param_group in enumerate(self.optimizer.param_groups):
+        for i, _ in enumerate(self.optimizer.param_groups):
             # Link bf16 and fp32 params in partition
-            # TODO: Make this configurable
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             partition_size = self.bf16_groups_flat[i].numel() // dp_world_size
-            self._link_hp_params(self.bf16_groups[i],
-                                 self.fp32_groups_flat_partition[i],
-                                 partition_id * partition_size,
-                                 partition_size,
-                                 self.real_dp_process_group[i])
-
-    def _init_lp_to_hp_mapping(self,
-                               lp_param_list,
-                               partition_start,
-                               partition_size,
-                               dp_group):
-        current_offset = 0
-        param_and_offset_list = []
-        partition_end = partition_start + partition_size
-        for lp_param in lp_param_list:
-            lp_param._hp_mapping = None
-            lp_param._dp_group = dp_group
-            lp_param.get_full_hp_param = types.MethodType(get_full_hp_param, lp_param)
-            # lp_param overlaps with partition if both are true
-            # 1) current_offset < partition_end,
-            # 2) current_offset + lp_param.numel() >= partition_start
-            lp_param_end = current_offset + lp_param.numel()
-            if current_offset < partition_end and lp_param_end > partition_start:
-                param_and_offset_list.append((lp_param, current_offset))
-            current_offset += lp_param.numel()
-
-        return param_and_offset_list
-
-    def _link_hp_params(self,
-                        lp_param_list,
-                        flat_hp_partition,
-                        partition_start,
-                        partition_size,
-                        dp_group):
-        local_lp_param_and_offset = self._init_lp_to_hp_mapping(
-            lp_param_list,
-            partition_start,
-            partition_size,
-            dp_group)
-
-        hp_end = partition_start + partition_size
-        for lp_param, lp_start in local_lp_param_and_offset:
-            lp_end = lp_param.numel() + lp_start
-            hp_start = partition_start
-
-            fragment_start = max(lp_start, hp_start)
-            fragment_end = min(lp_end, hp_end)
-            #            print(
-            #                f'{self.dp_rank=} {lp_start=} {lp_end-lp_start=} {hp_start=} {hp_end-hp_start=} {fragment_start=} {fragment_end-fragment_start=}'
-            #            )
-            assert fragment_start < fragment_end, \
-                f'fragment start {fragment_start} should be < fragment_end {fragment_end}'
-
-            fragment_numel = fragment_end - fragment_start
-            hp_frag_address = fragment_address(start=fragment_start - hp_start,
-                                               numel=fragment_numel)
-            hp_fragment_tensor = flat_hp_partition.narrow(0,
-                                                          hp_frag_address.start,
-                                                          hp_frag_address.numel)
-
-            optim_fragment = {
-                key: value.narrow(0,
-                                  hp_frag_address.start,
-                                  hp_frag_address.numel)
-                for key,
-                value in self.optimizer.state[flat_hp_partition].items()
-                if torch.is_tensor(value)
-            }
-
-            lp_frag_address = fragment_address(start=fragment_start - lp_start,
-                                               numel=fragment_numel)
-            lp_fragment_tensor = lp_param.flatten().narrow(0,
-                                                           lp_frag_address.start,
-                                                           lp_frag_address.numel)
-
-            lp_param._hp_mapping = tensor_fragment(lp_fragment=lp_fragment_tensor,
-                                                   lp_fragment_address=lp_frag_address,
-                                                   hp_fragment=hp_fragment_tensor,
-                                                   hp_fragment_address=hp_frag_address,
-                                                   optim_fragment=optim_fragment)
+            flat_hp_partition = self.fp32_groups_flat_partition[i]
+            link_hp_params(
+                lp_param_list=self.bf16_groups[i],
+                flat_hp_partition=flat_hp_partition,
+                partition_start=partition_id * partition_size,
+                partition_size=partition_size,
+                partition_optimizer_state=self.optimizer.state[flat_hp_partition],
+                dp_group=self.real_dp_process_group[i])
 
     def initialize_optimizer_states(self):
         """Take an optimizer step with zero-valued gradients to allocate internal
@@ -362,11 +270,6 @@ class BF16_Optimizer(ZeROOptimizer):
         self.optimizer.step()
 
         self.update_lp_params()
-
-        all_gather_dp_groups(partitioned_param_groups=self.bf16_partitioned_groups,
-                             dp_process_group=self.real_dp_process_group,
-                             start_alignment_factor=self.nccl_start_alignment_factor,
-                             allgather_bucket_size=self.allgather_bucket_size)
 
         self.clear_hp_grads()
         self.step_count += 1
@@ -434,6 +337,14 @@ class BF16_Optimizer(ZeROOptimizer):
         for i, (bf16_partitions, fp32_partition) in enumerate(zip(self.bf16_partitioned_groups, self.fp32_groups_flat_partition)):
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             bf16_partitions[partition_id].data.copy_(fp32_partition.data)
+            # print_rank_0(f'update_lp_params {i=} {partition_id=}', force=True)
+            # if i == 0:
+            #     print_rank_0(f'{fp32_partition[:10]=}', force=True)
+
+        all_gather_dp_groups(partitioned_param_groups=self.bf16_partitioned_groups,
+                             dp_process_group=self.real_dp_process_group,
+                             start_alignment_factor=self.nccl_start_alignment_factor,
+                             allgather_bucket_size=self.allgather_bucket_size)
 
     def clear_hp_grads(self):
         for flat_gradients in self.fp32_groups_gradients_flat:
@@ -452,9 +363,10 @@ class BF16_Optimizer(ZeROOptimizer):
         state_dict[CLIP_GRAD] = self.clip_grad
         state_dict[BASE_OPTIMIZER_STATE] = self.optimizer.state_dict()
         state_dict[SINGLE_PARTITION_OF_FP32_GROUPS] = self.fp32_groups_flat_partition
-        state_dict[GROUPS_PADDING] = self.groups_padding
+        state_dict[GROUP_PADDINGS] = self.group_paddings
         state_dict[PARTITION_COUNT] = self.partition_count
         state_dict[DS_VERSION] = version
+        state_dict[PARAM_SLICE_MAPPINGS] = self._param_slice_mappings
 
         return state_dict
 
@@ -470,8 +382,23 @@ class BF16_Optimizer(ZeROOptimizer):
 
     def load_state_dict(self,
                         state_dict_list,
+                        checkpoint_folder,
                         load_optimizer_states=True,
                         load_from_fp32_weights=False):
+        if checkpoint_folder:
+            self._load_universal_checkpoint(checkpoint_folder,
+                                            load_optimizer_states,
+                                            load_from_fp32_weights)
+        else:
+            self._load_legacy_checkpoint(state_dict_list,
+                                         load_optimizer_states,
+                                         load_from_fp32_weights)
+
+    def _load_legacy_checkpoint(self,
+                                state_dict_list,
+                                load_optimizer_states=True,
+                                load_from_fp32_weights=False):
+
         dp_rank = dist.get_rank(group=self.dp_process_group)
         current_rank_sd = state_dict_list[dp_rank]
 
@@ -492,10 +419,31 @@ class BF16_Optimizer(ZeROOptimizer):
         if load_optimizer_states:
             self._link_all_hp_params()
 
+    def _load_universal_checkpoint(self,
+                                   checkpoint_folder,
+                                   load_optimizer_states,
+                                   load_from_fp32_weights):
+        self._load_hp_checkpoint_state(checkpoint_folder)
+
     @property
     def param_groups(self):
         """Forward the wrapped optimizer's parameters."""
         return self.optimizer.param_groups
+
+    def _load_hp_checkpoint_state(self, checkpoint_dir):
+        checkpoint_dir = os.path.join(checkpoint_dir, "zero")
+        tp_rank = bwc_tensor_model_parallel_rank(mpu=self.mpu)
+        tp_world_size = self.mpu.get_slice_parallel_world_size()
+
+        for i, _ in enumerate(self.optimizer.param_groups):
+            for lp in self.bf16_groups[i]:
+                if lp._hp_mapping is not None:
+                    #print(f"Loading {self.param_names[lp]} {tp_rank=} {tp_world_size=}")
+                    lp.load_hp_checkpoint_state(
+                        os.path.join(checkpoint_dir,
+                                     self.param_names[lp]),
+                        tp_rank,
+                        tp_world_size)
 
 
 def _get_padded_tensor(src_tensor, size):
