@@ -12,6 +12,7 @@ def allclose(x, y):
 
 
 def quantize_dequantize_ref(inputs, bit, num_groups=1):
+    # quantize
     q_range = 2**bit
     input_flat = inputs.float().reshape(num_groups, -1).contiguous()
     input_flat = torch.nan_to_num(input_flat, nan=0.0)
@@ -20,7 +21,7 @@ def quantize_dequantize_ref(inputs, bit, num_groups=1):
 
     scale = q_range / (2 * torch.max(input_min.abs(), input_max.abs()))
     input_flat = (input_flat * scale).round().clamp(-q_range // 2, q_range // 2 - 1)
-
+    # dequantize
     return input_flat.reshape(inputs.shape).to(torch.int8) / scale.view(-1).to(
         torch.float16)
 
