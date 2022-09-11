@@ -225,7 +225,7 @@ void launch_bias_add_transform_0213<__half>(__half* output,
     hidden_dim >>= 3;
     int head_ext = 1;  // (hidden_dim - 1) / MAX_THREADS + 1;
     dim3 block_dim(hidden_dim / heads, (heads / head_ext));
-    dim3 grid_dim(1, seq_length, (trans_count * head_ext));
+    dim3 grid_dim(batch_size, seq_length, (trans_count * head_ext));
     bias_add_transform_0213<<<grid_dim, block_dim, 0, stream>>>(output,
                                                                 k_cache,
                                                                 v_cache,
