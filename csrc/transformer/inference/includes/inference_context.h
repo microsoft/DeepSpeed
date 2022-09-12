@@ -13,6 +13,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #include "cuda.h"
 
 #define _1_MEGABYTE (1024 * 1024)
+#define GIGABYTE (1024 * 1024 * 1024)
 
 #define WARP_SIZE 32
 
@@ -91,8 +92,10 @@ public:
 
         size_t activation_size = 16 * hidden_dim * batch_size;
         size_t cache_size = num_layers * batch_size * (hidden_dim / mp_size) * 2;
-        _max_seq_len = (((_free_memory_size - _1_MEGABYTE * 200) / elem_size)) /
-                       (activation_size + cache_size);
+        _max_seq_len =
+            (((_free_memory_size - (_free_memory_size > GIGABYTE ? 500 : 100) * MEGABYTE) /
+              elem_size)) /
+            (activation_size + cache_size);
 
         if (rank == 0 && !_free_memory_size)
             printf(
@@ -112,7 +115,10 @@ public:
         }
 
         if (!_workspace) {
-            printf("Requested:\t%lu\nFree:\t%lu\nTotal:\t%lu\n", workSpaceSize, _free_memory_size, total_size);
+            printf("Requested:\t%lu\nFree:\t%lu\nTotal:\t%lu\n",
+                   workSpaceSize,
+                   _free_memory_size,
+                   total_size);
             throw std::runtime_error("Workspace is null.");
         }
         _workSpaceSize = workSpaceSize;
