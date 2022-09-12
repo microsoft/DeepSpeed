@@ -22,8 +22,8 @@ def quantize_dequantize_ref(inputs, bit, num_groups=1):
     scale = q_range / (2 * torch.max(input_min.abs(), input_max.abs()))
     input_flat = (input_flat * scale).round().clamp(-q_range // 2, q_range // 2 - 1)
     # dequantize
-    return input_flat.reshape(inputs.shape).to(torch.int8) / scale.view(-1).to(
-        torch.float16)
+    dequant_flat = torch.t(input_flat.to(torch.int8)) / scale.view(-1).to(torch.float16)
+    return torch.t(dequant_flat).reshape(inputs.shape)
 
 
 def run_quant_dequant(inputs, groups, bits):
@@ -49,6 +49,6 @@ def test_quant_dequant():
     # test 4bit quant/dequant on 128x256 big tensor partitioned into 16 groups.
     # Note that we have an explicit boundary for groups as ((size / groups) - 1) / 4096 + 1) <= MAX_REG.
     ref_input_big_4bit_16group = input_big_tensor.clone().detach()
-    ref_out_big_4bit_16group = quantize_dequantize_ref(ref_input_big_4bit_16group, 4)
+    ref_out_big_4bit_16group = quantize_dequantize_ref(ref_input_big_4bit_16group, 4, 16)
     ds_out_big_4bit_16group = run_quant_dequant(input_big_tensor, 16, 4)
     assert (allclose(ds_out_big_4bit_16group, ref_out_big_4bit_16group))
