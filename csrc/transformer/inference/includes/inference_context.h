@@ -12,7 +12,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #include "cublas_v2.h"
 #include "cuda.h"
 
-#define _1_MEGABYTE (1024 * 1024)
+#define MEGABYTE (1024 * 1024)
 #define GIGABYTE (1024 * 1024 * 1024)
 
 #define WARP_SIZE 32
