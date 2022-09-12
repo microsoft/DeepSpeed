@@ -4,10 +4,12 @@ from deepspeed.ops import op_builder
 
 quantizer_cuda_module = None
 
+
 def allclose(x, y):
     assert x.dtype == y.dtype
     rtol, atol = {torch.float32: (2e-1, 5e-2), torch.float16: (2e-1, 5e-2)}[x.dtype]
     return torch.allclose(x, y, rtol=rtol, atol=atol)
+
 
 def quantize_dequantize_ref(inputs, bit, num_groups=1):
     # quantize
@@ -22,6 +24,7 @@ def quantize_dequantize_ref(inputs, bit, num_groups=1):
     # dequantize
     return input_flat.reshape(inputs.shape).to(torch.int8) / scale.view(-1).to(
         torch.float16)
+
 
 def run_quant_dequant(inputs, groups, bits):
     global quantizer_cuda_module
@@ -44,8 +47,8 @@ def test_quant_dequant():
     assert (allclose(ds_out_small_8bit_1group, ref_out_small_8bit_1group))
 
     # test 4bit quant/dequant on 128x256 big tensor partitioned into 16 groups.
-    # Note that we have an explict boundary for groups as ((size / groups) - 1) / 4096 + 1) <= MAX_REG.
+    # Note that we have an explicit boundary for groups as ((size / groups) - 1) / 4096 + 1) <= MAX_REG.
     ref_input_big_4bit_16group = input_big_tensor.clone().detach()
     ref_out_big_4bit_16group = quantize_dequantize_ref(ref_input_big_4bit_16group, 4)
     ds_out_big_4bit_16group = run_quant_dequant(input_big_tensor, 16, 4)
-    assert (allclose(ds_out_big_4bit_16group,ref_out_big_4bit_16group))
+    assert (allclose(ds_out_big_4bit_16group, ref_out_big_4bit_16group))
