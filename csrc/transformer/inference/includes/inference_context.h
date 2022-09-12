@@ -111,7 +111,10 @@ public:
             cudaMalloc(&_workspace, workSpaceSize);
         }
 
-        if (!_workspace) { throw std::runtime_error("Workspace is null."); }
+        if (!_workspace) {
+            printf("Requested:\t%lu\nFree:\t%lu\nTotal:\t%lu\n", workSpaceSize, _free_memory_size, total_size);
+            throw std::runtime_error("Workspace is null.");
+        }
         _workSpaceSize = workSpaceSize;
     }
     inline size_t GetMaxTokenLenght() const { return _max_seq_len; }

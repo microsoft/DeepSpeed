@@ -21,7 +21,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #include <cassert>
 #include <iostream>
 
-#define MAX_OUT_TOKES 128
+#define MAX_OUT_TOKES 512
 #define MAX_WARP_NUM 32
 #define WARP_SIZE 32
 

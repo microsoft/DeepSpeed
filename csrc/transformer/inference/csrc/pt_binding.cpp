@@ -125,10 +125,13 @@ at::Tensor einsum_sec_sm_ecm(at::Tensor& Q, at::Tensor& W)
     float alpha = 1;
     float gemm_beta = 0.0;
 
-    if (!workspace) {
-        allocate_workspace<T>(W.size(1), MAX_OUT_TOKES, Q.size(0), 1);
+    /*
+    // Reallocate memory if we received a new prompt
+    if (!workspace || input.size(1) != 1) {
+        allocate_workspace<T>(W.size(1), MAX_OUT_TOKES, Q.size(0), 1, head_size);
         workspace = (T*)Context::Instance().GetWorkSpace();
     }
+    */
 
     auto O = at::from_blob(workspace, {Q.size(1), Q.size(2), W.size(1)}, options);
     unsigned m = W.size(1);
@@ -350,7 +353,15 @@ void attention_unfused(T* prev_key_cont,
     float layer_scale = alibi.sizes().size() > 1 ? std::max(1, layer_id) : 1.0;
     float alpha = norm_factor * norm_factor / layer_scale;
     float gemm_beta = 0.0;
-    T* workspace = (T*)output + bsz * seq_len * heads * k;
+    T* workspace;
+    if (seq_len == 1) {
+        workspace = (T*)output + bsz * seq_len * heads * k;
+    } else {
+        // If we are doing the prompt, switch to the tail workspace
+        T* scratch = (T*)Context::Instance().GetWorkSpace();
+        workspace = scratch + (Context::Instance().get_workspace_size() / sizeof(T)) -
+                    bsz * heads * seq_len * seq_len;
+    }
 
     cublasSetStream(Context::Instance().GetCublasHandle(), Context::Instance().GetCurrentStream());
     cublas_strided_batched_gemm(Context::Instance().GetCublasHandle(),
@@ -824,7 +835,8 @@ template <typename T>
 at::Tensor ds_linear_layer(at::Tensor& input,
                            at::Tensor& weight,
                            at::Tensor& bias,
-                           unsigned num_layers)
+                           unsigned num_layers,
+                           unsigned head_size)
 {
     auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
@@ -835,10 +847,12 @@ at::Tensor ds_linear_layer(at::Tensor& input,
 
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
-    if (!workspace) {
+    // Reallocate memory if we received a new prompt
+    if (!workspace || input.size(1) != 1) {
         cublasSetStream(Context::Instance().GetCublasHandle(),
                         Context::Instance().GetCurrentStream());
-        allocate_workspace<T>(input.size(2), MAX_OUT_TOKES, input.size(0), num_layers);
+        allocate_workspace<T>(
+            input.size(2), input.size(1), MAX_OUT_TOKES, input.size(0), num_layers, head_size);
         workspace = (T*)Context::Instance().GetWorkSpace();
     }
     auto output = at::from_blob(workspace, {input.size(0), input.size(1), weight.size(1)}, options);
