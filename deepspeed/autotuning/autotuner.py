@@ -12,6 +12,7 @@ from ..runtime.constants import *
 from ..runtime.zero.config import DeepSpeedZeroConfig, ZERO_OPTIMIZATION, ZeroStageEnum
 from ..utils import logger
 from .config import AUTOTUNING, DeepSpeedAutotuningConfig, TunerTypeEnum
+from .constants import *
 from .scheduler import ResourceManager
 from .tuner import GridSearchTuner, RandomTuner, ModelBasedTuner
 from .utils import *
