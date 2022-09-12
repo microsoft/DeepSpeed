@@ -40,14 +40,16 @@ def test_quant_dequant(tensor_shape):
 
     # test 8bit quant/dequant on tensor partitioned in 1 group.
     ref_input_8bit_1group = input_tensor.clone().detach()
+    ds_input_8bit_1group = input_tensor.clone().detach()
     ref_out_8bit_1group = quantize_dequantize_ref(ref_input_8bit_1group, 8)
     # run_quant_dequant will do quantize then dequantize and return the dequantized value.
-    ds_out_8bit_1group = run_quant_dequant(input_tensor, 1, 8)
+    ds_out_8bit_1group = run_quant_dequant(ds_input_8bit_1group, 1, 8)
     assert (allclose(ds_out_8bit_1group, ref_out_8bit_1group))
 
     # test 4bit quant/dequant on tensor partitioned into 16 groups.
     # Note that we have an explicit boundary for groups as ((size / groups) - 1) / 4096 + 1) <= MAX_REG.
     ref_input_4bit_16group = input_tensor.clone().detach()
+    ds_input_4bit_16group = input_tensor.clone().detach()
     ref_out_4bit_16group = quantize_dequantize_ref(ref_input_4bit_16group, 4, 16)
-    ds_out_4bit_16group = run_quant_dequant(input_tensor, 16, 4)
+    ds_out_4bit_16group = run_quant_dequant(ds_input_4bit_16group, 16, 4)
     assert (allclose(ds_out_4bit_16group, ref_out_4bit_16group))
