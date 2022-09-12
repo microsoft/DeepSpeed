@@ -18,7 +18,7 @@ for m in `echo "EleutherAI/gpt-j-6B"`; do
 done
 
 for m in `echo "facebook/opt-125m facebook/opt-1.3b facebook/opt-2.7b facebook/opt-6.7b facebook/opt-13b"`; do
-  bash run_bash.sh $m $branch1 $branch2
+  bash run_model.sh $m $branch1 $branch2
 done
 
 for m in `echo "bigscience/bloom-560m bigscience/bloom-1b7 bigscience/bloom-3b bigscience/bloom-7b1"`; do
