@@ -34,10 +34,12 @@ def run_quant_dequant(inputs, groups, bits):
 
 
 @pytest.mark.inference
-def test_quant_dequant():
+@pytest.mark.parametrize("small_tensor_shape", [8, 8])
+@pytest.mark.parametrize("big_tensor_shape", [128, 256])
+def test_quant_dequant(small_tensor_shape, big_tensor_shape):
 
-    input_small_tensor = torch.rand(8, 8, dtype=torch.float16).cuda()
-    input_big_tensor = torch.rand(128, 256, dtype=torch.float16).cuda()
+    input_small_tensor = torch.rand((small_tensor_shape), dtype=torch.float16).cuda()
+    input_big_tensor = torch.rand((big_tensor_shape), dtype=torch.float16).cuda()
 
     # test 8bit quant/dequant on 8x8 small tensor partitioned in 1 group.
     ref_input_small_8bit_1group = input_small_tensor.clone().detach()
