@@ -1,4 +1,8 @@
-class DeepSpeedAccelerator(object):
+import abc
+from abc import ABC
+
+
+class DeepSpeedAccelerator(ABC):
     def __init__(self):
         self.name = None
         self.communication_backend = None
@@ -11,107 +15,135 @@ class DeepSpeedAccelerator(object):
         self.LongTensor = None
 
     # Device APIs
+    @abc.abstractmethod
     def device(self, device_index):
-        pass
+        ...
 
+    @abc.abstractmethod
     def set_device(self):
-        pass
+        ...
 
+    @abc.abstractmethod
     def current_device(self):
-        pass
+        ...
 
+    @abc.abstractmethod
     def device_count(self):
-        pass
+        ...
 
+    @abc.abstractmethod
     def synchronize(self, device_index=None):
-        pass
+        ...
 
     # RNG APIs
+    @abc.abstractmethod
     def set_rng_state(self, new_state, device_index=None):
-        pass
+        ...
 
+    @abc.abstractmethod
     def get_rng_state(self, device_index=None):
-        pass
+        ...
 
+    @abc.abstractmethod
     def manual_seed(self, seed):
-        pass
+        ...
 
+    @abc.abstractmethod
     def manual_seed_all(self, seed):
-        pass
+        ...
 
+    @abc.abstractmethod
     def initial_seed(self):
-        pass
+        ...
 
+    @abc.abstractmethod
     def default_generator(self, device_index):
-        pass
+        ...
 
     # Streams/Events
+    @abc.abstractmethod
     def Stream(self, device_index=None, priority=0, **kwargs):
-        pass
+        ...
 
+    @abc.abstractmethod
     def StreamContext(self, stream):
-        pass
+        ...
 
+    @abc.abstractmethod
     def current_stream(self, device_index=None):
-        pass
+        ...
 
+    @abc.abstractmethod
     def default_stream(self, device_index=None):
-        pass
+        ...
 
+    @abc.abstractmethod
     def Event(self, **kwargs):
-        pass
+        ...
 
     # Memory management
+    @abc.abstractmethod
     def empty_cache(self):
-        pass
+        ...
 
+    @abc.abstractmethod
     def memory_allocated(self, device_index=None):
-        pass
+        ...
 
+    @abc.abstractmethod
     def max_memory_allocated(self, device_index=None):
-        pass
+        ...
 
+    @abc.abstractmethod
     def reset_max_memory_allocated(self, device_index=None):
-        pass
+        ...
 
+    @abc.abstractmethod
     def reset_max_memory_cached(self, device_index=None):
-        pass
+        ...
 
+    @abc.abstractmethod
     def memory_stats(self, device_index=None):
-        pass
+        ...
 
+    @abc.abstractmethod
     def reset_peak_memory_stats(self, device_index=None):
-        pass
+        ...
 
+    @abc.abstractmethod
     def memory_reserved(self, device_index=None):
-        pass
+        ...
 
+    @abc.abstractmethod
     def max_memory_reserved(self, device_index=None):
-        pass
+        ...
 
+    @abc.abstractmethod
     def total_memory(self, device_index=None):
-        pass
+        ...
 
     # Misc
+    @abc.abstractmethod
     def is_available(self):
-        pass
+        ...
 
+    @abc.abstractmethod
     def range_push(self, msg):
-        pass
+        ...
 
+    @abc.abstractmethod
     def range_pop(self, msg):
-        pass
+        ...
 
+    @abc.abstractmethod
     def lazy_call(self, callback):
-        pass
+        ...
 
     # Data types
+    @abc.abstractmethod
     def is_bf16_supported(self):
-        pass
+        ...
 
-    def is_fp_supported(self):
-        pass
-
-    # Communication APIs
-    def communication_backend(self):
-        pass
+    @abc.abstractmethod
+    def is_fp16_supported(self):
+        ...
