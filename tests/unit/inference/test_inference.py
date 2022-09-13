@@ -292,7 +292,7 @@ class TestModelTask(DistributedTest):
 
 @pytest.mark.seq_inference
 @pytest.mark.parametrize("model_w_task",
-                         [("gpt2",
+                         [("EleutherAI/gpt-neo-1.3B",
                            "text-generation"),
                           ("EleutherAI/gpt-neox-20b",
                            "text-generation"),
