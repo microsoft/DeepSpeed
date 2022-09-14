@@ -298,7 +298,7 @@ class TestModelTask(DistributedTest):
                            "text-generation"),
                           ("bigscience/bloom-3b",
                            "text-generation")],
-                         ids=["gpt2",
+                         ids=["gpt-neo",
                               "gpt-neox",
                               "bloom"])
 class TestMPSize(DistributedTest):
