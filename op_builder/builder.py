@@ -469,6 +469,10 @@ class OpBuilder(ABC):
         else:
             return self.jit_load(verbose)
 
+    def is_python_module(self):
+        # Return True if the extension is PYBIND11, False if TORCH_LIBRARY
+        return True
+
     def jit_load(self, verbose=True):
         if not self.is_compatible(verbose):
             raise RuntimeError(
@@ -502,14 +506,27 @@ class OpBuilder(ABC):
             torch_arch_list = os.environ.get("TORCH_CUDA_ARCH_LIST")
             os.environ["TORCH_CUDA_ARCH_LIST"] = ""
 
-        op_module = load(
-            name=self.name,
-            sources=self.strip_empty_entries(sources),
-            extra_include_paths=self.strip_empty_entries(extra_include_paths),
-            extra_cflags=self.strip_empty_entries(self.cxx_args()),
-            extra_cuda_cflags=self.strip_empty_entries(self.nvcc_args()),
-            extra_ldflags=self.strip_empty_entries(self.extra_ldflags()),
-            verbose=verbose)
+        if self.is_python_module() == True:
+            op_module = load(
+                name=self.name,
+                sources=self.strip_empty_entries(sources),
+                extra_include_paths=self.strip_empty_entries(extra_include_paths),
+                extra_cflags=self.strip_empty_entries(self.cxx_args()),
+                extra_cuda_cflags=self.strip_empty_entries(self.nvcc_args()),
+                extra_ldflags=self.strip_empty_entries(self.extra_ldflags()),
+                is_python_module=self.is_python_module(),
+                verbose=verbose)
+        else:
+            load(name=self.name,
+                 sources=self.strip_empty_entries(sources),
+                 extra_include_paths=self.strip_empty_entries(extra_include_paths),
+                 extra_cflags=self.strip_empty_entries(self.cxx_args()),
+                 extra_cuda_cflags=self.strip_empty_entries(self.nvcc_args()),
+                 extra_ldflags=self.strip_empty_entries(self.extra_ldflags()),
+                 is_python_module=self.is_python_module(),
+                 verbose=verbose)
+            from torch import ops
+            op_module = getattr(ops, self.name)
         build_duration = time.time() - start_build
         if verbose:
             print(f"Time to load {self.name} op: {build_duration} seconds")

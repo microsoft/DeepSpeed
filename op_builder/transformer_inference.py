@@ -10,7 +10,7 @@ class InferenceBuilder(CUDAOpBuilder):
         super().__init__(name=name)
 
     def absolute_name(self):
-        return f'deepspeed.ops.transformer.inference.{self.NAME}_op'
+        return f'torch.ops.{self.NAME}'
 
     def is_compatible(self, verbose=True):
         try:
@@ -52,3 +52,7 @@ class InferenceBuilder(CUDAOpBuilder):
 
     def include_paths(self):
         return ['csrc/transformer/inference/includes', 'csrc/includes']
+
+    def is_python_module(self):
+        # For t
+        return False

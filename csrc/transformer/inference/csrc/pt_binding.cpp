@@ -3,7 +3,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 */
 
 #include <c10/cuda/CUDAStream.h>
-#include <torch/extension.h>
+#include <torch/script.h>
 #include <stdexcept>
 #include <vector>
 #include "inference_context.h"
@@ -21,7 +21,7 @@ enum class TransformerType : uint8_t { UNKNOWN = 0, GPTType = 1, BERTType = 2 };
 
 // NOTE: this is a temporary and dodgy solution to distinguish GPT and BERT style models
 // based on the dimensions of the corresponding attention mask.
-inline auto infer_transformer_type(at::Tensor& attn_mask) -> TransformerType
+inline auto infer_transformer_type(torch::Tensor& attn_mask) -> TransformerType
 {
     auto attn_mask_num_dims = attn_mask.sizes().size();
 
@@ -35,7 +35,7 @@ inline auto infer_transformer_type(at::Tensor& attn_mask) -> TransformerType
 }
 
 // infer stride of attention mask memory layout based on the model type.
-inline auto get_attn_mask_stride(at::Tensor& attn_mask) -> int
+inline auto get_attn_mask_stride(torch::Tensor& attn_mask) -> int
 {
     auto trnsfrmr_type = infer_transformer_type(attn_mask);
 
@@ -53,17 +53,17 @@ inline auto get_attn_mask_stride(at::Tensor& attn_mask) -> int
 }
 
 template <typename T>
-at::Tensor ds_softmax(at::Tensor& attn_scores,
-                      at::Tensor& attn_mask,
-                      at::Tensor& alibi,
-                      bool triangular,
-                      bool recompute,
-                      bool local_attention,
-                      int window_size,
-                      bool async_op,
-                      float layer_scale,
-                      int head_offset,
-                      int mp_size)
+torch::Tensor ds_softmax(torch::Tensor& attn_scores,
+                         torch::Tensor& attn_mask,
+                         torch::Tensor& alibi,
+                         int64_t triangular,       // bool
+                         int64_t recompute,        // bool
+                         int64_t local_attention,  // bool
+                         int64_t window_size,
+                         int64_t async_op,  // bool
+                         double layer_scale,
+                         int64_t head_offset,
+                         int64_t mp_size)
 {
     auto attn_scores_c = attn_scores.contiguous();
     int bsz = attn_scores_c.size(0);
@@ -113,9 +113,9 @@ void allocate_workspace(size_t hidden_dim,
 }
 
 template <typename T>
-at::Tensor einsum_sec_sm_ecm(at::Tensor& Q, at::Tensor& W)
+torch::Tensor einsum_sec_sm_ecm(torch::Tensor& Q, torch::Tensor& W)
 {
-    auto options = at::TensorOptions()
+    auto options = torch::TensorOptions()
                        .dtype(Q.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
@@ -153,27 +153,27 @@ at::Tensor einsum_sec_sm_ecm(at::Tensor& Q, at::Tensor& W)
 }
 
 template <typename T>
-void attention_unfused(at::Tensor& prev_key_cont,
-                       at::Tensor& query_cont,
-                       at::Tensor& attn_mask,
-                       at::Tensor& prev_value_cont,
-                       at::Tensor& output,
-                       int& bsz,
-                       int& seq_len,
-                       int& soft_len,
-                       int& heads,
-                       float& norm_factor,
-                       bool triangular,
-                       bool recompute,
-                       bool local_attention,
-                       int window_size)
+void attention_unfused(torch::Tensor& prev_key_cont,
+                       torch::Tensor& query_cont,
+                       torch::Tensor& attn_mask,
+                       torch::Tensor& prev_value_cont,
+                       torch::Tensor& output,
+                       int64_t& bsz,
+                       int64_t& seq_len,
+                       int64_t& soft_len,
+                       int64_t& heads,
+                       double& norm_factor,
+                       int64_t triangular,       // bool
+                       int64_t recompute,        // bool
+                       int64_t local_attention,  // bool
+                       int64_t window_size)
 {
-    auto options = at::TensorOptions()
+    auto options = torch::TensorOptions()
                        .dtype(query_cont.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
                        .requires_grad(false);
-    float alpha = norm_factor;
+    float alpha = (float)norm_factor;
     float gemm_beta = 0.0;
     auto attn_score = at::empty({bsz, heads, seq_len, soft_len}, options);
     int k = prev_value_cont.size(2) / heads;
@@ -241,33 +241,33 @@ void attention_unfused(at::Tensor& prev_key_cont,
 }
 
 template <typename T>
-std::vector<at::Tensor> ds_softmax_context1(at::Tensor& query,
-                                            at::Tensor& prev_key,
-                                            at::Tensor& new_key,
-                                            at::Tensor& attn_mask,
-                                            at::Tensor& prev_value,
-                                            at::Tensor& new_value,
-                                            int heads,
-                                            float norm_factor,
-                                            bool merging,
-                                            bool triangular,
-                                            bool local_attention,
-                                            int window_size,
-                                            bool no_masking)
+std::vector<torch::Tensor> ds_softmax_context1(torch::Tensor& query,
+                                               torch::Tensor& prev_key,
+                                               torch::Tensor& new_key,
+                                               torch::Tensor& attn_mask,
+                                               torch::Tensor& prev_value,
+                                               torch::Tensor& new_value,
+                                               int64_t heads,
+                                               double norm_factor,
+                                               int64_t merging,          // bool
+                                               int64_t triangular,       // bool
+                                               int64_t local_attention,  // bool
+                                               int64_t window_size,
+                                               bool no_masking /* bool */)
 {
     auto query_cont = query.contiguous();
     auto prev_key_cont = prev_key.contiguous();
     auto prev_value_cont = prev_value.contiguous();
 
-    int new_size = (new_value.sizes().size() > 1 ? new_value.size(1) : 0);
+    int64_t new_size = (new_value.sizes().size() > 1 ? new_value.size(1) : 0);
 
     // Attn_Score [ batch Head Sequence-length Softmax-length]
 
-    int bsz = query_cont.size(0);
-    int seq_len = query_cont.size(1);
-    int soft_len = prev_value.size(1);
+    int64_t bsz = query_cont.size(0);
+    int64_t seq_len = query_cont.size(1);
+    int64_t soft_len = prev_value.size(1);
 
-    auto options = at::TensorOptions()
+    auto options = torch::TensorOptions()
                        .dtype(query_cont.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
@@ -295,8 +295,8 @@ std::vector<at::Tensor> ds_softmax_context1(at::Tensor& query,
 
 template <typename T>
 void ds_softmax_internal(T* attn_scores,
-                         at::Tensor& attn_mask,
-                         at::Tensor& alibi,
+                         torch::Tensor& attn_mask,
+                         torch::Tensor& alibi,
                          float& layer_scale,
                          bool triangular,
                          bool recompute,
@@ -330,23 +330,23 @@ void ds_softmax_internal(T* attn_scores,
 template <typename T>
 void attention_unfused(T* prev_key_cont,
                        T* query_cont,
-                       at::Tensor& attn_mask,
+                       torch::Tensor& attn_mask,
                        T* prev_value_cont,
                        T* output,
-                       unsigned& bsz,
-                       int& k,
-                       unsigned& seq_len,
-                       unsigned& soft_len,
-                       int& heads,
-                       float& norm_factor,
-                       bool triangular,
-                       bool recompute,
-                       bool local_attention,
-                       int window_size,
-                       at::Tensor& alibi,
-                       int layer_id)
+                       int64_t& bsz,
+                       int64_t& k,
+                       int64_t& seq_len,
+                       int64_t& soft_len,
+                       int64_t& heads,
+                       double& norm_factor,
+                       int64_t triangular,
+                       int64_t recompute,
+                       int64_t local_attention,
+                       int64_t window_size,
+                       torch::Tensor& alibi,
+                       int64_t layer_id)
 {
-    float layer_scale = alibi.sizes().size() > 1 ? std::max(1, layer_id) : 1.0;
+    float layer_scale = alibi.sizes().size() > 1 ? std::max(1, (int)layer_id) : 1.0;
     float alpha = norm_factor * norm_factor / layer_scale;
     float gemm_beta = 0.0;
     T* workspace = (T*)output + bsz * seq_len * heads * k;
@@ -408,48 +408,48 @@ void attention_unfused(T* prev_key_cont,
 }
 
 template <typename T>
-std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
-                                           at::Tensor& attn_mask,
-                                           int rotary_dim,
-                                           bool rotate_half,
-                                           bool rotate_every_two,
-                                           int heads,
-                                           float norm_factor,
-                                           bool triangular,
-                                           bool local_attention,
-                                           int window_size,
-                                           bool no_masking,
-                                           unsigned layer_id,
-                                           unsigned num_layers,
-                                           at::Tensor& alibi)
+std::vector<torch::Tensor> ds_softmax_context(torch::Tensor& query_key_value,
+                                              torch::Tensor& attn_mask,
+                                              int64_t rotary_dim,
+                                              int64_t rotate_half,       // bool
+                                              int64_t rotate_every_two,  // bool
+                                              int64_t heads,
+                                              double norm_factor,
+                                              int64_t triangular,       // bool
+                                              int64_t local_attention,  // bool
+                                              int64_t window_size,
+                                              int64_t no_masking,  // bool
+                                              int64_t layer_id,
+                                              int64_t num_layers,
+                                              torch::Tensor& alibi)
 {
-    unsigned bsz = query_key_value.size(0);
-    unsigned seq_len = query_key_value.size(1);
-    unsigned hidden_dim = query_key_value.size(2) / 3;
+    int64_t bsz = query_key_value.size(0);
+    int64_t seq_len = query_key_value.size(1);
+    int64_t hidden_dim = query_key_value.size(2) / 3;
 
-    bool is_prompt = (seq_len > 1);
+    int64_t is_prompt = (seq_len > 1);
 
     if (is_prompt) Context::Instance().reset_tokens(seq_len);
-    unsigned soft_len = Context::Instance().current_tokens();
+    int64_t soft_len = Context::Instance().current_tokens();
 
-    int k = hidden_dim / heads;
-    auto options = at::TensorOptions()
+    int64_t k = hidden_dim / heads;
+    auto options = torch::TensorOptions()
                        .dtype(query_key_value.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
                        .requires_grad(false);
 
     T* workspace = (T*)Context::Instance().GetWorkSpace();
-    size_t buf_size = bsz * seq_len * hidden_dim;
+    int64_t buf_size = bsz * seq_len * hidden_dim;
     auto output = torch::from_blob(workspace + 4 * buf_size, {bsz, seq_len, hidden_dim}, options);
 
     auto query_cont = workspace + 8 * buf_size;
-    size_t offset =
+    int64_t offset =
         16 * (hidden_dim * bsz * MAX_OUT_TOKES) + layer_id * 2 * bsz * MAX_OUT_TOKES * hidden_dim;
 
-    unsigned all_tokens = soft_len;
+    int64_t all_tokens = soft_len;
     auto kv_cache = workspace + offset + (hidden_dim / heads) * (is_prompt ? 0 : soft_len - 1);
-    size_t value_offset = bsz * MAX_OUT_TOKES * hidden_dim;
+    int64_t value_offset = bsz * MAX_OUT_TOKES * hidden_dim;
 
     T* temp_buf = (T*)output.data_ptr() + at::numel(output);
     launch_bias_add_transform_0213<T>((T*)query_cont,
@@ -515,7 +515,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
 }
 
 template <typename T>
-at::Tensor ds_bias_gelu(at::Tensor& input, at::Tensor& bias)
+torch::Tensor ds_bias_gelu(torch::Tensor& input, torch::Tensor& bias)
 {
     auto input_cont = input.contiguous();
 
@@ -531,7 +531,7 @@ at::Tensor ds_bias_gelu(at::Tensor& input, at::Tensor& bias)
 }
 
 template <typename T>
-at::Tensor ds_bias_relu(at::Tensor& input, at::Tensor& bias)
+torch::Tensor ds_bias_relu(torch::Tensor& input, torch::Tensor& bias)
 {
     auto input_cont = input.contiguous();
 
@@ -547,7 +547,7 @@ at::Tensor ds_bias_relu(at::Tensor& input, at::Tensor& bias)
 }
 
 template <typename T>
-at::Tensor ds_bias_add(at::Tensor& input, at::Tensor& bias)
+torch::Tensor ds_bias_add(torch::Tensor& input, torch::Tensor& bias)
 {
     auto input_cont = input.contiguous();
 
@@ -563,7 +563,7 @@ at::Tensor ds_bias_add(at::Tensor& input, at::Tensor& bias)
 }
 
 template <typename T>
-at::Tensor ds_bias_residual(at::Tensor& input, at::Tensor& residual, at::Tensor& bias)
+torch::Tensor ds_bias_residual(torch::Tensor& input, torch::Tensor& residual, torch::Tensor& bias)
 {
     auto input_cont = input.contiguous();
     auto residual_cont = residual.contiguous();
@@ -580,7 +580,10 @@ at::Tensor ds_bias_residual(at::Tensor& input, at::Tensor& residual, at::Tensor&
 }
 
 template <typename T>
-at::Tensor ds_layernorm(at::Tensor& input_cont, at::Tensor& gamma, at::Tensor& betta, float epsilon)
+torch::Tensor ds_layernorm(torch::Tensor& input_cont,
+                           torch::Tensor& gamma,
+                           torch::Tensor& betta,
+                           double epsilon)
 {
     int bsz = input_cont.size(0) * input_cont.size(1);
     auto inp_norm = at::empty_like(input_cont);
@@ -597,9 +600,9 @@ at::Tensor ds_layernorm(at::Tensor& input_cont, at::Tensor& gamma, at::Tensor& b
 
 template <typename T>
 void ds_layernorm_internal(T* workspace,
-                           at::Tensor& input,
-                           at::Tensor& gamma,
-                           at::Tensor& betta,
+                           torch::Tensor& input,
+                           torch::Tensor& gamma,
+                           torch::Tensor& betta,
                            float epsilon)
 {
     int bsz = input.size(0) * input.size(1);
@@ -614,10 +617,10 @@ void ds_layernorm_internal(T* workspace,
 }
 
 template <typename T>
-void quantized_gemm(at::Tensor& output,
+void quantized_gemm(torch::Tensor& output,
                     T* input,
-                    at::Tensor& weight,
-                    at::Tensor& qscale,
+                    torch::Tensor& weight,
+                    torch::Tensor& qscale,
                     int groups,
                     int bsz)
 {
@@ -652,16 +655,16 @@ void quantized_gemm(at::Tensor& output,
 }
 
 template <typename T>
-at::Tensor qkv_unfused_cublas(at::Tensor& output,
-                              at::Tensor& input,
-                              at::Tensor& weight,
-                              at::Tensor& q_scale,
-                              at::Tensor& bias,
-                              at::Tensor& gamma,
-                              at::Tensor& beta,
-                              const float epsilon,
-                              bool add_bias,
-                              bool q_int8)
+torch::Tensor qkv_unfused_cublas(torch::Tensor& output,
+                                 torch::Tensor& input,
+                                 torch::Tensor& weight,
+                                 torch::Tensor& q_scale,
+                                 torch::Tensor& bias,
+                                 torch::Tensor& gamma,
+                                 torch::Tensor& beta,
+                                 const float epsilon,
+                                 bool add_bias,
+                                 bool q_int8)
 {
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
@@ -704,16 +707,16 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
 }
 
 template <typename T>
-std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
-                                    at::Tensor& weight,
-                                    at::Tensor& q_scale,
-                                    at::Tensor& bias,
-                                    at::Tensor& gamma,
-                                    at::Tensor& beta,
-                                    const float epsilon,
-                                    bool add_bias,
-                                    unsigned num_layers,
-                                    bool q_int8)
+std::vector<torch::Tensor> ds_qkv_gemm(torch::Tensor& input,
+                                       torch::Tensor& weight,
+                                       torch::Tensor& q_scale,
+                                       torch::Tensor& bias,
+                                       torch::Tensor& gamma,
+                                       torch::Tensor& beta,
+                                       const double epsilon,
+                                       int64_t add_bias,  // bool
+                                       int64_t num_layers,
+                                       int64_t q_int8 /* bool */)
 {
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
@@ -724,7 +727,7 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
         allocate_workspace<T>(input.size(2), MAX_OUT_TOKES, input.size(0), num_layers);
         workspace = (T*)Context::Instance().GetWorkSpace();
     }
-    auto options = at::TensorOptions()
+    auto options = torch::TensorOptions()
                        .dtype(input.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
@@ -738,15 +741,15 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
 }
 
 template <typename T>
-void quantized_gemm(at::Tensor& output,
-                    at::Tensor& input,
-                    at::Tensor& weight,
-                    at::Tensor& qscale,
+void quantized_gemm(torch::Tensor& output,
+                    torch::Tensor& input,
+                    torch::Tensor& weight,
+                    torch::Tensor& qscale,
                     int groups,
                     int merge_count)
 {
     int bsz = input.size(0) * input.size(1);
-    auto options = at::TensorOptions()
+    auto options = torch::TensorOptions()
                        .dtype(input.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
@@ -783,19 +786,19 @@ void quantized_gemm(at::Tensor& output,
 }
 
 template <typename T>
-at::Tensor ds_qkv_gemm_int8(at::Tensor& input,
-                            at::Tensor& weight,
-                            at::Tensor& bias,
-                            at::Tensor& gamma,
-                            at::Tensor& beta,
-                            const float epsilon,
-                            at::Tensor& q_scale,
-                            int groups,
-                            bool add_bias)
+torch::Tensor ds_qkv_gemm_int8(torch::Tensor& input,
+                               torch::Tensor& weight,
+                               torch::Tensor& bias,
+                               torch::Tensor& gamma,
+                               torch::Tensor& beta,
+                               const double epsilon,
+                               torch::Tensor& q_scale,
+                               int64_t groups,
+                               int64_t add_bias /* bool */)
 {
     int bsz = input.size(0) * input.size(1);
     auto input_cont = input.contiguous();
-    auto options = at::TensorOptions()
+    auto options = torch::TensorOptions()
                        .dtype(input_cont.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
@@ -817,13 +820,13 @@ at::Tensor ds_qkv_gemm_int8(at::Tensor& input,
 }
 
 template <typename T>
-at::Tensor ds_linear_layer(at::Tensor& input,
-                           at::Tensor& weight,
-                           at::Tensor& bias,
-                           unsigned num_layers)
+torch::Tensor ds_linear_layer(torch::Tensor& input,
+                              torch::Tensor& weight,
+                              torch::Tensor& bias,
+                              int64_t num_layers /* bool */)
 {
     auto input_cont = input.contiguous();
-    auto options = at::TensorOptions()
+    auto options = torch::TensorOptions()
                        .dtype(input_cont.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
@@ -870,14 +873,14 @@ at::Tensor ds_linear_layer(at::Tensor& input,
 }
 
 template <typename T>
-at::Tensor ds_linear_layer_int8(at::Tensor& input,
-                                at::Tensor& weight,
-                                at::Tensor& bias,
-                                at::Tensor& q_scale,
-                                int groups)
+torch::Tensor ds_linear_layer_int8(torch::Tensor& input,
+                                   torch::Tensor& weight,
+                                   torch::Tensor& bias,
+                                   torch::Tensor& q_scale,
+                                   int64_t groups /* bool */)
 {
     auto input_cont = input.contiguous();
-    auto options = at::TensorOptions()
+    auto options = torch::TensorOptions()
                        .dtype(input_cont.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
@@ -896,14 +899,14 @@ at::Tensor ds_linear_layer_int8(at::Tensor& input,
 }
 
 template <typename T>
-at::Tensor ds_vector_matmul(at::Tensor& input,
-                            at::Tensor& weight,
-                            bool async_op,
-                            at::Tensor& q_scale,
-                            bool q_int8)
+torch::Tensor ds_vector_matmul(torch::Tensor& input,
+                               torch::Tensor& weight,
+                               int64_t async_op,  // bool
+                               torch::Tensor& q_scale,
+                               int64_t q_int8 /* bool */)
 {
     auto input_cont = input.contiguous();
-    auto options = at::TensorOptions()
+    auto options = torch::TensorOptions()
                        .dtype(input_cont.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
@@ -940,14 +943,14 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
 }
 
 template <typename T>
-at::Tensor ds_vector_matmul_int8(at::Tensor& input,
-                                 at::Tensor& weight,
-                                 at::Tensor& q_scale,
-                                 int groups,
-                                 int merge_count)
+torch::Tensor ds_vector_matmul_int8(torch::Tensor& input,
+                                    torch::Tensor& weight,
+                                    torch::Tensor& q_scale,
+                                    int64_t groups,
+                                    int64_t merge_count)
 {
     auto input_cont = input.contiguous();
-    auto options = at::TensorOptions()
+    auto options = torch::TensorOptions()
                        .dtype(input_cont.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
@@ -960,20 +963,20 @@ at::Tensor ds_vector_matmul_int8(at::Tensor& input,
 }
 
 template <typename T>
-at::Tensor mlp_unfused_cublas(at::Tensor& output,
-                              at::Tensor& input,
-                              at::Tensor& residual,
-                              at::Tensor& input_bias,
-                              at::Tensor& weight,
-                              at::Tensor& bias,
-                              at::Tensor& gamma,
-                              at::Tensor& beta,
-                              const float epsilon,
-                              bool preLayerNorm,
-                              bool mlp_after_attn,
-                              at::Tensor& q_scale,
-                              bool q_int8,
-                              ActivationFuncType act_func_type)
+torch::Tensor mlp_unfused_cublas(torch::Tensor& output,
+                                 torch::Tensor& input,
+                                 torch::Tensor& residual,
+                                 torch::Tensor& input_bias,
+                                 torch::Tensor& weight,
+                                 torch::Tensor& bias,
+                                 torch::Tensor& gamma,
+                                 torch::Tensor& beta,
+                                 const float epsilon,
+                                 bool preLayerNorm,
+                                 bool mlp_after_attn,
+                                 torch::Tensor& q_scale,
+                                 bool q_int8,
+                                 ActivationFuncType act_func_type)
 {
     int bsz = input.size(0) * input.size(1);
     auto inp_norm = at::empty_like(input);
@@ -1034,22 +1037,22 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
 }
 
 template <typename T>
-std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
-                                    at::Tensor& residual,
-                                    at::Tensor& input_bias,
-                                    at::Tensor& weight,
-                                    at::Tensor& bias,
-                                    at::Tensor& gamma,
-                                    at::Tensor& beta,
-                                    const float epsilon,
-                                    bool preLayerNorm,
-                                    bool mlp_after_attn,
-                                    at::Tensor& q_scale,
-                                    bool q_int8,
-                                    int activation_type)
+std::vector<torch::Tensor> ds_mlp_gemm(torch::Tensor& input,
+                                       torch::Tensor& residual,
+                                       torch::Tensor& input_bias,
+                                       torch::Tensor& weight,
+                                       torch::Tensor& bias,
+                                       torch::Tensor& gamma,
+                                       torch::Tensor& beta,
+                                       const double epsilon,
+                                       int64_t preLayerNorm,    // bool
+                                       int64_t mlp_after_attn,  // bool
+                                       torch::Tensor& q_scale,
+                                       int64_t q_int8,  // bool
+                                       int64_t activation_type)
 {
     auto input_cont = input.contiguous();
-    auto options = at::TensorOptions()
+    auto options = torch::TensorOptions()
                        .dtype(input_cont.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
@@ -1081,20 +1084,20 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
 }
 
 template <typename T>
-std::vector<at::Tensor> ds_mlp_gemm_int8(at::Tensor& input,
-                                         at::Tensor& residual,
-                                         at::Tensor& input_bias,
-                                         at::Tensor& weight,
-                                         at::Tensor& bias,
-                                         at::Tensor& gamma,
-                                         at::Tensor& beta,
-                                         const float epsilon,
-                                         at::Tensor& q_scale,
-                                         int groups,
-                                         bool preLayerNorm)
+std::vector<torch::Tensor> ds_mlp_gemm_int8(torch::Tensor& input,
+                                            torch::Tensor& residual,
+                                            torch::Tensor& input_bias,
+                                            torch::Tensor& weight,
+                                            torch::Tensor& bias,
+                                            torch::Tensor& gamma,
+                                            torch::Tensor& beta,
+                                            const double epsilon,
+                                            torch::Tensor& q_scale,
+                                            int64_t groups,
+                                            int64_t preLayerNorm /* bool */)
 {
     auto input_cont = input.contiguous();
-    auto options = at::TensorOptions()
+    auto options = torch::TensorOptions()
                        .dtype(input_cont.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
@@ -1117,16 +1120,16 @@ std::vector<at::Tensor> ds_mlp_gemm_int8(at::Tensor& input,
 }
 
 template <typename T>
-at::Tensor fused_gemm_gelu(at::Tensor& input,
-                           at::Tensor& weight,
-                           at::Tensor& bias,
-                           at::Tensor& weight_out,
-                           const float epsilon,
-                           bool preLayerNorm,
-                           bool async_op)
+torch::Tensor fused_gemm_gelu(torch::Tensor& input,
+                              torch::Tensor& weight,
+                              torch::Tensor& bias,
+                              torch::Tensor& weight_out,
+                              const double epsilon,
+                              int64_t preLayerNorm,  // bool
+                              int64_t async_op /* bool */)
 {
     auto input_cont = input.contiguous();
-    auto options = at::TensorOptions()
+    auto options = torch::TensorOptions()
                        .dtype(input_cont.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
@@ -1182,15 +1185,15 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
     return output;
 }
 
-void residual_add_bias(at::Tensor& output,
-                       at::Tensor& input,
-                       at::Tensor& attention_output,
-                       at::Tensor& output_b,
-                       at::Tensor& attention_b,
-                       int mp_size,
-                       bool mlp_after_attn,
-                       bool add_bias,
-                       bool preln)
+void residual_add_bias(torch::Tensor& output,
+                       torch::Tensor& input,
+                       torch::Tensor& attention_output,
+                       torch::Tensor& output_b,
+                       torch::Tensor& attention_b,
+                       int64_t mp_size,
+                       int64_t mlp_after_attn,  // bool
+                       int64_t add_bias,        // bool
+                       int64_t preln /* bool */)
 {
     int bsz = input.size(0) * input.size(1);
     int hidden_size = input.size(2);
@@ -1241,13 +1244,13 @@ void residual_add_bias(at::Tensor& output,
                                          Context::Instance().GetCurrentStream());
 }
 
-std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
-                                             at::Tensor& key_layer,
-                                             unsigned rotary_dim,
-                                             unsigned offset,
-                                             unsigned num_heads,
-                                             bool rotate_half,
-                                             bool rotate_every_two)
+std::vector<torch::Tensor> apply_rotary_pos_emb(torch::Tensor& mixed_query,
+                                                torch::Tensor& key_layer,
+                                                int64_t rotary_dim,
+                                                int64_t offset,
+                                                int64_t num_heads,
+                                                int64_t rotate_half,  // bool
+                                                int64_t rotate_every_two /* bool */)
 {
     auto query_cont = mixed_query.contiguous();
     auto key_cont = key_layer.contiguous();
@@ -1284,16 +1287,16 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
 }
 
 template <typename T>
-at::Tensor fused_gemm_gelu_int8(at::Tensor& input,
-                                at::Tensor& weight,
-                                at::Tensor& bias,
-                                const float epsilon,
-                                at::Tensor& q_scale,
-                                int groups,
-                                bool preLayerNorm)
+torch::Tensor fused_gemm_gelu_int8(torch::Tensor& input,
+                                   torch::Tensor& weight,
+                                   torch::Tensor& bias,
+                                   const double epsilon,
+                                   torch::Tensor& q_scale,
+                                   int64_t groups,
+                                   int64_t preLayerNorm /* bool */)
 {
     auto input_cont = input.contiguous();
-    auto options = at::TensorOptions()
+    auto options = torch::TensorOptions()
                        .dtype(input_cont.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
@@ -1313,7 +1316,7 @@ at::Tensor fused_gemm_gelu_int8(at::Tensor& input,
     return output;
 }
 
-at::Tensor moe_res_matmul(at::Tensor& moe_res, at::Tensor& coef, at::Tensor& output)
+torch::Tensor moe_res_matmul(torch::Tensor& moe_res, torch::Tensor& coef, torch::Tensor& output)
 {
     int M = moe_res.size(0) * moe_res.size(1);
     int N = moe_res.size(2);
@@ -1336,58 +1339,40 @@ at::Tensor moe_res_matmul(at::Tensor& moe_res, at::Tensor& coef, at::Tensor& out
     return output;
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+TORCH_LIBRARY(transformer_inference, m)
 {
-    m.def("softmax_fp32", &ds_softmax<float>, "DeepSpeed SoftMax with fp32 (CUDA)");
-    m.def("softmax_fp16", &ds_softmax<__half>, "DeepSpeed SoftMax with fp16 (CUDA)");
-    m.def(
-        "softmax_context_fp32", &ds_softmax_context<float>, "DeepSpeed attention with fp32 (CUDA)");
-    m.def("softmax_context_fp16",
-          &ds_softmax_context<__half>,
-          "DeepSpeed attention with fp16 (CUDA)");
-    m.def("softmax_context_int8",
-          &ds_softmax_context1<__half>,
-          "DeepSpeed attention with int8 (CUDA)");
-    m.def("bias_gelu_fp32", &ds_bias_gelu<float>, "DeepSpeed Gelu with fp32 (CUDA)");
-    m.def("bias_gelu_fp16", &ds_bias_gelu<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
-    m.def("bias_add_fp32", &ds_bias_add<float>, "DeepSpeed Bias Add with fp32 (CUDA)");
-    m.def("bias_add_fp16", &ds_bias_add<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
-    m.def("bias_relu_fp32", &ds_bias_relu<float>, "DeepSpeed ReLU with fp32 (CUDA)");
-    m.def("bias_relu_fp16", &ds_bias_relu<__half>, "DeepSpeed ReLU with fp16 (CUDA)");
-    m.def("bias_residual_fp32",
-          &ds_bias_residual<float>,
-          "DeepSpeed residual-bias add with fp32 (CUDA)");
-    m.def("bias_residual_fp16",
-          &ds_bias_residual<__half>,
-          "DeepSpeed residual-bias add with fp16 (CUDA)");
-    m.def("layer_norm_fp32", &ds_layernorm<float>, "DeepSpeed layer-norm with fp32 (CUDA)");
-    m.def("layer_norm_fp16", &ds_layernorm<__half>, "DeepSpeed layer-norm with fp16 (CUDA)");
-    m.def("qkv_gemm_fp32", &ds_qkv_gemm<float>, "DeepSpeed qkv gemm with fp32 (CUDA)");
-    m.def("qkv_gemm_fp16", &ds_qkv_gemm<__half>, "DeepSpeed qkv gemm with fp16 (CUDA)");
-    m.def("qkv_gemm_int8", &ds_qkv_gemm_int8<__half>, "DeepSpeed qkv gemm with int8 (CUDA)");
-    m.def("mlp_gemm_fp32", &ds_mlp_gemm<float>, "DeepSpeed mlp with fp32 (CUDA)");
-    m.def("mlp_gemm_fp16", &ds_mlp_gemm<__half>, "DeepSpeed mlp with fp16 (CUDA)");
-    m.def("mlp_gemm_int8", &ds_mlp_gemm_int8<__half>, "DeepSpeed mlp with int8 (CUDA)");
-    m.def("vector_matmul_fp32", &ds_vector_matmul<float>, "DeepSpeed vector-MM with fp32 (CUDA)");
-    m.def("vector_matmul_fp16", &ds_vector_matmul<__half>, "DeepSpeed vector-MM with fp16 (CUDA)");
-    m.def("vector_matmul_int8",
-          &ds_vector_matmul_int8<__half>,
-          "DeepSpeed vector-MM with int8 (CUDA)");
-    m.def("linear_layer_fp32", &ds_linear_layer<float>, "DeepSpeed linear_layer with fp32 (CUDA)");
-    m.def("linear_layer_fp16", &ds_linear_layer<__half>, "DeepSpeed linear_layer with fp16 (CUDA)");
-    m.def("linear_layer_int8",
-          &ds_linear_layer_int8<__half>,
-          "DeepSpeed linear_layer with int8 (CUDA)");
-    m.def("fused_gemm_gelu_fp32", &fused_gemm_gelu<float>, "DeepSpeed mlp with fp32 (CUDA)");
-    m.def("fused_gemm_gelu_fp16", &fused_gemm_gelu<__half>, "DeepSpeed mlp with fp16 (CUDA)");
-    m.def("residual_add", &residual_add_bias, "DeepSpeed mlp with fp16 (CUDA)");
-    m.def("apply_rotary_pos_emb", &apply_rotary_pos_emb, "DeepSpeed mlp with fp16 (CUDA)");
-    m.def("einsum_sec_sm_ecm_fp32",
-          &einsum_sec_sm_ecm<float>,
-          "DeepSpeed vector-MM with fp32 (CUDA)");
-
-    m.def("einsum_sec_sm_ecm_fp16",
-          &einsum_sec_sm_ecm<__half>,
-          "DeepSpeed vector-MM with fp16 (CUDA)");
-    m.def("moe_res_matmul", &moe_res_matmul, "DeepSpeed moe residual matmul (CUDA)");
+    m.def("softmax_fp32", &ds_softmax<float>);
+    m.def("softmax_fp16", &ds_softmax<__half>);
+    m.def("softmax_context_fp32", &ds_softmax_context<float>);
+    m.def("softmax_context_fp16", &ds_softmax_context<__half>);
+    m.def("softmax_context_int8", &ds_softmax_context1<__half>);
+    m.def("bias_gelu_fp32", &ds_bias_gelu<float>);
+    m.def("bias_gelu_fp16", &ds_bias_gelu<__half>);
+    m.def("bias_add_fp32", &ds_bias_add<float>);
+    m.def("bias_add_fp16", &ds_bias_add<__half>);
+    m.def("bias_relu_fp32", &ds_bias_relu<float>);
+    m.def("bias_relu_fp16", &ds_bias_relu<__half>);
+    m.def("bias_residual_fp32", &ds_bias_residual<float>);
+    m.def("bias_residual_fp16", &ds_bias_residual<__half>);
+    m.def("layer_norm_fp32", &ds_layernorm<float>);
+    m.def("layer_norm_fp16", &ds_layernorm<__half>);
+    m.def("qkv_gemm_fp32", &ds_qkv_gemm<float>);
+    m.def("qkv_gemm_fp16", &ds_qkv_gemm<__half>);
+    m.def("qkv_gemm_int8", &ds_qkv_gemm_int8<__half>);
+    m.def("mlp_gemm_fp32", &ds_mlp_gemm<float>);
+    m.def("mlp_gemm_fp16", &ds_mlp_gemm<__half>);
+    m.def("mlp_gemm_int8", &ds_mlp_gemm_int8<__half>);
+    m.def("vector_matmul_fp32", &ds_vector_matmul<float>);
+    m.def("vector_matmul_fp16", &ds_vector_matmul<__half>);
+    m.def("vector_matmul_int8", &ds_vector_matmul_int8<__half>);
+    m.def("linear_layer_fp32", &ds_linear_layer<float>);
+    m.def("linear_layer_fp16", &ds_linear_layer<__half>);
+    m.def("linear_layer_int8", &ds_linear_layer_int8<__half>);
+    m.def("fused_gemm_gelu_fp32", &fused_gemm_gelu<float>);
+    m.def("fused_gemm_gelu_fp16", &fused_gemm_gelu<__half>);
+    m.def("residual_add", &residual_add_bias);
+    m.def("apply_rotary_pos_emb", &apply_rotary_pos_emb);
+    m.def("einsum_sec_sm_ecm_fp32", &einsum_sec_sm_ecm<float>);
+    m.def("einsum_sec_sm_ecm_fp16", &einsum_sec_sm_ecm<__half>);
+    m.def("moe_res_matmul", &moe_res_matmul);
 }
