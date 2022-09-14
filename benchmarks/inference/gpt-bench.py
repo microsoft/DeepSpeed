@@ -52,12 +52,13 @@ def print_latency(latency_set, title, warmup=3):
 
 deepspeed.init_distributed("nccl")
 
-print("BENCHMARK SETTINGS:")
-print(f"\tMODEL: {args.model}")
-print(f"\tMAX_TOKENS: {args.max_tokens}")
-print(f"\tDTYPE: {args.dtype}")
-print(f"\tCUDA_GRAPHS: {args.graphs}")
-print(f"\tKERNEL_INJECT: {args.kernel_inject}")
+if args.local_rank == 0:
+    print("BENCHMARK SETTINGS:")
+    print(f"\tMODEL: {args.model}")
+    print(f"\tMAX_TOKENS: {args.max_tokens}")
+    print(f"\tDTYPE: {args.dtype}")
+    print(f"\tCUDA_GRAPHS: {args.graphs}")
+    print(f"\tKERNEL_INJECT: {args.kernel_inject}")
 
 if args.dtype.lower() == "fp16":
     dtype = torch.float16
@@ -95,8 +96,9 @@ for i in range(args.trials):
 
 print_latency(times, "token latency")
 
-for i in range(3):
-    print(f"RESPONSE {i}:")
-    print("-" * 30)
-    print(responses[i][0]["generated_text"])
-    print("-" * 30)
+if args.local_rank == 0:
+    for i in range(3):
+        print(f"RESPONSE {i}:")
+        print("-" * 30)
+        print(responses[i][0]["generated_text"])
+        print("-" * 30)
