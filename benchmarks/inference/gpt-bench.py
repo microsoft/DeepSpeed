@@ -7,9 +7,17 @@ from transformers import pipeline
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", "-m", type=str, help="hf model name")
 parser.add_argument("--deepspeed", action="store_true", help="use deepspeed inference")
-parser.add_argument("--dtype", type=str, default="fp16", help="fp16 or fp32")
+parser.add_argument("--dtype",
+                    type=str,
+                    default="fp16",
+                    choices=["fp16",
+                             "fp32"],
+                    help="fp16 or fp32")
+parser.add_argument("--graphs", action="store_true", help="CUDA Graphs on")
+parser.add_argument("--kernel-inject", action="store_true", help="inject kernels on")
 parser.add_argument("--max-tokens", type=int, default=50, help="max new tokens")
 parser.add_argument("--local_rank", type=int, default=0, help="local rank")
+parser.add_argument("--world_size", type=int, default=1, help="world size")
 parser.add_argument("--trials", type=int, default=30, help="number of trials")
 args = parser.parse_args()
 
@@ -44,7 +52,12 @@ def print_latency(latency_set, title, warmup=3):
 
 deepspeed.init_distributed("nccl")
 
-print(args.model, args.max_tokens, args.dtype)
+print("BENCHMARK SETTINGS:")
+print(f"\tMODEL: {args.model}")
+print(f"\tMAX_TOKENS: {args.max_tokens}")
+print(f"\tDTYPE: {args.dtype}")
+print(f"\tCUDA_GRAPHS: {args.graphs}")
+print(f"\tKERNEL_INJECT: {args.kernel_inject}")
 
 if args.dtype.lower() == "fp16":
     dtype = torch.float16
@@ -60,10 +73,14 @@ if dtype == torch.half:
     pipe.model.half()
 
 if args.deepspeed:
-    pipe.model = deepspeed.init_inference(pipe.model,
-                                          dtype=dtype,
-                                          replace_with_kernel_inject=True,
-                                          replace_method='auto')
+    pipe.model = deepspeed.init_inference(
+        pipe.model,
+        dtype=dtype,
+        mp_size=args.world_size,
+        replace_with_kernel_inject=args.kernel_inject,
+        replace_method="auto",
+        enable_cuda_graph=args.graphs,
+    )
 
 responses = []
 times = []
@@ -78,4 +95,8 @@ for i in range(args.trials):
 
 print_latency(times, "token latency")
 
-print(responses[0:3])
+for i in range(3):
+    print(f"RESPONSE {i}:")
+    print("-" * 30)
+    print(responses[i][0]["generated_text"])
+    print("-" * 30)
