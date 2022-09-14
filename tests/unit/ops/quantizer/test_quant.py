@@ -28,6 +28,7 @@ def quantize_dequantize_ref(inputs, bit, num_groups=1):
 
 def run_quant_dequant(inputs, groups, bits):
     global quantizer_cuda_module
+
     if quantizer_cuda_module is None:
         quantizer_cuda_module = op_builder.QuantizerBuilder().load()
     return quantizer_cuda_module.ds_quantize_fp16(inputs, groups, bits)
