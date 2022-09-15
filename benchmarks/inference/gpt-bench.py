@@ -1,3 +1,4 @@
+import os
 import torch
 import time
 import deepspeed
@@ -11,13 +12,22 @@ parser.add_argument("--dtype",
                     type=str,
                     default="fp16",
                     choices=["fp16",
-                             "fp32"],
-                    help="fp16 or fp32")
+                             "fp32",
+                             "int8"],
+                    help="int8, fp16, or fp32")
 parser.add_argument("--graphs", action="store_true", help="CUDA Graphs on")
 parser.add_argument("--kernel-inject", action="store_true", help="inject kernels on")
 parser.add_argument("--max-tokens", type=int, default=50, help="max new tokens")
-parser.add_argument("--local_rank", type=int, default=0, help="local rank")
-parser.add_argument("--world_size", type=int, default=1, help="world size")
+parser.add_argument("--local_rank",
+                    type=int,
+                    default=int(os.getenv("LOCAL_RANK",
+                                          "0")),
+                    help="local rank")
+parser.add_argument("--world_size",
+                    type=int,
+                    default=int(os.getenv("WORLD_SIZE",
+                                          "1")),
+                    help="world size")
 parser.add_argument("--trials", type=int, default=30, help="number of trials")
 args = parser.parse_args()
 
@@ -60,7 +70,9 @@ if args.local_rank == 0:
     print(f"\tCUDA_GRAPHS: {args.graphs}")
     print(f"\tKERNEL_INJECT: {args.kernel_inject}")
 
-if args.dtype.lower() == "fp16":
+if args.dtype == "int8":
+    dtype = torch.int8
+elif args.dtype == "fp16":
     dtype = torch.float16
 else:
     dtype = torch.float32
@@ -70,7 +82,7 @@ pipe = pipeline("text-generation",
                 framework="pt",
                 device=args.local_rank)
 
-if dtype == torch.half:
+if dtype == torch.float16:
     pipe.model.half()
 
 if args.deepspeed:
@@ -88,17 +100,15 @@ times = []
 for i in range(args.trials):
     torch.cuda.synchronize()
     start = time.time()
-    r = pipe("DeepSpeed is", max_new_tokens=args.max_tokens)
+    r = pipe("DeepSpeed is", do_sample=False, max_new_tokens=args.max_tokens)
     torch.cuda.synchronize()
     end = time.time()
     responses.append(r)
     times.append((end - start) / (args.max_tokens - 3))
 
-print_latency(times, "token latency")
-
 if args.local_rank == 0:
-    for i in range(3):
-        print(f"RESPONSE {i}:")
-        print("-" * 30)
-        print(responses[i][0]["generated_text"])
-        print("-" * 30)
+    print_latency(times, "token latency")
+    print(f"RESPONSE 0:")
+    print("-" * 30)
+    print(responses[0][0]["generated_text"])
+    print("-" * 30)

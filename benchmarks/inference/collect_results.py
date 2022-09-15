@@ -19,7 +19,7 @@ parser.add_argument("--version",
 parser.add_argument("--gen-text-n",
                     "-n",
                     type=int,
-                    default=3,
+                    default=1,
                     help="expected number of generated text")
 parser.add_argument("--output",
                     "-o",
