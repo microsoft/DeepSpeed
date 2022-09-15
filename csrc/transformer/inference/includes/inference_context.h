@@ -12,6 +12,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #include "cublas_v2.h"
 #include "cuda.h"
 
+// TODO: refactor out
 #define WARP_SIZE 32
 
 #define CUDA_CHECK(callstr)                                                                    \
