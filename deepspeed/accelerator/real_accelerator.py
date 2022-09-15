@@ -7,6 +7,14 @@ def init_accelerator():
     if ds_accelerator is not None:
         return
 
+    # Ideally, adding a new accelerator should require just following snippet.
+    # try:
+    #     from infinity.stones import Infinity_Accelerator
+    #     ds_accelerator = Infinity_Accelerator()
+    #     return
+    # except:
+    #     pass
+
     try:
         # TODO: This import should reference an external module to DeepSpeed
         from deepspeed.accelerator.cuda_accelerator import CUDA_Accelerator
