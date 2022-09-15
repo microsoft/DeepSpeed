@@ -30,6 +30,7 @@ jobs:
           which nvcc
           nvcc --version
           pip install --upgrade pip
+          pip --version
           pip uninstall --yes torch torchvision
           pip install torch==1.2.0 torchvision==0.4.0
           python -c "import torch; print('torch:', torch.__version__, torch)"
@@ -52,7 +53,7 @@ jobs:
       - name: Install deepspeed
         run: |
           pip uninstall --yes deepspeed
-          pip install .[dev,1bit,autotuning,sparse_attn]
+          pip install .[dev,1bit,autotuning,sparse_attn] git+https://github.com/microsoft/deepspeed-mii.git@injection-policies
           ds_report
 
       - name: Unit tests
