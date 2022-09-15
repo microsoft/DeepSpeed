@@ -42,7 +42,7 @@ jobs:
       - name: Install deepspeed
         run: |
           pip uninstall --yes deepspeed
-          pip install .[dev,autotuning]
+          pip install .[dev,autotuning] git+https://github.com/microsoft/deepspeed-mii.git@injection-policies
           ds_report
 
       - name: PyTorch Lightning Tests

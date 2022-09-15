@@ -4,7 +4,7 @@ import torch
 class WeightQuantization(object):
     def __init__(self, mlp_extra_grouping=True, mp_size=1):
         from mii.policies import replace_policies, HFBertLayerPolicy
-        self.replace_policies = replace_policiesHFBertLayerPolicy
+        self.replace_policies = replace_policies
         self.HFBertLayerPolicy = HFBertLayerPolicy
         self.dense_scales = []
         self.qkv_scales = []
