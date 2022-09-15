@@ -7,3 +7,4 @@ py-cpuinfo
 pydantic
 torch
 tqdm
+mii
