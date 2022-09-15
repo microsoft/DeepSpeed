@@ -19,7 +19,7 @@ namespace conversion {
 template <typename TO, typename FROM>
 DS_D_INLINE TO to(FROM val)
 {
-    return TO(val);
+    return to(val);
 }
 
 // Specializations
