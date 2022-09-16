@@ -506,9 +506,13 @@ class OpBuilder(ABC):
             name=self.name,
             sources=self.strip_empty_entries(sources),
             extra_include_paths=self.strip_empty_entries(extra_include_paths),
-            extra_cflags=self.strip_empty_entries(self.cxx_args() + os.environ.get("CFLAGS", "").split()),
+            extra_cflags=self.strip_empty_entries(self.cxx_args() +
+                                                  os.environ.get("CFLAGS",
+                                                                 "").split()),
             extra_cuda_cflags=self.strip_empty_entries(self.nvcc_args()),
-            extra_ldflags=self.strip_empty_entries(self.extra_ldflags() + os.environ.get("LDFLAGS", "").split()),
+            extra_ldflags=self.strip_empty_entries(self.extra_ldflags() +
+                                                   os.environ.get("LDFLAGS",
+                                                                  "").split()),
             verbose=verbose)
         build_duration = time.time() - start_build
         if verbose:
