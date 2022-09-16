@@ -23,7 +23,7 @@ __global__ void fused_bias_gelu(T* input, const T* bias, int total_count, int in
     // Input restriction: intermediate_size % vals_per_access == 0
     constexpr int granularity = 16;
     constexpr int values_per_access = granularity / sizeof(T);
-    const int offset = (blockIdx.x * blockDim.x + threadIdx.x) * vals_per_access;
+    const int offset = (blockIdx.x * blockDim.x + threadIdx.x) * values_per_access;
 
     if (offset < total_count) {
         T data[values_per_access];
@@ -34,8 +34,8 @@ __global__ void fused_bias_gelu(T* input, const T* bias, int total_count, int in
 #pragma unroll
         for (int i = 0; i < values_per_access; i++) {
             float data_f = conversion::to<float>(data[i]);
-            float bias_f = conversion::to<float>(data_bias[f]);
-            data[i] = to<T>(gelu(data_f + bias_f));
+            float bias_f = conversion::to<float>(data_bias[i]);
+            data[i] = conversion::to<T>(gelu(data_f + bias_f));
         }
 
         mem_access::store_global<granularity>(input + offset, data);
