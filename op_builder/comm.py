@@ -38,6 +38,7 @@ class NCCLCommBuilder(CUDAOpBuilder):
     def extra_ldflags(self):
         return [MPI_LIB, CUDA_LIB]
 
+
 class MPICommBuilder(CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_MPI_COMM"
     NAME = "deepspeed_mpi_comm"

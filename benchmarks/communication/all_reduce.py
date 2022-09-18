@@ -54,8 +54,7 @@ def timed_allreduce(input, args):
 
     if args.raw:
         print_rank_0(
-            f"{size:<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}"
-        )
+            f"{size:<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}")
     else:
         print_rank_0(
             f"{convert_size(size):<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}"

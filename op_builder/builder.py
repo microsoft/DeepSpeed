@@ -491,7 +491,6 @@ class OpBuilder(ABC):
             self.name)
         os.makedirs(ext_path, exist_ok=True)
 
-
         start_build = time.time()
         sources = [self.deepspeed_src_path(path) for path in self.sources()]
         extra_include_paths = [

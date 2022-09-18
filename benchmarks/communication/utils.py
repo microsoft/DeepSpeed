@@ -176,8 +176,8 @@ def benchmark_parser():
                         action="store_true",
                         help='Enables scanning all message sizes')
     parser.add_argument("--raw",
-                    action="store_true",
-                    help='Enables scanning all message sizes')
+                        action="store_true",
+                        help='Enables scanning all message sizes')
     parser.add_argument("--dtype",
                         type=str,
                         default=DEFAULT_TYPE,

@@ -120,15 +120,14 @@ class MPIBackend(Backend):
         self.mpi_comm_op.allgather(output_tensor, input_tensor, async_op)
 
     def all_to_all_single(self,
-                      output,
-                      input,
-                      output_split_sizes=None,
-                      input_split_sizes=None,
-                      group=None,
-                      async_op=False):
-        self.mpi_comm_op.alltoall(output,
-                                   input,
-                                   async_op)
+                          output,
+                          input,
+                          output_split_sizes=None,
+                          input_split_sizes=None,
+                          group=None,
+                          async_op=False):
+        self.mpi_comm_op.alltoall(output, input, async_op)
+
     def all_to_all(self,
                    output_tensor_list,
                    input_tensor_list,

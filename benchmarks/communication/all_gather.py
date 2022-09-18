@@ -34,7 +34,6 @@ def timed_allgather(input, output, args):
         sync_all()
         #print(f'!!!AFTER!!!RANK {dist.get_rank()} INPUT: {input} OUTPUT: {output}')
     sync_all()
-    
 
     # time the actual comm op trials times and average it
     pre = time.perf_counter()

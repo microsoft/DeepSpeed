@@ -2,9 +2,9 @@
 #include <cuda_runtime_api.h>
 #include <mpi.h>
 #include <nccl.h>
+#include <pybind11/embed.h>
 #include <torch/extension.h>
 #include <chrono>
-#include <pybind11/embed.h>
 namespace py = pybind11;
 
 #include <c10/util/irange.h>
@@ -40,7 +40,7 @@ namespace mpi {
 int counter = 0;
 ncclComm_t ncclcomm;
 
-//py::module_ dist = py::module_::import("deepspeed.comm");
+// py::module_ dist = py::module_::import("deepspeed.comm");
 
 std::vector<MPI_Comm> global_mpi_comms;
 
@@ -115,7 +115,6 @@ void send(torch::Tensor data, int rank, int tag)
 }
 
 void barrier() { MPICHECK(MPI_Barrier(MPI_COMM_WORLD)); }
-
 
 void recv(torch::Tensor data, int rank, int tag)
 {
@@ -271,8 +270,8 @@ void alltoall(torch::Tensor outputTensor, torch::Tensor inputTensor, int comm, b
 }
 
 void alltoall_list(std::vector<torch::Tensor>& outputTensors,
-                       std::vector<torch::Tensor>& inputTensors,
-                       int comm = 0)
+                   std::vector<torch::Tensor>& inputTensors,
+                   int comm = 0)
 {
     for (int t = 0; t < inputTensors.size(); t++) {
         torch::Tensor& input = inputTensors[t];
@@ -336,4 +335,4 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("print_comm_number", &print_comm_number, "mpi print comm number");
 }
 
-} // namespace mpi
+}  // namespace mpi

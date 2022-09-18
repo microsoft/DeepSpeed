@@ -27,11 +27,11 @@ for i in range(model_parallel_size):
         _DATA_PARALLEL_GROUP = group
 
 for i in range(world_size // model_parallel_size):
-    ranks = range(i * model_parallel_size,
-                  (i + 1) * model_parallel_size)
+    ranks = range(i * model_parallel_size, (i + 1) * model_parallel_size)
     group = dist.new_group(ranks)
     if i == (rank // model_parallel_size):
         _MODEL_PARALLEL_GROUP = group
+
 
 def get_data_parallel_group():
     """Get the data parallel group the caller rank belongs to."""
@@ -39,22 +39,32 @@ def get_data_parallel_group():
         'data parallel group is not initialized'
     return _DATA_PARALLEL_GROUP
 
+
 def get_model_parallel_group():
     """Get the model parallel group the caller rank belongs to."""
     assert _MODEL_PARALLEL_GROUP is not None, \
         'model parallel group is not initialized'
     return _MODEL_PARALLEL_GROUP
 
+
 def get_model_parallel_rank():
     """Return my rank for the model parallel group."""
     return dist.get_rank(group=get_model_parallel_group())
+
 
 def ag_test():
     src_rank = get_model_parallel_rank()
     mats = []
     for _ in range(dist.get_world_size(get_data_parallel_group())):
-        mats.append(torch.rand(1,268*1024*1024//dist.get_world_size(get_data_parallel_group()), device=device))
-    dist.all_gather(mats, mats[dist.get_rank(get_data_parallel_group())], group=get_data_parallel_group())
+        mats.append(
+            torch.rand(1,
+                       268 * 1024 * 1024 //
+                       dist.get_world_size(get_data_parallel_group()),
+                       device=device))
+    dist.all_gather(mats,
+                    mats[dist.get_rank(get_data_parallel_group())],
+                    group=get_data_parallel_group())
+
 
 for _ in range(100):
     ag_test()

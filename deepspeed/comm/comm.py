@@ -44,6 +44,7 @@ class ReduceOp(Enum):
     AVG = 7
     UNUSED = 8
 
+
 class ProcessGroup():
     def __init__(self, comm_id, ranks=[]):
         self.ranks = ranks
@@ -235,6 +236,7 @@ def test_set():
     global cdb
     return cdb.test_set()
 
+
 def all_to_all_single(
     output,
     input,
@@ -251,13 +253,13 @@ def all_to_all_single(
                                  group=group,
                                  async_op=async_op)
 
-def all_to_all(self,
-               output_tensor_list,
-               input_tensor_list,
-               group=None,
-               async_op=False):
+
+def all_to_all(self, output_tensor_list, input_tensor_list, group=None, async_op=False):
     global cdb
-    return cdb.all_to_all(output_tensor_list=output_tensor_list, input_tensor_list=input_tensor_list, group=group, async_op=async_op)
+    return cdb.all_to_all(output_tensor_list=output_tensor_list,
+                          input_tensor_list=input_tensor_list,
+                          group=group,
+                          async_op=async_op)
 
 
 def send(tensor, dst, group=None, tag=0):
@@ -357,10 +359,12 @@ def get_world_size(group=None) -> int:
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     return cdb.get_world_size(group)
 
+
 def create_comm_group(comm_ranks, rank, comm_id, color):
     global cdb
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     return cdb.create_comm_group(comm_ranks, rank, comm_id, color)
+
 
 def get_rank(group=None):
     """
@@ -451,8 +455,7 @@ def init_distributed(dist_backend="nccl",
             if use_deepspeed:
                 if dist_backend == 'nccl':
                     if int(os.getenv('RANK', '0')) == 0:
-                        utils.logger.info(
-                            'Initializing NcclBackend in DeepSpeed')
+                        utils.logger.info('Initializing NcclBackend in DeepSpeed')
                     cdb = NcclBackend()
             else:
                 # Create a torch backend object, initialize torch distributed, and assign to cdb

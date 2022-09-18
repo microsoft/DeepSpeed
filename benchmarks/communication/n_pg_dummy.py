@@ -17,7 +17,7 @@ def timed_allgather(input, output, pg1, pg2, args):
         import deepspeed.comm as dist
 
     #comm_id = int(dist.get_rank()/8)
-    comm_id = int(dist.get_rank()/(dist.get_world_size()/2))
+    comm_id = int(dist.get_rank() / (dist.get_world_size() / 2))
     #comm_id = dist.get_rank()
     #print(f'comm_id: {comm_id}')
 
@@ -34,7 +34,11 @@ def timed_allgather(input, output, pg1, pg2, args):
         # use all_gather_base if available
         if args.dist == 'torch':
             if hasattr(torch.distributed, "_all_gather_base"):
-                dist._all_gather_base(output, input, group=None, async_op=args.async_op, comm_id=comm_id)
+                dist._all_gather_base(output,
+                                      input,
+                                      group=None,
+                                      async_op=args.async_op,
+                                      comm_id=comm_id)
             else:
                 output_tensors = list(
                     torch.chunk(output_tensor,
@@ -45,7 +49,6 @@ def timed_allgather(input, output, pg1, pg2, args):
         sync_all()
         #print(f'!!!AFTER!!!RANK {dist.get_rank()} INPUT: {input} OUTPUT: {output}')
     sync_all()
-    
 
     # time the actual comm op trials times and average it
     pre = time.perf_counter()
@@ -95,8 +98,8 @@ def run_allgather(local_rank, args):
     global_rank = dist.get_rank()
     world_size = dist.get_world_size()
 
-    group1 = [0,1,2,3,4,5,6,7]
-    group2 = [8,9,10,11,12,13,14,15]
+    group1 = [0, 1, 2, 3, 4, 5, 6, 7]
+    group2 = [8, 9, 10, 11, 12, 13, 14, 15]
 
     #group1 = [0,1]
     #group2 = [2,3]
@@ -114,8 +117,6 @@ def run_allgather(local_rank, args):
     #dist.barrier()
     pg2 = dist.new_group(group2)
     #print(pg2)
-
-
 
     #exit()
 
