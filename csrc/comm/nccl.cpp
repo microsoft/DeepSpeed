@@ -18,46 +18,6 @@ namespace py = pybind11;
 // TODO: remove
 #include <stdio.h>
 
-#define MPICHECK(cmd)                                                        \
-    do {                                                                     \
-        int e = cmd;                                                         \
-        if (e != MPI_SUCCESS) {                                              \
-            printf("Failed: MPI error %s:%d '%d'\n", __FILE__, __LINE__, e); \
-            exit(EXIT_FAILURE);                                              \
-        }                                                                    \
-    } while (0)
-
-#define CUDACHECK(cmd)                                                                            \
-    do {                                                                                          \
-        cudaError_t e = cmd;                                                                      \
-        if (e != cudaSuccess) {                                                                   \
-            printf("Failed: Cuda error %s:%d '%s'\n", __FILE__, __LINE__, cudaGetErrorString(e)); \
-            exit(EXIT_FAILURE);                                                                   \
-        }                                                                                         \
-    } while (0)
-
-#define NCCLCHECK(cmd)                                                                           \
-    do {                                                                                         \
-        ncclResult_t ret = cmd;                                                                  \
-        if (ret != ncclSuccess) {                                                                \
-            printf(                                                                              \
-                "Failed, NCCL error %s:%d '%s'\n", __FILE__, __LINE__, ncclGetErrorString(ret)); \
-            exit(EXIT_FAILURE);                                                                  \
-        }                                                                                        \
-    } while (0)
-
-#define CUDA_STREAM_SYNCHRONIZE(_nccl_stream)                                            \
-    do {                                                                                 \
-        cudaError_t err = cudaErrorNotReady;                                             \
-        int flag;                                                                        \
-        while (err == cudaErrorNotReady) {                                               \
-            err = cudaStreamQuery(_nccl_stream);                                         \
-            MPICHECK(MPI_Iprobe(                                                         \
-                MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, MPI_STATUS_IGNORE)); \
-        }                                                                                \
-        CUDACHECK(err);                                                                  \
-    } while (0)
-
 namespace nccl {
 
 void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int color);
@@ -85,8 +45,8 @@ size_t _workSpaceSize;
 unsigned _token_length;
 unsigned _num_tokens;
 std::vector<std::array<int, 3>> _gemm_algos;    
-cudaStream_t _comp_stream;
-cudaStream_t _comm_stream;  
+cudaStream_t _comp_stream = at::cuda::getDefaultCUDAStream();
+cudaStream_t _comm_stream;
 MPI_Group _group;
 std::unordered_map<int, ncclComm_t> _nccl_comms;
 std::unordered_map<int, int> _world_sizes;
@@ -150,7 +110,7 @@ void create_comms()
 
     CUDACHECK(cudaSetDevice(world_rank % ngpus));
     //CUDACHECK(cudaStreamCreate(&s));
-    //CUDACHECK(cudaStreamCreate(&_comm_stream));
+    CUDACHECK(cudaStreamCreateWithPriority(&_comm_stream, cudaStreamNonBlocking, -1));
     //std::vector<int> ranks(world_size);
     //std::iota(ranks.begin(), ranks.end(), 0);
     if (world_rank == 0) { ncclGetUniqueId(&ncclID); }
@@ -198,10 +158,11 @@ inline void SynchComm()
 
 cudaStream_t GetCommStream(bool async_op = false)
 {
-    if (!_comm_stream)
-        _comm_stream = async_op ? at::cuda::getStreamFromPool(true)
-                                : at::cuda::getCurrentCUDAStream();
     return _comm_stream;
+    //if (!_comm_stream)
+    //    _comm_stream = async_op ? at::cuda::getStreamFromPool(true)
+    //                            : at::cuda::getCurrentCUDAStream();
+    //return _comm_stream;
 }
 
 void finalize()
@@ -266,7 +227,7 @@ void send(torch::Tensor data, int rank, int tag, bool block, py::object group, b
     NCCLCHECK(ncclSend(
         data.data_ptr(), data.numel(), get_nccl_datatype(data.scalar_type()), rank, comm, GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
-    if (async_op) { SynchComp(); }
+    if (async_op) { SynchComm(); }
 }
 
 void recv(torch::Tensor data, int rank, int tag, bool block, py::object group, bool async_op)
@@ -275,11 +236,10 @@ void recv(torch::Tensor data, int rank, int tag, bool block, py::object group, b
     NCCLCHECK(ncclRecv(
         data.data_ptr(), data.numel(), get_nccl_datatype(data.scalar_type()), rank, comm, GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
-    if (async_op) { SynchComp(); }
+    if (async_op) { SynchComm(); }
 }
 
 
-//TODO: implement torch's async_op behavior, document it.
 void all_reduce(torch::Tensor& data, py::object op, bool block, py::object group, bool async_op)
 {
     ncclComm_t comm = _get_comm_from_group(group);
@@ -291,7 +251,7 @@ void all_reduce(torch::Tensor& data, py::object op, bool block, py::object group
                             comm,
                             GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
-    if (async_op) { SynchComp(); }
+    if (!async_op) { SynchComm(); }
 }
 
 inline ncclComm_t GetNCCLComm(int comm_id=0) { return _nccl_comms[comm_id]; }
@@ -428,7 +388,7 @@ void all_gather_base(torch::Tensor& output, torch::Tensor& input, bool block, py
                             _world_nccl_comm,
                             GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
-    if (async_op) { SynchComp(); }
+    if (async_op) { SynchComm(); }
 }
 
 inline at::Tensor newLikeFlat(
@@ -516,7 +476,7 @@ void all_gather(std::vector<std::vector<torch::Tensor>>& outputTensors, std::vec
     NCCLCHECK(ncclGroupEnd());
 
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
-    if (async_op) { SynchComp(); }
+    if (async_op) { SynchComm(); }
 
     for (const auto i : c10::irange(outputTensors.size())) {
           //at::cuda::CUDAStreamGuard guard(ncclStreams[i]);
@@ -541,7 +501,7 @@ void reduce(torch::Tensor& data, int root, py::object op, bool block, py::object
                          comm,
                          GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
-    if (async_op) { SynchComp(); }
+    if (async_op) { SynchComm(); }
 }
 
 void reduce_scatter(torch::Tensor& data, py::object op, bool block, py::object group, bool async_op)
@@ -557,7 +517,7 @@ void reduce_scatter(torch::Tensor& data, py::object op, bool block, py::object g
                                 comm,
                                 GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
-    if (async_op) { SynchComp(); }
+    if (async_op) { SynchComm(); }
 }
 
 void broadcast(torch::Tensor& data, int src, bool block, py::object group, bool async_op)
@@ -571,7 +531,7 @@ void broadcast(torch::Tensor& data, int src, bool block, py::object group, bool 
                             comm,
                             GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
-    if (async_op) { SynchComp(); }
+    if (async_op) { SynchComm(); }
 }
 
 void all_to_all_single(torch::Tensor outputTensor, torch::Tensor inputTensor, bool block, py::object group, bool async_op)
@@ -595,7 +555,7 @@ void all_to_all_single(torch::Tensor outputTensor, torch::Tensor inputTensor, bo
     }
     NCCLCHECK(ncclGroupEnd());
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
-    if (async_op) { SynchComp(); }
+    if (async_op) { SynchComm(); }
     // CUDACHECK(cudaStreamSynchronize(s));
 }
 
@@ -626,7 +586,7 @@ void all_to_all(std::vector<torch::Tensor>& inputTensors,
     }
     NCCLCHECK(ncclGroupEnd());
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
-    if (async_op) { SynchComp(); }
+    if (async_op) { SynchComm(); }
 }
 
 void synchronize() {

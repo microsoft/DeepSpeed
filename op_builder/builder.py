@@ -38,7 +38,11 @@ else:
 def installed_cuda_version():
     import torch.utils.cpp_extension
     cuda_home = torch.utils.cpp_extension.CUDA_HOME
-    assert cuda_home is not None, "CUDA_HOME does not exist, unable to compile CUDA op(s)"
+    if "CUDA_HOME" in os.environ:
+        cuda_home = os.environ.get("CUDA_HOME")
+    elif "CUDA_ROOT" in os.environ:
+        cuda_home = os.environ.get("CUDA_ROOT")
+    assert cuda_home is not None and os.path.exists(cuda_home), "CUDA_HOME does not exist, unable to compile CUDA op(s)"
     # Ensure there is not a cuda version mismatch between torch and nvcc compiler
     output = subprocess.check_output([cuda_home + "/bin/nvcc",
                                       "-V"],

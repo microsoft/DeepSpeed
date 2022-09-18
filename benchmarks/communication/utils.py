@@ -25,6 +25,7 @@ def init_deepspeed_comm(backend, args):
 
 
 def init_processes(local_rank, args):
+    print(args.dist)
     if args.dist == 'deepspeed':
         init_deepspeed_comm(args.backend, args)
     elif args.dist == 'torch':
@@ -154,7 +155,7 @@ def benchmark_parser():
                         help='Enables non-blocking communication')
     parser.add_argument("--ds-comm",
                         action="store_true",
-                        help='Enables non-blocking communication')
+                        help='Enables custom DS comm backends')
     parser.add_argument("--bw-unit",
                         type=str,
                         default=DEFAULT_UNIT,

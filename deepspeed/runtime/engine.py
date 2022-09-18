@@ -873,6 +873,13 @@ class DeepSpeedEngine(Module):
                 "not sure how to proceed as we're seeing conflicting local rank info."
             os.environ['LOCAL_RANK'] = local_rank
 
+        if "MV2_COMM_WORLD_LOCAL_RANK" in os.environ:
+            mv2_local_rank = os.environ.get("MV2_COMM_WORLD_LOCAL_RANK")
+            local_rank = os.environ.get('LOCAL_RANK', mv2_local_rank)
+            assert mv2_local_rank == local_rank, f"LOCAL_RANK ({local_rank}) != MV2_COMM_WORLD_LOCAL_RANK ({mv2_local_rank}), " \
+                "not sure how to proceed as we're seeing conflicting local rank info."
+            os.environ['LOCAL_RANK'] = local_rank
+
         self.local_rank = int(os.environ['LOCAL_RANK'])
         if hasattr(args, 'local_rank'):
             args.local_rank = self.local_rank
@@ -895,7 +902,7 @@ class DeepSpeedEngine(Module):
                 ), "Not sure how to proceed, we were given both a deepscale_config and deepspeed_config"
             args.deepspeed_config = args.deepscale_config
 
-        assert "LOCAL_RANK" in os.environ or "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ, "DeepSpeed requires the LOCAL_RANK environment " \
+        assert "LOCAL_RANK" in os.environ or "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ or "MV2_COMM_WORLD_LOCAL_RANK" in os.environ, "DeepSpeed requires the LOCAL_RANK environment " \
             "variable, it is set by the deepspeed launcher, deepspeed.init_distributed, or the torch's launcher. If using a " \
             "different launcher please ensure LOCAL_RANK is set prior to initializing deepspeed."
 

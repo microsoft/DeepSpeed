@@ -39,6 +39,9 @@ def get_local_rank_from_launcher():
     if rank is None:
         rank = os.environ.get('OMPI_COMM_WORLD_LOCAL_RANK')
 
+    if rank is None:
+        rank = os.environ.get('MV2_COMM_WORLD_LOCAL_RANK')
+
     # Make it a single process job and set rank to 0
     if rank is None:
         rank = 0
@@ -54,6 +57,9 @@ def get_world_rank_from_launcher():
     if rank is None:
         rank = os.environ.get('OMPI_COMM_WORLD_RANK')
 
+    if rank is None:
+        rank = os.environ.get('MV2_COMM_WORLD_RANK')
+
     # Make it a single process job and set rank to 0
     if rank is None:
         rank = 0
@@ -67,6 +73,9 @@ def get_world_size_from_launcher():
 
     if size is None:
         size = os.environ.get('OMPI_COMM_WORLD_SIZE')
+
+    if size is None:
+        size = os.environ.get('MV2_COMM_WORLD_SIZE')
 
     # Make it a single process job and set size to 1
     if size is None:

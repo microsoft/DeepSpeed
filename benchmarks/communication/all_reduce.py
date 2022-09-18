@@ -24,12 +24,23 @@ def timed_allreduce(input, args):
     pre = time.perf_counter()
     for i in range(args.trials):
         #print(f'!!!BEFORE!!!RANK {dist.get_rank()} INPUT: {input}')
-        #pretime = time.perf_counter()
-        dist.all_reduce(input)
-        sync_all()
+        pretime = time.perf_counter()
+        #print(f'INPUT BEFORE: {input}')
+        #pre_input = torch.clone(input)
+        dist.all_reduce(input, async_op=True)
+        #print(f'INPUT AFTER: {input}')
+        #if not torch.equal(input, torch.mul(pre_input, 2)):
+        #    import sys
+        #    print('ERROR: DATA VALIDATION. EXITING')
+        #    sys.exit()
+        #work.wait()
+        #x = input + torch.zeros_like(input)
+        #x = torch.zeros(2,3)
+        #print(x)
+        #sync_all()
         #print(f'!!!AFTER!!!RANK {dist.get_rank()} INPUT: {input}')
-        #if dist.get_rank() == 0:
-        #print(f"rank:{dist.get_rank()}, time={(time.perf_counter() - pretime)*1e3}")
+        if dist.get_rank() == 0:
+            print(f"rank:{dist.get_rank()}, time={(time.perf_counter() - pretime)*1e3}")
     sync_all()
     duration = time.perf_counter() - pre
 
