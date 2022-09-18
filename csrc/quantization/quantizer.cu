@@ -1,5 +1,6 @@
 #include <math.h>
 #include "custom_cuda_layers.h"
+#include "memory_access_utils.h"
 
 namespace cg = cooperative_groups;
 
@@ -7,37 +8,38 @@ __global__ void quantize_kernel(__half* vals, int group_size, int num_bits)
 {
 #if __CUDA_ARCH__ >= 700 || defined(__HIP_PLATFORM_HCC__)
 
-    cg::thread_block b = cg::this_thread_block();
-    cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
+    cg::thread_block b = cg::this_thread_block(); //tb
+    cg::thread_block_tile<32> g = cg::tiled_partition<32>(b); //warp, 32 not optimal for AMD which should be 64.
 
     int gid = threadIdx.x >> 5;
     int lane = threadIdx.x & 0x1f;
     int warp_num = blockDim.x >> 5;
     int id = threadIdx.x;
 
-    float2* vals_cast = reinterpret_cast<float2*>(vals);
+    constexpr int granularity = 8;
+    constexpr int vals_per_access = granularity / sizeof(__half);
 
-    float2 data[MAX_REG];
+    __half data[MAX_REG * vals_per_access];
 
     int group_id = blockIdx.x;
 
     {
-        int group_index = id;
+        int group_index = id * vals_per_access;
         int reg_count = 0;
-        int offset = group_id * group_size;
+        int offset = group_id * group_size * vals_per_access;
         float max = -10000.0;
 
         while (group_index < group_size && reg_count < MAX_REG) {
-            data[reg_count] = vals_cast[offset + group_index];
-            __half* data_h = reinterpret_cast<__half*>(&data[reg_count]);
+            mem_access::load_global<granularity>(data + (reg_count*vals_per_access), vals + offset + group_index);
 
-            if (abs((float)data_h[0]) > max) max = abs((float)data_h[0]);
-            if (abs((float)data_h[1]) > max) max = abs((float)data_h[1]);
-            if (abs((float)data_h[2]) > max) max = abs((float)data_h[2]);
-            if (abs((float)data_h[3]) > max) max = abs((float)data_h[3]);
+#pragma unroll
+            for(int i=0; i<vals_per_access; i++){
+                if (abs((float)data[reg_count + i]) > max) max = abs((float)data[reg_count + i]);
+            }
 
-            group_index += blockDim.x;
+            group_index += blockDim.x * vals_per_access;
             reg_count++;
+            
         }
 
 #pragma unroll
@@ -63,30 +65,19 @@ __global__ void quantize_kernel(__half* vals, int group_size, int num_bits)
 
         float q_scale = (1 << num_bits) / (2 * max + 1e-5);
         float q_scale_inv = 1 / q_scale;
+
         for (int i = 0; i < reg_count; i++) {
-            group_index = i * blockDim.x + id;
+            group_index = (i * blockDim.x  + id) * vals_per_access;
             if (group_index < group_size) {
-                __half2* data_h = reinterpret_cast<__half2*>(&data[i]);
-                float2 q_data[2];
-                q_data[0] = __half22float2(data_h[0]);
-                q_data[1] = __half22float2(data_h[1]);
 
-                float2 q_data_int[2];
+#pragma unroll
+                for( int j = 0; j< vals_per_access; j++){
+                    float q_data;
+                    q_data = __half2float(data[i* vals_per_access+j]);
 
-                q_data_int[0].x = roundf(q_data[0].x * q_scale);
-                q_data_int[0].y = roundf(q_data[0].y * q_scale);
-                q_data_int[1].x = roundf(q_data[1].x * q_scale);
-                q_data_int[1].y = roundf(q_data[1].y * q_scale);
-
-                q_data_int[0].x *= q_scale_inv;
-                q_data_int[0].y *= q_scale_inv;
-                q_data_int[1].x *= q_scale_inv;
-                q_data_int[1].y *= q_scale_inv;
-
-                data_h[0] = __float22half2_rn(q_data_int[0]);
-                data_h[1] = __float22half2_rn(q_data_int[1]);
-
-                vals_cast[offset + group_index] = data[i];
+                    data[i*vals_per_access+j] = __float2half_rn(roundf(q_data * q_scale) * q_scale_inv);
+                }
+                mem_access::store_global<granularity>(vals + offset + group_index, data + (i*vals_per_access));
             }
         }
     }

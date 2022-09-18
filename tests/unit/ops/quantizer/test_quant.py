@@ -7,7 +7,7 @@ quantizer_cuda_module = None
 
 def allclose(x, y):
     assert x.dtype == y.dtype
-    rtol, atol = {torch.float32: (2e-1, 5e-2), torch.float16: (2e-1, 5e-2)}[x.dtype]
+    rtol, atol = {torch.float32: (2e-1, 5e-1), torch.float16: (2e-1, 5e-1)}[x.dtype]
     return torch.allclose(x, y, rtol=rtol, atol=atol)
 
 
