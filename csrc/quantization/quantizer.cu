@@ -8,8 +8,9 @@ __global__ void quantize_kernel(__half* vals, int group_size, int num_bits)
 {
 #if __CUDA_ARCH__ >= 700 || defined(__HIP_PLATFORM_HCC__)
 
-    cg::thread_block b = cg::this_thread_block(); //tb
-    cg::thread_block_tile<32> g = cg::tiled_partition<32>(b); //warp, 32 not optimal for AMD which should be 64.
+    cg::thread_block b = cg::this_thread_block();  // tb
+    cg::thread_block_tile<32> g =
+        cg::tiled_partition<32>(b);  // warp, 32 not optimal for AMD which should be 64.
 
     int gid = threadIdx.x >> 5;
     int lane = threadIdx.x & 0x1f;
@@ -30,16 +31,16 @@ __global__ void quantize_kernel(__half* vals, int group_size, int num_bits)
         float max = -10000.0;
 
         while (group_index < group_size && reg_count < MAX_REG) {
-            mem_access::load_global<granularity>(data + (reg_count*vals_per_access), vals + offset + group_index);
+            mem_access::load_global<granularity>(data + (reg_count * vals_per_access),
+                                                 vals + offset + group_index);
 
 #pragma unroll
-            for(int i=0; i<vals_per_access; i++){
+            for (int i = 0; i < vals_per_access; i++) {
                 if (abs((float)data[reg_count + i]) > max) max = abs((float)data[reg_count + i]);
             }
 
             group_index += blockDim.x * vals_per_access;
             reg_count++;
-            
         }
 
 #pragma unroll
@@ -67,17 +68,18 @@ __global__ void quantize_kernel(__half* vals, int group_size, int num_bits)
         float q_scale_inv = 1 / q_scale;
 
         for (int i = 0; i < reg_count; i++) {
-            group_index = (i * blockDim.x  + id) * vals_per_access;
+            group_index = (i * blockDim.x + id) * vals_per_access;
             if (group_index < group_size) {
-
 #pragma unroll
-                for( int j = 0; j< vals_per_access; j++){
+                for (int j = 0; j < vals_per_access; j++) {
                     float q_data;
-                    q_data = __half2float(data[i* vals_per_access+j]);
+                    q_data = __half2float(data[i * vals_per_access + j]);
 
-                    data[i*vals_per_access+j] = __float2half_rn(roundf(q_data * q_scale) * q_scale_inv);
+                    data[i * vals_per_access + j] =
+                        __float2half_rn(roundf(q_data * q_scale) * q_scale_inv);
                 }
-                mem_access::store_global<granularity>(vals + offset + group_index, data + (i*vals_per_access));
+                mem_access::store_global<granularity>(vals + offset + group_index,
+                                                      data + (i * vals_per_access));
             }
         }
     }
