@@ -1,4 +1,6 @@
+import json
 import os
+import re
 import sys
 import shutil
 import subprocess
@@ -115,7 +117,7 @@ class OpenMPIRunner(MultiNodeRunner):
     def backend_exists(self):
         #TODO: if IB is available we should suggestion mvapich
         return shutil.which('ompi_info')
-
+  
     @property
     def name(self):
         return "openmpi"
@@ -168,16 +170,33 @@ class SlurmRunner(MultiNodeRunner):
 
     def backend_exists(self):
         return shutil.which('sinfo')
+    
+    def parse_user_args(self):
+        user_args = []
+        comment_pattern = '#.*?\n'
+        for arg in self.args.user_args:
+            if arg.startswith('{') and arg.endswith('}'):
+                arg_dict = json.loads(arg)
+                if 'config_files' in arg_dict:
+                    config_files = {}
+                    for k, v in arg_dict.get('config_files', {}).items():
+                        config_files[k] = json.loads(v)
+                    arg_dict['config_files'] = config_files
+                arg = json.dumps(arg_dict, separators=(',', ':'))
+            user_args.append(arg)
+        return user_args
 
     def get_cmd(self, environment, active_resources):
-        assert not self.args.detect_nvlink_pairs, "slurm backend does not support remapping visible devices"
+        assert not getattr(self.args, 'detect_nvlink_pairs', False), "slurm backend does not support remapping visible devices"
         total_process_count = sum(self.resource_pool.values())
         srun_cmd = [
             'srun',
             '-n',
             f'{total_process_count}',
-			'--export=ALL',
         ]
+
+        if 'PROJECT' in os.environ:
+            srun_cmd += ['--comment', os.environ['PROJECT']]
 
         if self.args.include != "":
             srun_cmd.append('--include')
@@ -193,14 +212,15 @@ class SlurmRunner(MultiNodeRunner):
             srun_cmd.append(f'{self.args.num_gpus}')
 
 
-        exports = ""
+        exports = '--export=ALL' 
         for key, val in self.exports.items():
-            exports += "export {}={}; ".format(key, val)
+            exports +=  f",{key}={val}" 
 
         python_exec = [sys.executable, "-u"]
-
-        return exports + srun_cmd + python_exec + [self.user_script
-                                                        ] + self.user_arguments
+        command = srun_cmd + [exports] + python_exec + [self.user_script] + self.user_arguments
+        return command
+        #return exports + srun_cmd + python_exec + [self.user_script
+        #                                                ] + self.user_arguments
 
 
 
