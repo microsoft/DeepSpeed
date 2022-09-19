@@ -873,7 +873,7 @@ class DeepSpeedEngine(Module):
                 torch.cuda.set_device(device_rank)
                 self.device = torch.device("cuda", device_rank)
             else:
-                self.device = torch.device("cpu", device_rank)
+                self.device = torch.device("cpu")
             self.world_size = dist.get_world_size()
             self.global_rank = dist.get_rank()
         else:

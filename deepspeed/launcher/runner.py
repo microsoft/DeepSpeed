@@ -98,6 +98,12 @@ def parse_args(args=None):
                         help="Max number of GPUs to use on each node, will use "
                         "[0:N) GPU ids on each node.")
 
+    parser.add_argument("--num_cpu_cores",
+                        type=int,
+                        default=-1,
+                        help="Max number of CPU cores to use on each node, will use
+                        "[0:N) CPU cores on each node")
+
     parser.add_argument("--master_port",
                         default=TORCH_DISTRIBUTED_DEFAULT_PORT,
                         type=int,
@@ -383,7 +389,10 @@ def main(args=None):
         if torch.cuda.is_available():
             device_count = torch.cuda.device_count()
         else:
-            device_count = os.cpu_count()
+            if args.num_cpu_cores > 0:
+                device_count = args.num_cpu_cores
+            else:
+                device_count = torch.get_num_threads()
         if device_count == 0:
             raise RuntimeError("Unable to proceed, no GPU/CPU resources available")
         resource_pool['localhost'] = device_count
