@@ -159,7 +159,7 @@ def test_zero3_repeat_forward_loop(tmpdir, zero_stage):
 @pytest.mark.parametrize('zero_stage', [2, 3])
 def test_zero_to_fp32_1_param_group(tmpdir, zero_stage):
     if not torch.cuda.is_available() and zero_stage == 3:
-        pytest.skip("Zero elastic not supported on CPU-only builds")
+        pytest.skip("Zero stage 3 not supported on CPU-only builds")
     # XXX: ideally refactor with the 2_param_group test as 75% is the same
 
     # force all params to be partitioned by forcing threshold=0

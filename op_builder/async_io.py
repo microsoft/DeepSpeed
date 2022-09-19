@@ -3,7 +3,6 @@ Copyright 2020 The Microsoft DeepSpeed Team
 """
 import distutils.spawn
 import subprocess
-import torch
 
 from .builder import OpBuilder
 
@@ -91,22 +90,17 @@ class AsyncIOBuilder(OpBuilder):
         # which is a function provided by libaio that is used in the async_io op.
         # If needed, one can define -I and -L entries in CFLAGS and LDFLAGS
         # respectively to specify the directories for libaio.h and libaio.so.
-        aio_compatible = self.has_function('io_submit',
-                                           ('aio',
-                                            )) and torch.cuda.is_available()
+        aio_compatible = self.has_function('io_submit', ('aio', ))
         if verbose and not aio_compatible:
-            if torch.cuda.is_available():
-                self.warning(
-                    f"{self.NAME} requires the dev libaio .so object and headers but these were not found."
-                )
+            self.warning(
+                f"{self.NAME} requires the dev libaio .so object and headers but these were not found."
+            )
 
-                # Check for the libaio package via known package managers
-                # to print suggestions on which package to install.
-                self.check_for_libaio_pkg()
+            # Check for the libaio package via known package managers
+            # to print suggestions on which package to install.
+            self.check_for_libaio_pkg()
 
-                self.warning(
-                    "If libaio is already installed (perhaps from source), try setting the CFLAGS and LDFLAGS environment variables to where it can be found."
-                )
-            else:
-                self.warning(f"{self.NAME} requires torch with CUDA support.")
+            self.warning(
+                "If libaio is already installed (perhaps from source), try setting the CFLAGS and LDFLAGS environment variables to where it can be found."
+            )
         return super().is_compatible(verbose) and aio_compatible

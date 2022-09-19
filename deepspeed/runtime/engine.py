@@ -1464,6 +1464,7 @@ class DeepSpeedEngine(Module):
                 log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage),
                          ranks=[0])
                 from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
+                assert torch.cuda.is_available(), "Zero-3 is not supported in CPU-only DeepSpeed installations."
                 optimizer = DeepSpeedZeroOptimizer_Stage3(
                     self.module,
                     optimizer,
