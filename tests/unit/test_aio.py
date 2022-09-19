@@ -19,6 +19,10 @@ def _skip_if_no_aio():
         pytest.skip('Skip tests since async-io is not compatible')
 
 
+pytestmark = pytest.mark.skipif(not torch.cuda.is_available(),
+                                reason='aio is not supported on CPU-only builds')
+
+
 def _do_ref_write(tmpdir, index=0):
     file_suffix = f'{dist.get_rank()}_{index}'
     ref_file = os.path.join(tmpdir, f'_py_random_{file_suffix}.pt')
@@ -109,17 +113,22 @@ def test_parallel_read(tmpdir, single_submit, overlap_events):
 def test_async_read(tmpdir, single_submit, overlap_events, cuda_device):
 
     _skip_if_no_aio()
+    if cuda_device and not torch.cuda.is_available():
+        pytest.skip('Skip cuda_device test since none are available')
 
     @distributed_test(world_size=[2])
     def _test_async_read(single_submit, overlap_events, cuda_device):
         ref_file, _ = _do_ref_write(tmpdir)
 
         if cuda_device:
-            aio_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device='cuda')
+            aio_buffer = torch.empty(
+                IO_SIZE,
+                dtype=torch.uint8,
+                device='cuda' if torch.cuda.is_available() else 'cpu')
         else:
-            aio_buffer = torch.empty(IO_SIZE,
-                                     dtype=torch.uint8,
-                                     device='cpu').pin_memory()
+            aio_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device='cpu')
+            if torch.cuda.is_available():
+                aio_buffer = aio_buffer.pin_memory()
 
         h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE,
                                                QUEUE_DEPTH,
@@ -202,6 +211,8 @@ def test_parallel_write(tmpdir, single_submit, overlap_events):
 def test_async_write(tmpdir, single_submit, overlap_events, cuda_device):
 
     _skip_if_no_aio()
+    if cuda_device and not torch.cuda.is_available():
+        pytest.skip('Skip cuda_device test since none are available')
 
     @distributed_test(world_size=[2])
     def _test_async_write(single_submit, overlap_events, cuda_device):
@@ -254,13 +265,18 @@ def test_async_queue_read(tmpdir, async_queue, cuda_device):
         aio_buffers = []
         for i in range(async_queue):
             if cuda_device:
-                buf = torch.empty(IO_SIZE, dtype=torch.uint8, device='cuda')
+                buf = torch.empty(IO_SIZE,
+                                  dtype=torch.uint8,
+                                  device='cuda' if torch.cuda.is_available() else 'cpu')
             else:
-                buf = torch.empty(IO_SIZE, dtype=torch.uint8, device='cpu').pin_memory()
+                buf = torch.empty(IO_SIZE, dtype=torch.uint8, device='cpu')
+                if torch.cuda.is_available():
+                    buf = buf.pin_memory()
             aio_buffers.append(buf)
 
         single_submit = True
         overlap_events = True
+        print("BEFORE LOAD")
         h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE,
                                                QUEUE_DEPTH,
                                                single_submit,
@@ -296,6 +312,8 @@ def test_async_queue_read(tmpdir, async_queue, cuda_device):
 def test_async_queue_write(tmpdir, async_queue, cuda_device):
 
     _skip_if_no_aio()
+    if cuda_device and not torch.cuda.is_available():
+        pytest.skip('Skip cuda_device test since none are available')
 
     @distributed_test(world_size=[2])
     def _test_async_queue_write(async_queue, cuda_device):
