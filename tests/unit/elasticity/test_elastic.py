@@ -3,7 +3,7 @@ import deepspeed
 from unit.common import DistributedTest
 from deepspeed.git_version_info import version as ds_version
 import os
-from tests.unit.simple_model import SimpleModel
+from unit.simple_model import SimpleModel
 import torch
 
 
