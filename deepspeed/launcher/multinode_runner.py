@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import warnings
 from shlex import split
+import yaml
 from abc import ABC, abstractmethod
 
 from ..utils import logger
@@ -173,15 +174,17 @@ class SlurmRunner(MultiNodeRunner):
     
     def parse_user_args(self):
         user_args = []
-        comment_pattern = '#.*?\n'
         for arg in self.args.user_args:
             if arg.startswith('{') and arg.endswith('}'):
-                arg_dict = json.loads(arg)
-                if 'config_files' in arg_dict:
-                    config_files = {}
-                    for k, v in arg_dict.get('config_files', {}).items():
-                        config_files[k] = json.loads(v)
-                    arg_dict['config_files'] = config_files
+                try:
+                    arg_dict = json.loads(arg)
+                    if 'config_files' in arg_dict:
+                        config_files = {}
+                        for k, v in arg_dict.get('config_files', {}).items():
+                            config_files[k] = json.loads(v)
+                        arg_dict['config_files'] = config_files
+                except json.JSONDecodeError as jde:
+                    raise ValueError('SLURM is picky and needs you to use plain json for your configs. Check for comments and lowercase trues') from jde
                 arg = json.dumps(arg_dict, separators=(',', ':'))
             user_args.append(arg)
         return user_args
