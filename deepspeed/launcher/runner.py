@@ -101,7 +101,7 @@ def parse_args(args=None):
     parser.add_argument("--num_cpu_cores",
                         type=int,
                         default=-1,
-                        help="Max number of CPU cores to use on each node, will use
+                        help="Max number of CPU cores to use on each node, will use "
                         "[0:N) CPU cores on each node")
 
     parser.add_argument("--master_port",
