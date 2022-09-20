@@ -25,14 +25,13 @@ __global__ void quantize_kernel(__half* vals, int group_size, int num_bits)
     int group_id = blockIdx.x;
 
     {
-        int thread_index = id * vals_per_access; 
+        int thread_index = id * vals_per_access;
         int reg_count = 0;
         int offset = group_id * group_size * vals_per_access;
         float max = -10000.0;
 
-        while (thread_index < group_size ) {
-            mem_access::load_global<granularity>(data,
-                                                 vals + thread_index);
+        while (thread_index < group_size) {
+            mem_access::load_global<granularity>(data, vals + thread_index);
 
 #pragma unroll
             for (int i = 0; i < vals_per_access; i++) {
@@ -67,22 +66,18 @@ __global__ void quantize_kernel(__half* vals, int group_size, int num_bits)
         float q_scale = (1 << num_bits) / (2 * max + 1e-5);
         float q_scale_inv = 1 / q_scale;
 
-
         while (thread_index < group_size) {
-            mem_access::load_global<granularity>(data,
-                                                 vals + thread_index);
+            mem_access::load_global<granularity>(data, vals + thread_index);
 #pragma unroll
-                for (int j = 0; j < vals_per_access; j++) {
-                    float q_data;
-                    q_data = __half2float(data[j]);
+            for (int j = 0; j < vals_per_access; j++) {
+                float q_data;
+                q_data = __half2float(data[j]);
 
-                    data[j] =
-                        __float2half_rn(roundf(q_data * q_scale) * q_scale_inv);
-                }
-                mem_access::store_global<granularity>(vals + thread_index,
-                                                      data);
-                thread_index += blockDim.x * vals_per_access;
+                data[j] = __float2half_rn(roundf(q_data * q_scale) * q_scale_inv);
             }
+            mem_access::store_global<granularity>(vals + thread_index, data);
+            thread_index += blockDim.x * vals_per_access;
+        }
     }
 #endif
 }
@@ -100,7 +95,7 @@ __global__ void quantize_kernel(float* vals, int group_size, int num_bits)
     constexpr int granularity = 16;
     constexpr int vals_per_access = granularity / sizeof(float);
 
-    float data[MAX_REG * vals_per_access];
+    float data[vals_per_access];
 
     int bid = blockIdx.x;
 
@@ -113,17 +108,16 @@ __global__ void quantize_kernel(float* vals, int group_size, int num_bits)
     float max = -10000.0;
 
     while (thread_index < group_size && reg_count < MAX_REG) {
-        mem_access::load_global<granularity>(data + (reg_count * vals_per_access),
-                                             vals + offset + thread_index);
+        mem_access::load_global<granularity>(data, vals + thread_index);
 
 #pragma unroll
         for (int i = 0; i < vals_per_access; i++) {
-            if (abs(data[reg_count + i]) > max) max = abs(data[reg_count + i]);
+            if (abs(data[i]) > max) max = abs(data[i]);
         }
 
         thread_index += blockDim.x * vals_per_access;
-        reg_count++;
     }
+
     id = threadIdx.x;
 #pragma unroll
     for (int i = 1; i < WARP_SIZE; i <<= 1) {
@@ -150,18 +144,17 @@ __global__ void quantize_kernel(float* vals, int group_size, int num_bits)
 
     float q_scale = (1 << num_bits) / (2 * max + 1e-5);
     float q_scale_inv = 1 / q_scale;
-    for (int i = 0; i < reg_count; i++) {
-        thread_index = (i * blockDim.x + id) * vals_per_access;
-        if (thread_index < group_size) {
+    while (thread_index < group_size) {
+        mem_access::load_global<granularity>(data, vals + thread_index);
 #pragma unroll
-            for (int j = 0; j < vals_per_access; j++) {
-                float q_data;
-                q_data = roundf(data[i * vals_per_access + j] * q_scale) * q_scale_inv;
-                data[i * vals_per_access + j] = q_data;
-            }
-            mem_access::store_global<granularity>(vals + offset + thread_index,
-                                                  data + (i * vals_per_access));
+        for (int j = 0; j < vals_per_access; j++) {
+            float q_data;
+            q_data = __half2float(data[j]);
+
+            data[j] = __float2half_rn(roundf(q_data * q_scale) * q_scale_inv);
         }
+        mem_access::store_global<granularity>(vals + thread_index, data);
+        thread_index += blockDim.x * vals_per_access;
     }
 }
 
