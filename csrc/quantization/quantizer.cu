@@ -31,7 +31,7 @@ __global__ void quantize_kernel(__half* vals, int group_size, int num_bits)
         float max = -10000.0;
 
         while (thread_index < group_size ) {
-            mem_access::load_global<granularity>(data + vals_per_access,
+            mem_access::load_global<granularity>(data,
                                                  vals + thread_index);
 
 #pragma unroll
