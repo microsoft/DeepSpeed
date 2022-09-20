@@ -18,7 +18,7 @@ import signal
 import time
 import torch.cuda
 
-from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner
+from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner, SlurmRunner
 from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER, SLURM_LAUNCHER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..nebula.constants import NEBULA_EXPORT_ENVS
@@ -504,6 +504,7 @@ def main(args=None):
             cmd = runner.get_cmd(env, active_resources)
 
     logger.info(f"cmd = {' '.join(cmd)}")
+    
     result = subprocess.Popen(cmd, env=env)
 
     def sigkill_handler(signum, frame):
