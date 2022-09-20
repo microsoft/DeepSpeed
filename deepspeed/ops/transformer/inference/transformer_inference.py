@@ -635,8 +635,8 @@ class DeepSpeedMLPFunction(Function):
             output,                 # hidden state
             residual if config.pre_layer_norm else residual_add,        # residual
             input,                  # attention output
-            output_b,               # attention bias
             bias if bias is not None else output_b,
+            output_b,
             config.mp_size,         # model parallel size
             config.mlp_after_attn,  # whether mlp is after attention (GPTJ model architecture runs the MLP layer in parallel with attention)
             bias is not None,       # whether bias addition is fused

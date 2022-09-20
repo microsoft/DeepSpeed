@@ -1193,8 +1193,6 @@ at::Tensor& residual_add_bias(at::Tensor& hidden_state,
                               const bool add_bias,
                               const bool preln)
 {
-    // TODO: check the ttype of tensors matches
-    // TODO: check the size of tensors matches
     int bsz = residual.size(0) * residual.size(1);
     int hidden_size = residual.size(2);
     if (mlp_after_attn)
@@ -1361,7 +1359,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           "DeepSpeed linear_layer with int8 (CUDA)");
     m.def("fused_gemm_gelu_fp32", &fused_gemm_gelu<float>, "DeepSpeed mlp with fp32 (CUDA)");
     m.def("fused_gemm_gelu_fp16", &fused_gemm_gelu<__half>, "DeepSpeed mlp with fp16 (CUDA)");
-    // m.def("residual_add_bias", &residual_add_bias, "DeepSpeed mlp with fp16 (CUDA)");
     m.def("residual_add_bias_fp32",
           &residual_add_bias<float>,
           "DeepSpeed residual add with fp32 (CUDA)");
