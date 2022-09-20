@@ -168,7 +168,7 @@ def query(model_w_task):
 def inf_kwargs(model_w_task):
     model, task = model_w_task
     if task == "text-generation":
-        return {"do_sample": False, "max_new_tokens": 50}
+        return {"do_sample": False, "max_length": 50, "min_length": 50}
     else:
         return {}
 
