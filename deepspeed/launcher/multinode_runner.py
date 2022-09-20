@@ -1,12 +1,10 @@
 import json
 import os
-import re
 import sys
 import shutil
 import subprocess
 import warnings
 from shlex import split
-import yaml
 from abc import ABC, abstractmethod
 
 from ..utils import logger
@@ -198,8 +196,8 @@ class SlurmRunner(MultiNodeRunner):
             f'{total_process_count}',
         ]
 
-        if 'PROJECT' in os.environ:
-            srun_cmd += ['--comment', os.environ['PROJECT']]
+        if getattr(self.args, 'slurm_comment', ''):
+            srun_cmd += ['--comment', self.args.slurm_comment]
 
         if self.args.include != "":
             srun_cmd.append('--include')
@@ -222,9 +220,6 @@ class SlurmRunner(MultiNodeRunner):
         python_exec = [sys.executable, "-u"]
         command = srun_cmd + [exports] + python_exec + [self.user_script] + self.user_arguments
         return command
-        #return exports + srun_cmd + python_exec + [self.user_script
-        #                                                ] + self.user_arguments
-
 
 
 class MVAPICHRunner(MultiNodeRunner):
