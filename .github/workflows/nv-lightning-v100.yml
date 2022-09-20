@@ -53,4 +53,4 @@ jobs:
           pip install pytorch-lightning
           pip install "protobuf<4.21.0"
           cd tests
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose lightning/
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=50 --verbose lightning/

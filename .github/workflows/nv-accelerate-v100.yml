@@ -58,4 +58,4 @@ jobs:
           # tmp fix: force newer datasets version
           pip install "datasets>=2.0.0"
           pip list
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose tests/deepspeed
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=50 --verbose tests/deepspeed
