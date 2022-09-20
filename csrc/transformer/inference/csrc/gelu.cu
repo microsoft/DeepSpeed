@@ -438,8 +438,6 @@ __global__ void moe_res_matmul(T* residual, T* coef, T* mlp_out, int seq_len, in
     constexpr int granularity = 16;
     constexpr int vals_per_access = granularity / sizeof(T);
 
-    unsigned tid = threadIdx.x * vals_per_access;
-
     T* residual_seq = residual + blockIdx.x * hidden_dim;
     T* mlp_out_seq = mlp_out + blockIdx.x * hidden_dim;
 
