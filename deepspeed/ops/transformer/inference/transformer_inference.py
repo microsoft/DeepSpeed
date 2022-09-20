@@ -631,7 +631,7 @@ class DeepSpeedMLPFunction(Function):
                                         False,
                                         output_w.scale,
                                         config.q_int8)
-        residual_add_func(
+        output = residual_add_func(
             output,                 # hidden state
             residual if config.pre_layer_norm else residual_add,        # residual
             input,                  # attention output

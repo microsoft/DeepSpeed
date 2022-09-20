@@ -103,9 +103,9 @@ def test_residual_add(inference_module,
             preln]
 
     if dtype == torch.float16:
-        inference_module.residual_add_bias_fp16(*res_add_args)
+        ds_out = inference_module.residual_add_bias_fp16(*res_add_args)
     elif dtype == torch.float32:
-        inference_module.residual_add_bias_fp32(*res_add_args)
+        ds_out = inference_module.residual_add_bias_fp32(*res_add_args)
     else:
         raise ValueError(f"Unsupported dtype: {dtype}")
 

@@ -1183,16 +1183,18 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
 }
 
 template <typename T>
-void residual_add_bias(at::Tensor& hidden_state,
-                       const at::Tensor& residual,
-                       const at::Tensor& attention_output,
-                       const at::Tensor& attention_bias,
-                       const at::Tensor& final_bias,
-                       const int mp_size,
-                       const bool mlp_after_attn,
-                       const bool add_bias,
-                       const bool preln)
+at::Tensor& residual_add_bias(at::Tensor& hidden_state,
+                              const at::Tensor& residual,
+                              const at::Tensor& attention_output,
+                              const at::Tensor& attention_bias,
+                              const at::Tensor& final_bias,
+                              const int mp_size,
+                              const bool mlp_after_attn,
+                              const bool add_bias,
+                              const bool preln)
 {
+    // TODO: check the ttype of tensors matches
+    // TODO: check the size of tensors matches
     int bsz = residual.size(0) * residual.size(1);
     int hidden_size = residual.size(2);
     if (mlp_after_attn)
@@ -1217,6 +1219,7 @@ void residual_add_bias(at::Tensor& hidden_state,
             bsz,
             mp_size,
             Context::Instance().GetCurrentStream());
+    return hidden_state;
 }
 
 std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
