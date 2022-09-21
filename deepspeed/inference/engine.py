@@ -167,6 +167,12 @@ class InferenceEngine(Module):
         if self.mp_world_size > 1:
             assert not self.enable_cuda_graph, "Cuda graph is not supported for model parallelism"
 
+    def profile_model_time(self):
+        if not self.model_profile_enabled and not self.enable_cuda_graph:
+            self.module.register_forward_pre_hook(self._pre_forward_hook)
+            self.module.register_forward_hook(self._post_forward_hook)
+        self.model_profile_enabled = True
+
     def _get_model_config_generate(self, config):
         self.config = getattr(self.module, 'config', None) if config is None else config
         self.generate = getattr(self.module, 'generate', None)
@@ -175,6 +181,15 @@ class InferenceEngine(Module):
         if hasattr(self.module, 'transformer'):
             if hasattr(self.module.transformer, '_prepare_attn_mask'):
                 self.module.transformer._prepare_attn_mask = lambda attention_mask, *args, **kwargs: attention_mask
+
+    def _pre_forward_hook(self, module, *inputs, **kwargs):
+        torch.cuda.synchronize()
+        self._start = time.time()
+
+    def _post_forward_hook(self, module, input, output):
+        torch.cuda.synchronize()
+        self._end = time.time()
+        self._model_times.append(self._end - self._start)
 
     def _create_model_parallel_group(self):
         # Call the init process
@@ -518,7 +533,7 @@ class InferenceEngine(Module):
             **kwargs: variable length keyword arguments
         """
         start = None
-        if self.model_profile_enabled:
+        if self.model_profile_enabled and self.enable_cuda_graph:
             torch.cuda.synchronize()
             start = time.time()
 
@@ -531,7 +546,7 @@ class InferenceEngine(Module):
         else:
             outputs = self.module(*inputs, **kwargs)
 
-        if self.model_profile_enabled:
+        if self.model_profile_enabled and self.enable_cuda_graph:
             torch.cuda.synchronize()
             duration = time.time() - start
             self._model_times.append(duration)
