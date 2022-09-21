@@ -2,6 +2,7 @@
 Copyright 2021 The Microsoft DeepSpeed Team
 '''
 import torch
+import time
 import os
 
 from deepspeed import comm as dist
@@ -100,6 +101,8 @@ class InferenceEngine(Module):
         self.cuda_graph_created = False
         self.checkpoint_engine = TorchCheckpointEngine()
         self._init_quantization_setting(quantization_setting)
+        self.model_profile_enabled = False
+        self._model_times = []
 
         # This is a hack to remove the prepare_mask function on HF side for BLOOM architecture
         self.remove_mask_prepare_for_bloom()
@@ -501,6 +504,12 @@ class InferenceEngine(Module):
         self._cuda_graphs.replay()
         return self.static_output
 
+    def model_times(self):
+        assert self.model_profile_enabled, "model profiling is not enabled"
+        model_times = self._model_times
+        self._model_times = []
+        return model_times
+
     def forward(self, *inputs, **kwargs):
         """Execute forward propagation
 
@@ -508,6 +517,11 @@ class InferenceEngine(Module):
             *inputs: Variable length input list
             **kwargs: variable length keyword arguments
         """
+        start = None
+        if self.model_profile_enabled:
+            torch.cuda.synchronize()
+            start = time.time()
+
         if self.enable_cuda_graph:
             if self.cuda_graph_created:
                 outputs = self._graph_replay(*inputs, **kwargs)
@@ -516,5 +530,10 @@ class InferenceEngine(Module):
                 outputs = self._graph_replay(*inputs, **kwargs)
         else:
             outputs = self.module(*inputs, **kwargs)
+
+        if self.model_profile_enabled:
+            torch.cuda.synchronize()
+            duration = time.time() - start
+            self._model_times.append(duration)
 
         return outputs
