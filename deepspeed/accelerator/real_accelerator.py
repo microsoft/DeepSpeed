@@ -1,43 +1,62 @@
 ds_accelerator = None
 
 
-def init_accelerator():
+def get_accelerator():
     global ds_accelerator
-
-    if ds_accelerator is not None:
-        return
-
-    # Ideally, adding a new accelerator should require just following snippet.
-    # try:
-    #     from infinity.stones import Infinity_Accelerator
-    #     ds_accelerator = Infinity_Accelerator()
-    #     return
-    # except:
-    #     pass
-
-    try:
-        # TODO: This import should reference an external module to DeepSpeed
+    if ds_accelerator is None:
         from deepspeed.accelerator.cuda_accelerator import CUDA_Accelerator
-    except ImportError as e:
-        pass
-    else:
         ds_accelerator = CUDA_Accelerator()
-        assert ds_accelerator.is_available(), \
+
+    assert ds_accelerator.is_available(), \
             f'CUDA_Accelerator fails is_available() test (import was successful)'
-        return
-
-    try:
-        # TODO: This import should reference an external module to DeepSpeed
-        from deepspeed.accelerator.xpu_accelerator import XPU_Accelerator
-    except ImportError as e:
-        pass
-    else:
-        ds_accelerator = XPU_Accelerator()
-        assert ds_accelerator.is_available(), \
-            f'XPU_Accelerator fails is_available() test (import was successful)'
-        return
-
-    assert ds_accelerator is not None, f'failed to instantiate a DeepSpeed accelerator'
+    return ds_accelerator
 
 
-init_accelerator()
+def set_accelerator(accel_obj):
+    global ds_accelerator
+    ds_accelerator = accel_obj
+
+
+'''
+-----------[code] test_get.py -----------
+from deepspeed.accelerator.real_accelerator import get_accelerator
+my_accelerator = get_accelerator()
+print(f'{my_accelerator.name=}')
+print(f'{my_accelerator.communication_backend=}')
+print(f'{my_accelerator.HalfTensor().device=}')
+print(f'{my_accelerator.total_memory()=}')
+-----------[code] test_get.py -----------
+
+---[output] python test_get.py---------
+my_accelerator.name='cuda'
+my_accelerator.communication_backend='nccl'
+my_accelerator.HalfTensor().device=device(type='cuda', index=0)
+my_accelerator.total_memory()=34089730048
+---[output] python test_get.py---------
+
+**************************************************************************
+-----------[code] test_set.py -----------
+from deepspeed.accelerator.cuda_accelerator import CUDA_Accelerator
+cu_accel = CUDA_Accelerator()
+print(f'{id(cu_accel)=}')
+from deepspeed.accelerator.real_accelerator import set_accelerator, get_accelerator
+set_accelerator(cu_accel)
+
+my_accelerator = get_accelerator()
+print(f'{id(my_accelerator)=}')
+print(f'{my_accelerator.name=}')
+print(f'{my_accelerator.communication_backend=}')
+print(f'{my_accelerator.HalfTensor().device=}')
+print(f'{my_accelerator.total_memory()=}')
+-----------[code] test_set.py -----------
+
+
+---[output] python test_set.py---------
+id(cu_accel)=139648165478304
+my_accelerator=<deepspeed.accelerator.cuda_accelerator.CUDA_Accelerator object at 0x7f025f4bffa0>
+my_accelerator.name='cuda'
+my_accelerator.communication_backend='nccl'
+my_accelerator.HalfTensor().device=device(type='cuda', index=0)
+my_accelerator.total_memory()=34089730048
+---[output] python test_set.py---------
+'''
