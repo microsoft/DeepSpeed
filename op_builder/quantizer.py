@@ -27,3 +27,6 @@ class QuantizerBuilder(SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDA
 
     def sycl_include_paths(self):
         return []
+
+    def extra_ldflags(self):
+        return ['-lcurand']
