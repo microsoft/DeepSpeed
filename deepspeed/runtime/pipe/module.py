@@ -570,7 +570,7 @@ class PipelineModule(nn.Module):
         dp_rank = self._grid.data_parallel_id
         dp_size = self._grid.data_parallel_size
         offsets = ds_utils.partition_uniform(len(self.forward_funcs), dp_size)
-        start, end = offsets[dp_rank], offsets[dp_rank+1]
+        start, end = offsets[dp_rank], offsets[dp_rank + 1]
         layer_list = self.forward_funcs[start:end]
 
         os.makedirs(save_dir, exist_ok=True)
