@@ -1,6 +1,7 @@
 import torch
 import pytest
 from deepspeed.ops import op_builder
+from deepspeed.accelerator import literal_device
 
 quantizer_cuda_module = None
 
@@ -37,7 +38,7 @@ def run_quant_dequant(inputs, groups, bits):
 @pytest.mark.inference
 @pytest.mark.parametrize("tensor_shape", [(8, 8), (128, 256)])
 def test_quant_dequant(tensor_shape):
-    input_tensor = torch.rand((tensor_shape), dtype=torch.float16).cuda()
+    input_tensor = torch.rand((tensor_shape), dtype=torch.float16).to(literal_device())
 
     # test 8bit quant/dequant on tensor partitioned in 1 group.
     ref_input_8bit_1group = input_tensor.clone().detach()

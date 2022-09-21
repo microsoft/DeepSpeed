@@ -332,7 +332,7 @@ class TestMPSize(DistributedTest):
                                               replace_method="auto",
                                               replace_with_kernel_inject=True)
         # Switch device to GPU so that input tensors are not on CPU
-        pipe.device = torch.device(f"cuda:{local_rank}")
+        pipe.device = torch.device(literal_device(local_rank))
         ds_output = pipe(query, **inf_kwargs)
 
         print(local_rank, "baseline", bs_output)
