@@ -9,6 +9,9 @@ used throughout the codebase.
 
 #include <cuda.h>
 
+#define DS_HD_INLINE __host__ __device__ __forceinline__
+#define DS_D_INLINE __device__ __forceinline__
+
 #ifdef __HIP_PLATFORM_HCC__
 
 // constexpr variant of warpSize for templating
@@ -32,8 +35,5 @@ constexpr int hw_warp_size = 32;
 #endif  // __CUDA_ARCH__ >= 800
 
 #include <cooperative_groups.h>
-
-#define DS_HD_INLINE __host__ __device__ __forceinline__
-#define DS_D_INLINE __device__ __forceinline__
 
 #endif  //__HIP_PLATFORM_HCC__
