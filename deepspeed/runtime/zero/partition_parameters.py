@@ -1105,8 +1105,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         device=OffloadDeviceEnum.cpu if self.remote_device
                         == OffloadDeviceEnum.nvme else self.remote_device)
                     if self.pin_memory:
-                        partitioned_tensor = partitioned_tensor.pin_memory(
-                            device=accel_runtime.current_device())
+                        partitioned_tensor = accel_runtime.pin_memory(partitioned_tensor)
 
                 partitioned_tensor.requires_grad = False
                 param.ds_tensor = partitioned_tensor

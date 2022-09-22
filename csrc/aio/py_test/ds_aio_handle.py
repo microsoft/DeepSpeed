@@ -12,6 +12,7 @@ from multiprocessing import Pool, Barrier
 from deepspeed.ops.aio import AsyncIOBuilder
 from test_ds_aio_utils import report_results, task_log, task_barrier
 from deepspeed.accelerator import literal_device
+from deepspeed.accelerator import runtime as accel_runtime
 
 
 def pre_handle(args, tid, read_op):
@@ -23,7 +24,10 @@ def pre_handle(args, tid, read_op):
     if args.gpu:
         buffer = torch.empty(num_bytes, dtype=torch.uint8, device=literal_device())
     else:
-        buffer = torch.empty(num_bytes, dtype=torch.uint8, device='cpu').pin_memory()
+        buffer = accel_runtime.pin_memory(
+            torch.empty(num_bytes,
+                        dtype=torch.uint8,
+                        device='cpu'))
     task_log(
         tid,
         f'{io_string} file {file} of size {num_bytes} bytes from buffer on device {buffer.device}'

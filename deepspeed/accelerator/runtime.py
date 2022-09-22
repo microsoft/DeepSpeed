@@ -271,6 +271,15 @@ def _lazy_call(cb):
         return torch.xpu._lazy_call(cb)
 
 
+def pin_memory(tensor):
+    device = literal_device()
+    if device == 'cuda':
+        return tensor.pin_memory()
+    else:
+        assert device == 'xpu'
+        return tensor.pin_memory(device=current_device())
+
+
 # Class type should be abstract as the following, don't use simple_accel_runtime_api for class type
 if literal_device() == 'cuda':
     _torch_runtime_prefix = torch.cuda

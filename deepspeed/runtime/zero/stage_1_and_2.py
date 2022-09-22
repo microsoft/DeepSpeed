@@ -441,10 +441,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.norm_for_param_grads = {}
             self.local_overflow = False
             self.grad_position = {}
-            self.temp_grad_buffer_for_cpu_offload = torch.zeros(
-                largest_param_numel,
-                device=self.device,
-                dtype=self.dtype).pin_memory(device=accel_runtime.current_device())
+            self.temp_grad_buffer_for_cpu_offload = accel_runtime.pin_memory(
+                torch.zeros(largest_param_numel,
+                            device=self.device,
+                            dtype=self.dtype))
             self.temp_grad_buffer_for_gpu_offload = torch.zeros(
                 largest_param_numel,
                 device=accel_runtime.current_device(),
@@ -599,10 +599,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 int(self.partition_size[i]),
                 dtype=self.single_partition_of_fp32_groups[i].dtype,
                 device=self.device)
-            self.single_partition_of_fp32_groups[
-                i].grad = single_grad_partition.pin_memory(
-                    device=accel_runtime.current_device(
-                    )) if self.cpu_offload else single_grad_partition
+            self.single_partition_of_fp32_groups[i].grad = accel_runtime.pin_memory(
+                single_grad_partition) if self.cpu_offload else single_grad_partition
 
         self.optimizer.step()
 
@@ -1044,10 +1042,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         #buffer for storing gradients for this parameter in CPU
         def buffer_to_accumulate_to_in_cpu():
             if not self.fp16_master_weights_and_gradients:
-                return torch.zeros(
-                    param.numel(),
-                    dtype=param.dtype,
-                    device=self.device).pin_memory(device=accel_runtime.current_device())
+                return accel_runtime.pin_memory(
+                    torch.zeros(param.numel(),
+                                dtype=param.dtype,
+                                device=self.device))
             else:
                 return self.single_partition_of_fp32_groups[i].grad.view(-1).narrow(
                     0,

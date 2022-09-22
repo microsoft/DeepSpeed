@@ -393,10 +393,10 @@ class AsyncPartitionedParameterSwapper(object):
     def reserve_partitioned_swap_space(self, partition_num_elems):
         aligned_numel = sum(
             [self._io_aligned_numel(numel) for numel in partition_num_elems])
-        self.partitioned_swap_buffer = torch.zeros(
-            aligned_numel,
-            device='cpu',
-            dtype=self.dtype).pin_memory(device=accel_runtime.current_device())
+        self.partitioned_swap_buffer = accel_runtime.pin_memory(
+            torch.zeros(aligned_numel,
+                        device='cpu',
+                        dtype=self.dtype))
         self.partitioned_swap_pool = SwapBufferPool([self.partitioned_swap_buffer])
 
     def swap_out_partitioned_params(self, dst_fp16_params, src_fp32_params):

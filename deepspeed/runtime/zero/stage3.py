@@ -913,8 +913,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                                        dtype=gradient_dtype,
                                                        device=self.device)
                 if self.offload_optimizer_pin_memory:
-                    subgroup_gradient_buffer = subgroup_gradient_buffer.pin_memory(
-                        device=accel_runtime.current_device())
+                    subgroup_gradient_buffer = accel_runtime.pin_memory(
+                        subgroup_gradient_buffer)
 
                 self.fp32_partitioned_groups_flat[i].grad = subgroup_gradient_buffer
             else:
