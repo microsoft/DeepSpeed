@@ -48,7 +48,7 @@ def test_quant_dequant(tensor_shape, groups):
     ref_input_8bit = input_tensor.clone().detach()
     ds_input_8bit = input_tensor.clone().detach()
     ref_out_8bit = quantize_dequantize_ref(ref_input_8bit, 8, groups)
-    # run_quant_dequant will do quantize then dequantize and return the dequantized value.
+    # run_quant_dequant will do quantize then dequantize, and return the dequantized value.
     ds_out_8bit = run_quant_dequant(ds_input_8bit, groups, 8)
     assert (allclose(ds_out_8bit, ref_out_8bit))
 
