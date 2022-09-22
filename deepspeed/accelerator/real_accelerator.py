@@ -1,4 +1,14 @@
+from .abstract_accelerator import DeepSpeedAccelerator
+
 ds_accelerator = None
+
+
+def _validate_accelerator(accel_obj):
+    assert isinstance(accel_obj, DeepSpeedAccelerator), \
+        f'{accel_obj.__class__.__name__} accelerator is not subclass of DeepSpeedAccelerator'
+
+    assert accel_obj.is_available(), \
+        f'{accel_obj.__class__.__name__} accelerator fails is_available() test'
 
 
 def get_accelerator():
@@ -6,14 +16,13 @@ def get_accelerator():
     if ds_accelerator is None:
         from deepspeed.accelerator.cuda_accelerator import CUDA_Accelerator
         ds_accelerator = CUDA_Accelerator()
-
-    assert ds_accelerator.is_available(), \
-            f'CUDA_Accelerator fails is_available() test (import was successful)'
+        _validate_accelerator(ds_accelerator)
     return ds_accelerator
 
 
 def set_accelerator(accel_obj):
     global ds_accelerator
+    _validate_accelerator(accel_obj)
     ds_accelerator = accel_obj
 
 
