@@ -10,7 +10,7 @@ import torch.nn as nn
 from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
 from deepspeed.utils.types import ActivationFuncType
-
+from .triton_ops import triton_flash_attn
 # Cuda modules will be imported if needed
 inference_cuda_module = None
 minus_inf = -10000.0
@@ -143,6 +143,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                 merge_count,
                 qkv_merging,
                 score_context_func,
+                tritonFlashAttn,
                 alibi):
         def _transpose_for_scores(x, key=False, reshape=False):
             attention_head_size = x.shape[-1] // num_attention_heads_per_partition
@@ -192,6 +193,26 @@ class DeepSpeedSelfAttentionFunction(Function):
                 return tuple(chunk.contiguous() for chunk in tensor_list)
 
             return tensor_list
+
+        def fast_attn(qkv_out, mask, scale, num_attention_heads_per_partition):
+            def _transpose_for_scores(x):
+                attention_head_size = x.shape[-1] // num_attention_heads_per_partition
+                new_x_shape = x.size()[:-1] + (num_attention_heads_per_partition,
+                                            attention_head_size)
+                return x.view(*new_x_shape).permute(0, 2, 1, 3).contiguous()
+            (mixed_query,
+            key_layer,
+            value_layer) = torch.split(qkv_out,
+                                        (qkv_out.shape[-1] // 3),
+                                        dim=(qkv_out.dim() - 1))
+            mixed_query = _transpose_for_scores(mixed_query)
+            key_layer = _transpose_for_scores(key_layer)
+            value_layer = _transpose_for_scores(value_layer)
+            return tritonFlashAttn(mixed_query,
+                                    key_layer,
+                                    value_layer,
+                                    mask,
+                                    scale)
 
         def backup_attention(mixed_x_layer, layer_past, alibi, input_mask, norm_factor):
             alibi = alibi.to(torch.cuda.current_device())
@@ -379,25 +400,31 @@ class DeepSpeedSelfAttentionFunction(Function):
                         offset = dist.get_rank() * batch_heads if dist.is_initialized(
                         ) else 0
                         sliced_alibi = alibi[offset:batch_heads + offset, :, :]
-
-                    attn_key_value = score_context_func(
-                        qkv_out,
-                        ((1 - input_mask).to(qkv_out.dype) *
-                         minus_inf) if input_mask.dtype == torch.int64 else input_mask,
-                        config.rotary_dim,
-                        config.rotate_half,
-                        config.rotate_every_two,
-                        num_attention_heads_per_partition,
-                        (1 / norm_factor if config.scale_attention else 1.0),
-                        config.triangular_masking,
-                        config.local_attention,
-                        config.window_size,
-                        no_masking,
-                        config.layer_id,
-                        DeepSpeedTransformerInference.layer_id,
-                        sliced_alibi if alibi is not None else torch.empty(1))
-                    context_layer, key_layer, value_layer = attn_key_value
-                    return context_layer, key_layer, value_layer
+                    context_layer = fast_attn(qkv_out,
+                                              ((1 - input_mask).to(qkv_out.dype) *
+                                              minus_inf) if input_mask.dtype == torch.int64 else input_mask,
+                                              (1 / (norm_factor * norm_factor) if config.scale_attention else 1.0),
+                                              num_attention_heads_per_partition)
+                    context_layer = _transpose_for_context(context_layer)
+                    return context_layer, context_layer, context_layer
+                    #attn_key_value = score_context_func(
+                    #    qkv_out,
+                    #    ((1 - input_mask).to(qkv_out.dype) *
+                    #     minus_inf) if input_mask.dtype == torch.int64 else input_mask,
+                    #    config.rotary_dim,
+                    #    config.rotate_half,
+                    #    config.rotate_every_two,
+                    #    num_attention_heads_per_partition,
+                    #    (1 / norm_factor if config.scale_attention else 1.0),
+                    #    config.triangular_masking,
+                    #    config.local_attention,
+                    #    config.window_size,
+                    #    no_masking,
+                    #    config.layer_id,
+                    #    DeepSpeedTransformerInference.layer_id,
+                    #    sliced_alibi if alibi is not None else torch.empty(1))
+                    #context_layer, key_layer, value_layer = attn_key_value
+                    #return context_layer, key_layer, value_layer
 
         def selfAttention_fp():
             vector_matmul_func = inference_cuda_module.vector_matmul_fp16 if config.fp16 else \
@@ -536,7 +563,7 @@ class DeepSpeedSelfAttention(nn.Module):
 
         self.score_context_func = inference_cuda_module.softmax_context_fp32 if (not config.fp16) else \
                                     inference_cuda_module.softmax_context_fp16
-
+        self.tritonFlashAttn = triton_flash_attn()
     def forward(self,
                 input,
                 input_mask,
@@ -574,6 +601,7 @@ class DeepSpeedSelfAttention(nn.Module):
             self.merge_count,
             self.qkv_merging,
             self.score_context_func,
+            self.tritonFlashAttn,
             alibi)
 
         return output

@@ -23,7 +23,7 @@ from ..module_inject.replace_policy import DSPolicy
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
-
+import time
 
 class InferenceEngine(Module):
     inference_mp_group = None
@@ -516,5 +516,4 @@ class InferenceEngine(Module):
                 outputs = self._graph_replay(*inputs, **kwargs)
         else:
             outputs = self.module(*inputs, **kwargs)
-
         return outputs
