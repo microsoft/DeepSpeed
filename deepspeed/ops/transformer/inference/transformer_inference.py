@@ -421,8 +421,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                 qkv_out = linear_func(input,
                                       attn_qkvw,
                                       attn_qkvb,
-                                      DeepSpeedTransformerInference.layer_id,
-                                      num_attention_heads_per_partition)
+                                      DeepSpeedTransformerInference.layer_id)
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32

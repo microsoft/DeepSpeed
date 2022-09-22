@@ -1239,7 +1239,7 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
 
 template <typename T>
 at::Tensor& residual_add_bias(at::Tensor& hidden_state,
-                              const at::Tensor& residual,
+                              at::Tensor& residual,
                               const at::Tensor& attention_output,
                               const at::Tensor& attention_bias,
                               const at::Tensor& final_bias,
@@ -1272,7 +1272,7 @@ at::Tensor& residual_add_bias(at::Tensor& hidden_state,
             bsz,
             mp_size,
             Context::Instance().GetCurrentStream());
-    return hidden_state;
+    return residual;
 }
 
 std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
