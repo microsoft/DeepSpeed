@@ -44,7 +44,7 @@ def test_quant_dequant(tensor_shape, groups):
 
     input_tensor = torch.rand((tensor_shape), dtype=torch.float16).cuda()
 
-    # 8 bit quantization.
+    # 8-bit quantization.
     ref_input_8bit = input_tensor.clone().detach()
     ds_input_8bit = input_tensor.clone().detach()
     ref_out_8bit = quantize_dequantize_ref(ref_input_8bit, 8, groups)
@@ -52,7 +52,7 @@ def test_quant_dequant(tensor_shape, groups):
     ds_out_8bit = run_quant_dequant(ds_input_8bit, groups, 8)
     assert (allclose(ds_out_8bit, ref_out_8bit))
 
-    # 4 bit quantization.
+    # 4-bit quantization.
     ref_input_4bit = input_tensor.clone().detach()
     ds_input_4bit = input_tensor.clone().detach()
     ref_out_4bit = quantize_dequantize_ref(ref_input_4bit, 4, groups)
