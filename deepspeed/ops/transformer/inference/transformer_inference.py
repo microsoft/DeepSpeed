@@ -640,7 +640,7 @@ class DeepSpeedMLPFunction(Function):
                                              output_w.scale,
                                              config.q_int8,
                                              config.mlp_act_func_type)
-        inference_cuda_module.residual_add(
+        residual_add_func(
             output,                # hidden state
             residual if config.pre_layer_norm else residual_add,      # residual
             input,                 # attention output
