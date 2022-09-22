@@ -47,7 +47,7 @@ inline int DS_GET_BLOCKS(const int N)
 
 class Context {
 public:
-    Context() : _workspace(nullptr), _seed(42), _curr_offset(0), _stream(0), _free_memory_size(0)
+    Context() : _workspace(nullptr), _seed(42), _curr_offset(0), _stream(0), _free_memory_size(0), _num_tokens(1)
     {
         if (cublasCreate(&_cublasHandle) != CUBLAS_STATUS_SUCCESS) {
             auto message = std::string("Fail to create cublas handle.");
@@ -136,7 +136,7 @@ public:
         return _token_length;
     }
 
-    inline void reset_tokens(unsigned initial_tokens = 0)
+    inline void reset_tokens(unsigned initial_tokens = 1)
     {
         _num_tokens = initial_tokens;
     }  //_token_length = 0; }
