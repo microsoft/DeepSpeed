@@ -107,7 +107,7 @@ void allocate_workspace(size_t hidden_dim,
                         unsigned num_layers,
                         size_t head_size = 128)
 {
-    size_t _workSpaceSize = 16 * (hidden_dim * batch_size * max_seq_len) +
+    size_t _workSpaceSize = 20 * (hidden_dim * batch_size * max_seq_len) +
                             (num_layers * batch_size * max_seq_len * hidden_dim * 2);  // KV-cache
     Context::Instance().GenWorkSpace(_workSpaceSize * sizeof(T));
 }
@@ -451,7 +451,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
     auto kv_cache = workspace + offset + (hidden_dim / heads) * (is_prompt ? 0 : soft_len - 1);
     size_t value_offset = bsz * MAX_OUT_TOKES * hidden_dim;
 
-    T* temp_buf = (T*)output.data_ptr() + at::numel(output);
+    T* temp_buf = (T*)kv_cache+value_offset+value_offset;
     launch_bias_add_transform_0213<T>((T*)query_cont,
                                       kv_cache,
                                       kv_cache + value_offset,
