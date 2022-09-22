@@ -45,7 +45,7 @@ inline auto get_attn_mask_stride(at::Tensor& attn_mask) -> int
         // Bert style models have always a mask stride of 1.
         return 1;
     } else if (trnsfrmr_type == TransformerType::UNKNOWN) {
-        throw std::runtime_error("Unknown transformer type.");
+        return 0;
     }
 
     // this is just to make the compiler happy.
