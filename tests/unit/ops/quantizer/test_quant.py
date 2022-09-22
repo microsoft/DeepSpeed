@@ -36,12 +36,14 @@ def run_quant_dequant(inputs, groups, bits):
 
 @pytest.mark.inference
 @pytest.mark.parametrize("tensor_shape", [(16, 4096), (128, 256)])
+# Test with two tensor shapes as (16, 4096) and (128, 256).
 @pytest.mark.parametrize("groups", [1, 16])
+# Test with number of quant groups as 1 and 16.
+# Note that we have an explicit boundary for groups as ((size / groups) - 1) / 4096 + 1) <= MAX_REG.
 def test_quant_dequant(tensor_shape, groups):
 
     input_tensor = torch.rand((tensor_shape), dtype=torch.float16).cuda()
 
-    # test 8bit quant/dequant on tensor partitioned in 1 group.
     ref_input_8bit_1group = input_tensor.clone().detach()
     ds_input_8bit_1group = input_tensor.clone().detach()
     ref_out_8bit_1group = quantize_dequantize_ref(ref_input_8bit_1group, 8, groups)
@@ -49,8 +51,6 @@ def test_quant_dequant(tensor_shape, groups):
     ds_out_8bit_1group = run_quant_dequant(ds_input_8bit_1group, groups, 8)
     assert (allclose(ds_out_8bit_1group, ref_out_8bit_1group))
 
-    # test 4bit quant/dequant on tensor partitioned into 16 groups.
-    # Note that we have an explicit boundary for groups as ((size / groups) - 1) / 4096 + 1) <= MAX_REG.
     ref_input_4bit_16group = input_tensor.clone().detach()
     ds_input_4bit_16group = input_tensor.clone().detach()
     ref_out_4bit_16group = quantize_dequantize_ref(ref_input_4bit_16group, 4, groups)
