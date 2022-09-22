@@ -248,6 +248,9 @@ class TestModelTask(DistributedTest):
                 device=local_rank,
                 framework="pt",
             )
+            # V100-16GB runs OOM if longer than 15
+            inf_kwargs['max_length'] = 15
+            inf_kwargs['min_length'] = 15
         else:
             pipe = pipeline(task, model=model, device=local_rank, framework="pt")
             if dtype == torch.half:
