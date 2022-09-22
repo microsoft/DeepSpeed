@@ -847,7 +847,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
     // Reallocate memory if we received a new prompt
-    if (!workspace || input.size(1) != 1) {
+    if (!workspace) {
         cublasSetStream(Context::Instance().GetCublasHandle(),
                         Context::Instance().GetCurrentStream());
         allocate_workspace<T>(input.size(2), input.size(0), num_layers);
@@ -1014,7 +1014,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                                Context::Instance().GetCurrentStream());
 
     if (q_int8) {
-        quantized_gemm<T>(intermediate, inp_norm, weight, q_scale, q_scale.size(0), bsz);
+        quantized_gemm<T>((T*)intermediate, (T*)inp_norm, weight, q_scale, q_scale.size(0), bsz);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -1029,8 +1029,8 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                        &alpha,
                        &gemm_beta,
                        (T*)weight.data_ptr(),
-                       inp_norm,
-                       intermediate,
+                       (T*)inp_norm,
+                       (T*)intermediate,
 #ifdef __HIP_PLATFORM_HCC__
                        rocblas_gemm_algo_standard);
 #else
@@ -1038,13 +1038,13 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
 #endif
     }
     if (act_func_type == ActivationFuncType::GELU) {
-        launch_bias_gelu(intermediate,
+        launch_bias_gelu((T*)intermediate,
                          (T*)bias.data_ptr(),
                          q_int8 ? weight.size(0) : weight.size(1),
                          bsz,
                          Context::Instance().GetCurrentStream());
     } else if (act_func_type == ActivationFuncType::ReLU) {
-        launch_bias_relu(intermediate,
+        launch_bias_relu((T*)intermediate,
                          (T*)bias.data_ptr(),
                          q_int8 ? weight.size(0) : weight.size(1),
                          bsz,

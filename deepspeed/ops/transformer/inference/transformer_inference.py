@@ -279,14 +279,6 @@ class DeepSpeedSelfAttentionFunction(Function):
 
         ###################### End of HF modeling_bloom addition ########################
 
-        def _split_heads(self, tensor, num_heads, attn_head_size):
-            """
-            Splits hidden_size dim into attn_head_size and num_heads
-            """
-            new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
-            tensor = tensor.view(new_shape)
-            return tensor.permute(0, 2, 1, 3)  # (batch, head, seq_length, head_features)
-
         def compute_attention(qkv_out, input_mask):
             no_masking = input_mask is None
 
@@ -377,9 +369,6 @@ class DeepSpeedSelfAttentionFunction(Function):
 
                 return context_layer, presents[0], presents[1] # atten_output, key_layer, value_layer
             else:
-                #query = self._split_heads(query, self.num_heads, self.head_dim)
-                #key = self._split_heads(key, self.num_heads, self.head_dim)
-                #value = self._split_heads(value, self.num_heads, self.head_dim)
                 # Note: This modification is added for the BLOOM-176B model and will be removed later!
                 if config.bigscience_bloom:
                     context_layer, presents = backup_attention(qkv_out, layer_past, alibi, input_mask, norm_factor)
@@ -641,12 +630,14 @@ class DeepSpeedMLPFunction(Function):
                                              output_w.scale,
                                              config.q_int8,
                                              config.mlp_act_func_type)
+            
+        residual = residual if config.pre_layer_norm else residual_add
         residual_add_func(
             output,                # hidden state
-            residual if config.pre_layer_norm else residual_add,      # residual
+            residual,              # residual
             input,                 # attention output
-            output_b,
             bias if bias is not None else output_b,
+            output_b,
             config.mp_size,         # model parallel size
             config.mlp_after_attn,  # whether mlp is after attention (GPTJ model architecture runs the MLP layer in parallel with attention)
             bias is not None,       # whether bias addition is fused
