@@ -15,6 +15,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #define MEGABYTE (1024 * 1024)
 #define GIGABYTE (1024 * 1024 * 1024)
 
+#define MAX_OUT_TOKENS 8192
 #define WARP_SIZE 32
 
 #define CUDA_CHECK(callstr)                                                                    \
@@ -82,7 +83,6 @@ public:
                       const size_t& batch_size,
                       const size_t& hidden_dim,
                       const unsigned& mp_size,
-                      const size_t& heads,
                       const bool& external_cache,
                       const size_t& elem_size,
                       const unsigned& rank)
@@ -96,16 +96,16 @@ public:
             (((_free_memory_size - (_free_memory_size > GIGABYTE ? 500 : 100) * MEGABYTE) /
               elem_size)) /
             (activation_size + cache_size);
-
-        if (rank == 0 && !_free_memory_size)
+        size_t workSpaceSize = (external_cache ? activation_size : (activation_size + cache_size)) *
+                               _max_seq_len * elem_size;
+        _max_seq_len = std::min((size_t)MAX_OUT_TOKENS, _max_seq_len);
+        if (rank == 0 && !_workspace)
             printf(
                 "Free memory : %lu (Bytes)  Total memory: %lu (Bytes)  Setting maximum total "
                 "tokens (input + output) to %lu \n",
                 _free_memory_size,
                 total_size,
                 _max_seq_len);
-        size_t workSpaceSize = (external_cache ? activation_size : (activation_size + cache_size)) *
-                               _max_seq_len * elem_size;
         if (!_workspace) {
             assert(_workspace == nullptr);
             cudaMalloc(&_workspace, workSpaceSize);

@@ -279,6 +279,14 @@ class DeepSpeedSelfAttentionFunction(Function):
 
         ###################### End of HF modeling_bloom addition ########################
 
+        def _split_heads(self, tensor, num_heads, attn_head_size):
+            """
+            Splits hidden_size dim into attn_head_size and num_heads
+            """
+            new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
+            tensor = tensor.view(new_shape)
+            return tensor.permute(0, 2, 1, 3)  # (batch, head, seq_length, head_features)
+
         def compute_attention(qkv_out, input_mask):
             no_masking = input_mask is None
 
@@ -369,6 +377,9 @@ class DeepSpeedSelfAttentionFunction(Function):
 
                 return context_layer, presents[0], presents[1] # atten_output, key_layer, value_layer
             else:
+                #query = self._split_heads(query, self.num_heads, self.head_dim)
+                #key = self._split_heads(key, self.num_heads, self.head_dim)
+                #value = self._split_heads(value, self.num_heads, self.head_dim)
                 # Note: This modification is added for the BLOOM-176B model and will be removed later!
                 if config.bigscience_bloom:
                     context_layer, presents = backup_attention(qkv_out, layer_past, alibi, input_mask, norm_factor)
@@ -379,7 +390,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                         offset = dist.get_rank() * batch_heads if dist.is_initialized(
                         ) else 0
                         sliced_alibi = alibi[offset:batch_heads + offset, :, :]
-
+#
                     attn_key_value = score_context_func(
                         qkv_out,
                         ((1 - input_mask).to(qkv_out.dype) *
@@ -403,7 +414,6 @@ class DeepSpeedSelfAttentionFunction(Function):
             vector_matmul_func = inference_cuda_module.vector_matmul_fp16 if config.fp16 else \
                                     inference_cuda_module.vector_matmul_fp32
 
-            head_size = (attn_qkvw.shape[-1] // 3 // num_attention_heads_per_partition)
             if not config.pre_layer_norm:
                 linear_func = inference_cuda_module.linear_layer_fp16 if config.fp16 else \
                                     inference_cuda_module.linear_layer_fp32
@@ -412,7 +422,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                       attn_qkvw,
                                       attn_qkvb,
                                       DeepSpeedTransformerInference.layer_id,
-                                      head_size)
+                                      num_attention_heads_per_partition)
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32

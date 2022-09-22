@@ -22,7 +22,8 @@ __global__ void bias_add_transform_0213(float* output,
                                         int rotary_dim,
                                         bool rotate_half,
                                         bool rotate_every_two,
-                                        int head_ext)
+                                        int head_ext,
+                                        int max_out_tokens)
 {
     int d0_stride = hidden_dim * seq_length;
     int d1_stride = hidden_dim;
@@ -34,8 +35,8 @@ __global__ void bias_add_transform_0213(float* output,
     int d2 = threadIdx.y + (blockIdx.z % head_ext) * (heads / head_ext);  // Head (0-11)
     int d3 = threadIdx.x;                                                 // Values (groups of 4)
 
-    int d2_out_stride = d2_stride * (cnt == 0 ? seq_length : MAX_OUT_TOKES);
-    int d0_out_stride = hidden_dim * (cnt == 0 ? seq_length : MAX_OUT_TOKES);
+    int d2_out_stride = d2_stride * (cnt == 0 ? seq_length : max_out_tokens);
+    int d0_out_stride = hidden_dim * (cnt == 0 ? seq_length : max_out_tokens);
 
     const float4* vals_vec = reinterpret_cast<const float4*>(vals);
     float4* output_vec =
@@ -86,7 +87,8 @@ __global__ void bias_add_transform_0213(__half* output,  // q
                                         int rotary_dim,
                                         bool rotate_half,
                                         bool rotate_every_two,
-                                        int head_ext)
+                                        int head_ext,
+                                        int max_out_tokens)
 {
 #if __CUDA_ARCH__ >= 700
 
@@ -101,8 +103,8 @@ __global__ void bias_add_transform_0213(__half* output,  // q
     int d2 = threadIdx.y + (blockIdx.z % head_ext) * (heads / head_ext);  // Head (0-11)
     int d3 = threadIdx.x;                                                 // Values (groups of 4)
 
-    int d2_out_stride = d2_stride * (cnt == 0 ? seq_length : MAX_OUT_TOKES);
-    int d0_out_stride = hidden_dim * (cnt == 0 ? seq_length : MAX_OUT_TOKES);
+    int d2_out_stride = d2_stride * (cnt == 0 ? seq_length : max_out_tokens);
+    int d0_out_stride = hidden_dim * (cnt == 0 ? seq_length : max_out_tokens);
 
     float4 vals_arr;
     float4 output_arr;
@@ -165,7 +167,8 @@ void launch_bias_add_transform_0213<float>(float* output,
                                            bool rotate_half,
                                            bool rotate_every_two,
                                            cudaStream_t stream,
-                                           int trans_count)
+                                           int trans_count,
+                                           int max_out_tokens)
 {
     hidden_dim >>= 2;
     int head_ext = (hidden_dim - 1) / MAX_THREADS + 1;
@@ -185,7 +188,8 @@ void launch_bias_add_transform_0213<float>(float* output,
                                                                 rotary_dim >> 2,
                                                                 rotate_half,
                                                                 rotate_every_two,
-                                                                head_ext);
+                                                                head_ext,
+                                                                max_out_tokens);
 }
 template <typename T>
 void launch_bias_add_transform_0213(T* outputs,
@@ -203,7 +207,8 @@ void launch_bias_add_transform_0213(T* outputs,
                                     bool rotate_half,
                                     bool rotate_every_two,
                                     cudaStream_t stream,
-                                    int trans_count);
+                                    int trans_count,
+                                    int max_out_tokens);
 template <>
 void launch_bias_add_transform_0213<__half>(__half* output,
                                             __half* k_cache,
@@ -220,7 +225,8 @@ void launch_bias_add_transform_0213<__half>(__half* output,
                                             bool rotate_half,
                                             bool rotate_every_two,
                                             cudaStream_t stream,
-                                            int trans_count)
+                                            int trans_count,
+                                            int max_out_tokens)
 {
     hidden_dim >>= 3;
     int head_ext = 1;  // (hidden_dim - 1) / MAX_THREADS + 1;
@@ -239,7 +245,8 @@ void launch_bias_add_transform_0213<__half>(__half* output,
                                                                 rotary_dim >> 3,
                                                                 rotate_half,
                                                                 rotate_every_two,
-                                                                head_ext);
+                                                                head_ext,
+                                                                max_out_tokens);
 }
 
 // Bias add

@@ -106,11 +106,15 @@ void allocate_workspace(size_t hidden_dim,
                         unsigned num_layers,
                         unsigned mp_size = 1,
                         bool external_cache = false,
-                        unsigned rank = 0,
-                        size_t head_size = 128)
+                        unsigned rank = 0)
 {
-    Context::Instance().GenWorkSpace(
-        num_layers, batch_size, hidden_dim, mp_size, head_size, external_cache, sizeof(T), rank);
+    Context::Instance().GenWorkSpace(num_layers, 
+                                    batch_size,
+                                    hidden_dim,
+                                    mp_size, 
+                                    external_cache, 
+                                    sizeof(T), 
+                                    rank);
 }
 
 template <typename T>
@@ -128,7 +132,7 @@ at::Tensor einsum_sec_sm_ecm(at::Tensor& Q, at::Tensor& W)
     /*
     // Reallocate memory if we received a new prompt
     if (!workspace || input.size(1) != 1) {
-        allocate_workspace<T>(W.size(1), MAX_OUT_TOKES, Q.size(0), 1, head_size);
+        allocate_workspace<T>(W.size(1), Context::Instance().GetMaxTokenLenght(), Q.size(0), 1, head_size);
         workspace = (T*)Context::Instance().GetWorkSpace();
     }
     */
@@ -359,8 +363,8 @@ void attention_unfused(T* prev_key_cont,
     } else {
         // If we are doing the prompt, switch to the tail workspace
         T* scratch = (T*)Context::Instance().GetWorkSpace();
-        workspace = scratch + (Context::Instance().get_workspace_size() / sizeof(T)) -
-                    bsz * heads * seq_len * seq_len;
+        workspace = scratch + ((Context::Instance().get_workspace_size() / sizeof(T)) -
+                                bsz * heads * seq_len * soft_len);
     }
 
     cublasSetStream(Context::Instance().GetCublasHandle(), Context::Instance().GetCurrentStream());
@@ -375,7 +379,7 @@ void attention_unfused(T* prev_key_cont,
                                 workspace,
                                 CUBLAS_OP_T,
                                 CUBLAS_OP_N,
-                                MAX_OUT_TOKES * k,
+                                Context::Instance().GetMaxTokenLenght() * k,
                                 seq_len * k,
                                 seq_len * soft_len,
                                 bsz * heads,
@@ -408,7 +412,7 @@ void attention_unfused(T* prev_key_cont,
                                 (T*)output,
                                 CUBLAS_OP_N,
                                 CUBLAS_OP_N,
-                                MAX_OUT_TOKES * k,
+                                Context::Instance().GetMaxTokenLenght() * k,
                                 seq_len * soft_len,
                                 seq_len * k,
                                 bsz * heads,
@@ -457,11 +461,10 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
 
     auto query_cont = workspace + 8 * buf_size;
     size_t offset =
-        16 * (hidden_dim * bsz * MAX_OUT_TOKES) + layer_id * 2 * bsz * MAX_OUT_TOKES * hidden_dim;
-
+        16 * (hidden_dim * bsz * Context::Instance().GetMaxTokenLenght()) + layer_id * 2 * bsz * Context::Instance().GetMaxTokenLenght() * hidden_dim;
     unsigned all_tokens = soft_len;
     auto kv_cache = workspace + offset + (hidden_dim / heads) * (is_prompt ? 0 : soft_len - 1);
-    size_t value_offset = bsz * MAX_OUT_TOKES * hidden_dim;
+    size_t value_offset = bsz * Context::Instance().GetMaxTokenLenght() * hidden_dim;
 
     T* temp_buf = (T*)output.data_ptr() + at::numel(output);
     launch_bias_add_transform_0213<T>((T*)query_cont,
@@ -479,7 +482,8 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                       rotate_half,
                                       rotate_every_two,
                                       Context::Instance().GetCurrentStream(),
-                                      3);
+                                      3,
+                                      Context::Instance().GetMaxTokenLenght());
     if (rotary_dim > 0 && rotate_half)
         launch_apply_rotary_pos_emb(query_cont,
                                     kv_cache,
@@ -491,7 +495,8 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                     bsz,
                                     rotate_half,
                                     rotate_every_two,
-                                    Context::Instance().GetCurrentStream());
+                                    Context::Instance().GetCurrentStream(),
+                                    Context::Instance().GetMaxTokenLenght());
 
     attention_unfused<T>(workspace + offset,
                          (T*)query_cont,
@@ -835,8 +840,7 @@ template <typename T>
 at::Tensor ds_linear_layer(at::Tensor& input,
                            at::Tensor& weight,
                            at::Tensor& bias,
-                           unsigned num_layers,
-                           unsigned head_size)
+                           unsigned num_layers)
 {
     auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
@@ -852,7 +856,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
         cublasSetStream(Context::Instance().GetCublasHandle(),
                         Context::Instance().GetCurrentStream());
         allocate_workspace<T>(
-            input.size(2), input.size(1), MAX_OUT_TOKES, input.size(0), num_layers, head_size);
+            input.size(2), input.size(0), num_layers);
         workspace = (T*)Context::Instance().GetWorkSpace();
     }
     auto output = at::from_blob(workspace, {input.size(0), input.size(1), weight.size(1)}, options);
@@ -1318,7 +1322,8 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                            bsz,
                                            rotate_half,
                                            rotate_every_two,
-                                           Context::Instance().GetCurrentStream());
+                                           Context::Instance().GetCurrentStream(),
+                                           Context::Instance().GetMaxTokenLenght());
     else
         launch_apply_rotary_pos_emb<__half>((__half*)query_cont.data_ptr(),
                                             (__half*)key_cont.data_ptr(),
@@ -1330,7 +1335,8 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                             bsz,
                                             rotate_half,
                                             rotate_every_two,
-                                            Context::Instance().GetCurrentStream());
+                                            Context::Instance().GetCurrentStream(),
+                                            Context::Instance().GetMaxTokenLenght());
     return {query_cont, key_cont};
 }
 
