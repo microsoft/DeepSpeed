@@ -278,7 +278,7 @@ class DeepSpeedSelfAttentionFunction(Function):
             return context_layer, presents
 
         ###################### End of HF modeling_bloom addition ########################
-        
+
         def compute_attention(qkv_out, input_mask):
             no_masking = input_mask is None
 
