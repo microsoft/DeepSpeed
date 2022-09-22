@@ -108,13 +108,8 @@ void allocate_workspace(size_t hidden_dim,
                         bool external_cache = false,
                         unsigned rank = 0)
 {
-    Context::Instance().GenWorkSpace(num_layers, 
-                                    batch_size,
-                                    hidden_dim,
-                                    mp_size, 
-                                    external_cache, 
-                                    sizeof(T), 
-                                    rank);
+    Context::Instance().GenWorkSpace(
+        num_layers, batch_size, hidden_dim, mp_size, external_cache, sizeof(T), rank);
 }
 
 template <typename T>
@@ -132,8 +127,8 @@ at::Tensor einsum_sec_sm_ecm(at::Tensor& Q, at::Tensor& W)
     /*
     // Reallocate memory if we received a new prompt
     if (!workspace || input.size(1) != 1) {
-        allocate_workspace<T>(W.size(1), Context::Instance().GetMaxTokenLenght(), Q.size(0), 1, head_size);
-        workspace = (T*)Context::Instance().GetWorkSpace();
+        allocate_workspace<T>(W.size(1), Context::Instance().GetMaxTokenLenght(), Q.size(0), 1,
+    head_size); workspace = (T*)Context::Instance().GetWorkSpace();
     }
     */
 
@@ -364,7 +359,7 @@ void attention_unfused(T* prev_key_cont,
         // If we are doing the prompt, switch to the tail workspace
         T* scratch = (T*)Context::Instance().GetWorkSpace();
         workspace = scratch + ((Context::Instance().get_workspace_size() / sizeof(T)) -
-                                bsz * heads * seq_len * soft_len);
+                               bsz * heads * seq_len * soft_len);
     }
 
     cublasSetStream(Context::Instance().GetCublasHandle(), Context::Instance().GetCurrentStream());
@@ -460,8 +455,8 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
     auto output = torch::from_blob(workspace + 4 * buf_size, {bsz, seq_len, hidden_dim}, options);
 
     auto query_cont = workspace + 8 * buf_size;
-    size_t offset =
-        16 * (hidden_dim * bsz * Context::Instance().GetMaxTokenLenght()) + layer_id * 2 * bsz * Context::Instance().GetMaxTokenLenght() * hidden_dim;
+    size_t offset = 16 * (hidden_dim * bsz * Context::Instance().GetMaxTokenLenght()) +
+                    layer_id * 2 * bsz * Context::Instance().GetMaxTokenLenght() * hidden_dim;
     unsigned all_tokens = soft_len;
     auto kv_cache = workspace + offset + (hidden_dim / heads) * (is_prompt ? 0 : soft_len - 1);
     size_t value_offset = bsz * Context::Instance().GetMaxTokenLenght() * hidden_dim;
@@ -855,8 +850,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
     if (!workspace || input.size(1) != 1) {
         cublasSetStream(Context::Instance().GetCublasHandle(),
                         Context::Instance().GetCurrentStream());
-        allocate_workspace<T>(
-            input.size(2), input.size(0), num_layers);
+        allocate_workspace<T>(input.size(2), input.size(0), num_layers);
         workspace = (T*)Context::Instance().GetWorkSpace();
     }
     auto output = at::from_blob(workspace, {input.size(0), input.size(1), weight.size(1)}, options);

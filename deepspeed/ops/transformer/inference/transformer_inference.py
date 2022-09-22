@@ -390,6 +390,8 @@ class DeepSpeedSelfAttentionFunction(Function):
                         offset = dist.get_rank() * batch_heads if dist.is_initialized(
                         ) else 0
                         sliced_alibi = alibi[offset:batch_heads + offset, :, :]
+
+
 #
                     attn_key_value = score_context_func(
                         qkv_out,

@@ -226,11 +226,25 @@ void launch_apply_rotary_pos_emb(T* mixed_query,
     dim3 block_dims(1024);
     dim3 grid_dims((total_count - 1) / MAX_WARP_NUM + 1);  // (batch_size);
     if (rotate_every_two)
-        apply_rotary_pos_emb<<<grid_dims, block_dims, 0, stream>>>(
-            mixed_query, key_layer, rotary_dim, seq_len, offset, num_heads, head_size, total_count, max_out_tokens);
+        apply_rotary_pos_emb<<<grid_dims, block_dims, 0, stream>>>(mixed_query,
+                                                                   key_layer,
+                                                                   rotary_dim,
+                                                                   seq_len,
+                                                                   offset,
+                                                                   num_heads,
+                                                                   head_size,
+                                                                   total_count,
+                                                                   max_out_tokens);
     else if (rotate_half)
-        apply_rotary_pos_emb1<<<grid_dims, block_dims, 0, stream>>>(
-            mixed_query, key_layer, rotary_dim, seq_len, offset, num_heads, head_size, total_count, max_out_tokens);
+        apply_rotary_pos_emb1<<<grid_dims, block_dims, 0, stream>>>(mixed_query,
+                                                                    key_layer,
+                                                                    rotary_dim,
+                                                                    seq_len,
+                                                                    offset,
+                                                                    num_heads,
+                                                                    head_size,
+                                                                    total_count,
+                                                                    max_out_tokens);
 }
 
 template void launch_apply_rotary_pos_emb<float>(float*,
@@ -256,7 +270,7 @@ template void launch_apply_rotary_pos_emb<__half>(__half*,
                                                   bool,
                                                   bool,
                                                   cudaStream_t,
-                                                  int );
+                                                  int);
 
 /*
 __global__ void apply_rotary_pos_emb(float* mixed_query,
