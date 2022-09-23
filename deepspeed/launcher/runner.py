@@ -358,10 +358,9 @@ def main(args=None):
 
     # respect CUDA_VISIBLE_DEVICES for a single node and no explicit resource filters
     cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
-    if not resource_pool and len(cuda_visible_devices):
+    if not resource_pool and cuda_visible_devices:
         detected_str = f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices}"
-        if len(args.include) or len(
-                args.exclude) or args.num_nodes > 1 or args.num_gpus > 0:
+        if args.include or args.exclude or args.num_nodes != -1 or args.num_gpus != -1:
             print(
                 f"{detected_str} but ignoring it because one or several of --include/--exclude/--num_gpus/--num_nodes cl args were used. If you want to use CUDA_VISIBLE_DEVICES don't pass any of these arguments to deepspeed."
             )
@@ -370,8 +369,8 @@ def main(args=None):
             print(f"{detected_str}: setting --include={args.include}")
         del os.environ["CUDA_VISIBLE_DEVICES"]
 
-    if args.num_nodes >= 0 or args.num_gpus >= 0:
-        if args.include != "" or args.exclude != "":
+    if args.num_nodes != -1 or args.num_gpus != -1:
+        if args.include or args.exclude:
             raise ValueError("Cannot specify num_nodes/gpus with include/exclude")
 
     multi_node_exec = True
