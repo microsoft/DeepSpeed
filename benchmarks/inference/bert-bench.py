@@ -12,6 +12,7 @@ parser.add_argument("--max-tokens", type=int, default=50, help="max new tokens")
 parser.add_argument("--local_rank", type=int, default=0, help="local rank")
 parser.add_argument("--trials", type=int, default=30, help="number of trials")
 parser.add_argument("--kernel-inject", action="store_true", help="inject kernels on")
+parser.add_argument("--graphs", action="store_true", help="CUDA Graphs on")
 args = parser.parse_args()
 
 
@@ -64,7 +65,7 @@ if args.deepspeed:
                                           mp_size=1,
                                           replace_with_kernel_inject=args.kernel_inject,
                                           replace_method='auto',
-                                          enable_cuda_graph=True)
+                                          enable_cuda_graph=args.graphs)
     pipe.model.profile_model_time()
 
 responses = []

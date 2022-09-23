@@ -527,7 +527,8 @@ class InferenceEngine(Module):
             raise ValueError(
                 "Model times are empty and cuda graph is enabled. If "
                 "this is a GPT-style model this combo is not supported. If this is a "
-                "BERT-style model this is a bug, please report it.")
+                "BERT-style model this is a bug, please report it. "
+                f"Model type is: {type(self.module)}")
         self._model_times = []
         return model_times
 
