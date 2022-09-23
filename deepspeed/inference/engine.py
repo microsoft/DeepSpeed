@@ -382,7 +382,8 @@ class InferenceEngine(Module):
                                   training_mp_size=training_mp_size,
                                   checkpoint_dict=checkpoint,
                                   save_mp_checkpoint_path=save_mp_checkpoint_path,
-                                  base_dir=base_dir)
+                                  base_dir=base_dir,
+                                  enable_cuda_graph=self.enable_cuda_graph)
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
         ckpt_file_pattern = self._get_ckpt_name(checkpoints_path,
@@ -522,6 +523,11 @@ class InferenceEngine(Module):
     def model_times(self):
         assert self.model_profile_enabled, "model profiling is not enabled"
         model_times = self._model_times
+        if self.enable_cuda_graph and len(self._model_times) == 0:
+            raise ValueError(
+                "Model times are empty and cuda graph is enabled. If "
+                "this is a GPT-style model this combo is not supported. If this is a "
+                "BERT-style model this is a bug, please report it.")
         self._model_times = []
         return model_times
 
