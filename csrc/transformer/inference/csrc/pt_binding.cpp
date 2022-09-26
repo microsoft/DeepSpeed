@@ -1,5 +1,11 @@
 /*
 Copyright 2022 The Microsoft DeepSpeed Team
+
+NOTE:
+Naming convention:
+ds_<funciton_name>_inf : Function used in inference
+ds_<function_name>_ut  : Function used only in unitests
+_<funciton_name>       : Helper function used only in pt_binding.cpp
 */
 
 #include <c10/cuda/CUDAStream.h>
