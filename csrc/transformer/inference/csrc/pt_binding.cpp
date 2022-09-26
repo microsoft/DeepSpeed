@@ -1434,8 +1434,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("residual_add_bias_fp16",
           &ds_residual_add_bias_inf<__half>,
           "DeepSpeed residual add with fp16 (CUDA)");
-    m.def(
-        "apply_rotary_pos_emb_inf", &ds_apply_rotary_pos_emb_inf, "DeepSpeed mlp with fp16 (CUDA)");
+    m.def("apply_rotary_pos_emb", &ds_apply_rotary_pos_emb_inf, "DeepSpeed mlp with fp16 (CUDA)");
     m.def("einsum_sec_sm_ecm_fp32",
           &ds_einsum_sec_sm_ecm_inf<float>,
           "DeepSpeed vector-MM with fp32 (CUDA)");
@@ -1443,5 +1442,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("einsum_sec_sm_ecm_fp16",
           &ds_einsum_sec_sm_ecm_inf<__half>,
           "DeepSpeed vector-MM with fp16 (CUDA)");
-    m.def("moe_res_matmul_inf", &ds_moe_res_matmul_inf, "DeepSpeed moe residual matmul (CUDA)");
+    m.def("moe_res_matmul", &ds_moe_res_matmul_inf, "DeepSpeed moe residual matmul (CUDA)");
 }
