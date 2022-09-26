@@ -54,16 +54,16 @@ inline auto _get_attn_mask_stride(at::Tensor& attn_mask) -> int
 
 template <typename T>
 at::Tensor ds_softmax_inf(at::Tensor& attn_scores,
-                      at::Tensor& attn_mask,
-                      at::Tensor& alibi,
-                      bool triangular,
-                      bool recompute,
-                      bool local_attention,
-                      int window_size,
-                      bool async_op,
-                      float layer_scale,
-                      int head_offset,
-                      int mp_size)
+                          at::Tensor& attn_mask,
+                          at::Tensor& alibi,
+                          bool triangular,
+                          bool recompute,
+                          bool local_attention,
+                          int window_size,
+                          bool async_op,
+                          float layer_scale,
+                          int head_offset,
+                          int mp_size)
 {
     auto attn_scores_c = attn_scores.contiguous();
     int bsz = attn_scores_c.size(0);
@@ -102,11 +102,11 @@ at::Tensor ds_softmax_inf(at::Tensor& attn_scores,
 
 template <typename T>
 void _allocate_workspace(size_t hidden_dim,
-                        size_t batch_size,
-                        unsigned num_layers,
-                        unsigned mp_size = 1,
-                        bool external_cache = false,
-                        unsigned rank = 0)
+                         size_t batch_size,
+                         unsigned num_layers,
+                         unsigned mp_size = 1,
+                         bool external_cache = false,
+                         unsigned rank = 0)
 {
     Context::Instance().GenWorkSpace(
         num_layers, batch_size, hidden_dim, mp_size, external_cache, sizeof(T), rank);
@@ -157,19 +157,19 @@ at::Tensor ds_einsum_sec_sm_ecm_inf(at::Tensor& Q, at::Tensor& W)
 
 template <typename T>
 void _attention_unfused(at::Tensor& prev_key_cont,
-                       at::Tensor& query_cont,
-                       at::Tensor& attn_mask,
-                       at::Tensor& prev_value_cont,
-                       at::Tensor& output,
-                       int& bsz,
-                       int& seq_len,
-                       int& soft_len,
-                       int& heads,
-                       float& norm_factor,
-                       bool triangular,
-                       bool recompute,
-                       bool local_attention,
-                       int window_size)
+                        at::Tensor& query_cont,
+                        at::Tensor& attn_mask,
+                        at::Tensor& prev_value_cont,
+                        at::Tensor& output,
+                        int& bsz,
+                        int& seq_len,
+                        int& soft_len,
+                        int& heads,
+                        float& norm_factor,
+                        bool triangular,
+                        bool recompute,
+                        bool local_attention,
+                        int window_size)
 {
     auto options = at::TensorOptions()
                        .dtype(query_cont.options().dtype())
@@ -245,18 +245,18 @@ void _attention_unfused(at::Tensor& prev_key_cont,
 
 template <typename T>
 std::vector<at::Tensor> ds_softmax_context1_inf(at::Tensor& query,
-                                            at::Tensor& prev_key,
-                                            at::Tensor& new_key,
-                                            at::Tensor& attn_mask,
-                                            at::Tensor& prev_value,
-                                            at::Tensor& new_value,
-                                            int heads,
-                                            float norm_factor,
-                                            bool merging,
-                                            bool triangular,
-                                            bool local_attention,
-                                            int window_size,
-                                            bool no_masking)
+                                                at::Tensor& prev_key,
+                                                at::Tensor& new_key,
+                                                at::Tensor& attn_mask,
+                                                at::Tensor& prev_value,
+                                                at::Tensor& new_value,
+                                                int heads,
+                                                float norm_factor,
+                                                bool merging,
+                                                bool triangular,
+                                                bool local_attention,
+                                                int window_size,
+                                                bool no_masking)
 {
     auto query_cont = query.contiguous();
     auto prev_key_cont = prev_key.contiguous();
@@ -279,36 +279,36 @@ std::vector<at::Tensor> ds_softmax_context1_inf(at::Tensor& query,
     auto output =
         at::empty({prev_value.size(0), heads, seq_len, prev_value.size(2) / heads}, options);
     _attention_unfused<T>(prev_key_cont,
-                         query_cont,
-                         attn_mask,  //(no_masking ? nullptr : (T*)attn_mask.data_ptr()),
-                         prev_value_cont,
-                         output,
-                         bsz,
-                         seq_len,
-                         soft_len,
-                         heads,
-                         norm_factor,
-                         (triangular && (new_size == 0)),
-                         (new_size == 0),
-                         local_attention,
-                         window_size);
+                          query_cont,
+                          attn_mask,  //(no_masking ? nullptr : (T*)attn_mask.data_ptr()),
+                          prev_value_cont,
+                          output,
+                          bsz,
+                          seq_len,
+                          soft_len,
+                          heads,
+                          norm_factor,
+                          (triangular && (new_size == 0)),
+                          (new_size == 0),
+                          local_attention,
+                          window_size);
 
     return {output, prev_key, prev_value};
 }
 
 template <typename T>
 void _softmax(T* attn_scores,
-                         at::Tensor& attn_mask,
-                         at::Tensor& alibi,
-                         float& layer_scale,
-                         bool triangular,
-                         bool recompute,
-                         bool local_attention,
-                         int window_size,
-                         int bsz,
-                         int seq_len,
-                         int soft_len,
-                         int heads)
+              at::Tensor& attn_mask,
+              at::Tensor& alibi,
+              float& layer_scale,
+              bool triangular,
+              bool recompute,
+              bool local_attention,
+              int window_size,
+              int bsz,
+              int seq_len,
+              int soft_len,
+              int heads)
 {
     auto mask_stride = _get_attn_mask_stride(attn_mask);
 
@@ -332,22 +332,22 @@ void _softmax(T* attn_scores,
 
 template <typename T>
 void _attention_unfused(T* prev_key_cont,
-                       T* query_cont,
-                       at::Tensor& attn_mask,
-                       T* prev_value_cont,
-                       T* output,
-                       unsigned& bsz,
-                       int& k,
-                       unsigned& seq_len,
-                       unsigned& soft_len,
-                       int& heads,
-                       float& norm_factor,
-                       bool triangular,
-                       bool recompute,
-                       bool local_attention,
-                       int window_size,
-                       at::Tensor& alibi,
-                       int layer_id)
+                        T* query_cont,
+                        at::Tensor& attn_mask,
+                        T* prev_value_cont,
+                        T* output,
+                        unsigned& bsz,
+                        int& k,
+                        unsigned& seq_len,
+                        unsigned& soft_len,
+                        int& heads,
+                        float& norm_factor,
+                        bool triangular,
+                        bool recompute,
+                        bool local_attention,
+                        int window_size,
+                        at::Tensor& alibi,
+                        int layer_id)
 {
     float layer_scale = alibi.sizes().size() > 1 ? std::max(1, layer_id) : 1.0;
     float alpha = norm_factor * norm_factor / layer_scale;
@@ -384,17 +384,17 @@ void _attention_unfused(T* prev_key_cont,
                                 CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
     _softmax<T>(workspace,
-                           attn_mask,
-                           alibi,
-                           layer_scale,
-                           triangular,
-                           recompute,
-                           local_attention,
-                           window_size,
-                           bsz,
-                           seq_len,
-                           soft_len,
-                           heads);
+                attn_mask,
+                alibi,
+                layer_scale,
+                triangular,
+                recompute,
+                local_attention,
+                window_size,
+                bsz,
+                seq_len,
+                soft_len,
+                heads);
     alpha = 1.0;
     cublas_strided_batched_gemm(Context::Instance().GetCublasHandle(),
                                 k,
@@ -420,19 +420,19 @@ void _attention_unfused(T* prev_key_cont,
 
 template <typename T>
 std::vector<at::Tensor> ds_softmax_context_inf(at::Tensor& query_key_value,
-                                           at::Tensor& attn_mask,
-                                           int rotary_dim,
-                                           bool rotate_half,
-                                           bool rotate_every_two,
-                                           int heads,
-                                           float norm_factor,
-                                           bool triangular,
-                                           bool local_attention,
-                                           int window_size,
-                                           bool no_masking,
-                                           unsigned layer_id,
-                                           unsigned num_layers,
-                                           at::Tensor& alibi)
+                                               at::Tensor& attn_mask,
+                                               int rotary_dim,
+                                               bool rotate_half,
+                                               bool rotate_every_two,
+                                               int heads,
+                                               float norm_factor,
+                                               bool triangular,
+                                               bool local_attention,
+                                               int window_size,
+                                               bool no_masking,
+                                               unsigned layer_id,
+                                               unsigned num_layers,
+                                               at::Tensor& alibi)
 {
     unsigned bsz = query_key_value.size(0);
     unsigned seq_len = query_key_value.size(1);
@@ -494,22 +494,22 @@ std::vector<at::Tensor> ds_softmax_context_inf(at::Tensor& query_key_value,
                                     Context::Instance().GetMaxTokenLenght());
 
     _attention_unfused<T>(workspace + offset,
-                         (T*)query_cont,
-                         attn_mask,
-                         workspace + offset + value_offset,
-                         temp_buf,
-                         bsz,
-                         k,
-                         seq_len,
-                         all_tokens,
-                         heads,
-                         norm_factor,
-                         (triangular && is_prompt),
-                         is_prompt,
-                         local_attention,
-                         window_size,
-                         alibi,
-                         layer_id);
+                          (T*)query_cont,
+                          attn_mask,
+                          workspace + offset + value_offset,
+                          temp_buf,
+                          bsz,
+                          k,
+                          seq_len,
+                          all_tokens,
+                          heads,
+                          norm_factor,
+                          (triangular && is_prompt),
+                          is_prompt,
+                          local_attention,
+                          window_size,
+                          alibi,
+                          layer_id);
     launch_transform4d_0213<T>((T*)output.data_ptr(),
                                temp_buf,
                                bsz,
@@ -592,7 +592,10 @@ at::Tensor ds_bias_residual_inf(at::Tensor& input, at::Tensor& residual, at::Ten
 }
 
 template <typename T>
-at::Tensor ds_layernorm_inf(at::Tensor& input_cont, at::Tensor& gamma, at::Tensor& betta, float epsilon)
+at::Tensor ds_layernorm_inf(at::Tensor& input_cont,
+                            at::Tensor& gamma,
+                            at::Tensor& betta,
+                            float epsilon)
 {
     int bsz = input_cont.size(0) * input_cont.size(1);
     auto inp_norm = at::empty_like(input_cont);
@@ -609,10 +612,10 @@ at::Tensor ds_layernorm_inf(at::Tensor& input_cont, at::Tensor& gamma, at::Tenso
 
 template <typename T>
 void _layernorm(T* workspace,
-                           at::Tensor& input,
-                           at::Tensor& gamma,
-                           at::Tensor& betta,
-                           float epsilon)
+                at::Tensor& input,
+                at::Tensor& gamma,
+                at::Tensor& betta,
+                float epsilon)
 {
     int bsz = input.size(0) * input.size(1);
     launch_layer_norm(workspace,
@@ -627,11 +630,11 @@ void _layernorm(T* workspace,
 
 template <typename T>
 void _quantized_gemm(void* output,
-                    T* input,
-                    at::Tensor& weight,
-                    at::Tensor& qscale,
-                    int groups,
-                    int bsz)
+                     T* input,
+                     at::Tensor& weight,
+                     at::Tensor& qscale,
+                     int groups,
+                     int bsz)
 {
     T* weight16 = (T*)Context::Instance().GetWorkSpace() +
                   12 * Context::Instance().GetMaxTokenLenght() * weight.size(1);
@@ -666,15 +669,15 @@ void _quantized_gemm(void* output,
 
 template <typename T>
 at::Tensor _qkv_unfused_cublas(at::Tensor& output,
-                              at::Tensor& input,
-                              at::Tensor& weight,
-                              at::Tensor& q_scale,
-                              at::Tensor& bias,
-                              at::Tensor& gamma,
-                              at::Tensor& beta,
-                              const float epsilon,
-                              bool add_bias,
-                              bool q_int8)
+                               at::Tensor& input,
+                               at::Tensor& weight,
+                               at::Tensor& q_scale,
+                               at::Tensor& bias,
+                               at::Tensor& gamma,
+                               at::Tensor& beta,
+                               const float epsilon,
+                               bool add_bias,
+                               bool q_int8)
 {
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
@@ -717,18 +720,18 @@ at::Tensor _qkv_unfused_cublas(at::Tensor& output,
 
 template <typename T>
 std::vector<at::Tensor> ds_qkv_gemm_inf(at::Tensor& input,
-                                    at::Tensor& weight,
-                                    at::Tensor& q_scale,
-                                    at::Tensor& bias,
-                                    at::Tensor& gamma,
-                                    at::Tensor& beta,
-                                    const float epsilon,
-                                    bool add_bias,
-                                    unsigned num_layers,
-                                    bool external_cache,
-                                    unsigned mp_size,
-                                    unsigned rank,
-                                    bool q_int8)
+                                        at::Tensor& weight,
+                                        at::Tensor& q_scale,
+                                        at::Tensor& bias,
+                                        at::Tensor& gamma,
+                                        at::Tensor& beta,
+                                        const float epsilon,
+                                        bool add_bias,
+                                        unsigned num_layers,
+                                        bool external_cache,
+                                        unsigned mp_size,
+                                        unsigned rank,
+                                        bool q_int8)
 {
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
@@ -754,11 +757,11 @@ std::vector<at::Tensor> ds_qkv_gemm_inf(at::Tensor& input,
 
 template <typename T>
 void _quantized_gemm(at::Tensor& output,
-                    at::Tensor& input,
-                    at::Tensor& weight,
-                    at::Tensor& qscale,
-                    int groups,
-                    int merge_count)
+                     at::Tensor& input,
+                     at::Tensor& weight,
+                     at::Tensor& qscale,
+                     int groups,
+                     int merge_count)
 {
     int bsz = input.size(0) * input.size(1);
     auto options = at::TensorOptions()
@@ -799,14 +802,14 @@ void _quantized_gemm(at::Tensor& output,
 
 template <typename T>
 at::Tensor ds_qkv_gemm_int8_inf(at::Tensor& input,
-                            at::Tensor& weight,
-                            at::Tensor& bias,
-                            at::Tensor& gamma,
-                            at::Tensor& beta,
-                            const float epsilon,
-                            at::Tensor& q_scale,
-                            int groups,
-                            bool add_bias)
+                                at::Tensor& weight,
+                                at::Tensor& bias,
+                                at::Tensor& gamma,
+                                at::Tensor& beta,
+                                const float epsilon,
+                                at::Tensor& q_scale,
+                                int groups,
+                                bool add_bias)
 {
     int bsz = input.size(0) * input.size(1);
     auto input_cont = input.contiguous();
@@ -833,9 +836,9 @@ at::Tensor ds_qkv_gemm_int8_inf(at::Tensor& input,
 
 template <typename T>
 at::Tensor ds_linear_layer_inf(at::Tensor& input,
-                           at::Tensor& weight,
-                           at::Tensor& bias,
-                           unsigned num_layers)
+                               at::Tensor& weight,
+                               at::Tensor& bias,
+                               unsigned num_layers)
 {
     auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
@@ -887,10 +890,10 @@ at::Tensor ds_linear_layer_inf(at::Tensor& input,
 
 template <typename T>
 at::Tensor ds_linear_layer_int8_inf(at::Tensor& input,
-                                at::Tensor& weight,
-                                at::Tensor& bias,
-                                at::Tensor& q_scale,
-                                int groups)
+                                    at::Tensor& weight,
+                                    at::Tensor& bias,
+                                    at::Tensor& q_scale,
+                                    int groups)
 {
     auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
@@ -913,10 +916,10 @@ at::Tensor ds_linear_layer_int8_inf(at::Tensor& input,
 
 template <typename T>
 at::Tensor ds_vector_matmul_inf(at::Tensor& input,
-                            at::Tensor& weight,
-                            bool async_op,
-                            at::Tensor& q_scale,
-                            bool q_int8)
+                                at::Tensor& weight,
+                                bool async_op,
+                                at::Tensor& q_scale,
+                                bool q_int8)
 {
     auto options = at::TensorOptions()
                        .dtype(input.options().dtype())
@@ -959,10 +962,10 @@ at::Tensor ds_vector_matmul_inf(at::Tensor& input,
 
 template <typename T>
 at::Tensor ds_vector_matmul_int8_inf(at::Tensor& input,
-                                 at::Tensor& weight,
-                                 at::Tensor& q_scale,
-                                 int groups,
-                                 int merge_count)
+                                     at::Tensor& weight,
+                                     at::Tensor& q_scale,
+                                     int groups,
+                                     int merge_count)
 {
     auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
@@ -979,21 +982,21 @@ at::Tensor ds_vector_matmul_int8_inf(at::Tensor& input,
 
 template <typename T>
 at::Tensor _mlp_unfused_cublas(at::Tensor& output,
-                              at::Tensor& input,
-                              at::Tensor& residual,
-                              at::Tensor& input_bias,
-                              at::Tensor& weight,
-                              at::Tensor& weight1,
-                              at::Tensor& bias,
-                              at::Tensor& gamma,
-                              at::Tensor& beta,
-                              const float epsilon,
-                              bool preLayerNorm,
-                              bool mlp_after_attn,
-                              at::Tensor& q_scale,
-                              at::Tensor& q_scale1,
-                              bool q_int8,
-                              ActivationFuncType act_func_type)
+                               at::Tensor& input,
+                               at::Tensor& residual,
+                               at::Tensor& input_bias,
+                               at::Tensor& weight,
+                               at::Tensor& weight1,
+                               at::Tensor& bias,
+                               at::Tensor& gamma,
+                               at::Tensor& beta,
+                               const float epsilon,
+                               bool preLayerNorm,
+                               bool mlp_after_attn,
+                               at::Tensor& q_scale,
+                               at::Tensor& q_scale1,
+                               bool q_int8,
+                               ActivationFuncType act_func_type)
 {
     int bsz = input.size(0) * input.size(1);
     T* inp_norm =
@@ -1081,20 +1084,20 @@ at::Tensor _mlp_unfused_cublas(at::Tensor& output,
 
 template <typename T>
 std::vector<at::Tensor> ds_mlp_gemm_inf(at::Tensor& input,
-                                    at::Tensor& residual,
-                                    at::Tensor& input_bias,
-                                    at::Tensor& weight,
-                                    at::Tensor& weight1,
-                                    at::Tensor& bias,
-                                    at::Tensor& gamma,
-                                    at::Tensor& beta,
-                                    const float epsilon,
-                                    bool preLayerNorm,
-                                    bool mlp_after_attn,
-                                    at::Tensor& q_scale,
-                                    at::Tensor& q_scale1,
-                                    bool q_int8,
-                                    int activation_type)
+                                        at::Tensor& residual,
+                                        at::Tensor& input_bias,
+                                        at::Tensor& weight,
+                                        at::Tensor& weight1,
+                                        at::Tensor& bias,
+                                        at::Tensor& gamma,
+                                        at::Tensor& beta,
+                                        const float epsilon,
+                                        bool preLayerNorm,
+                                        bool mlp_after_attn,
+                                        at::Tensor& q_scale,
+                                        at::Tensor& q_scale1,
+                                        bool q_int8,
+                                        int activation_type)
 {
     auto options = at::TensorOptions()
                        .dtype(input.options().dtype())
@@ -1110,37 +1113,37 @@ std::vector<at::Tensor> ds_mlp_gemm_inf(at::Tensor& input,
 
     auto act_func_type = static_cast<ActivationFuncType>(activation_type);
     auto res_add = _mlp_unfused_cublas<T>(output,
-                                         mlp_after_attn ? input : residual,
-                                         residual,
-                                         input_bias,
-                                         weight,
-                                         weight1,
-                                         bias,
-                                         gamma,
-                                         beta,
-                                         epsilon,
-                                         preLayerNorm,
-                                         mlp_after_attn,
-                                         q_scale,
-                                         q_scale1,
-                                         q_int8,
-                                         act_func_type);
+                                          mlp_after_attn ? input : residual,
+                                          residual,
+                                          input_bias,
+                                          weight,
+                                          weight1,
+                                          bias,
+                                          gamma,
+                                          beta,
+                                          epsilon,
+                                          preLayerNorm,
+                                          mlp_after_attn,
+                                          q_scale,
+                                          q_scale1,
+                                          q_int8,
+                                          act_func_type);
 
     return {output, res_add};
 }
 
 template <typename T>
 std::vector<at::Tensor> ds_mlp_gemm_int8_inf(at::Tensor& input,
-                                         at::Tensor& residual,
-                                         at::Tensor& input_bias,
-                                         at::Tensor& weight,
-                                         at::Tensor& bias,
-                                         at::Tensor& gamma,
-                                         at::Tensor& beta,
-                                         const float epsilon,
-                                         at::Tensor& q_scale,
-                                         int groups,
-                                         bool preLayerNorm)
+                                             at::Tensor& residual,
+                                             at::Tensor& input_bias,
+                                             at::Tensor& weight,
+                                             at::Tensor& bias,
+                                             at::Tensor& gamma,
+                                             at::Tensor& beta,
+                                             const float epsilon,
+                                             at::Tensor& q_scale,
+                                             int groups,
+                                             bool preLayerNorm)
 {
     auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
@@ -1167,12 +1170,12 @@ std::vector<at::Tensor> ds_mlp_gemm_int8_inf(at::Tensor& input,
 
 template <typename T>
 at::Tensor ds_fused_gemm_gelu_inf(at::Tensor& input,
-                           at::Tensor& weight,
-                           at::Tensor& bias,
-                           at::Tensor& weight_out,
-                           const float epsilon,
-                           bool preLayerNorm,
-                           bool async_op)
+                                  at::Tensor& weight,
+                                  at::Tensor& bias,
+                                  at::Tensor& weight_out,
+                                  const float epsilon,
+                                  bool preLayerNorm,
+                                  bool async_op)
 {
     auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
@@ -1233,14 +1236,14 @@ at::Tensor ds_fused_gemm_gelu_inf(at::Tensor& input,
 
 template <typename T>
 at::Tensor& ds_residual_add_bias_inf(at::Tensor& hidden_state,
-                              at::Tensor& residual,
-                              const at::Tensor& attention_output,
-                              const at::Tensor& attention_bias,
-                              const at::Tensor& final_bias,
-                              const int mp_size,
-                              const bool mlp_after_attn,
-                              const bool add_bias,
-                              const bool preln)
+                                     at::Tensor& residual,
+                                     const at::Tensor& attention_output,
+                                     const at::Tensor& attention_bias,
+                                     const at::Tensor& final_bias,
+                                     const int mp_size,
+                                     const bool mlp_after_attn,
+                                     const bool add_bias,
+                                     const bool preln)
 {
     int bsz = residual.size(0) * residual.size(1);
     int hidden_size = residual.size(2);
@@ -1270,12 +1273,12 @@ at::Tensor& ds_residual_add_bias_inf(at::Tensor& hidden_state,
 }
 
 std::vector<at::Tensor> ds_apply_rotary_pos_emb_inf(at::Tensor& mixed_query,
-                                             at::Tensor& key_layer,
-                                             unsigned rotary_dim,
-                                             unsigned offset,
-                                             unsigned num_heads,
-                                             bool rotate_half,
-                                             bool rotate_every_two)
+                                                    at::Tensor& key_layer,
+                                                    unsigned rotary_dim,
+                                                    unsigned offset,
+                                                    unsigned num_heads,
+                                                    bool rotate_half,
+                                                    bool rotate_every_two)
 {
     auto query_cont = mixed_query.contiguous();
     auto key_cont = key_layer.contiguous();
@@ -1370,8 +1373,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("softmax_fp32", &ds_softmax_inf<float>, "DeepSpeed SoftMax with fp32 (CUDA)");
     m.def("softmax_fp16", &ds_softmax_inf<__half>, "DeepSpeed SoftMax with fp16 (CUDA)");
-    m.def(
-        "softmax_context_fp32", &ds_softmax_context_inf<float>, "DeepSpeed attention with fp32 (CUDA)");
+    m.def("softmax_context_fp32",
+          &ds_softmax_context_inf<float>,
+          "DeepSpeed attention with fp32 (CUDA)");
     m.def("softmax_context_fp16",
           &ds_softmax_context_inf<__half>,
           "DeepSpeed attention with fp16 (CUDA)");
@@ -1398,25 +1402,35 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("mlp_gemm_fp32", &ds_mlp_gemm_inf<float>, "DeepSpeed mlp with fp32 (CUDA)");
     m.def("mlp_gemm_fp16", &ds_mlp_gemm_inf<__half>, "DeepSpeed mlp with fp16 (CUDA)");
     m.def("mlp_gemm_int8", &ds_mlp_gemm_int8_inf<__half>, "DeepSpeed mlp with int8 (CUDA)");
-    m.def("vector_matmul_fp32", &ds_vector_matmul_inf<float>, "DeepSpeed vector-MM with fp32 (CUDA)");
-    m.def("vector_matmul_fp16", &ds_vector_matmul_inf<__half>, "DeepSpeed vector-MM with fp16 (CUDA)");
+    m.def(
+        "vector_matmul_fp32", &ds_vector_matmul_inf<float>, "DeepSpeed vector-MM with fp32 (CUDA)");
+    m.def("vector_matmul_fp16",
+          &ds_vector_matmul_inf<__half>,
+          "DeepSpeed vector-MM with fp16 (CUDA)");
     m.def("vector_matmul_int8",
           &ds_vector_matmul_int8_inf<__half>,
           "DeepSpeed vector-MM with int8 (CUDA)");
-    m.def("linear_layer_fp32", &ds_linear_layer_inf<float>, "DeepSpeed linear_layer with fp32 (CUDA)");
-    m.def("linear_layer_fp16", &ds_linear_layer_inf<__half>, "DeepSpeed linear_layer with fp16 (CUDA)");
+    m.def("linear_layer_fp32",
+          &ds_linear_layer_inf<float>,
+          "DeepSpeed linear_layer with fp32 (CUDA)");
+    m.def("linear_layer_fp16",
+          &ds_linear_layer_inf<__half>,
+          "DeepSpeed linear_layer with fp16 (CUDA)");
     m.def("linear_layer_int8",
           &ds_linear_layer_int8_inf<__half>,
           "DeepSpeed linear_layer with int8 (CUDA)");
     m.def("fused_gemm_gelu_fp32", &ds_fused_gemm_gelu_inf<float>, "DeepSpeed mlp with fp32 (CUDA)");
-    m.def("fused_gemm_gelu_fp16", &ds_fused_gemm_gelu_inf<__half>, "DeepSpeed mlp with fp16 (CUDA)");
+    m.def(
+        "fused_gemm_gelu_fp16", &ds_fused_gemm_gelu_inf<__half>, "DeepSpeed mlp with fp16 (CUDA)");
     m.def("residual_add_bias_fp32",
           &ds_residual_add_bias_inf<float>,
           "DeepSpeed residual add with fp32 (CUDA)");
     m.def("residual_add_bias_fp16",
           &ds_residual_add_bias_inf<__half>,
           "DeepSpeed residual add with fp16 (CUDA)");
-    m.def("ds_apply_rotary_pos_emb_inf", &ds_apply_rotary_pos_emb_inf, "DeepSpeed mlp with fp16 (CUDA)");
+    m.def("ds_apply_rotary_pos_emb_inf",
+          &ds_apply_rotary_pos_emb_inf,
+          "DeepSpeed mlp with fp16 (CUDA)");
     m.def("einsum_sec_sm_ecm_fp32",
           &ds_einsum_sec_sm_ecm_inf<float>,
           "DeepSpeed vector-MM with fp32 (CUDA)");
