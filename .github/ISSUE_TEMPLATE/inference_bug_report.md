@@ -29,7 +29,8 @@ If applicable, add screenshots to help explain your problem.
 **System info (please complete the following information):**
  - OS: [e.g. Ubuntu 18.04]
  - GPU count and types [e.g. two machines with x8 A100s each]
- - Hugging Face Transformers/Accelerate/etc. versions if applicable
+ - (if applicable) what [DeepSpeed-MII](https://github.com/microsoft/deepspeed-mii) version are you using
+ - (if applicable) Hugging Face Transformers/Accelerate/etc. versions
  - Python version
  - Any other relevant info about your setup
 
