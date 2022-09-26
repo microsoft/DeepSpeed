@@ -97,12 +97,13 @@ public:
         if (!_free_memory_size) { cudaMemGetInfo(&_free_memory_size, &total_size); }
 
         size_t activation_size = 16 * hidden_dim * batch_size;
+        size_t temp_size = 2 * hidden_dim * batch_size;
         size_t cache_size = num_layers * batch_size * (hidden_dim / mp_size) * 2;
         _max_seq_len =
             (((_free_memory_size - (_free_memory_size > GIGABYTE ? 500 : 100) * MEGABYTE) /
               elem_size)) /
             (activation_size + cache_size);
-        size_t workSpaceSize = (external_cache ? activation_size : (activation_size + cache_size)) *
+        size_t workSpaceSize = ((external_cache ? activation_size : (activation_size + cache_size)) + temp_size) *
                                _max_seq_len * elem_size;
         _max_seq_len = std::min((size_t)MAX_OUT_TOKENS, _max_seq_len);
         if (rank == 0 && !_workspace)
