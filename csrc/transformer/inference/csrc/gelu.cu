@@ -2,6 +2,7 @@
 Copyright 2022 The Microsoft DeepSpeed Team
 */
 
+#include "conversion_utils.h"
 #include "inference_cuda_layers.h"
 #include "memory_access_utils.h"
 
@@ -16,58 +17,29 @@ inline __device__ float gelu(const float x)
     return x * 0.5f * (1.0f + tanhf(sqrt_param * (x + mul_param * x * x * x)));
 }
 
-__global__ void fused_bias_gelu(float* input,
-                                const float* bias,
-                                int total_count,
-                                int intermediate_size)
+template <typename T>
+__global__ void fused_bias_gelu(T* input, const T* bias, int total_count, int intermediate_size)
 {
     // Input restriction: intermediate_size % vals_per_access == 0
     constexpr int granularity = 16;
-    constexpr int vals_per_access = granularity / sizeof(float);
-    const int offset = (blockIdx.x * blockDim.x + threadIdx.x) * vals_per_access;
+    constexpr int values_per_access = granularity / sizeof(T);
+    const int offset = (blockIdx.x * blockDim.x + threadIdx.x) * values_per_access;
 
     if (offset < total_count) {
-        float data[vals_per_access];
-        float data_bias[vals_per_access];
+        T data[values_per_access];
+        T data_bias[values_per_access];
         mem_access::load_global<granularity>(data, input + offset);
         mem_access::load_global<granularity>(data_bias, bias + (offset % intermediate_size));
 
 #pragma unroll
-        for (int i = 0; i < vals_per_access; i++) { data[i] = gelu(data[i] + data_bias[i]); }
-
-        mem_access::store_global<granularity>(input + offset, data);
-    }
-}
-
-__global__ void fused_bias_gelu(__half* input,
-                                const __half* bias,
-                                int total_count,
-                                int intermediate_size)
-{
-    // Input restriction: intermediate_size % vals_per_access == 0
-    // This kernel doubles the per-thread ALU workload as compared to the float implementation
-#ifdef HALF_PRECISION_AVAILABLE
-    constexpr int granularity = 16;
-    constexpr int vals_per_access = granularity / sizeof(__half);
-    int offset = (blockIdx.x * blockDim.x + threadIdx.x) * vals_per_access;
-
-    if (offset < total_count) {
-        // Divide by 2 since we store two values per __half2
-        __half2 data[vals_per_access / 2];
-        __half2 bias_data[vals_per_access / 2];
-        mem_access::load_global<granularity>(data, input + offset);
-        mem_access::load_global<granularity>(bias_data, bias + (offset % intermediate_size));
-
-#pragma unroll
-        for (int i = 0; i < vals_per_access / 2; i++) {
-            float2 data_f = __half22float2(data[i]);
-            float2 bias_f = __half22float2(bias_data[i]);
-            data[i] = __floats2half2_rn(gelu(data_f.x + bias_f.x), gelu(data_f.y + bias_f.y));
+        for (int i = 0; i < values_per_access; i++) {
+            float data_f = conversion::to<float>(data[i]);
+            float bias_f = conversion::to<float>(data_bias[i]);
+            data[i] = conversion::to<T>(gelu(data_f + bias_f));
         }
 
         mem_access::store_global<granularity>(input + offset, data);
     }
-#endif
 }
 
 template <typename T>
@@ -95,54 +67,44 @@ template void launch_bias_gelu<__half>(__half*, const __half*, int, int, cudaStr
 // Not called directly from DeepSpeed, but used in ds_qkv_gemm_int8, ds_linear_layer, etc.
 __global__ void fused_bias_add(float* input, const float* bias, int total_count, int hidden_size)
 {
-    float4* input_cast = reinterpret_cast<float4*>(input);
-    const float4* bias_cast = reinterpret_cast<const float4*>(bias);
-    int offset = blockIdx.x * blockDim.x + threadIdx.x;
+    constexpr int granularity = 16;
+    constexpr int vals_per_access = granularity / sizeof(float);
+    const int offset = (blockIdx.x * blockDim.x + threadIdx.x) * vals_per_access;
 
     if (offset < total_count) {
-        float4 data = input_cast[offset];
-        float4 bias_data = bias_cast[offset % hidden_size];
+        float data[vals_per_access];
+        float bias_data[vals_per_access];
+        mem_access::load_global<granularity>(data, input + offset);
+        mem_access::load_global<granularity>(bias_data, bias + (offset % hidden_size));
 
-        data.x += bias_data.x;
-        data.y += bias_data.y;
-        data.z += bias_data.z;
-        data.w += bias_data.w;
+#pragma unroll
+        for (int i = 0; i < vals_per_access; i++) { data[i] += bias_data[i]; }
 
-        input_cast[offset] = data;
+        mem_access::store_global<granularity>(input + offset, data);
     }
 }
 
 __global__ void fused_bias_add(__half* input, const __half* bias, int total_count, int hidden_size)
 {
 #ifdef HALF_PRECISION_AVAILABLE
-
-    float2* input_cast = reinterpret_cast<float2*>(input);
-    const float2* bias_cast = reinterpret_cast<const float2*>(bias);
-
-    int offset = blockIdx.x * blockDim.x + threadIdx.x;
+    constexpr int granularity = 16;
+    constexpr int vals_per_access = granularity / sizeof(__half);
+    const int offset = (blockIdx.x * blockDim.x + threadIdx.x) * vals_per_access;
 
     if (offset < total_count) {
-        float2 vals_vec = input_cast[offset];
-        float2 bias_vec = bias_cast[offset % hidden_size];
+        __half2 data[vals_per_access / 2];
+        __half2 bias_data[vals_per_access / 2];
+        mem_access::load_global<granularity>(data, input + offset);
+        mem_access::load_global<granularity>(bias_data, bias + (offset % hidden_size));
 
-        __half2* vals_half = reinterpret_cast<__half2*>(&vals_vec);
-        __half2* bias_half = reinterpret_cast<__half2*>(&bias_vec);
+#pragma unroll
+        for (int i = 0; i < vals_per_access / 2; i++) {
+            float2 data_f = __half22float2(data[i]);
+            float2 bias_f = __half22float2(bias_data[i]);
+            data[i] = __floats2half2_rn(data_f.x + bias_f.x, data_f.y + bias_f.y);
+        }
 
-        float2 low_data = __half22float2(vals_half[0]);
-        float2 high_data = __half22float2(vals_half[1]);
-
-        float2 low_bias = __half22float2(bias_half[0]);
-        float2 high_bias = __half22float2(bias_half[1]);
-
-        low_data.x += low_bias.x;
-        low_data.y += low_bias.y;
-        high_data.x += high_bias.x;
-        high_data.y += high_bias.y;
-
-        vals_half[0] = __float22half2_rn(low_data);
-        vals_half[1] = __float22half2_rn(high_data);
-
-        input_cast[offset] = vals_vec;
+        mem_access::store_global<granularity>(input + offset, data);
     }
 #endif
 }
@@ -150,12 +112,15 @@ __global__ void fused_bias_add(__half* input, const __half* bias, int total_coun
 template <typename T>
 void launch_bias_add(T* input, const T* bias, int hidden_size, int batch_size, cudaStream_t stream)
 {
-    int total_count = batch_size * (hidden_size / 4);
-    int threads = 1024;  // hidden_size / iterations / 4;
-    dim3 block_dims(threads);
-    dim3 grid_dims(((total_count - 1) / threads + 1));  // (batch_size);
+    constexpr int threads = 1024;
+    constexpr int granularity = 16;
 
-    fused_bias_add<<<grid_dims, block_dims, 0, stream>>>(input, bias, total_count, hidden_size / 4);
+    const int total_count = batch_size * hidden_size;
+    const int elems_per_block = threads * (granularity / sizeof(T));
+    dim3 block_dims(threads);
+    dim3 grid_dims((total_count + elems_per_block - 1) / elems_per_block);
+
+    fused_bias_add<<<grid_dims, block_dims, 0, stream>>>(input, bias, total_count, hidden_size);
 }
 
 template void launch_bias_add<float>(float*, const float*, int, int, cudaStream_t);
@@ -195,7 +160,7 @@ __global__ void fused_bias_residual(float* input,
             data.z = data.z + out.z + bias_data.z;
             data.w = data.w + out.w + bias_data.w;
         }
-        output_cast[offset] = data;
+        input_cast[offset] = data;
     }
 }
 
@@ -267,7 +232,7 @@ __global__ void fused_bias_residual(__half* input,
         vals_half[0] = __float22half2_rn(low_data);
         vals_half[1] = __float22half2_rn(high_data);
 
-        output_cast[offset] = vals_vec;
+        input_cast[offset] = vals_vec;
     }
 #endif
 }
@@ -321,17 +286,17 @@ __global__ void gptj_residual_add(float* input,
 
         if (attnbias) {
             float4 attn_bias = attnbias_cast[offset % intermediate_size];
-            data.x += attn_bias.x * mp_scale;
-            data.y += attn_bias.y * mp_scale;
-            data.z += attn_bias.z * mp_scale;
-            data.w += attn_bias.w * mp_scale;
+            data.x += attn_bias.x;
+            data.y += attn_bias.y;
+            data.z += attn_bias.z;
+            data.w += attn_bias.w;
         }
         data.x = out.x + res_vec.x + (data.x + bias_data.x) * mp_scale;
         data.y = out.y + res_vec.y + (data.y + bias_data.y) * mp_scale;
         data.z = out.z + res_vec.z + (data.z + bias_data.z) * mp_scale;
         data.w = out.w + res_vec.w + (data.w + bias_data.w) * mp_scale;
 
-        output_cast[offset] = data;
+        input_cast[offset] = data;
     }
 }
 
@@ -383,10 +348,10 @@ __global__ void gptj_residual_add(__half* input,
             __half2* attnbias_half = reinterpret_cast<__half2*>(&attn_bias_vec);
             float2 attn_low_bias = __half22float2(attnbias_half[0]);
             float2 attn_high_bias = __half22float2(attnbias_half[1]);
-            low_data.x += attn_low_bias.x * mp_scale;
-            low_data.y += attn_low_bias.y * mp_scale;
-            high_data.x += attn_high_bias.x * mp_scale;
-            high_data.y += attn_high_bias.y * mp_scale;
+            low_data.x += attn_low_bias.x;
+            low_data.y += attn_low_bias.y;
+            high_data.x += attn_high_bias.x;
+            high_data.y += attn_high_bias.y;
         }
 
         low_data.x = low_res.x + low_out.x + (low_data.x + low_bias.x) * mp_scale;
@@ -397,7 +362,7 @@ __global__ void gptj_residual_add(__half* input,
         vals_half[0] = __float22half2_rn(low_data);
         vals_half[1] = __float22half2_rn(high_data);
 
-        output_cast[offset] = vals_vec;
+        input_cast[offset] = vals_vec;
     }
 #endif
 }
@@ -439,72 +404,34 @@ template void launch_gptj_residual_add<__half>(__half*,
                                                int,
                                                int,
                                                cudaStream_t);
-
-__global__ void moe_res_matmul(float* residual,
-                               float* coef,
-                               float* mlp_out,
-                               int seq_len,
-                               int hidden_dim)
+template <typename T>
+__global__ void moe_res_matmul(T* residual, T* coef, T* mlp_out, int seq_len, int hidden_dim)
 {
-    unsigned tid = threadIdx.x;
-    float4* residual_cast = reinterpret_cast<float4*>(residual);
-    float4* coef_cast = reinterpret_cast<float4*>(coef);
-    float4* mlp_out_cast = reinterpret_cast<float4*>(mlp_out);
+    constexpr int granularity = 16;
+    constexpr int vals_per_access = granularity / sizeof(T);
 
-    residual_cast += blockIdx.x * hidden_dim;
-    mlp_out_cast += blockIdx.x * hidden_dim;
+    T* residual_seq = residual + blockIdx.x * hidden_dim;
+    T* mlp_out_seq = mlp_out + blockIdx.x * hidden_dim;
 
-    float4* coef_cast2 = coef_cast + hidden_dim;
+    for (unsigned tid = threadIdx.x * vals_per_access; tid < hidden_dim;
+         tid += blockDim.x * vals_per_access) {
+        T mlp[vals_per_access];
+        T res[vals_per_access];
+        T coef1[vals_per_access];
+        T coef2[vals_per_access];
 
-    while (tid < hidden_dim) {
-        float4 res = residual_cast[tid];
-        float4 mlp = mlp_out_cast[tid];
-        float4 coef1 = coef_cast[tid];
-        float4 coef2 = coef_cast2[tid];
-        mlp.x = mlp.x * coef2.x + res.x * coef1.x;
-        mlp.y = mlp.y * coef2.y + res.y * coef1.y;
-        mlp.z = mlp.z * coef2.z + res.z * coef1.z;
-        mlp.w = mlp.w * coef2.w + res.w * coef1.w;
-        mlp_out_cast[tid] = mlp;
-        tid += blockDim.x;
+        mem_access::load_global<granularity>(mlp, mlp_out_seq + tid);
+        mem_access::load_global<granularity>(res, residual_seq + tid);
+        mem_access::load_global<granularity>(coef1, coef + tid);
+        mem_access::load_global<granularity>(coef2, coef + tid + hidden_dim);
+
+#pragma unroll
+        for (int idx = 0; idx < vals_per_access; idx++) {
+            mlp[idx] = mlp[idx] * coef2[idx] + res[idx] * coef1[idx];
+        }
+
+        mem_access::store_global<granularity>(mlp_out_seq + tid, mlp);
     }
-}
-
-__global__ void moe_res_matmul(__half* residual,
-                               __half* coef,
-                               __half* mlp_out,
-                               int seq_len,
-                               int hidden_dim)
-{
-#ifdef HALF_PRECISION_AVAILABLE
-    unsigned tid = threadIdx.x;
-
-    float2* residual_cast = reinterpret_cast<float2*>(residual);
-    float2* mlp_out_cast = reinterpret_cast<float2*>(mlp_out);
-    float2* coef_cast = reinterpret_cast<float2*>(coef);
-    float2* coef_cast2 = coef_cast + hidden_dim;
-
-    residual_cast += blockIdx.x * hidden_dim;
-    mlp_out_cast += blockIdx.x * hidden_dim;
-
-    while (tid < hidden_dim) {
-        float2 res = residual_cast[tid];
-        float2 coef1 = coef_cast[tid];
-        float2 coef2 = coef_cast[tid];
-        float2 data = mlp_out_cast[tid];
-        __half* data_h = reinterpret_cast<__half*>(&data);
-        __half* coef1_h = reinterpret_cast<__half*>(&coef1);
-        __half* coef2_h = reinterpret_cast<__half*>(&coef2);
-        __half* res_h = reinterpret_cast<__half*>(&res);
-        data_h[0] = res_h[0] * coef1_h[0] + data_h[0] * coef2_h[0];
-        data_h[1] = res_h[1] * coef1_h[1] + data_h[1] * coef2_h[1];
-        data_h[2] = res_h[2] * coef1_h[2] + data_h[2] * coef2_h[2];
-        data_h[3] = res_h[3] * coef1_h[3] + data_h[3] * coef2_h[3];
-
-        mlp_out_cast[tid] = data;
-        tid += blockDim.x;
-    }
-#endif
 }
 
 template <typename T>
@@ -518,7 +445,7 @@ void launch_moe_res_matmul(T* residual,
     dim3 grid_dim(seq_len);
     dim3 block_dim(1024);
     moe_res_matmul<<<grid_dim, block_dim, 0, stream>>>(
-        residual, coef, mlp_out, seq_len, hidden_dim / 4);
+        residual, coef, mlp_out, seq_len, hidden_dim);
 }
 
 template void launch_moe_res_matmul(float* residual,
