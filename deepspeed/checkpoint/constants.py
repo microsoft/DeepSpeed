@@ -58,7 +58,7 @@ PARAM_SLICE_MAPPINGS = 'param_slice_mappings'
 CAT_DIM = "cat_dim"
 
 # Regex list of parameters that require special handling
-VOCABULARY_PARAMETERS_PATTERN = 'vocabulary_parameters_pattern'
-PIPELINE_REPLICATED_PARAMETERS_PATTERN = 'pipeline_replicated_parameters_pattern'
-PARAMETERS_TO_AVERAGE_PATTERN = 'parameters_to_average_pattern'
-PARAMETERS_WITH_ROW_PARALLELISM_PATTERN = 'parameters_with_row_parallelism_pattern'
+VOCABULARY_PARAMETER_PATTERNS = 'vocabulary_parameter_patterns'
+PIPELINE_REPLICATED_PARAMETER_PATTERNS = 'pipeline_replicated_parameter_patterns'
+PARAMETER_TO_AVERAGE_PATTERNS = 'parameter_to_average_patterns'
+PARAMETER_WITH_ROW_PARALLELISM_PATTERNS = 'parameter_with_row_parallelism_patterns'
