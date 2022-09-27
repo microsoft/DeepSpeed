@@ -11,6 +11,7 @@ from deepspeed.utils.logging import log_dist
 from torch.nn.modules import Module
 from packaging import version as pkg_version
 from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
+from deepspeed.utils.timer import SynchronizedWallClockTimer
 
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
@@ -169,6 +170,7 @@ class InferenceEngine(Module):
 
     def profile_model_time(self):
         if not self.model_profile_enabled and not self.enable_cuda_graph:
+            self.timers = SynchronizedWallClockTimer()
             self.module.register_forward_pre_hook(self._pre_forward_hook)
             self.module.register_forward_hook(self._post_forward_hook)
         self.model_profile_enabled = True
@@ -183,13 +185,11 @@ class InferenceEngine(Module):
                 self.module.transformer._prepare_attn_mask = lambda attention_mask, *args, **kwargs: attention_mask
 
     def _pre_forward_hook(self, module, *inputs, **kwargs):
-        torch.cuda.synchronize()
-        self._start = time.time()
+        self.timers("model forward").start()
 
     def _post_forward_hook(self, module, input, output):
-        torch.cuda.synchronize()
-        self._end = time.time()
-        self._model_times.append(self._end - self._start)
+        self.timers("model forward").stop()
+        self._model_times.append(self.timers("model forward").elapsed(reset=True))
 
     def _create_model_parallel_group(self):
         # Call the init process
