@@ -32,9 +32,15 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     # RNG APIs
     def set_rng_state(self, new_state, device_index=None):
+        if device_index is None:
+            return torch.cuda.set_rng_state(new_state)
+
         return torch.cuda.set_rng_state(new_state, device_index)
 
     def get_rng_state(self, device_index=None):
+        if device_index is None:
+            return torch.cuda.get_rng_state()
+
         return torch.cuda.get_rng_state(device_index)
 
     def manual_seed(self, seed):
