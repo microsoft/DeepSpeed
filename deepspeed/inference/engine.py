@@ -26,6 +26,8 @@ from ..module_inject.replace_policy import DSPolicy
 DS_INFERENCE_ENABLED = False
 from torch import nn
 
+INFERENCE_MODEL_TIMER = "model-forward-inference"
+
 
 class InferenceEngine(Module):
     inference_mp_group = None
@@ -185,11 +187,11 @@ class InferenceEngine(Module):
                 self.module.transformer._prepare_attn_mask = lambda attention_mask, *args, **kwargs: attention_mask
 
     def _pre_forward_hook(self, module, *inputs, **kwargs):
-        self.timers("model forward").start()
+        self.timers(INFERENCE_MODEL_TIMER).start()
 
     def _post_forward_hook(self, module, input, output):
-        self.timers("model forward").stop()
-        self._model_times.append(self.timers("model forward").elapsed(reset=True))
+        self.timers(INFERENCE_MODEL_TIMER).stop()
+        self._model_times.append(self.timers(INFERENCE_MODEL_TIMER).elapsed(reset=True))
 
     def _create_model_parallel_group(self):
         # Call the init process
