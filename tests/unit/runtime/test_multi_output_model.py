@@ -5,31 +5,29 @@ from unit.common import DistributedTest
 from unit.multi_output_model import MultiOutputModel, multi_output_dataloader
 
 
-def create_config_dict(micro_batch_size, grad_accumulation_steps, world_size):
-    return {
-        "train_micro_batch_size_per_gpu": micro_batch_size,
-        "gradient_accumulation_steps": grad_accumulation_steps,
-        "train_batch_size": micro_batch_size * grad_accumulation_steps * world_size,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "Adam",
-            "params": {
-                "lr": 0.00015
-            }
-        },
-        "fp16": {
-            "enabled": True
-        }
-    }
-
-
-class TestMultiModelOutput(DistributedTest):
+class TestTwoOutputModel(DistributedTest):
     world_size = 1
 
-    def test_two(self, gradient_accumulation_steps=2, micro_batch_size=1):
-        config_dict = create_config_dict(micro_batch_size,
-                                         gradient_accumulation_steps,
-                                         self.world_size)
+    def test(self, tmpdir):
+        grad_accumulation_steps = 2
+        micro_batch_size = 1
+        world_size = self.world_size
+        config_dict = {
+            "train_micro_batch_size_per_gpu": micro_batch_size,
+            "gradient_accumulation_steps": grad_accumulation_steps,
+            "train_batch_size": micro_batch_size * grad_accumulation_steps * world_size,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 0.00015
+                }
+            },
+            "fp16": {
+                "enabled": True
+            }
+        }
+
         hidden_dim = 10
         weight_value = 0.1
 
@@ -63,15 +61,34 @@ class TestMultiModelOutput(DistributedTest):
 
             summed_loss = sum(loss_tuple)
             scaled_loss = model.backward(summed_loss)
-            expected_scaled_loss = summed_loss.float() / gradient_accumulation_steps
+            expected_scaled_loss = summed_loss.float() / grad_accumulation_steps
             assert scaled_loss.item() == approx(expected_scaled_loss.item())
 
             model.step()
 
-    def test_three(self, gradient_accumulation_steps=3, micro_batch_size=1):
-        config_dict = create_config_dict(micro_batch_size,
-                                         gradient_accumulation_steps,
-                                         self.world_size)
+
+class TestThreeOutputModel(DistributedTest):
+    world_size = 1
+
+    def test(self, tmpdir):
+        grad_accumulation_steps = 3
+        micro_batch_size = 1
+        world_size = 1
+        config_dict = {
+            "train_micro_batch_size_per_gpu": micro_batch_size,
+            "gradient_accumulation_steps": grad_accumulation_steps,
+            "train_batch_size": micro_batch_size * grad_accumulation_steps * world_size,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 0.00015
+                }
+            },
+            "fp16": {
+                "enabled": True
+            }
+        }
 
         hidden_dim = 10
         weight_value = 0.1
@@ -81,7 +98,7 @@ class TestMultiModelOutput(DistributedTest):
                                               model=model,
                                               model_parameters=model.parameters())
 
-        total_samples = gradient_accumulation_steps * micro_batch_size * 2
+        total_samples = grad_accumulation_steps * micro_batch_size * 2
         data_loader = multi_output_dataloader(model=model,
                                               total_samples=total_samples,
                                               hidden_dim=hidden_dim,
@@ -111,7 +128,7 @@ class TestMultiModelOutput(DistributedTest):
 
             summed_loss = sum(loss_tuple)
             scaled_loss = model.backward(summed_loss)
-            expected_scaled_loss = summed_loss.float() / gradient_accumulation_steps
+            expected_scaled_loss = summed_loss.float() / grad_accumulation_steps
             assert scaled_loss.item() == approx(expected_scaled_loss.item())
 
             model.step()
