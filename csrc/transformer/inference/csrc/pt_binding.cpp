@@ -110,8 +110,15 @@ void allocate_workspace(size_t hidden_dim,
                         bool external_cache = false,
                         unsigned rank = 0)
 {
-    Context::Instance().GenWorkSpace(
-        num_layers, num_heads, batch_size, prompt_length, hidden_dim, mp_size, external_cache, sizeof(T), rank);
+    Context::Instance().GenWorkSpace(num_layers,
+                                     num_heads,
+                                     batch_size,
+                                     prompt_length,
+                                     hidden_dim,
+                                     mp_size,
+                                     external_cache,
+                                     sizeof(T),
+                                     rank);
 }
 
 template <typename T>
@@ -1407,6 +1414,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           &einsum_sec_sm_ecm<__half>,
           "DeepSpeed vector-MM with fp16 (CUDA)");
     m.def("moe_res_matmul", &moe_res_matmul, "DeepSpeed moe residual matmul (CUDA)");
-    m.def("allocate_workspace_fp32", &allocate_workspace<float>, "DeepSpeed memory allocation for GPT inference with fp32 (CUDA)");
-    m.def("allocate_workspace_fp16", &allocate_workspace<__half>, "DeepSpeed memory allocation for GPT inference with fp16 (CUDA)");
+    m.def("allocate_workspace_fp32",
+          &allocate_workspace<float>,
+          "DeepSpeed memory allocation for GPT inference with fp32 (CUDA)");
+    m.def("allocate_workspace_fp16",
+          &allocate_workspace<__half>,
+          "DeepSpeed memory allocation for GPT inference with fp16 (CUDA)");
 }

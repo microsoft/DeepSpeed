@@ -824,16 +824,14 @@ class DeepSpeedTransformerInference(nn.Module):
             past_key_value=None):
         # Allocate memory only on first layer forward
         if self.config.layer_id == 0:
-            self.allocate_workspace(
-                self.config.hidden_size,
-                input.size()[0],
-                input.size()[1],
-                DeepSpeedTransformerInference.layer_id,
-                self.config.heads,
-                self.config.mp_size,
-                self.config.bigscience_bloom,
-                dist.get_rank() if dist.is_initialized() else 0
-            )
+            self.allocate_workspace(self.config.hidden_size,
+                                    input.size()[0],
+                                    input.size()[1],
+                                    DeepSpeedTransformerInference.layer_id,
+                                    self.config.heads,
+                                    self.config.mp_size,
+                                    self.config.bigscience_bloom,
+                                    dist.get_rank() if dist.is_initialized() else 0)
 
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask

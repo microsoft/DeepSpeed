@@ -104,7 +104,8 @@ public:
         size_t activation_size = 16 * hidden_dim * batch_size;
         size_t temp_size = batch_size * num_heads * prompt_len * prompt_len * elem_size / mp_size;
         size_t cache_size = num_layers * batch_size * (hidden_dim / mp_size) * 2;
-        size_t minimal_requirements = temp_size + (_free_memory_size > GIGABYTE ? 500 : 100) * MEGABYTE;
+        size_t minimal_requirements =
+            temp_size + (_free_memory_size > GIGABYTE ? 500 : 100) * MEGABYTE;
         if (_free_memory_size < minimal_requirements) {
             printf("Requested:\t%lu\nFree:\t%lu\nTotal:\t%lu\n",
                    minimal_requirements,
@@ -113,10 +114,13 @@ public:
             throw std::runtime_error("Workspace can't be allocated, no enough memory.");
         }
 
-        _max_seq_len = ((_free_memory_size - minimal_requirements) / elem_size) / (activation_size + cache_size);
+        _max_seq_len = ((_free_memory_size - minimal_requirements) / elem_size) /
+                       (activation_size + cache_size);
         _max_seq_len = std::min((size_t)MAX_OUT_TOKENS, _max_seq_len);
-        size_t workSpaceSize = ((external_cache ? activation_size : (activation_size + cache_size))) *
-                               _max_seq_len * elem_size + temp_size;
+        size_t workSpaceSize =
+            ((external_cache ? activation_size : (activation_size + cache_size))) * _max_seq_len *
+                elem_size +
+            temp_size;
         if (rank == 0 && !_workspace)
             printf(
                 "Free memory : %lu (Bytes)  Total memory: %lu (Bytes)  Setting maximum total "
@@ -148,7 +152,10 @@ public:
 
     size_t get_workspace_size() const { return _workSpaceSize; }
     void* GetWorkSpace() { return _workspace; }
-    void* GetAttentionUnfusedWorkspace() { return _workspace + _attention_unfused_workspace_offset; }
+    void* GetAttentionUnfusedWorkspace()
+    {
+        return _workspace + _attention_unfused_workspace_offset;
+    }
 
     inline unsigned new_token(unsigned layer_id)
     {
