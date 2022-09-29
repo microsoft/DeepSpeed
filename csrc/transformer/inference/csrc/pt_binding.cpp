@@ -354,10 +354,7 @@ void attention_unfused(T* prev_key_cont,
     float layer_scale = alibi.sizes().size() > 1 ? std::max(1, layer_id) : 1.0;
     float alpha = norm_factor * norm_factor / layer_scale;
     float gemm_beta = 0.0;
-    // Always use the tail workspace
-    T* scratch = (T*)Context::Instance().GetWorkSpace();
-    T *workspace = scratch + ((Context::Instance().get_workspace_size() / sizeof(T)) -
-                            bsz * heads * seq_len * soft_len);
+    T* workspace = (T*)Context::Instance().GetAttentionUnfusedWorkspace();
 
     cublasSetStream(Context::Instance().GetCublasHandle(), Context::Instance().GetCurrentStream());
     cublas_strided_batched_gemm(Context::Instance().GetCublasHandle(),

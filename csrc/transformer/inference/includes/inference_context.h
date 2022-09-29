@@ -55,7 +55,8 @@ public:
           _curr_offset(0),
           _stream(0),
           _free_memory_size(0),
-          _num_tokens(1)
+          _num_tokens(1),
+          _attention_unfused_workspace_offset(0)
     {
         if (cublasCreate(&_cublasHandle) != CUBLAS_STATUS_SUCCESS) {
             auto message = std::string("Fail to create cublas handle.");
@@ -101,7 +102,7 @@ public:
         if (!_free_memory_size) { cudaMemGetInfo(&_free_memory_size, &total_size); }
 
         size_t activation_size = 16 * hidden_dim * batch_size;
-        size_t temp_size = batch_size * num_heads * prompt_len * prompt_len * elem_size;
+        size_t temp_size = batch_size * num_heads * prompt_len * prompt_len * elem_size / mp_size;
         size_t cache_size = num_layers * batch_size * (hidden_dim / mp_size) * 2;
         size_t minimal_requirements = temp_size + (_free_memory_size > GIGABYTE ? 500 : 100) * MEGABYTE;
         if (_free_memory_size < minimal_requirements) {
@@ -139,6 +140,7 @@ public:
             throw std::runtime_error("Workspace is null.");
         }
         _workSpaceSize = workSpaceSize;
+        _attention_unfused_workspace_offset = workSpaceSize - temp_size;
     }
     inline size_t GetMaxTokenLenght() const { return _max_seq_len; }
 
@@ -146,6 +148,7 @@ public:
 
     size_t get_workspace_size() const { return _workSpaceSize; }
     void* GetWorkSpace() { return _workspace; }
+    void* GetAttentionUnfusedWorkspace() { return _workspace + _attention_unfused_workspace_offset; }
 
     inline unsigned new_token(unsigned layer_id)
     {
@@ -211,6 +214,8 @@ private:
     cudaEvent_t _comm_event;
 
     void* _workspace;
+    // offset from _workspace for attention unfused memory
+    size_t _attention_unfused_workspace_offset;
     uint64_t _seed;
     uint64_t _curr_offset;
 
