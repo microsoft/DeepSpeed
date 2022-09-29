@@ -4,7 +4,7 @@ import tqdm
 import deepspeed
 import deepspeed.ops.transformer as transformer_inference
 from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, BLOOMLayerPolicy
-from .replace_policy import replace_policies
+from .replace_policy import replace_policies, generic_policies
 #from ..runtime.weight_quantizer import WeightQuantization
 from deepspeed import comm as dist
 from torch import nn
@@ -187,6 +187,27 @@ class GroupQuantizer:
         return out
 
 
+def _module_match(module):
+    for policy in generic_policies:
+        policy = policy()
+        if policy.match(module):
+            return policy
+    return None
+
+
+def generic_injection(module):
+    if isinstance(module, torch.nn.Module):
+        pass
+    else:
+        for name in module.__dict__.keys():
+            sub_module = getattr(module, name)
+            policy = _module_match(sub_module)
+            if policy is not None:
+                new_module = policy.apply(sub_module)
+                print(f"**** found and replaced {name} w. {type(new_module)}")
+                setattr(module, name, new_module)
+
+
 def replace_transformer_layer(orig_layer_impl,
                               model,
                               policy=None,
@@ -251,6 +272,7 @@ def replace_transformer_layer(orig_layer_impl,
     Returns:
         Updated nn.module with replaced transformer layers
     """
+
     mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group,
                                           mp_size=mp_size)  #, out_dim=0, in_dim=1)
 

@@ -1,3 +1,6 @@
+'''
+Copyright 2020 The Microsoft DeepSpeed Team
+'''
 from abc import ABC
 
 import torch
@@ -10,6 +13,30 @@ supported_models = {None}
 
 
 class DSPolicy(ABC):
+    _orig_layer_class = None
+
+    def __init__(self):
+        self.cuda_graph_supported = False
+
+
+class UNetPolicy(DSPolicy):
+    def __init__(self):
+        super().__init__()
+        try:
+            import diffusers
+            self._orig_layer_class = diffusers.models.unet_2d_condition.UNet2DConditionModel
+        except ImportError:
+            self._orig_layer_class = None
+
+    def match(self, module):
+        return isinstance(module, self._orig_layer_class)
+
+    def apply(self, module):
+        from .unet import DSUNet
+        return DSUNet(module)
+
+
+class TransformerPolicy(DSPolicy):
     # a static class variable containing the HuggingFace model configuration.
     # see e.g., transformers.models.opt.configuration_opt.OPTConfig
     hf_model_config = None
@@ -24,7 +51,7 @@ class DSPolicy(ABC):
         mlp_act_func_type=ActivationFuncType.GELU,
         # applies layer norm before attention if `pre_attn_norm` is set to True
         pre_attn_norm=True):
-        self.cuda_graph_supported = False
+        super().__init__()
         self.inference = inference
         self.linear_layer = linear_layer
         self.scale_attention = scale_attention
@@ -63,9 +90,7 @@ class DSPolicy(ABC):
         raise NotImplementedError
 
 
-class HFBertLayerPolicy(DSPolicy):
-    _orig_layer_class = None
-
+class HFBertLayerPolicy(TransformerPolicy):
     def __init__(self, client_module, inference=False):
         super().__init__(inference, pre_attn_norm=False)
         self.client_module = client_module
@@ -127,9 +152,7 @@ class HFBertLayerPolicy(DSPolicy):
                transformer_layernorm.bias
 
 
-class HFGPTNEOLayerPolicy(DSPolicy):
-    _orig_layer_class = None
-
+class HFGPTNEOLayerPolicy(TransformerPolicy):
     def __init__(self, client_module, inference=True):
         super().__init__(inference, scale_attention=False)
         self.client_module = client_module
@@ -172,7 +195,7 @@ class HFGPTNEOLayerPolicy(DSPolicy):
                self.client_module.ln_1.bias
 
 
-class HFGPTJLayerPolicy(DSPolicy):
+class HFGPTJLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
 
     def __init__(self, client_module, inference=True):
@@ -217,7 +240,7 @@ class HFGPTJLayerPolicy(DSPolicy):
                self.client_module.ln_1.bias
 
 
-class MegatronLayerPolicy(DSPolicy):
+class MegatronLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
     version = 0
     moe_type = 'standard'
@@ -297,7 +320,7 @@ class MegatronLayerPolicy(DSPolicy):
                self.client_module.input_layernorm.bias
 
 
-class HFGPT2LayerPolicy(DSPolicy):
+class HFGPT2LayerPolicy(TransformerPolicy):
     _orig_layer_class = None
 
     def __init__(self, client_module, inference=True):
@@ -337,7 +360,7 @@ class HFGPT2LayerPolicy(DSPolicy):
                self.client_module.ln_1.bias
 
 
-class BLOOMLayerPolicy(DSPolicy):
+class BLOOMLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
 
     def __init__(self, client_module, inference=True):
@@ -379,7 +402,7 @@ class BLOOMLayerPolicy(DSPolicy):
                self.client_module.input_layernorm.bias
 
 
-class GPTNEOXLayerPolicy(DSPolicy):
+class GPTNEOXLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
     version = 0
 
@@ -433,7 +456,7 @@ class GPTNEOXLayerPolicy(DSPolicy):
                self.client_module.input_layernorm.bias
 
 
-class HFOPTLayerPolicy(DSPolicy):
+class HFOPTLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
 
     def __init__(self, client_module, inference=True):
@@ -490,6 +513,7 @@ class HFOPTLayerPolicy(DSPolicy):
             self.client_module.self_attn_layer_norm.bias
 
 
+# transformer-based policies
 replace_policies = [
     HFBertLayerPolicy,
     HFGPTNEOLayerPolicy,
@@ -500,3 +524,6 @@ replace_policies = [
     BLOOMLayerPolicy,
     HFOPTLayerPolicy,
 ]
+
+# non-transformer-based policies
+generic_policies = [UNetPolicy]
