@@ -2,12 +2,8 @@
 Copyright 2022 The Microsoft DeepSpeed Team
 */
 
-#include <c10/cuda/CUDAStream.h>
 #include <torch/extension.h>
-#include <stdexcept>
-#include <vector>
 #include "inference_context.h"
-#include "inference_cublas_wrappers.h"
 #include "inference_cuda_layers.h"
 
 template <typename T>
