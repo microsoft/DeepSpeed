@@ -16,6 +16,10 @@ class DeepSpeedAccelerator(ABC):
 
     # Device APIs
     @abc.abstractmethod
+    def device_name(self, device_index):
+        ...
+
+    @abc.abstractmethod
     def device(self, device_index):
         ...
 

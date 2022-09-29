@@ -15,6 +15,10 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         self.ByteTensor = torch.cuda.ByteTensor
 
     # Device APIs
+    def device_name(self, device_index=None):
+        idx = torch.cuda.current_device() if device_index is None else device_index
+        return f'cuda:{idx}'
+
     def device(self, device_index=None):
         return torch.cuda.device(device_index)
 
