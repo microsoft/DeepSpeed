@@ -1,5 +1,6 @@
 from .transformer_inference import InferenceBuilder
 
+
 class UnitTestBuilder(InferenceBuilder):
     NAME = "deepspeed_unittest"
 
