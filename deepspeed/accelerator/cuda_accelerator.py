@@ -4,8 +4,8 @@ import torch.cuda
 
 class CUDA_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
-        self.name = 'cuda'
-        self.communication_backend = 'nccl'
+        self._name = 'cuda'
+        self._communication_backend_name = 'nccl'
         self.DoubleTensor = torch.cuda.DoubleTensor
         self.LongTensor = torch.cuda.LongTensor
         self.FloatTensor = torch.cuda.FloatTensor
@@ -110,6 +110,13 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def total_memory(self, device_index=None):
         return torch.cuda.get_device_properties(device_index).total_memory
 
+    # Data types
+    def is_bf16_supported(self):
+        return torch.cuda.is_bf16_supported()
+
+    def is_fp16_supported(self):
+        return torch.cuda.is_fp16_supported()
+
     # Misc
     def is_available(self):
         return torch.cuda.is_available()
@@ -125,9 +132,8 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def lazy_call(self, callback):
         return torch.cuda._lazy_call(callback)
 
-    # Data types
-    def is_bf16_supported(self):
-        return torch.cuda.is_bf16_supported()
+    def name(self):
+        return self._name
 
-    def is_fp16_supported(self):
-        return torch.cuda.is_fp16_supported()
+    def communication_backend_name(self):
+        return self._communication_backend_name
