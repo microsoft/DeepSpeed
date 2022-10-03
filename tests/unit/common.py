@@ -75,7 +75,7 @@ class DistributedExec(ABC):
 
     @abstractmethod
     def run(self):
-        NotImplementedError("Inheriting classes must define this method")
+        ...
 
     def __call__(self, request=None):
         self._fixture_kwargs = self._get_fixture_kwargs(request, self.run)
