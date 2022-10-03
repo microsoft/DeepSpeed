@@ -1,7 +1,7 @@
 from .transformer_inference import InferenceBuilder
 
 
-class UnitTestBuilder(InferenceBuilder):
+class InferenceUnitTestBuilder(InferenceBuilder):
     NAME = "deepspeed_unittest"
 
     def sources(self):

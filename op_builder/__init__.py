@@ -11,7 +11,7 @@ from .stochastic_transformer import StochasticTransformerBuilder
 from .utils import UtilsBuilder
 from .async_io import AsyncIOBuilder
 from .transformer_inference import InferenceBuilder
-from .unittest_builder import UnitTestBuilder
+from .unittest_builder import InferenceUnitTestBuilder
 from .quantizer import QuantizerBuilder
 from .builder import get_default_compute_capabilities, OpBuilder
 
@@ -29,6 +29,6 @@ __op_builders__ = [
     UtilsBuilder(),
     QuantizerBuilder(),
     InferenceBuilder(),
-    UnitTestBuilder()
+    InferenceUnitTestBuilder()
 ]
 ALL_OPS = {op.name: op for op in __op_builders__}
