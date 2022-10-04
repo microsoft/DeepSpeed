@@ -7,18 +7,51 @@ from transformers import pipeline
 from unit.common import DistributedTest
 
 
+@pytest.fixture
+def query(model, task):
+    if task == "text-generation":
+        return "DeepSpeed is"
+    elif task == "fill-mask":
+        if "roberta" in model:
+            return "I am a <mask> model"
+        else:
+            return "I am a [MASK] model"
+    else:
+        raise NotImplementedError
+
+
+@pytest.fixture
+def inf_kwargs(task):
+    if task == "text-generation":
+        return {"do_sample": False, "min_length": 50, "max_length": 50}
+    else:
+        return {}
+
+
 @pytest.mark.inference
+@pytest.mark.parametrize("model,task",
+                         [
+                             ("bert-base-cased",
+                              "fill-mask"),
+                             ("roberta-base",
+                              "fill-mask"),
+                             ("gpt2",
+                              "text-generation"),
+                             ("facebook/opt-125m",
+                              "text-generation"),
+                             ("bigscience/bloom-560m",
+                              "text-generation"),
+                         ])
 @pytest.mark.parametrize("cuda_graphs", [True, False])
 class TestModelProfiling(DistributedTest):
     world_size = 1
 
-    def test(self, cuda_graphs):
-        model = "bert-base-cased"
-        task = "fill-mask"
-        query = "I am a [MASK] model"
+    def test(self, model, task, query, inf_kwargs, cuda_graphs, dtype=torch.float16):
+        if cuda_graphs and "bert" not in model:
+            pytest.skip(f"CUDA Graph not supported for {model}")
+
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         world_size = int(os.getenv("WORLD_SIZE", "1"))
-        dtype = torch.float16
 
         pipe = pipeline(task, model, framework="pt", device=local_rank)
         pipe.model = deepspeed.init_inference(pipe.model,
@@ -35,7 +68,7 @@ class TestModelProfiling(DistributedTest):
             torch.cuda.synchronize()
             start = time.perf_counter_ns()
 
-            r = pipe(query)
+            r = pipe(query, **inf_kwargs)
 
             torch.cuda.synchronize()
             end = time.perf_counter_ns()
