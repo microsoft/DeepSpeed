@@ -575,11 +575,10 @@ class PipelineModule(nn.Module):
             offsets = ds_utils.partition_uniform(num_layers, dp_size)
             start, end = offsets[dp_rank], offsets[dp_rank + 1]
         else:
-            # assign all layers to rank 0
-            if dp_rank == 0:
-                start, end = 0, num_layers
-            else:
-                start, end = 0, 0
+            # data parallel rank 0 writes all layers
+            if dp_rank != 0:
+                return
+            start, end = 0, num_layers
         layer_list = self.forward_funcs[start:end]
 
         os.makedirs(save_dir, exist_ok=True)
