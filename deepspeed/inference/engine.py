@@ -2,6 +2,7 @@
 Copyright 2021 The Microsoft DeepSpeed Team
 '''
 import torch
+import time
 import os
 
 from deepspeed import comm as dist
@@ -19,6 +20,7 @@ from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
 from ..runtime.zero import GatheredParameters
 from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
+from ..module_inject.replace_policy import DSPolicy
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -50,7 +52,8 @@ class InferenceEngine(Module):
                  moe_type='standard',
                  config=None,
                  enable_cuda_graph=False,
-                 save_mp_checkpoint_path=None):
+                 save_mp_checkpoint_path=None,
+                 base_dir=""):
         """
         Args:
             model: torch.nn.Module
@@ -77,6 +80,9 @@ class InferenceEngine(Module):
 
         self._get_model_config_generate(config)
 
+        if hasattr(self.module, "config"):
+            DSPolicy.hf_model_config = self.module.config
+
         self.mp_world_size = mp_size
         self.checkpoint = checkpoint
         self.dtype = dtype
@@ -95,6 +101,11 @@ class InferenceEngine(Module):
         self.cuda_graph_created = False
         self.checkpoint_engine = TorchCheckpointEngine()
         self._init_quantization_setting(quantization_setting)
+        self.model_profile_enabled = False
+        self._model_times = []
+
+        # This is a hack to remove the prepare_mask function on HF side for BLOOM architecture
+        self.remove_mask_prepare_for_bloom()
 
         if enable_cuda_graph:
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
@@ -131,7 +142,8 @@ class InferenceEngine(Module):
                     moe_type,
                     training_mp_size,
                     self.checkpoint if replace_with_kernel_inject else None,
-                    save_mp_checkpoint_path=save_mp_checkpoint_path)
+                    save_mp_checkpoint_path=save_mp_checkpoint_path,
+                    base_dir=base_dir)
         elif replace_method == 'auto':
             self._apply_injection_policy(
                 return_tuple=return_tuple,
@@ -141,7 +153,8 @@ class InferenceEngine(Module):
                 moe_type=moe_type,
                 training_mp_size=training_mp_size,
                 checkpoint_dir=self.checkpoint if replace_with_kernel_inject else None,
-                save_mp_checkpoint_path=save_mp_checkpoint_path)
+                save_mp_checkpoint_path=save_mp_checkpoint_path,
+                base_dir=base_dir)
 
         device = torch.cuda.current_device()
         self.module.to(device)
@@ -152,14 +165,31 @@ class InferenceEngine(Module):
             torch.cuda.set_rng_state(_rng_state.cpu())
 
         if self.mp_world_size > 1:
-            self.model_orig_fwd = self.module.forward
-            self.module.forward = self.forward
-        else:
+            assert not self.enable_cuda_graph, "Cuda graph is not supported for model parallelism"
+
+    def profile_model_time(self):
+        if not self.model_profile_enabled and not self.enable_cuda_graph:
             self.module.register_forward_pre_hook(self._pre_forward_hook)
+            self.module.register_forward_hook(self._post_forward_hook)
+        self.model_profile_enabled = True
 
     def _get_model_config_generate(self, config):
         self.config = getattr(self.module, 'config', None) if config is None else config
         self.generate = getattr(self.module, 'generate', None)
+
+    def remove_mask_prepare_for_bloom(self):
+        if hasattr(self.module, 'transformer'):
+            if hasattr(self.module.transformer, '_prepare_attn_mask'):
+                self.module.transformer._prepare_attn_mask = lambda attention_mask, *args, **kwargs: attention_mask
+
+    def _pre_forward_hook(self, module, *inputs, **kwargs):
+        torch.cuda.synchronize()
+        self._start = time.time()
+
+    def _post_forward_hook(self, module, input, output):
+        torch.cuda.synchronize()
+        self._end = time.time()
+        self._model_times.append(self._end - self._start)
 
     def _create_model_parallel_group(self):
         # Call the init process
@@ -322,36 +352,38 @@ class InferenceEngine(Module):
                                 moe_type='standard',
                                 training_mp_size=1,
                                 checkpoint_dir=None,
-                                save_mp_checkpoint_path=False):
+                                save_mp_checkpoint_path=False,
+                                base_dir=""):
         checkpoint = SDLoaderFactory.get_sd_loader_json(
             checkpoint_dir,
             self.checkpoint_engine) if checkpoint_dir is not None else None
-        replace_transformer_layer(
-            client_module,
-            self.module,
-            triangular_masking=self.triangular_masking,
-            policy=injection_policy,
-            mp_size=self.mp_world_size,
-            mp_group=self.mp_group,
-            ep_group=self.ep_group,
-            expert_mp_group=self.expert_mp_group,
-            config=self.config,
-            fp16=(self.dtype == torch.half),
-            training=False,
-            return_tuple=return_tuple,
-            quantize=(self.dtype == torch.int8),
-            quantize_settings=(self.quantization_scales,
-                               self.quantize_merge_count,
-                               self.mlp_extra_grouping,
-                               self.quantize_groups),
-            replace_with_kernel_inject=replace_with_kernel_inject,
-            moe=moe,
-            moe_experts=moe_experts,
-            moe_type=moe_type,
-            training_mp_size=training_mp_size,
-            checkpoint_dict=checkpoint,
-            save_mp_checkpoint_path=save_mp_checkpoint_path,
-        )
+        replace_transformer_layer(client_module,
+                                  self.module,
+                                  triangular_masking=self.triangular_masking,
+                                  policy=injection_policy,
+                                  mp_size=self.mp_world_size,
+                                  mp_group=self.mp_group,
+                                  ep_group=self.ep_group,
+                                  expert_mp_group=self.expert_mp_group,
+                                  config=self.config,
+                                  fp16=(self.dtype == torch.half)
+                                  or (self.dtype == torch.int8),
+                                  training=False,
+                                  return_tuple=return_tuple,
+                                  quantize=(self.dtype == torch.int8),
+                                  quantize_settings=(self.quantization_scales,
+                                                     self.quantize_merge_count,
+                                                     self.mlp_extra_grouping,
+                                                     self.quantize_groups),
+                                  replace_with_kernel_inject=replace_with_kernel_inject,
+                                  moe=moe,
+                                  moe_experts=moe_experts,
+                                  moe_type=moe_type,
+                                  training_mp_size=training_mp_size,
+                                  checkpoint_dict=checkpoint,
+                                  save_mp_checkpoint_path=save_mp_checkpoint_path,
+                                  base_dir=base_dir,
+                                  enable_cuda_graph=self.enable_cuda_graph)
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
         ckpt_file_pattern = self._get_ckpt_name(checkpoints_path,
@@ -446,7 +478,7 @@ class InferenceEngine(Module):
             return 'model'
 
     def _convert_to_dtype(self):
-        if self.dtype is torch.int8 and self.quantization_scales is None:
+        if False:  #self.dtype is torch.int8 and self.quantization_scales is None:
             quantizer = WeightQuantization(mlp_extra_grouping=self.mlp_extra_grouping)
             model, self.quantization_scales = quantizer.model_quantize(self.module,
                                                                         self.injection_dict,
@@ -458,14 +490,6 @@ class InferenceEngine(Module):
             self.module.bfloat16()
         elif self.dtype == torch.float:
             self.module.float()
-
-    def _pre_forward_hook(self, module, *inputs, **kwargs):
-        for input in inputs:
-            if torch.is_tensor(input):
-                input = input.to(torch.cuda.current_device())
-        for k in kwargs:
-            if torch.is_tensor(kwargs[k]):
-                kwargs[k] = kwargs[k].to(torch.cuda.current_device())
 
     def _create_cuda_graph(self, *inputs, **kwargs):
         # warmup to create the workspace and cublas handle
@@ -496,6 +520,18 @@ class InferenceEngine(Module):
         self._cuda_graphs.replay()
         return self.static_output
 
+    def model_times(self):
+        assert self.model_profile_enabled, "model profiling is not enabled"
+        model_times = self._model_times
+        if self.enable_cuda_graph and len(self._model_times) == 0:
+            raise ValueError(
+                "Model times are empty and cuda graph is enabled. If "
+                "this is a GPT-style model this combo is not supported. If this is a "
+                "BERT-style model this is a bug, please report it. "
+                f"Model type is: {type(self.module)}")
+        self._model_times = []
+        return model_times
+
     def forward(self, *inputs, **kwargs):
         """Execute forward propagation
 
@@ -503,30 +539,23 @@ class InferenceEngine(Module):
             *inputs: Variable length input list
             **kwargs: variable length keyword arguments
         """
+        start = None
+        if self.model_profile_enabled and self.enable_cuda_graph:
+            torch.cuda.synchronize()
+            start = time.time()
 
-        if self.mp_world_size > 1:
-            if self.mpu is None:
-                for input in inputs:
-                    if torch.is_tensor(input):
-                        input = input.to(torch.cuda.current_device())
-                        if not input.is_contiguous():
-                            input = input.contiguous()
-                        dist.broadcast(input, 0)
-                for k in kwargs:
-                    if torch.is_tensor(kwargs[k]):
-                        kwargs[k] = kwargs[k].to(torch.cuda.current_device())
-                        if not kwargs[k].is_contiguous():
-                            kwargs[k] = kwargs[k].contiguous()
-                        dist.broadcast(kwargs[k], 0)
-            outputs = self.model_orig_fwd(*inputs, **kwargs)
-        else:
-            if self.enable_cuda_graph:
-                if self.cuda_graph_created:
-                    outputs = self._graph_replay(*inputs, **kwargs)
-                else:
-                    self._create_cuda_graph(*inputs, **kwargs)
-                    outputs = self._graph_replay(*inputs, **kwargs)
+        if self.enable_cuda_graph:
+            if self.cuda_graph_created:
+                outputs = self._graph_replay(*inputs, **kwargs)
             else:
-                outputs = self.module(*inputs, **kwargs)
-            #outputs = self.module(*inputs, **kwargs)
+                self._create_cuda_graph(*inputs, **kwargs)
+                outputs = self._graph_replay(*inputs, **kwargs)
+        else:
+            outputs = self.module(*inputs, **kwargs)
+
+        if self.model_profile_enabled and self.enable_cuda_graph:
+            torch.cuda.synchronize()
+            duration = time.time() - start
+            self._model_times.append(duration)
+
         return outputs
