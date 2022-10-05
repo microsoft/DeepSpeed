@@ -534,11 +534,11 @@ at::Tensor ds_bias_gelu(at::Tensor& input, at::Tensor& bias)
     int bsz = input_cont.size(0) * input_cont.size(1);
     int intermediate_size = input_cont.size(2);
 
-    launch_bias_gelu((T*)input_cont.data_ptr(),
-                     (T*)bias.data_ptr(),
-                     intermediate_size,
-                     bsz,
-                     Context::Instance().GetCurrentStream());
+    launch_bias_gelu<T>((T*)input_cont.data_ptr(),
+                        (T*)bias.data_ptr(),
+                        intermediate_size,
+                        bsz,
+                        Context::Instance().GetCurrentStream());
     return input_cont;
 }
 
@@ -550,11 +550,11 @@ at::Tensor ds_bias_relu(at::Tensor& input, at::Tensor& bias)
     int bsz = input_cont.size(0) * input_cont.size(1);
     int intermediate_size = input_cont.size(2);
 
-    launch_bias_relu((T*)input_cont.data_ptr(),
-                     (T*)bias.data_ptr(),
-                     intermediate_size,
-                     bsz,
-                     Context::Instance().GetCurrentStream());
+    launch_bias_relu<T>((T*)input_cont.data_ptr(),
+                        (T*)bias.data_ptr(),
+                        intermediate_size,
+                        bsz,
+                        Context::Instance().GetCurrentStream());
     return input_cont;
 }
 
@@ -566,11 +566,11 @@ at::Tensor ds_bias_add(at::Tensor& input, at::Tensor& bias)
     int bsz = input_cont.size(0) * input_cont.size(1);
     int hidden_size = input_cont.size(2);
 
-    launch_bias_add((T*)input_cont.data_ptr(),
-                    (T*)bias.data_ptr(),
-                    hidden_size,
-                    bsz,
-                    Context::Instance().GetCurrentStream());
+    launch_bias_add<T>((T*)input_cont.data_ptr(),
+                       (T*)bias.data_ptr(),
+                       hidden_size,
+                       bsz,
+                       Context::Instance().GetCurrentStream());
     return input_cont;
 }
 
@@ -707,11 +707,11 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
 #endif
     }
     if (add_bias)
-        launch_bias_add((T*)output.data_ptr(),
-                        (T*)bias.data_ptr(),
-                        q_int8 ? weight.size(0) : weight.size(1),
-                        bsz,
-                        Context::Instance().GetCurrentStream());
+        launch_bias_add<T>((T*)output.data_ptr(),
+                           (T*)bias.data_ptr(),
+                           q_int8 ? weight.size(0) : weight.size(1),
+                           bsz,
+                           Context::Instance().GetCurrentStream());
     return torch::from_blob(workspace, input.sizes(), input.options());
 }
 
@@ -822,11 +822,11 @@ at::Tensor ds_qkv_gemm_int8(at::Tensor& input,
 
     quantized_gemm<T>(output, inp_norm, weight, q_scale, groups, 0);
     if (add_bias)
-        launch_bias_add((T*)output.data_ptr(),
-                        (T*)bias.data_ptr(),
-                        weight.size(1),
-                        bsz,
-                        Context::Instance().GetCurrentStream());
+        launch_bias_add<T>((T*)output.data_ptr(),
+                           (T*)bias.data_ptr(),
+                           weight.size(1),
+                           bsz,
+                           Context::Instance().GetCurrentStream());
 
     return output;
 }
@@ -876,11 +876,11 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                    CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
 
-    launch_bias_add((T*)output.data_ptr(),
-                    (T*)bias.data_ptr(),
-                    weight.size(1),
-                    bsz,
-                    Context::Instance().GetCurrentStream());
+    launch_bias_add<T>((T*)output.data_ptr(),
+                       (T*)bias.data_ptr(),
+                       weight.size(1),
+                       bsz,
+                       Context::Instance().GetCurrentStream());
 
     return output;
 }
@@ -903,11 +903,11 @@ at::Tensor ds_linear_layer_int8(at::Tensor& input,
     auto output = at::empty({input_cont.size(0), input_cont.size(1), weight.size(1)}, options);
 
     quantized_gemm<T>(output, input_cont, weight, q_scale, groups, 0);
-    launch_bias_add((T*)output.data_ptr(),
-                    (T*)bias.data_ptr(),
-                    weight.size(1),
-                    bsz,
-                    Context::Instance().GetCurrentStream());
+    launch_bias_add<T>((T*)output.data_ptr(),
+                       (T*)bias.data_ptr(),
+                       weight.size(1),
+                       bsz,
+                       Context::Instance().GetCurrentStream());
     return output;
 }
 
@@ -1038,17 +1038,17 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
 #endif
     }
     if (act_func_type == ActivationFuncType::GELU) {
-        launch_bias_gelu(intermediate,
-                         (T*)bias.data_ptr(),
-                         q_int8 ? weight.size(0) : weight.size(1),
-                         bsz,
-                         Context::Instance().GetCurrentStream());
+        launch_bias_gelu<T>(intermediate,
+                            (T*)bias.data_ptr(),
+                            q_int8 ? weight.size(0) : weight.size(1),
+                            bsz,
+                            Context::Instance().GetCurrentStream());
     } else if (act_func_type == ActivationFuncType::ReLU) {
-        launch_bias_relu(intermediate,
-                         (T*)bias.data_ptr(),
-                         q_int8 ? weight.size(0) : weight.size(1),
-                         bsz,
-                         Context::Instance().GetCurrentStream());
+        launch_bias_relu<T>(intermediate,
+                            (T*)bias.data_ptr(),
+                            q_int8 ? weight.size(0) : weight.size(1),
+                            bsz,
+                            Context::Instance().GetCurrentStream());
     }
     if (q_int8) {
         quantized_gemm<T>(
@@ -1156,11 +1156,11 @@ std::vector<at::Tensor> ds_mlp_gemm_int8(at::Tensor& input,
 
     auto residual_add = (preLayerNorm ? at::empty_like(input_cont) : inp_norm);
     quantized_gemm<T>(output, inp_norm, weight, q_scale, groups, 0);
-    launch_bias_gelu((T*)output.data_ptr(),
-                     (T*)bias.data_ptr(),
-                     weight.size(1),
-                     bsz,
-                     Context::Instance().GetCurrentStream());
+    launch_bias_gelu<T>((T*)output.data_ptr(),
+                        (T*)bias.data_ptr(),
+                        weight.size(1),
+                        bsz,
+                        Context::Instance().GetCurrentStream());
 
     return {output, residual_add};
 }
@@ -1204,11 +1204,11 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
 #else
                    CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
-    launch_bias_gelu((T*)intermediate.data_ptr(),
-                     (T*)bias.data_ptr(),
-                     weight.size(1),
-                     bsz,
-                     Context::Instance().GetCurrentStream());
+    launch_bias_gelu<T>((T*)intermediate.data_ptr(),
+                        (T*)bias.data_ptr(),
+                        weight.size(1),
+                        bsz,
+                        Context::Instance().GetCurrentStream());
 
     cublas_gemm_ex(Context::Instance().GetCublasHandle(),
                    CUBLAS_OP_N,
@@ -1334,11 +1334,11 @@ at::Tensor fused_gemm_gelu_int8(at::Tensor& input,
     int bsz = input_cont.size(0) * input_cont.size(1);
 
     quantized_gemm<T>(output, input_cont, weight, q_scale, groups, 0);
-    launch_bias_gelu((T*)output.data_ptr(),
-                     (T*)bias.data_ptr(),
-                     weight.size(1),
-                     bsz,
-                     Context::Instance().GetCurrentStream());
+    launch_bias_gelu<T>((T*)output.data_ptr(),
+                        (T*)bias.data_ptr(),
+                        weight.size(1),
+                        bsz,
+                        Context::Instance().GetCurrentStream());
 
     return output;
 }

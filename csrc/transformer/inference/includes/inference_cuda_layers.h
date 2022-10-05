@@ -4,6 +4,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 #pragma once
 
+#include "activations.h"
 #include "ds_kernel_utils.h"
 
 #include <cuda.h>
@@ -38,24 +39,21 @@ void launch_attn_softmax_v2(T* vals,
                             int mp_size,
                             cudaStream_t stream);
 
-// Fused bias add with gelu activation
-template <typename T>
-void launch_bias_gelu(T* input,
-                      const T* bias,
-                      int intermediate_size,
-                      int batch_size,
-                      cudaStream_t stream);
-
-// Fused bias add with relu activation
-template <typename T>
-void launch_bias_relu(T* input,
-                      const T* bias,
-                      int intermediate_size,
-                      int batch_size,
-                      cudaStream_t stream);
+template <typename T, activation::Type ActFn>
+void launch_bias_act(T* input,
+                     const T* bias,
+                     int intermediate_size,
+                     int batch_size,
+                     cudaStream_t stream);
 
 template <typename T>
-void launch_bias_add(T* input, const T* bias, int hidden_size, int batch_size, cudaStream_t stream);
+const auto launch_bias_gelu = launch_bias_act<T, activation::Type::GELU>;
+
+template <typename T>
+const auto launch_bias_add = launch_bias_act<T, activation::Type::Identity>;
+
+template <typename T>
+const auto launch_bias_relu = launch_bias_act<T, activation::Type::ReLU>;
 
 template <typename T>
 void launch_bias_residual(T* input,
