@@ -40,7 +40,7 @@ def run_bias_gelu_reference(activations, bias):
 def run_bias_gelu_ds(activations, bias):
     global unittest_module
     if unittest_module is None:
-        unittest_module = InferenceUnitTestBuilder().load()
+        unittest_module = InferenceUnitTestBuilder("Activation").load()
     if activations.dtype == torch.float16:
         return unittest_module.bias_gelu_fp16(activations, bias)
     else:

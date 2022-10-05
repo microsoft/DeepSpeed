@@ -226,6 +226,12 @@ class OpBuilder(ABC):
         '''
         return True
 
+    def builder_macros(self):
+        '''
+        Returns optional builder specific macros to used with preprocessor directives.
+        '''
+        return []
+
     def extra_ldflags(self):
         return []
 
@@ -657,6 +663,7 @@ class CUDAOpBuilder(OpBuilder):
                 '-U__CUDA_NO_HALF2_OPERATORS__'
             ]
             args += self.compute_capability_args()
+            args += self.builder_macros()
         return args
 
     def libraries_args(self):
@@ -664,6 +671,9 @@ class CUDAOpBuilder(OpBuilder):
             return ['cublas', 'curand']
         else:
             return []
+
+    def builder_flag(self):
+        return []
 
 
 class TorchCPUOpBuilder(CUDAOpBuilder):

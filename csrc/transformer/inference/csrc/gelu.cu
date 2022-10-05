@@ -475,3 +475,31 @@ template void launch_moe_res_matmul(__half* residual,
                                     int seq_len,
                                     int hidden_dim,
                                     cudaStream_t stream);
+
+
+#ifdef ACTIVATION_UNITTEST
+#include "inference_context.h"
+#include <torch/extension.h>
+
+template <typename T>
+at::Tensor ds_bias_gelu(at::Tensor& input, at::Tensor& bias)
+{
+    auto input_cont = input.contiguous();
+
+    int bsz = input_cont.size(0) * input_cont.size(1);
+    int intermediate_size = input_cont.size(2);
+
+    launch_bias_gelu((T*)input_cont.data_ptr(),
+                     (T*)bias.data_ptr(),
+                     intermediate_size,
+                     bsz,
+                     Context::Instance().GetCurrentStream());
+    return input_cont;
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
+    m.def("bias_gelu_fp32", &ds_bias_gelu<float>, "DeepSpeed Gelu with fp32 (CUDA)");
+    m.def("bias_gelu_fp16", &ds_bias_gelu<__half>, "DeepSpeed Gelu with fp32 (CUDA)");
+}
+#endif
