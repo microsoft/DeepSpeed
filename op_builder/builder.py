@@ -672,9 +672,6 @@ class CUDAOpBuilder(OpBuilder):
         else:
             return []
 
-    def builder_flag(self):
-        return []
-
 
 class TorchCPUOpBuilder(CUDAOpBuilder):
     def extra_ldflags(self):
