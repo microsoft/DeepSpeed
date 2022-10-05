@@ -5,6 +5,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #pragma once
 
 #include "activations.h"
+#include "conversion_utils.h"
 #include "ds_kernel_utils.h"
 
 #ifdef HALF_PRECISION_AVAILABLE
@@ -111,8 +112,10 @@ DS_D_INLINE __half func<Type::Identity>(__half val)
 template <>
 DS_D_INLINE __half func<Type::ReLU>(__half val)
 {
-    const __half_raw zero = {0};
-    return __hmax(val, zero);
+    const __half_raw zero_raw = {0};
+    const __half zero(zero_raw);
+
+    return (val > zero) ? val : zero;
 }
 
 template <Type ActFn>
@@ -132,8 +135,14 @@ DS_D_INLINE __half2 func<Type::Identity>(__half2 val)
 template <>
 DS_D_INLINE __half2 func<Type::ReLU>(__half2 val)
 {
-    const __half2_raw zeros = {0, 0};
-    return __hmax2(val, zeros);
+    // TODO(cmikeh2): Use __hmax2 where available
+    const __half_raw zero_raw = {0};
+    const __half zero(zero_raw);
+
+    __half2 ret_val;
+    ret_val.x = (val.x > zero) ? val.x : zero;
+    ret_val.y = (val.y > zero) ? val.y : zero;
+    return ret_val;
 }
 #endif
 
@@ -157,7 +166,8 @@ DS_D_INLINE __nv_bfloat16 func<Type::Identity>(__nv_bfloat16 val)
 template <>
 DS_D_INLINE __nv_bfloat16 func<Type::ReLU>(__nv_bfloat16 val)
 {
-    const __nv_bfloat16_raw zero = {0};
+    const __nv_bfloat16_raw zero_raw = {0};
+    const __nv_bfloat16 zero(zero_raw);
     return __hmax(val, zero);
 }
 
@@ -178,7 +188,8 @@ DS_D_INLINE __nv_bfloat162 func<Type::Identity>(__nv_bfloat162 val)
 template <>
 DS_D_INLINE __nv_bfloat162 func<Type::ReLU>(__nv_bfloat162 val)
 {
-    const __nv_bfloat162_raw zeros = {0, 0};
+    const __nv_bfloat162_raw zeros_raw = {0, 0};
+    const __nv_bfloat162 zeros(zeros_raw);
     return __hmax2(val, zeros);
 }
 #endif
