@@ -11,18 +11,6 @@ from deepspeed.ops.op_builder import OpBuilder
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 from huggingface_hub import HfApi
 
-
-# Fixture avoids problems with missing imports when pytest collects tests when
-# running non-inference tests
-@pytest.fixture(scope="module", autouse=True)
-def lm_eval_imports():
-    global lm_eval
-    import lm_eval
-    import lm_eval.models
-    import lm_eval.tasks
-    import lm_eval.evaluator
-
-
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
     pytest.skip("skip inference tests on rocm for now", allow_module_level=True)
@@ -132,6 +120,8 @@ def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
         msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
     elif ("bloom" in model) and (dtype != torch.half):
         msg = f"Bloom models only support half precision, cannot use dtype {dtype}"
+    elif ("bert" not in model.lower()) and enable_cuda_graph:
+        msg = "Non bert/roberta models do no support CUDA Graph"
     return msg
 
 
@@ -292,13 +282,13 @@ class TestModelTask(DistributedTest):
 
 @pytest.mark.seq_inference
 @pytest.mark.parametrize("model_w_task",
-                         [("gpt2",
+                         [("EleutherAI/gpt-neo-1.3B",
                            "text-generation"),
                           ("EleutherAI/gpt-neox-20b",
                            "text-generation"),
                           ("bigscience/bloom-3b",
                            "text-generation")],
-                         ids=["gpt2",
+                         ids=["gpt-neo",
                               "gpt-neox",
                               "bloom"])
 class TestMPSize(DistributedTest):
@@ -308,7 +298,6 @@ class TestMPSize(DistributedTest):
         self,
         model_w_task,
         dtype,
-        enable_cuda_graph,
         query,
         inf_kwargs,
         assert_fn,
@@ -325,14 +314,11 @@ class TestMPSize(DistributedTest):
         pipe = pipeline(task, model=model, device=-1, framework="pt")
         bs_output = pipe(query, **inf_kwargs)
 
-        pipe.model = deepspeed.init_inference(
-            pipe.model,
-            mp_size=self.world_size,
-            dtype=dtype,
-            replace_method="auto",
-            replace_with_kernel_inject=True,
-            enable_cuda_graph=enable_cuda_graph,
-        )
+        pipe.model = deepspeed.init_inference(pipe.model,
+                                              mp_size=self.world_size,
+                                              dtype=dtype,
+                                              replace_method="auto",
+                                              replace_with_kernel_inject=True)
         # Switch device to GPU so that input tensors are not on CPU
         pipe.device = torch.device(f"cuda:{local_rank}")
         ds_output = pipe(query, **inf_kwargs)
@@ -359,6 +345,12 @@ class TestLMCorrectness(DistributedTest):
     world_size = 1
 
     def test(self, model_family, model_name, task):
+        # imports here to avoid import errors when pytest collects tests
+        import lm_eval
+        import lm_eval.models
+        import lm_eval.tasks
+        import lm_eval.evaluator
+
         local_rank = os.getenv("LOCAL_RANK", "0")
         device = torch.device(f"cuda:{local_rank}")
         dtype = torch.float
