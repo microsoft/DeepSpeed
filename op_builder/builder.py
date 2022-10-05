@@ -72,15 +72,14 @@ cuda_minor_mismatch_ok = {
         "10.1",
         "10.2",
     ],
-    11: [
-        "11.0",
-        "11.1",
-        "11.2",
-        "11.3",
-        "11.4",
-        "11.5",
-        "11.6",
-    ],
+    11: ["11.0",
+         "11.1",
+         "11.2",
+         "11.3",
+         "11.4",
+         "11.5",
+         "11.6",
+         "11.7"],
 }
 
 
@@ -487,13 +486,6 @@ class OpBuilder(ABC):
 
         self.jit_mode = True
         from torch.utils.cpp_extension import load
-
-        # Ensure directory exists to prevent race condition in some cases
-        ext_path = os.path.join(
-            os.environ.get('TORCH_EXTENSIONS_DIR',
-                           DEFAULT_TORCH_EXTENSION_PATH),
-            self.name)
-        os.makedirs(ext_path, exist_ok=True)
 
         start_build = time.time()
         sources = [self.deepspeed_src_path(path) for path in self.sources()]
