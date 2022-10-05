@@ -116,7 +116,7 @@ class OpenMPIRunner(MultiNodeRunner):
     def backend_exists(self):
         #TODO: if IB is available we should suggestion mvapich
         return shutil.which('ompi_info')
-  
+
     @property
     def name(self):
         return "openmpi"
@@ -169,7 +169,7 @@ class SlurmRunner(MultiNodeRunner):
 
     def backend_exists(self):
         return shutil.which('sinfo')
-    
+
     def parse_user_args(self):
         user_args = []
         for arg in self.args.user_args:
@@ -182,7 +182,9 @@ class SlurmRunner(MultiNodeRunner):
                             config_files[k] = json.loads(v)
                         arg_dict['config_files'] = config_files
                 except json.JSONDecodeError as jde:
-                    raise ValueError('SLURM is picky and needs you to use plain json for your configs. Check for comments and lowercase trues') from jde
+                    raise ValueError(
+                        'SLURM is picky and needs you to use plain json for your configs. Check for comments and lowercase trues'
+                    ) from jde
                 arg = json.dumps(arg_dict, separators=(',', ':'))
             user_args.append(arg)
         return user_args
@@ -212,13 +214,13 @@ class SlurmRunner(MultiNodeRunner):
             srun_cmd.append('--gpus')
             srun_cmd.append(f'{self.args.num_gpus}')
 
-
-        exports = '--export=ALL' 
+        exports = '--export=ALL'
         for key, val in self.exports.items():
-            exports +=  f",{key}={val}" 
+            exports += f",{key}={val}"
 
         python_exec = [sys.executable, "-u"]
-        command = srun_cmd + [exports] + python_exec + [self.user_script] + self.user_arguments
+        command = srun_cmd + [exports] + python_exec + [self.user_script
+                                                        ] + self.user_arguments
         return command
 
 
