@@ -24,13 +24,20 @@ class DSUNet(torch.nn.Module):
 
                 # force return tuple instead of dict
                 self._traced_unet = torch.jit.trace(
-                    lambda _sample, _timestamp, _encoder_hidden_states: self.unet(_sample, _timestamp, _encoder_hidden_states, return_dict=False),
-                    (sample, timestamp, encoder_hidden_states)
-                )
+                    lambda _sample,
+                    _timestamp,
+                    _encoder_hidden_states: self.unet(_sample,
+                                                      _timestamp,
+                                                      _encoder_hidden_states,
+                                                      return_dict=False),
+                    (sample,
+                     timestamp,
+                     encoder_hidden_states))
                 return self.unet(sample, timestamp, encoder_hidden_states)
             else:
                 # convert return type to UNet2DConditionOutput
                 out_sample, *_ = self._traced_unet(sample, timestamp, encoder_hidden_states)
-                return diffusers.models.unet_2d_condition.UNet2DConditionOutput(out_sample)
+                return diffusers.models.unet_2d_condition.UNet2DConditionOutput(
+                    out_sample)
         else:
             return self.unet(sample, timestamp, encoder_hidden_states, return_dict)
