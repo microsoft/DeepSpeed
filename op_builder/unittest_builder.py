@@ -1,7 +1,8 @@
 from .transformer_inference import InferenceBuilder
 
-unittest_file_dict = {"Activation" : ['csrc/transformer/inference/csrc/gelu.cu']}
-unittest_macro_dict = {"Activation" : ['-DACTIVATION_UNITTEST']}
+unittest_file_dict = {"Activation": ['csrc/transformer/inference/csrc/gelu.cu']}
+unittest_macro_dict = {"Activation": ['-DACTIVATION_UNITTEST']}
+
 
 class InferenceUnitTestBuilder(InferenceBuilder):
     NAME = "deepspeed_unittest"

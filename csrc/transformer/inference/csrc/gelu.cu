@@ -476,10 +476,9 @@ template void launch_moe_res_matmul(__half* residual,
                                     int hidden_dim,
                                     cudaStream_t stream);
 
-
 #ifdef ACTIVATION_UNITTEST
-#include "inference_context.h"
 #include <torch/extension.h>
+#include "inference_context.h"
 
 template <typename T>
 at::Tensor ds_bias_gelu(at::Tensor& input, at::Tensor& bias)
