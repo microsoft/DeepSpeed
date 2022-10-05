@@ -5,13 +5,12 @@ Copyright 2022 The Microsoft DeepSpeed Team
 import pytest
 import torch
 import deepspeed
-from deepspeed.ops.op_builder import InferenceBuilder
+from deepspeed.ops.op_builder import InferenceUnitTestBuilder
 
-if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
-    pytest.skip("Inference ops are not available on this system",
-                allow_module_level=True)
+if not deepspeed.ops.__compatible_ops__[InferenceUnitTestBuilder.NAME]:
+    pytest.skip("Unittest ops are not available on this system", allow_module_level=True)
 
-inference_module = None
+unittest_module = None
 torch_minor_version = None
 
 
@@ -39,16 +38,16 @@ def run_bias_gelu_reference(activations, bias):
 
 
 def run_bias_gelu_ds(activations, bias):
-    global inference_module
-    if inference_module is None:
-        inference_module = InferenceBuilder().load()
+    global unittest_module
+    if unittest_module is None:
+        unittest_module = InferenceUnitTestBuilder("Activation").load()
     if activations.dtype == torch.float16:
-        return inference_module.bias_gelu_fp16(activations, bias)
+        return unittest_module.bias_gelu_fp16(activations, bias)
     else:
-        return inference_module.bias_gelu_fp32(activations, bias)
+        return unittest_module.bias_gelu_fp32(activations, bias)
 
 
-@pytest.mark.inference
+@pytest.mark.inference_unittest
 @pytest.mark.parametrize("batch", [1, 2])
 @pytest.mark.parametrize("sequence", [1, 128, 255])
 @pytest.mark.parametrize("channels", [512, 1232, 4096])
@@ -56,7 +55,6 @@ def run_bias_gelu_ds(activations, bias):
 def test_bias_gelu(batch, sequence, channels, dtype):
     activations_ds = torch.randn((batch, sequence, channels), dtype=dtype, device='cuda')
     bias_ds = torch.randn((channels), dtype=dtype, device='cuda')
-
     activations_ref = activations_ds.clone().detach()
     bias_ref = bias_ds.clone().detach()
 
