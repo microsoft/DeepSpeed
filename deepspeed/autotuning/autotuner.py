@@ -45,17 +45,13 @@ class Autotuner:
 
         self.autotuning_config = DeepSpeedAutotuningConfig(self.user_config)
 
-        self.exps_dir = DEFAULT_EXPRS_DIR
-        if self.autotuning_config.exps_dir and self.autotuning_config.exps_dir != "":
-            self.exps_dir = self.autotuning_config.exps_dir
+        self.exps_dir = self.autotuning_config.exps_dir
         if self.autotuning_config.overwrite and os.path.exists(self.exps_dir):
             shutil.rmtree(self.exps_dir, ignore_errors=True)
         if not os.path.exists(self.exps_dir):
             os.makedirs(self.exps_dir, exist_ok=True)
 
-        self.results_dir = DEFAULT_RESULTS_DIR
-        if self.autotuning_config.results_dir and self.autotuning_config.results_dir != "":
-            self.results_dir = self.autotuning_config.results_dir
+        self.results_dir = self.autotuning_config.results_dir
         if self.autotuning_config.overwrite and os.path.exists(self.results_dir):
             shutil.rmtree(self.results_dir, ignore_errors=True)
         if not os.path.exists(self.results_dir):
