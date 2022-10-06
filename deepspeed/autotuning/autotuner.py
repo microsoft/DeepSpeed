@@ -9,7 +9,7 @@ import hjson
 from ..runtime.config_utils import dict_raise_error_on_duplicate_keys
 from ..runtime.constants import *
 
-from ..runtime.zero.config import DeepSpeedZeroConfig, ZERO_OPTIMIZATION, ZeroStageEnum
+from ..runtime.zero.config import ZERO_OPTIMIZATION, ZeroStageEnum
 from ..utils import logger
 from .config import DeepSpeedAutotuningConfig
 from .constants import *
@@ -23,6 +23,10 @@ except ImportError:
     tabulate = None
 
 
+ZERO_OPTIMIZATION_STAGE = "stage"
+OFFLOAD_OPTIMIZER = "offload_optimizer"
+OFFLOAD_PARAM = "offload_param"
+ZERO_OPTIMIZATION_STAGE_DEFAULT=ZeroStageEnum.disabled
 class Autotuner:
     """The DeepSpeed Autotuner automatically discovers the optimal DeepSpeed configuration that delivers good training speed. The Autotuner uses model information, system information, and heuristics to efficiently tune system knobs that affect compute and memory efficiencies, such as ZeRO optimization stages, micro-batch sizes, and many other ZeRO optimization configurations. It not only reduces the time and resources user spend on tuning, but also can discover configurations better than hand-tuned methods.
     Autotuning with DeepSpeed requires no code change from DeepSpeed users. Please refer to the README for usage details.
@@ -304,8 +308,8 @@ class Autotuner:
         exps = []
 
         # each zero stage uses a different template configuration file
-        config_zero = tuning_space.zero_optimization
-        stage = config_zero.stage
+        config_zero = tuning_space.get(ZERO_OPTIMIZATION, {})
+        stage = config_zero.get(ZERO_OPTIMIZATION_STAGE, ZERO_OPTIMIZATION_STAGE_DEFAULT)
         template_config = {}
         if stage == 0:
             template_path = DEFAULT_TEMPLATE_PATH_ZERO_0
@@ -365,13 +369,11 @@ class Autotuner:
             # if the config does not use offloading, remove the offloading section
             config_zero = config.get(ZERO_OPTIMIZATION, None)
             if config_zero:
-                if not config_zero.offload_optimizer and 'offload_optimizer' in exp_config[
+                if OFFLOAD_OPTIMIZER not in config_zero and OFFLOAD_OPTIMIZER in exp_config[
                         ZERO_OPTIMIZATION]:
-                    del exp_config[ZERO_OPTIMIZATION]['offload_optimizer']
-                if not config_zero.offload_param and 'offload_param' in exp_config[
-                        ZERO_OPTIMIZATION]:
-                    del exp_config[ZERO_OPTIMIZATION]['offload_param']
-
+                    del exp_config[ZERO_OPTIMIZATION][OFFLOAD_OPTIMIZER]
+                if OFFLOAD_PARAM not in config_zero and OFFLOAD_PARAM in exp_config[ZERO_OPTIMIZATION]:
+                    del exp_config[ZERO_OPTIMIZATION][OFFLOAD_PARAM]
             # set gradient accumulation steps according to max_train_batch_size_per_gpu
             mbs = exp_config[TRAIN_MICRO_BATCH_SIZE_PER_GPU]
             gas = max_train_batch_size_per_gpu // mbs
@@ -416,7 +418,11 @@ class Autotuner:
             f"The model requires at least {memory_to_string(self.activation_mem, postfix='B')} activation memory for micro batch size 1."
         )
 
-        stage = self.user_config.zero_optimization.stage if 'stage' in self.user_config.zero_optimization.__fields_set__ else "all"
+        #TODO: FIX THIS
+        stage = self.user_config.get(ZERO_OPTIMIZATION,
+                                     {}).get(ZERO_OPTIMIZATION_STAGE,
+                                             "all")
+        stage = "all"
         user_zero_stages = [stage] if not isinstance(stage, list) else stage
         logger.info(f"User-defined zero stages are {stage}.")
 
@@ -499,7 +505,7 @@ class Autotuner:
                    prev_best_mbs=0,
                    prev_best_metric_val=0):
         config_zero = tuning_space.get(ZERO_OPTIMIZATION, {})
-        stage = config_zero.stage
+        stage = config_zero.get(ZERO_OPTIMIZATION_STAGE, None)
         tuning_space_name = TUNING_MICRO_BATCH_SIZE_PREFIX + str(stage)
         tuning_micro_batch_sizes = []
         max_train_batch_size_per_gpu = 0
@@ -753,7 +759,7 @@ class Autotuner:
         max_micro_batch_size_metric_val = 0
 
         ds_config = get_first_config(self.user_config)
-        ds_config[ZERO_OPTIMIZATION] = DeepSpeedZeroConfig(stage=stage)
+        ds_config[ZERO_OPTIMIZATION] = {ZERO_OPTIMIZATION_STAGE: stage}
         tuning_space_name = TUNING_MICRO_BATCH_SIZE_PREFIX + str(stage)
 
         exp_paths = []
@@ -852,7 +858,7 @@ class Autotuner:
         tuning_space_name = TUNING_MICRO_BATCH_SIZE_PREFIX + str(stage)
 
         ds_config = get_first_config(self.user_config)
-        ds_config[ZERO_OPTIMIZATION] = DeepSpeedZeroConfig(stage=stage)
+        ds_config[ZERO_OPTIMIZATION] = {ZERO_OPTIMIZATION_STAGE: stage}
         gas = self.get_gas_from_user_config()
         ds_config[GRADIENT_ACCUMULATION_STEPS] = gas
 
