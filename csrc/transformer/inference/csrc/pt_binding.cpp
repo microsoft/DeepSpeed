@@ -9,6 +9,9 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #include "inference_context.h"
 #include "inference_cublas_wrappers.h"
 #include "inference_cuda_layers.h"
+#include <pybind11/pybind11.h>
+
+namespace py = pybind11;
 
 std::array<int, 3> gemm_algos = std::array<int, 3>({99, 99, 99});
 
@@ -1350,6 +1353,9 @@ at::Tensor moe_res_matmul(at::Tensor& moe_res, at::Tensor& coef, at::Tensor& out
     return output;
 }
 
+void ds_bias_gelu_fp32_bind(py::module_ &);
+void ds_bias_gelu_fp16_bind(py::module_ &);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("softmax_fp32", &ds_softmax<float>, "DeepSpeed SoftMax with fp32 (CUDA)");
@@ -1362,6 +1368,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("softmax_context_int8",
           &ds_softmax_context1<__half>,
           "DeepSpeed attention with int8 (CUDA)");
+    ds_bias_gelu_fp32_bind(m);
+    ds_bias_gelu_fp16_bind(m);
     m.def("bias_add_fp32", &ds_bias_add<float>, "DeepSpeed Bias Add with fp32 (CUDA)");
     m.def("bias_add_fp16", &ds_bias_add<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
     m.def("bias_relu_fp32", &ds_bias_relu<float>, "DeepSpeed ReLU with fp32 (CUDA)");

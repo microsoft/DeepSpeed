@@ -35,6 +35,7 @@ class InferenceBuilder(CUDAOpBuilder):
     def sources(self):
         return [
             'csrc/transformer/inference/csrc/pt_binding.cpp',
+            'csrc/transformer/inference/csrc/activation_binding.cpp',
             'csrc/transformer/inference/csrc/gelu.cu',
             'csrc/transformer/inference/csrc/relu.cu',
             'csrc/transformer/inference/csrc/normalize.cu',

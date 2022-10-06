@@ -635,10 +635,12 @@ class CUDAOpBuilder(OpBuilder):
             )
 
     def cxx_args(self):
+        args = self.builder_macros()
         if sys.platform == "win32":
-            return ['-O2']
+            args += ['-O2']
         else:
-            return ['-O3', '-std=c++14', '-g', '-Wno-reorder']
+            args += ['-O3', '-std=c++14', '-g', '-Wno-reorder']
+        return args
 
     def nvcc_args(self):
         args = ['-O3']
@@ -663,7 +665,6 @@ class CUDAOpBuilder(OpBuilder):
                 '-U__CUDA_NO_HALF2_OPERATORS__'
             ]
             args += self.compute_capability_args()
-            args += self.builder_macros()
         return args
 
     def libraries_args(self):
