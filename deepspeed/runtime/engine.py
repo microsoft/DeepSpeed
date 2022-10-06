@@ -2523,8 +2523,9 @@ class DeepSpeedEngine(Module):
                                                 tag,
                                                 mp_placeholder="*")
         import glob
-
+        print(f'rank {dist.get_rank()} ckpt file pattern = {ckpt_file_pattern}')
         ckpt_files = glob.glob(ckpt_file_pattern)
+        print(f'rank {dist.get_rank()} ckpt file pattern = {ckpt_file_pattern} returns {ckpt_files=}')
         ckpt_files.sort()
         return ckpt_files
 
@@ -2801,7 +2802,6 @@ class DeepSpeedEngine(Module):
             mp_rank=mp_rank,
             dp_world_size=self.loaded_checkpoint_dp_world_size,
             bf16_mode=bf16_mode)
-        invalid_zero_ckpt_paths = []
         for i, ckpt_name in enumerate(zero_ckpt_names):
             if not os.path.exists(ckpt_name):
                 # transparently handle the old file pattern for optim_states
@@ -2811,13 +2811,7 @@ class DeepSpeedEngine(Module):
                     if os.path.exists(ckpt_name_try):
                         zero_ckpt_names[i] = ckpt_name_try
                         continue
-                invalid_zero_ckpt_paths.append(ckpt_name)
-
-        if len(invalid_zero_ckpt_paths) > 0:
-            logger.warn(
-                f"The following zero checkpoints paths are missing: {invalid_zero_ckpt_paths}"
-            )
-            return None
+                zero_ckpt_names[i] = None 
 
         return zero_ckpt_names
 
@@ -2825,8 +2819,10 @@ class DeepSpeedEngine(Module):
         zero_sd_list = []
         for i, ckpt_name in enumerate(zero_ckpt_names):
             _state = None
+            if ckpt_name is None:
+                _state = {OPTIMIZER_STATE_DICT: None}            
             # Fully load state for current rank
-            if self.zero_elastic_checkpoint() or dist.get_rank(
+            elif self.zero_elastic_checkpoint() or dist.get_rank(
                     group=self.optimizer.dp_process_group) == i:
                 _state = self.checkpoint_engine.load(
                     ckpt_name,
