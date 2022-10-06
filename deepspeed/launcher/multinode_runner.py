@@ -1,4 +1,3 @@
-import json
 import os
 import sys
 import shutil
@@ -169,6 +168,10 @@ class SlurmRunner(MultiNodeRunner):
 
     def backend_exists(self):
         return shutil.which('sinfo')
+
+    @property
+    def name(self):
+        return 'slurm'
 
     def get_cmd(self, environment, active_resources):
         assert not getattr(self.args, 'detect_nvlink_pairs', False), "slurm backend does not support remapping visible devices"
