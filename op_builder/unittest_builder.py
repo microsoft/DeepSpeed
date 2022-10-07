@@ -24,7 +24,10 @@ class InferenceUnitTestBuilder(InferenceBuilder):
 
     def sources(self):
         if self.test_name is None:
-            return unittest_file_dict.values()
+            return [
+                source for test_source in unittest_file_dict.values()
+                for source in test_source
+            ]
 
         if self.test_name in unittest_file_dict.keys():
             return unittest_file_dict[self.test_name]
