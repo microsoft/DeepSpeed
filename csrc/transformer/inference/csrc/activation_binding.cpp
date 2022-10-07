@@ -1,10 +1,9 @@
+#include <pybind11/pybind11.h>
 #include <torch/extension.h>
 #include "inference_context.h"
 #include "inference_cuda_layers.h"
-#include <pybind11/pybind11.h>
 
 namespace py = pybind11;
-
 
 template <typename T>
 at::Tensor ds_bias_gelu(at::Tensor& input, at::Tensor& bias)
@@ -22,11 +21,13 @@ at::Tensor ds_bias_gelu(at::Tensor& input, at::Tensor& bias)
     return input_cont;
 }
 
-void ds_bias_gelu_fp32_bind(py::module_ &m){
+void ds_bias_gelu_fp32_bind(py::module_& m)
+{
     m.def("bias_gelu_fp32", &ds_bias_gelu<float>, "DeepSpeed Gelu with fp32 (CUDA)");
 }
 
-void ds_bias_gelu_fp16_bind(py::module_ &m){
+void ds_bias_gelu_fp16_bind(py::module_& m)
+{
     m.def("bias_gelu_fp16", &ds_bias_gelu<__half>, "DeepSpeed Gelu with fp32 (CUDA)");
 }
 

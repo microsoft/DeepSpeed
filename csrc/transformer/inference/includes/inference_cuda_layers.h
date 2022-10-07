@@ -8,14 +8,13 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 #include <cuda.h>
 #include <cuda_fp16.h>
+#include <pybind11/pybind11.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <cassert>
 #include <iostream>
-#include <pybind11/pybind11.h>
 
 namespace py = pybind11;
-
 
 #define MAX_WARP_NUM 32
 #define WARP_SIZE 32
@@ -177,5 +176,5 @@ void launch_bias_add_transform_0213(T* outputs,
                                     int trans_count,
                                     int max_out_tokens);
 
-void ds_bias_gelu_fp32_bind(py::module_ &);
-void ds_bias_gelu_fp16_bind(py::module_ &);
+void ds_bias_gelu_fp32_bind(py::module_&);
+void ds_bias_gelu_fp16_bind(py::module_&);

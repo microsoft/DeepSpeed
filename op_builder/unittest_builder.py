@@ -1,7 +1,11 @@
 from .transformer_inference import InferenceBuilder
 
-unittest_file_dict = {"Activation": ['csrc/transformer/inference/csrc/gelu.cu',
-                                    'csrc/transformer/inference/csrc/activation_binding.cpp']}
+unittest_file_dict = {
+    "Activation": [
+        'csrc/transformer/inference/csrc/gelu.cu',
+        'csrc/transformer/inference/csrc/activation_binding.cpp'
+    ]
+}
 unittest_macro_dict = {"Activation": ['-DACTIVATION_UNITTEST']}
 
 
