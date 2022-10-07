@@ -7,7 +7,7 @@ import pytest
 
 @pytest.fixture
 def runner_info():
-    hosts = {'worker-0': [0, 1, 2, 3], 'worker-1': [0, 1, 2, 3]}
+    hosts = {'worker-0': 4, 'worker-1': 4}
     world_info = encode_world_info(hosts)
     env = deepcopy(os.environ)
     args = parse_args(['test_launcher.py'])
