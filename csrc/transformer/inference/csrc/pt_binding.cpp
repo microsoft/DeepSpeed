@@ -1353,9 +1353,6 @@ at::Tensor moe_res_matmul(at::Tensor& moe_res, at::Tensor& coef, at::Tensor& out
     return output;
 }
 
-void ds_bias_gelu_fp32_bind(py::module_ &);
-void ds_bias_gelu_fp16_bind(py::module_ &);
-
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("softmax_fp32", &ds_softmax<float>, "DeepSpeed SoftMax with fp32 (CUDA)");
