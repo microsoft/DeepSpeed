@@ -195,14 +195,70 @@ def _module_match(module):
     return None
 
 
-def generic_injection(module):
+def generic_injection(module, fp16=False):
+    
+    def replace_attn(child, policy, layer_id):
+        policy_attn = policy.attention(child)
+        if policy_attn is None:
+            return child
+        if len(policy_attn) == 5:
+            qkvw, attn_ow, attn_ob, hidden_size, heads = policy_attn
+        else:
+            qw, kvw, attn_ow, attn_ob, hidden_size, heads = policy_attn
+
+        config = transformer_inference.DeepSpeedInferenceConfig(
+                    hidden_size=hidden_size,
+                    heads=heads,
+                    fp16=fp16,
+                    triangular_masking=False,)
+        attn_module = transformer_inference.DeepSpeedAttention(config)
+        def transpose(data):
+            data.reshape(-1).copy_(data.transpose(-1, -2).contiguous().reshape(-1))
+            data = data.reshape(data.shape[-1], data.shape[-2])
+            data.to(torch.cuda.current_device())
+            return data
+        if len(policy_attn) == 5:
+            attn_module.attn_qkvw.data = transpose(qkvw.data)
+        else:
+            attn_module.attn_qkvw = None
+            attn_module.attn_qw.data = transpose(qw.data)
+            attn_module.attn_kvw.data = transpose(kvw.data)
+
+        attn_module.attn_qkvb = None
+        attn_module.attn_ow.data = transpose(attn_ow.data)
+        attn_module.attn_ob.data.copy_(attn_ob.data.to(torch.cuda.current_device()))
+        return attn_module
+
     if isinstance(module, torch.nn.Module):
         pass
     else:
+        try:
+            import diffusers
+            cross_attention = diffusers.models.attention.CrossAttention
+            new_policies = {cross_attention: replace_attn}
+        except ImportError:
+            new_policies = {}
+
+        #replace_transformer_layer(None, module.text_encoder, training=False,
+        #                        replace_with_kernel_inject=True,
+        #                        triangular_masking=True)
         for name in module.__dict__.keys():
             sub_module = getattr(module, name)
             policy = _module_match(sub_module)
+            
             if policy is not None:
+                def _replace_module(module, policy, layer_id=0):
+                    for name, child in module.named_children():
+                        if child.__class__ in new_policies:
+                            replaced_module = new_policies[child.__class__](child,
+                                                                            policy,
+                                                                            layer_id)
+                            setattr(module, name, replaced_module)
+                            layer_id += 1
+                        else:
+                            layer_id = _replace_module(child, policy, layer_id=layer_id)
+                    return layer_id
+                _replace_module(sub_module, policy)
                 new_module = policy.apply(sub_module)
                 print(f"**** found and replaced {name} w. {type(new_module)}")
                 setattr(module, name, new_module)

@@ -835,6 +835,10 @@ template <typename T>
 at::Tensor ds_linear_layer(at::Tensor& input,
                            at::Tensor& weight,
                            at::Tensor& bias,
+                           bool add_bias,
+                           bool external_cache,
+                           bool do_flash_attn,
+                           int num_heads,
                            unsigned num_layers)
 {
     auto input_cont = input.contiguous();
@@ -844,13 +848,14 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                        .device(at::kCUDA)
                        .requires_grad(false);
 
+    int head_size = input_cont.size(2) / num_heads;
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
     // Reallocate memory if we received a new prompt
-    if (!workspace || input.size(1) != 1) {
+    if (!workspace) {
         cublasSetStream(Context::Instance().GetCublasHandle(),
                         Context::Instance().GetCurrentStream());
-        allocate_workspace<T>(input.size(2), input.size(0), num_layers);
+        allocate_workspace<T>(input.size(2), input.size(0), num_layers, 1, external_cache);
         workspace = (T*)Context::Instance().GetWorkSpace();
     }
     auto output = at::from_blob(workspace, {input.size(0), input.size(1), weight.size(1)}, options);
@@ -875,14 +880,68 @@ at::Tensor ds_linear_layer(at::Tensor& input,
 #else
                    CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
-
-    launch_bias_add((T*)output.data_ptr(),
+    if (add_bias)
+        launch_bias_add((T*)output.data_ptr(),
                     (T*)bias.data_ptr(),
                     weight.size(1),
                     bsz,
                     Context::Instance().GetCurrentStream());
-
-    return output;
+    bool add_padding = (head_size % 32 != 0 && head_size < 64) || (head_size % 64 != 0);
+    if (do_flash_attn)
+    {
+        if (add_padding){
+            int padded_head_size = head_size < 32 ? 32 : (head_size < 64 ? 64 : 128);
+            auto padded_output = workspace + output.numel();
+            auto final_output = padded_output + (input.size(0) * input.size(1) * 3 * num_heads * padded_head_size);
+            pad_data(padded_output, workspace, 3*bsz * num_heads, head_size, padded_head_size, Context::Instance().GetCurrentStream());
+            
+            launch_bias_add_transform_0213<T>(final_output,
+                                            final_output + (input.size(0) * input.size(1) * num_heads * padded_head_size),
+                                            final_output + (input.size(0) * input.size(1) * 2 * num_heads * padded_head_size),
+                                            padded_output,
+                                            nullptr,
+                                            input.size(0),
+                                            input.size(1),
+                                            0,
+                                            input.size(1),
+                                            (num_heads * padded_head_size),
+                                            num_heads,
+                                            -1,
+                                            false,
+                                            false,
+                                            Context::Instance().GetCurrentStream(),
+                                            3,
+                                            input.size(1));
+            return at::from_blob(final_output, {3, input.size(0), num_heads, input.size(1), padded_head_size}, options);
+            //return at::from_blob(padded_output, {input.size(0) * input.size(1), 3, num_heads, padded_head_size}, options);
+        }
+        else   
+        {
+            auto final_output = workspace + output.numel();
+            launch_bias_add_transform_0213<T>(final_output,
+                                            final_output + (input.size(0) * input.size(1) * input_cont.size(2)),
+                                            final_output + (input.size(0) * input.size(1) * 2 * input_cont.size(2)),
+                                            workspace,
+                                            nullptr,
+                                            input.size(0),
+                                            input.size(1),
+                                            0,
+                                            input.size(1),
+                                            input_cont.size(2),
+                                            num_heads,
+                                            -1,
+                                            false,
+                                            false,
+                                            Context::Instance().GetCurrentStream(),
+                                            3,
+                                            input.size(1));
+            return at::from_blob(final_output, {3, input.size(0), num_heads, input.size(1), head_size}, options);
+            //return at::from_blob(workspace, {input.size(0) * input.size(1), 3, num_heads, head_size}, options);
+        }
+      
+    }
+    else 
+        return output;
 }
 
 template <typename T>
