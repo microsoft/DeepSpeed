@@ -408,7 +408,7 @@ class DeepSpeedSelfAttentionFunction(Function):
             if not config.pre_layer_norm:
                 linear_func = inference_cuda_module.linear_layer_fp16 if config.fp16 else \
                                     inference_cuda_module.linear_layer_fp32
-                
+
                 qkv_out = linear_func(input,
                                       attn_qkvw,
                                       attn_qkvb,

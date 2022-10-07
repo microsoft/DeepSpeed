@@ -173,5 +173,9 @@ void launch_bias_add_transform_0213(T* outputs,
                                     int trans_count,
                                     int max_out_tokens);
 template <typename T>
-void pad_data(T* padded_output, T* output, int bsz, int head_size, int padded_head_size,
-    cudaStream_t stream);
+void pad_data(T* padded_output,
+              T* output,
+              int bsz,
+              int head_size,
+              int padded_head_size,
+              cudaStream_t stream);

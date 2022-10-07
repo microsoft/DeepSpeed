@@ -1,19 +1,17 @@
 '''
 Copyright 2020 The Microsoft DeepSpeed Team
 '''
-import json
 import math
 import torch
 from torch.autograd import Function
 from ... import op_builder
 import torch.nn as nn
-from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
-from deepspeed.utils.types import ActivationFuncType
 from .triton_ops import triton_flash_attn
 # Cuda modules will be imported if needed
 inference_cuda_module = None
 minus_inf = -10000.0
+
 
 class DeepSpeedAttentionFunction(Function):
     @staticmethod
@@ -77,7 +75,10 @@ class DeepSpeedAttentionFunction(Function):
                                   DeepSpeedAttention.layer_id)
             if do_flash_attn:
                 scale = (1 / norm_factor) * 1 / norm_factor
-                context_layer = triton_flash_attn_kernel(qkv_out[0], qkv_out[1], qkv_out[2], scale)
+                context_layer = triton_flash_attn_kernel(qkv_out[0],
+                                                         qkv_out[1],
+                                                         qkv_out[2],
+                                                         scale)
                 context_layer = _transpose_for_context(context_layer[:,:,:,:head_size])
             else:
                 context_layer = compute_attention(qkv_out, input_mask)
@@ -91,6 +92,7 @@ class DeepSpeedAttentionFunction(Function):
                                  config.heads,
                                  DeepSpeedAttention.layer_id)
             return output
+
         output = selfAttention_fp(input, input_mask)
 
         return output
@@ -110,8 +112,10 @@ class DeepSpeedAttention(nn.Module):
     """
     layer_id = 0
 
-    def __init__(self,
-                 config,):
+    def __init__(
+        self,
+        config,
+    ):
         super(DeepSpeedAttention, self).__init__()
 
         self.config = config
@@ -199,27 +203,24 @@ class DeepSpeedAttention(nn.Module):
                 outputs = self._graph_replay(*inputs, **kwargs)
             else:
                 self._create_cuda_graph(*inputs, **kwargs)
-                outputs = self._graph_replay(*inputs, **kwargs)    
+                outputs = self._graph_replay(*inputs, **kwargs)
         else:
             outputs = self._forward(*inputs, **kwargs)
         return outputs
-        
-    def _forward(self,
-                input,
-                input_mask=None):
-        output = DeepSpeedAttentionFunction.apply(
-            input,
-            input_mask,
-            self.config,
-            self.attn_qkvw,
-            self.attn_qkvb,
-            self.num_attention_heads_per_partition,
-            self.norm_factor,
-            self.hidden_size_per_partition,
-            self.attn_ow,
-            self.attn_ob,
-            self.score_context_func,
-            self.linear_func,
-            self.triton_flash_attn_kernel)
+
+    def _forward(self, input, input_mask=None):
+        output = DeepSpeedAttentionFunction.apply(input,
+                                                  input_mask,
+                                                  self.config,
+                                                  self.attn_qkvw,
+                                                  self.attn_qkvb,
+                                                  self.num_attention_heads_per_partition,
+                                                  self.norm_factor,
+                                                  self.hidden_size_per_partition,
+                                                  self.attn_ow,
+                                                  self.attn_ob,
+                                                  self.score_context_func,
+                                                  self.linear_func,
+                                                  self.triton_flash_attn_kernel)
 
         return output

@@ -196,7 +196,6 @@ def _module_match(module):
 
 
 def generic_injection(module, fp16=False):
-    
     def replace_attn(child, policy, layer_id):
         policy_attn = policy.attention(child)
         if policy_attn is None:
@@ -207,16 +206,19 @@ def generic_injection(module, fp16=False):
             qw, kvw, attn_ow, attn_ob, hidden_size, heads = policy_attn
 
         config = transformer_inference.DeepSpeedInferenceConfig(
-                    hidden_size=hidden_size,
-                    heads=heads,
-                    fp16=fp16,
-                    triangular_masking=False,)
+            hidden_size=hidden_size,
+            heads=heads,
+            fp16=fp16,
+            triangular_masking=False,
+        )
         attn_module = transformer_inference.DeepSpeedAttention(config)
+
         def transpose(data):
             data.reshape(-1).copy_(data.transpose(-1, -2).contiguous().reshape(-1))
             data = data.reshape(data.shape[-1], data.shape[-2])
             data.to(torch.cuda.current_device())
             return data
+
         if len(policy_attn) == 5:
             attn_module.attn_qkvw.data = transpose(qkvw.data)
         else:
@@ -245,8 +247,9 @@ def generic_injection(module, fp16=False):
         for name in module.__dict__.keys():
             sub_module = getattr(module, name)
             policy = _module_match(sub_module)
-            
+
             if policy is not None:
+
                 def _replace_module(module, policy, layer_id=0):
                     for name, child in module.named_children():
                         if child.__class__ in new_policies:
@@ -258,6 +261,7 @@ def generic_injection(module, fp16=False):
                         else:
                             layer_id = _replace_module(child, policy, layer_id=layer_id)
                     return layer_id
+
                 _replace_module(sub_module, policy)
                 new_module = policy.apply(sub_module)
                 print(f"**** found and replaced {name} w. {type(new_module)}")

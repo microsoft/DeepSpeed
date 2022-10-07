@@ -26,6 +26,7 @@ class DSPolicy(ABC):
         """
         raise NotImplementedError
 
+
 class UNetPolicy(DSPolicy):
     def __init__(self):
         super().__init__()
@@ -41,6 +42,7 @@ class UNetPolicy(DSPolicy):
     def apply(self, module):
         from .unet import DSUNet
         return DSUNet(module)
+
     def attention(self, client_module):
         qw = client_module.to_q.weight
         kw = client_module.to_k.weight
@@ -172,6 +174,7 @@ class HFBertLayerPolicy(TransformerPolicy):
                attention_layernorm.bias, \
                transformer_layernorm.weight, \
                transformer_layernorm.bias
+
 
 class HFCLIPLayerPolicy(TransformerPolicy):
     def __init__(self, client_module, inference=False):

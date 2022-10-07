@@ -882,65 +882,74 @@ at::Tensor ds_linear_layer(at::Tensor& input,
 #endif
     if (add_bias)
         launch_bias_add((T*)output.data_ptr(),
-                    (T*)bias.data_ptr(),
-                    weight.size(1),
-                    bsz,
-                    Context::Instance().GetCurrentStream());
+                        (T*)bias.data_ptr(),
+                        weight.size(1),
+                        bsz,
+                        Context::Instance().GetCurrentStream());
     bool add_padding = (head_size % 32 != 0 && head_size < 64) || (head_size % 64 != 0);
-    if (do_flash_attn)
-    {
-        if (add_padding){
+    if (do_flash_attn) {
+        if (add_padding) {
             int padded_head_size = head_size < 32 ? 32 : (head_size < 64 ? 64 : 128);
             auto padded_output = workspace + output.numel();
-            auto final_output = padded_output + (input.size(0) * input.size(1) * 3 * num_heads * padded_head_size);
-            pad_data(padded_output, workspace, 3*bsz * num_heads, head_size, padded_head_size, Context::Instance().GetCurrentStream());
-            
-            launch_bias_add_transform_0213<T>(final_output,
-                                            final_output + (input.size(0) * input.size(1) * num_heads * padded_head_size),
-                                            final_output + (input.size(0) * input.size(1) * 2 * num_heads * padded_head_size),
-                                            padded_output,
-                                            nullptr,
-                                            input.size(0),
-                                            input.size(1),
-                                            0,
-                                            input.size(1),
-                                            (num_heads * padded_head_size),
-                                            num_heads,
-                                            -1,
-                                            false,
-                                            false,
-                                            Context::Instance().GetCurrentStream(),
-                                            3,
-                                            input.size(1));
-            return at::from_blob(final_output, {3, input.size(0), num_heads, input.size(1), padded_head_size}, options);
-            //return at::from_blob(padded_output, {input.size(0) * input.size(1), 3, num_heads, padded_head_size}, options);
-        }
-        else   
-        {
+            auto final_output =
+                padded_output + (input.size(0) * input.size(1) * 3 * num_heads * padded_head_size);
+            pad_data(padded_output,
+                     workspace,
+                     3 * bsz * num_heads,
+                     head_size,
+                     padded_head_size,
+                     Context::Instance().GetCurrentStream());
+
+            launch_bias_add_transform_0213<T>(
+                final_output,
+                final_output + (input.size(0) * input.size(1) * num_heads * padded_head_size),
+                final_output + (input.size(0) * input.size(1) * 2 * num_heads * padded_head_size),
+                padded_output,
+                nullptr,
+                input.size(0),
+                input.size(1),
+                0,
+                input.size(1),
+                (num_heads * padded_head_size),
+                num_heads,
+                -1,
+                false,
+                false,
+                Context::Instance().GetCurrentStream(),
+                3,
+                input.size(1));
+            return at::from_blob(final_output,
+                                 {3, input.size(0), num_heads, input.size(1), padded_head_size},
+                                 options);
+            // return at::from_blob(padded_output, {input.size(0) * input.size(1), 3, num_heads,
+            // padded_head_size}, options);
+        } else {
             auto final_output = workspace + output.numel();
-            launch_bias_add_transform_0213<T>(final_output,
-                                            final_output + (input.size(0) * input.size(1) * input_cont.size(2)),
-                                            final_output + (input.size(0) * input.size(1) * 2 * input_cont.size(2)),
-                                            workspace,
-                                            nullptr,
-                                            input.size(0),
-                                            input.size(1),
-                                            0,
-                                            input.size(1),
-                                            input_cont.size(2),
-                                            num_heads,
-                                            -1,
-                                            false,
-                                            false,
-                                            Context::Instance().GetCurrentStream(),
-                                            3,
-                                            input.size(1));
-            return at::from_blob(final_output, {3, input.size(0), num_heads, input.size(1), head_size}, options);
-            //return at::from_blob(workspace, {input.size(0) * input.size(1), 3, num_heads, head_size}, options);
+            launch_bias_add_transform_0213<T>(
+                final_output,
+                final_output + (input.size(0) * input.size(1) * input_cont.size(2)),
+                final_output + (input.size(0) * input.size(1) * 2 * input_cont.size(2)),
+                workspace,
+                nullptr,
+                input.size(0),
+                input.size(1),
+                0,
+                input.size(1),
+                input_cont.size(2),
+                num_heads,
+                -1,
+                false,
+                false,
+                Context::Instance().GetCurrentStream(),
+                3,
+                input.size(1));
+            return at::from_blob(
+                final_output, {3, input.size(0), num_heads, input.size(1), head_size}, options);
+            // return at::from_blob(workspace, {input.size(0) * input.size(1), 3, num_heads,
+            // head_size}, options);
         }
-      
-    }
-    else 
+
+    } else
         return output;
 }
 

@@ -14,6 +14,7 @@ class DSUNet(torch.nn.Module):
         self._traced_unet = None
         self._trace_enabled = False
         self.device = self.unet.device
+        self.dtype = self.unet.dtype
         self.fwd_count = 0
         self.unet.requires_grad_(requires_grad=False)
         self.unet.to(memory_format=torch.channels_last)
@@ -34,9 +35,9 @@ class DSUNet(torch.nn.Module):
             outputs = self._graph_replay(*inputs, **kwargs)
         else:
             self._create_cuda_graph(*inputs, **kwargs)
-            outputs = self._graph_replay(*inputs, **kwargs)    
+            outputs = self._graph_replay(*inputs, **kwargs)
         return outputs
-        
+
     def _create_cuda_graph(self, *inputs, **kwargs):
         # warmup to create the workspace and cublas handle
         cuda_stream = torch.cuda.Stream()
