@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import time
+import base64
 
 import hjson
 from tqdm import tqdm
@@ -180,7 +181,6 @@ class ResourceManager:
                 logger.debug(f'Put exp_id = {exp["exp_id"]} back into the queue')
                 self.experiment_check(pbar)
             else:
-
                 desc = ""
                 for reservation in reservations:
                     reservation.slots.sort()
@@ -337,9 +337,11 @@ def run_experiment(exp: dict, reservations, user_script, user_args):
     exp_dir = exp["result_dir"]
     os.makedirs(exp_dir, exist_ok=True)
 
-    exp["ds_config_path"] = os.path.join(exp_dir, "ds_config.json")
-
     ds_config = copy.deepcopy(exp["ds_config"])
+    ds_config_json = json.dumps(ds_config).encode('utf-8')
+
+    exp["ds_config_path"] = os.path.join(exp_dir, "ds_config.json")
+    exp["ds_config_base64"] = base64.urlsafe_b64encode(ds_config_json).decode('utf-8')
 
     with open(exp["ds_config_path"], "w", buffering=BUFSIZE) as fd:
         json.dump(ds_config, fd)
@@ -357,9 +359,10 @@ def run_experiment(exp: dict, reservations, user_script, user_args):
         # "--deepspeed_config" is omitted in HF
         elif "--deepspeed" in user_args:
             idx = user_args.index("--deepspeed")
-        assert idx < len(user_args) and ".json" in user_args[idx +
-                                                             1], "there is no ds_config file specified after --deepspeed_config or --deepspeed"
-        user_args[idx + 1] = exp["ds_config_path"]
+        assert idx < len(user_args), "there is no ds_config file specified after --deepspeed_config or --deepspeed"
+        # user_args[idx + 1] = exp["ds_config_path"]
+        # pass base64 serialized ds_config to launcher
+        user_args[idx + 1] = exp["ds_config_base64"]
 
     exp["user_script"] = user_script
     exp["user_args"] = user_args

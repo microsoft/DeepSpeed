@@ -44,6 +44,8 @@ class Autotuner:
         assert self.user_config is not None, "DeepSpeed configuration is not provided"
 
         self.autotuning_config = DeepSpeedAutotuningConfig(self.user_config)
+        del self.user_config[AUTOTUNING][AUTOTUNING_EXPS_DIR]
+        del self.user_config[AUTOTUNING][AUTOTUNING_RESULTS_DIR]
 
         self.exps_dir = self.autotuning_config.exps_dir
         if self.autotuning_config.overwrite and os.path.exists(self.exps_dir):
