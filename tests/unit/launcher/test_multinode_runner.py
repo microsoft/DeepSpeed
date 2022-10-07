@@ -15,7 +15,7 @@ def runner_info():
 
 def test_pdsh_runner(runner_info):
     env, resource_pool, world_info = runner_info
-    args = parse_args()
+    args = parse_args('')
     runner = mnrunner.PDSHRunner(args, world_info)
     cmd, kill_cmd = runner.get_cmd(env, resource_pool)
     assert cmd[0] == 'pdsh'
@@ -24,7 +24,7 @@ def test_pdsh_runner(runner_info):
 
 def test_openmpi_runner(runner_info):
     env, resource_pool, world_info = runner_info
-    args = parse_args()
+    args = parse_args('')
     runner = mnrunner.OpenMPIRunner(args, world_info, resource_pool)
     cmd = runner.get_cmd(env, resource_pool)
     assert cmd[0] == 'mpirun'
@@ -32,7 +32,7 @@ def test_openmpi_runner(runner_info):
 
 def test_slurm_runner(runner_info):
     env, resource_pool, world_info = runner_info
-    args = parse_args()
+    args = parse_args('')
     runner = mnrunner.SlurmRunner(args, world_info, resource_pool)
     cmd = runner.get_cmd(env, resource_pool)
     assert cmd[0] == 'srun'
@@ -40,7 +40,7 @@ def test_slurm_runner(runner_info):
 
 def test_mvapich_runner(runner_info):
     env, resource_pool, world_info = runner_info
-    args = parse_args()
+    args = parse_args('')
     runner = mnrunner.MVAPICHRunner(args, world_info, resource_pool)
     cmd = runner.get_cmd(env, resource_pool)
     assert cmd[0] == 'mpirun'
