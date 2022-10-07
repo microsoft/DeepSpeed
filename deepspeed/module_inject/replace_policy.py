@@ -170,7 +170,19 @@ class HFGPTNEOLayerPolicy(DSPolicy):
                self.client_module.ln_2.bias, \
                self.client_module.ln_1.weight, \
                self.client_module.ln_1.bias
-
+    def get_param_names(self):
+        return 'attention.query_key_value.weight', \
+               'attention.query_key_value.bias', \
+               'attention.dense.weight', \
+               'attention.dense.bias', \
+               'mlp.dense_h_to_4h.weight', \
+               'mlp.dense_h_to_4h.bias', \
+               'mlp.dense_4h_to_h.weight', \
+               'mlp.dense_4h_to_h.bias', \
+               'input_layernorm.weight', \
+               'input_layernorm.bias', \
+               'post_attention_layernorm.weight', \
+               'post_attention_layernorm.bias',
 
 class HFGPTJLayerPolicy(DSPolicy):
     _orig_layer_class = None
@@ -378,6 +390,19 @@ class BLOOMLayerPolicy(DSPolicy):
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
 
+    def get_param_names(self):
+        return 'self_attention.query_key_value.weight', \
+               'self_attention.query_key_value.bias', \
+               'self_attention.dense.weight', \
+               'self_attention.dense.bias', \
+               'mlp.dense_h_to_4h.weight', \
+               'mlp.dense_h_to_4h.bias', \
+               'mlp.dense_4h_to_h.weight', \
+               'mlp.dense_4h_to_h.bias', \
+               'input_layernorm.weight', \
+               'input_layernorm.bias', \
+               'post_attention_layernorm.weight', \
+               'post_attention_layernorm.bias',
 
 class GPTNEOXLayerPolicy(DSPolicy):
     _orig_layer_class = None
@@ -488,7 +513,23 @@ class HFOPTLayerPolicy(DSPolicy):
             self.client_module.final_layer_norm.bias, \
             self.client_module.self_attn_layer_norm.weight, \
             self.client_module.self_attn_layer_norm.bias
-
+    def get_param_names(self):
+        return 'self_attn.q_proj.weight', \
+               'self_attn.q_proj.bias', \
+               'self_attn.k_proj.weight', \
+               'self_attn.k_proj.bias', \
+               'self_attn.v_proj.weight', \
+               'self_attn.v_proj.bias', \
+               'self_attn.out_proj.weight', \
+               'self_attn.out_proj.bias', \
+               'fc1.weight', \
+               'fc1.bias', \
+               'fc2.weight', \
+               'fc2.bias', \
+               'final_layer_norm.weight', \
+               'final_layer_norm.bias', \
+               'self_attn_layer_norm.weight', \
+               'self_attn_layer_norm.bias',
 
 replace_policies = [
     HFBertLayerPolicy,

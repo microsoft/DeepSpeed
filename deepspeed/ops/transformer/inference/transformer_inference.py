@@ -498,7 +498,7 @@ class DeepSpeedSelfAttention(nn.Module):
         data_type_fp = torch.half if config.fp16 else torch.float
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
-        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
+        device = torch.cuda.current_device() #if config.bigscience_bloom else 'cpu'
         qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
         self.attn_qkvw = nn.Parameter(torch.empty(self.config.hidden_size,
                                                   qkv_size_per_partition,
@@ -664,7 +664,7 @@ class DeepSpeedMLP(nn.Module):
         self.config = config
         data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.float
         data_type_fp = torch.half if config.fp16 else torch.float
-        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
+        device = torch.cuda.current_device() #if config.bigscience_bloom else 'cpu'
         self.attn_nw = nn.Parameter(torch.empty(self.config.hidden_size,
                                                 dtype=data_type_fp,
                                                 device=device),
@@ -789,7 +789,7 @@ class DeepSpeedTransformerInference(nn.Module):
                                 merge_count,
                                 mlp_extra_grouping)
 
-        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
+        device = torch.cuda.current_device() #if config.bigscience_bloom else 'cpu'
         self.norm_w = nn.Parameter(torch.empty(self.config.hidden_size,
                                                dtype=data_type,
                                                device=device),

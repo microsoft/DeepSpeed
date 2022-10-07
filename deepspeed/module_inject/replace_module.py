@@ -187,6 +187,10 @@ class GroupQuantizer:
         return out
 
 
+
+transformer_config_g = None
+selected_policy_g = None
+
 def replace_transformer_layer(orig_layer_impl,
                               model,
                               policy=None,
@@ -260,6 +264,9 @@ def replace_transformer_layer(orig_layer_impl,
                             inference=False,
                             layer_id=0):
         policy = policy_cls(child, inference=inference)
+        global selected_policy_g
+        if selected_policy_g is None:
+            selected_policy_g = policy
         if not policy.cuda_graph_supported:
             # policy says cuda graph is not supported raise an error if set
             assert not enable_cuda_graph, "cuda graph is not supported with this model, please disable"
@@ -364,6 +371,9 @@ def replace_transformer_layer(orig_layer_impl,
                     mlp_act_func_type=policy.mlp_act_func_type,
                     training_mp_size=training_mp_size,
                     bigscience_bloom=bigscience_bloom)
+                global transformer_config_g
+                if transformer_config_g is None:
+                    transformer_config_g = transformer_config
 
             if quantize and quantize_settings is not None:
                 (quantization_scales,
@@ -871,6 +881,8 @@ def replace_transformer_layer(orig_layer_impl,
                     mp_replace,
                     ckpt_type,
                     quantizer,
+                    transformer_config=transformer_config_g,
+                    param_names=selected_policy_g.get_param_names(),
                 )
                 pbar.update(1)
         else:
@@ -900,7 +912,9 @@ def replace_transformer_layer(orig_layer_impl,
                                            mp_replace,
                                            ckpt_type,
                                            quantizer,
-                                           int(rank % tp_split_size))
+                                           int(rank % tp_split_size),
+                                           transformer_config=transformer_config_g,
+                                           param_names=selected_policy_g.get_param_names())
                 sds = [None for _ in sds]
                 gc.collect()
 
@@ -920,7 +934,9 @@ def replace_transformer_layer(orig_layer_impl,
                                                mp_replace,
                                                ckpt_type,
                                                quantizer,
-                                               int(rank % tp_split_size))
+                                               int(rank % tp_split_size),
+                                               transformer_config=transformer_config_g,
+                                               param_names=selected_policy_g.get_param_names())
                     sds = [None for _ in sds]
                     gc.collect()
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")

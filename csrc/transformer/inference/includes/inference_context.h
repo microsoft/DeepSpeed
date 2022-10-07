@@ -134,6 +134,16 @@ public:
     inline size_t GetMaxTokenLenght() const { return _max_seq_len; }
 
     cudaEvent_t GetCompEvent(int id) { return id == 1 ? _comp1_event : _comp2_event; }
+    inline void advance_tokens()
+    {
+        if (_num_tokens >= _max_seq_len)
+            printf(
+                "Requesting to generate more tokens (%d) than max-seq-len allowed by cache (%d)\n",
+                _num_tokens,
+                _max_seq_len);
+        assert(_num_tokens < _max_seq_len);
+        _num_tokens++;
+    }
 
     size_t get_workspace_size() const { return _workSpaceSize; }
     void* GetWorkSpace() { return _workspace; }
@@ -151,7 +161,7 @@ public:
 
     inline unsigned current_tokens() const { return _num_tokens; }
 
-    inline void advance_tokens() { _num_tokens++; }
+    //inline void advance_tokens() { _num_tokens++; }
 
     cudaStream_t GetCommStream(bool async_op = false)
     {
