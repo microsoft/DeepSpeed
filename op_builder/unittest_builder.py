@@ -23,6 +23,9 @@ class InferenceUnitTestBuilder(InferenceBuilder):
             raise RuntimeError("Unittest macro not provided.")
 
     def sources(self):
+        if self.test_name is None:
+            return unittest_file_dict.values()
+
         if self.test_name in unittest_file_dict.keys():
             return unittest_file_dict[self.test_name]
         else:
