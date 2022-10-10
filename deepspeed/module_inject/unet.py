@@ -60,9 +60,7 @@ class DSUNet(torch.nn.Module):
     def _forward(self, sample, timestamp, encoder_hidden_states, return_dict=True):
         if self._trace_enabled:
             if self._traced_unet is None:
-                # boosts perf ~10%
                 print("Unet: start tracing with Nvfuser")
-
                 # force return tuple instead of dict
                 self._traced_unet = torch.jit.trace(
                     lambda _sample,

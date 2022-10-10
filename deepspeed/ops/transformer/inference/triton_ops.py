@@ -101,8 +101,8 @@ class triton_flash_attn(torch.nn.Module):
     def __init__(self, ):
         super(triton_flash_attn, self).__init__()
 
-    def forward(self, q, k, v, sm_scale):
-        BLOCK = 128
+    def forward(self, q, k, v, sm_scale, block_128=True):
+        BLOCK = 128 if block_128 else 64
         # shape constraints
         Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
         o = torch.empty_like(q)
@@ -136,9 +136,9 @@ class triton_flash_attn(torch.nn.Module):
             o.stride(1),
             o.stride(2),
             o.stride(3),
-            q.shape[0],
-            q.shape[1],
-            q.shape[2],
+            k.shape[0],
+            k.shape[1],
+            k.shape[2],
             BLOCK_M=BLOCK,
             BLOCK_N=BLOCK,
             BLOCK_DMODEL=Lk,

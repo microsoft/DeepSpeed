@@ -64,7 +64,7 @@ class DeepSpeedAttentionFunction(Function):
             if config.fp16 and input.dtype == torch.float32:
                 input = input.half()
             head_size = input.shape[-1] // config.heads
-            do_flash_attn = (input.shape[-2] % 128 == 0) and (head_size <= 128)
+            do_flash_attn = (head_size <= 128)
             qkv_out = linear_func(input,
                                   attn_qkvw,
                                   attn_qkvb if attn_qkvb is not None else attn_qkvw,
@@ -78,7 +78,8 @@ class DeepSpeedAttentionFunction(Function):
                 context_layer = triton_flash_attn_kernel(qkv_out[0],
                                                          qkv_out[1],
                                                          qkv_out[2],
-                                                         scale)
+                                                         scale,
+                                                         input.shape[-2] % 128 == 0)
                 context_layer = _transpose_for_context(context_layer[:,:,:,:head_size])
             else:
                 context_layer = compute_attention(qkv_out, input_mask)
@@ -167,6 +168,7 @@ class DeepSpeedAttention(nn.Module):
         self.linear_func = inference_cuda_module.linear_layer_fp16 if config.fp16 else \
                                     inference_cuda_module.linear_layer_fp32
         self.cuda_graph_created = False
+        self.enable_cuda_graph = False
 
     def _graph_replay(self, *inputs, **kwargs):
         for i in range(len(inputs)):
@@ -198,7 +200,7 @@ class DeepSpeedAttention(nn.Module):
         self.cuda_graph_created = True
 
     def forward(self, *inputs, **kwargs):
-        if False:
+        if self.enable_cuda_graph:
             if self.cuda_graph_created:
                 outputs = self._graph_replay(*inputs, **kwargs)
             else:
