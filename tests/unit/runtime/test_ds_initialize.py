@@ -112,8 +112,6 @@ class TestConfigOptimizer(DistributedTest):
                                                     model=model,
                                                     model_parameters=model_parameters)
 
-        print("ARRGGGGHHH")
-        print(ds_optimizer)
         assert isinstance(ds_optimizer, FusedAdam)
 
 @pytest.mark.parametrize("scheduler_type", [None, _LRScheduler, Callable])
