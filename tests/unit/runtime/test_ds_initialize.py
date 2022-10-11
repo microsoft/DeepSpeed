@@ -88,20 +88,15 @@ class TestClientOptimizer(DistributedTest):
 @pytest.mark.parametrize('client_parameters', [True, False])
 class TestConfigOptimizer(DistributedTest):
     world_size = 1
+
     def test(self, client_parameters):
         ds_config = {
             "train_batch_size": 1,
             "optimizer": {
                 "type": "Adam",
                 "params": {
-                    "lr": 0.00015
+                    "lr": 0.001
                 }
-            },
-            "fp16": {
-                "enabled": True
-            },
-            "zero_optimization": {
-            "stage": 1
             }
         }
 
@@ -117,6 +112,8 @@ class TestConfigOptimizer(DistributedTest):
                                                     model=model,
                                                     model_parameters=model_parameters)
 
+        print("ARRGGGGHHH")
+        print(ds_optimizer)
         assert isinstance(ds_optimizer, FusedAdam)
 
 @pytest.mark.parametrize("scheduler_type", [None, _LRScheduler, Callable])
