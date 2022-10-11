@@ -954,6 +954,45 @@ at::Tensor ds_linear_layer(at::Tensor& input,
 }
 
 template <typename T>
+std::vector<at::Tensor> add_padding(at::Tensor& query, at::Tensor& key, at::Tensor& value)
+{
+    int head_size = query.size(3);
+    int padded_head_size = head_size < 32 ? 32 : (head_size < 64 ? 64 : 128);
+    T* workspace = (T*)Context::Instance().GetWorkSpace();
+    T* key_pad_ptr = workspace + padded_head_size * query.size(0) * query.size(1) * query.size(2);
+    T* value_pad_ptr = key_pad_ptr + padded_head_size * query.size(0) * query.size(1) * 128;
+    pad_head_seq(workspace,
+              (T*)query.data_ptr(),
+              query.size(0) * query.size(1),
+              query.size(2),
+              query.size(2),
+              head_size,
+              padded_head_size,
+              Context::Instance().GetCurrentStream());
+    pad_head_seq(key_pad_ptr,
+              (T*)key.data_ptr(),
+              query.size(0) * query.size(1),
+              key.size(2),
+              128,
+              head_size,
+              padded_head_size,
+              Context::Instance().GetCurrentStream());
+    pad_head_seq(value_pad_ptr,
+              (T*)value.data_ptr(),
+              query.size(0) * query.size(1),
+              key.size(2),
+              128,
+              head_size,
+              padded_head_size,
+              Context::Instance().GetCurrentStream());
+    return {
+        at::from_blob(workspace, {query.size(0), query.size(1), query.size(2), padded_head_size}, query.options()),
+        at::from_blob(key_pad_ptr, {query.size(0), query.size(1), 128, padded_head_size}, query.options()),
+        at::from_blob(value_pad_ptr, {query.size(0), query.size(1), 128, padded_head_size}, query.options())
+    };
+}
+
+template <typename T>
 at::Tensor ds_linear_layer_int8(at::Tensor& input,
                                 at::Tensor& weight,
                                 at::Tensor& bias,
@@ -1493,4 +1532,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           &einsum_sec_sm_ecm<__half>,
           "DeepSpeed vector-MM with fp16 (CUDA)");
     m.def("moe_res_matmul", &moe_res_matmul, "DeepSpeed moe residual matmul (CUDA)");
+    m.def("add_padding_fp32",
+          &add_padding<float>,
+          "DeepSpeed residual add with fp32 (CUDA)");
+    m.def("add_padding_fp16",
+          &add_padding<__half>,
+          "DeepSpeed residual add with fp16 (CUDA)");
 }

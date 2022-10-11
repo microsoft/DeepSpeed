@@ -179,3 +179,13 @@ void pad_data(T* padded_output,
               int head_size,
               int padded_head_size,
               cudaStream_t stream);
+
+template <typename T>
+void pad_head_seq(T* padded_output,
+              T* output,
+              int bsz,
+              int seq_len,
+              int padded_seq_len,
+              int head_size,
+              int padded_head_size,
+              cudaStream_t stream);
