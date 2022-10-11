@@ -328,6 +328,7 @@ def run_autotuning(args, active_resources):
     tuner.print_tuning_results()
 
     logger.info("[End] Running autotuning")
+    tuner.write_optimal_config()
 
     if args.autotuning == "run":
         tuner.run_after_tuning()
