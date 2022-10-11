@@ -530,11 +530,11 @@ template void pad_data(float* padded_output,
                        cudaStream_t stream);
 
 __global__ void pad_head_seq_kernel(__half* padded_output,
-                                __half* output,
-                                int seq_len,
-                                int padded_seq_len,
-                                int head_size,
-                                int padded_head_size)
+                                    __half* output,
+                                    int seq_len,
+                                    int padded_seq_len,
+                                    int head_size,
+                                    int padded_head_size)
 {
     float4* padded_output_cast = reinterpret_cast<float4*>(padded_output);
     float4* output_cast = reinterpret_cast<float4*>(output);
@@ -555,22 +555,22 @@ __global__ void pad_head_seq_kernel(__half* padded_output,
         padded_output_cast[idx] = ZERO;
 }
 __global__ void pad_head_seq_kernel(float* padded_output,
-                                float* output,
-                                int seq_len,
-                                int padded_seq_len,
-                                int head_size,
-                                int padded_head_size)
+                                    float* output,
+                                    int seq_len,
+                                    int padded_seq_len,
+                                    int head_size,
+                                    int padded_head_size)
 {
 }
 template <typename T>
 void pad_head_seq(T* padded_output,
-              T* output,
-              int bsz,
-              int seq_len,
-              int padded_seq_len,
-              int head_size,
-              int padded_head_size,
-              cudaStream_t stream)
+                  T* output,
+                  int bsz,
+                  int seq_len,
+                  int padded_seq_len,
+                  int head_size,
+                  int padded_head_size,
+                  cudaStream_t stream)
 {
     dim3 grid_dim(bsz, padded_seq_len / 16);
     dim3 block_dim(padded_head_size / 8, 16);
@@ -578,18 +578,18 @@ void pad_head_seq(T* padded_output,
         padded_output, output, seq_len, padded_seq_len, head_size / 8, padded_head_size / 8);
 }
 template void pad_head_seq(__half* padded_output,
-                       __half* output,
-                       int bsz,
-                       int seq_len,
-                       int padded_seq_len,
-                       int head_size,
-                       int padded_head_size,
-                       cudaStream_t stream);
+                           __half* output,
+                           int bsz,
+                           int seq_len,
+                           int padded_seq_len,
+                           int head_size,
+                           int padded_head_size,
+                           cudaStream_t stream);
 template void pad_head_seq(float* padded_output,
-                       float* output,
-                       int bsz,
-                       int seq_len,
-                       int padded_seq_len,
-                       int head_size,
-                       int padded_head_size,
-                       cudaStream_t stream);
+                           float* output,
+                           int bsz,
+                           int seq_len,
+                           int padded_seq_len,
+                           int head_size,
+                           int padded_head_size,
+                           cudaStream_t stream);

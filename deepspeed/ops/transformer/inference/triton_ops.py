@@ -1,7 +1,23 @@
 import torch
+from packaging import version as pkg_version
 
-import triton
-import triton.language as tl
+# lazy load if/when needed
+triton = None
+tl = None
+
+
+def load_triton_flash_attn():
+    global triton, tl
+    try:
+        import triton
+        import triton.language as tl
+    except ImportError:
+        raise ImportError("Please install triton 2.0+ or `pip install deepspeed[sd]`")
+
+    if pkg_version.parse(triton.__version__) < pkg_version.parse("2.0"):
+        raise ImportError("Please install triton 2.0+ or `pip install deepspeed[sd]`")
+
+    return triton_flash_attn
 
 
 @triton.jit
@@ -94,7 +110,6 @@ def _fwd_kernel(
     off_o = off_hz * stride_oh + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
     out_ptrs = Out + off_o
     tl.store(out_ptrs, acc)
-
 
 
 class triton_flash_attn(torch.nn.Module):

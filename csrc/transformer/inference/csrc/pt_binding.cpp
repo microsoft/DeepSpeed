@@ -107,7 +107,7 @@ void allocate_workspace(size_t hidden_dim,
                         unsigned mp_size = 1,
                         bool external_cache = false,
                         unsigned rank = 0,
-                        unsigned num_heads=128)
+                        unsigned num_heads = 128)
 {
     Context::Instance().GenWorkSpace(
         num_layers, batch_size, hidden_dim, mp_size, external_cache, sizeof(T), rank, num_heads);
@@ -856,7 +856,8 @@ at::Tensor ds_linear_layer(at::Tensor& input,
     if (!workspace) {
         cublasSetStream(Context::Instance().GetCublasHandle(),
                         Context::Instance().GetCurrentStream());
-        allocate_workspace<T>(input.size(2), input.size(0), num_layers, 1, external_cache, 0, num_heads);
+        allocate_workspace<T>(
+            input.size(2), input.size(0), num_layers, 1, external_cache, 0, num_heads);
         workspace = (T*)Context::Instance().GetWorkSpace();
     }
     auto output = at::from_blob(workspace, {input.size(0), input.size(1), weight.size(1)}, options);
@@ -963,42 +964,50 @@ std::vector<at::Tensor> add_padding(at::Tensor& query, at::Tensor& key, at::Tens
     T* key_pad_ptr = workspace + padded_head_size * query.size(0) * query.size(1) * query.size(2);
     T* value_pad_ptr = key_pad_ptr + padded_head_size * query.size(0) * query.size(1) * 128;
     pad_head_seq(workspace,
-              (T*)query.data_ptr(),
-              query.size(0) * query.size(1),
-              query.size(2),
-              query.size(2),
-              head_size,
-              padded_head_size,
-              Context::Instance().GetCurrentStream());
+                 (T*)query.data_ptr(),
+                 query.size(0) * query.size(1),
+                 query.size(2),
+                 query.size(2),
+                 head_size,
+                 padded_head_size,
+                 Context::Instance().GetCurrentStream());
     pad_head_seq(key_pad_ptr,
-              (T*)key.data_ptr(),
-              query.size(0) * query.size(1),
-              key.size(2),
-              128,
-              head_size,
-              padded_head_size,
-              Context::Instance().GetCurrentStream());
+                 (T*)key.data_ptr(),
+                 query.size(0) * query.size(1),
+                 key.size(2),
+                 128,
+                 head_size,
+                 padded_head_size,
+                 Context::Instance().GetCurrentStream());
     pad_head_seq(value_pad_ptr,
-              (T*)value.data_ptr(),
-              query.size(0) * query.size(1),
-              key.size(2),
-              128,
-              head_size,
-              padded_head_size,
-              Context::Instance().GetCurrentStream());
+                 (T*)value.data_ptr(),
+                 query.size(0) * query.size(1),
+                 key.size(2),
+                 128,
+                 head_size,
+                 padded_head_size,
+                 Context::Instance().GetCurrentStream());
     return {
-        at::from_blob(workspace, {query.size(0), query.size(1), query.size(2), padded_head_size}, query.options()),
-        at::from_blob(key_pad_ptr, {query.size(0), query.size(1), 128, padded_head_size}, query.options()),
-        at::from_blob(value_pad_ptr, {query.size(0), query.size(1), 128, padded_head_size}, query.options())
-    };
+        at::from_blob(workspace,
+                      {query.size(0), query.size(1), query.size(2), padded_head_size},
+                      query.options()),
+        at::from_blob(
+            key_pad_ptr, {query.size(0), query.size(1), 128, padded_head_size}, query.options()),
+        at::from_blob(
+            value_pad_ptr, {query.size(0), query.size(1), 128, padded_head_size}, query.options())};
 }
 
 template <typename T>
-std::vector<at::Tensor> padd_add_transform(at::Tensor& query, at::Tensor& key, at::Tensor& value, int heads, bool add_padding)
+std::vector<at::Tensor> padd_add_transform(at::Tensor& query,
+                                           at::Tensor& key,
+                                           at::Tensor& value,
+                                           int heads,
+                                           bool add_padding)
 {
     int head_size = query.size(2) / heads;
     int key_value_length = add_padding ? 128 : key.size(1);
-    int padded_head_size = add_padding ? (head_size < 32 ? 32 : (head_size < 64 ? 64 : 128)) : head_size;
+    int padded_head_size = add_padding ? (head_size < 32 ? 32 : (head_size < 64 ? 64 : 128))
+                                       : head_size;
     T* workspace = (T*)Context::Instance().GetWorkSpace();
     T* key_pad_ptr = workspace + padded_head_size * query.size(0) * heads * query.size(1);
     T* value_pad_ptr = key_pad_ptr + padded_head_size * query.size(0) * heads * key_value_length;
@@ -1030,10 +1039,14 @@ std::vector<at::Tensor> padd_add_transform(at::Tensor& query, at::Tensor& key, a
                                   padded_head_size,
                                   Context::Instance().GetCurrentStream());
     return {
-        at::from_blob(workspace, {query.size(0), heads, query.size(1), padded_head_size}, query.options()),
-        at::from_blob(key_pad_ptr, {query.size(0), heads, key_value_length, padded_head_size}, query.options()),
-        at::from_blob(value_pad_ptr, {query.size(0), heads, key_value_length, padded_head_size}, query.options())
-    };
+        at::from_blob(
+            workspace, {query.size(0), heads, query.size(1), padded_head_size}, query.options()),
+        at::from_blob(key_pad_ptr,
+                      {query.size(0), heads, key_value_length, padded_head_size},
+                      query.options()),
+        at::from_blob(value_pad_ptr,
+                      {query.size(0), heads, key_value_length, padded_head_size},
+                      query.options())};
 }
 template <typename T>
 at::Tensor ds_linear_layer_int8(at::Tensor& input,
@@ -1575,12 +1588,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           &einsum_sec_sm_ecm<__half>,
           "DeepSpeed vector-MM with fp16 (CUDA)");
     m.def("moe_res_matmul", &moe_res_matmul, "DeepSpeed moe residual matmul (CUDA)");
-    m.def("add_padding_fp32",
-          &add_padding<float>,
-          "DeepSpeed residual add with fp32 (CUDA)");
-    m.def("add_padding_fp16",
-          &add_padding<__half>,
-          "DeepSpeed residual add with fp16 (CUDA)");
+    m.def("add_padding_fp32", &add_padding<float>, "DeepSpeed residual add with fp32 (CUDA)");
+    m.def("add_padding_fp16", &add_padding<__half>, "DeepSpeed residual add with fp16 (CUDA)");
     m.def("pad_transform_fp32",
           &padd_add_transform<float>,
           "DeepSpeed residual add with fp32 (CUDA)");

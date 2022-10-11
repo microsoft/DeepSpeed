@@ -2,7 +2,6 @@
 Copyright 2022 The Microsoft DeepSpeed Team
 '''
 import torch
-import diffusers
 
 
 class DSClipEncoder(torch.nn.Module):
@@ -15,12 +14,16 @@ class DSClipEncoder(torch.nn.Module):
         self.cuda_graph_created = False
 
     def _build_causal_attention_mask(self, bsz, seq_len, dtype):
-        mask = torch.empty(bsz, seq_len, seq_len, dtype=dtype, device=torch.cuda.current_device())
+        mask = torch.empty(bsz,
+                           seq_len,
+                           seq_len,
+                           dtype=dtype,
+                           device=torch.cuda.current_device())
         mask.fill_(torch.tensor(torch.finfo(dtype).min))
         mask.triu_(1)
         mask = mask.unsqueeze(1)
         return mask
-        
+
     def _graph_replay(self, *inputs, **kwargs):
         for i in range(len(inputs)):
             if torch.is_tensor(inputs[i]):
@@ -31,7 +34,7 @@ class DSClipEncoder(torch.nn.Module):
         self._cuda_graphs.replay()
         return self.static_output
 
-    def forward(self, *inputs, **kwargs):   
+    def forward(self, *inputs, **kwargs):
         if self.cuda_graph_created:
             outputs = self._graph_replay(*inputs, **kwargs)
         else:
@@ -59,5 +62,5 @@ class DSClipEncoder(torch.nn.Module):
         self.cuda_graph_created = True
 
     def _forward(self, *inputs, **kwargs):
-        
+
         return self.enc(*inputs, **kwargs)

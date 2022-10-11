@@ -249,29 +249,25 @@ void launch_bias_add_transform_0213<__half>(__half* output,
                                                                 max_out_tokens);
 }
 
-
-
 // Bias add
 
 __global__ void pad_add_transform_0213(float* output,
-                                        const float* vals,
-                                        int hidden_dim,
-                                        int seq_length,
-                                        int padded_seq_len,
-                                        int heads,
-                                        int padded_head_size)
+                                       const float* vals,
+                                       int hidden_dim,
+                                       int seq_length,
+                                       int padded_seq_len,
+                                       int heads,
+                                       int padded_head_size)
 {
- 
 }
 
-
 __global__ void pad_add_transform_0213(__half* output,
-                                        const __half* vals,
-                                        int hidden_dim,
-                                        int seq_length,
-                                        int padded_seq_len,
-                                        int heads,
-                                        int padded_head_size)
+                                       const __half* vals,
+                                       int hidden_dim,
+                                       int seq_length,
+                                       int padded_seq_len,
+                                       int heads,
+                                       int padded_head_size)
 {
 #if __CUDA_ARCH__ >= 700
     float4 ZERO;
@@ -284,10 +280,10 @@ __global__ void pad_add_transform_0213(__half* output,
     int d1_stride = hidden_dim;
     int d2_stride = hidden_dim / heads;
 
-    int d0 = blockIdx.x;                                                  // Batch
-    int d1 = blockIdx.y * blockDim.z + threadIdx.z;                       // Sequence ID (0-127)
-    int d2 = threadIdx.y;                                                 // Head (0-11)
-    int d3 = threadIdx.x;                                                 // Values (groups of 4)
+    int d0 = blockIdx.x;                             // Batch
+    int d1 = blockIdx.y * blockDim.z + threadIdx.z;  // Sequence ID (0-127)
+    int d2 = threadIdx.y;                            // Head (0-11)
+    int d3 = threadIdx.x;                            // Values (groups of 4)
 
     int d2_out_stride = padded_head_size * padded_seq_len;
     int d0_out_stride = heads * d2_out_stride;
@@ -325,14 +321,14 @@ void launch_pad_add_transform_0213(T* output,
 // [B S C*H] - > C * [B A S N]
 template <>
 void launch_pad_add_transform_0213<float>(float* output,
-                                           const float* vals,
-                                           int batch_size,
-                                           int hidden_dim,
-                                           int seq_length,
-                                           int padded_seq_len,
-                                           int heads,
-                                           int padded_head_size,
-                                           cudaStream_t stream)
+                                          const float* vals,
+                                          int batch_size,
+                                          int hidden_dim,
+                                          int seq_length,
+                                          int padded_seq_len,
+                                          int heads,
+                                          int padded_head_size,
+                                          cudaStream_t stream)
 {
 }
 template <>
@@ -349,13 +345,8 @@ void launch_pad_add_transform_0213<__half>(__half* output,
     hidden_dim >>= 3;
     dim3 block_dim((padded_head_size >> 3), heads, 2);
     dim3 grid_dim(batch_size, padded_seq_len / 2);
-    pad_add_transform_0213<<<grid_dim, block_dim, 0, stream>>>(output,
-                                                                vals,
-                                                                hidden_dim,
-                                                                seq_length,
-                                                                padded_seq_len,
-                                                                heads,
-                                                                padded_head_size >> 3);
+    pad_add_transform_0213<<<grid_dim, block_dim, 0, stream>>>(
+        output, vals, hidden_dim, seq_length, padded_seq_len, heads, padded_head_size >> 3);
 }
 
 // Bias add
