@@ -106,10 +106,11 @@ void allocate_workspace(size_t hidden_dim,
                         unsigned num_layers,
                         unsigned mp_size = 1,
                         bool external_cache = false,
-                        unsigned rank = 0)
+                        unsigned rank = 0,
+                        unsigned num_heads=128)
 {
     Context::Instance().GenWorkSpace(
-        num_layers, batch_size, hidden_dim, mp_size, external_cache, sizeof(T), rank);
+        num_layers, batch_size, hidden_dim, mp_size, external_cache, sizeof(T), rank, num_heads);
 }
 
 template <typename T>
@@ -855,7 +856,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
     if (!workspace) {
         cublasSetStream(Context::Instance().GetCublasHandle(),
                         Context::Instance().GetCurrentStream());
-        allocate_workspace<T>(input.size(2), input.size(0), num_layers, 1, external_cache);
+        allocate_workspace<T>(input.size(2), input.size(0), num_layers, 1, external_cache, 0, num_heads);
         workspace = (T*)Context::Instance().GetWorkSpace();
     }
     auto output = at::from_blob(workspace, {input.size(0), input.size(1), weight.size(1)}, options);

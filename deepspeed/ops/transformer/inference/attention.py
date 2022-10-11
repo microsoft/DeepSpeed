@@ -101,7 +101,6 @@ class DeepSpeedAttentionFunction(Function):
                 query = torch.matmul(input, attn_qw)
                 key = torch.matmul(context, attn_kw)
                 value = torch.matmul(context, attn_vw)
-                #do_flash_attn = False
                 query, key, value = inference_cuda_module.pad_transform_fp16(query, key, value, config.heads, do_flash_attn)
                 if do_flash_attn:
                     context_layer = triton_flash_attn_kernel(query, 
