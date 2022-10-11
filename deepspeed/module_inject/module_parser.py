@@ -20,11 +20,6 @@ parser.add_argument(
         )
 args = parser.parse_args()
 
-def show_info(functionNode):
-    print("Function name:", functionNode.name)
-    print("Args:")
-    for arg in functionNode.args.args: 
-        print("\tParameter name:", arg.arg)
 
 def get_class_source(node, class_name):
     classes = [n for n in node.body if isinstance(n, ast.ClassDef)]
@@ -42,16 +37,56 @@ def get_class_source(node, class_name):
 def get_linear_layers(method_source):
     matches = re.findall(r"self.(.*?) = nn.Linear", method_source)
     if not matches:
-        print(f"No linear layers found, checking attributes...")
-        matches = re.findall(r"self.(.*?) = (.*?)\(", method_source)
-        print("attributes: ", matches)     
+        #check for attributes at layer class level
+        #print("No linear layers found, checking attributes...")
+        #matches = re.findall(r"self.(.*?) = (.*?)\(", method_source)
+        matches = re.findall(r"self.(.*?).append\((.*?)\(", method_source)
+        if not matches:
+            #check for attributes at block class level
+            #print("Checking layer class level...")
+            #matches = re.findall(r"self.(.*?).append\((.*?)\(", method_source)
+            matches = re.findall(r"self.(.*?) = (\w*?)\(", method_source)
+            #if not matches:
+                #print("Warning: No matches found")
         return False, matches
     else:
-        print("linear layers: ", matches)
         return True, matches        
 
 
+def update_name_list(name, matches):
+    new_list = []
+    for match in matches:    
+        new_list = new_list + [name + "." + match] 
+    return new_list
+
+def update_name_list_2(name, matches):
+    new_list = []
+    for match_name, match_attribute in matches:
+        new_list.append(tuple([name + "." + match_name, match_attribute]))
+        print("HERE", new_list)
+    return new_list
+
+def check_matches(matches):
+    new_matches = []
+    for name, attribute in matches:
+        source = get_class_source(node, attribute)
+        if source is not None:
+            result, i_matches = get_linear_layers(source)
+            if result:
+                #add linear layers to list
+                name_list.append(name)
+                i_matches = update_name_list(name, i_matches)
+                linear_layer_list.append(i_matches)
+            if not result:
+                #add next level of class methods to check
+                name_list.append(name)
+                i_matches = update_name_list_2(name, i_matches) 
+                new_matches = new_matches + i_matches
+    return new_matches
+
+
 if __name__ == "__main__":
+    name_list = []
     linear_layer_list = []
 
     #parse file for specified module
@@ -62,32 +97,27 @@ if __name__ == "__main__":
     #get source code of top class
     source = get_class_source(node, args.module)
 
-    #check for self.layer.append case
-    #layer_matches = re.findall(r"self.layer.append(.*?)\(", source)
-    #if layer_matches:
-    #    for layer in layer_matches:
-    #        source = get_class_source(node, layer)
-    #        result, matches = get_linear_layers(source)
-            
-    
+    #check for linear layers in source code        
     result, matches = get_linear_layers(source)
+    
 
-    print("result: ", result)
-    print("matches: ", matches)
-
+    #if no linear layers found, check attribute source code
     if not result:
-        for name, attribute in matches:
-            source = get_class_source(node, attribute)
-            if source is not None:
-                intermediate_result, i_matches = get_linear_layers(source)
-                if intermediate_result:
-                    linear_layer_list.append(i_matches)
-                if not intermediate_result:
-                    print("matches: ", matches)
-                    matches = matches + i_matches
-                    print("i_mathces: ", matches)
+        while len(matches):
+            print("checking matches...", matches)
+            matches = check_matches(matches)
 
-    print("FINAL RESULT: ", linear_layer_list)
+    else:
+        #add linear layers to list
+        update_name_list(name, matches)
+        linear_layer_list.append(matches)
+
+    #generate injection policy gems from name and linear layer lists
+    print(name_list)
+    print(linear_layer_list)
+
+    for group in linear_layer_list:
+        print(group[-1])
             
     #functions = [n for n in node.body if isinstance(n, ast.FunctionDef)]
     #classes = [n for n in node.body if isinstance(n, ast.ClassDef)]
