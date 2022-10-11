@@ -1,3 +1,4 @@
+from logging import LogRecord
 import shutil
 import subprocess
 import torch
@@ -1091,19 +1092,12 @@ class Autotuner:
         self.rm.clear()
         return exp, metric_val
 
-    def run_after_tuning(self):
-        """ Launches the training with the optmimal DeepSpeed configuration found through the autotuning process.
-            "ds_config_optimal.json" describing the optmimal DeepSpeed configuration as well the command used to launch training "cmd_optimal.txt" are saved to self.results_dir.
-        """
+    def write_optimal_config(self):
         best_space_records = self.get_best_space_records()
         if GLOBAL_TUNING_SPACE not in best_space_records:
             return
         best_exp, best_metric_val, _ = best_space_records[GLOBAL_TUNING_SPACE]
         if best_exp:
-            logger.info(
-                "Start training with the optmimal DeepSpeed configuration found through the tuning process"
-            )
-
             exp_dir = best_exp["result_dir"]
             cmd = None
             with open(os.path.join(exp_dir, "cmd.txt"), "r") as f:
@@ -1123,10 +1117,25 @@ class Autotuner:
                 fd.write(" ".join(cmd))
                 fd.write("\n")
                 fd.flush()
+            self.optimal_cmd = cmd
+            self.optmal_ds_config = ds_config
+            logger.info(
+                f"Wrote the optimal DeepSpeed configuration found by autotuning to {ds_config_path}, and the corresponding DeepSpeed command to {cmd_path}"
+            )
+        else:
+            self.optimal_cmd = None
+            self.optmal_ds_config = None
 
-            result = subprocess.Popen(cmd)
+    def run_after_tuning(self):
+        """ Launches the training with the optimal DeepSpeed configuration found through the autotuning process.
+            "ds_config_optimal.json" describing the optmimal DeepSpeed configuration as well the command used to launch training "cmd_optimal.txt" are saved to self.results_dir.
+        """
+        if self.optimal_cmd:
+            result = subprocess.Popen(self.optimal_cmd)
             result.wait()
 
             logger.info(
-                f"Done running with the optimal DeepSpeed configuration found by autotuning: {ds_config_path}"
+                f"Done running with the optimal DeepSpeed configuration using {self.optimal_cmd}"
             )
+        else:
+            logger.info(f"No optimal DeepSpeed configuration found by autotuning.")
