@@ -22,7 +22,8 @@ class DeepSpeedAttentionFunction(Function):
                 config,
                 attn_qkvw,
                 attn_qw,
-                attn_kvw,
+                attn_kw,
+                attn_vw,
                 attn_qkvb,
                 num_attention_heads_per_partition,
                 norm_factor,
@@ -98,13 +99,11 @@ class DeepSpeedAttentionFunction(Function):
                     context_layer = compute_attention(qkv_out, input_mask)
             else:
                 query = torch.matmul(input, attn_qw)
-                key_value = torch.matmul(context, attn_kvw)
-                query = _transpose_for_scores(query)
-                key = _transpose_for_scores(key_value[:,:,:input.shape[-1]])
-                value = _transpose_for_scores(key_value[:,:,input.shape[-1]:])
-
+                key = torch.matmul(context, attn_kw)
+                value = torch.matmul(context, attn_vw)
+                #do_flash_attn = False
+                query, key, value = inference_cuda_module.pad_transform_fp16(query, key, value, config.heads, do_flash_attn)
                 if do_flash_attn:
-                    query, key, value = inference_cuda_module.add_padding_fp16(query, key, value)
                     context_layer = triton_flash_attn_kernel(query, 
                                                              key, 
                                                              value,
@@ -171,8 +170,13 @@ class DeepSpeedAttention(nn.Module):
                                                   dtype=data_type,
                                                   device=device),
                                       requires_grad=False)
-        self.attn_kvw = nn.Parameter(torch.empty(self.config.hidden_size,
-                                                  self.config.hidden_size * 2,
+        self.attn_kw = nn.Parameter(torch.empty(self.config.hidden_size,
+                                                  self.config.hidden_size,
+                                                  dtype=data_type,
+                                                  device=device),
+                                      requires_grad=False)
+        self.attn_vw = nn.Parameter(torch.empty(self.config.hidden_size,
+                                                  self.config.hidden_size,
                                                   dtype=data_type,
                                                   device=device),
                                       requires_grad=False)
@@ -258,7 +262,8 @@ class DeepSpeedAttention(nn.Module):
                                                   self.config,
                                                   self.attn_qkvw,
                                                   self.attn_qw,
-                                                  self.attn_kvw,
+                                                  self.attn_kw,
+                                                  self.attn_vw,
                                                   self.attn_qkvb,
                                                   self.num_attention_heads_per_partition,
                                                   self.norm_factor,

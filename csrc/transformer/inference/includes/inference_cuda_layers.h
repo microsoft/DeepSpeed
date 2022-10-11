@@ -189,3 +189,14 @@ void pad_head_seq(T* padded_output,
               int head_size,
               int padded_head_size,
               cudaStream_t stream);
+
+template <typename T>
+void launch_pad_add_transform_0213(T* output,
+                                           const T* vals,
+                                           int batch_size,
+                                            int hidden_dim,
+                                           int seq_length,
+                                           int padded_seq_len,
+                                           int heads,
+                                           int padded_head_size,
+                                           cudaStream_t stream);

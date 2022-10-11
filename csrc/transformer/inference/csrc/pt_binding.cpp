@@ -993,6 +993,48 @@ std::vector<at::Tensor> add_padding(at::Tensor& query, at::Tensor& key, at::Tens
 }
 
 template <typename T>
+std::vector<at::Tensor> padd_add_transform(at::Tensor& query, at::Tensor& key, at::Tensor& value, int heads, bool add_padding)
+{
+    int head_size = query.size(2) / heads;
+    int key_value_length = add_padding ? 128 : key.size(1);
+    int padded_head_size = add_padding ? (head_size < 32 ? 32 : (head_size < 64 ? 64 : 128)) : head_size;
+    T* workspace = (T*)Context::Instance().GetWorkSpace();
+    T* key_pad_ptr = workspace + padded_head_size * query.size(0) * heads * query.size(1);
+    T* value_pad_ptr = key_pad_ptr + padded_head_size * query.size(0) * heads * key_value_length;
+    launch_pad_add_transform_0213(workspace,
+                                  (T*)query.data_ptr(),
+                                  query.size(0),
+                                  query.size(2),
+                                  query.size(1),
+                                  query.size(1),
+                                  heads,
+                                  padded_head_size,
+                                  Context::Instance().GetCurrentStream());
+    launch_pad_add_transform_0213(key_pad_ptr,
+                                  (T*)key.data_ptr(),
+                                  key.size(0),
+                                  key.size(2),
+                                  key.size(1),
+                                  key_value_length,
+                                  heads,
+                                  padded_head_size,
+                                  Context::Instance().GetCurrentStream());
+    launch_pad_add_transform_0213(value_pad_ptr,
+                                  (T*)value.data_ptr(),
+                                  value.size(0),
+                                  value.size(2),
+                                  value.size(1),
+                                  key_value_length,
+                                  heads,
+                                  padded_head_size,
+                                  Context::Instance().GetCurrentStream());
+    return {
+        at::from_blob(workspace, {query.size(0), heads, query.size(1), padded_head_size}, query.options()),
+        at::from_blob(key_pad_ptr, {query.size(0), heads, key_value_length, padded_head_size}, query.options()),
+        at::from_blob(value_pad_ptr, {query.size(0), heads, key_value_length, padded_head_size}, query.options())
+    };
+}
+template <typename T>
 at::Tensor ds_linear_layer_int8(at::Tensor& input,
                                 at::Tensor& weight,
                                 at::Tensor& bias,
@@ -1537,5 +1579,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           "DeepSpeed residual add with fp32 (CUDA)");
     m.def("add_padding_fp16",
           &add_padding<__half>,
+          "DeepSpeed residual add with fp16 (CUDA)");
+    m.def("pad_transform_fp32",
+          &padd_add_transform<float>,
+          "DeepSpeed residual add with fp32 (CUDA)");
+    m.def("pad_transform_fp16",
+          &padd_add_transform<__half>,
           "DeepSpeed residual add with fp16 (CUDA)");
 }

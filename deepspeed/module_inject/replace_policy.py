@@ -58,9 +58,9 @@ class UNetPolicy(DSPolicy):
                    client_module.heads
         else:
             #return None
-            kvw = Parameter(torch.cat((kw, vw), dim=0), requires_grad=False)
+            #kvw = Parameter(torch.cat((kw, vw), dim=0), requires_grad=False)
             return qw, \
-                   kvw, \
+                   kw, vw, \
                    client_module.to_out[0].weight, \
                    client_module.to_out[0].bias, \
                    qw.shape[-1], \

@@ -203,7 +203,7 @@ def generic_injection(module, fp16=False):
         if len(policy_attn) == 5:
             qkvw, attn_ow, attn_ob, hidden_size, heads = policy_attn
         else:
-            qw, kvw, attn_ow, attn_ob, hidden_size, heads = policy_attn
+            qw, kw, vw, attn_ow, attn_ob, hidden_size, heads = policy_attn
 
         config = transformer_inference.DeepSpeedInferenceConfig(
             hidden_size=hidden_size,
@@ -224,7 +224,8 @@ def generic_injection(module, fp16=False):
         else:
             attn_module.attn_qkvw = None
             attn_module.attn_qw.data = transpose(qw.data)
-            attn_module.attn_kvw.data = transpose(kvw.data)
+            attn_module.attn_kw.data = transpose(kw.data)
+            attn_module.attn_vw.data = transpose(vw.data)
 
         attn_module.attn_qkvb = None
         attn_module.attn_ow.data = transpose(attn_ow.data)
