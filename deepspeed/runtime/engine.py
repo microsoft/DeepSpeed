@@ -1128,7 +1128,7 @@ class DeepSpeedEngine(Module):
         self._check_for_duplicates(basic_optimizer)
 
         self.basic_optimizer = basic_optimizer
-        log_dist("DeepSpeed Basic Optimizer = {basic_optimizer.__class__.__name__}",
+        log_dist("DeepSpeed Basic Optimizer = {}".format(basic_optimizer.__class__.__name__),
                  ranks=[0])
 
         if self.zero_optimization():
