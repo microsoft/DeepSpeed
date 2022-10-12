@@ -97,7 +97,7 @@ if __name__ == "__main__":
     #if no linear layers found, check attribute source code
     if not result:
         while len(matches):
-            print("checking matches...", matches)
+            #print("checking matches...", matches)
             matches = check_matches(matches)
     else:
         #add linear layers to list
@@ -105,7 +105,7 @@ if __name__ == "__main__":
         linear_layer_list.append(matches)
 
     #generate injection policy gems from name and linear layer lists
-    print(linear_layer_list)
+    #print(linear_layer_list)
 
     for group in linear_layer_list:
         print(group[-1])
