@@ -4,8 +4,8 @@ from abc import ABC
 
 class DeepSpeedAccelerator(ABC):
     def __init__(self):
-        self.name = None
-        self.communication_backend = None
+        self._name = None
+        self._communication_backend_name = None
         self.BFloat16Tensor = None
         self.ByteTensor = None
         self.DoubleTensor = None
@@ -16,11 +16,11 @@ class DeepSpeedAccelerator(ABC):
 
     # Device APIs
     @abc.abstractmethod
-    def device(self, device_index):
+    def device_name(self, device_index):
         ...
 
     @abc.abstractmethod
-    def device_name(self, device_index):
+    def device(self, device_index):
         ...
 
     @abc.abstractmethod
@@ -134,6 +134,15 @@ class DeepSpeedAccelerator(ABC):
     def total_memory(self, device_index=None):
         ...
 
+    # Data types
+    @abc.abstractmethod
+    def is_bf16_supported(self):
+        ...
+
+    @abc.abstractmethod
+    def is_fp16_supported(self):
+        ...
+
     # Misc
     @abc.abstractmethod
     def is_available(self):
@@ -151,13 +160,12 @@ class DeepSpeedAccelerator(ABC):
     def lazy_call(self, callback):
         ...
 
-    # Data types
     @abc.abstractmethod
-    def is_bf16_supported(self):
+    def name(self):
         ...
 
     @abc.abstractmethod
-    def is_fp16_supported(self):
+    def communication_backend_name(self):
         ...
 
     # Tensor operations

@@ -4,8 +4,8 @@ import torch.cuda
 
 class CUDA_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
-        self.name = 'cuda'
-        self.communication_backend = 'nccl'
+        self._name = 'cuda'
+        self._communication_backend_name = 'nccl'
         self.DoubleTensor = torch.cuda.DoubleTensor
         self.LongTensor = torch.cuda.LongTensor
         self.FloatTensor = torch.cuda.FloatTensor
@@ -15,13 +15,13 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         self.ByteTensor = torch.cuda.ByteTensor
 
     # Device APIs
-    def device(self, device_index=None):
-        return torch.cuda.device(device_index)
-
     def device_name(self, device_index=None):
         if device_index == None:
             return 'cuda'
         return 'cuda:{}'.format(device_index)
+
+    def device(self, device_index=None):
+        return torch.cuda.device(device_index)
 
     def set_device(self, device_index):
         torch.cuda.set_device(device_index)
@@ -40,11 +40,15 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     # RNG APIs
     def set_rng_state(self, new_state, device_index=None):
+        if device_index is None:
+            return torch.cuda.set_rng_state(new_state)
+
         return torch.cuda.set_rng_state(new_state, device_index)
 
     def get_rng_state(self, device_index=None):
-        if device_index == None:
+        if device_index is None:
             return torch.cuda.get_rng_state()
+
         return torch.cuda.get_rng_state(device_index)
 
     def manual_seed(self, seed):
@@ -113,6 +117,17 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def total_memory(self, device_index=None):
         return torch.cuda.get_device_properties(device_index).total_memory
 
+    # Data types
+    def is_bf16_supported(self):
+        return torch.cuda.is_bf16_supported()
+
+    def is_fp16_supported(self):
+        major, _ = torch.cuda.get_device_capability()
+        if major >= 7:
+            return True
+        else:
+            return False
+
     # Misc
     def is_available(self):
         return torch.cuda.is_available()
@@ -128,16 +143,11 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def lazy_call(self, callback):
         return torch.cuda._lazy_call(callback)
 
-    # Data types
-    def is_bf16_supported(self):
-        return torch.cuda.is_bf16_supported()
+    def name(self):
+        return self._name
 
-    def is_fp16_supported(self):
-        major, _ = torch.cuda.get_device_capability()
-        if major >= 7:
-            return True
-        else:
-            return False
+    def communication_backend_name(self):
+        return self._communication_backend_name
 
     # Tensor operations
     def pin_memory(self, tensor):
