@@ -102,8 +102,13 @@ if __name__ == "__main__":
         linear_layer_list.append(matches)
 
     #generate injection policy gems from name and linear layer lists
-    print(linear_layer_list)
+    print(f"{linear_layer_list=}")
 
+    injection_list = []
     for group in linear_layer_list:
-        print(group[-1])
+        injection_list.append(group[-1])
+    injection_policy = {}
+    injection_policy.update({args.module: tuple(injection_list)})
+    print(f"{injection_policy=}")
+    
     
