@@ -5,8 +5,7 @@ import math
 
 from .common import get_test_path
 from deepspeed.pipe import PipelineModule, LayerSpec
-from deepspeed.accelerator import literal_device
-from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 
 def get_megatron_version():
@@ -39,10 +38,10 @@ def get_gpt2_model(args_others, mp_size=1):
 
     initialize_megatron(args_defaults=args_defaults, ignore_unknown_args=True)
     model = GPT2Model(num_tokentypes=0, parallel_output=False)
-    model.to(literal_device())
+    model.to(get_accelerator().device_name())
     from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
     from megatron import mpu
-    i = accel_runtime.current_device()
+    i = get_accelerator().current_device_name()
     model = torchDDP(model,
                      device_ids=[i],
                      output_device=i,
@@ -78,8 +77,9 @@ class MockGPT2ModelPipe(PipelineModule):
         class ParallelTransformerLayerPipe(ParallelTransformerLayer):
             def forward(self, args):
                 # hardcode attn mask for testing, PP requires the attn_mask to be stashed
-                attention_mask = torch.tensor([[True]],
-                                              device=accel_runtime.current_device())
+                attention_mask = torch.tensor(
+                    [[True]],
+                    device=get_accelerator().current_device_name())
                 return super().forward(args, attention_mask)
 
         layers = []

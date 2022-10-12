@@ -14,7 +14,7 @@ from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW,
 from deepspeed.utils import groups, logger, log_dist
 from deepspeed import comm as dist
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, CLIP_GRAD
-from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 
 class FP16_Optimizer(DeepSpeedOptimizer):
@@ -42,7 +42,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         self.deepspeed = deepspeed
         self.has_moe_layers = has_moe_layers
         self.using_pipeline = self.deepspeed.pipeline_parallelism
-        if not accel_runtime.is_available():
+        if not get_accelerator().is_available():
             raise SystemError("No accelerator or accelerator does not support FP16.")
         self.optimizer = init_optimizer
 
@@ -458,7 +458,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         will call ``model.load_state_dict()`` before
         ``fp16_optimizer_instance.load_state_dict()`` is called.
         Example::
-            model = torch.nn.Linear(D_in, D_out).to(literal_device()).half()
+            model = torch.nn.Linear(D_in, D_out).to(get_accelerator().device_name()).half()
             optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
             optimizer = FP16_Optimizer(optimizer, static_loss_scale = 128.0)
             ...

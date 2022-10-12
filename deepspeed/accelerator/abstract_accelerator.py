@@ -20,11 +20,19 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     @abc.abstractmethod
+    def device_name(self, device_index):
+        ...
+
+    @abc.abstractmethod
     def set_device(self):
         ...
 
     @abc.abstractmethod
     def current_device(self):
+        ...
+
+    @abc.abstractmethod
+    def current_device_name(self):
         ...
 
     @abc.abstractmethod
@@ -62,11 +70,15 @@ class DeepSpeedAccelerator(ABC):
 
     # Streams/Events
     @abc.abstractmethod
-    def Stream(self, device_index=None, priority=0, **kwargs):
+    def Stream(self, device=None, priority=0, **kwargs):
         ...
 
     @abc.abstractmethod
     def StreamContext(self, stream):
+        ...
+
+    @abc.abstractmethod
+    def stream(self, stream):
         ...
 
     @abc.abstractmethod
@@ -132,7 +144,7 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     @abc.abstractmethod
-    def range_pop(self, msg):
+    def range_pop(self):
         ...
 
     @abc.abstractmethod
@@ -146,4 +158,13 @@ class DeepSpeedAccelerator(ABC):
 
     @abc.abstractmethod
     def is_fp16_supported(self):
+        ...
+
+    # Tensor operations
+    @abc.abstractmethod
+    def pin_memory(self, tensor):
+        ...
+
+    @abc.abstractmethod
+    def on_accelerator(self, tensor):
         ...

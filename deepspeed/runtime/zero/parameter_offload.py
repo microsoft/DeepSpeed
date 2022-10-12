@@ -12,6 +12,7 @@ from deepspeed.runtime.zero.partition_parameters import _init_external_params
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.partitioned_param_coordinator import PartitionedParameterCoordinator, iter_params
 from deepspeed import comm as dist
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 FWD_MODULE_STACK = list()
 
@@ -216,8 +217,8 @@ class DeepSpeedZeRoOffload(object):
         self._prefetch_bucket_sz = int(prefetch_bucket_size)
         self._max_reuse_distance_in_numel = int(max_reuse_distance)
         self._max_available_parameters_in_numel = int(max_live_parameters)
-        self.__allgather_stream = accel_runtime.Stream(
-        ) if overlap_comm else accel_runtime.default_stream()
+        self.__allgather_stream = get_accelerator().Stream(
+        ) if overlap_comm else get_accelerator().default_stream()
 
         self.forward_hooks = []
         self.backward_hooks = []

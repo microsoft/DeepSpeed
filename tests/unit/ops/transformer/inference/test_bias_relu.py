@@ -6,7 +6,7 @@ import pytest
 import torch
 import deepspeed
 from deepspeed.ops.op_builder import InferenceBuilder
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system",
@@ -48,8 +48,10 @@ def test_bias_relu(batch, sequence, channels, dtype):
                                   sequence,
                                   channels),
                                  dtype=dtype,
-                                 device=literal_device())
-    bias_ds = torch.randn((channels), dtype=dtype, device=literal_device())
+                                 device=get_accelerator().device_name())
+    bias_ds = torch.randn((channels),
+                          dtype=dtype,
+                          device=get_accelerator().device_name())
 
     activations_ref = activations_ds.clone().detach()
     bias_ref = bias_ds.clone().detach()

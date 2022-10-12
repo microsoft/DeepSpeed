@@ -5,7 +5,7 @@ import torch
 import pytest
 
 import deepspeed
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus, partitioned_param_data_shape
 import deepspeed.comm as dist
 
@@ -356,7 +356,7 @@ def test_subclass_param_init():
     assert model.param.ds_status == ZeroParamStatus.NOT_AVAILABLE
 
     # test that the weights manipulation during each __init__ worked in all w/o needing gathering
-    ones = torch.ones(5).half().to(literal_device())
+    ones = torch.ones(5).half().to(get_accelerator().device_name())
     with deepspeed.zero.GatheredParameters(list(model.parameters(recurse=False))):
         assert torch.equal(model.param, ones + 1)
         assert torch.equal(model.param_pa, ones + 2)

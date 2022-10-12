@@ -3,7 +3,7 @@ import torch
 import tqdm
 import deepspeed
 import deepspeed.ops.transformer as transformer_inference
-from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator.real_accelerator import get_accelerator
 from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, BLOOMLayerPolicy
 from .replace_policy import replace_policies
 #from ..runtime.weight_quantizer import WeightQuantization
@@ -61,10 +61,10 @@ class ReplaceWithTensorSlicing:
                               axis=self.out_dim) for i in range(len(qkv_split[0]))
                 ]
                 dst.data.copy_(weight_split[self.gpu_index].to(
-                    accel_runtime.current_device()).contiguous())
+                    get_accelerator().current_device_name()).contiguous())
             else:
                 dst.data.copy_(src_split[self.gpu_index].to(
-                    accel_runtime.current_device()).contiguous())
+                    get_accelerator().current_device_name()).contiguous())
         else:
             if src_shape[0] == dst_shape[0]:
                 return torch.nn.parameter.Parameter(src)
@@ -76,10 +76,10 @@ class ReplaceWithTensorSlicing:
                               axis=0) for i in range(len(qkv_split[0]))
                 ]
                 dst.data.copy_(bias_split[self.gpu_index].to(
-                    accel_runtime.current_device()).contiguous())
+                    get_accelerator().current_device_name()).contiguous())
             else:
                 dst.data.copy_(src_split[self.gpu_index].to(
-                    accel_runtime.current_device()).contiguous())
+                    get_accelerator().current_device_name()).contiguous())
 
         return torch.nn.parameter.Parameter(dst)
 
@@ -99,14 +99,14 @@ class ReplaceWithTensorSlicing:
                         src,
                         dst_shape[self.in_dim],
                         dim=self.in_dim)[self.gpu_index].to(
-                            accel_runtime.current_device()).contiguous()
+                            get_accelerator().current_device_name()).contiguous()
                 else:
                     self.merge_assert(src_shape[self.out_dim], dst_shape[self.out_dim])
                     weight_split = torch.split(
                         src.data,
                         dst_shape[self.out_dim],
                         dim=self.out_dim)[self.gpu_index].to(
-                            accel_runtime.current_device()).contiguous()
+                            get_accelerator().current_device_name()).contiguous()
                 dst.data.copy_(weight_split.contiguous())
         else:
             if src_shape[0] == dst_shape[0]:
@@ -115,7 +115,7 @@ class ReplaceWithTensorSlicing:
                 bias_split = torch.split(
                     src.data,
                     dst_shape[-1])[self.gpu_index].to(
-                        accel_runtime.current_device()).contiguous()
+                        get_accelerator().current_device_name()).contiguous()
                 dst.data.copy_(bias_split)
         dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
         if hasattr(src, 'scale'):
@@ -151,7 +151,7 @@ class GroupQuantizer:
             inputs.scale = torch.empty(1)
             return inputs
         q_range = 2**self.num_bits
-        inputs = inputs.to(accel_runtime.current_device())
+        inputs = inputs.to(get_accelerator().current_device_name())
         input_flat = inputs.reshape(self.num_groups, -1).contiguous()
         input_min = torch.min(input_flat, dim=1, keepdim=True)[0].float()
         input_max = torch.max(input_flat, dim=1, keepdim=True)[0].float()
@@ -430,7 +430,7 @@ def replace_transformer_layer(orig_layer_impl,
                 data = data.to('cpu')
                 data.reshape(-1).copy_(data.transpose(-1, -2).contiguous().reshape(-1))
                 data = data.reshape(data.shape[-1], data.shape[-2])
-                data.to(accel_runtime.current_device())
+                data.to(get_accelerator().current_device_name())
                 return data
 
             attn_block = new_module.attention
@@ -557,29 +557,31 @@ def replace_transformer_layer(orig_layer_impl,
                 for ep_index in range(local_ep_size):
                     mpl_block[ep_index].inter_w.data = _h4h_w[
                         gpu_index * local_ep_size + ep_index].to(
-                            accel_runtime.current_device())
+                            get_accelerator().current_device_name())
                     mpl_block[ep_index].inter_b.data = _h4h_b[
                         gpu_index * local_ep_size + ep_index].to(
-                            accel_runtime.current_device())
+                            get_accelerator().current_device_name())
                     mpl_block[ep_index].output_w.data = _4hh_w[
                         gpu_index * local_ep_size + ep_index].to(
-                            accel_runtime.current_device())
+                            get_accelerator().current_device_name())
                     mpl_block[ep_index].output_b.data = _4hh_b[
                         gpu_index * local_ep_size + ep_index].to(
-                            accel_runtime.current_device())
-                new_module.attn_nw.data = attn_nw.to(accel_runtime.current_device())
-                new_module.attn_nb.data = attn_nb.to(accel_runtime.current_device())
+                            get_accelerator().current_device_name())
+                new_module.attn_nw.data = attn_nw.to(
+                    get_accelerator().current_device_name())
+                new_module.attn_nb.data = attn_nb.to(
+                    get_accelerator().current_device_name())
                 if moe_type == 'residual':
                     new_module.res_mlp.inter_w.data = _res_h4h_w.to(
-                        accel_runtime.current_device())
+                        get_accelerator().current_device_name())
                     new_module.res_mlp.inter_b.data = _res_h4h_b.to(
-                        accel_runtime.current_device())
+                        get_accelerator().current_device_name())
                     new_module.res_mlp.output_w.data = _res_4hh_w.to(
-                        accel_runtime.current_device())
+                        get_accelerator().current_device_name())
                     new_module.res_mlp.output_b.data = _res_4hh_b.to(
-                        accel_runtime.current_device())
+                        get_accelerator().current_device_name())
                     new_module.res_coef.data = _res_coef.to(
-                        accel_runtime.current_device())
+                        get_accelerator().current_device_name())
             else:
 
                 if _4hh_w.numel() == 0 or _4hh_w.is_meta:
@@ -625,14 +627,14 @@ def replace_transformer_layer(orig_layer_impl,
                         else:
                             with GatheredParameters([attn_nw, attn_nb], modifier_rank=0):
                                 new_module.mlp.attn_nw.data.copy_(
-                                    attn_nw.to(accel_runtime.current_device()))
+                                    attn_nw.to(get_accelerator().current_device_name()))
                                 new_module.mlp.attn_nb.data.copy_(
-                                    attn_nb.to(accel_runtime.current_device()))
+                                    attn_nb.to(get_accelerator().current_device_name()))
                     else:
                         new_module.mlp.attn_nw.data.copy_(
-                            attn_nw.to(accel_runtime.current_device()))
+                            attn_nw.to(get_accelerator().current_device_name()))
                         new_module.mlp.attn_nb.data.copy_(
-                            attn_nb.to(accel_runtime.current_device()))
+                            attn_nb.to(get_accelerator().current_device_name()))
 
             if input_nw.is_meta or input_nw.numel() == 0:
                 if input_nw.is_meta or input_nw.ds_tensor.numel(
@@ -641,12 +643,14 @@ def replace_transformer_layer(orig_layer_impl,
                 else:
                     with GatheredParameters([input_nw, input_nb], modifier_rank=0):
                         new_module.norm_w.data.copy_(
-                            input_nw.to(accel_runtime.current_device()))
+                            input_nw.to(get_accelerator().current_device_name()))
                         new_module.norm_b.data.copy_(
-                            input_nb.to(accel_runtime.current_device()))
+                            input_nb.to(get_accelerator().current_device_name()))
             else:
-                new_module.norm_w.data.copy_(input_nw.to(accel_runtime.current_device()))
-                new_module.norm_b.data.copy_(input_nb.to(accel_runtime.current_device()))
+                new_module.norm_w.data.copy_(
+                    input_nw.to(get_accelerator().current_device_name()))
+                new_module.norm_b.data.copy_(
+                    input_nb.to(get_accelerator().current_device_name()))
         else:
             transformer_config = deepspeed.DeepSpeedTransformerConfig(
                 batch_size=micro_batch_size if micro_batch_size > 0 else 1,
@@ -723,7 +727,7 @@ def replace_transformer_layer(orig_layer_impl,
                 elif child.bias is not None:
                     new_bias.data.copy_(child.bias.data)
                 return LinearAllreduce(data, child.bias if child.bias is None else \
-                            torch.nn.parameter.Parameter(new_bias.to(accel_runtime.current_device())), mp_group)
+                            torch.nn.parameter.Parameter(new_bias.to(get_accelerator().current_device_name())), mp_group)
             else:
                 new_weight = torch.empty((
                     (weight_shape[1] if conv_linear_layer else weight_shape[0]) //
@@ -753,12 +757,13 @@ def replace_transformer_layer(orig_layer_impl,
                     with deepspeed.zero.GatheredParameters(child.bias, modifier_rank=0):
                         bias_data = None if child.bias is None else mp_replace.copy(
                             new_bias,
-                            child.bias.data).to(accel_runtime.current_device())
+                            child.bias.data).to(get_accelerator().current_device_name())
                 else:
                     bias_data = None if child.bias is None else mp_replace.copy(
                         new_bias,
-                        child.bias.data).to(accel_runtime.current_device())
-                return LinearLayer(weight=data.to(accel_runtime.current_device()),
+                        child.bias.data).to(get_accelerator().current_device_name())
+                return LinearLayer(weight=data.to(
+                    get_accelerator().current_device_name()),
                                    bias=bias_data)
 
         def _slice_embedding(child, name, conv_linear_layer):

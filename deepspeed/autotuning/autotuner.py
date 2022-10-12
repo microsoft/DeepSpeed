@@ -15,7 +15,7 @@ from .constants import *
 from .scheduler import ResourceManager
 from .tuner import GridSearchTuner, RandomTuner, ModelBasedTuner
 from .utils import *
-from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 try:
     from tabulate import tabulate
@@ -249,7 +249,7 @@ class Autotuner:
             return False
 
     def get_gpu_memory_info(self):
-        return accel_runtime.total_memory()
+        return get_accelerator().total_memory()
 
     def get_activation_memory_per_gpu(self):
         if self.model_info and "activation_mem_per_gpu" in self.model_info:

@@ -6,7 +6,7 @@ import pytest
 import torch
 import deepspeed
 from deepspeed.ops.op_builder import InferenceBuilder
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system",
@@ -77,21 +77,23 @@ def test_residual_add(inference_module,
                           sequence,
                           hidden_dim),
                          dtype=dtype,
-                         device=literal_device())
+                         device=get_accelerator().device_name())
     residual = torch.randn((batch,
                             sequence,
                             hidden_dim),
                            dtype=dtype,
-                           device=literal_device())
+                           device=get_accelerator().device_name())
     attention_output = torch.randn((batch,
                                     sequence,
                                     hidden_dim),
                                    dtype=dtype,
-                                   device=literal_device())
-    final_bias = torch.randn((hidden_dim), dtype=dtype, device=literal_device())
+                                   device=get_accelerator().device_name())
+    final_bias = torch.randn((hidden_dim),
+                             dtype=dtype,
+                             device=get_accelerator().device_name())
     attention_output_bias = torch.randn((hidden_dim),
                                         dtype=dtype,
-                                        device=literal_device())
+                                        device=get_accelerator().device_name())
 
     ref_out = ds_out.clone()
     ref_out = run_residual_add_reference(ref_out,

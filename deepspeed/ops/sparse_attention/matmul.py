@@ -6,7 +6,7 @@ import torch
 import triton
 import triton.language as tl
 import triton._C.libtriton as libtriton
-from deepspeed.accelerator import on_accel_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 
 @triton.jit
@@ -949,7 +949,7 @@ class MatMul:
             raise ValueError(
                 f"Inputs must be on the same device; got {a.device} for tensor A "
                 f"and {b.device} for tensor B")
-        if not on_accel_device(a):
+        if not get_accelerator().on_accelerator(a):
             raise ValueError("Only GPU devices are supported for now")
 
         # When autocast is enabled, torch.matmul autocasts to float16, so we do the same here

@@ -1,6 +1,6 @@
 from benchmarks.communication.utils import *
 from benchmarks.communication.constants import *
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 import time
 
@@ -82,9 +82,10 @@ def run_pt2pt(local_rank, args):
             try:
                 mat = torch.ones(world_size,
                                  M,
-                                 dtype=getattr(torch,
-                                               args.dtype)).to(
-                                                   literal_device(local_rank))
+                                 dtype=getattr(
+                                     torch,
+                                     args.dtype)).to(
+                                         get_accelerator().device_name(local_rank))
                 sync_all()
                 input = ((mat.mul_(float(global_rank))).view(-1))
             except RuntimeError as e:
@@ -107,7 +108,8 @@ def run_pt2pt(local_rank, args):
         try:
             mat = torch.ones(elements_per_gpu,
                              dtype=getattr(torch,
-                                           args.dtype)).to(literal_device(local_rank))
+                                           args.dtype)).to(
+                                               get_accelerator().device_name(local_rank))
             input = ((mat.mul_(float(global_rank))).view(-1))
         except RuntimeError as e:
             if 'out of memory' in str(e):

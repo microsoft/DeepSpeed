@@ -8,8 +8,7 @@ from torch import nn
 from .modelingpreln import BertEncoder as BertEncoderPreln
 from .modeling import BertLayerNorm, BertConfig, BertEncoder as BertEncoderPostln
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
-from deepspeed.accelerator import literal_device
-from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 
 def check_equal(first, second, atol=1e-2, verbose=False):
@@ -30,7 +29,7 @@ def zero_grad(variables):
         variable.grad.zero_()
 
 
-device = torch.device(literal_device())
+device = torch.device(get_accelerator().device_name())
 kwargs_fp32 = {'dtype': torch.float, 'device': device, 'requires_grad': True}
 kwargs_fp16 = {'dtype': torch.half, 'device': device, 'requires_grad': True}
 
@@ -149,8 +148,8 @@ def create_models(ds_config):
         bert_encoder.half()
         ds_encoder.half()
 
-    bert_encoder.to(literal_device())
-    ds_encoder.to(literal_device())
+    bert_encoder.to(get_accelerator().device_name())
+    ds_encoder.to(get_accelerator().device_name())
 
     return bert_encoder, ds_encoder
 
@@ -237,7 +236,7 @@ def test_forward(batch_size,
                  is_preln,
                  use_fp16):
     # Only run fp16 test cases on devices with FP16 capability.
-    if not accel_runtime.is_fp16_supported() and use_fp16 is True:
+    if not get_accelerator().is_fp16_supported() and use_fp16 is True:
         return
 
     ds_config = DeepSpeedTransformerConfig()
@@ -272,7 +271,7 @@ def test_forward_with_small_bsz(batch_size,
                                 is_preln,
                                 use_fp16):
     # Only run fp16 test cases on devices with FP16 capability.
-    if not accel_runtime.is_fp16_supported() and use_fp16 is True:
+    if not get_accelerator().is_fp16_supported() and use_fp16 is True:
         return
 
     ds_config = DeepSpeedTransformerConfig()
@@ -305,7 +304,7 @@ def test_forward_stochastic(batch_size,
                             is_preln,
                             use_fp16):
     # Only run fp16 test cases on devices with FP16 capability.
-    if not accel_runtime.is_fp16_supported() and use_fp16 is True:
+    if not get_accelerator().is_fp16_supported() and use_fp16 is True:
         return
 
     ds_config = DeepSpeedTransformerConfig()

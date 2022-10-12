@@ -31,8 +31,7 @@ import os
 
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
 from .constants import *
-from deepspeed.accelerator import runtime as accel_runtime
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 
 class ReduceOp(Enum):
@@ -129,7 +128,7 @@ def timed_op(func):
         finally:
             if comms_logger.enabled:
                 # Need to make op blocking for accurate logging
-                accel_runtime.synchronize()
+                get_accelerator().synchronize()
                 # If we're using MPI, we can't simply sync the stream
                 if cdb.using_mpi:
                     cdb.barrier()
@@ -632,7 +631,7 @@ def init_distributed(dist_backend=None,
         else:
             assert isinstance(timeout, timedelta)
             if dist_backend == None:
-                if literal_device() == 'xpu':
+                if get_accelerator().device_name() == 'xpu':
                     dist_backend = 'ccl'
                 else:
                     dist_backend = 'nccl'

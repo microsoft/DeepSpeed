@@ -4,7 +4,7 @@ import json
 import argparse
 
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
-from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 from .common import distributed_test, get_test_path
 from .simple_model import SimpleModel, create_config_from_dict, random_dataloader
@@ -16,7 +16,7 @@ from deepspeed.runtime.config import DeepSpeedConfig, get_bfloat16_enabled
 
 
 def test_cuda():
-    assert (accel_runtime.is_available())
+    assert (get_accelerator().is_available())
 
 
 def test_check_version():

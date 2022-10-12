@@ -19,7 +19,7 @@ from torch.nn import init
 from torch.nn.modules.module import Module
 from deepspeed.runtime.utils import noop_decorator
 from deepspeed import comm as dist
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 tensor_map = {}
 
@@ -30,7 +30,7 @@ def print_rank_0(message, debug=False, force=False):
 
 
 try:
-    device = literal_device()
+    device = get_accelerator().device_name()
     if device == 'cuda':
         autocast_custom_fwd = torch.cuda.amp.custom_fwd
         autocast_custom_bwd = torch.cuda.amp.custom_bwd

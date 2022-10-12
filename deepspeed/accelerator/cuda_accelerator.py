@@ -18,11 +18,19 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def device(self, device_index=None):
         return torch.cuda.device(device_index)
 
+    def device_name(self, device_index=None):
+        if device_index == None:
+            return 'cuda'
+        return 'cuda:{}'.format(device_index)
+
     def set_device(self, device_index):
         torch.cuda.set_device(device_index)
 
     def current_device(self):
         return torch.cuda.current_device()
+
+    def current_device_name(self):
+        return 'cuda:{}'.format(torch.cuda.current_device())
 
     def device_count(self):
         return torch.cuda.device_count()
@@ -35,6 +43,8 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         return torch.cuda.set_rng_state(new_state, device_index)
 
     def get_rng_state(self, device_index=None):
+        if device_index == None:
+            return torch.cuda.get_rng_state()
         return torch.cuda.get_rng_state(device_index)
 
     def manual_seed(self, seed):
@@ -50,11 +60,14 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         return torch.cuda.default_generators[device_index]
 
     # Streams/Events
-    def Stream(self, device_index=None, priority=0, **kwargs):
-        return torch.cuda.Stream(device_index, priority, **kwargs)
+    def Stream(self, device=None, priority=0, **kwargs):
+        return torch.cuda.Stream(device, priority, **kwargs)
 
     def StreamContext(self, stream):
         return torch.cuda.StreamContext(stream)
+
+    def stream(self, stream):
+        return torch.cuda.stream(stream)
 
     def current_stream(self, device_index=None):
         return torch.cuda.current_stream(device_index)
@@ -108,9 +121,9 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         if hasattr(torch.cuda.nvtx, 'range_push'):
             return torch.cuda.nvtx.range_push(msg)
 
-    def range_pop(self, msg):
+    def range_pop(self):
         if hasattr(torch.cuda.nvtx, 'range_pop'):
-            return torch.cuda.nvtx.range_pop(msg)
+            return torch.cuda.nvtx.range_pop()
 
     def lazy_call(self, callback):
         return torch.cuda._lazy_call(callback)
@@ -120,4 +133,19 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         return torch.cuda.is_bf16_supported()
 
     def is_fp16_supported(self):
-        return torch.cuda.is_fp16_supported()
+        major, _ = torch.cuda.get_device_capability()
+        if major >= 7:
+            return True
+        else:
+            return False
+
+    # Tensor operations
+    def pin_memory(self, tensor):
+        return tensor.pin_memory()
+
+    def on_accelerator(self, tensor):
+        device_str = str(tensor.device)
+        if device_str.startswith('cuda:'):
+            return True
+        else:
+            return False

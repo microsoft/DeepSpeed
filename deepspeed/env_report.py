@@ -4,7 +4,7 @@ import subprocess
 import argparse
 from .ops.op_builder import ALL_OPS
 from .git_version_info import installed_ops, torch_info
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 GREEN = '\033[92m'
 RED = '\033[91m'
@@ -83,7 +83,7 @@ def debug_report():
     hip_version = None
     if hasattr(torch.version, 'hip'):
         hip_version = torch.version.hip
-    if literal_device == 'cuda':
+    if get_accelerator().device_name() == 'cuda':
         report = [
             ("torch install path",
              torch.__path__),

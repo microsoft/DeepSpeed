@@ -5,7 +5,7 @@ import pytest
 import deepspeed
 from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
 from deepspeed.ops.op_builder import CPUAdagradBuilder
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 if not deepspeed.ops.__compatible_ops__[CPUAdagradBuilder.NAME]:
     pytest.skip("cpu-adagrad is not compatible", allow_module_level=True)
@@ -128,7 +128,7 @@ def test_cpu_adagrad_opt_sparse_embedding(model_size, vocabulary_size, dim):
 
 def test_cpu_adam_gpu_error():
     model_size = 64
-    device = literal_device(0)
+    device = get_accelerator().device_name(0)
     param = torch.nn.Parameter(torch.randn(model_size, device=device))
     optimizer = DeepSpeedCPUAdagrad([param])
 

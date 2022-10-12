@@ -14,7 +14,7 @@ from .. import utils as ds_utils
 from ..activation_checkpointing import checkpointing
 from .topology import PipeDataParallelTopology, PipelineParallelGrid
 from deepspeed.runtime.state_dict_factory import SDLoaderFactory
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 
 class PipelineError(Exception):
@@ -193,12 +193,12 @@ class PipelineModule(nn.Module):
         self.tied_weight_attrs = {}
 
         # Offset the random seed by the stage ID.
-        #newseed = accel_runtime.initial_seed() + self._grid.get_stage_id()
+        #newseed = get_accelerator().initial_seed() + self._grid.get_stage_id()
         #ds_utils.set_random_seed(newseed)
 
-        #with torch.random.fork_rng(devices=[accel_runtime.current_device()]):
+        #with torch.random.fork_rng(devices=[get_accelerator().current_device_name()]):
         self._build()
-        self.to(literal_device(self.local_rank))
+        self.to(get_accelerator().device_name(self.local_rank))
 
         self.tied_comms = self._index_tied_modules()
         self._synchronize_tied_weights()

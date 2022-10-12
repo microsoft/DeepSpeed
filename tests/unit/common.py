@@ -7,8 +7,7 @@ from pathlib import Path
 import torch
 import torch.multiprocessing as mp
 import deepspeed
-from deepspeed.accelerator import literal_device
-from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator.real_accelerator import get_accelerator
 import deepspeed.comm as dist
 from torch.multiprocessing import Process
 
@@ -44,7 +43,7 @@ def set_accelerator_visibile():
     if cuda_visible is None:
         # CUDA_VISIBLE_DEVICES is not set, discover it using accelerator specific command instead
         import subprocess
-        if literal_device() == 'cuda':
+        if get_accelerator().device_name() == 'cuda':
             is_rocm_pytorch = hasattr(torch.version,
                                       'hip') and torch.version.hip is not None
             if is_rocm_pytorch:
@@ -56,7 +55,7 @@ def set_accelerator_visibile():
                 nvidia_smi = subprocess.check_output(['nvidia-smi', '--list-gpus'])
                 num_gpus = len(nvidia_smi.decode('utf-8').strip().split('\n'))
         else:
-            assert literal_device() == 'xpu'
+            assert get_accelerator().device_name() == 'xpu'
             import re
             clinfo = subprocess.check_output(['clinfo'])
             lines = clinfo.decode('utf-8').strip().split('\n')
@@ -81,7 +80,7 @@ def set_accelerator_visibile():
 class DistributedTest(ABC):
     is_dist_test = True
     world_size = 2
-    if literal_device() == 'xpu':
+    if get_accelerator().device_name() == 'xpu':
         backend = 'ccl'
     else:
         backend = 'nccl'
@@ -188,8 +187,8 @@ class DistributedTest(ABC):
             deepspeed.init_distributed(dist_backend=self.backend)
             dist.barrier()
 
-        if accel_runtime.is_available():
-            accel_runtime.set_device(local_rank)
+        if get_accelerator().is_available():
+            get_accelerator().set_device(local_rank)
 
         try:
             self.current_test(**self.test_kwargs)
@@ -240,7 +239,7 @@ def distributed_test(world_size=2, backend=None):
 
             dist_backend = backend
             if dist_backend == None:
-                if literal_device() == 'xpu':
+                if get_accelerator().device_name() == 'xpu':
                     dist_backend = 'ccl'
                 else:
                     dist_backend = 'nccl'
@@ -249,8 +248,8 @@ def distributed_test(world_size=2, backend=None):
             #dist.init_process_group(backend=backend)
             dist.barrier()
 
-            if accel_runtime.is_available():
-                accel_runtime.set_device(local_rank)
+            if get_accelerator().is_available():
+                get_accelerator().set_device(local_rank)
 
             run_func(*func_args, **func_kwargs)
 

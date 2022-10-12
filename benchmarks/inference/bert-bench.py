@@ -3,7 +3,7 @@ import time
 import deepspeed
 import argparse
 from transformers import pipeline
-from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", "-m", type=str, help="hf model name")
@@ -73,10 +73,10 @@ responses = []
 times = []
 mtimes = []
 for i in range(args.trials):
-    accel_runtime.synchronize()
+    get_accelerator().synchronize()
     start = time.time()
     r = pipe("Hello I'm a [MASK] model")
-    accel_runtime.synchronize()
+    get_accelerator().synchronize()
     end = time.time()
     responses.append(r)
     times.append((end - start))

@@ -9,8 +9,7 @@ from .common import distributed_test
 from .megatron_model import get_gpt2_model, get_megatron_version
 from .megatron_model import MockGPT2ModelPipe as GPT2ModelPipe
 from deepspeed.utils import RepeatingLoader
-from deepspeed.accelerator import literal_device
-from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])
@@ -23,7 +22,7 @@ def reset_random(seed=1234):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    accel_runtime.manual_seed_all(seed)
+    get_accelerator().manual_seed_all(seed)
 
 
 class TestConfigurableMP:
@@ -75,9 +74,9 @@ class TestConfigurableMP:
             model = self.get_deepspeed_model(model, tmpdir)
 
             model.eval()
-            baseline = model(inputs[0].to(literal_device()),
-                             inputs[1].to(literal_device()),
-                             inputs[2].to(literal_device()))
+            baseline = model(inputs[0].to(get_accelerator().device_name()),
+                             inputs[1].to(get_accelerator().device_name()),
+                             inputs[2].to(get_accelerator().device_name()))
 
             tag = 'mp_1'
             state_dict = {}
@@ -111,9 +110,9 @@ class TestConfigurableMP:
 
             model.eval()
 
-            baseline = model(inputs[0].to(literal_device()),
-                             inputs[1].to(literal_device()),
-                             inputs[2].to(literal_device()))
+            baseline = model(inputs[0].to(get_accelerator().device_name()),
+                             inputs[1].to(get_accelerator().device_name()),
+                             inputs[2].to(get_accelerator().device_name()))
 
             tag = 'mp_2'
             state_dict = {}
@@ -125,9 +124,9 @@ class TestConfigurableMP:
                                   load_optimizer_states=False,
                                   load_lr_scheduler_states=False)
 
-            test = model(inputs[0].to(literal_device()),
-                         inputs[1].to(literal_device()),
-                         inputs[2].to(literal_device()))
+            test = model(inputs[0].to(get_accelerator().device_name()),
+                         inputs[1].to(get_accelerator().device_name()),
+                         inputs[2].to(get_accelerator().device_name()))
             assert torch.allclose(baseline, test, rtol=1.0, atol=1e-07), f"Baseline output {baseline} is not equal to save-then-load output {test}"
 
         inputs = self.get_inputs()
@@ -152,9 +151,9 @@ class TestConfigurableMP:
             model.eval()
 
             with torch.no_grad():
-                baseline = model(inputs[0].to(literal_device()),
-                                 inputs[1].to(literal_device()),
-                                 inputs[2].to(literal_device()))
+                baseline = model(inputs[0].to(get_accelerator().device_name()),
+                                 inputs[1].to(get_accelerator().device_name()),
+                                 inputs[2].to(get_accelerator().device_name()))
                 if dist.get_rank() == 0:
                     output.put(baseline.cpu())
 
@@ -183,9 +182,9 @@ class TestConfigurableMP:
                                       tag=tag,
                                       load_optimizer_states=False,
                                       load_lr_scheduler_states=False)
-                test = model(inputs[0].to(literal_device()),
-                             inputs[1].to(literal_device()),
-                             inputs[2].to(literal_device()))
+                test = model(inputs[0].to(get_accelerator().device_name()),
+                             inputs[1].to(get_accelerator().device_name()),
+                             inputs[2].to(get_accelerator().device_name()))
                 if dist.get_rank() == 0:
                     output.put(test.cpu())
             quit_event.wait()
@@ -256,7 +255,7 @@ class TestConfigurablePP:
         model, _, _,_ = deepspeed.initialize(model=model,
                                              model_parameters=model.parameters(),
                                              config=ds_config_dict)
-        return model.to(literal_device())
+        return model.to(get_accelerator().device_name())
 
     def get_topology(self, mp, pp, world_size):
         assert world_size % (pp * mp) == 0
@@ -348,7 +347,7 @@ class TestConfigurablePP:
             model = self.get_deepspeed_model(gpt2_pipe_model, tmpdir)
 
             with torch.no_grad():
-                inputs = [x.to(literal_device()) for x in inputs]
+                inputs = [x.to(get_accelerator().device_name()) for x in inputs]
                 if model.is_first_stage() or model.is_last_stage():
                     loader = RepeatingLoader([(inputs[0], 0)])
                     data_iter = iter(loader)
@@ -394,7 +393,7 @@ class TestConfigurablePP:
                                       tag=tag,
                                       load_optimizer_states=False,
                                       load_lr_scheduler_states=False)
-                inputs = [x.to(literal_device()) for x in inputs]
+                inputs = [x.to(get_accelerator().device_name()) for x in inputs]
                 if model.is_first_stage() or model.is_last_stage():
                     loader = RepeatingLoader([(inputs[0], 0)])
                     data_iter = iter(loader)

@@ -14,7 +14,7 @@ from deepspeed.runtime.utils import get_global_norm, CheckOverflow, get_weight_n
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
 from deepspeed.utils import logger
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
-from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator.real_accelerator import get_accelerator
 from deepspeed import comm as dist
 
 
@@ -41,7 +41,7 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
         if dist.get_rank() == 0:
             logger.info(f'Fused Lamb Legacy : {self.fused_lamb_legacy} ')
 
-        if not accel_runtime.is_available():
+        if not get_accelerator().is_available():
             raise SystemError("No accelerator or accelerator does not support FP16.")
         self.optimizer = init_optimizer
 
@@ -388,7 +388,7 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
         will call ``model.load_state_dict()`` before
         ``fp16_optimizer_instance.load_state_dict()`` is called.
         Example::
-            model = torch.nn.Linear(D_in, D_out).to(literal_device()).half()
+            model = torch.nn.Linear(D_in, D_out).to(get_accelerator().device_name()).half()
             optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
             optimizer = FP16_Optimizer(optimizer, static_loss_scale = 128.0)
             ...
@@ -433,13 +433,13 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
             for param in group:
                 param.grad = torch.zeros(param.size(),
                                          dtype=param.dtype,
-                                         device=accel_runtime.current_device())
+                                         device=get_accelerator().current_device_name())
 
         for i, group in enumerate(self.fp32_groups):
             for param in group:
                 param.grad = torch.zeros(param.size(),
                                          dtype=param.dtype,
-                                         device=accel_runtime.current_device())
+                                         device=get_accelerator().current_device_name())
 
         self.optimizer.step()
 

@@ -5,7 +5,7 @@ import subprocess
 import warnings
 from shlex import split
 from abc import ABC, abstractmethod
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 from ..utils import logger
 from .constants import PDSH_MAX_FAN_OUT, MVAPICH_TMP_HOSTFILE
 
@@ -173,7 +173,7 @@ class MVAPICHRunner(MultiNodeRunner):
         self.add_export('MV2_DEBUG_SHOW_BACKTRACE', '1')
 
         # Enabled cuda-aware communication
-        if literal_device() == 'cuda':
+        if get_accelerator().device_name() == 'cuda':
             self.add_export('MV2_USE_CUDA', '1')
 
         # Support deep learning frameworks: http://hidl.cse.ohio-state.edu/userguide/horovod/

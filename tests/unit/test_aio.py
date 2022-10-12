@@ -5,8 +5,7 @@ import torch
 import deepspeed
 import deepspeed.comm as dist
 from deepspeed.ops.aio import AsyncIOBuilder
-from deepspeed.accelerator import runtime as accel_runtime
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 from .common import distributed_test
 
 MEGA_BYTE = 1024**2
@@ -35,9 +34,9 @@ def _get_test_file_and_buffer(tmpdir, ref_buffer, cuda_device, index=0):
     file_suffix = f'{dist.get_rank()}_{index}'
     test_file = os.path.join(tmpdir, f'_aio_write_random_{file_suffix}.pt')
     if cuda_device:
-        test_buffer = accel_runtime.ByteTensor(list(ref_buffer))
+        test_buffer = get_accelerator().ByteTensor(list(ref_buffer))
     else:
-        test_buffer = accel_runtime.pin_memory(torch.ByteTensor(list(ref_buffer)))
+        test_buffer = get_accelerator().pin_memory(torch.ByteTensor(list(ref_buffer)))
 
     return test_file, test_buffer
 
@@ -66,7 +65,7 @@ def test_parallel_read(tmpdir, single_submit, overlap_events):
     def _test_parallel_read(single_submit, overlap_events):
         ref_file, _ = _do_ref_write(tmpdir)
 
-        aio_buffer = accel_runtime.pin_memory(
+        aio_buffer = get_accelerator().pin_memory(
             torch.empty(IO_SIZE,
                         dtype=torch.uint8,
                         device='cpu'))
@@ -116,9 +115,11 @@ def test_async_read(tmpdir, single_submit, overlap_events, cuda_device):
         ref_file, _ = _do_ref_write(tmpdir)
 
         if cuda_device:
-            aio_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device=literal_device())
+            aio_buffer = torch.empty(IO_SIZE,
+                                     dtype=torch.uint8,
+                                     device=get_accelerator().device_name())
         else:
-            aio_buffer = accel_runtime.pin_memory(
+            aio_buffer = get_accelerator().pin_memory(
                 torch.empty(IO_SIZE,
                             dtype=torch.uint8,
                             device='cpu'))
@@ -256,9 +257,11 @@ def test_async_queue_read(tmpdir, async_queue, cuda_device):
         aio_buffers = []
         for i in range(async_queue):
             if cuda_device:
-                buf = torch.empty(IO_SIZE, dtype=torch.uint8, device=literal_device())
+                buf = torch.empty(IO_SIZE,
+                                  dtype=torch.uint8,
+                                  device=get_accelerator().device_name())
             else:
-                buf = accel_runtime.pin_memory(
+                buf = get_accelerator().pin_memory(
                     torch.empty(IO_SIZE,
                                 dtype=torch.uint8,
                                 device='cpu'))

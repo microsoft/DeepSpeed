@@ -5,7 +5,7 @@ import pytest
 
 import deepspeed.runtime.utils as ds_utils
 import deepspeed.utils.groups as groups
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 from unit.common import DistributedTest
 
@@ -40,7 +40,9 @@ class TestClibGradNorm(DistributedTest):
         norm = torch.Tensor([norm]).to(dist.get_rank())
 
         world_size = dist.get_world_size()
-        gathered_norm = [torch.zeros(1).to(literal_device()) for i in range(world_size)]
+        gathered_norm = [
+            torch.zeros(1).to(get_accelerator().device_name()) for i in range(world_size)
+        ]
 
         dist.all_gather(gathered_norm, norm)
 

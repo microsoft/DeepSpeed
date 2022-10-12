@@ -5,8 +5,7 @@ import torch.nn.functional as F
 import deepspeed
 import deepspeed.comm as dist
 import deepspeed.runtime.utils as ds_utils
-from deepspeed.accelerator import literal_device
-from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator.real_accelerator import get_accelerator
 from deepspeed.runtime.pipe.module import PipelineModule, LayerSpec
 
 
@@ -110,7 +109,7 @@ def cifar_trainset(fp16=False):
 
     transform = transforms.Compose(transform_list)
 
-    local_rank = accel_runtime.current_device()
+    local_rank = get_accelerator().current_device()
 
     # Only one rank per machine downloads.
     dist.barrier()
@@ -131,7 +130,7 @@ def train_cifar(model,
                 average_dp_losses=True,
                 fp16=True,
                 seed=123):
-    with torch.random.fork_rng(devices=[accel_runtime.current_device()]):
+    with torch.random.fork_rng(devices=[get_accelerator().current_device_name()]):
         ds_utils.set_random_seed(seed)
 
         # disable dropout
@@ -154,7 +153,7 @@ def train_cifar(model,
                 print(f'STEP={step} LOSS={loss.item()}')
 
         if average_dp_losses:
-            loss_tensor = torch.tensor(losses).to(literal_device())
+            loss_tensor = torch.tensor(losses).to(get_accelerator().device_name())
             dist.all_reduce(loss_tensor)
             loss_tensor /= dist.get_world_size()
             losses = loss_tensor.tolist()

@@ -3,10 +3,10 @@ import pytest
 from unit.simple_model import SimpleModel
 from deepspeed import OnDevice
 from packaging import version as pkg_version
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 
-@pytest.mark.parametrize('device', ['meta', literal_device(0)])
+@pytest.mark.parametrize('device', ['meta', get_accelerator().device_name(0)])
 def test_on_device(device):
     if device == "meta" and pkg_version.parse(
             torch.__version__) < pkg_version.parse("1.10"):

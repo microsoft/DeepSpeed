@@ -20,8 +20,7 @@ from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
 from ..runtime.zero import GatheredParameters
 from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
-from deepspeed.accelerator import runtime as accel_runtime
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 from ..module_inject.replace_policy import DSPolicy
 
 DS_INFERENCE_ENABLED = False
@@ -109,7 +108,7 @@ class InferenceEngine(Module):
         # This is a hack to remove the prepare_mask function on HF side for BLOOM architecture
         self.remove_mask_prepare_for_bloom()
 
-        if literal_device() == 'cuda' and enable_cuda_graph:
+        if get_accelerator().device_name() == 'cuda' and enable_cuda_graph:
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
                 "If you want to use cuda graph, please upgrade torch to at least v1.10"
 
@@ -158,13 +157,14 @@ class InferenceEngine(Module):
                 save_mp_checkpoint_path=save_mp_checkpoint_path,
                 base_dir=base_dir)
 
-        device = accel_runtime.current_device()
+        device = get_accelerator().current_device_name()
         self.module.to(device)
 
         if self.mp_world_size > 1:
-            _rng_state = accel_runtime.get_rng_state().to(accel_runtime.current_device())
+            _rng_state = get_accelerator().get_rng_state().to(
+                get_accelerator().current_device_name())
             dist.broadcast(_rng_state, 0)
-            accel_runtime.set_rng_state(_rng_state.cpu())
+            get_accelerator().set_rng_state(_rng_state.cpu())
 
         if self.mp_world_size > 1:
             assert not self.enable_cuda_graph, "Cuda graph is not supported for model parallelism"
@@ -199,7 +199,7 @@ class InferenceEngine(Module):
             init_distributed()
 
             local_rank = int(os.getenv('LOCAL_RANK', '0'))
-            accel_runtime.set_device(local_rank)
+            get_accelerator().set_device(local_rank)
 
             ranks = [i for i in range(self.mp_world_size)]
             self.mp_group = dist.new_group(ranks)
@@ -312,7 +312,7 @@ class InferenceEngine(Module):
                             state_dict[prefix + 'bias'])
                     else:
                         data = state_dict[prefix + 'bias']
-                        data = data.to(accel_runtime.current_device())
+                        data = data.to(get_accelerator().current_device_name())
                         module.bias = self.mp_replace.copy(module.bias, data)
 
         layer_policies = {
@@ -436,7 +436,8 @@ class InferenceEngine(Module):
             for i in range(1, len(sd_loader)):
                 if not dist.is_initialized() or dist.get_rank() == 0:
                     print(f"loading checkpoint ({i})")
-                self.sd = torch.load(sd_loader[i], map_location=literal_device())
+                self.sd = torch.load(sd_loader[i],
+                                     map_location=get_accelerator().device_name())
                 self.key_list = list(self.sd.keys())
                 self.load_model_with_checkpoint(self.module)
         else:
@@ -495,12 +496,12 @@ class InferenceEngine(Module):
 
     def _create_cuda_graph(self, *inputs, **kwargs):
         # warmup to create the workspace and cublas handle
-        cuda_stream = accel_runtime.Stream()
-        cuda_stream.wait_stream(accel_runtime.current_stream())
-        with accel_runtime.stream(cuda_stream):
+        cuda_stream = get_accelerator().Stream()
+        cuda_stream.wait_stream(get_accelerator().current_stream())
+        with get_accelerator().stream(cuda_stream):
             for i in range(3):
                 ret = self.module(*inputs, **kwargs)
-        accel_runtime.current_stream().wait_stream(cuda_stream)
+        get_accelerator().current_stream().wait_stream(cuda_stream)
 
         # create cuda_graph and assign static_inputs and static_outputs
         self._cuda_graphs = torch.cuda.CUDAGraph()
@@ -542,12 +543,12 @@ class InferenceEngine(Module):
             **kwargs: variable length keyword arguments
         """
         start = None
-        if self.model_profile_enabled and literal_device(
+        if self.model_profile_enabled and get_accelerator().device_name(
         ) == 'cuda' and self.enable_cuda_graph:
-            accel_runtime.synchronize()
+            get_accelerator().synchronize()
             start = time.time()
 
-        if literal_device() == 'cuda' and self.enable_cuda_graph:
+        if get_accelerator().device_name() == 'cuda' and self.enable_cuda_graph:
             if self.cuda_graph_created:
                 outputs = self._graph_replay(*inputs, **kwargs)
             else:

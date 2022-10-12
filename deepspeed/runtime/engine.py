@@ -78,8 +78,7 @@ from ..git_version_info import version
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist
 
-from deepspeed.accelerator import literal_device
-from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 # Set to torch's distributed package or deepspeed.comm based inside DeepSpeedEngine init
 dist = None
@@ -101,7 +100,7 @@ except ImportError:
 
 
 def split_half_float_double_sparse(tensors):
-    device_type = literal_device()
+    device_type = get_accelerator().device_name()
     supported_types = [
         "torch.{}.HalfTensor".format(device_type),
         "torch.{}.FloatTensor".format(device_type),
@@ -220,7 +219,7 @@ class DeepSpeedEngine(Module):
         self.eigenvalue = None
         self.block_eigenvalue = None
         self.gas_boundary_ctr = 0
-        self.dist_backend = "ccl" if literal_device() == "xpu" else "nccl"
+        self.dist_backend = "ccl" if get_accelerator().device_name() == "xpu" else "nccl"
         self.has_moe_layers = False
         self.num_experts = []
         self.gate_modules = []
@@ -864,14 +863,14 @@ class DeepSpeedEngine(Module):
             args,
             'device_rank') else self.local_rank
         if device_rank >= 0:
-            accel_runtime.set_device(device_rank)
-            self.device = torch.device(literal_device(), device_rank)
+            get_accelerator().set_device(device_rank)
+            self.device = torch.device(get_accelerator().device_name(), device_rank)
             self.world_size = dist.get_world_size()
             self.global_rank = dist.get_rank()
         else:
             self.world_size = 1
             self.global_rank = 0
-            self.device = torch.device(literal_device())
+            self.device = torch.device(get_accelerator().device_name())
 
     # Configure based on command line arguments
     def _configure_with_arguments(self, args, mpu):

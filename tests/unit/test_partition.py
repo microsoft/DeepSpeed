@@ -7,7 +7,7 @@ from deepspeed.runtime.utils import partition_uniform
 from deepspeed.runtime.utils import partition_balanced
 from deepspeed.runtime.utils import prefix_sum_inc
 from deepspeed.runtime.utils import PartitionedTensor
-from deepspeed.accelerator import literal_device
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 from .common import distributed_test
 
@@ -22,7 +22,7 @@ def test_partitioned_tensor():
     rows = world * 4
     cols = 3
 
-    full = torch.rand(rows, cols).to(literal_device())
+    full = torch.rand(rows, cols).to(get_accelerator().device_name())
     dist.broadcast(full, src=0, group=group)
     part = PartitionedTensor(full, group=group)
 
@@ -43,7 +43,7 @@ def test_partitioned_tensor_meta():
     rows = world * 7
     cols = 3
 
-    full = torch.rand(rows, cols).to(literal_device())
+    full = torch.rand(rows, cols).to(get_accelerator().device_name())
     dist.broadcast(full, src=0, group=group)
     part = PartitionedTensor(full, group=group)
 

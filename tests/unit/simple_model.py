@@ -5,7 +5,7 @@ import torch
 
 from deepspeed.pipe import PipelineModule, LayerSpec
 from deepspeed.moe.layer import MoE
-from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 import deepspeed.comm as dist
 
@@ -266,7 +266,7 @@ def create_deepspeed_args():
     args.deepspeed = True
     if dist.is_initialized():
         # We assume up to one full node executing unit tests
-        assert dist.get_world_size() <= accel_runtime.device_count()
+        assert dist.get_world_size() <= get_accelerator().device_count()
         args.local_rank = dist.get_rank()
     return args
 
