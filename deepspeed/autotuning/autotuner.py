@@ -44,18 +44,37 @@ class Autotuner:
         assert self.user_config is not None, "DeepSpeed configuration is not provided"
 
         self.autotuning_config = DeepSpeedAutotuningConfig(self.user_config)
+        if self.user_config[AUTOTUNING]:
+            if AUTOTUNING_EXPS_DIR in self.user_config[AUTOTUNING].keys():
+                del self.user_config[AUTOTUNING][AUTOTUNING_EXPS_DIR]
+            if AUTOTUNING_RESULTS_DIR in self.user_config[AUTOTUNING].keys():
+                del self.user_config[AUTOTUNING][AUTOTUNING_RESULTS_DIR]
 
         self.exps_dir = self.autotuning_config.exps_dir
         if self.autotuning_config.overwrite and os.path.exists(self.exps_dir):
             shutil.rmtree(self.exps_dir, ignore_errors=True)
         if not os.path.exists(self.exps_dir):
-            os.makedirs(self.exps_dir, exist_ok=True)
+            try:
+                os.makedirs(self.exps_dir, exist_ok=True)
+                logger.info(f"Created autotuning experiments directory: {self.exps_dir}")
+            except:
+                logger.error(
+                    f"Failed to create {self.exps_dir}, please check `exps_dir` in the autotuning config file is accessible by all the nodes in the job."
+                )
+                exit(-1)
 
         self.results_dir = self.autotuning_config.results_dir
         if self.autotuning_config.overwrite and os.path.exists(self.results_dir):
             shutil.rmtree(self.results_dir, ignore_errors=True)
         if not os.path.exists(self.results_dir):
-            os.makedirs(self.results_dir, exist_ok=True)
+            try:
+                os.makedirs(self.results_dir, exist_ok=True)
+                logger.info(f"Created autotuning resutls directory: {self.exps_dir}")
+            except:
+                logger.error(
+                    f"Failed to create {self.results_dir}, please check `results_dir` in the autotuning config file is accessible by all the nodes in the job."
+                )
+                exit(-1)
 
         # set the active resource for the autotuner resource manager
         self.rm = self._get_resource_manager(active_resources)
