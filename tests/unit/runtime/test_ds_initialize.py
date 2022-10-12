@@ -59,6 +59,7 @@ class TestClientOptimizer(DistributedTest):
     world_size = 1
 
     def test(self, optimizer_type):
+
         def _optimizer_callable(params) -> Optimizer:
             return AdamW(params=params)
 
@@ -84,6 +85,7 @@ class TestClientOptimizer(DistributedTest):
             assert ds_optimizer == client_optimizer
         else:
             assert isinstance(ds_optimizer, AdamW)
+
 
 @pytest.mark.parametrize('client_parameters', [True, False])
 class TestConfigOptimizer(DistributedTest):
@@ -114,12 +116,14 @@ class TestConfigOptimizer(DistributedTest):
 
         assert isinstance(ds_optimizer, FusedAdam)
 
+
 @pytest.mark.parametrize("scheduler_type", [None, _LRScheduler, Callable])
 @pytest.mark.parametrize("optimizer_type", [None, Optimizer, Callable])
 class TestClientLrScheduler(DistributedTest):
     world_size = 1
 
     def test(self, scheduler_type, optimizer_type):
+
         def _my_lambda(epoch):
             return epoch // 10
 

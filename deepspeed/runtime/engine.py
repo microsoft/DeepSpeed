@@ -138,6 +138,7 @@ STEP_GLOBAL_TIMER = 'step'
 
 class EngineTimers(object):
     r"""Wallclock timers for DeepSpeedEngine"""
+
     def __init__(self, enable_micro_timers, enable_global_timers):
         self.forward_timers = []
         self.backward_timers = []
@@ -178,6 +179,7 @@ class EngineTimers(object):
 
 class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training."""
+
     def __init__(
         self,
         args,
@@ -983,6 +985,7 @@ class DeepSpeedEngine(Module):
                 f'Client Optimizer (type = {type(self.client_optimizer)} is not instantiated but Client LR Scheduler is instantiated'
 
     def _broadcast_model(self):
+
         def is_replicated(p):
             if hasattr(p, "ds_status") and p.ds_status is not ZeroParamStatus.AVAILABLE:
                 return False
@@ -1128,7 +1131,8 @@ class DeepSpeedEngine(Module):
         self._check_for_duplicates(basic_optimizer)
 
         self.basic_optimizer = basic_optimizer
-        log_dist("DeepSpeed Basic Optimizer = {}".format(basic_optimizer.__class__.__name__),
+        log_dist("DeepSpeed Basic Optimizer = {}".format(
+            basic_optimizer.__class__.__name__),
                  ranks=[0])
 
         if self.zero_optimization():
