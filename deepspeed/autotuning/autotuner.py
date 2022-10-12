@@ -1108,14 +1108,15 @@ class Autotuner:
             ds_config_path = os.path.join(self.results_dir, "ds_config_optimal.json")
             json.dump(ds_config, open(ds_config_path, "w"))
 
-            idx = cmd.index(os.path.join(exp_dir, "ds_config.json"))
-            cmd[idx] = ds_config_path
+            #TOOD: fix indexing for decoded config
+            # idx = cmd.index(os.path.join(exp_dir, "ds_config.json"))
+            # cmd[idx] = ds_config_path
 
-            cmd_path = os.path.join(self.results_dir, "cmd_optimal.txt")
-            with open(cmd_path, "w") as fd:
-                fd.write(" ".join(cmd))
-                fd.write("\n")
-                fd.flush()
+            # cmd_path = os.path.join(self.results_dir, "cmd_optimal.txt")
+            # with open(cmd_path, "w") as fd:
+                # fd.write(" ".join(cmd))
+                # fd.write("\n")
+                # fd.flush()
             self.optimal_cmd = cmd
             self.optmal_ds_config = ds_config
             logger.info(
