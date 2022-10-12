@@ -6,7 +6,6 @@ import torch
 from torch.autograd import Function
 from ... import op_builder
 import torch.nn as nn
-from .triton_ops import load_triton_flash_attn
 from deepspeed.utils.logging import log_dist
 # Cuda modules will be imported if needed
 inference_cuda_module = None
@@ -72,7 +71,6 @@ class DeepSpeedAttentionFunction(Function):
                 torch.empty(1))
             return context_layer
 
-        def selfAttention_fp(input, context, input_mask):
             if config.fp16 and input.dtype == torch.float32:
                 input = input.half()
             head_size = input.shape[-1] // config.heads
@@ -203,6 +201,7 @@ class DeepSpeedAttention(nn.Module):
                                                 dtype=data_type_fp,
                                                 device=device),
                                     requires_grad=False)
+        from .triton_ops import load_triton_flash_attn
         self.triton_flash_attn_kernel = load_triton_flash_attn()
         self.num_attention_heads_per_partition = self.config.heads // self.config.mp_size
         self.hidden_size_per_partition = self.config.hidden_size // self.config.mp_size
