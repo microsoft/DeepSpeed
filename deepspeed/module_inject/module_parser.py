@@ -56,7 +56,10 @@ def update_name_list(name, matches):
 def update_name_list_2(name, matches):
     new_list = []
     for match_name, match_attribute in matches:
-        new_list.append(tuple([name + "." + match_name, match_attribute]))
+        if name != "layer":
+            new_list.append(tuple([name + "." + match_name, match_attribute]))
+        else:
+            new_list.append(tuple([match_name, match_attribute]))
     return new_list
 
 
