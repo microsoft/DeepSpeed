@@ -13,6 +13,7 @@ cuda_module = None
 class softmax_dropout_func(torch.autograd.Function):
     @staticmethod
     def forward(ctx, attn, rel_pos, mask, heads, ratio, generator):
+        #import pdb;pdb.set_trace()
         out = cuda_module.softd_forward(attn,
                                         torch.empty(1) if mask is None else mask,
                                         ratio,

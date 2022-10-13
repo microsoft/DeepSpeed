@@ -789,9 +789,9 @@ __global__ void softmax_dropout_kernel(const int seq_length,
     if (attn_mask) attn_mask_cast = reinterpret_cast<const float*>(attn_mask);
 
     val_cast += data_offset;
-    rel_pos += data_offset;
+    rel_pos_cast += data_offset;
     out_cast += data_offset;
-    if (attn_mask) attn_mask_cast += mask_offset;
+    attn_mask_cast += mask_offset;
 
     float2 low_data[MAX_THREAD_ITERATIONS];
     float2 high_data[MAX_THREAD_ITERATIONS];
@@ -799,7 +799,7 @@ __global__ void softmax_dropout_kernel(const int seq_length,
     const float scale = 1. / (1. - ratio);
     __half2 h_scale = __float2half2_rn(scale);
     __half h_zero = __float2half(0.0);
-    __half h_inf = __float2half(minus_infinity);
+    __half h_inf = __float2half(-10000.0);
 
     float max_val = minus_infinity;
 
@@ -808,16 +808,18 @@ __global__ void softmax_dropout_kernel(const int seq_length,
         if (data_id < seq_length) {
             float2 data = val_cast[data_id];
             float2 rel_pos_data = rel_pos_cast[data_id];
-            float mask_data = attn_mask_cast[data_id];
-            bool* mask_bool = reinterpret_cast<bool*>(&mask_data);
             __half2* data_arr = reinterpret_cast<__half2*>(&data);
             __half2* rel_pos_arr = reinterpret_cast<__half2*>(&rel_pos_data);
             data_arr[0] = data_arr[0] + rel_pos_arr[0];
             data_arr[1] = data_arr[1] + rel_pos_arr[1];
-            data_arr[0].x = mask_bool[0] ? data_arr[0].x : h_inf;
-            data_arr[0].y = mask_bool[1] ? data_arr[0].y : h_inf;
-            data_arr[1].x = mask_bool[2] ? data_arr[1].x : h_inf;
-            data_arr[1].y = mask_bool[3] ? data_arr[1].y : h_inf;
+            if(attn_mask){
+                float mask_data = attn_mask_cast[data_id];
+                bool* mask_bool = reinterpret_cast<bool*>(&mask_data);
+                data_arr[0].x = mask_bool[0] ? data_arr[0].x : h_inf;
+                data_arr[0].y = mask_bool[1] ? data_arr[0].y : h_inf;
+                data_arr[1].x = mask_bool[2] ? data_arr[1].x : h_inf;
+                data_arr[1].y = mask_bool[3] ? data_arr[1].y : h_inf;
+            }
             val_cast[data_id] = data;
 
             low_data[i] = __half22float2(data_arr[0]);
