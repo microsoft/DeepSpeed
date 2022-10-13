@@ -71,6 +71,7 @@ class DeepSpeedAttentionFunction(Function):
                 torch.empty(1))
             return context_layer
 
+        def selfAttention_fp(input, context, input_mask):
             if config.fp16 and input.dtype == torch.float32:
                 input = input.half()
             head_size = input.shape[-1] // config.heads
