@@ -219,7 +219,7 @@ class DeepSpeedAttention(nn.Module):
                                     requires_grad=False)
         if triton_flash_attn is None:
             load_triton_flash_attn()
-        self.triton_flash_attn_kernel = triton_flash_attn
+        self.triton_flash_attn_kernel = triton_flash_attn()
         self.num_attention_heads_per_partition = self.config.heads // self.config.mp_size
         self.hidden_size_per_partition = self.config.hidden_size // self.config.mp_size
         self.hidden_size_per_attention_head = self.config.hidden_size // self.config.heads
