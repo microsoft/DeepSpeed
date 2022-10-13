@@ -1,23 +1,11 @@
+"""
+Inspired by original Triton implementation:
+https://github.com/openai/triton/blob/b244db06da24a87453a40ad35b085ee37dac3705/python/tutorials/06-fused-attention.py
+"""
+
 import torch
-from packaging import version as pkg_version
-
-# lazy load if/when needed
-triton = None
-tl = None
-
-
-def load_triton_flash_attn():
-    global triton, tl
-    try:
-        import triton
-        import triton.language as tl
-    except ImportError:
-        raise ImportError("Please install triton 2.0+ or `pip install deepspeed[sd]`")
-
-    if pkg_version.parse(triton.__version__) < pkg_version.parse("2.0"):
-        raise ImportError("Please install triton 2.0+ or `pip install deepspeed[sd]`")
-
-    return triton_flash_attn
+import triton
+import triton.language as tl
 
 
 @triton.jit

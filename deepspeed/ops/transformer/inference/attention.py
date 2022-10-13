@@ -6,10 +6,25 @@ import torch
 from torch.autograd import Function
 from ... import op_builder
 import torch.nn as nn
+from packaging import version as pkg_version
 from deepspeed.utils.logging import log_dist
 # Cuda modules will be imported if needed
 inference_cuda_module = None
 minus_inf = -10000.0
+triton_flash_attn = None
+
+
+def load_triton_flash_attn():
+    global triton_flash_attn
+    try:
+        import triton
+    except ImportError:
+        raise ImportError("Please install triton 2.0+ or `pip install deepspeed[sd]`")
+
+    if pkg_version.parse(triton.__version__) < pkg_version.parse("2.0"):
+        raise ImportError("Please install triton 2.0+ or `pip install deepspeed[sd]`")
+
+    from .triton_ops import triton_flash_attn
 
 
 class DeepSpeedAttentionFunction(Function):
@@ -202,8 +217,9 @@ class DeepSpeedAttention(nn.Module):
                                                 dtype=data_type_fp,
                                                 device=device),
                                     requires_grad=False)
-        from .triton_ops import load_triton_flash_attn
-        self.triton_flash_attn_kernel = load_triton_flash_attn()
+        if triton_flash_attn is None:
+            load_triton_flash_attn()
+        self.triton_flash_attn_kernel = triton_flash_attn
         self.num_attention_heads_per_partition = self.config.heads // self.config.mp_size
         self.hidden_size_per_partition = self.config.hidden_size // self.config.mp_size
         self.hidden_size_per_attention_head = self.config.hidden_size // self.config.heads
