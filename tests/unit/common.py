@@ -67,14 +67,14 @@ def set_accelerator_visibile():
 
         cuda_visible = ",".join(map(str, range(num_gpus)))
 
-        # rotate list based on xdist worker id, example below
-        # wid=0 -> ['0', '1', '2', '3']
-        # wid=1 -> ['1', '2', '3', '0']
-        # wid=2 -> ['2', '3', '0', '1']
-        # wid=3 -> ['3', '0', '1', '2']
-        dev_id_list = cuda_visible.split(",")
-        dev_id_list = dev_id_list[xdist_worker_id:] + dev_id_list[:xdist_worker_id]
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(dev_id_list)
+    # rotate list based on xdist worker id, example below
+    # wid=0 -> ['0', '1', '2', '3']
+    # wid=1 -> ['1', '2', '3', '0']
+    # wid=2 -> ['2', '3', '0', '1']
+    # wid=3 -> ['3', '0', '1', '2']
+    dev_id_list = cuda_visible.split(",")
+    dev_id_list = dev_id_list[xdist_worker_id:] + dev_id_list[:xdist_worker_id]
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(dev_id_list)
 
 
 class DistributedExec(ABC):
