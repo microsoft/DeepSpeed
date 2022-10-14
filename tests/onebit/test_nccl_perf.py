@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--local_rank', type=int, default=-1)
 args = parser.parse_args()
 
-deepspeed.init_distributed(dist_backend='nccl')
+deepspeed.init_distributed(dist_backend=get_accelerator().communication_backend_name())
 args.local_rank = int(os.environ['LOCAL_RANK'])
 
 get_accelerator().set_device(args.local_rank)

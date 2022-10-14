@@ -41,8 +41,8 @@ def set_accelerator(accel_obj):
 -----------[code] test_get.py -----------
 from deepspeed.accelerator.real_accelerator import get_accelerator
 my_accelerator = get_accelerator()
-print(f'{my_accelerator.name=}')
-print(f'{my_accelerator.communication_backend=}')
+print(f'{my_accelerator._name=}')
+print(f'{my_accelerator._communication_backend=}')
 print(f'{my_accelerator.HalfTensor().device=}')
 print(f'{my_accelerator.total_memory()=}')
 -----------[code] test_get.py -----------
@@ -64,8 +64,8 @@ set_accelerator(cu_accel)
 
 my_accelerator = get_accelerator()
 print(f'{id(my_accelerator)=}')
-print(f'{my_accelerator.name=}')
-print(f'{my_accelerator.communication_backend=}')
+print(f'{my_accelerator._name=}')
+print(f'{my_accelerator._communication_backend=}')
 print(f'{my_accelerator.HalfTensor().device=}')
 print(f'{my_accelerator.total_memory()=}')
 -----------[code] test_set.py -----------

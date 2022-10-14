@@ -4,6 +4,7 @@ import time
 import deepspeed
 import argparse
 from transformers import pipeline
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", "-m", type=str, help="hf model name")
@@ -101,10 +102,10 @@ responses = []
 times = []
 mtimes = []
 for i in range(args.trials):
-    torch.cuda.synchronize()
+    get_accelerator().synchronize()
     start = time.time()
     r = pipe("DeepSpeed is", do_sample=False, max_new_tokens=args.max_tokens)
-    torch.cuda.synchronize()
+    get_accelerator().synchronize()
     end = time.time()
     responses.append(r)
     times.append(end - start)  # / (args.max_tokens - 3))

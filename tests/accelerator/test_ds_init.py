@@ -32,10 +32,7 @@ def test_literal_device():
     os.environ['MASTER_ADDR'] = '127.0.0.1'
     os.environ['MASTER_PORT'] = '8088'
     os.environ['LOCAL_RANK'] = '0'
-    if get_accelerator().device_name() == 'cuda':
-        deepspeed.init_distributed('nccl')
-    else:
-        deepspeed.init_distributed('ccl')
+    deepspeed.init_distributed(get_accelerator().communication_backend_name())
     deepspeed.initialize(model=model, config='ds_config.json')
     string = get_accelerator().device_name()  #'xpu' or 'cuda'
     string0 = get_accelerator().device_name(0)  #'xpu:0' or 'cuda:0'

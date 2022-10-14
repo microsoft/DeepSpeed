@@ -219,7 +219,7 @@ class DeepSpeedEngine(Module):
         self.eigenvalue = None
         self.block_eigenvalue = None
         self.gas_boundary_ctr = 0
-        self.dist_backend = "ccl" if get_accelerator().device_name() == "xpu" else "nccl"
+        self.dist_backend = get_accelerator().communication_backend_name()
         self.has_moe_layers = False
         self.num_experts = []
         self.gate_modules = []
@@ -1697,7 +1697,7 @@ class DeepSpeedEngine(Module):
             return inputs.__class__(new_inputs)
         elif isinstance(inputs, dict):
             new_inputs = {}
-            for k, v in inputs:
+            for k, v in inputs.items():
                 new_inputs[k] = self._cast_inputs_half(v)
             return new_inputs
         elif hasattr(inputs, 'half'):

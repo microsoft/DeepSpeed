@@ -631,10 +631,7 @@ def init_distributed(dist_backend=None,
         else:
             assert isinstance(timeout, timedelta)
             if dist_backend == None:
-                if get_accelerator().device_name() == 'xpu':
-                    dist_backend = 'ccl'
-                else:
-                    dist_backend = 'nccl'
+                dist_backend = get_accelerator().communication_backend_name()
             if int(os.getenv('RANK', '0')) == 0:
                 utils.logger.info(
                     'Initializing TorchBackend in DeepSpeed with backend {}'.format(
