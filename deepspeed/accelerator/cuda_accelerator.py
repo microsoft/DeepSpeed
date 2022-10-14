@@ -143,9 +143,6 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def lazy_call(self, callback):
         return torch.cuda._lazy_call(callback)
 
-    def name(self):
-        return self._name
-
     def communication_backend_name(self):
         return self._communication_backend_name
 

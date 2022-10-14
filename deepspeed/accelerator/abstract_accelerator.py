@@ -161,10 +161,6 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     @abc.abstractmethod
-    def name(self):
-        ...
-
-    @abc.abstractmethod
     def communication_backend_name(self):
         ...
 
