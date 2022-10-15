@@ -52,8 +52,8 @@ _t5_models = [
 ]
 _all_models = HfApi().list_models()
 
-#test_models = set(_bert_models + _roberta_models + _gpt_models + _opt_models + _t5_models)
-test_models = set(_t5_models)
+test_models = set(_bert_models + _roberta_models + _gpt_models + _opt_models +
+                  _t5_models)
 test_tasks = [
     "fill-mask",
     "question-answering",
@@ -66,11 +66,8 @@ pytest.all_models = {
     task: [m.modelId for m in _all_models if m.pipeline_tag == task]
     for task in test_tasks
 }
-#print(pytest.all_models)
 
 _model_w_tasks = itertools.product(*[test_models, test_tasks])
-
-#print(_model_w_tasks)
 
 
 def _valid_model_task(model_task):
@@ -79,7 +76,6 @@ def _valid_model_task(model_task):
 
 
 pytest.models_w_tasks = list(filter(_valid_model_task, _model_w_tasks))
-#print(pytest.models_w_tasks)
 pytest.mt_names = [f"{m}-{t}" for m, t in pytest.models_w_tasks]
 """
 These fixtures iterate all combinations of tasks and models, dtype, & cuda_graph
@@ -266,9 +262,6 @@ class TestModelTask(DistributedTest):
         #    _ = pipe(query, **inf_kwargs)
         torch.cuda.synchronize()
         start = time.time()
-        #if "t5-v1_1-small" in model:
-        #    bs_output = pipe(query)
-        #else:
         bs_output = pipe(query, **inf_kwargs)
         torch.cuda.synchronize()
         bs_time = time.time() - start
@@ -313,8 +306,6 @@ class TestModelTask(DistributedTest):
         # These performance tests are only measuring the time for a single
         # inference request, we just want to check that performance isn't terrible
         #assert ds_time <= (bs_time * 1.1)
-        print(bs_output)
-        print(ds_output)
         assert assert_fn(bs_output, ds_output)
 
 
