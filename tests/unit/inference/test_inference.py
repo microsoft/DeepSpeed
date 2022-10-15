@@ -9,6 +9,7 @@ from unit.common import DistributedTest
 from packaging import version as pkg_version
 from deepspeed.ops.op_builder import OpBuilder
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+from transformers.models.t5.modeling_t5 import T5Block
 from huggingface_hub import HfApi
 
 rocm_version = OpBuilder.installed_rocm_version()
@@ -46,22 +47,30 @@ _opt_models = [
     "facebook/opt-125m",        # 125m, 1.7B, ..., 175B variants have the same model architecture.
     "facebook/opt-350m",        # 350m applies layer norm after attnention layer which is different than other variants.
 ]
+_t5_models = [
+    "google/t5-v1_1-small",
+]
 _all_models = HfApi().list_models()
 
-test_models = set(_bert_models + _roberta_models + _gpt_models + _opt_models)
+#test_models = set(_bert_models + _roberta_models + _gpt_models + _opt_models + _t5_models)
+test_models = set(_t5_models)
 test_tasks = [
     "fill-mask",
     "question-answering",
     "text-classification",
     "token-classification",
     "text-generation",
+    "text2text-generation",
 ]
 pytest.all_models = {
     task: [m.modelId for m in _all_models if m.pipeline_tag == task]
     for task in test_tasks
 }
+#print(pytest.all_models)
 
 _model_w_tasks = itertools.product(*[test_models, test_tasks])
+
+#print(_model_w_tasks)
 
 
 def _valid_model_task(model_task):
@@ -70,6 +79,7 @@ def _valid_model_task(model_task):
 
 
 pytest.models_w_tasks = list(filter(_valid_model_task, _model_w_tasks))
+#print(pytest.models_w_tasks)
 pytest.mt_names = [f"{m}-{t}" for m, t in pytest.models_w_tasks]
 """
 These fixtures iterate all combinations of tasks and models, dtype, & cuda_graph
@@ -150,6 +160,8 @@ def query(model_w_task):
         return "My name is jean-baptiste and I live in montreal."
     elif task == "text-generation":
         return "DeepSpeed is the greatest"
+    elif task == "text2text-generation":
+        return "Is this review positive or negative? Review: this is the best cast iron skillet you will ever buy"
     else:
         NotImplementedError(f'query for task "{task}" is not implemented')
 
@@ -184,6 +196,11 @@ def text_generation_assert(x, y):
                                                           for res in y)
 
 
+def text2text_generation_assert(x, y):
+    return set(res["generated_text"] for res in x) == set(res["generated_text"]
+                                                          for res in y)
+
+
 @pytest.fixture
 def assert_fn(model_w_task):
     model, task = model_w_task
@@ -193,6 +210,7 @@ def assert_fn(model_w_task):
         "text-classification": text_classification_assert,
         "token-classification": token_classification_assert,
         "text-generation": text_generation_assert,
+        "text2text-generation": text2text_generation_assert,
     }
     assert_fn = assert_fn_dict.get(task, None)
     if assert_fn is None:
@@ -248,18 +266,36 @@ class TestModelTask(DistributedTest):
         #    _ = pipe(query, **inf_kwargs)
         torch.cuda.synchronize()
         start = time.time()
+        #if "t5-v1_1-small" in model:
+        #    bs_output = pipe(query)
+        #else:
         bs_output = pipe(query, **inf_kwargs)
         torch.cuda.synchronize()
         bs_time = time.time() - start
 
-        pipe.model = deepspeed.init_inference(
-            pipe.model,
-            mp_size=1,
-            dtype=dtype,
-            replace_method="auto",
-            replace_with_kernel_inject=True,
-            enable_cuda_graph=enable_cuda_graph,
-        )
+        if "t5-v1_1-small" in model:
+            print("Initializing DeepSpeed for T5 model")
+            pipe.model = deepspeed.init_inference(
+                pipe.model,
+                mp_size=1,
+                dtype=dtype,
+                injection_policy={
+                    T5Block: ('SelfAttention.o',
+                              'EncDecAttention.o',
+                              'DenseReluDense.wo')
+                },
+                enable_cuda_graph=enable_cuda_graph,
+            )
+        else:
+            pipe.model = deepspeed.init_inference(
+                pipe.model,
+                mp_size=1,
+                dtype=dtype,
+                replace_method="auto",
+                replace_with_kernel_inject=True,
+                enable_cuda_graph=enable_cuda_graph,
+            )
+
         # Warm-up queries for perf measurement
         #for i in range(10):
         #    _ = pipe(query, **inf_kwargs)
@@ -277,6 +313,8 @@ class TestModelTask(DistributedTest):
         # These performance tests are only measuring the time for a single
         # inference request, we just want to check that performance isn't terrible
         #assert ds_time <= (bs_time * 1.1)
+        print(bs_output)
+        print(ds_output)
         assert assert_fn(bs_output, ds_output)
 
 

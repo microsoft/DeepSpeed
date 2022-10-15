@@ -2,9 +2,12 @@
 
 import sys
 import pytest
+import os
 from os.path import abspath, dirname, join
 import torch
 import warnings
+
+os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 
 # allow having multiple repository checkouts and not needing to remember to rerun
 # 'pip install -e .[dev]' when switching between checkouts and running tests.
