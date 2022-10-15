@@ -267,7 +267,6 @@ class TestModelTask(DistributedTest):
         bs_time = time.time() - start
 
         if "t5-v1_1-small" in model:
-            print("Initializing DeepSpeed for T5 model")
             pipe.model = deepspeed.init_inference(
                 pipe.model,
                 mp_size=1,
