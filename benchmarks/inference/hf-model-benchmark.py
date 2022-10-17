@@ -4,8 +4,17 @@ import argparse
 import torch
 import deepspeed
 
+from enum import Enum
 from transformers import pipeline
 from huggingface_hub import HfApi
+
+
+class TASK(Enum):
+    TEXT_GENERATION = "text-generation"
+    FILL_MASK = "fill-mask"
+    QUESTION_ANSWERING = "question-answering"
+    TEXT_CLASSIFICATION = "text-classification"
+    TOKEN_CLASSIFICATION = "token-classification"
 
 
 def torch_dtype(value):
@@ -49,20 +58,29 @@ def print_latency(latency_set, title):
 
 def get_task_query(args):
     task, model = args.task, args.model
-    if task == "text-generation":
+    if task == TASK.TEXT_GENERATION:
         return "DeepSpeed is"
-    if task == "fill-mask":
+    elif task == TASK.FILL_MASK:
         if "roberta" in model:
             return "Hello I'm a <mask> model"
         else:
             return "Hello I'm a [MASK] model"
+    elif task == TASK.QUESTION_ANSWERING:
+        return {
+            "question": "What is the greatest?",
+            "context": "DeepSpeed is the greatest"
+        }
+    elif task == TASK.TEXT_CLASSIFICATION:
+        return "DeepSpeed is the greatest"
+    elif task == TASK.TOKEN_CLASSIFICATION:
+        return "DeepSpeed is the greatest"
     else:
         raise NotImplementedError(f"Task not recognized: {task}")
 
 
 def get_task_kwargs(args):
     task = args.task
-    if task == "text-generation":
+    if task == TASK.TEXT_GENERATION:
         return {
             "min_length": args.tokens,
             "max_new_tokens": args.tokens,
@@ -72,12 +90,32 @@ def get_task_kwargs(args):
         return {}
 
 
+def get_token_count(args, pipe, query, kwargs):
+    task = args.task
+    if task == TASK.TEXT_GENERATION:
+        input_tokens = pipe.preprocess(query)
+        input_token_count = input_tokens["input_ids"].shape[-1]
+        output_token_count = pipe.forward(input_tokens,
+                                          **kwargs)["generated_sequence"].shape[-1]
+        return output_token_count - input_token_count
+    else:
+        return 1
+
+
 def get_response(args, response):
     task = args.task
-    if task == "text-generation":
+    if task == TASK.TEXT_GENERATION:
         return response[0]["generated_text"]
-    if task == "fill-mask":
+    elif task == TASK.FILL_MASK:
         return [r["token_str"] for r in response]
+    elif task == TASK.QUESTION_ANSWERING:
+        return response["answer"]
+    elif task == TASK.TEXT_CLASSIFICATION:
+        return set(r["label"] for r in response)
+    elif task == TASK.TOKEN_CLASSIFICATION:
+        return set(r["word"] for r in response)
+    else:
+        raise NotImplementedError(f"Task not recognized: {task}")
 
 
 if __name__ == "__main__":
@@ -123,7 +161,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Determine the task for a model
-    args.task = HfApi().model_info(args.model).pipeline_tag
+    args.task = TASK(HfApi().model_info(args.model).pipeline_tag)
 
     # Initialize DeepSpeed
     deepspeed.init_distributed("nccl")
@@ -134,7 +172,7 @@ if __name__ == "__main__":
         assert not args.graph, "CUDA Graphs cannot be used with MP size >1"
     if args.graph:
         assert args.kernel_inject, "DeepSpeed kernels must be used with CUDA Graphs"
-    if args.dtype == torch.int8 and not args.kernel:
+    if args.dtype == torch.int8 and not args.kernel_inject:
         print("WARNING: DeepSpeed kernels must be used for int8")
         print("Reverting dtype to fp16")
         args.dtype = torch.float16
@@ -150,7 +188,10 @@ if __name__ == "__main__":
         print(f"\tKERNEL_INJECT: {args.kernel_inject}")
 
     # Load the HF pipeline
-    pipe = pipeline(args.task, model=args.model, framework="pt", device=args.local_rank)
+    pipe = pipeline(args.task.value,
+                    model=args.model,
+                    framework="pt",
+                    device=args.local_rank)
 
     # Convert to half (this may not be necessary)
     if args.dtype == torch.float16:
@@ -169,15 +210,8 @@ if __name__ == "__main__":
     query = get_task_query(args)
     kwargs = get_task_kwargs(args)
 
-    # Determine exact number of tokens generated for text-generation task
-    if args.task == "text-generation":
-        input_tokens = pipe.preprocess(query)
-        input_token_count = input_tokens["input_ids"].shape[-1]
-        output_token_count = pipe.forward(input_tokens,
-                                          **kwargs)["generated_sequence"].shape[-1]
-        generated_token_count = output_token_count - input_token_count
-    else:
-        generated_token_count = 1
+    # Determine exact number of tokens generated
+    generated_token_count = get_token_count(args, pipe, query, kwargs)
 
     # Measure performance over several trials
     e2e_times = []
@@ -201,7 +235,7 @@ if __name__ == "__main__":
     # Print out performance results and single response
     if args.local_rank == 0:
         print_latency(e2e_times, "e2e latency")
-        print_latency(model_times, "model_latency")
+        print_latency(model_times, "model latency")
         print("RESPONSE:")
         print("-" * 30)
         print(get_response(args, response))
