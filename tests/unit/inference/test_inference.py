@@ -10,6 +10,7 @@ from packaging import version as pkg_version
 from deepspeed.ops.op_builder import OpBuilder
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 from transformers.models.t5.modeling_t5 import T5Block
+from transformers.models.roberta.modeling_roberta import RobertaLayer
 from huggingface_hub import HfApi
 
 rocm_version = OpBuilder.installed_rocm_version()
@@ -47,13 +48,9 @@ _opt_models = [
     "facebook/opt-125m",        # 125m, 1.7B, ..., 175B variants have the same model architecture.
     "facebook/opt-350m",        # 350m applies layer norm after attnention layer which is different than other variants.
 ]
-_t5_models = [
-    "google/t5-v1_1-small",
-]
 _all_models = HfApi().list_models()
 
-test_models = set(_bert_models + _roberta_models + _gpt_models + _opt_models +
-                  _t5_models)
+test_models = set(_bert_models + _roberta_models + _gpt_models + _opt_models)
 test_tasks = [
     "fill-mask",
     "question-answering",
@@ -266,28 +263,14 @@ class TestModelTask(DistributedTest):
         torch.cuda.synchronize()
         bs_time = time.time() - start
 
-        if "t5-v1_1-small" in model:
-            pipe.model = deepspeed.init_inference(
-                pipe.model,
-                mp_size=1,
-                dtype=dtype,
-                injection_policy={
-                    T5Block: ('SelfAttention.o',
-                              'EncDecAttention.o',
-                              'DenseReluDense.wo')
-                },
-                enable_cuda_graph=enable_cuda_graph,
-            )
-        else:
-            pipe.model = deepspeed.init_inference(
-                pipe.model,
-                mp_size=1,
-                dtype=dtype,
-                replace_method="auto",
-                replace_with_kernel_inject=True,
-                enable_cuda_graph=enable_cuda_graph,
-            )
-
+        pipe.model = deepspeed.init_inference(
+            pipe.model,
+            mp_size=1,
+            dtype=dtype,
+            replace_method="auto",
+            replace_with_kernel_inject=True,
+            enable_cuda_graph=enable_cuda_graph,
+        )
         # Warm-up queries for perf measurement
         #for i in range(10):
         #    _ = pipe(query, **inf_kwargs)
@@ -347,6 +330,66 @@ class TestMPSize(DistributedTest):
                                               dtype=dtype,
                                               replace_method="auto",
                                               replace_with_kernel_inject=True)
+        # Switch device to GPU so that input tensors are not on CPU
+        pipe.device = torch.device(f"cuda:{local_rank}")
+        ds_output = pipe(query, **inf_kwargs)
+
+        print(local_rank, "baseline", bs_output)
+        print(local_rank, "deepspeed", ds_output)
+        assert assert_fn(bs_output, ds_output)
+
+
+@pytest.mark.seq_inference
+@pytest.mark.parametrize(
+    "model_w_task, injection_policy",
+    [
+        (("google/t5-v1_1-small",
+          "text2text-generation"),
+         {
+             T5Block: ('SelfAttention.o',
+                       'EncDecAttention.o',
+                       'DenseReluDense.wo')
+         }),
+        (("roberta-large",
+          "fill-mask"),
+         {
+             RobertaLayer: ('output.dense')
+         }),
+    ],
+    ids=["t5",
+         "roberta"],
+)
+@pytest.mark.parametrize("world_size", [1, 4])
+@pytest.mark.parametrize("dtype", [torch.float], ids=["fp32"])
+@pytest.mark.parametrize("enable_cuda_graph", [False])
+class TestInjectionPolicy(DistributedTest):
+    def test(
+        self,
+        model_w_task,
+        injection_policy,
+        world_size,
+        query,
+        inf_kwargs,
+        assert_fn,
+        invalid_model_task_config,
+        dtype=torch.float,
+        enable_cuda_graph=False,
+    ):
+        if invalid_model_task_config:
+            pytest.skip(invalid_model_task_config)
+
+        model, task = model_w_task
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+
+        # We have to load these large models on CPU with pipeline because not
+        # enough GPU memory
+        pipe = pipeline(task, model=model, device=-1, framework="pt")
+        bs_output = pipe(query, **inf_kwargs)
+
+        pipe.model = deepspeed.init_inference(pipe.model,
+                                              mp_size=world_size,
+                                              dtype=dtype,
+                                              injection_policy=injection_policy)
         # Switch device to GPU so that input tensors are not on CPU
         pipe.device = torch.device(f"cuda:{local_rank}")
         ds_output = pipe(query, **inf_kwargs)
