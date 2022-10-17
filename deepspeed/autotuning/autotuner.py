@@ -521,11 +521,12 @@ class Autotuner:
                    prev_max_mbs=0,
                    prev_best_mbs=0,
                    prev_best_metric_val=0):
-        
-        with mlflow.start_run(nested=True, run_name=(TUNING_MICRO_BATCH_SIZE_PREFIX + str(stage))) if has_mlflow else nullcontext():
-            config_zero = tuning_space.get(ZERO_OPTIMIZATION, {})
-            stage = config_zero.get(ZERO_OPTIMIZATION_STAGE, None)
-            tuning_space_name = TUNING_MICRO_BATCH_SIZE_PREFIX + str(stage)
+
+        config_zero = tuning_space.get(ZERO_OPTIMIZATION, {})
+        stage = config_zero.get(ZERO_OPTIMIZATION_STAGE, None)
+        tuning_space_name = TUNING_MICRO_BATCH_SIZE_PREFIX + str(stage)
+
+        with mlflow.start_run(nested=True, run_name=tuning_space_name) if has_mlflow else nullcontext():
             tuning_micro_batch_sizes = []
             max_train_batch_size_per_gpu = 0
             tuning_micro_batch_sizes_overwritten = False
