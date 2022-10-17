@@ -369,7 +369,7 @@ class TestInjectionPolicy(DistributedTest):
         self,
         model_w_task,
         injection_policy,
-        world_size,
+        #world_size,
         query,
         inf_kwargs,
         assert_fn,
