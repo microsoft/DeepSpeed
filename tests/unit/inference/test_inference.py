@@ -8,7 +8,7 @@ from deepspeed.git_version_info import torch_info
 from unit.common import DistributedTest
 from packaging import version as pkg_version
 from deepspeed.ops.op_builder import OpBuilder
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+from transformers import pipeline
 from transformers.models.t5.modeling_t5 import T5Block
 from transformers.models.roberta.modeling_roberta import RobertaLayer
 from huggingface_hub import HfApi
@@ -163,6 +163,9 @@ def query(model_w_task):
 def inf_kwargs(model_w_task):
     model, task = model_w_task
     if task == "text-generation":
+        if model == "EleutherAI/gpt-j-6B":
+            # This model on V100 is hitting memory problems that limit the number of output tokens
+            return {"do_sample": False, "max_length": 12}
         return {"do_sample": False, "max_length": 20}
     else:
         return {}
@@ -236,23 +239,15 @@ class TestModelTask(DistributedTest):
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
-        if "gpt-j-6B" in model and dtype == torch.half:
-            _model = AutoModelForCausalLM.from_pretrained(model,
-                                                          revision="float16",
-                                                          torch_dtype=torch.float16)
-            tokenizer = AutoTokenizer.from_pretrained(model)
-            _model.half()
-            pipe = pipeline(
-                task,
-                model=_model,
-                tokenizer=tokenizer,
-                device=local_rank,
-                framework="pt",
-            )
-        else:
-            pipe = pipeline(task, model=model, device=local_rank, framework="pt")
-            if dtype == torch.half:
-                pipe.model.half()
+        # Load the model on CPU first to avoid OOM for large models @fp32
+        pipe = pipeline(task, model=model, device=-1, framework="pt")
+        if dtype == torch.half:
+            pipe.model.half()
+
+        # Switch device to GPU after converting to half
+        device = torch.device(f"cuda:{local_rank}")
+        pipe.device = device
+        pipe.model.to(device)
 
         # Warm-up queries for perf measurement
         #for i in range(10):
