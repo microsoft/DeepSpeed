@@ -884,11 +884,11 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                    CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
     if (add_bias)
-        launch_bias_add((T*)output.data_ptr(),
-                        (T*)bias.data_ptr(),
-                        weight.size(1),
-                        bsz,
-                        Context::Instance().GetCurrentStream());
+        launch_bias_add<T>((T*)output.data_ptr(),
+                           (T*)bias.data_ptr(),
+                           weight.size(1),
+                           bsz,
+                           Context::Instance().GetCurrentStream());
     bool add_padding = (head_size % 32 != 0 && head_size < 64) || (head_size % 64 != 0);
     if (do_flash_attn) {
         if (add_padding) {
