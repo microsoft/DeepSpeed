@@ -354,27 +354,28 @@ class TestMPSize(DistributedTest):
     ids=["t5",
          "roberta"],
 )
-@pytest.mark.parametrize("world_size", [1, 2])
 @pytest.mark.parametrize("dtype", [torch.float], ids=["fp32"])
 @pytest.mark.parametrize("enable_cuda_graph", [False], ids=["noCG"])
 class TestInjectionPolicy(DistributedTest):
+    world_size = [1, 2]
+
     def test(
         self,
         model_w_task,
         injection_policy,
-        world_size,
         query,
         inf_kwargs,
         assert_fn,
         invalid_model_task_config,
-        dtype=torch.float,
-        enable_cuda_graph=False,
+        dtype,
+        enable_cuda_graph,
     ):
         if invalid_model_task_config:
             pytest.skip(invalid_model_task_config)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
+        world_size = int(os.getenv("WORLD_SIZE", "2"))
 
         # We have to load these large models on CPU with pipeline because not
         # enough GPU memory
