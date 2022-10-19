@@ -13,7 +13,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #include <ctime>
 
 #define ATTN_THREADS 256
-#define MAX_REG_SIZE 8
+#define MAX_REG_SIZE 32
 
 #define minus_infinity -10000.0
 

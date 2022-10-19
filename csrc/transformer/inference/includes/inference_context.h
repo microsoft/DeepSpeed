@@ -101,12 +101,17 @@ public:
         size_t total_size;
         if (!_free_memory_size) { cudaMemGetInfo(&_free_memory_size, &total_size); }
 
-        int head_size = hidden_dim / num_heads;
-        int padded_head_size = head_size < 32 ? 32 : (head_size < 64 ? 64 : 128);
-        size_t activation_size = 32 * (head_size * padded_head_size) * batch_size;
+        // Flash attention requires padded heads and we'll conservatively allocate
+        // for that here. Flash attention is only enabled for head size <= 128 right now
+        const int head_size = hidden_dim / num_heads;
+        const int padded_head_size = head_size < 32 ? 32 : (head_size < 64 ? 64 : 128);
+        const int effective_head_size = (head_size > 128) ? head_size : padded_head_size;
+
+        size_t activation_size = 16 * (num_heads * effective_head_size) * batch_size;
+        // Other sequence length dimension is added when the final workSpaceSize is calculated
         size_t temp_size = batch_size * num_heads * MAX_OUT_TOKENS * 2;
         size_t cache_size =
-            num_layers * batch_size * ((head_size * padded_head_size) / mp_size) * 2;
+            num_layers * batch_size * ((num_heads * effective_head_size) / mp_size) * 2;
         size_t minimal_requirements =
             temp_size + (_free_memory_size > GIGABYTE ? 500 : 100) * MEGABYTE;
         if (_free_memory_size < minimal_requirements) {
