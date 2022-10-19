@@ -430,7 +430,8 @@ class InferenceEngine(Module):
             ckpt_list = self._get_all_ckpt_names(load_dir, tag)
             sd_loader = SDLoaderFactory.get_sd_loader(ckpt_list, self.checkpoint_engine)
         else:
-            sd_loader = SDLoaderFactory.get_sd_loader_json(load_dir)
+            sd_loader = SDLoaderFactory.get_sd_loader_json(load_dir,
+                                                           self.checkpoint_engine)
 
         if type(sd_loader) is list:
             self.sd = torch.load(sd_loader[0], map_location='cpu')
