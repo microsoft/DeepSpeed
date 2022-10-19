@@ -75,14 +75,15 @@ def check_matches(matches):
                 linear_layer_list.append(i_matches)
             if not result:
                 #add next level of class methods to check
-                i_matches = update_name_list_2(name, i_matches) 
+                #i_matches = update_name_list_2(name, i_matches) 
                 new_matches = new_matches + i_matches
     return new_matches
 
 
 if __name__ == "__main__":
     linear_layer_list = []
-
+    injection_policy_list = []
+    
     #parse file for specified module
     with open(args.file, "r") as f:
         file_content = f.read()
@@ -105,13 +106,14 @@ if __name__ == "__main__":
         linear_layer_list.append(matches)
 
     #generate injection policy gems from name and linear layer lists
-    print(f"{linear_layer_list=}")
-
-    injection_list = []
     for group in linear_layer_list:
-        injection_list.append(group[-1])
-    injection_policy = {}
-    injection_policy.update({args.module: tuple(injection_list)})
-    print(f"{injection_policy=}")
+        injection_policy_list.append(group[-1])
     
+    #remove duplicate names. All gems with same parent.name are all-reduced
+    injection_policy_list = set(injection_policy_list)
+    
+    #print injection policy
+    injection_policy = {}
+    injection_policy.update({args.module: tuple(injection_policy_list)})
+    print("injection_policy={" + args.module + ": " + str(tuple(injection_policy_list)) + "}")
     
