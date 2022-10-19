@@ -20,34 +20,39 @@ roberta_models="roberta-base roberta-large Jean-Baptiste/roberta-large-ner-engli
 for gpus in `echo "$gpus_params"`; do
     for dtype in `echo "$dtype_params"`; do
         for graph in `echo "$graph_params"`; do
+            if [[ "$gpus" != "1" && "$graph" == "true" ]]; then
+                # CUDA Graph is not supported for multi-gpu
+                continue
+            fi
             params="$dtype $graph $gpus"
-            for m in `echo "$gptneo_models"`; do
-              bash run_model.sh $m $branch1 $branch2 $params
-            done
-
-            for m in `echo "$gpt2_models"`; do
-              bash run_model.sh $m $branch1 $branch2 $params
-            done
-
-            for m in `echo "$gptj_models"`; do
-              bash run_model.sh $m $branch1 $branch2 $params
-            done
-
-            for m in `echo "$opt_models"`; do
-              bash run_model.sh $m $branch1 $branch2 $params
-            done
-
-            for m in `echo "$bloom_models"`; do
-              bash run_model.sh $m $branch1 $branch2 $params
-            done
-
             for m in `echo "$bert_models"`; do
-              bash run_model.sh $m $branch1 $branch2 $params
+              bash run_model.sh $m "bert" $branch1 $branch2 $params
             done
 
             for m in `echo "$roberta_models"`; do
-              bash run_model.sh $m $branch1 $branch2 $params
+              bash run_model.sh $m "roberta" $branch1 $branch2 $params
             done
+        done
+        # CUDA Graph is not supported for these models, so skip that for loop
+        params="$dtype false $gpus"
+        for m in `echo "$gptneo_models"`; do
+          bash run_model.sh $m "gpt-neo" $branch1 $branch2 $params
+        done
+
+        for m in `echo "$gpt2_models"`; do
+          bash run_model.sh $m "gpt2" $branch1 $branch2 $params
+        done
+
+        for m in `echo "$gptj_models"`; do
+          bash run_model.sh $m "gpt-j" $branch1 $branch2 $params
+        done
+
+        for m in `echo "$opt_models"`; do
+          bash run_model.sh $m "opt" $branch1 $branch2 $params
+        done
+
+        for m in `echo "$bloom_models"`; do
+          bash run_model.sh $m "bloom" $branch1 $branch2 $params
         done
     done
 done

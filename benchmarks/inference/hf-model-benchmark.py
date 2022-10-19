@@ -201,6 +201,7 @@ if __name__ == "__main__":
     pipe.model = deepspeed.init_inference(
         pipe.model,
         dtype=args.dtype,
+        mp_size=args.world_size,
         replace_with_kernel_inject=args.kernel_inject,
         replace_method="auto",
         enable_cuda_graph=args.graph,
