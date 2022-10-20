@@ -11,9 +11,9 @@
 #include <stdio.h>
 #include "gpu_lib/gpu_lib.h"
 
-int cublas_gemm_ex(cublasHandle_t handle,
-                   cublasOperation_t transa,
-                   cublasOperation_t transb,
+int cublas_gemm_ex(gpu_lib::blasHandle_t handle,
+                   gpu_lib::blasOperation_t transa,
+                   gpu_lib::blasOperation_t transb,
                    int m,
                    int n,
                    int k,
@@ -24,9 +24,9 @@ int cublas_gemm_ex(cublasHandle_t handle,
                    float* C,
                    gpu_lib::blasGemmAlgo_t = gpu_lib::BLAS_GEMM_DEFAULT);
 
-int cublas_gemm_ex(cublasHandle_t handle,
-                   cublasOperation_t transa,
-                   cublasOperation_t transb,
+int cublas_gemm_ex(gpu_lib::blasHandle_t handle,
+                   gpu_lib::blasOperation_t transa,
+                   gpu_lib::blasOperation_t transb,
                    int m,
                    int n,
                    int k,
