@@ -2808,7 +2808,6 @@ class DeepSpeedEngine(Module):
             mp_rank=mp_rank,
             dp_world_size=self.loaded_checkpoint_dp_world_size,
             bf16_mode=bf16_mode)
-        invalid_zero_ckpt_paths = []
         for i, ckpt_name in enumerate(zero_ckpt_names):
             if not os.path.exists(ckpt_name):
                 # transparently handle the old file pattern for optim_states
@@ -2818,13 +2817,6 @@ class DeepSpeedEngine(Module):
                     if os.path.exists(ckpt_name_try):
                         zero_ckpt_names[i] = ckpt_name_try
                         continue
-                invalid_zero_ckpt_paths.append(ckpt_name)
-
-        if len(invalid_zero_ckpt_paths) > 0:
-            logger.warn(
-                f"The following zero checkpoints paths are missing: {invalid_zero_ckpt_paths}"
-            )
-            return None
 
         return zero_ckpt_names
 
@@ -2832,8 +2824,10 @@ class DeepSpeedEngine(Module):
         zero_sd_list = []
         for i, ckpt_name in enumerate(zero_ckpt_names):
             _state = None
+            if ckpt_name is None:
+                _state = {OPTIMIZER_STATE_DICT: None}
             # Fully load state for current rank
-            if self.zero_elastic_checkpoint() or dist.get_rank(
+            elif self.zero_elastic_checkpoint() or dist.get_rank(
                     group=self.optimizer.dp_process_group) == i:
                 _state = self.checkpoint_engine.load(
                     ckpt_name,
@@ -2885,7 +2879,12 @@ class DeepSpeedEngine(Module):
             elif not valid:
                 logger.warning(msg)
 
-    def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
+    def save_checkpoint(self,
+                        save_dir,
+                        tag=None,
+                        client_state={},
+                        save_latest=True,
+                        use_node_local_storage=False):
         r"""Save training checkpoint
         Arguments:
             save_dir: Required. Directory for saving the checkpoint
@@ -2902,6 +2901,11 @@ class DeepSpeedEngine(Module):
             # Prepare for checkpoint save by ensuring all parameters are partitioned
             self.optimizer.checkpoint_event_prologue()
 
+        rank = self.local_rank if use_node_local_storage else self.global_rank
+
+        if not self.save_non_zero_checkpoint:
+            self.save_non_zero_checkpoint = use_node_local_storage and (self.local_rank
+                                                                        == 0)
         # This is to make sure the checkpoint names are created without collision
         # There seems to be issue creating them in parallel
 
@@ -2937,7 +2941,7 @@ class DeepSpeedEngine(Module):
 
         # Save latest checkpoint tag
         self.checkpoint_engine.commit(tag)
-        if save_latest and self.global_rank == 0:
+        if save_latest and rank == 0:
             with open(os.path.join(save_dir, 'latest'), 'w') as fd:
                 fd.write(tag)
 
