@@ -9,6 +9,7 @@
 #include <mma.h>
 #endif
 #include <stdio.h>
+#include "gpu_lib/gpu_lib.h"
 
 int cublas_gemm_ex(cublasHandle_t handle,
                    cublasOperation_t transa,
@@ -21,11 +22,7 @@ int cublas_gemm_ex(cublasHandle_t handle,
                    const float* A,
                    const float* B,
                    float* C,
-#ifdef __HIP_PLATFORM_HCC__
-                   rocblas_gemm_algo algo = rocblas_gemm_algo_standard);
-#else
-                   cublasGemmAlgo_t algo = CUBLAS_GEMM_DEFAULT);
-#endif
+                   gpu_lib::blasGemmAlgo_t = gpu_lib::BLAS_GEMM_DEFAULT);
 
 int cublas_gemm_ex(cublasHandle_t handle,
                    cublasOperation_t transa,
@@ -38,11 +35,7 @@ int cublas_gemm_ex(cublasHandle_t handle,
                    const __half* A,
                    const __half* B,
                    __half* C,
-#ifdef __HIP_PLATFORM_HCC__
-                   rocblas_gemm_algo algo = rocblas_gemm_algo_standard);
-#else
-                   cublasGemmAlgo_t algo = CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                   gpu_lib::blasGemmAlgo_t = gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
 
 int cublas_strided_batched_gemm(cublasHandle_t handle,
                                 int m,
@@ -59,11 +52,7 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
                                 int stride_B,
                                 int stride_C,
                                 int batch,
-#ifdef __HIP_PLATFORM_HCC__
-                                rocblas_gemm_algo algo = rocblas_gemm_algo_standard);
-#else
-                                cublasGemmAlgo_t algo = CUBLAS_GEMM_DEFAULT);
-#endif
+                                gpu_lib::blasGemmAlgo_t = gpu_lib::BLAS_GEMM_DEFAULT);
 
 int cublas_strided_batched_gemm(cublasHandle_t handle,
                                 int m,
@@ -80,8 +69,4 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
                                 int stride_B,
                                 int stride_C,
                                 int batch,
-#ifdef __HIP_PLATFORM_HCC__
-                                rocblas_gemm_algo algo = rocblas_gemm_algo_standard);
-#else
-                                cublasGemmAlgo_t algo = CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                                gpu_lib::blasGemmAlgo_t = gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
