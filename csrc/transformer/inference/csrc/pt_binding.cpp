@@ -6,6 +6,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #include <torch/extension.h>
 #include <stdexcept>
 #include <vector>
+#include "gpu_lib/gpu_lib.h"
 #include "inference_context.h"
 #include "inference_cublas_wrappers.h"
 #include "inference_cuda_layers.h"
@@ -156,11 +157,7 @@ at::Tensor einsum_sec_sm_ecm(at::Tensor& Q, at::Tensor& W)
                    (T*)W.data_ptr(),
                    (T*)Q.data_ptr(),
                    (T*)O.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
-                   rocblas_gemm_algo_standard);
-#else
-                   CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                   gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
     return O;
 }
 
@@ -208,11 +205,7 @@ void attention_unfused(at::Tensor& prev_key_cont,
                                 seq_len * k,
                                 seq_len * soft_len,
                                 bsz * heads,
-#ifdef __HIP_PLATFORM_HCC__
-                                rocblas_gemm_algo_standard);
-#else
-                                CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                                gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
     launch_attn_softmax_v2((T*)attn_score.data_ptr(),
                            (T*)(attn_mask.sizes().size() > 1 ? attn_mask.data_ptr() : nullptr),
                            (T*)nullptr,
@@ -245,11 +238,7 @@ void attention_unfused(at::Tensor& prev_key_cont,
                                 seq_len * soft_len,
                                 seq_len * k,
                                 bsz * heads,
-#ifdef __HIP_PLATFORM_HCC__
-                                rocblas_gemm_algo_standard);
-#else
-                                CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                                gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
 }
 
 template <typename T>
@@ -379,11 +368,7 @@ void attention_unfused(T* prev_key_cont,
                                 seq_len * k,
                                 seq_len * soft_len,
                                 bsz * heads,
-#ifdef __HIP_PLATFORM_HCC__
-                                rocblas_gemm_algo_standard);
-#else
-                                CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                                gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
     ds_softmax_internal<T>(workspace,
                            attn_mask,
                            alibi,
@@ -412,11 +397,7 @@ void attention_unfused(T* prev_key_cont,
                                 seq_len * soft_len,
                                 seq_len * k,
                                 bsz * heads,
-#ifdef __HIP_PLATFORM_HCC__
-                                rocblas_gemm_algo_standard);
-#else
-                                CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                                gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
 }
 
 template <typename T>
@@ -658,11 +639,7 @@ void quantized_gemm(void* output,
                    weight16,
                    (T*)input,
                    (T*)output,
-#ifdef __HIP_PLATFORM_HCC__
-                   rocblas_gemm_algo_standard);
-#else
-                   CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                   gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
 }
 
 template <typename T>
@@ -701,11 +678,7 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
                        (T*)weight.data_ptr(),
                        workspace,
                        (T*)output.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
-                       rocblas_gemm_algo_standard);
-#else
-                       CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                       gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
     }
     if (add_bias)
         launch_bias_add((T*)output.data_ptr(),
@@ -786,11 +759,7 @@ void quantized_gemm(at::Tensor& output,
                    (T*)weight16.data_ptr(),
                    (T*)input.data_ptr(),
                    (T*)output.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
-                   rocblas_gemm_algo_standard);
-#else
-                   CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                   gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
 }
 
 template <typename T>
@@ -878,11 +847,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                    (T*)weight.data_ptr(),
                    (T*)input_cont.data_ptr(),
                    (T*)output.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
-                   rocblas_gemm_algo_standard);
-#else
-                   CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                   gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
     if (add_bias)
         launch_bias_add((T*)output.data_ptr(),
                         (T*)bias.data_ptr(),
@@ -1112,11 +1077,7 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
                        (T*)weight.data_ptr(),
                        (T*)input.data_ptr(),
                        (T*)output.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
-                       rocblas_gemm_algo_standard);
-#else
-                       CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                       gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
     }
     return output;
 }
@@ -1195,11 +1156,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                        (T*)weight.data_ptr(),
                        inp_norm,
                        intermediate,
-#ifdef __HIP_PLATFORM_HCC__
-                       rocblas_gemm_algo_standard);
-#else
-                       CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                       gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
     }
     if (act_func_type == ActivationFuncType::GELU) {
         launch_bias_gelu(intermediate,
@@ -1233,11 +1190,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                        (T*)weight1.data_ptr(),
                        intermediate,
                        (T*)output.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
-                       rocblas_gemm_algo_standard);
-#else
-                       CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                       gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
     }
 
     return torch::from_blob(inp_norm, input.sizes(), input.options());
@@ -1363,11 +1316,7 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
                    (T*)weight.data_ptr(),
                    (T*)input_cont.data_ptr(),
                    (T*)intermediate.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
-                   rocblas_gemm_algo_standard);
-#else
-                   CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                   gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
     launch_bias_gelu((T*)intermediate.data_ptr(),
                      (T*)bias.data_ptr(),
                      weight.size(1),
@@ -1385,11 +1334,7 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
                    (T*)weight_out.data_ptr(),
                    (T*)intermediate.data_ptr(),
                    (T*)output.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
-                   rocblas_gemm_algo_standard);
-#else
-                   CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-#endif
+                   gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP);
     // cudaEventRecord(Context::Instance().GetCompEvent(2),
     //                Context::Instance().GetCurrentStream(true));
     return output;
