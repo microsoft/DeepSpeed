@@ -1,3 +1,6 @@
+#ifndef DS_GPU_LIB_ROCM_HPP
+#define DS_GPU_LIB_ROCM_HPP
+
 namespace rocm {
 using blasHandle_t = rocblas_handle;
 using blasOperation_t = rocblas_operation;
@@ -117,3 +120,4 @@ rocblas_status blasGemmStridedBatchedEx(rocblas_handle handle,
 }
 
 }  // namespace rocm
+#endif  // #ifndef DS_GPU_LIB_ROCM_HPP
