@@ -32,7 +32,6 @@ def get_class_source(node, class_name):
             for method in methods:
                 if method.name == "__init__":
                     init_source = ast.get_source_segment(file_content, method)
-                    #return method_source
                 elif method.name == "forward":
                     forward_source = ast.get_source_segment(file_content, method)
             #stop searching class list
@@ -41,14 +40,14 @@ def get_class_source(node, class_name):
 
                     
 
-def get_linear_layers(method_source):
-    matches = re.findall(r"self.(.*?) = nn.Linear", method_source)
+def get_linear_layers(source):
+    matches = re.findall(r"self.(.*?) = nn.Linear", source)
     if not matches:
         #check for attributes at block class level     
-        matches = re.findall(r"self.(.*?).append\((.*?)\(", method_source)
+        matches = re.findall(r"self.(.*?).append\((.*?)\(", source)
         if not matches:
             #check for attributes at layer class level
-            matches = re.findall(r"self.(.*?) = (\w*?)\(", method_source)
+            matches = re.findall(r"self.(.*?) = (\w*?)\(", source)
         return False, matches
     else:
         return True, matches        
@@ -71,20 +70,24 @@ def update_name_list(name, matches):
 
 def check_matches(need_all_reduce, matches):
     new_matches = []
+    
+    #if need_all_reduce is True we do not need to check again
     i_need_all_reduce = need_all_reduce
+    
     for name, attribute in matches:
+        #get source for all methods in match list
         init_source, forward_source = get_class_source(node, attribute)
         if init_source != "" and forward_source != "":
+            #check for linear layers
             result, i_matches = get_linear_layers(init_source)
-            #print("i_matches: ", i_matches)
-            #print("result: ", result)
-            #print("need_all_reduce: ", need_all_reduce)
             if not need_all_reduce:
+                #search for functions (LayerNorm, GroupNorm, etc) that need all reduce
                 i_need_all_reduce = check_layer_norm(forward_source) | check_layer_norm(init_source)
             if result and (need_all_reduce or i_need_all_reduce):               
                 #add linear layers to list   
                 i_matches = update_name_list(name, i_matches)
                 linear_layer_list.append(i_matches)
+                #reset i_need_all_reduce
                 i_need_all_reduce = False
             if not result:
                 #add next level of class methods to check 
@@ -95,17 +98,18 @@ def check_matches(need_all_reduce, matches):
 if __name__ == "__main__":
     linear_layer_list = []
     injection_policy_list = []
-    all_reduce_list = []
-    need_all_reduce = False 
-    #parse file for specified module
+    need_all_reduce = False
+
+    #parse file as abstract syntax tree
     with open(args.file, "r") as f:
         file_content = f.read()
         node = ast.parse(file_content)
 
-    #get source code of top class
+    #get source code of specified module
     init_source, forward_source = get_class_source(node, args.module)
 
     if init_source != "" and forward_source != "":
+        #search for functions (LayerNorm, GroupNorm, etc) that need all reduce
         need_all_reduce = check_layer_norm(forward_source) | check_layer_norm(init_source)
 
         #check for linear layers in source code        
@@ -117,19 +121,7 @@ if __name__ == "__main__":
             linear_layer_list.append(matches)
         else:
             while len(matches):
-                #print("checking matches...", matches)
                 need_all_reduce, matches = check_matches(need_all_reduce, matches)
-
-        #if no linear layers found, check attribute source code
-        #if not result:
-        #    while len(matches):
-        #        #print("checking matches...", matches)
-        #        need_all_reduce, matches = check_matches(need_all_reduce, matches)
-        #elif need_all_reduce:
-        #    #add linear layers to list
-        #    update_name_list(name, matches)
-        #    linear_layer_list.append(matches)
-
 
     #generate injection policy gems from name and linear layer lists
     for group in linear_layer_list:
