@@ -367,6 +367,7 @@ class ValidationMode:
 # "checkpoint": {
 #   tag_validation=["Ignore"|"Warn"|"Fail"]
 #   load_universal=false
+#   use_node_local_storage=false
 # }
 CHECKPOINT = "checkpoint"
 CHECKPOINT_TAG_VALIDATION = "tag_validation"
@@ -379,6 +380,9 @@ CHECKPOINT_TAG_VALIDATION_MODES = [
 
 LOAD_UNIVERSAL_CHECKPOINT = "load_universal"
 LOAD_UNIVERSAL_CHECKPOINT_DEFAULT = False
+
+USE_NODE_LOCAL_STORAGE_CHECKPOINT = "use_node_local_storage"
+USE_NODE_LOCAL_STORAGE_CHECKPOINT_DEFAULT = False
 
 #########################################
 # Drop the last incomplete Batch

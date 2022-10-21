@@ -742,6 +742,9 @@ class DeepSpeedEngine(Module):
     def gradient_accumulation_steps(self):
         return self._config.gradient_accumulation_steps
 
+    def use_node_local_storage(self):
+        return self._config.use_node_local_storage
+
     def load_universal_checkpoint(self):
         return self._config.load_universal_checkpoint
 
@@ -831,9 +834,13 @@ class DeepSpeedEngine(Module):
         if self.mpu:
             dp_rank = self.mpu.get_data_parallel_rank()
 
+        rank = self.local_rank if self.use_node_local_storage() else dp_rank
+
         # only the first data parallel process needs to store the model checkpoint
+        # if you want to use node local storage this must be done by rank 0 on each
+        # node
         self.save_non_zero_checkpoint = (
-            dp_rank == 0) or self.zero_optimization_partition_weights()
+            rank == 0) or self.zero_optimization_partition_weights()
 
         if self.zero_optimization() or self.bfloat16_enabled():
             param_rank = dist.get_rank(group=self.optimizer.dp_process_group)
@@ -2879,12 +2886,7 @@ class DeepSpeedEngine(Module):
             elif not valid:
                 logger.warning(msg)
 
-    def save_checkpoint(self,
-                        save_dir,
-                        tag=None,
-                        client_state={},
-                        save_latest=True,
-                        use_node_local_storage=False):
+    def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
         r"""Save training checkpoint
         Arguments:
             save_dir: Required. Directory for saving the checkpoint
@@ -2901,11 +2903,8 @@ class DeepSpeedEngine(Module):
             # Prepare for checkpoint save by ensuring all parameters are partitioned
             self.optimizer.checkpoint_event_prologue()
 
-        rank = self.local_rank if use_node_local_storage else self.global_rank
+        rank = self.local_rank if self.use_node_local_storage() else self.global_rank
 
-        if not self.save_non_zero_checkpoint:
-            self.save_non_zero_checkpoint = use_node_local_storage and (self.local_rank
-                                                                        == 0)
         # This is to make sure the checkpoint names are created without collision
         # There seems to be issue creating them in parallel
 
