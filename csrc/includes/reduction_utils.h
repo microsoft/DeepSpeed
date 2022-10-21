@@ -252,7 +252,6 @@ DS_D_INLINE void _block(cg::thread_block& tb,
             } else {
                 init<Ops...>(data);
             }
-            __syncwarp();
 
             _warp<Ops..., max_warps>(warp_arg, data);
 
