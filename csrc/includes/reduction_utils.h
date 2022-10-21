@@ -103,6 +103,62 @@ DS_D_INLINE float elem_reduce<ROpType::Min>(const float lhs, const float rhs)
 }
 
 /*
+Reduction initialization primitives
+*/
+template <ROpType OType>
+DS_D_INLINE float init();
+
+template <>
+DS_D_INLINE float init<ROpType::Add>()
+{
+    return 0.0f;
+}
+
+template <>
+DS_D_INLINE float init<ROpType::Min>()
+{
+    // Positive infinity
+    return INFINITY;
+}
+
+template <>
+DS_D_INLINE float init<ROpType::Max>()
+{
+    // Negative infinity
+    return -INFINITY;
+}
+
+template <ROpType Op>
+DS_D_INLINE void init(float* data)
+{
+    data[0] = init<Op>();
+}
+
+template <ROpType Op1, ROpType Op2>
+DS_D_INLINE void init(float* data)
+{
+    data[0] = init<Op1>();
+    data[1] = init<Op2>();
+}
+
+template <ROpType Op1, ROpType Op2, ROpType Op3>
+DS_D_INLINE void init(float* data)
+{
+    data[0] = init<Op1>();
+    data[1] = init<Op2>();
+    data[2] = init<Op3>();
+}
+
+template <ROpType Op1, ROpType Op2, ROpType Op3, ROpType Op4>
+DS_D_INLINE void init(float* data)
+{
+    data[0] = init<Op1>();
+    data[1] = init<Op2>();
+    data[2] = init<Op3>();
+    data[3] = init<Op4>();
+}
+
+/*
 Warp reduction primitives
 
 `reduction_width` is an unsafe template parameter, that is that
@@ -187,13 +243,16 @@ DS_D_INLINE void _block(cg::thread_block& tb,
         tb.sync();
 
         if (warp_arg.meta_group_rank() == 0) {
+            if (warp_arg.thread_rank() < warp_arg.meta_group_size()) {
 #pragma unroll
-            for (int i = 0; i < elems; i++) {
-                mem_access::load_shared<bytes>(
-                    data + i,
-                    reduce_buffer + i * max_warps + warp_arg.thread_rank(),
-                    warp_arg.thread_rank() < warp_arg.meta_group_size());
+                for (int i = 0; i < elems; i++) {
+                    mem_access::load_shared<bytes>(
+                        data + i, reduce_buffer + i * max_warps + warp_arg.thread_rank());
+                }
+            } else {
+                init<Ops...>(data);
             }
+            __syncwarp();
 
             _warp<Ops..., max_warps>(warp_arg, data);
 
