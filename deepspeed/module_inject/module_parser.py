@@ -41,16 +41,23 @@ def get_class_source(node, class_name):
                     
 
 def get_linear_layers(source):
-    matches = re.findall(r"self.(.*?) = nn.Linear", source)
-    if not matches:
-        #check for attributes at block class level     
-        matches = re.findall(r"self.(.*?).append\((.*?)\(", source)
-        if not matches:
-            #check for attributes at layer class level
-            matches = re.findall(r"self.(.*?) = (\w*?)\(", source)
-        return False, matches
+    linear_matches = re.findall(r"self.(.*?) = nn.(Linear)", source)
+    
+    #check for attributes at stack level
+    stack_matches = re.findall(r"self.(.*?) = nn.ModuleList\(\s*\[(.*?)\(", source)
+
+    #check for attributes at block class level     
+    block_matches = re.findall(r"self.(.*?).append\((.*?)\(", source)
+
+    #check for attributes at layer class level
+    layer_matches = re.findall(r"self.(.*?) = (\w*?)\(", source)
+
+    matches = stack_matches + block_matches + layer_matches
+    
+    if not linear_matches:
+        return False, linear_matches, matches
     else:
-        return True, matches        
+        return True, linear_matches, matches        
 
 
 def check_layer_norm(source):
@@ -63,7 +70,7 @@ def check_layer_norm(source):
 
 def update_name_list(name, matches):
     new_list = []
-    for match in matches:    
+    for match, linear in matches:    
         new_list = new_list + [name + "." + match] 
     return new_list
 
@@ -79,17 +86,17 @@ def check_matches(need_all_reduce, matches):
         init_source, forward_source = get_class_source(node, attribute)
         if init_source != "" and forward_source != "":
             #check for linear layers
-            result, i_matches = get_linear_layers(init_source)
+            result, linear_matches, i_matches = get_linear_layers(init_source)
             if not need_all_reduce:
                 #search for functions (LayerNorm, GroupNorm, etc) that need all reduce
                 i_need_all_reduce = check_layer_norm(forward_source) | check_layer_norm(init_source)
             if result and (need_all_reduce or i_need_all_reduce):               
                 #add linear layers to list   
-                i_matches = update_name_list(name, i_matches)
-                linear_layer_list.append(i_matches)
+                linear_matches = update_name_list(name, linear_matches)
+                linear_layer_list.append(linear_matches)
                 #reset i_need_all_reduce
                 i_need_all_reduce = False
-            if not result:
+            if i_matches:
                 #add next level of class methods to check 
                 new_matches = new_matches + i_matches
     return i_need_all_reduce, new_matches
@@ -113,13 +120,13 @@ if __name__ == "__main__":
         need_all_reduce = check_layer_norm(forward_source) | check_layer_norm(init_source)
 
         #check for linear layers in source code        
-        result, matches = get_linear_layers(init_source)
+        result, linear_matches, matches = get_linear_layers(init_source)
          
         if result & need_all_reduce:
             #add linear layers to list
-            update_name_list(name, matches)
-            linear_layer_list.append(matches)
-        else:
+            update_name_list(name, linear_matches)
+            linear_layer_list.append(linear_matches)
+        if matches is not None:
             while len(matches):
                 need_all_reduce, matches = check_matches(need_all_reduce, matches)
 
