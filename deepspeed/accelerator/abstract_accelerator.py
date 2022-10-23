@@ -172,3 +172,7 @@ class DeepSpeedAccelerator(ABC):
     @abc.abstractmethod
     def on_accelerator(self, tensor):
         ...
+
+    @abc.abstractmethod
+    def create_op_builder(self, class_name):
+        ...
