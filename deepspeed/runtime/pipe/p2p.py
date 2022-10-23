@@ -11,7 +11,7 @@ from deepspeed import comm as dist
 # To query whether we have send/recv support
 from packaging.version import Version
 from deepspeed.git_version_info import torch_info
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 _groups = None
 _grid = None

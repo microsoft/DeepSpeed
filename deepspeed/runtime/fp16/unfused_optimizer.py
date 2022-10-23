@@ -14,7 +14,7 @@ from deepspeed.runtime.utils import get_global_norm, CheckOverflow, get_weight_n
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
 from deepspeed.utils import logger
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 from deepspeed import comm as dist
 
 

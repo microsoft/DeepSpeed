@@ -9,7 +9,7 @@ import torch
 from .multi_tensor_apply import MultiTensorApply
 
 multi_tensor_applier = MultiTensorApply(2048 * 32)
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 
 class FusedAdam(torch.optim.Optimizer):

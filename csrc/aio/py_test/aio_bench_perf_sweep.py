@@ -15,7 +15,7 @@ import shutil
 from test_ds_aio_utils import refine_integer_value
 from perf_sweep_utils import READ_OP_DESC, WRITE_OP_DESC, BENCH_LOG_DIR, \
     READ_IO_DIR, WRITE_IO_DIR, READ_LOG_DIR, WRITE_LOG_DIR
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 OTHER_OPTIONS = '--handle'
 PERF_SCRIPT = 'test_ds_aio.py'

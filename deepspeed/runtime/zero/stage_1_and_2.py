@@ -26,7 +26,7 @@ from deepspeed.moe.utils import is_moe_param
 from deepspeed.git_version_info import version
 
 from deepspeed.runtime.constants import PIPE_REPLICATED
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 from deepspeed.checkpoint.constants import (DS_VERSION,
                                             GROUP_PADDINGS,

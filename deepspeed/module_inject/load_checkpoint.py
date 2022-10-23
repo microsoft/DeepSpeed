@@ -4,7 +4,7 @@ from ..runtime.zero import GatheredParameters
 from .layers import LinearLayer, Normalize, EmbeddingLayer
 import torch
 import gc
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 
 def load_model_with_checkpoint(r_module,

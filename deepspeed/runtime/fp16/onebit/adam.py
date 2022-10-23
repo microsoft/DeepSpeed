@@ -4,7 +4,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import types
 import torch
 import numpy as np
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 from deepspeed import comm as dist
 
 

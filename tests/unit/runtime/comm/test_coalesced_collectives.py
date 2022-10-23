@@ -3,7 +3,7 @@
 import torch
 import deepspeed.comm as dist
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 from unit.common import DistributedTest
 

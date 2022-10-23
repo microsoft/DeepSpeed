@@ -3,7 +3,7 @@ import os
 import math
 import argparse
 from benchmarks.communication.constants import *
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 global dist
 

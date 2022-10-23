@@ -7,7 +7,7 @@ from pathlib import Path
 import torch
 import torch.multiprocessing as mp
 import deepspeed
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 import deepspeed.comm as dist
 from torch.multiprocessing import Process
 

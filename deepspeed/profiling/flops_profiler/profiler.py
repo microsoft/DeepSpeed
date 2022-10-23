@@ -6,7 +6,7 @@ from functools import partial
 from typing import List, Optional
 from collections import OrderedDict
 import numpy as np
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 Tensor = torch.Tensor
 

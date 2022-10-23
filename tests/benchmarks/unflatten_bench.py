@@ -11,7 +11,7 @@ import argparse
 import gc
 import torch
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 from apex_C import flatten as flatten_apex
 from apex_C import unflatten as unflatten_apex

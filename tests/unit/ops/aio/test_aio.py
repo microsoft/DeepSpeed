@@ -4,7 +4,7 @@ import filecmp
 import torch
 import deepspeed
 import deepspeed.comm as dist
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 from unit.common import DistributedTest
 
 MEGA_BYTE = 1024**2

@@ -4,7 +4,7 @@ import pytest
 
 import deepspeed
 from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 if not deepspeed.ops.__compatible_ops__[get_accelerator().create_op_builder(
         "CPUAdagradBuilder").name]:

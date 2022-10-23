@@ -5,7 +5,7 @@ import torch
 import pytest
 
 import deepspeed
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus, partitioned_param_data_shape
 import deepspeed.comm as dist
 

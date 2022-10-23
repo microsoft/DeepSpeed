@@ -12,7 +12,7 @@ from transformers import pipeline
 from transformers.models.t5.modeling_t5 import T5Block
 from transformers.models.roberta.modeling_roberta import RobertaLayer
 from huggingface_hub import HfApi
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):

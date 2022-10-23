@@ -3,7 +3,7 @@ import pytest
 from unit.simple_model import SimpleModel
 from deepspeed import OnDevice
 from packaging import version as pkg_version
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 
 @pytest.mark.parametrize('device', ['meta', get_accelerator().device_name(0)])

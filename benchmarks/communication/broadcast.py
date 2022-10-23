@@ -1,7 +1,7 @@
 import torch
 from benchmarks.communication.utils import *
 from benchmarks.communication.constants import *
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 import time
 

@@ -4,7 +4,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 
 class RepeatingLoader:

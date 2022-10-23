@@ -8,7 +8,7 @@ import cupy
 import numpy as np
 
 from deepspeed.runtime.compression.cupy import CupyBackend
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 
 class NcclBackend(object):

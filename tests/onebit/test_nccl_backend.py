@@ -6,7 +6,7 @@ import deepspeed
 import os
 
 from deepspeed.runtime.comm.nccl import NcclBackend
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--local_rank', type=int, default=-1)

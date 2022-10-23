@@ -5,7 +5,7 @@ import deepspeed
 
 from unit.common import DistributedTest, DistributedFixture, get_master_port
 from unit.simple_model import SimpleModel
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 import pytest
 

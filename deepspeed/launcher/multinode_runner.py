@@ -5,7 +5,7 @@ import subprocess
 import warnings
 from shlex import split
 from abc import ABC, abstractmethod
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 from ..utils import logger
 from .constants import PDSH_MAX_FAN_OUT, MVAPICH_TMP_HOSTFILE
 

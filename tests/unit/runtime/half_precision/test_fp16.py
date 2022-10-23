@@ -6,7 +6,7 @@ from deepspeed.ops.adam import FusedAdam
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel, SimpleOptimizer, random_dataloader, SimpleMoEModel, sequence_dataloader
 from unit.util import required_torch_version
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 try:
     from apex import amp  # noqa: F401

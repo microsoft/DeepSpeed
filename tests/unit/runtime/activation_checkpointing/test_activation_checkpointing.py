@@ -3,7 +3,7 @@
 import pytest
 import torch
 import deepspeed
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 from copy import deepcopy
 from unit.common import DistributedTest
 

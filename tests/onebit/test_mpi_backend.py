@@ -5,7 +5,7 @@ import numpy as np
 import deepspeed
 
 from deepspeed.runtime.comm.mpi import MpiBackend
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 comm = MPI.COMM_WORLD
 size = comm.Get_size()

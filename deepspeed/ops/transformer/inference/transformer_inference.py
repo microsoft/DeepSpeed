@@ -8,7 +8,7 @@ from torch.autograd import Function
 import torch.nn as nn
 from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 from deepspeed.utils.types import ActivationFuncType
 
 # Cuda modules will be imported if needed

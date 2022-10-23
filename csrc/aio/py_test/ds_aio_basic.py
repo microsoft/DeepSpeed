@@ -10,7 +10,7 @@ import os
 import time
 from multiprocessing import Pool, Barrier
 from test_ds_aio_utils import report_results, task_log, task_barrier
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 
 def pre_basic(args, tid, read_op):

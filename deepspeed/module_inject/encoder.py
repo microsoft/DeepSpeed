@@ -2,7 +2,7 @@
 Copyright 2022 The Microsoft DeepSpeed Team
 '''
 import torch
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 
 class DSClipEncoder(torch.nn.Module):

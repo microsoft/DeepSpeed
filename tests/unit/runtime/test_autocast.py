@@ -1,7 +1,7 @@
 import pytest
 import torch
 from deepspeed.runtime.zero.linear import LinearModuleForZeroStage3
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 
 @pytest.mark.parametrize('half_op', [False, True])

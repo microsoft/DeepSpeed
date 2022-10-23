@@ -4,7 +4,7 @@ import time
 import deepspeed
 import argparse
 from transformers import pipeline
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", "-m", type=str, help="hf model name")

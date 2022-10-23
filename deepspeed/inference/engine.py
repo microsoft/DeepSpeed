@@ -20,7 +20,7 @@ from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
 from ..runtime.zero import GatheredParameters
 from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 from ..module_inject.replace_policy import DSPolicy
 
 DS_INFERENCE_ENABLED = False

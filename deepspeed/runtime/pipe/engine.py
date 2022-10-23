@@ -7,7 +7,7 @@ from deepspeed import comm as dist
 
 from deepspeed.utils import logger
 from deepspeed.utils.timer import ThroughputTimer
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
 from ..utils import PartitionedTensor

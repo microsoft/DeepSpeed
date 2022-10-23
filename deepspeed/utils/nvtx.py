@@ -1,5 +1,5 @@
 import torch
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 
 def instrument_w_nvtx(func):

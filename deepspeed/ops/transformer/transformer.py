@@ -6,7 +6,7 @@ import math
 import torch
 from torch import nn
 from torch.autograd import Function
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 # Cuda modules will be imported if needed
 transformer_cuda_module = None

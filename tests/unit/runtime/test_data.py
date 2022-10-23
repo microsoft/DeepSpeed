@@ -2,7 +2,7 @@ from deepspeed.utils import RepeatingLoader
 import torch
 import pytest
 import deepspeed
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel, random_dataset
 

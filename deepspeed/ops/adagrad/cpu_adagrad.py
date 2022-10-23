@@ -3,7 +3,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 '''
 
 import torch
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 from deepspeed.utils.logging import should_log_le
 
 

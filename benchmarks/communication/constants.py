@@ -1,4 +1,4 @@
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 DEFAULT_WARMUPS = 5
 DEFAULT_TRIALS = 50

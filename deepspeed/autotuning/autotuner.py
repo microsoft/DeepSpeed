@@ -15,7 +15,7 @@ from .constants import *
 from .scheduler import ResourceManager
 from .tuner import GridSearchTuner, RandomTuner, ModelBasedTuner
 from .utils import *
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 try:
     from tabulate import tabulate

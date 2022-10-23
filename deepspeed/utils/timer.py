@@ -5,7 +5,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import time
 from numpy import mean
 from deepspeed.utils.logging import log_dist
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 from deepspeed import comm as dist
 
 try:

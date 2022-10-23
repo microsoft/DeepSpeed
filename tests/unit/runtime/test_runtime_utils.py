@@ -5,7 +5,7 @@ import pytest
 
 import deepspeed.runtime.utils as ds_utils
 import deepspeed.utils.groups as groups
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 from unit.common import DistributedTest
 

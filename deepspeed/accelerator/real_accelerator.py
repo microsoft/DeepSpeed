@@ -38,7 +38,7 @@ def set_accelerator(accel_obj):
 
 '''
 -----------[code] test_get.py -----------
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 my_accelerator = get_accelerator()
 print(f'{my_accelerator._name=}')
 print(f'{my_accelerator._communication_backend=}')
@@ -58,7 +58,7 @@ my_accelerator.total_memory()=34089730048
 from deepspeed.accelerator.cuda_accelerator import CUDA_Accelerator
 cu_accel = CUDA_Accelerator()
 print(f'{id(cu_accel)=}')
-from deepspeed.accelerator.real_accelerator import set_accelerator, get_accelerator
+from deepspeed.accelerator import set_accelerator, get_accelerator
 set_accelerator(cu_accel)
 
 my_accelerator = get_accelerator()
