@@ -21,7 +21,6 @@ from deepspeed.runtime.utils import (bwc_tensor_model_parallel_rank,
 from deepspeed.runtime.zero.config import ZeroStageEnum
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.ops.adam import DeepSpeedCPUAdam
-from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.utils import logger
 from deepspeed.moe.utils import is_moe_param
 from deepspeed.git_version_info import version
@@ -161,7 +160,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.optimizer = init_optimizer
 
         # Load pre-built or JIT compile (un)flatten ops
-        util_ops = UtilsBuilder().load()
+        util_ops = get_accelerator().create_op_builder("UtilsBuilder").load()
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 

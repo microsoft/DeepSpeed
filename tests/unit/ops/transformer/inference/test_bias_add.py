@@ -25,7 +25,7 @@ def run_bias_add_reference(activations, bias):
 def run_bias_add_ds(activations, bias):
     global inference_module
     if inference_module is None:
-        inference_module = InferenceBuilder().load()
+        inference_module = get_accelerator().create_op_builder("InferenceBuilder").load()
     if activations.dtype == torch.float16:
         return inference_module.bias_add_fp16(activations, bias)
     else:

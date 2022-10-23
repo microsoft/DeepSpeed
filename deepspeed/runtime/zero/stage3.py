@@ -19,7 +19,6 @@ from deepspeed.runtime.zero.config import ZeroStageEnum
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
 from deepspeed.ops.adam import DeepSpeedCPUAdam
-from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.runtime.swap_tensor.partitioned_optimizer_swapper import PartitionedOptimizerSwapper
 from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedOptimizerSwapper
@@ -128,7 +127,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.optimizer = init_optimizer
 
         # Load pre-built or JIT compile (un)flatten ops
-        util_ops = UtilsBuilder().load()
+        util_ops = get_accelerator().create_op_builder("UtilsBuilder").load()
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
