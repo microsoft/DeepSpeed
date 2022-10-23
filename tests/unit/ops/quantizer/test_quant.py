@@ -1,6 +1,5 @@
 import torch
 import pytest
-from deepspeed.ops import op_builder
 from deepspeed.accelerator.real_accelerator import get_accelerator
 
 quantizer_cuda_module = None
@@ -31,7 +30,8 @@ def run_quant_dequant(inputs, groups, bits):
     global quantizer_cuda_module
 
     if quantizer_cuda_module is None:
-        quantizer_cuda_module = op_builder.QuantizerBuilder().load()
+        quantizer_cuda_module = get_accelerator().create_op_builder(
+            "QuantizerBuilder").load()
     return quantizer_cuda_module.ds_quantize_fp16(inputs, groups, bits)
 
 
