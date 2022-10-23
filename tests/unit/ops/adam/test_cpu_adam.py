@@ -6,9 +6,9 @@ from cpuinfo import get_cpu_info
 import deepspeed
 from deepspeed.accelerator.real_accelerator import get_accelerator
 from deepspeed.ops.adam import FusedAdam
-from deepspeed.ops.op_builder import CPUAdamBuilder
 
-if not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
+if not deepspeed.ops.__compatible_ops__[get_accelerator().create_op_builder(
+        "CPUAdamBuilder").name]:
     pytest.skip("cpu-adam is not compatible", allow_module_level=True)
 
 pytest.cpu_vendor = get_cpu_info()["vendor_id_raw"].lower()

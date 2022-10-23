@@ -4,7 +4,6 @@ import filecmp
 import torch
 import deepspeed
 import deepspeed.comm as dist
-from deepspeed.ops.aio import AsyncIOBuilder
 from deepspeed.accelerator.real_accelerator import get_accelerator
 from unit.common import DistributedTest
 
@@ -14,7 +13,8 @@ QUEUE_DEPTH = 2
 IO_SIZE = 16 * MEGA_BYTE
 IO_PARALLEL = 2
 
-if not deepspeed.ops.__compatible_ops__[AsyncIOBuilder.NAME]:
+if not deepspeed.ops.__compatible_ops__[get_accelerator().create_op_builder(
+        "AsyncIOBuilder").name]:
     pytest.skip('Skip tests since async-io is not compatible', allow_module_level=True)
 
 

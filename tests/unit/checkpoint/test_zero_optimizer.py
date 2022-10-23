@@ -1,5 +1,5 @@
 import deepspeed
-from deepspeed.ops.op_builder import CPUAdamBuilder
+from deepspeed.accelerator import get_accelerator
 
 from unit.common import DistributedTest, DistributedFixture
 from unit.simple_model import *
@@ -34,7 +34,8 @@ class TestZeROCheckpoint(DistributedTest):
                                   zero_stage,
                                   use_cpu_offload,
                                   adam_optimizer):
-        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
+        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[
+                get_accelerator().create_op_builder("CPUAdamBuilder").name]:
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
@@ -95,7 +96,8 @@ class TestZeROCheckpoint(DistributedTest):
                                       zero_stage,
                                       use_cpu_offload,
                                       adam_optimizer):
-        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
+        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[
+                get_accelerator().create_op_builder("CPUAdamBuilder").name]:
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
