@@ -1,10 +1,10 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
-from .builder import OpBuilder, SYCLOpBuilder
+from .builder import OpBuilder
 
 
-class UtilsBuilder(SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else OpBuilder):
+class UtilsBuilder(OpBuilder):
     BUILD_VAR = "DS_BUILD_UTILS"
     NAME = "utils"
 
@@ -15,7 +15,4 @@ class UtilsBuilder(SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else OpBuilde
         return f'deepspeed.ops.{self.NAME}_op'
 
     def sources(self):
-        return ['csrc/utils/flatten_unflatten.cpp']
-
-    def sycl_sources(self):
         return ['csrc/utils/flatten_unflatten.cpp']

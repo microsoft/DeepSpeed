@@ -2,11 +2,10 @@
 Copyright 2020 The Microsoft DeepSpeed Team
 """
 import os
-from .builder import TorchCPUOpBuilder, SYCLOpBuilder
+from .builder import TorchCPUOpBuilder
 
 
-class CPUAdagradBuilder(
-        SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else TorchCPUOpBuilder):
+class CPUAdagradBuilder(TorchCPUOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAGRAD"
     NAME = "cpu_adagrad"
 
@@ -35,9 +34,3 @@ class CPUAdagradBuilder(
                              "hiprand"),
             ]
         return ['csrc/includes'] + CUDA_INCLUDE
-
-    def sycl_sources(self):
-        return []
-
-    def sycl_include_paths(self):
-        return []

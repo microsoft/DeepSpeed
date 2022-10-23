@@ -5,7 +5,6 @@ import json
 import math
 import torch
 from torch.autograd import Function
-from ... import op_builder
 import torch.nn as nn
 from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
@@ -776,7 +775,7 @@ class DeepSpeedTransformerInference(nn.Module):
         data_type = torch.half if config.fp16 else torch.float
         global inference_cuda_module
         if inference_cuda_module is None:
-            builder = op_builder.InferenceBuilder()
+            builder = get_accelerator().create_op_builder("InferenceBuilder")
             inference_cuda_module = builder.load()
 
         if DeepSpeedTransformerInference.layer_id == 1:

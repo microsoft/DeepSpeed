@@ -1,8 +1,7 @@
-from .builder import CUDAOpBuilder, SYCLOpBuilder
+from .builder import CUDAOpBuilder
 
 
-class FeedForwardBuilder(
-        SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
+class FeedForwardBuilder(CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_FEEDFORWARD"
     NAME = "feedforward"
 
@@ -17,14 +16,3 @@ class FeedForwardBuilder(
 
     def include_paths(self):
         return []
-
-    def sycl_sources(self):
-        return [
-            'third-party/sycl_kernels/csrc/transformer/sycl/ds_feedforward_sycl.dp.cpp',
-            'third-party/sycl_kernels/csrc/transformer/sycl/onemkl_wrappers.dp.cpp',
-            'third-party/sycl_kernels/csrc/transformer/sycl/onednn_wrappers.dp.cpp',
-            'third-party/sycl_kernels/csrc/transformer/sycl/general_kernels.dp.cpp',
-        ]
-
-    def sycl_include_paths(self):
-        return ['third-party/sycl_kernels/csrc/includes', 'csrc/includes']

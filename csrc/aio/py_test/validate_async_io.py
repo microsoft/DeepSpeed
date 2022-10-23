@@ -4,5 +4,5 @@ Licensed under the MIT license.
 
 Functionality of swapping optimizer tensors to/from (NVMe) storage devices.
 """
-from deepspeed.ops.aio import AsyncIOBuilder
-assert AsyncIOBuilder().is_compatible()
+from deepspeed.accelerator.real_accelerator import get_accelerator
+assert get_accelerator().create_op_builder("AsyncIOBuilder").is_compatible()

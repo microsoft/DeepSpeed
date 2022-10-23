@@ -1,11 +1,10 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
-from .builder import CUDAOpBuilder, SYCLOpBuilder
+from .builder import CUDAOpBuilder
 
 
-class TransformerBuilder(
-        SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
+class TransformerBuilder(CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_TRANSFORMER"
     NAME = "transformer"
 
@@ -42,21 +41,4 @@ class TransformerBuilder(
                 '{}/hiprand/include'.format(ROCM_HOME),
                 '{}/rocrand/include'.format(ROCM_HOME)
             ]
-        return includes
-
-    def sycl_sources(self):
-        return [
-            'third-party/sycl_kernels/csrc/transformer/sycl/onednn_wrappers.dp.cpp',
-            'third-party/sycl_kernels/csrc/transformer/sycl/ds_transformer_sycl.dp.cpp',
-            'third-party/sycl_kernels/csrc/transformer/sycl/onemkl_wrappers.dp.cpp',
-            'third-party/sycl_kernels/csrc/transformer/sycl/transform_kernels.dp.cpp',
-            'third-party/sycl_kernels/csrc/transformer/sycl/gelu_kernels.dp.cpp',
-            'third-party/sycl_kernels/csrc/transformer/sycl/dropout_kernels.dp.cpp',
-            'third-party/sycl_kernels/csrc/transformer/sycl/normalize_kernels.dp.cpp',
-            'third-party/sycl_kernels/csrc/transformer/sycl/softmax_kernels.dp.cpp',
-            'third-party/sycl_kernels/csrc/transformer/sycl/general_kernels.dp.cpp'
-        ]
-
-    def sycl_include_paths(self):
-        includes = ['third-party/sycl_kernels/csrc/includes']
         return includes

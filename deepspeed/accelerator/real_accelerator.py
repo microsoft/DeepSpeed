@@ -21,8 +21,7 @@ def get_accelerator():
             pass
         else:
             ds_accelerator = XPU_Accelerator()
-            assert ds_accelerator.is_available(), \
-                f'XPU_Accelerator fails is_available() test (import was successful)'
+            _validate_accelerator(ds_accelerator)
             return ds_accelerator
 
         from deepspeed.accelerator.cuda_accelerator import CUDA_Accelerator

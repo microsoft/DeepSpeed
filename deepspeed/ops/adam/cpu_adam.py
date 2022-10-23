@@ -4,9 +4,9 @@ Copyright 2020 The Microsoft DeepSpeed Team
 
 import torch
 from cpuinfo import get_cpu_info
-from ..op_builder import CPUAdamBuilder
 from deepspeed.utils import logger
 from deepspeed.utils.logging import should_log_le
+from deepspeed.accelerator import get_accelerator
 
 
 class DeepSpeedCPUAdam(torch.optim.Optimizer):
@@ -91,7 +91,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
         DeepSpeedCPUAdam.optimizer_id = DeepSpeedCPUAdam.optimizer_id + 1
         self.adam_w_mode = adamw_mode
         self.fp32_optimizer_states = fp32_optimizer_states
-        self.ds_opt_adam = CPUAdamBuilder().load()
+        self.ds_opt_adam = get_accelerator().op_build_class("CPUAdamBuilder()").load()
 
         self.ds_opt_adam.create_adam(self.opt_id,
                                      lr,

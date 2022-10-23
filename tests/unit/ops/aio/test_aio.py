@@ -59,11 +59,12 @@ class TestRead(DistributedTest):
             torch.empty(IO_SIZE,
                         dtype=torch.uint8,
                         device='cpu'))
-        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE,
-                                               QUEUE_DEPTH,
-                                               single_submit,
-                                               overlap_events,
-                                               IO_PARALLEL)
+        h = get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_handle(
+            BLOCK_SIZE,
+            QUEUE_DEPTH,
+            single_submit,
+            overlap_events,
+            IO_PARALLEL)
 
         _validate_handle_state(h, single_submit, overlap_events)
 
@@ -88,11 +89,12 @@ class TestRead(DistributedTest):
                             dtype=torch.uint8,
                             device='cpu'))
 
-        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE,
-                                               QUEUE_DEPTH,
-                                               single_submit,
-                                               overlap_events,
-                                               IO_PARALLEL)
+        h = get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_handle(
+            BLOCK_SIZE,
+            QUEUE_DEPTH,
+            single_submit,
+            overlap_events,
+            IO_PARALLEL)
 
         _validate_handle_state(h, single_submit, overlap_events)
 
@@ -116,11 +118,12 @@ class TestWrite(DistributedTest):
         ref_file, ref_buffer = _do_ref_write(tmpdir)
         aio_file, aio_buffer = _get_test_file_and_buffer(tmpdir, ref_buffer, False)
 
-        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE,
-                                               QUEUE_DEPTH,
-                                               single_submit,
-                                               overlap_events,
-                                               IO_PARALLEL)
+        h = get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_handle(
+            BLOCK_SIZE,
+            QUEUE_DEPTH,
+            single_submit,
+            overlap_events,
+            IO_PARALLEL)
 
         _validate_handle_state(h, single_submit, overlap_events)
 
@@ -137,11 +140,12 @@ class TestWrite(DistributedTest):
         ref_file, ref_buffer = _do_ref_write(tmpdir)
         aio_file, aio_buffer = _get_test_file_and_buffer(tmpdir, ref_buffer, cuda_device)
 
-        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE,
-                                               QUEUE_DEPTH,
-                                               single_submit,
-                                               overlap_events,
-                                               IO_PARALLEL)
+        h = get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_handle(
+            BLOCK_SIZE,
+            QUEUE_DEPTH,
+            single_submit,
+            overlap_events,
+            IO_PARALLEL)
 
         _validate_handle_state(h, single_submit, overlap_events)
 
@@ -183,11 +187,12 @@ class TestAsyncQueue(DistributedTest):
 
         single_submit = True
         overlap_events = True
-        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE,
-                                               QUEUE_DEPTH,
-                                               single_submit,
-                                               overlap_events,
-                                               IO_PARALLEL)
+        h = get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_handle(
+            BLOCK_SIZE,
+            QUEUE_DEPTH,
+            single_submit,
+            overlap_events,
+            IO_PARALLEL)
 
         _validate_handle_state(h, single_submit, overlap_events)
 
@@ -221,11 +226,12 @@ class TestAsyncQueue(DistributedTest):
 
         single_submit = True
         overlap_events = True
-        h = AsyncIOBuilder().load().aio_handle(BLOCK_SIZE,
-                                               QUEUE_DEPTH,
-                                               single_submit,
-                                               overlap_events,
-                                               IO_PARALLEL)
+        h = get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_handle(
+            BLOCK_SIZE,
+            QUEUE_DEPTH,
+            single_submit,
+            overlap_events,
+            IO_PARALLEL)
 
         _validate_handle_state(h, single_submit, overlap_events)
 

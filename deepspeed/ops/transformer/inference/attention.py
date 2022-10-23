@@ -4,7 +4,6 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import math
 import torch
 from torch.autograd import Function
-from ... import op_builder
 import torch.nn as nn
 from packaging import version as pkg_version
 from deepspeed.utils.logging import log_dist
@@ -179,7 +178,7 @@ class DeepSpeedAttention(nn.Module):
         data_type_fp = torch.half if config.fp16 else torch.float
         global inference_cuda_module
         if inference_cuda_module is None:
-            builder = op_builder.InferenceBuilder()
+            builder = get_accelerator().create_op_builder("InferenceBuilder")
             inference_cuda_module = builder.load()
 
         if DeepSpeedAttention.layer_id == 1:

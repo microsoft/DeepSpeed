@@ -1,11 +1,10 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
-from .builder import CUDAOpBuilder, SYCLOpBuilder
+from .builder import CUDAOpBuilder
 
 
-class FusedAdamBuilder(SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder
-                       ):
+class FusedAdamBuilder(CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_FUSED_ADAM"
     NAME = "fused_adam"
 
@@ -31,16 +30,3 @@ class FusedAdamBuilder(SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDA
             nvcc_flags.extend(['-lineinfo',
                                '--use_fast_math'] + self.compute_capability_args())
         return nvcc_flags
-
-    def sycl_sources(self):
-        return [
-            'csrc/adam/fused_adam_frontend.cpp',
-            'third-party/sycl_kernels/csrc/adam/sycl/multi_tensor_adam.dp.cpp',
-        ]
-
-    def sycl_include_paths(self):
-        return [
-            'third-party/sycl_kernels/csrc/includes',
-            'third-party/sycl_kernels/csrc/adam',
-            'csrc/includes'
-        ]

@@ -2,11 +2,10 @@
 Copyright 2020 The Microsoft DeepSpeed Team
 """
 import os
-from .builder import TorchCPUOpBuilder, SYCLOpBuilder
+from .builder import TorchCPUOpBuilder
 
 
-class CPUAdamBuilder(
-        SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else TorchCPUOpBuilder):
+class CPUAdamBuilder(TorchCPUOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAM"
     NAME = "cpu_adam"
 
@@ -41,16 +40,3 @@ class CPUAdamBuilder(
                              "hiprand"),
             ]
         return ['csrc/includes'] + CUDA_INCLUDE
-
-    def sycl_sources(self):
-        return [
-            'third-party/sycl_kernels/csrc/adam/sycl/cpu_adam.dp.cpp',
-            'third-party/sycl_kernels/csrc/adam/sycl/custom_sycl_kernel.dp.cpp',
-        ]
-
-    def sycl_include_paths(self):
-        return [
-            'third-party/sycl_kernels/csrc/includes',
-            'third-party/sycl_kernels/csrc/adam',
-            'csrc/includes'
-        ]

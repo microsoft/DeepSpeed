@@ -1,8 +1,7 @@
-from .builder import CUDAOpBuilder, SYCLOpBuilder
+from .builder import CUDAOpBuilder
 
 
-class NormalizeBuilder(SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder
-                       ):
+class NormalizeBuilder(CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_NORMALIZE"
     NAME = "normalize"
 
@@ -17,12 +16,3 @@ class NormalizeBuilder(SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDA
 
     def include_paths(self):
         return []
-
-    def sycl_sources(self):
-        return [
-            'third-party/sycl_kernels/csrc/transformer/sycl/ds_normalize_sycl.dp.cpp',
-            'third-party/sycl_kernels/csrc/transformer/sycl/normalize_kernels.dp.cpp',
-        ]
-
-    def sycl_include_paths(self):
-        return ['third-party/sycl_kernels/csrc/includes', 'csrc/includes']

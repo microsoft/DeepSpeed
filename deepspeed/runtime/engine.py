@@ -68,7 +68,6 @@ from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchChe
 
 from .pipe.module import PipelineModule
 from .utils import ensure_directory_exists, get_ma_status
-from ..ops.op_builder import UtilsBuilder
 from ..ops.adam import FusedAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE
@@ -369,7 +368,7 @@ class DeepSpeedEngine(Module):
                 print_configuration(self, "DeepSpeedEngine")
 
         # Load pre-installed or JIT compile (un)flatten ops
-        util_ops = UtilsBuilder().load()
+        util_ops = get_accelerator().create_op_builder("UtilsBuilder").load()
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 

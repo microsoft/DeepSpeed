@@ -1,8 +1,7 @@
-from .builder import CUDAOpBuilder, SYCLOpBuilder
+from .builder import CUDAOpBuilder
 
 
-class StridedBatchGemmBuilder(
-        SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
+class StridedBatchGemmBuilder(CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_STRIDEDBATCHGEMM"
     NAME = "stridedbatchgemm"
 
@@ -17,13 +16,3 @@ class StridedBatchGemmBuilder(
 
     def include_paths(self):
         return []
-
-    def sycl_sources(self):
-        return [
-            'third-party/sycl_kernels/csrc/transformer/sycl/ds_stridedbatchgemm_sycl.dp.cpp',
-            'third-party/sycl_kernels/csrc/transformer/sycl/onemkl_wrappers.dp.cpp',
-            'third-party/sycl_kernels/csrc/transformer/sycl/onednn_wrappers.dp.cpp',
-        ]
-
-    def sycl_include_paths(self):
-        return ['third-party/sycl_kernels/csrc/includes', 'csrc/includes']

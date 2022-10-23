@@ -21,7 +21,7 @@ def allclose(x, y):
 
 @pytest.fixture(scope="module")
 def inference_module():
-    return InferenceBuilder().load()
+    return get_accelerator().create_op_builder("InferenceBuilder").load()
 
 
 def res_add_bias_ref(hidden_state,
