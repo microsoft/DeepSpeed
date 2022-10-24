@@ -1510,6 +1510,6 @@ Different pruning sets, this is used for different pruning parameters. In this e
 
 <i>**pipeline_stage**</i>: [boolean]
 
-| Description                                   | Default |
-| --------------------------------------------- | ------- |
+| Description                                                   | Default |
+| ------------------------------------------------------------- | ------- |
 | Use pipeline stages to parallelize the writing of checkpoints.| `false` |
