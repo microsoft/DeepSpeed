@@ -79,7 +79,8 @@ cuda_minor_mismatch_ok = {
          "11.4",
          "11.5",
          "11.6",
-         "11.7"],
+         "11.7",
+         "11.8"],
 }
 
 
@@ -405,18 +406,6 @@ class OpBuilder(ABC):
             elif 'avx2' in cpu_info['flags']:
                 return '-D__AVX256__'
         return '-D__SCALAR__'
-
-    def python_requirements(self):
-        '''
-        Override if op wants to define special dependencies, otherwise will
-        take self.name and load requirements-<op-name>.txt if it exists.
-        '''
-        path = f'requirements/requirements-{self.name}.txt'
-        requirements = []
-        if os.path.isfile(path):
-            with open(path, 'r') as fd:
-                requirements = [r.strip() for r in fd.readlines()]
-        return requirements
 
     def command_exists(self, cmd):
         if '|' in cmd:
