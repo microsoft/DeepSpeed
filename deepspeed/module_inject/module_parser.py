@@ -18,6 +18,12 @@ parser.add_argument(
         default="",
         help="target module inside model file",
         )
+parser.add_argument(
+        "--output_file",
+        "-o",
+        default="./module_parser_output.csv",
+        help="output file to write parser results to",
+        )
 args = parser.parse_args()
 
 
@@ -68,10 +74,10 @@ def check_layer_norm(source):
         return False
 
 
-def update_name_list(name, matches):
+def update_name_list(parent_name, matches):
     new_list = []
     for match, linear in matches:    
-        new_list = new_list + [name + "." + match] 
+        new_list = new_list + [parent_name + "." + match] 
     return new_list
 
 
@@ -124,7 +130,8 @@ if __name__ == "__main__":
          
         if result & need_all_reduce:
             #add linear layers to list
-            update_name_list(name, linear_matches)
+            #print(linear_matches)
+            linear_matches = update_name_list("self", linear_matches)
             linear_layer_list.append(linear_matches)
         if matches is not None:
             while len(matches):
@@ -136,9 +143,15 @@ if __name__ == "__main__":
     
     #remove duplicate names. All gems with same parent.name are all-reduced
     injection_policy_list = set(injection_policy_list)
-    
+
     #print injection policy
     injection_policy = {}
     injection_policy.update({args.module: tuple(injection_policy_list)})
+    
+    #write results to output file
+    ofile = open(args.output_file, "a")
+    ofile.write(str(injection_policy) + '\n')
+    ofile.close()
+
     print("injection_policy={" + args.module + ": " + str(tuple(injection_policy_list)) + "}")
     
