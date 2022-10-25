@@ -91,7 +91,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
         DeepSpeedCPUAdam.optimizer_id = DeepSpeedCPUAdam.optimizer_id + 1
         self.adam_w_mode = adamw_mode
         self.fp32_optimizer_states = fp32_optimizer_states
-        self.ds_opt_adam = get_accelerator().op_build_class("CPUAdamBuilder()").load()
+        self.ds_opt_adam = get_accelerator().create_op_builder("CPUAdamBuilder()").load()
 
         self.ds_opt_adam.create_adam(self.opt_id,
                                      lr,
