@@ -783,6 +783,7 @@ class Autotuner:
 
         exp_paths = []
         for mbs in tuning_micro_batch_sizes:
+            logger.info(f"tuning micro batch size: {mbs}")
             ds_config[TRAIN_MICRO_BATCH_SIZE_PER_GPU] = mbs
             gas = max_train_batch_size_per_gpu // mbs
             ds_config[GRADIENT_ACCUMULATION_STEPS] = gas
