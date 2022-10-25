@@ -1195,15 +1195,19 @@ def get_model_profile(
             input = torch.ones(()).new_empty((*input_shape, ))
 
         args = [input]
-
     assert (len(args) > 0) or (len(kwargs) > 0), "args and/or kwargs must be specified if input_shape is None"
 
     for _ in range(warm_up):
-        _ = model(*args, **kwargs)
-
+        if kwargs:
+            _ = model(*args, **kwargs)
+        else:
+            _ = model(*args)
     prof.start_profile(ignore_list=ignore_modules)
 
-    _ = model(*args, **kwargs)
+    if kwargs:
+        _ = model(*args, **kwargs)
+    else:
+        _ = model(*args)
 
     flops = prof.get_total_flops()
     macs = prof.get_total_macs()
