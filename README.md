@@ -37,7 +37,9 @@
 <img src="docs/assets/images/3-pillars-new.png" width="800px">
 
 
-## <img src="docs/assets/images/t-symbol.png" width="100px"> DeepSpeed-Training 
+<!-- ## <img src="docs/assets/images/t-symbol.png" width="80px"> DeepSpeed-Training -->
+
+## <img src="docs/assets/images/ds-train-header.png" width="600px">
 
 DeepSpeed offers a confluence of system innovations, that has made large scale DL training effective, and efficient, greatly improved ease of use, and redefined the DL training landscape in terms of scale that is possible. These innovations such as ZeRO, 3D-Parallelism, DeepSpeed-MoE, ZeRO-Infinity, etc. fall under the training pillar. Learn more: [DeepSpeed-Training](https://www.deepspeed.ai/training/)
 
