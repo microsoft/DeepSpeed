@@ -15,6 +15,7 @@ from deepspeed.runtime.swap_tensor.utils import swap_in_tensors, swap_out_tensor
     get_sized_buffers
 from deepspeed.runtime.swap_tensor.async_swapper import AsyncTensorSwapper
 from deepspeed.runtime.swap_tensor.optimizer_utils import OptimizerSwapper
+from deepspeed.accelerator import get_accelerator
 
 DEBUG_MODE = False
 
