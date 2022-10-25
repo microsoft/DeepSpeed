@@ -857,6 +857,17 @@ class Autotuner:
             exp, metric_val = self.run_ds_config(ds_config, exp_name)
             if metric_val:
                 self.update_records(tuning_space_name, exp, metric_val, 1)
+                with mlflow.start_run(nested=True, run_name=exp['name']) if has_mlflow else nullcontext():
+                    metric_file = exp[DS_CONFIG][AUTOTUNING][AUTOTUNING_METRIC_PATH]
+                    logger.info(f"starting child run for {exp['name']}")
+                    if os.path.exists(metric_file):
+                        with open(metric_file, 'r') as f:
+                            results = hjson.load(f)
+                            if has_mlflow:
+                                for metric in results:
+                                    mlflow.log_metric(metric, results[metric])
+                    else:
+                        self.update_records(tuning_space_name, exp, 0, 1)
                 if metric_val > prev_best_metric_val * (1 + METRIC_PERCENT_DIFF_CONST):
                     prev_best_metric_val = metric_val
                     prev_best_mbs = mbs
