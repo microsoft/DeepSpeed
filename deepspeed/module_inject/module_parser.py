@@ -112,6 +112,8 @@ if __name__ == "__main__":
     linear_layer_list = []
     injection_policy_list = []
     need_all_reduce = False
+    
+    model_name = re.search(r"modeling_(.*?).py", args.file)
 
     #parse file as abstract syntax tree
     with open(args.file, "r") as f:
@@ -130,7 +132,6 @@ if __name__ == "__main__":
          
         if result & need_all_reduce:
             #add linear layers to list
-            #print(linear_matches)
             linear_matches = update_name_list("self", linear_matches)
             linear_layer_list.append(linear_matches)
         if matches is not None:
@@ -145,13 +146,19 @@ if __name__ == "__main__":
     injection_policy_list = set(injection_policy_list)
 
     #print injection policy
-    injection_policy = {}
-    injection_policy.update({args.module: tuple(injection_policy_list)})
-    
-    #write results to output file
-    ofile = open(args.output_file, "a")
-    ofile.write(str(injection_policy) + '\n')
-    ofile.close()
+    #injection_policy = {}
+    #injection_policy.update({args.module: tuple(injection_policy_list)})
+    #print("injection_policy={" + args.module + ": " + str(tuple(injection_policy_list)) + "}")
 
-    print("injection_policy={" + args.module + ": " + str(tuple(injection_policy_list)) + "}")
+    #write results to output file
+    if len(injection_policy_list):
+        output_string = model_name.group(1) + "=dict(" + args.module + "=("
+        for gem in injection_policy_list:
+            output_string = output_string + '"' + gem + '", '
+        output_string = output_string + ")),"
+
+        ofile = open(args.output_file, "a")
+        ofile.write(output_string + '\n')
+        ofile.close()
+
     
