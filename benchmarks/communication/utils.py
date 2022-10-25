@@ -106,8 +106,7 @@ def sync_all():
 
 def max_numel(comm_op, dtype, mem_factor, local_rank, args):
     dtype_size = _element_size(dtype)
-    max_memory_per_gpu = get_accelerator().get_device_properties(
-        local_rank).total_memory * mem_factor
+    max_memory_per_gpu = get_accelerator().total_memory(local_rank) * mem_factor
     if comm_op == 'all_reduce' or comm_op == 'pt2pt' or comm_op == 'broadcast':
         elements_per_gpu = int(max_memory_per_gpu // dtype_size)
     elif comm_op == 'all_gather':

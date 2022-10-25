@@ -185,8 +185,8 @@ ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
 class GPUTimer:
     def __init__(self):
         super().__init__()
-        self.start = get_accelerator().event()  # noqa: F821
-        self.stop = get_accelerator().event()  # noqa: F821
+        self.start = get_accelerator().Event()  # noqa: F821
+        self.stop = get_accelerator().Event()  # noqa: F821
 
     def record(self):
         self.start.record()
