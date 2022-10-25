@@ -43,10 +43,18 @@ def inf_kwargs(task):
                               "text-generation"),
                          ])
 @pytest.mark.parametrize("cuda_graphs", [True, False])
+@pytest.mark.parametrize("use_cuda_events", [True, False])
 class TestModelProfiling(DistributedTest):
     world_size = 1
 
-    def test(self, model, task, query, inf_kwargs, cuda_graphs, dtype=torch.float16):
+    def test(self,
+             model,
+             task,
+             query,
+             inf_kwargs,
+             cuda_graphs,
+             use_cuda_events,
+             dtype=torch.float16):
         if cuda_graphs and "bert" not in model:
             pytest.skip(f"CUDA Graph not supported for {model}")
 
@@ -60,7 +68,7 @@ class TestModelProfiling(DistributedTest):
                                               replace_with_kernel_inject=True,
                                               replace_method="auto",
                                               enable_cuda_graph=cuda_graphs)
-        pipe.model.profile_model_time()
+        pipe.model.profile_model_time(use_cuda_events=use_cuda_events)
 
         e2e_times = []
         model_times = []
