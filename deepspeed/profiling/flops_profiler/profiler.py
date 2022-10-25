@@ -514,15 +514,15 @@ def _gelu_flops_compute(input):
     return torch.numel(input), 0
 
 
-def _pool_flops_compute(
-    input,
-    kernel_size,
-    stride=None,
-    padding=0,
-    ceil_mode=False,
-    count_include_pad=True,
-    divisor_override=None,
-):
+def _pool_flops_compute(input,
+                        kernel_size,
+                        stride=None,
+                        padding=0,
+                        dilation=None,
+                        ceil_mode=False,
+                        count_include_pad=True,
+                        divisor_override=None,
+                        return_indices=None):
     return torch.numel(input), 0
 
 
