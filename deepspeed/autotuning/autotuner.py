@@ -805,10 +805,10 @@ class Autotuner:
         self.rm.schedule_experiments(exp_paths)
         self.rm.run()
         for exp_id, (exp, err) in self.rm.finished_experiments.items():
-            with mlflow.start_run(nested=True, run_name=exp_name) if has_mlflow else nullcontext():
-                if exp:
+            if exp:
+                with mlflow.start_run(nested=True, run_name=exp['name']) if has_mlflow else nullcontext():
                     metric_file = exp[DS_CONFIG][AUTOTUNING][AUTOTUNING_METRIC_PATH]
-
+                    logger.info(f"starting child run for {exp['name']}")
                     if os.path.exists(metric_file):
                         with open(metric_file, 'r') as f:
                             results = hjson.load(f)
@@ -822,9 +822,9 @@ class Autotuner:
                                     mlflow.log_metric(metric, results[metric])
                     else:
                         self.update_records(tuning_space_name, exp, 0, 1)
-                else:
-                    mbs = exp[DS_CONFIG][TRAIN_MICRO_BATCH_SIZE_PER_GPU]
-                    logger.info(f"micro batch size = {mbs} was not run successfully")
+            else:
+                mbs = exp[DS_CONFIG][TRAIN_MICRO_BATCH_SIZE_PER_GPU]
+                logger.info(f"micro batch size = {mbs} was not run successfully")
         self.rm.clear()
 
         if tuning_micro_batch_sizes_overwritten:
