@@ -34,7 +34,7 @@
 
 # DeepSpeed's three innovation pillars
 
-<img src="docs/assets/images/3pillars.png" width="800px">
+<img src="docs/assets/images/3-pillars-new.png" width="800px">
 
 
 ## DeepSpeed-Training
