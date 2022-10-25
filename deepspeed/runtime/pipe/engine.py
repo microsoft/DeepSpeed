@@ -4,17 +4,14 @@ from types import MethodType
 
 import torch
 from deepspeed import comm as dist
-
 from deepspeed.utils import logger
 from deepspeed.utils.timer import ThroughputTimer
 
-from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
-from ..utils import PartitionedTensor
 from ..dataloader import RepeatingLoader
-
-from .module import PipelineModule, PipelineError
-from . import p2p
-from . import schedule
+from ..engine import MEMORY_OPT_ALLREDUCE_SIZE, DeepSpeedEngine
+from ..utils import PartitionedTensor
+from . import p2p, schedule
+from .module import PipelineError, PipelineModule
 
 TARGET_ID = -2
 LOG_STAGE = -2
@@ -332,7 +329,7 @@ class PipelineEngine(DeepSpeedEngine):
                 self.global_steps):
                 self.reset_activation_shape()
 
-        if data_iter:
+        if data_iter is not None:
             self.set_dataiterator(data_iter)
 
         self.module.train()
