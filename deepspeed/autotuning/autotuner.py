@@ -783,7 +783,6 @@ class Autotuner:
 
         exp_paths = []
         for mbs in tuning_micro_batch_sizes:
-            logger.info(f"tuning micro batch size: {mbs}")
             ds_config[TRAIN_MICRO_BATCH_SIZE_PER_GPU] = mbs
             gas = max_train_batch_size_per_gpu // mbs
             ds_config[GRADIENT_ACCUMULATION_STEPS] = gas
@@ -809,7 +808,6 @@ class Autotuner:
             if exp:
                 with mlflow.start_run(nested=True, run_name=exp['name']) if has_mlflow else nullcontext():
                     metric_file = exp[DS_CONFIG][AUTOTUNING][AUTOTUNING_METRIC_PATH]
-                    logger.info(f"starting child run for {exp['name']}")
                     if os.path.exists(metric_file):
                         with open(metric_file, 'r') as f:
                             results = hjson.load(f)
@@ -859,7 +857,6 @@ class Autotuner:
                 self.update_records(tuning_space_name, exp, metric_val, 1)
                 with mlflow.start_run(nested=True, run_name=exp['name']) if has_mlflow else nullcontext():
                     metric_file = exp[DS_CONFIG][AUTOTUNING][AUTOTUNING_METRIC_PATH]
-                    logger.info(f"starting child run for {exp['name']}")
                     if os.path.exists(metric_file):
                         with open(metric_file, 'r') as f:
                             results = hjson.load(f)
