@@ -54,7 +54,7 @@ def get_module(node):
         for method in methods:
             if method.name == "__init__":
                 source = ast.get_source_segment(file_content, method)
-                match = re.search("nn.ModuleList\(\s*\[(.*?)\(", source)
+                match = re.search("nn.ModuleList\(\s*\[\s*(.*?)\(", source)
                 if match is not None:
                     module_list = module_list + [match.group(1)]
     if module_list is not None:
@@ -145,6 +145,9 @@ if __name__ == "__main__":
     modules = get_module(node)
     module = modules[0]
 
+    num_modules = len(modules)
+        
+
     #get source code of specified module
     init_source, forward_source = get_class_source(node, module)
 
@@ -180,7 +183,7 @@ if __name__ == "__main__":
         output_string = model_name.group(1) + "=dict(" + module + "=("
         for gem in injection_policy_list:
             output_string = output_string + '"' + gem + '", '
-        output_string = output_string + ")),"
+        output_string = output_string + "))," + str(num_modules)
 
         ofile = open(args.output_file, "a")
         ofile.write(output_string + '\n')
