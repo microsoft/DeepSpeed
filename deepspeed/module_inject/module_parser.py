@@ -11,13 +11,13 @@ parser.add_argument(
         default="",
         help="filepath of model file to be parsed",
         )
-parser.add_argument(
-        "--module",
-        "-m",
-        type=str,
-        default="",
-        help="target module inside model file",
-        )
+#parser.add_argument(
+#        "--module",
+#        "-m",
+#        type=str,
+#        default="",
+#        help="target module inside model file",
+#        )
 parser.add_argument(
         "--output_file",
         "-o",
@@ -44,13 +44,31 @@ def get_class_source(node, class_name):
             break
     return init_source, forward_source
 
-                    
+
+def get_module(node):
+    module_list = []  
+
+    classes = [n for n in node.body if isinstance(n, ast.ClassDef)]
+    for class_ in classes:
+        methods = [n for n in class_.body if isinstance(n, ast.FunctionDef)]
+        for method in methods:
+            if method.name == "__init__":
+                source = ast.get_source_segment(file_content, method)
+                match = re.search("nn.ModuleList\(\s*\[(.*?)\(", source)
+                if match is not None:
+                    module_list = module_list + [match.group(1)]
+    if module_list is not None:
+        return module_list
+    else:
+        print("Module not found")
+        return None
+
 
 def get_linear_layers(source):
     linear_matches = re.findall(r"self.(.*?) = nn.(Linear)", source)
     
     #check for attributes at stack level
-    stack_matches = re.findall(r"self.(.*?) = nn.ModuleList\(\s*\[(.*?)\(", source)
+    #stack_matches = re.findall(r"self.(.*?) = nn.ModuleList\(\s*\[(.*?)\(", source)
 
     #check for attributes at block class level     
     block_matches = re.findall(r"self.(.*?).append\((.*?)\(", source)
@@ -58,7 +76,7 @@ def get_linear_layers(source):
     #check for attributes at layer class level
     layer_matches = re.findall(r"self.(.*?) = (\w*?)\(", source)
 
-    matches = stack_matches + block_matches + layer_matches
+    matches = block_matches + layer_matches
     
     if not linear_matches:
         return False, linear_matches, matches
@@ -76,8 +94,11 @@ def check_layer_norm(source):
 
 def update_name_list(parent_name, matches):
     new_list = []
-    for match, linear in matches:    
-        new_list = new_list + [parent_name + "." + match] 
+    for match, linear in matches:
+        if parent_name == "self":
+            new_list = new_list + [match]
+        else:
+            new_list = new_list + [parent_name + "." + match] 
     return new_list
 
 
@@ -120,8 +141,12 @@ if __name__ == "__main__":
         file_content = f.read()
         node = ast.parse(file_content)
 
+    #get module(s)
+    modules = get_module(node)
+    module = modules[0]
+
     #get source code of specified module
-    init_source, forward_source = get_class_source(node, args.module)
+    init_source, forward_source = get_class_source(node, module)
 
     if init_source != "" and forward_source != "":
         #search for functions (LayerNorm, GroupNorm, etc) that need all reduce
@@ -152,7 +177,7 @@ if __name__ == "__main__":
 
     #write results to output file
     if len(injection_policy_list):
-        output_string = model_name.group(1) + "=dict(" + args.module + "=("
+        output_string = model_name.group(1) + "=dict(" + module + "=("
         for gem in injection_policy_list:
             output_string = output_string + '"' + gem + '", '
         output_string = output_string + ")),"
