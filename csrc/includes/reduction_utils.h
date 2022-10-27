@@ -86,25 +86,25 @@ reduce::partitioned_block<rop::Max, 2>(tb, warp, max_val);
 After which, each pair of warps would have coherent data with each other. Note, this API will not
 provide correct results if the number of warps per partition is not a power of 2.
 */
-template <ROpType Op, int num_warps>
+template <ROpType Op, int num_threads>
 DS_D_INLINE void partitioned_block(cg::thread_block& tb,
                                    cg::thread_block_tile<hw_warp_size>& warp,
                                    float& val);
 
-template <ROpType Op1, ROpType Op2, int num_warps>
+template <ROpType Op1, ROpType Op2, int num_threads>
 DS_D_INLINE void partitioned_block(cg::thread_block& tb,
                                    cg::thread_block_tile<hw_warp_size>& warp,
                                    float& val1,
                                    float& val2);
 
-template <ROpType Op1, ROpType Op2, ROpType Op3, int num_warps>
+template <ROpType Op1, ROpType Op2, ROpType Op3, int num_threads>
 DS_D_INLINE void partitioned_block(cg::thread_block& tb,
                                    cg::thread_block_tile<hw_warp_size>& warp,
                                    float& val1,
                                    float& val2,
                                    float& val3);
 
-template <ROpType Op1, ROpType Op2, ROpType Op3, ROpType Op4, int num_warps>
+template <ROpType Op1, ROpType Op2, ROpType Op3, ROpType Op4, int num_threads>
 DS_D_INLINE void partitioned_block(cg::thread_block& tb,
                                    cg::thread_block_tile<hw_warp_size>& warp,
                                    float& val1,
@@ -508,16 +508,21 @@ DS_D_INLINE void block(cg::thread_block& tb,
 Note: for the partitioned blocks, the implementation does not support non-power of 2 blocks in order
 to shorten block scale reduction length.
 */
-template <ROpType Op, int num_warps>
+template <ROpType Op, int num_threads>
 DS_D_INLINE void partitioned_block(cg::thread_block& tb,
                                    cg::thread_block_tile<hw_warp_size>& warp,
                                    float& val)
 {
-    const int warp_offset = warp.meta_group_rank() & ~(num_warps - 1);
-    _block<num_warps, Op>(tb, warp, val, warp_offset);
+    if (num_threads <= hw_warp_size) {
+        _warp<Op, num_threads>(warp, val);
+    } else {
+        constexpr int num_warps = num_threads / hw_warp_size;
+        const int warp_offset = warp.meta_group_rank() & ~(num_warps - 1);
+        _block<num_warps, Op>(tb, warp, val, warp_offset);
+    }
 }
 
-template <ROpType Op1, ROpType Op2, int num_warps>
+template <ROpType Op1, ROpType Op2, int num_threads>
 DS_D_INLINE void partitioned_block(cg::thread_block& tb,
                                    cg::thread_block_tile<hw_warp_size>& warp,
                                    float& val1,
@@ -525,14 +530,19 @@ DS_D_INLINE void partitioned_block(cg::thread_block& tb,
 {
     float data[2] = {val1, val2};
 
-    const int warp_offset = warp.meta_group_rank() & ~(num_warps - 1);
-    _block<num_warps, Op1, Op2>(tb, warp, data, warp_offset);
+    if (num_threads <= hw_warp_size) {
+        _warp<Op1, Op2, num_threads>(warp, data);
+    } else {
+        constexpr int num_warps = num_threads / hw_warp_size;
+        const int warp_offset = warp.meta_group_rank() & ~(num_warps - 1);
+        _block<num_warps, Op1, Op2>(tb, warp, data, warp_offset);
+    }
 
     val1 = data[0];
     val2 = data[1];
 }
 
-template <ROpType Op1, ROpType Op2, ROpType Op3, int num_warps>
+template <ROpType Op1, ROpType Op2, ROpType Op3, int num_threads>
 DS_D_INLINE void partitioned_block(cg::thread_block& tb,
                                    cg::thread_block_tile<hw_warp_size>& warp,
                                    float& val1,
@@ -541,15 +551,20 @@ DS_D_INLINE void partitioned_block(cg::thread_block& tb,
 {
     float data[3] = {val1, val2, val3};
 
-    const int warp_offset = warp.meta_group_rank() & ~(num_warps - 1);
-    _block<num_warps, Op1, Op2, Op3>(tb, warp, data, warp_offset);
+    if (num_threads <= hw_warp_size) {
+        _warp<Op1, Op2, Op3, num_threads>(warp, data);
+    } else {
+        constexpr int num_warps = num_threads / hw_warp_size;
+        const int warp_offset = warp.meta_group_rank() & ~(num_warps - 1);
+        _block<num_warps, Op1, Op2, Op3>(tb, warp, data, warp_offset);
+    }
 
     val1 = data[0];
     val2 = data[1];
     val3 = data[2];
 }
 
-template <ROpType Op1, ROpType Op2, ROpType Op3, ROpType Op4, int num_warps>
+template <ROpType Op1, ROpType Op2, ROpType Op3, ROpType Op4, int num_threads>
 DS_D_INLINE void partitioned_block(cg::thread_block& tb,
                                    cg::thread_block_tile<hw_warp_size>& warp,
                                    float& val1,
@@ -559,8 +574,13 @@ DS_D_INLINE void partitioned_block(cg::thread_block& tb,
 {
     float data[4] = {val1, val2, val3, val4};
 
-    const int warp_offset = warp.meta_group_rank() & ~(num_warps - 1);
-    _block<num_warps, Op1, Op2, Op3, Op4>(tb, warp, data, warp_offset);
+    if (num_threads <= hw_warp_size) {
+        _warp<Op1, Op2, Op3, Op4, num_threads>(warp, data);
+    } else {
+        constexpr int num_warps = num_threads / hw_warp_size;
+        const int warp_offset = warp.meta_group_rank() & ~(num_warps - 1);
+        _block<num_warps, Op1, Op2, Op3, Op4>(tb, warp, data, warp_offset);
+    }
 
     val1 = data[0];
     val2 = data[1];
