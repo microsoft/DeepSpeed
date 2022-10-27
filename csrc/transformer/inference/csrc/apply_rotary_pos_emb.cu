@@ -208,6 +208,53 @@ __global__ void apply_rotary_pos_emb1(__half* mixed_query,
 #endif
 }
 
+// update inplace mixed_query and key_layer, which are [B A S N]
+template <typename T>
+__global__ void apply_rotary_pos_emb1_large(T* mixed_query,
+                                            T* key_layer,
+                                            unsigned rotary_dim,
+                                            unsigned seq_len,
+                                            unsigned seq_offset,
+                                            unsigned num_heads,
+                                            unsigned head_size,
+                                            unsigned total_count,
+                                            int max_out_tokens)
+{
+    int id = threadIdx.x;
+    int gid = id >> 5;
+    int lane = id & 0x1f;
+
+    unsigned head_id = blockIdx.x * MAX_WARP_NUM + gid;
+    unsigned seq_index = head_id % seq_len;
+    unsigned offset = head_id * head_size;
+    unsigned k_offset = (seq_index + (head_id / seq_len) * max_out_tokens) * head_size;
+
+    unsigned seq_id = head_id % seq_len + seq_offset;
+    unsigned half_dim = rotary_dim >> 1;
+    if (head_id < total_count) {
+        while (lane < half_dim) {
+            float inv_freq = (float)(lane * 2) / (float)rotary_dim;
+            inv_freq = 1.0 / powf(10000.0, inv_freq) * (float)seq_id;
+
+            float q[2], k[2];
+            q[0] = (float)mixed_query[offset + lane];
+            q[1] = (float)mixed_query[offset + lane + half_dim];
+            k[0] = (float)key_layer[k_offset + lane];
+            k[1] = (float)key_layer[k_offset + lane + half_dim];
+
+            mixed_query[offset + lane] = (__half)(q[0] * cosf(inv_freq) - q[1] * sinf(inv_freq));
+            key_layer[k_offset + lane] = (__half)(k[0] * cosf(inv_freq) - k[1] * sinf(inv_freq));
+
+            mixed_query[offset + lane + half_dim] =
+                (__half)(q[1] * cosf(inv_freq) + q[0] * sinf(inv_freq));
+            key_layer[k_offset + lane + half_dim] =
+                (__half)(k[1] * cosf(inv_freq) + k[0] * sinf(inv_freq));
+
+            lane += WARP_SIZE;
+        }
+    }
+}
+
 template <typename T>
 void launch_apply_rotary_pos_emb(T* mixed_query,
                                  T* key_layer,
@@ -225,7 +272,7 @@ void launch_apply_rotary_pos_emb(T* mixed_query,
     int total_count = batch * num_heads * seq_len;
     dim3 block_dims(1024);
     dim3 grid_dims((total_count - 1) / MAX_WARP_NUM + 1);  // (batch_size);
-    if (rotate_every_two)
+    if (rotate_every_two) {
         apply_rotary_pos_emb<<<grid_dims, block_dims, 0, stream>>>(mixed_query,
                                                                    key_layer,
                                                                    rotary_dim,
@@ -235,16 +282,29 @@ void launch_apply_rotary_pos_emb(T* mixed_query,
                                                                    head_size,
                                                                    total_count,
                                                                    max_out_tokens);
-    else if (rotate_half)
-        apply_rotary_pos_emb1<<<grid_dims, block_dims, 0, stream>>>(mixed_query,
-                                                                    key_layer,
-                                                                    rotary_dim,
-                                                                    seq_len,
-                                                                    offset,
-                                                                    num_heads,
-                                                                    head_size,
-                                                                    total_count,
-                                                                    max_out_tokens);
+    } else if (rotate_half) {
+        if (rotary_dim <= 32) {
+            apply_rotary_pos_emb1<<<grid_dims, block_dims, 0, stream>>>(mixed_query,
+                                                                        key_layer,
+                                                                        rotary_dim,
+                                                                        seq_len,
+                                                                        offset,
+                                                                        num_heads,
+                                                                        head_size,
+                                                                        total_count,
+                                                                        max_out_tokens);
+        } else {
+            apply_rotary_pos_emb1_large<<<grid_dims, block_dims, 0, stream>>>(mixed_query,
+                                                                              key_layer,
+                                                                              rotary_dim,
+                                                                              seq_len,
+                                                                              offset,
+                                                                              num_heads,
+                                                                              head_size,
+                                                                              total_count,
+                                                                              max_out_tokens);
+        }
+    }
 }
 
 template void launch_apply_rotary_pos_emb<float>(float*,
