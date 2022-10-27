@@ -459,7 +459,7 @@ us to obfuscate the details of the partitioned implementation.
 template <ROpType Op, int warp_bound>
 DS_D_INLINE void block(cg::thread_block& tb, cg::thread_block_tile<hw_warp_size>& warp, float& val)
 {
-    _block<warp_bound, Op>(tb, warp, val, 0);
+    _block<warp_bound, Op>(tb, warp, &val, 0);
 }
 
 template <ROpType Op1, ROpType Op2, int warp_bound>
