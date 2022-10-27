@@ -367,6 +367,10 @@ class ValidationMode:
 # "checkpoint": {
 #   tag_validation=["Ignore"|"Warn"|"Fail"]
 #   load_universal=false
+#   use_node_local_storage=false
+#   parallel_write: {
+#     pipeline_stage: [True|False]
+#   }
 # }
 CHECKPOINT = "checkpoint"
 CHECKPOINT_TAG_VALIDATION = "tag_validation"
@@ -379,6 +383,13 @@ CHECKPOINT_TAG_VALIDATION_MODES = [
 
 LOAD_UNIVERSAL_CHECKPOINT = "load_universal"
 LOAD_UNIVERSAL_CHECKPOINT_DEFAULT = False
+
+USE_NODE_LOCAL_STORAGE_CHECKPOINT = "use_node_local_storage"
+USE_NODE_LOCAL_STORAGE_CHECKPOINT_DEFAULT = False
+
+CHECKPOINT_PARALLEL_WRITE = "parallel_write"
+CHECKPOINT_PARALLEL_WRITE_PIPELINE_STAGE = "pipeline_stage"
+CHECKPOINT_PARALLEL_WRITE_PIPELINE_STAGE_DEFAULT = False
 
 #########################################
 # Drop the last incomplete Batch

@@ -4,12 +4,13 @@ Copyright 2020 The Microsoft DeepSpeed Team
 DeepSpeed library
 
 To build wheel on Windows:
-    1. Install pytorch, such as pytorch 1.8 + cuda 11.1
+    1. Install pytorch, such as pytorch 1.12 + cuda 11.6
     2. Install visual cpp build tool
-    3. Launch cmd console with Administrator privilege for creating required symlink folders
+    3. Include cuda toolkit
+    4. Launch cmd console with Administrator privilege for creating required symlink folders
 
 Create a new wheel via the following command:
-    python setup.py bdist_wheel
+    build_win.bat
 
 The wheel will be located at: dist/*.whl
 """
@@ -60,7 +61,8 @@ extras_require = {
     'autotuning': fetch_requirements('requirements/requirements-autotuning.txt'),
     'autotuning_ml': fetch_requirements('requirements/requirements-autotuning-ml.txt'),
     'sparse_attn': fetch_requirements('requirements/requirements-sparse_attn.txt'),
-    'inf': fetch_requirements('requirements/requirements-inf.txt')
+    'inf': fetch_requirements('requirements/requirements-inf.txt'),
+    'sd': fetch_requirements('requirements/requirements-sd.txt')
 }
 
 # Add specific cupy version to both onebit extension variants
@@ -150,11 +152,6 @@ for op_name, builder in ALL_OPS.items():
             builder.warning(f"One can disable {op_name} with {env_var}=0")
         abort(f"Unable to pre-compile {op_name}")
 
-    # If op is compatible update install reqs so it can potentially build/run later
-    if op_compatible:
-        reqs = builder.python_requirements()
-        install_requires += builder.python_requirements()
-
     # if op is compatible but install is not enabled (JIT mode)
     if is_rocm_pytorch and op_compatible and not op_enabled(op_name):
         builder.hipify_extension()
@@ -228,11 +225,12 @@ nccl_version = "0.0"
 hip_version = "0.0"
 if torch_available and torch.version.cuda is not None:
     cuda_version = ".".join(torch.version.cuda.split('.')[:2])
-    if isinstance(torch.cuda.nccl.version(), int):
-        # This will break if minor version > 9
-        nccl_version = ".".join(str(torch.cuda.nccl.version())[:2])
-    else:
-        nccl_version = ".".join(map(str, torch.cuda.nccl.version()[:2]))
+    if sys.platform != "win32":
+        if isinstance(torch.cuda.nccl.version(), int):
+            # This will break if minor version > 9
+            nccl_version = ".".join(str(torch.cuda.nccl.version())[:2])
+        else:
+            nccl_version = ".".join(map(str, torch.cuda.nccl.version()[:2]))
     if hasattr(torch.cuda, 'is_bf16_supported') and torch.cuda.is_available():
         bf16_support = torch.cuda.is_bf16_supported()
 if torch_available and hasattr(torch.version, 'hip') and torch.version.hip is not None:
