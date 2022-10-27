@@ -32,7 +32,7 @@ public:
     Function Arguments :
         val : The __half value to Quantize.
     */
-    DS_D_INLINE int8_t quantize(__half2 val);
+    DS_D_INLINE int8_t quantize(__half val);
 };
 
 template <int numBits>
