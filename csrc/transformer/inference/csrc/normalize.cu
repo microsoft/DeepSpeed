@@ -35,8 +35,9 @@ __global__ void fused_bias_residual_layer_norm(float* output,
     int input_id = id;
     while (input_id < row_stride) {
         inp_reg[k] = vals[input_id + row * row_stride];
-        sum += inp_reg[k++];
+        sum += (beta ? inp_reg[k] : (inp_reg[k] * inp_reg[k]));
         input_id += iteration_stride;
+        k++;
     }
 
     for (int i = 1; i < 32; i *= 2) sum += g.shfl_down(sum, i);
@@ -51,22 +52,23 @@ __global__ void fused_bias_residual_layer_norm(float* output,
 
     for (int i = 1; i < (warp_num); i *= 2) sum += g.shfl_down(sum, i);
     sum = g.shfl(sum, 0);
+    if (beta){
+        float mean = sum / (row_stride);
+        sum = 0.f;
+        for (int f = 0; f < k; f++) {
+            inp_reg[f] -= mean;
+            sum += inp_reg[f] * inp_reg[f];
+        }
+        for (int i = 1; i < 32; i *= 2) sum += g.shfl_down(sum, i);
+        if (g.thread_rank() == 0) shr[gid] = sum;
+        b.sync();
 
-    float mean = sum / (row_stride);
-    sum = 0.f;
-    for (int f = 0; f < k; f++) {
-        inp_reg[f] -= mean;
-        sum += inp_reg[f] * inp_reg[f];
+        if (g.thread_rank() < (warp_num)) sum = shr[g.thread_rank()];
+        b.sync();
+
+        for (int i = 1; i < (warp_num); i *= 2) sum += g.shfl_down(sum, i);
+        sum = g.shfl(sum, 0);
     }
-    for (int i = 1; i < 32; i *= 2) sum += g.shfl_down(sum, i);
-    if (g.thread_rank() == 0) shr[gid] = sum;
-    b.sync();
-
-    if (g.thread_rank() < (warp_num)) sum = shr[g.thread_rank()];
-    b.sync();
-
-    for (int i = 1; i < (warp_num); i *= 2) sum += g.shfl_down(sum, i);
-    sum = g.shfl(sum, 0);
     sum /= (row_stride);
     sum += epsilon;
     sum = __frsqrt_rn(sum);

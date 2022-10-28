@@ -21,5 +21,8 @@ class InferenceBuilder(CUDAOpBuilder):
             'csrc/transformer/inference/csrc/dequantize.cu',
         ]
 
+    def extra_ldflags(self):
+        return ['-lcurand']
+
     def include_paths(self):
         return ['csrc/transformer/inference/includes']

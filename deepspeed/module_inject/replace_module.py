@@ -52,6 +52,7 @@ class ReplaceWithTensorSlicing:
             inference-kernels'
 
     def qkv_copy(self, dst, src):
+        return src
         if src is None:
             return src
         src_shape = src.shape
@@ -87,6 +88,7 @@ class ReplaceWithTensorSlicing:
         return dst.contiguous()
 
     def copy(self, dst, src):
+        return src
         if src is None:
             return src
 
@@ -166,8 +168,11 @@ def replace_transformer_layer(orig_layer_impl,
                             preln=True,
                             layer_id=0,
                             is_decoder=False):
-
+        #import pdb;pdb.set_trace()
         is_decoder = child.is_decoder if hasattr(config, 'is_decoder') else False
+        if is_decoder:
+            return child
+        
         preln = False if policy_cls is HFBertLayerPolicy else preln
         if policy_cls is HFBertLayerPolicy:
             policy = policy_cls(child, inference=inference, preln=preln)
@@ -281,6 +286,7 @@ def replace_transformer_layer(orig_layer_impl,
                 data = data.reshape(data.shape[-1], data.shape[-2])
                 return data
 
+            #import pdb;pdb.set_trace()
             if attn_linear_layer:
                 qkvw = transpose(qkvw.data)
                 dense_w = transpose(dense_w.data)
@@ -294,6 +300,7 @@ def replace_transformer_layer(orig_layer_impl,
                 _4hh_w = transpose(_4hh_w.data)
 
             attn_block = new_module.self_attention if is_decoder else new_module.attention
+            #import pdb;pdb.set_trace()
             attn_block.attn_qkvw.data = mp_replace.qkv_copy(attn_block.attn_qkvw.data,
                                                             qkvw)
 
@@ -454,7 +461,7 @@ def replace_transformer_layer(orig_layer_impl,
 
         else:
             # copy relevant state from child -> new module
-            if False:  #replace_with_kernel_inject:
+            if True:  #replace_with_kernel_inject:
                 new_module = replace_with_policy(
                     child,
                     _policy,

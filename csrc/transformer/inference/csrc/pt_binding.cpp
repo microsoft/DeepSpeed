@@ -483,8 +483,8 @@ void mlp_unfused_cublas(at::Tensor& output,
     int bsz = input.size(0) * input.size(1);
     auto inp_norm = preLayerNorm ? at::empty_like(input) : residual_add;
 
-    launch_residual_layer_norm((T*)inp_norm.data_ptr(),
-                               (T*)residual_add.data_ptr(),
+    launch_residual_layer_norm((T*)residual_add.data_ptr(),
+                               (T*)inp_norm.data_ptr(),
                                (T*)input.data_ptr(),
                                (T*)residual.data_ptr(),
                                (T*)(add_input_bias ? input_bias.data_ptr() : nullptr),
@@ -508,7 +508,7 @@ void mlp_unfused_cublas(at::Tensor& output,
                    &alpha,
                    &gemm_beta,
                    (T*)weight.data_ptr(),
-                   (T*)inp_norm.data_ptr(),
+                   (T*)residual_add.data_ptr(),
                    (T*)output.data_ptr(),
                    CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 

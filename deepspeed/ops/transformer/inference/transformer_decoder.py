@@ -60,7 +60,7 @@ class DeepSpeedSelfCrossAttentionFunction(Function):
         def _transpose_for_context(x):
             x = x.permute(0, 2, 1, 3).contiguous()
             new_x_layer_shape = x.size()[:-2] + \
-                                      (hidden_size_per_partition,)
+                                      (-1,)
             return x.view(*new_x_layer_shape)
 
         def compute_attention(qkv_out, input_mask):
@@ -567,6 +567,7 @@ class DeepSpeedEncoderDecoder(nn.Module):
                 output_attentions=False,
                 encoder_layer_head_mask=None):
         #self.config.triangular_masking = False
+        #import pdb;pdb.set_trace()
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 
