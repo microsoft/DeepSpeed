@@ -107,11 +107,10 @@ class AsyncPartitionedParameterSwapper(object):
 
         self.available_buffer_ids = [i for i in range(self.param_buffer_count)]
         self.reserved_buffer_ids = []
-        self.buffers = torch.empty(int(self.aligned_elements_per_buffer *
-                                       self.param_buffer_count),
-                                   dtype=self.dtype,
-                                   pin_memory=True,
-                                   requires_grad=False)
+        self.buffers = get_accelerator().pin_memory(
+            torch.empty(int(self.aligned_elements_per_buffer * self.param_buffer_count),
+                        dtype=self.dtype,
+                        requires_grad=False))
 
         self.aio_read_handle = self.aio_handle(self.aio_config[AIO_BLOCK_SIZE],
                                                self.aio_config[AIO_QUEUE_DEPTH],

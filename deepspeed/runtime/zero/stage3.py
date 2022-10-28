@@ -379,11 +379,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         all_params = list(itertools.chain.from_iterable(self.fp16_groups))
 
-        grad_partitions_flat_buffer: Tensor = torch.zeros(
-            sum(p.partition_numel() for p in all_params),
-            dtype=self.dtype,
-            device=self.device,
-            pin_memory=self.offload_optimizer_pin_memory)
+        grad_partitions_flat_buffer: Tensor = torch.zeros(sum(p.partition_numel()
+                                                              for p in all_params),
+                                                          dtype=self.dtype,
+                                                          device=self.device)
+        if self.offload_optimizer_pin_memory:
+            get_accelerator().pin_memory(grad_partitions_flat_buffer)
 
         offset = 0
         for param in all_params:
@@ -539,9 +540,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 print_rank_0(f"group {j} flat buffer size {flat_buffer_size}",
                              force=False)
                 self.param_groups_fp16_flat_cpu_memory.append(
-                    torch.empty(int(flat_buffer_size),
-                                dtype=self.dtype,
-                                pin_memory=True))
+                    get_accelerator().pin_memory(
+                        torch.empty(int(flat_buffer_size),
+                                    dtype=self.dtype)))
             else:
                 print_rank_0(
                     f"No flat buffer size. Param group size was  {params_in_group}",

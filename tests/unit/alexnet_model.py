@@ -130,7 +130,8 @@ def train_cifar(model,
                 average_dp_losses=True,
                 fp16=True,
                 seed=123):
-    with torch.random.fork_rng(devices=[get_accelerator().current_device_name()]):
+    with get_accelerator().random().fork_rng(
+            devices=[get_accelerator().current_device_name()]):
         ds_utils.set_random_seed(seed)
 
         # disable dropout

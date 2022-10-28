@@ -22,9 +22,10 @@ def test_missing_amp_autocast(tmpdir, half_op):
     assert output.dtype == ds_linear.weight.dtype
 
 
+@pytest.mark.skipif(get_accelerator().amp() is None, reason='amp is not installed')
 @pytest.mark.parametrize('half_op', [False, True])
 def test_disable_autocast_linear(tmpdir, half_op):
-    amp = pytest.importorskip("torch.cuda.amp")
+    amp = get_accelerator().amp()
 
     hidden_dim = 4
     if half_op:
@@ -43,6 +44,7 @@ def test_disable_autocast_linear(tmpdir, half_op):
         assert output.dtype == ds_linear.weight.dtype
 
 
+@pytest.mark.skipif(get_accelerator().amp() is None, reason='amp is not installed')
 @pytest.mark.parametrize('half_input, half_weight',
                          [(False,
                            False),
@@ -53,7 +55,7 @@ def test_disable_autocast_linear(tmpdir, half_op):
                           (True,
                            True)])
 def test_autocast_linear(tmpdir, half_input, half_weight):
-    amp = pytest.importorskip("torch.cuda.amp")
+    amp = get_accelerator().amp()
 
     hidden_dim = 4
     input = torch.randn(hidden_dim).to(get_accelerator().device_name())
@@ -68,4 +70,4 @@ def test_autocast_linear(tmpdir, half_input, half_weight):
 
     with amp.autocast():
         output = ds_linear(input)
-        assert output.dtype == torch.half
+        assert output.dtype == torch.half or output.dtype == torch.bfloat16

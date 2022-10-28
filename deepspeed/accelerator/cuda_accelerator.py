@@ -39,6 +39,9 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         return torch.cuda.synchronize(device_index)
 
     # RNG APIs
+    def random(self):
+        return torch.random()
+
     def set_rng_state(self, new_state, device_index=None):
         if device_index is None:
             return torch.cuda.set_rng_state(new_state)
@@ -95,6 +98,12 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def reset_max_memory_allocated(self, device_index=None):
         return torch.cuda.reset_max_memory_allocated(device_index)
 
+    def memory_cached(self, device_index=None):
+        return torch.cuda.memory_cached(device_index)
+
+    def max_memory_cached(self, device_index=None):
+        return torch.cuda.max_memory_cached(device_index)
+
     def reset_max_memory_cached(self, device_index=None):
         return torch.cuda.reset_max_memory_cached(device_index)
 
@@ -129,6 +138,11 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
             return False
 
     # Misc
+    def amp(self):
+        if hasattr(torch.cuda, 'amp'):
+            return torch.cuda.amp
+        return None
+
     def is_available(self):
         return torch.cuda.is_available()
 

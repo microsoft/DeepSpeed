@@ -45,6 +45,10 @@ class DeepSpeedAccelerator(ABC):
 
     # RNG APIs
     @abc.abstractmethod
+    def random(self):
+        ...
+
+    @abc.abstractmethod
     def set_rng_state(self, new_state, device_index=None):
         ...
 
@@ -111,6 +115,14 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     @abc.abstractmethod
+    def memory_cached(self, device_index=None):
+        ...
+
+    @abc.abstractmethod
+    def max_memory_cached(self, device_index=None):
+        ...
+
+    @abc.abstractmethod
     def reset_max_memory_cached(self, device_index=None):
         ...
 
@@ -144,6 +156,10 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     # Misc
+    @abc.abstractmethod
+    def amp(self):
+        ...
+
     @abc.abstractmethod
     def is_available(self):
         ...
