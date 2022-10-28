@@ -109,7 +109,7 @@ void allocate_workspace(size_t hidden_dim,
                         unsigned mp_size = 1,
                         bool external_cache = false,
                         unsigned rank = 0,
-                        unsigned max_out_tokens=1024)
+                        unsigned max_out_tokens = 1024)
 {
     Context::Instance().GenWorkSpace(num_layers,
                                      num_heads,

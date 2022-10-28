@@ -293,8 +293,8 @@ def init_inference(model,
         save_mp_checkpoint_path: The path for which we want to save the loaded model with a checkpoint. This feature is used for adjusting the
             parallelism degree to help alleviate the model loading overhead. It does not save any new checkpoint if no path is passed.
         base_dir: This shows the root directory under which all the checkpoint files exists. This can be passed through the json config too.
-        max_tokens: This argument shows the maximum number of tokens inference-engine can work with, including the input and output tokens. 
-            Please consider increasing it to the required token-length required for your use-case. 
+        max_tokens: This argument shows the maximum number of tokens inference-engine can work with, including the input and output tokens.
+            Please consider increasing it to the required token-length required for your use-case.
     Returns:
         A deepspeed.InferenceEngine wrapped model.
     """
