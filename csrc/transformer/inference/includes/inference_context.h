@@ -15,8 +15,6 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #define MEGABYTE (1024 * 1024)
 #define GIGABYTE (1024 * 1024 * 1024)
 
-#define MAX_OUT_TOKENS 8192
-
 // TODO: refactor out
 #define WARP_SIZE 32
 
@@ -96,7 +94,8 @@ public:
                       const unsigned& mp_size,
                       const bool& external_cache,
                       const size_t& elem_size,
-                      const unsigned& rank)
+                      const unsigned& rank,
+                      unsigned max_out_tokens)
     {
         size_t total_size;
         if (!_free_memory_size) { cudaMemGetInfo(&_free_memory_size, &total_size); }
@@ -109,7 +108,7 @@ public:
 
         size_t activation_size = 16 * (num_heads * effective_head_size) * batch_size;
         // Other sequence length dimension is added when the final workSpaceSize is calculated
-        size_t temp_size = batch_size * num_heads * MAX_OUT_TOKENS * 2;
+        size_t temp_size = batch_size * num_heads * max_out_tokens * 2;
         size_t cache_size =
             num_layers * batch_size * ((num_heads * effective_head_size) / mp_size) * 2;
         size_t minimal_requirements =
@@ -124,7 +123,7 @@ public:
 
         _max_seq_len = ((_free_memory_size - minimal_requirements) / elem_size) /
                        (activation_size + temp_size + cache_size);
-        _max_seq_len = std::min((size_t)MAX_OUT_TOKENS, _max_seq_len);
+        _max_seq_len = std::min((size_t)max_out_tokens, _max_seq_len);
         size_t workSpaceSize = ((external_cache ? (activation_size + temp_size)
                                                 : (activation_size + temp_size + cache_size))) *
                                _max_seq_len * elem_size;
