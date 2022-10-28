@@ -54,13 +54,13 @@ def get_module(node):
         for method in methods:
             if method.name == "__init__":
                 source = ast.get_source_segment(file_content, method)
-                match = re.search("nn.ModuleList\(\s*\[\s*(.*?)\(", source)
+                match = re.search("nn.ModuleList\(\s*\[\s*(.*?)\(\s*\w*config(\)|,|.)", source)
                 if match is not None:
                     module_list = module_list + [match.group(1)]
-    if module_list is not None:
-        return module_list
+    if module_list is not None: 
+        return list(set(module_list))
     else:
-        print("Module not found")
+        print("No modules found") 
         return None
 
 
@@ -130,10 +130,8 @@ def check_matches(need_all_reduce, matches):
 
 
 if __name__ == "__main__":
-    linear_layer_list = []
-    injection_policy_list = []
-    need_all_reduce = False
-    
+
+    modules_policy_list = []    
     model_name = re.search(r"modeling_(.*?).py", args.file)
 
     #parse file as abstract syntax tree
@@ -143,35 +141,42 @@ if __name__ == "__main__":
 
     #get module(s)
     modules = get_module(node)
-    module = modules[0]
-
-    num_modules = len(modules)
-        
-
-    #get source code of specified module
-    init_source, forward_source = get_class_source(node, module)
-
-    if init_source != "" and forward_source != "":
-        #search for functions (LayerNorm, GroupNorm, etc) that need all reduce
-        need_all_reduce = check_layer_norm(forward_source) | check_layer_norm(init_source)
-
-        #check for linear layers in source code        
-        result, linear_matches, matches = get_linear_layers(init_source)
-         
-        if result & need_all_reduce:
-            #add linear layers to list
-            linear_matches = update_name_list("self", linear_matches)
-            linear_layer_list.append(linear_matches)
-        if matches is not None:
-            while len(matches):
-                need_all_reduce, matches = check_matches(need_all_reduce, matches)
-
-    #generate injection policy gems from name and linear layer lists
-    for group in linear_layer_list:
-        injection_policy_list.append(group[-1])
+    #if modules == []:
+        #exit()
     
-    #remove duplicate names. All gems with same parent.name are all-reduced
-    injection_policy_list = set(injection_policy_list)
+    for module in modules:
+        linear_layer_list = []
+        injection_policy_list = []
+        need_all_reduce = False
+
+        #get source code of specified module
+        init_source, forward_source = get_class_source(node, module)
+
+        if init_source != "" and forward_source != "":
+            #search for functions (LayerNorm, GroupNorm, etc) that need all reduce
+            need_all_reduce = check_layer_norm(forward_source) | check_layer_norm(init_source)
+
+            #check for linear layers in source code        
+            result, linear_matches, matches = get_linear_layers(init_source)
+         
+            if result & need_all_reduce:
+                #add linear layers to list
+                linear_matches = update_name_list("self", linear_matches)
+                linear_layer_list.append(linear_matches)
+            if matches is not None:
+                while len(matches):
+                    need_all_reduce, matches = check_matches(need_all_reduce, matches)
+
+        #generate injection policy gems from name and linear layer lists
+        for group in linear_layer_list:
+            injection_policy_list.append(group[-1])
+    
+        #remove duplicate names. All gems with same parent.name are all-reduced
+        injection_policy_list = list(set(injection_policy_list))
+        if len(injection_policy_list):
+            injection_policy_list = [module, injection_policy_list]
+            modules_policy_list.append(injection_policy_list)
+
 
     #print injection policy
     #injection_policy = {}
@@ -179,14 +184,19 @@ if __name__ == "__main__":
     #print("injection_policy={" + args.module + ": " + str(tuple(injection_policy_list)) + "}")
 
     #write results to output file
-    if len(injection_policy_list):
-        output_string = model_name.group(1) + "=dict(" + module + "=("
-        for gem in injection_policy_list:
-            output_string = output_string + '"' + gem + '", '
-        output_string = output_string + "))," + str(num_modules)
-
+    if len(modules_policy_list):
+        print(modules_policy_list)
+        output_string = model_name.group(1) + "=dict("
+        for module, injection_policy in modules_policy_list:
+            output_string = output_string + module + "=("
+            for gem in injection_policy:
+                output_string = output_string + '"' + gem + '", '
+            output_string = output_string + "), "
+        output_string = output_string + "),"
         ofile = open(args.output_file, "a")
         ofile.write(output_string + '\n')
         ofile.close()
-
+    else:
+        print(injection_policy_list)
+        print("no policy for ", model_name.group(1))
     
