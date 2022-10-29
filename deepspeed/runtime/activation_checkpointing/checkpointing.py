@@ -270,6 +270,11 @@ def gather_partitioned_activations(tensors, device=None):
             inputs.append(item)
             continue
 
+        if mp_size == 1:
+            item = item.view(list(size.numpy()))
+            inputs.append(item)
+            continue
+
         partition_size = item.numel()
         tensor_size = partition_size * mp_size
         if device is not None:
