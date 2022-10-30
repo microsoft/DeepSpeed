@@ -37,6 +37,7 @@ from op_builder import ALL_OPS, get_default_compute_capabilities, OpBuilder
 is_rocm_pytorch = OpBuilder.is_rocm_pytorch()
 rocm_version = OpBuilder.installed_rocm_version()
 
+# add an empty line
 RED_START = '\033[31m'
 RED_END = '\033[0m'
 ERROR = f"{RED_START} [ERROR] {RED_END}"
