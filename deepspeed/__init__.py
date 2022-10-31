@@ -222,28 +222,29 @@ def add_config_arguments(parser):
     return parser
 
 
-def init_inference(model,
-                   triangular_masking=True,
-                   mp_size=1,
-                   training_mp_size=1,
-                   mpu=None,
-                   ep_group=None,
-                   expert_mp_group=None,
-                   checkpoint=None,
-                   dtype=None,
-                   injection_policy=None,
-                   replace_method='auto',
-                   quantization_setting=None,
-                   replace_with_kernel_inject=False,
-                   return_tuple=True,
-                   ep_size=1,
-                   moe=False,
-                   moe_experts=1,
-                   moe_type='standard',
-                   args=None,
-                   enable_cuda_graph=False,
-                   save_mp_checkpoint_path=None,
-                   base_dir=""):
+def init_inference(model, config=None, **kwargs):
+    #                   triangular_masking=True,
+    #                   mp_size=1,
+    #                   training_mp_size=1,
+    #                   mpu=None,
+    #                   ep_group=None,
+    #                   expert_mp_group=None,
+    #                   checkpoint=None,
+    #                   dtype=None,
+    #                   injection_policy=None,
+    #                   replace_method='auto',
+    #                   quantization_setting=None,
+    #                   replace_with_kernel_inject=False,
+    #                   return_tuple=True,
+    #                   ep_size=1,
+    #                   moe=False,
+    #                   moe_experts=1,
+    #                   moe_type='standard',
+    #                   args=None,
+    #                   enable_cuda_graph=False,
+    #                   save_mp_checkpoint_path=None,
+    #                   base_dir="",
+    #                   config=None):
     """Initialize the DeepSpeed InferenceEngine.
 
     Arguments:
@@ -302,8 +303,16 @@ def init_inference(model,
         __git_branch__),
              ranks=[0])
 
-    config = DeepSpeedInferenceConfig()
+    if config is None:
+        log_dist(
+            "DeepSpeed Inference Engine: Initialized without a DeepSpeed Inference config. This method is deprecated and will be removed in a future release. Please use the DeepSpeed Inference config to initialize the DeepSpeed Inference Engine.",
+            ranks=[0])
+        config_dict = kwargs
+    else:
+        config_dict = config
 
-    engine = InferenceEngine(model, config=config)
+    ds_inference_config = DeepSpeedInferenceConfig(**config_dict)
+
+    engine = InferenceEngine(model, config=ds_inference_config)
 
     return engine

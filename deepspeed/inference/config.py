@@ -1,3 +1,5 @@
+import torch
+from pydantic import validator
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 from pydantic import Field
@@ -84,7 +86,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     kernel_inject: bool = Field(False,
                                 description="Injects the kernel into the model",
                                 alias="replace_with_kernel_inject")
-    dtype: DtypeEnum = DtypeEnum.fp16
+    dtype: object = torch.float
     tensor_parallel: DeepSpeedTPConfig = Field(DeepSpeedTPConfig(), alias="tp")
     enable_cuda_graph: bool = False
     zero: DeepSpeedZeroConfig = DeepSpeedZeroConfig()
@@ -99,3 +101,10 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     replace_method: str = 'auto'
     injection_policy: Dict = None
     config: Dict = None  # todo: really no need for this field if we can refactor
+    mp_size: int = 1
+
+    @validator('mp_size')
+    def tp_size_set(cls, value, values):
+        if values['tensor_parallel'].tp_size is None:
+            values['tensor_parallel'].tp_size = value
+        return value
