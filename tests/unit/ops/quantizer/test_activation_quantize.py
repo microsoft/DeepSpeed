@@ -4,7 +4,6 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 import pytest
 import torch
-import deepspeed
 from deepspeed.ops import op_builder
 
 inference_module = None
