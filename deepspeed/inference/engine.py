@@ -101,7 +101,6 @@ class InferenceEngine(Module):
         self.ep_group = ep_group
         self.expert_mp_group = expert_mp_group
         self.enable_cuda_graph = enable_cuda_graph
-        self.cuda_graph_created = False
         self.checkpoint_engine = TorchCheckpointEngine()
         self._init_quantization_setting(quantization_setting)
         self.model_profile_enabled = False
@@ -113,6 +112,10 @@ class InferenceEngine(Module):
         if enable_cuda_graph:
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
                 "If you want to use cuda graph, please upgrade torch to at least v1.10"
+            self._cuda_graphs = {}
+            self._static_inputs = {}
+            self._static_kwargs = {}
+            self._static_output = {}
 
         if self.checkpoint and not replace_with_kernel_inject:
             self._load_checkpoint(self.checkpoint)
@@ -515,6 +518,17 @@ class InferenceEngine(Module):
         elif self.dtype == torch.float:
             self.module.float()
 
+    def _input_signature(self, *inputs, **kwargs):
+        input_shapes = []
+        for i in range(len(inputs)):
+            if torch.is_tensor(inputs[i]):
+                input_shapes.append(inputs[i].shape)
+        kwargs_shapes = []
+        for k in kwargs:
+            if torch.is_tensor(kwargs[k]):
+                kwargs_shapes.append(kwargs[k].shape)
+        return (tuple(input_shapes), tuple(kwargs_shapes))
+
     def _create_cuda_graph(self, *inputs, **kwargs):
         # warmup to create the workspace and cublas handle
         cuda_stream = torch.cuda.Stream()
@@ -524,25 +538,34 @@ class InferenceEngine(Module):
                 ret = self.module(*inputs, **kwargs)
         torch.cuda.current_stream().wait_stream(cuda_stream)
 
+        shape_signature = self._input_signature(*inputs, **kwargs)
         # create cuda_graph and assign static_inputs and static_outputs
-        self._cuda_graphs = torch.cuda.CUDAGraph()
-        self.static_inputs = inputs
-        self.static_kwargs = kwargs
+        self._cuda_graphs[shape_signature] = torch.cuda.CUDAGraph()
+        self._static_inputs[shape_signature] = inputs
+        self._static_kwargs[shape_signature] = kwargs
 
-        with torch.cuda.graph(self._cuda_graphs):
-            self.static_output = self.module(*self.static_inputs, **self.static_kwargs)
+        static_inputs = self._static_inputs[shape_signature]
+        static_kwargs = self._static_kwargs[shape_signature]
 
-        self.cuda_graph_created = True
+        with torch.cuda.graph(self._cuda_graphs[shape_signature]):
+            self._static_output[shape_signature] = self.module(
+                *static_inputs,
+                **static_kwargs)
 
     def _graph_replay(self, *inputs, **kwargs):
+        shape_signature = self._input_signature(*inputs, **kwargs)
+        static_inputs = self._static_inputs[shape_signature]
+        static_kwargs = self._static_kwargs[shape_signature]
+        static_output = self._static_output[shape_signature]
+
         for i in range(len(inputs)):
             if torch.is_tensor(inputs[i]):
-                self.static_inputs[i].copy_(inputs[i])
+                static_inputs[i].copy_(inputs[i])
         for k in kwargs:
             if torch.is_tensor(kwargs[k]):
-                self.static_kwargs[k].copy_(kwargs[k])
-        self._cuda_graphs.replay()
-        return self.static_output
+                static_kwargs[k].copy_(kwargs[k])
+        self._cuda_graphs[shape_signature].replay()
+        return static_output
 
     def model_times(self):
         assert self.model_profile_enabled, "model profiling is not enabled"
@@ -569,11 +592,9 @@ class InferenceEngine(Module):
             start = time.time()
 
         if self.enable_cuda_graph:
-            if self.cuda_graph_created:
-                outputs = self._graph_replay(*inputs, **kwargs)
-            else:
+            if self._input_signature(*inputs, **kwargs) not in self._cuda_graphs:
                 self._create_cuda_graph(*inputs, **kwargs)
-                outputs = self._graph_replay(*inputs, **kwargs)
+            outputs = self._graph_replay(*inputs, **kwargs)
         else:
             outputs = self.module(*inputs, **kwargs)
 
