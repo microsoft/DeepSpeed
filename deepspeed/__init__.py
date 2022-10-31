@@ -17,7 +17,7 @@ from .runtime.engine import DeepSpeedEngine, DeepSpeedOptimizerCallable, DeepSpe
 from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from .runtime.pipe.engine import PipelineEngine
 from .inference.engine import InferenceEngine
-
+from .inference.config import DeepSpeedInferenceConfig
 from .runtime.lr_schedules import add_tuning_arguments
 from .runtime.config import DeepSpeedConfig, DeepSpeedConfigError
 from .runtime.activation_checkpointing import checkpointing
@@ -302,27 +302,8 @@ def init_inference(model,
         __git_branch__),
              ranks=[0])
 
-    engine = InferenceEngine(model,
-                             triangular_masking,
-                             mp_size,
-                             training_mp_size,
-                             ep_size,
-                             mpu,
-                             ep_group,
-                             expert_mp_group,
-                             checkpoint,
-                             dtype,
-                             injection_policy,
-                             return_tuple,
-                             replace_method,
-                             quantization_setting,
-                             replace_with_kernel_inject,
-                             moe,
-                             moe_experts,
-                             moe_type,
-                             args,
-                             enable_cuda_graph,
-                             save_mp_checkpoint_path,
-                             base_dir)
+    config = DeepSpeedInferenceConfig()
+
+    engine = InferenceEngine(model, config=config)
 
     return engine
