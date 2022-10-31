@@ -5,11 +5,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 import pytest
 import torch
 import deepspeed
-from deepspeed.ops.op_builder import InferenceBuilder
-
-if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
-    pytest.skip("Inference ops are not available on this system",
-                allow_module_level=True)
+from deepspeed.ops import op_builder
 
 inference_module = None
 torch_minor_version = None
@@ -18,7 +14,7 @@ torch_minor_version = None
 def run_quantize_ds(activations, num_groups, q_bits, is_symmetric_quant):
     global inference_module
     if inference_module is None:
-        inference_module = InferenceBuilder().load()
+        inference_module = op_builder.QuantizerBuilder().load()
 
     return inference_module.quantize(
         activations,
@@ -38,13 +34,19 @@ def get_q_props(q_bits):
     return q_range, q_max, q_min
 
 
-def get_scale_zero_point(q_bits, is_symmetric_quant, max, min, absmax, scales = None, zero_points = None):
+def get_scale_zero_point(q_bits,
+                         is_symmetric_quant,
+                         max,
+                         min,
+                         absmax,
+                         scales=None,
+                         zero_points=None):
 
     q_range, q_max, q_min = get_q_props(q_bits)
 
     if is_symmetric_quant:
         scale = q_range / (2 * absmax)
-        zero_point = torch.zeros(scale.shape, dtype=torch.int32)
+        zero_point = torch.zeros(scale.shape, dtype=torch.float32, device='cuda')
     else:
         scale = q_range / (max - min)
         zero_point = q_min - (min * scale)
@@ -115,3 +117,7 @@ def test_activation_quantize(num_elems, num_groups, is_symmetric_quant, q_bits):
         torch.lt(torch.abs(ds_out_tensor.flatten() - ref_out_tensor.flatten()),
                  2)))
     assert (torch.allclose(ds_out_scales.flatten(), ref_out_scales.flatten()))
+    assert (torch.allclose(ds_out_offsets.flatten(),
+                           ref_out_offsets.flatten(),
+                           atol=5e-5,
+                           rtol=5e-5))

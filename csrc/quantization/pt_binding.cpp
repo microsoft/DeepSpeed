@@ -61,9 +61,9 @@ at::Tensor ds_sr_quantize_asym(at::Tensor& vals, int groups, int bits)
 }
 
 std::vector<at::Tensor> quantize_kernel(at::Tensor& input_vals,
-                                     int groups,
-                                     int numBits,
-                                     quantize::Type quantType)
+                                        int groups,
+                                        int numBits,
+                                        quantize::Type quantType)
 {
     auto params_options = at::TensorOptions()
                               .dtype(at::kFloat)
@@ -88,38 +88,38 @@ std::vector<at::Tensor> quantize_kernel(at::Tensor& input_vals,
     if (numBits == 4) {
         if (quantType == quantize::Type::Symmetric) {
             launch_act_quant<4, quantize::Type::Symmetric>((int8_t*)output.data_ptr(),
+                                                           (float*)scales.data_ptr(),
+                                                           (float*)offsets.data_ptr(),
+                                                           (__half*)input_vals.data_ptr(),
+                                                           groups,
+                                                           elems_per_group,
+                                                           at::cuda::getCurrentCUDAStream());
+        } else {
+            launch_act_quant<4, quantize::Type::Asymmetric>((int8_t*)output.data_ptr(),
                                                             (float*)scales.data_ptr(),
                                                             (float*)offsets.data_ptr(),
                                                             (__half*)input_vals.data_ptr(),
                                                             groups,
                                                             elems_per_group,
                                                             at::cuda::getCurrentCUDAStream());
-        } else {
-            launch_act_quant<4, quantize::Type::Asymmetric>((int8_t*)output.data_ptr(),
-                                                             (float*)scales.data_ptr(),
-                                                             (float*)offsets.data_ptr(),
-                                                             (__half*)input_vals.data_ptr(),
-                                                             groups,
-                                                             elems_per_group,
-                                                             at::cuda::getCurrentCUDAStream());
         }
     } else {
         if (quantType == quantize::Type::Symmetric) {
             launch_act_quant<8, quantize::Type::Symmetric>((int8_t*)output.data_ptr(),
+                                                           (float*)scales.data_ptr(),
+                                                           (float*)offsets.data_ptr(),
+                                                           (__half*)input_vals.data_ptr(),
+                                                           groups,
+                                                           elems_per_group,
+                                                           at::cuda::getCurrentCUDAStream());
+        } else {
+            launch_act_quant<8, quantize::Type::Asymmetric>((int8_t*)output.data_ptr(),
                                                             (float*)scales.data_ptr(),
                                                             (float*)offsets.data_ptr(),
                                                             (__half*)input_vals.data_ptr(),
                                                             groups,
                                                             elems_per_group,
                                                             at::cuda::getCurrentCUDAStream());
-        } else {
-            launch_act_quant<8, quantize::Type::Asymmetric>((int8_t*)output.data_ptr(),
-                                                             (float*)scales.data_ptr(),
-                                                             (float*)offsets.data_ptr(),
-                                                             (__half*)input_vals.data_ptr(),
-                                                             groups,
-                                                             elems_per_group,
-                                                             at::cuda::getCurrentCUDAStream());
         }
     }
 
@@ -142,8 +142,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           &ds_sr_quantize_asym<__half>,
           "DeepSpeed Quantize with fp16 (CUDA)");
     pybind11::enum_<quantize::Type>(m, "QuantizationType")
-    .value("Symmetric", quantize::Type::Symmetric)
-    .value("Asymmetric", quantize::Type::Asymmetric)
-    .export_values();
+        .value("Symmetric", quantize::Type::Symmetric)
+        .value("Asymmetric", quantize::Type::Asymmetric)
+        .export_values();
     m.def("quantize", &quantize_kernel);
 }
