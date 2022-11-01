@@ -96,7 +96,7 @@ def int4x2to2xint4(int4X2tensor):
 @pytest.mark.parametrize("num_elems", [4096, 8192, 12288, 16384])
 @pytest.mark.parametrize("is_symmetric_quant", [True, False])
 @pytest.mark.parametrize("q_bits", [4, 8])
-def test_activation_quantize(num_elems, num_groups, is_symmetric_quant, q_bits):
+def test_quantization(num_elems, num_groups, is_symmetric_quant, q_bits):
 
     activations_ds = torch.randn((num_groups,
                                   num_elems),
