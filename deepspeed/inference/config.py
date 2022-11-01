@@ -7,15 +7,30 @@ from typing import Dict
 from enum import Enum
 
 
-class DtypeEnum(str, Enum):
-    fp16 = "torch.float16"
-    #fp16 = "half"
-    #fp16 = "torch.float16"
-    #fp16 = "torch.half"
-    fp32 = "fp32"
-    #fp32 = "torch.float32"
-    #fp32 = "torch.float"
-    int8 = "int8"
+class DtypeEnum(Enum):
+    # The torch dtype must always be the first value (so we return torch.dtype)
+    fp16 = torch.float16, "torch.float16", "fp16", "float16", "half"
+    fp32 = torch.float32, "torch.float32", "fp32", "float32", "float"
+    int8 = torch.int8, "torch.int8", "int8"
+
+    # Copied from https://stackoverflow.com/a/43210118
+    # Allows us to use multiple values for each Enum index and returns first
+    # listed value when Enum is called
+    def __new__(cls, *values):
+        obj = object.__new__(cls)
+        # first value is canonical value
+        obj._value_ = values[0]
+        for other_value in values[1:]:
+            cls._value2member_map_[other_value] = obj
+        obj._all_values = values
+        return obj
+
+    def __repr__(self):
+        return '<%s.%s: %s>' % (
+            self.__class__.__name__,
+            self._name_,
+            ', '.join([repr(v) for v in self._all_values]),
+        )
 
 
 class MoETypeEnum(str, Enum):
@@ -78,7 +93,7 @@ class InferenceCheckpointConfig(DeepSpeedConfigModel):
 
 
 ''' Public DS Inference config is defined in this class.
-    If you plan to extend the config, please create a new subclass 
+    If you plan to extend the config, please create a new subclass
     e.g. NewQuantConfig and add as a field to this class
 
 Arguments:
@@ -127,11 +142,13 @@ Arguments:
             parallelism degree to help alleviate the model loading overhead. It does not save any new checkpoint if no path is passed.
         base_dir: This shows the root directory under which all the checkpoint files exists. This can be passed through the json config too.
 '''
+
+
 class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     kernel_inject: bool = Field(False,
                                 description="Injects the kernel into the model",
                                 alias="replace_with_kernel_inject")
-    dtype: object = torch.float # todo: fix later. objects cannot be serialized to json
+    dtype: DtypeEnum = DtypeEnum.fp16
     tensor_parallel: DeepSpeedTPConfig = Field(DeepSpeedTPConfig(), alias="tp")
     enable_cuda_graph: bool = False
     zero: DeepSpeedZeroConfig = DeepSpeedZeroConfig()
@@ -153,3 +170,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
         if values['tensor_parallel'].tp_size is None:
             values['tensor_parallel'].tp_size = value
         return value
+
+    class Config:
+        # Get the str representation of the datatype for serialization
+        json_encoders = {torch.dtype: lambda x: str(x)}
