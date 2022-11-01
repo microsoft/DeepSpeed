@@ -300,10 +300,10 @@ void launch_param_update(const float* input, __half* output, int size, cudaStrea
 void launch_param_update_half(const float* input, __half* output, int size, cudaStream_t stream);
 
 template <int numBits, quantize::Type qType>
-void launch_act_quant(int8_t* output_data,
-                      float* scales,
-                      float* offsets,
-                      const __half* input_data,
-                      int groups,
-                      int elems_per_group,
-                      cudaStream_t stream);
+void launch_quantization(int8_t* output_data,
+                         float* scales,
+                         float* offsets,
+                         const __half* input_data,
+                         int groups,
+                         int elems_per_group,
+                         cudaStream_t stream);

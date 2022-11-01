@@ -59,13 +59,13 @@ int32_t round_to_32(int32_t raw_value) { return (((raw_value - 1) >> 5) + 1) << 
             output_data, scales, offsets, input_data, groups, elems_per_group);
 
 template <int numBits, quantize::Type qType>
-void launch_act_quant(int8_t* output_data,
-                      float* scales,
-                      float* offsets,
-                      const __half* input_data,
-                      int groups,
-                      int elems_per_group,
-                      cudaStream_t stream)
+void launch_quantization(int8_t* output_data,
+                         float* scales,
+                         float* offsets,
+                         const __half* input_data,
+                         int groups,
+                         int elems_per_group,
+                         cudaStream_t stream)
 {
     constexpr int max_threads = 256;
 
@@ -100,34 +100,34 @@ void launch_act_quant(int8_t* output_data,
     }
 }
 
-template void launch_act_quant<8, quantize::Type::Symmetric>(int8_t* output_data,
-                                                             float* scales,
-                                                             float* offsets,
-                                                             const __half* input_data,
-                                                             int groups,
-                                                             int elems_per_group,
-                                                             cudaStream_t stream);
+template void launch_quantization<8, quantize::Type::Symmetric>(int8_t* output_data,
+                                                                float* scales,
+                                                                float* offsets,
+                                                                const __half* input_data,
+                                                                int groups,
+                                                                int elems_per_group,
+                                                                cudaStream_t stream);
 
-template void launch_act_quant<8, quantize::Type::Asymmetric>(int8_t* output_data,
-                                                              float* scales,
-                                                              float* offsets,
-                                                              const __half* input_data,
-                                                              int groups,
-                                                              int elems_per_group,
-                                                              cudaStream_t stream);
+template void launch_quantization<8, quantize::Type::Asymmetric>(int8_t* output_data,
+                                                                 float* scales,
+                                                                 float* offsets,
+                                                                 const __half* input_data,
+                                                                 int groups,
+                                                                 int elems_per_group,
+                                                                 cudaStream_t stream);
 
-template void launch_act_quant<4, quantize::Type::Symmetric>(int8_t* output_data,
-                                                             float* scales,
-                                                             float* offsets,
-                                                             const __half* input_data,
-                                                             int groups,
-                                                             int elems_per_group,
-                                                             cudaStream_t stream);
+template void launch_quantization<4, quantize::Type::Symmetric>(int8_t* output_data,
+                                                                float* scales,
+                                                                float* offsets,
+                                                                const __half* input_data,
+                                                                int groups,
+                                                                int elems_per_group,
+                                                                cudaStream_t stream);
 
-template void launch_act_quant<4, quantize::Type::Asymmetric>(int8_t* output_data,
-                                                              float* scales,
-                                                              float* offsets,
-                                                              const __half* input_data,
-                                                              int groups,
-                                                              int elems_per_group,
-                                                              cudaStream_t stream);
+template void launch_quantization<4, quantize::Type::Asymmetric>(int8_t* output_data,
+                                                                 float* scales,
+                                                                 float* offsets,
+                                                                 const __half* input_data,
+                                                                 int groups,
+                                                                 int elems_per_group,
+                                                                 cudaStream_t stream);
