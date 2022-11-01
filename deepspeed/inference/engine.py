@@ -54,11 +54,11 @@ class InferenceEngine(Module):
 
         self.mp_world_size = config.tensor_parallel.tp_size
         self.checkpoint = config.checkpoint
-        self.dtype = torch.float  # todo: uses config.dtype to set this later and it should return a torch dtype
+        self.dtype = config.dtype  #.float  # todo: uses config.dtype to set this later and it should return a torch dtype
         self.injection_dict = config.injection_policy
         self.mp_group = config.tensor_parallel.tp_group
         self.mpu = config.tensor_parallel.mpu
-        self._validate_args(self.mpu, config.kernel_inject)
+        self._validate_args(self.mpu, config.replace_with_kernel_inject)
         self.replace_method = config.replace_method
         self.return_tuple = config.return_tuple
         self.quantize_merge_count = 1
@@ -108,26 +108,27 @@ class InferenceEngine(Module):
             for client_module, injection_policy in self.injection_dict.items():
                 self._apply_injection_policy(
                     client_module,
-                    self.injection_policy,
-                    self.return_tuple,
-                    config.kernel_inject,
-                    self.moe,
-                    self.moe_experts,
-                    self.moe_type,
-                    self.training_mp_size,
-                    self.checkpoint if config.kernel_inject else None,
+                    config.injection_policy,
+                    config.return_tuple,
+                    config.replace_with_kernel_inject,
+                    config.moe,
+                    config.moe.moe_experts,
+                    config.moe.moe_type,
+                    config.training_mp_size,
+                    config.checkpoint if config.replace_with_kernel_inject else None,
                     save_mp_checkpoint_path=config.checkpoint_config.
                     save_mp_checkpoint_path,
                     base_dir=config.checkpoint_config.base_dir)
         elif self.replace_method == 'auto':
             self._apply_injection_policy(
-                return_tuple=self.return_tuple,
-                replace_with_kernel_inject=config.kernel_inject,
+                return_tuple=config.return_tuple,
+                replace_with_kernel_inject=config.replace_with_kernel_inject,
                 moe=config.moe.enabled,
                 moe_experts=config.moe.moe_experts,
                 moe_type=config.moe.moe_type,
                 training_mp_size=config.training_mp_size,
-                checkpoint_dir=self.checkpoint if config.kernel_inject else None,
+                checkpoint_dir=config.checkpoint
+                if config.replace_with_kernel_inject else None,
                 save_mp_checkpoint_path=config.checkpoint_config.save_mp_checkpoint_path,
                 base_dir=config.checkpoint_config.base_dir)
 

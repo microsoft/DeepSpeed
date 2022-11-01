@@ -145,9 +145,10 @@ Arguments:
 
 
 class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
-    kernel_inject: bool = Field(False,
-                                description="Injects the kernel into the model",
-                                alias="replace_with_kernel_inject")
+    replace_with_kernel_inject: bool = Field(
+        False,
+        description="Injects the kernel into the model",
+        alias="kernel_inject")
     dtype: DtypeEnum = DtypeEnum.fp16
     tensor_parallel: DeepSpeedTPConfig = Field(DeepSpeedTPConfig(), alias="tp")
     enable_cuda_graph: bool = False
