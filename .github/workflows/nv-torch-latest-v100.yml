@@ -33,6 +33,7 @@ jobs:
           pip install --upgrade pip
           pip uninstall --yes torch torchvision triton
           pip install torch==1.12.0 torchvision --extra-index-url https://download.pytorch.org/whl/cu113 # Need to resolve errors with torch==1.13.0
+          pip install cupy-cuda113
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
