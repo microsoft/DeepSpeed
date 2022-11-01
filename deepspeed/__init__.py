@@ -222,77 +222,20 @@ def add_config_arguments(parser):
     return parser
 
 
+def default_inference_config():
+    """ 
+        Return a default DeepSpeed inference configuration dictionary.
+    """
+    return DeepSpeedInferenceConfig().dict()
+
 def init_inference(model, config=None, **kwargs):
-    #                   triangular_masking=True,
-    #                   mp_size=1,
-    #                   training_mp_size=1,
-    #                   mpu=None,
-    #                   ep_group=None,
-    #                   expert_mp_group=None,
-    #                   checkpoint=None,
-    #                   dtype=None,
-    #                   injection_policy=None,
-    #                   replace_method='auto',
-    #                   quantization_setting=None,
-    #                   replace_with_kernel_inject=False,
-    #                   return_tuple=True,
-    #                   ep_size=1,
-    #                   moe=False,
-    #                   moe_experts=1,
-    #                   moe_type='standard',
-    #                   args=None,
-    #                   enable_cuda_graph=False,
-    #                   save_mp_checkpoint_path=None,
-    #                   base_dir="",
-    #                   config=None):
+    
     """Initialize the DeepSpeed InferenceEngine.
 
     Arguments:
         model: Required: nn.module class before apply any wrappers
 
-        triangular_masking: Required: this shows the type of masking for attention scores in transformer layer
-            note that the masking is application specific.
-
-        mp_size: Optional: Desired model parallel size, default is 1 meaning no
-            model parallelism.
-
-        training_mp_size: Optional: if loading a checkpoint this is the mp size that it was trained with,
-            it may be different than what the mp size that you want to use during inference.
-
-        mpu: Optional: A model parallelism unit object that implements
-            get_{model,data}_parallel_{rank,group,world_size}()
-
-        checkpoint: Optional: Path to deepspeed compatible checkpoint or path to
-            JSON with load policy.
-
-        dtype: Optional: Desired model data type, will convert model to this type.
-            Supported target types: torch.half, torch.int8, torch.float
-
-        injection_policy: Optional: Dictionary mapping a client nn.Module to its corresponding
-            injection policy. e.g., {BertLayer : deepspeed.inference.HFBertLayerPolicy}
-
-        replace_method: Optional: If 'auto' DeepSpeed will automatically try and replace
-            model modules with its optimized versions. If an injection_policy is set this will
-            override the automatic replacement behavior.
-
-        quantization_setting: Optional: Quantization settings used for quantizing your model using the MoQ.
-            The setting can be one element or a tuple. If one value is passed in, we consider it as the number
-            of groups used in quantization. A tuple is passed in if we want to mention that there is extra-grouping
-            for the MLP part of a Transformer layer (e.g. (True, 8) shows we quantize the model using 8 groups for
-            all the network except the MLP part that we use 8 extra grouping).
-        replace_with_kernel_inject: this flag need to be set to true to inject inference kernels for models such as, Bert, GPT2, GPT-Neo and GPT-J. Otherwise,
-            the injection_dict provides the names of two linear layers as a tuple: (attention_output projection, transformer output projection)
-        return_tuple: Specify whether or not the transformer layers need to return a tuple or a Tensor. It is set to True by default (returning a tuple).
-        ep_size: The expert-parallelism size which is used for partitioning the experts across the GPUs in the expert-parallel group.
-        moe: Specify if the type of Transformer is MoE. It is set to False by default.
-        moe_experts: The global number of experts used in an MoE layer.
-        moe_type: Specify the type of MoE layer. We have two types of MoE layer: 'Standard' and 'Residual'. It is set to 'Standard' type by default.
-        args: All the arguments used for launching the inference api that can be useful at the inference-engine for injecting the optimizations.
-        enable_cuda_graph: use this flag for capturing the CUDA-Graph of the inference ops, so that it can run faster using the graph replay method,
-            this is set to False by default
-        save_mp_checkpoint_path: The path for which we want to save the loaded model with a checkpoint. This feature is used for adjusting the
-            parallelism degree to help alleviate the model loading overhead. It does not save any new checkpoint if no path is passed.
-        base_dir: This shows the root directory under which all the checkpoint files exists. This can be passed through the json config too.
+        config: Optional: Instead of requiring args, you can pass in a deepspeed inference config dict
 
     Returns:
         A deepspeed.InferenceEngine wrapped model.
@@ -303,14 +246,19 @@ def init_inference(model, config=None, **kwargs):
         __git_branch__),
              ranks=[0])
 
+    # User did not pass a config, use defaults
     if config is None:
-        log_dist(
-            "DeepSpeed Inference Engine: Initialized without a DeepSpeed Inference config. This method is deprecated and will be removed in a future release. Please use the DeepSpeed Inference config to initialize the DeepSpeed Inference Engine.",
-            ranks=[0])
         config_dict = kwargs
     else:
         config_dict = config
 
+    # if config and kwargs both are passed, merge them, and overwrite using kwargs
+    if config and kwargs:
+        config_dict = {}
+        config_dict.update(config)
+        # todo: maybe check a conflict between config and kwargs
+        config_dict.update(kwargs)
+    
     ds_inference_config = DeepSpeedInferenceConfig(**config_dict)
 
     engine = InferenceEngine(model, config=ds_inference_config)
