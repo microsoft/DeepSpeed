@@ -87,39 +87,39 @@ std::vector<at::Tensor> quantize_kernel(at::Tensor& input_vals,
 
     if (numBits == 4) {
         if (quantType == quantize::Type::Symmetric) {
-            launch_act_quant<4, quantize::Type::Symmetric>((int8_t*)output.data_ptr(),
-                                                           (float*)scales.data_ptr(),
-                                                           (float*)offsets.data_ptr(),
-                                                           (__half*)input_vals.data_ptr(),
-                                                           groups,
-                                                           elems_per_group,
-                                                           at::cuda::getCurrentCUDAStream());
+            launch_quantization<4, quantize::Type::Symmetric>((int8_t*)output.data_ptr(),
+                                                              (float*)scales.data_ptr(),
+                                                              (float*)offsets.data_ptr(),
+                                                              (__half*)input_vals.data_ptr(),
+                                                              groups,
+                                                              elems_per_group,
+                                                              at::cuda::getCurrentCUDAStream());
         } else {
-            launch_act_quant<4, quantize::Type::Asymmetric>((int8_t*)output.data_ptr(),
-                                                            (float*)scales.data_ptr(),
-                                                            (float*)offsets.data_ptr(),
-                                                            (__half*)input_vals.data_ptr(),
-                                                            groups,
-                                                            elems_per_group,
-                                                            at::cuda::getCurrentCUDAStream());
+            launch_quantization<4, quantize::Type::Asymmetric>((int8_t*)output.data_ptr(),
+                                                               (float*)scales.data_ptr(),
+                                                               (float*)offsets.data_ptr(),
+                                                               (__half*)input_vals.data_ptr(),
+                                                               groups,
+                                                               elems_per_group,
+                                                               at::cuda::getCurrentCUDAStream());
         }
     } else {
         if (quantType == quantize::Type::Symmetric) {
-            launch_act_quant<8, quantize::Type::Symmetric>((int8_t*)output.data_ptr(),
-                                                           (float*)scales.data_ptr(),
-                                                           (float*)offsets.data_ptr(),
-                                                           (__half*)input_vals.data_ptr(),
-                                                           groups,
-                                                           elems_per_group,
-                                                           at::cuda::getCurrentCUDAStream());
+            launch_quantization<8, quantize::Type::Symmetric>((int8_t*)output.data_ptr(),
+                                                              (float*)scales.data_ptr(),
+                                                              (float*)offsets.data_ptr(),
+                                                              (__half*)input_vals.data_ptr(),
+                                                              groups,
+                                                              elems_per_group,
+                                                              at::cuda::getCurrentCUDAStream());
         } else {
-            launch_act_quant<8, quantize::Type::Asymmetric>((int8_t*)output.data_ptr(),
-                                                            (float*)scales.data_ptr(),
-                                                            (float*)offsets.data_ptr(),
-                                                            (__half*)input_vals.data_ptr(),
-                                                            groups,
-                                                            elems_per_group,
-                                                            at::cuda::getCurrentCUDAStream());
+            launch_quantization<8, quantize::Type::Asymmetric>((int8_t*)output.data_ptr(),
+                                                               (float*)scales.data_ptr(),
+                                                               (float*)offsets.data_ptr(),
+                                                               (__half*)input_vals.data_ptr(),
+                                                               groups,
+                                                               elems_per_group,
+                                                               at::cuda::getCurrentCUDAStream());
         }
     }
 
