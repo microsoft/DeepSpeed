@@ -42,30 +42,6 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 #define WARP_SIZE_BITS 5
 
-template <typename T>
-void launch_quantize_kernel(T* vals,
-                            int total_count,
-                            int group_num,
-                            int num_bits,
-                            cudaStream_t stream);
-template <typename T>
-void launch_sr_quantize_kernel(T* vals,
-                               int total_count,
-                               int group_num,
-                               int num_bits,
-                               cudaStream_t stream);
-template <typename T>
-void launch_quantize_kernel_asym(T* vals,
-                                 int total_count,
-                                 int group_num,
-                                 int num_bits,
-                                 cudaStream_t stream);
-template <typename T>
-void launch_sr_quantize_kernel_asym(T* vals,
-                                    int total_count,
-                                    int group_num,
-                                    int num_bits,
-                                    cudaStream_t stream);
 // Fused bias add with gelu activation
 template <typename T>
 void launch_bias_gelu(const T* input,
@@ -298,12 +274,3 @@ void launch_fuse_transpose_bias_kernel(const T* inp,
 
 void launch_param_update(const float* input, __half* output, int size, cudaStream_t stream);
 void launch_param_update_half(const float* input, __half* output, int size, cudaStream_t stream);
-
-template <int numBits, quantize::Type qType>
-void launch_act_quant(int8_t* output_data,
-                      float* scales,
-                      float* offsets,
-                      const __half* input_data,
-                      int groups,
-                      int elems_per_group,
-                      cudaStream_t stream);
