@@ -191,9 +191,6 @@ def test_integer_quantize(num_elems, num_groups, q_bits):
 
     if (q_bits == 4):
         ds_out_tensor = int4x2to2xint4(ds_out_tensor)
-    print(activations_ds)
-    print(ds_out_tensor.abs().max())
-    print(ref_out_tensor)
 
     # Allow a max difference of 1 to account for differences in rounding in pytorch implementation
     assert (torch.all(
