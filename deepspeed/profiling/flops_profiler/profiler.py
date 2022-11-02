@@ -254,7 +254,7 @@ class FlopsProfiler(object):
         original_stdout = None
         f = None
         if output_file and output_file != "":
-            dir_path = os.path.dirname(output_file)
+            dir_path = os.path.dirname(os.path.abspath(output_file))
             if not os.path.exists(dir_path):
                 os.makedirs(dir_path)
             original_stdout = sys.stdout
@@ -514,15 +514,15 @@ def _gelu_flops_compute(input):
     return torch.numel(input), 0
 
 
-def _pool_flops_compute(
-    input,
-    kernel_size,
-    stride=None,
-    padding=0,
-    ceil_mode=False,
-    count_include_pad=True,
-    divisor_override=None,
-):
+def _pool_flops_compute(input,
+                        kernel_size,
+                        stride=None,
+                        padding=0,
+                        dilation=None,
+                        ceil_mode=False,
+                        count_include_pad=True,
+                        divisor_override=None,
+                        return_indices=None):
     return torch.numel(input), 0
 
 
@@ -1195,15 +1195,19 @@ def get_model_profile(
             input = torch.ones(()).new_empty((*input_shape, ))
 
         args = [input]
-
     assert (len(args) > 0) or (len(kwargs) > 0), "args and/or kwargs must be specified if input_shape is None"
 
     for _ in range(warm_up):
-        _ = model(*args, **kwargs)
-
+        if kwargs:
+            _ = model(*args, **kwargs)
+        else:
+            _ = model(*args)
     prof.start_profile(ignore_list=ignore_modules)
 
-    _ = model(*args, **kwargs)
+    if kwargs:
+        _ = model(*args, **kwargs)
+    else:
+        _ = model(*args)
 
     flops = prof.get_total_flops()
     macs = prof.get_total_macs()
