@@ -22,12 +22,86 @@ DEFAULT_TEMPLATE_PATH_ZERO_3 = os.path.join(os.path.dirname(os.path.realpath(__f
                                             "config_templates",
                                             "template_zero3.json")
 
-DEFAULT_EXPRS_DIR = os.path.join(os.getcwd(), "autotuning_exps")
-DEFAULT_RESULTS_DIR = os.path.join(os.getcwd(), "autotuning_results")
-
 METRIC_PERCENT_DIFF_CONST = 0.05
 DS_CONFIG = "ds_config"
 BUFSIZE = 1  # line buffer size for writing files
+
+#########################################
+# autotuner configuration constants
+#########################################
+# Autotuner. By default, this feature is not enabled.
+# Users can configure in ds_config.json as below example:
+AUTOTUNING_FORMAT = """
+autotuner should be enabled as:
+"session_params": {
+  "autotuning": {
+    "enabled": true,
+    "start_step": 5,
+    "end_step": 15
+    }
+}
+"""
+
+AUTOTUNING = "autotuning"
+
+AUTOTUNING_ENABLED = "enabled"
+AUTOTUNING_ENABLED_DEFAULT = False
+
+AUTOTUNING_FAST = "fast"
+AUTOTUNING_FAST_DEFAULT = True
+
+AUTOTUNING_RESULTS_DIR = "results_dir"
+AUTOTUNING_RESULTS_DIR_DEFAULT = "autotuning_results"
+
+AUTOTUNING_EXPS_DIR = "exps_dir"
+AUTOTUNING_EXPS_DIR_DEFAULT = "autotuning_exps"
+
+AUTOTUNING_OVERWRITE = "overwrite"
+AUTOTUNING_OVERWRITE_DEFAULT = True
+
+AUTOTUNING_START_PROFILE_STEP = "start_profile_step"
+AUTOTUNING_START_PROFILE_STEP_DEFAULT = 3
+
+AUTOTUNING_END_PROFILE_STEP = "end_profile_step"
+AUTOTUNING_END_PROFILE_STEP_DEFAULT = 5
+AUTOTUNING_METRIC_PATH = "metric_path"
+AUTOTUNING_METRIC_PATH_DEFAULT = None
+
+AUTOTUNING_TUNER_TYPE = "tuner_type"
+AUTOTUNING_TUNER_GRIDSEARCH = "gridsearch"
+AUTOTUNING_TUNER_RANDOM = "random"
+AUTOTUNING_TUNER_MODELBASED = "model_based"
+AUTOTUNING_TUNER_TYPE_DEFAULT = AUTOTUNING_TUNER_GRIDSEARCH
+AUTOTUNING_TUNER_EARLY_STOPPING = "tuner_early_stopping"
+AUTOTUNING_TUNER_EARLY_STOPPING_DEFAULT = 5
+AUTOTUNING_TUNER_NUM_TRIALS = "tuner_num_trials"
+AUTOTUNING_TUNER_NUM_TRIALS_DEFAULT = 50
+
+AUTOTUNING_ARG_MAPPINGS = "arg_mappings"
+AUTOTUNING_ARG_MAPPINGS_DEFAULT = None
+
+AUTOTUNING_MAX_TRAIN_BATCH_SIZE = "max_train_batch_size"
+AUTOTUNING_MAX_TRAIN_BATCH_SIZE_DEFAULT = None
+AUTOTUNING_MIN_TRAIN_BATCH_SIZE = "min_train_batch_size"
+AUTOTUNING_MIN_TRAIN_BATCH_SIZE_DEFAULT = 1
+AUTOTUNING_MAX_TRAIN_MICRO_BATCH_SIZE_PER_GPU = "max_train_micro_batch_size_per_gpu"
+AUTOTUNING_MAX_TRAIN_MICRO_BATCH_SIZE_PER_GPU_DEFAULT = 1024
+AUTOTUNING_MIN_TRAIN_MICRO_BATCH_SIZE_PER_GPU = "min_train_micro_batch_size_per_gpu"
+AUTOTUNING_MIN_TRAIN_MICRO_BATCH_SIZE_PER_GPU_DEFAULT = 1
+AUTOTUNING_NUM_TUNING_MICRO_BATCH_SIZES = "num_tuning_micro_batch_sizes"
+AUTOTUNING_NUM_TUNING_MICRO_BATCH_SIZES_DEFAULT = 3
+
+AUTOTUNING_MP_SIZE = "mp_size"
+AUTOTUNING_MP_SIZE_DEFAULT = 1
+
+AUTOTUNING_METRIC = "metric"
+AUTOTUNING_METRIC_LATENCY = "latency"
+AUTOTUNING_METRIC_THROUGHPUT = "throughput"
+AUTOTUNING_METRIC_FLOPS = "flops"
+AUTOTUNING_METRIC_FORWARD = "forward"
+AUTOTUNING_METRIC_BACKWRAD = "flops"
+AUTOTUNING_METRIC_STEPS = "step"
+AUTOTUNING_METRIC_DEFAULT = AUTOTUNING_METRIC_THROUGHPUT
 
 #########################################
 # MODEL INFO

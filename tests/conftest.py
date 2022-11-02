@@ -2,9 +2,13 @@
 
 import sys
 import pytest
+import os
 from os.path import abspath, dirname, join
 import torch
 import warnings
+
+# Set this environment variable for the T5 inference unittest(s) (e.g. google/t5-v1_1-small)
+os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 
 # allow having multiple repository checkouts and not needing to remember to rerun
 # 'pip install -e .[dev]' when switching between checkouts and running tests.
@@ -52,5 +56,14 @@ def pytest_runtest_call(item):
     # We want to use our own launching function for distributed tests
     if getattr(item.cls, "is_dist_test", False):
         dist_test_class = item.cls()
-        dist_test_class._run_test(item._request)
+        dist_test_class(item._request)
         item.runtest = lambda: True  # Dummy function so test is not run twice
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_fixture_setup(fixturedef, request):
+    if getattr(fixturedef.func, "is_dist_fixture", False):
+        #for val in dir(request):
+        #    print(val.upper(), getattr(request, val), "\n")
+        dist_fixture_class = fixturedef.func()
+        dist_fixture_class(request)
