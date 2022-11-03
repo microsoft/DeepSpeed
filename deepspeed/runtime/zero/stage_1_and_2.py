@@ -163,8 +163,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # - assume all params requires grad
         # - flat by groups, not keeping state. TODO: remove state explicitly?
         # - master grad and unflat master weight never exist. TODO: a way to save out unflat master?
-        if not torch.cuda.is_available:
-            raise SystemError("Cannot use fp16 without CUDA.")
         self.optimizer = init_optimizer
 
         # Load pre-built or JIT compile (un)flatten ops
@@ -751,7 +749,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         for i in range(len(self.params_already_reduced)):
             self.params_already_reduced[i] = False
 
-        if self.overlap_comm:
+        if self.overlap_comm and torch.cuda.is_available():
             torch.cuda.synchronize()
             # It is safe to clear previously reduced grads of other partitions
             self._clear_previous_reduced_grads()

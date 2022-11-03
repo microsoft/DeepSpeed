@@ -99,6 +99,8 @@ class TestConfigOptimizer(DistributedTest):
     world_size = 1
 
     def test(self, client_parameters):
+        if not torch.cuda.is_available():
+            pytest.skip("Fused ADAM requires CUDA support")
         ds_config = {
             "train_batch_size": 1,
             "optimizer": {

@@ -37,6 +37,9 @@ class TestZeROCheckpoint(DistributedTest):
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
+        if not torch.cuda.is_available() and zero_stage == 3:
+            pytest.skip("Zero3 not supported on CPU-only builds")
+
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -97,7 +100,10 @@ class TestZeROCheckpoint(DistributedTest):
                                       adam_optimizer):
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
+        if not torch.cuda.is_available() and zero_stage == 3:
+            pytest.skip("Zero3 not supported on CPU-only builds")
 
+        use_gpu = torch.cuda.is_available()
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -108,11 +114,12 @@ class TestZeROCheckpoint(DistributedTest):
                     "betas": [0.8,
                               0.999],
                     "eps": 1e-8,
-                    "weight_decay": 3e-7
+                    "weight_decay": 3e-7,
+                    "torch_adam": not use_gpu
                 }
             },
             "fp16": {
-                "enabled": True
+                "enabled": use_gpu
             },
             "zero_optimization": {
                 "stage": zero_stage,
@@ -201,6 +208,9 @@ class ws4_model_checkpoint(DistributedFixture):
     world_size = 4
 
     def run(self, class_tmpdir, elastic_save, load_optim):
+        # Currently seeing 0-dim tensors for elastic saving on CPU-only builds. Need to investigate.
+        if not torch.cuda.is_available() and elastic_save:
+            pytest.skip("Skip elastic checkpoint saving for CPU-only builds")
         ds_config = {
             "train_batch_size": 4,
             "optimizer": {
@@ -221,10 +231,12 @@ class ws4_model_checkpoint(DistributedFixture):
         model, _, _, _ = deepspeed.initialize(config=ds_config,
                                             model=model,
                                             model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=8,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=8,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -248,6 +260,9 @@ class TestZeROElasticCheckpoint(DistributedTest):
                                          elastic_save,
                                          elastic_load,
                                          load_optim):
+        # Currently seeing 0-dim tensors for elastic saving on CPU-only builds. Need to investigate.
+        if not torch.cuda.is_available() and elastic_save:
+            pytest.skip("Skip elastic checkpoint saving for CPU-only builds")
         use_gpu = torch.cuda.is_available()
         ds_config = {
             "train_batch_size": 2,
@@ -278,10 +293,12 @@ class TestZeROElasticCheckpoint(DistributedTest):
         model, _, _, _ = deepspeed.initialize(config=ds_config,
                                             model=models[0],
                                             model_parameters=models[0].parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=8,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=8,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -306,10 +323,12 @@ class TestZeROElasticCheckpoint(DistributedTest):
                                     saved_param_group,
                                     expected_mismatch_keys)
 
-        data_loader = random_dataloader(model=model,
-                                        total_samples=8,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=8,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -414,15 +433,15 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
         model = SimpleModel(hidden_dim)
 
         # 1. pretrain a model and save it
-        dtype = torch.half if torch.cuda.is_available() else torch.float
         ds_model = create_deepspeed_model(config_dict=config_dict,
                                           model=model,
                                           base_optimizer=None)
-        data_loader = random_dataloader(model=ds_model,
-                                        total_samples=1,
-                                        hidden_dim=hidden_dim,
-                                        device=ds_model.device,
-                                        dtype=dtype)
+        data_loader = random_dataloader(
+            model=ds_model,
+            total_samples=1,
+            hidden_dim=hidden_dim,
+            device=ds_model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
         for _, batch in enumerate(data_loader):
             loss = ds_model(batch[0], batch[1])
             ds_model.backward(loss)

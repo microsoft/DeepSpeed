@@ -34,8 +34,9 @@ def base_config():
     return config_dict
 
 
-def test_cuda():
-    assert (torch.cuda.is_available())
+# This test should be removed before officially supporting CPU
+#def test_cuda():
+#    assert (torch.cuda.is_available())
 
 
 def test_check_version():

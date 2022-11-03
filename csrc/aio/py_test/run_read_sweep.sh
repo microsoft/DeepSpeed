@@ -63,7 +63,7 @@ for sub in single block; do
                         echo ${cmd}
                         echo ${SYNC}
 
-                        #eval ${DISABLE_CACHE}
+                        eval ${DISABLE_CACHE}
                         eval ${cmd}
                         eval ${SYNC}
                         sleep 2

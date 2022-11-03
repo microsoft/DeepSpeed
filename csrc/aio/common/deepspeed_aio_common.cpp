@@ -33,8 +33,8 @@ Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 using namespace std;
 using namespace std::chrono;
 
-#define DEBUG_DS_AIO_PERF 1
-#define DEBUG_DS_AIO_SUBMIT_PERF 1
+#define DEBUG_DS_AIO_PERF 0
+#define DEBUG_DS_AIO_SUBMIT_PERF 0
 
 static const std::string c_library_name = "deepspeed_aio";
 
@@ -76,11 +76,10 @@ static void _do_io_submit_singles(const long long int n_iocbs,
         const auto submit_ret = io_submit(aio_ctxt->_io_ctxt, 1, aio_ctxt->_iocbs.data() + i);
         submit_times.push_back(std::chrono::high_resolution_clock::now() - st);
 #if DEBUG_DS_AIO_SUBMIT_PERF
-        printf("Single submit(usec) %f io_index=%lld buf=%p buf_data=%d len=%lu off=%llu \n",
+        printf("submit(usec) %f io_index=%lld buf=%p len=%lu off=%llu \n",
                submit_times.back().count() * 1e6,
                iocb_index,
                aio_ctxt->_iocbs[i]->u.c.buf,
-               aio_ctxt->_iocbs[i]->data,
                aio_ctxt->_iocbs[i]->u.c.nbytes,
                aio_ctxt->_iocbs[i]->u.c.offset);
 #endif
@@ -196,7 +195,7 @@ void do_aio_operation_overlap(const bool read_op,
 
 #if DEBUG_DS_AIO_PERF
     const auto io_op_name = std::string(read_op ? "read" : "write");
-    std::cout << c_library_name << ": Overlap start " << io_op_name << " " << xfer_ctxt->_num_bytes
+    std::cout << c_library_name << ": start " << io_op_name << " " << xfer_ctxt->_num_bytes
               << " bytes with " << io_gen._num_io_blocks << " io blocks" << std::endl;
 #endif
 
@@ -311,11 +310,6 @@ static bool _validate_buffer(const char* filename, void* aio_buffer, const long 
               << std::endl;
 
     if (static_cast<long long int>(regular_buffer.size()) != num_bytes) { return false; }
-
-    // int *p = (int*) aio_buffer;
-    // for (int i = 0; i < regular_buffer.size(); i++) {
-    //     std::cout << "ELEMENT: " << p[i] << std::endl;
-    // }
 
     return (0 == memcmp(aio_buffer, regular_buffer.data(), regular_buffer.size()));
 }

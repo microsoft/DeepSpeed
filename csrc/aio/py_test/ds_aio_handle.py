@@ -22,10 +22,7 @@ def pre_handle(args, tid, read_op):
     if args.gpu:
         buffer = torch.empty(num_bytes, dtype=torch.uint8, device='cuda')
     else:
-        #if torch.cuda.is_available():
         buffer = torch.empty(num_bytes, dtype=torch.uint8, device='cpu').pin_memory()
-        #else:
-        #    buffer = torch.ones(num_bytes, dtype=torch.uint8, device='cpu')
     task_log(
         tid,
         f'{io_string} file {file} of size {num_bytes} bytes from buffer on device {buffer.device}'

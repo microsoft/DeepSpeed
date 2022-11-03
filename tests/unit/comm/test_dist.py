@@ -162,7 +162,7 @@ class TestDistInitWithModel(DistributedTest):
             "optimizer": {
                 "type": "Adam",
                 "params": {
-                    "torch_backend": not torch.cuda.is_available()
+                    "torch_adam": not torch.cuda.is_available()
                 }
             }
         }
@@ -180,7 +180,7 @@ class TestDistInitWithModel(DistributedTest):
             "optimizer": {
                 "type": "Adam",
                 "params": {
-                    "torch_backend": not torch.cuda.is_available()
+                    "torch_adam": not torch.cuda.is_available()
                 }
             }
         }

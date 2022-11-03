@@ -31,7 +31,6 @@ char* io_op_desc_t::data_ptr() const { return (char*)_contiguous_buffer.data_ptr
 void io_op_desc_t::fini()
 {
     if (_read_op && _buffer.is_cuda()) { _buffer.copy_(_cpu_buffer.to(torch::kCUDA)); }
-    // if (_read_op) { _buffer.copy_(_cpu_buffer); }
 }
 
 deepspeed_aio_thread_t::deepspeed_aio_thread_t(const int tid, deepspeed_aio_config_t& aio_config)
