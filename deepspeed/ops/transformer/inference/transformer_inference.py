@@ -74,7 +74,8 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  mlp_after_attn=True,
                  mlp_act_func_type=ActivationFuncType.GELU,
                  training_mp_size=1,
-                 bigscience_bloom=False):
+                 bigscience_bloom=False,
+                 max_out_tokens=1024):
         super(DeepSpeedInferenceConfig,
               self).__init__(
                   hidden_size,
@@ -101,6 +102,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.specialized_mode = False
         self.training_mp_size = training_mp_size
         self.bigscience_bloom = bigscience_bloom
+        self.max_out_tokens = max_out_tokens
 
     @classmethod
     def from_dict(cls, json_object):
@@ -408,10 +410,13 @@ class DeepSpeedSelfAttentionFunction(Function):
             if not config.pre_layer_norm:
                 linear_func = inference_cuda_module.linear_layer_fp16 if config.fp16 else \
                                     inference_cuda_module.linear_layer_fp32
-
                 qkv_out = linear_func(input,
                                       attn_qkvw,
                                       attn_qkvb,
+                                      attn_qkvb is not None,
+                                      False,
+                                      False,
+                                      num_attention_heads_per_partition,
                                       DeepSpeedTransformerInference.layer_id)
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
@@ -799,6 +804,9 @@ class DeepSpeedTransformerInference(nn.Module):
                                                device=device),
                                    requires_grad=False)
         self.layer_past = None
+        self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if (not config.fp16) else \
+                                inference_cuda_module.allocate_workspace_fp16
+        self.iter = 0
 
     def forward(
             self,
@@ -820,6 +828,19 @@ class DeepSpeedTransformerInference(nn.Module):
             # This needs to be redesigned later!
             layer_head_mask=None,
             past_key_value=None):
+        # Allocate memory only on first layer forward
+        if self.config.layer_id == 0 and self.iter == 0:
+            self.iter += 1
+            self.allocate_workspace(self.config.hidden_size,
+                                    input.size()[0],
+                                    input.size()[1],
+                                    DeepSpeedTransformerInference.layer_id,
+                                    self.config.heads,
+                                    self.config.mp_size,
+                                    self.config.bigscience_bloom,
+                                    dist.get_rank() if dist.is_initialized() else 0,
+                                    self.config.max_out_tokens)
+
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 

@@ -4,7 +4,7 @@ import tqdm
 import deepspeed
 import deepspeed.ops.transformer as transformer_inference
 from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, BLOOMLayerPolicy
-from .replace_policy import replace_policies
+from .replace_policy import replace_policies, generic_policies
 #from ..runtime.weight_quantizer import WeightQuantization
 from deepspeed import comm as dist
 from torch import nn
@@ -187,9 +187,94 @@ class GroupQuantizer:
         return out
 
 
-
 transformer_config_g = None
 selected_policy_g = None
+
+def _module_match(module):
+    for policy in generic_policies:
+        policy = policy()
+        if policy.match(module):
+            return policy
+    return None
+
+
+def generic_injection(module, fp16=False):
+    def replace_attn(child, policy, layer_id):
+        policy_attn = policy.attention(child)
+        if policy_attn is None:
+            return child
+        if len(policy_attn) == 5:
+            qkvw, attn_ow, attn_ob, hidden_size, heads = policy_attn
+        else:
+            qw, kw, vw, attn_ow, attn_ob, hidden_size, heads = policy_attn
+
+        config = transformer_inference.DeepSpeedInferenceConfig(
+            hidden_size=hidden_size,
+            heads=heads,
+            fp16=fp16,
+            triangular_masking=False,
+        )
+        attn_module = transformer_inference.DeepSpeedAttention(config)
+
+        def transpose(data):
+            data.reshape(-1).copy_(data.transpose(-1, -2).contiguous().reshape(-1))
+            data = data.reshape(data.shape[-1], data.shape[-2])
+            data.to(torch.cuda.current_device())
+            return data
+
+        if len(policy_attn) == 5:
+            attn_module.attn_qkvw.data = transpose(qkvw.data)
+        else:
+            attn_module.attn_qkvw = None
+            attn_module.attn_qw.data = transpose(qw.data)
+            attn_module.attn_kw.data = transpose(kw.data)
+            attn_module.attn_vw.data = transpose(vw.data)
+
+        attn_module.attn_qkvb = None
+        attn_module.attn_ow.data = transpose(attn_ow.data)
+        attn_module.attn_ob.data.copy_(attn_ob.data.to(torch.cuda.current_device()))
+        return attn_module
+
+    if isinstance(module, torch.nn.Module):
+        pass
+    else:
+        try:
+            import diffusers
+            cross_attention = diffusers.models.attention.CrossAttention
+            new_policies = {cross_attention: replace_attn}
+        except ImportError:
+            new_policies = {}
+
+        #replace_transformer_layer(None,
+        #                          module.text_encoder,
+        #                          training=False,
+        #                          replace_with_kernel_inject=True,
+        #                          triangular_masking=True)
+        #from .encoder import DSClipEncoder
+        #cg_encoder = DSClipEncoder(module.text_encoder)
+        #setattr(module, 'text_encoder', cg_encoder)
+        for name in module.__dict__.keys():
+            sub_module = getattr(module, name)
+            policy = _module_match(sub_module)
+
+            if policy is not None:
+
+                def _replace_module(module, policy, layer_id=0):
+                    for name, child in module.named_children():
+                        if child.__class__ in new_policies:
+                            replaced_module = new_policies[child.__class__](child,
+                                                                            policy,
+                                                                            layer_id)
+                            setattr(module, name, replaced_module)
+                            layer_id += 1
+                        else:
+                            layer_id = _replace_module(child, policy, layer_id=layer_id)
+                    return layer_id
+
+                _replace_module(sub_module, policy)
+                new_module = policy.apply(sub_module)
+                print(f"**** found and replaced {name} w. {type(new_module)}")
+                setattr(module, name, new_module)
 
 def replace_transformer_layer(orig_layer_impl,
                               model,
@@ -220,7 +305,8 @@ def replace_transformer_layer(orig_layer_impl,
                               checkpoint_dict=None,
                               save_mp_checkpoint_path=None,
                               base_dir="",
-                              enable_cuda_graph=False):
+                              enable_cuda_graph=False,
+                              max_out_tokens=1024):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
@@ -255,6 +341,7 @@ def replace_transformer_layer(orig_layer_impl,
     Returns:
         Updated nn.module with replaced transformer layers
     """
+
     mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group,
                                           mp_size=mp_size)  #, out_dim=0, in_dim=1)
 
@@ -370,7 +457,8 @@ def replace_transformer_layer(orig_layer_impl,
                     mlp_after_attn=(rotary_dim is None or rotary_dim < 0),
                     mlp_act_func_type=policy.mlp_act_func_type,
                     training_mp_size=training_mp_size,
-                    bigscience_bloom=bigscience_bloom)
+                    bigscience_bloom=bigscience_bloom,
+                    max_out_tokens=max_out_tokens)
                 global transformer_config_g
                 if transformer_config_g is None:
                     transformer_config_g = transformer_config
@@ -464,9 +552,8 @@ def replace_transformer_layer(orig_layer_impl,
                     dense_w.data = transpose(dense_w.data)
 
             def _transpose(x):
-                num_attention_heads_per_partition = transformer_config.heads // transformer_config.mp_size
-                attention_head_size = x.shape[-1] // num_attention_heads_per_partition
-                new_x_shape = x.size()[:-1] + (num_attention_heads_per_partition,
+                attention_head_size = x.shape[-1] // transformer_config.heads
+                new_x_shape = x.size()[:-1] + (transformer_config.heads,
                                                attention_head_size)
                 x_1 = x.view(*new_x_shape)
                 (q, k, v) = torch.split(x_1, (x_1.shape[-1] // 3), dim=(x_1.dim() - 1))
@@ -700,7 +787,9 @@ def replace_transformer_layer(orig_layer_impl,
                 weight_shape = child.weight.ds_shape
             else:
                 weight_shape = child.weight.shape
-            if isinstance(all_reduce_linears, dict) and name in all_reduce_linears:
+            if (isinstance(all_reduce_linears,
+                           tuple) or isinstance(all_reduce_linears,
+                                                str)) and name in all_reduce_linears:
                 new_weight = torch.empty((
                     weight_shape[1] if conv_linear_layer else weight_shape[0],
                     (weight_shape[0] if conv_linear_layer else weight_shape[1]) //

@@ -11,10 +11,11 @@ from deepspeed.utils.logging import log_dist
 from torch.nn.modules import Module
 from packaging import version as pkg_version
 from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
+from deepspeed.utils.timer import SynchronizedWallClockTimer
 
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
-from ..module_inject.replace_module import replace_transformer_layer
+from ..module_inject.replace_module import replace_transformer_layer, generic_injection
 from ..comm.comm import init_distributed
 from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
@@ -24,6 +25,8 @@ from ..module_inject.replace_policy import DSPolicy
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
+
+INFERENCE_MODEL_TIMER = "model-forward-inference"
 
 
 class InferenceEngine(Module):
@@ -53,7 +56,8 @@ class InferenceEngine(Module):
                  config=None,
                  enable_cuda_graph=False,
                  save_mp_checkpoint_path=None,
-                 base_dir=""):
+                 base_dir="",
+                 max_out_tokens=1024):
         """
         Args:
             model: torch.nn.Module
@@ -89,7 +93,7 @@ class InferenceEngine(Module):
         self.injection_dict = injection_dict
         self.mp_group = None
         self.mpu = mpu
-        self._validate_args(mpu)
+        self._validate_args(mpu, replace_with_kernel_inject)
         self.replace_method = replace_method
         self.quantize_merge_count = 1
         self.quantization_scales = None
@@ -125,7 +129,8 @@ class InferenceEngine(Module):
         elif self.mp_world_size > 1:
             self._create_model_parallel_group()
 
-        moe, _ = has_moe_layers(self.module)
+        if isinstance(self.module, torch.nn.Module):
+            moe, _ = has_moe_layers(self.module)
 
         if moe and dist.get_world_size() > 1:
             self._create_ep_parallel_group(moe_experts)
@@ -143,7 +148,8 @@ class InferenceEngine(Module):
                     training_mp_size,
                     self.checkpoint if replace_with_kernel_inject else None,
                     save_mp_checkpoint_path=save_mp_checkpoint_path,
-                    base_dir=base_dir)
+                    base_dir=base_dir,
+                    max_out_tokens=max_out_tokens)
         elif replace_method == 'auto':
             self._apply_injection_policy(
                 return_tuple=return_tuple,
@@ -154,7 +160,8 @@ class InferenceEngine(Module):
                 training_mp_size=training_mp_size,
                 checkpoint_dir=self.checkpoint if replace_with_kernel_inject else None,
                 save_mp_checkpoint_path=save_mp_checkpoint_path,
-                base_dir=base_dir)
+                base_dir=base_dir,
+                max_out_tokens=max_out_tokens)
 
         device = torch.cuda.current_device()
         self.module.to(device)
@@ -167,11 +174,14 @@ class InferenceEngine(Module):
         if self.mp_world_size > 1:
             assert not self.enable_cuda_graph, "Cuda graph is not supported for model parallelism"
 
-    def profile_model_time(self):
+    def profile_model_time(self, use_cuda_events=True):
         if not self.model_profile_enabled and not self.enable_cuda_graph:
             self.module.register_forward_pre_hook(self._pre_forward_hook)
             self.module.register_forward_hook(self._post_forward_hook)
         self.model_profile_enabled = True
+        self.use_cuda_events = use_cuda_events
+        if self.use_cuda_events:
+            self.timers = SynchronizedWallClockTimer()
 
     def _get_model_config_generate(self, config):
         self.config = getattr(self.module, 'config', None) if config is None else config
@@ -183,13 +193,21 @@ class InferenceEngine(Module):
                 self.module.transformer._prepare_attn_mask = lambda attention_mask, *args, **kwargs: attention_mask
 
     def _pre_forward_hook(self, module, *inputs, **kwargs):
-        torch.cuda.synchronize()
-        self._start = time.time()
+        if self.use_cuda_events:
+            self.timers(INFERENCE_MODEL_TIMER).start()
+        else:
+            torch.cuda.synchronize()
+            self._start = time.time()
 
     def _post_forward_hook(self, module, input, output):
-        torch.cuda.synchronize()
-        self._end = time.time()
-        self._model_times.append(self._end - self._start)
+        if self.use_cuda_events:
+            self.timers(INFERENCE_MODEL_TIMER).stop()
+            elapsed_time = self.timers(INFERENCE_MODEL_TIMER).elapsed(reset=True)
+        else:
+            torch.cuda.synchronize()
+            self._end = time.time()
+            elapsed_time = self._end - self._start
+        self._model_times.append(elapsed_time)
 
     def _create_model_parallel_group(self):
         # Call the init process
@@ -251,8 +269,9 @@ class InferenceEngine(Module):
             f"quantize_groups = {self.quantize_groups}",
             [0])
 
-    def _validate_args(self, mpu):
-        if not isinstance(self.module, Module):
+    def _validate_args(self, mpu, replace_with_kernel_inject):
+        # TODO: to support SD pipeline we need to avoid this check for now
+        if replace_with_kernel_inject and not isinstance(self.module, Module):
             raise ValueError(f"model must be a torch.nn.Module, got {type(self.module)}")
         if not isinstance(self.mp_world_size, int) or self.mp_world_size < 1:
             raise ValueError(f"mp_size must be an int >= 1, got {self.mp_world_size}")
@@ -353,37 +372,44 @@ class InferenceEngine(Module):
                                 training_mp_size=1,
                                 checkpoint_dir=None,
                                 save_mp_checkpoint_path=False,
-                                base_dir=""):
+                                base_dir="",
+                                max_out_tokens=1024):
         checkpoint = SDLoaderFactory.get_sd_loader_json(
             checkpoint_dir,
             self.checkpoint_engine) if checkpoint_dir is not None else None
-        replace_transformer_layer(client_module,
-                                  self.module,
-                                  triangular_masking=self.triangular_masking,
-                                  policy=injection_policy,
-                                  mp_size=self.mp_world_size,
-                                  mp_group=self.mp_group,
-                                  ep_group=self.ep_group,
-                                  expert_mp_group=self.expert_mp_group,
-                                  config=self.config,
-                                  fp16=(self.dtype == torch.half)
-                                  or (self.dtype == torch.int8),
-                                  training=False,
-                                  return_tuple=return_tuple,
-                                  quantize=(self.dtype == torch.int8),
-                                  quantize_settings=(self.quantization_scales,
-                                                     self.quantize_merge_count,
-                                                     self.mlp_extra_grouping,
-                                                     self.quantize_groups),
-                                  replace_with_kernel_inject=replace_with_kernel_inject,
-                                  moe=moe,
-                                  moe_experts=moe_experts,
-                                  moe_type=moe_type,
-                                  training_mp_size=training_mp_size,
-                                  checkpoint_dict=checkpoint,
-                                  save_mp_checkpoint_path=save_mp_checkpoint_path,
-                                  base_dir=base_dir,
-                                  enable_cuda_graph=self.enable_cuda_graph)
+
+        generic_injection(self.module,
+                          fp16=(self.dtype == torch.half) or (self.dtype == torch.int8))
+
+        if isinstance(self.module, torch.nn.Module):
+            replace_transformer_layer(
+                client_module,
+                self.module,
+                triangular_masking=self.triangular_masking,
+                policy=injection_policy,
+                mp_size=self.mp_world_size,
+                mp_group=self.mp_group,
+                ep_group=self.ep_group,
+                expert_mp_group=self.expert_mp_group,
+                config=self.config,
+                fp16=(self.dtype == torch.half) or (self.dtype == torch.int8),
+                training=False,
+                return_tuple=return_tuple,
+                quantize=(self.dtype == torch.int8),
+                quantize_settings=(self.quantization_scales,
+                                   self.quantize_merge_count,
+                                   self.mlp_extra_grouping,
+                                   self.quantize_groups),
+                replace_with_kernel_inject=replace_with_kernel_inject,
+                moe=moe,
+                moe_experts=moe_experts,
+                moe_type=moe_type,
+                training_mp_size=training_mp_size,
+                checkpoint_dict=checkpoint,
+                save_mp_checkpoint_path=save_mp_checkpoint_path,
+                base_dir=base_dir,
+                enable_cuda_graph=self.enable_cuda_graph,
+                max_out_tokens=max_out_tokens)
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
         ckpt_file_pattern = self._get_ckpt_name(checkpoints_path,
@@ -413,7 +439,7 @@ class InferenceEngine(Module):
         if is_pipe_parallel:
             raise RuntimeError(
                 'pipeline parallelism is currently not supported in inference.')
-        if os.path.isdir(load_dir):
+        if not isinstance(load_dir, dict) and os.path.isdir(load_dir):
             if tag is None:
                 latest_path = os.path.join(load_dir, "latest")
                 if os.path.isfile(latest_path):
@@ -423,7 +449,8 @@ class InferenceEngine(Module):
             ckpt_list = self._get_all_ckpt_names(load_dir, tag)
             sd_loader = SDLoaderFactory.get_sd_loader(ckpt_list, self.checkpoint_engine)
         else:
-            sd_loader = SDLoaderFactory.get_sd_loader_json(load_dir)
+            sd_loader = SDLoaderFactory.get_sd_loader_json(load_dir,
+                                                           self.checkpoint_engine)
 
         if type(sd_loader) is list:
             self.sd = torch.load(sd_loader[0], map_location='cpu')
@@ -466,7 +493,6 @@ class InferenceEngine(Module):
 
             self.module.load_state_dict(
                 state_dict=checkpoint[self._choose_module_key(checkpoint)],
-                checkpoint_engine=self.checkpoint_engine,
                 strict=load_module_strict)
 
     def _choose_module_key(self, sd):
@@ -478,6 +504,9 @@ class InferenceEngine(Module):
             return 'model'
 
     def _convert_to_dtype(self):
+        if not isinstance(self.module, torch.nn.Module):
+            return
+
         if False:  #self.dtype is torch.int8 and self.quantization_scales is None:
             quantizer = WeightQuantization(mlp_extra_grouping=self.mlp_extra_grouping)
             model, self.quantization_scales = quantizer.model_quantize(self.module,
