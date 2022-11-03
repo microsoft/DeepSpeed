@@ -12,6 +12,7 @@ class TestPipelineCheckpoint(DistributedTest):
 
     @pytest.mark.parametrize("zero_stage", [0, 1])
     def test_checkpoint_pipe_engine(self, zero_stage, tmpdir):
+        use_gpu = torch.cuda.is_available()
         config_dict = {
             "train_batch_size": 2,
             "train_micro_batch_size_per_gpu": 1,
@@ -19,14 +20,15 @@ class TestPipelineCheckpoint(DistributedTest):
             "optimizer": {
                 "type": "Adam",
                 "params": {
-                    "lr": 1e-5
+                    "lr": 1e-5,
+                    "torch_adam": not use_gpu
                 }
             },
             "zero_optimization": {
                 "stage": zero_stage
             },
             "fp16": {
-                "enabled": zero_stage > 0
+                "enabled": zero_stage > 0 and use_gpu
             },
             "scheduler": {
                 "type": "OneCycle",

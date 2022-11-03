@@ -7,9 +7,14 @@ from deepspeed.monitor.csv_monitor import csvMonitor
 from unit.common import DistributedTest
 from deepspeed.runtime.config import DeepSpeedConfig
 
+import pytest
+
+
 
 class TestTensorBoard(DistributedTest):
     world_size = 2
+
+    tensorboard = pytest.importorskip("tensorboard")
 
     def test_tensorboard(self):
         config_dict = {
@@ -38,6 +43,7 @@ class TestTensorBoard(DistributedTest):
 class TestWandB(DistributedTest):
     world_size = 2
 
+    wandb = pytest.importorskip("wandb")
     def test_wandb(self):
         config_dict = {
             "train_batch_size": 2,

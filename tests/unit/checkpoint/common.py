@@ -141,7 +141,7 @@ def checkpoint_correctness_verification(config_dict,
                                         empty_tag=False,
                                         seq_dataloader=False,
                                         load_module_only=False):
-    dtype = torch.half if fp16 else torch.float32
+    dtype = torch.half if fp16 and torch.cuda.is_available() else torch.float32
     ds_model = create_deepspeed_model(config_dict=config_dict,
                                       model=models[0],
                                       base_optimizer=base_optimizers[0])

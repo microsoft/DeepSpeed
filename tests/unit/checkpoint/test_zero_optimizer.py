@@ -164,13 +164,19 @@ class TestZeROCheckpoint(DistributedTest):
 
     @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
     def test_load_module_only(self, tmpdir, zero_stage):
+        if not torch.cuda.is_available() and zero_stage == 3:
+            pytest.skip("Zero3 not supported on CPU-only builds")
+        use_gpu = torch.cuda.is_available()
         config_dict = {
             "train_batch_size": 2,
             "optimizer": {
-                "type": 'Adam'
+                "type": 'Adam',
+                "params": {
+                    "torch_adam": not use_gpu
+                }
             },
             "fp16": {
-                "enabled": True,
+                "enabled": use_gpu,
                 "initial_scale_power": 8
             },
             "zero_optimization": {
@@ -209,13 +215,18 @@ class TestZeROElasticCheckpoint(DistributedTest):
                                          elastic_save,
                                          elastic_load,
                                          load_optim):
+        use_gpu = torch.cuda.is_available()
         ds_config = {
             "train_batch_size": 2,
             "optimizer": {
-                "type": 'Adam'
+                "type": 'Adam',
+                "params": {
+                    "lr": 1e-3,
+                    "torch_adam": not use_gpu
+                }
             },
             "fp16": {
-                "enabled": True,
+                "enabled": use_gpu,
                 "initial_scale_power": 8
             },
             "zero_optimization": {
@@ -287,13 +298,17 @@ class TestZeROElasticCheckpoint(DistributedTest):
                                           load_optim):
         pytest.skip(
             'skip until DistributedTest can support changing world size within a test')
+        use_gpu = torch.cuda.is_available()
         ds_config = {
             "train_batch_size": 4,
             "optimizer": {
-                "type": 'Adam'
+                "type": 'Adam',
+                "params": {
+                    "torch_adam": not use_gpu
+                }
             },
             "fp16": {
-                "enabled": True,
+                "enabled": use_gpu,
                 "initial_scale_power": 8
             },
             "zero_optimization": {
@@ -342,13 +357,19 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
 
     @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
     def test_immediate_save_load(self, tmpdir, zero_stage):
+        if not torch.cuda.is_available() and zero_stage == 3:
+            pytest.skip("Zero3 not supported on CPU-only builds")
+        use_gpu = torch.cuda.is_available()
         config_dict = {
             "train_batch_size": 4,
             "optimizer": {
-                "type": 'Adam'
+                "type": 'Adam',
+                "params": {
+                    "torch_adam": not use_gpu
+                }
             },
             "fp16": {
-                "enabled": True,
+                "enabled": use_gpu,
                 "initial_scale_power": 8
             },
             "zero_optimization": {
@@ -369,13 +390,19 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
 
     @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
     def test_load_immediate_save(self, tmpdir, zero_stage):
+        if not torch.cuda.is_available() and zero_stage == 3:
+            pytest.skip("Zero3 not supported on CPU-only builds")
+        use_gpu = torch.cuda.is_available()
         config_dict = {
             "train_batch_size": 4,
             "optimizer": {
-                "type": 'Adam'
+                "type": 'Adam',
+                "params": {
+                    "torch_adam": not use_gpu
+                }
             },
             "fp16": {
-                "enabled": True,
+                "enabled": use_gpu,
                 "initial_scale_power": 8
             },
             "zero_optimization": {
@@ -386,7 +413,7 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
         model = SimpleModel(hidden_dim)
 
         # 1. pretrain a model and save it
-        dtype = torch.half
+        dtype = torch.half if torch.cuda.is_available() else torch.float
         ds_model = create_deepspeed_model(config_dict=config_dict,
                                           model=model,
                                           base_optimizer=None)
@@ -413,12 +440,18 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
 
     @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
     def test_save_before_accum_grad_is_done(self, tmpdir, zero_stage):
+        if not torch.cuda.is_available() and zero_stage == 3:
+            pytest.skip("Zero3 not supported on CPU-only builds")
+        use_gpu = torch.cuda.is_available()
         config_dict = {
             "optimizer": {
-                "type": 'Adam'
+                "type": 'Adam',
+                "params": {
+                    "torch_adam": not use_gpu
+                }
             },
             "fp16": {
-                "enabled": True,
+                "enabled": use_gpu,
                 "initial_scale_power": 8
             },
             "zero_optimization": {
@@ -443,7 +476,7 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
                                         total_samples=2,
                                         hidden_dim=hidden_dim,
                                         device=ds_model.device,
-                                        dtype=torch.half)
+                                        dtype=torch.half if torch.cuda.is_available() else torch.float)
 
         batch = next(iter(data_loader))
         loss = ds_model(batch[0], batch[1])

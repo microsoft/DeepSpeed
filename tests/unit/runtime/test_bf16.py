@@ -8,6 +8,8 @@ from unit.simple_model import SimpleModel, SimpleOptimizer, random_dataloader
 from unit.util import bf16_required_version_check
 from deepspeed import comm as dist
 
+pytestmark = pytest.mark.skipif(not torch.cuda.is_available(),
+                                reason='bf16 is not supported on CPU-only builds')
 
 class TestAdamBF16ZeroOneCycleCompatibility(DistributedTest):
     world_size = 1

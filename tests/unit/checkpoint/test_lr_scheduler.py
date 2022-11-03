@@ -28,7 +28,10 @@ class TestLRSchedulerCheckpoint(DistributedTest):
     def test_checkpoint_lr_scheduler(self, tmpdir, zero_stage, use_cpu_offload):
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
-
+        if not torch.cuda.is_available() and zero_stage == 3:
+            pytest.skip("Zero3 not supported on CPU-only builds")
+            
+        use_gpu = torch.cuda.is_available()
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -39,11 +42,12 @@ class TestLRSchedulerCheckpoint(DistributedTest):
                     "betas": [0.8,
                               0.999],
                     "eps": 1e-8,
-                    "weight_decay": 3e-7
+                    "weight_decay": 3e-7,
+                    "torch_adam": not use_gpu
                 }
             },
             "fp16": {
-                "enabled": True
+                "enabled": use_gpu
             },
             "zero_optimization": {
                 "stage": zero_stage,
@@ -78,18 +82,22 @@ class TestLRSchedulerCheckpoint(DistributedTest):
     def test_checkpoint_no_lr_scheduler(self, tmpdir, zero_stage, use_cpu_offload):
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
+        if not torch.cuda.is_available() and zero_stage == 3:
+            pytest.skip("Zero3 not supported on CPU-only builds")
 
+        use_gpu = torch.cuda.is_available()
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
             "optimizer": {
                 "type": 'Adam',
                 "params": {
-                    "lr": 1e-5
+                    "lr": 1e-5,
+                    "torch_adam": not use_gpu
                 }
             },
             "fp16": {
-                "enabled": True
+                "enabled": use_gpu
             },
             "zero_optimization": {
                 "stage": zero_stage,

@@ -83,16 +83,18 @@ class TestDistInit(DistributedTest):
     init_distributed = False
 
     def test_already_init(self, dist_init_required):
-        torch.distributed.init_process_group('nccl')
-        deepspeed.init_distributed('nccl', dist_init_required=dist_init_required)
+        backend = 'nccl' if torch.cuda.is_available() else 'gloo'
+        torch.distributed.init_process_group(backend)
+        deepspeed.init_distributed(backend, dist_init_required=dist_init_required)
 
     def test_no_init(self, dist_init_required):
+        backend = 'nccl' if torch.cuda.is_available() else 'gloo'
         if dist_init_required or dist_init_required is None:
-            deepspeed.init_distributed('nccl', dist_init_required=dist_init_required)
+            deepspeed.init_distributed(backend, dist_init_required=dist_init_required)
         else:
             # torch.dist is not done and for some reason the user says they don't want it done
             with pytest.raises(Exception):
-                deepspeed.init_distributed('nccl', dist_init_required=dist_init_required)
+                deepspeed.init_distributed(backend, dist_init_required=dist_init_required)
 
 
 class TestDistInitNoEnv(DistributedTest):
@@ -101,13 +103,14 @@ class TestDistInitNoEnv(DistributedTest):
     set_dist_env = False
 
     def test(self):
+        backend = 'nccl' if torch.cuda.is_available() else 'gloo'
         torch.distributed.init_process_group(
-            backend='nccl',
+            backend=backend,
             init_method=f"tcp://127.0.0.1:{get_master_port()}",
             world_size=1,
             rank=0)
         assert torch.distributed.is_initialized()
-        deepspeed.init_distributed('nccl', auto_mpi_discovery=True)
+        deepspeed.init_distributed(backend, auto_mpi_discovery=True)
 
 
 @pytest.mark.parametrize("dist_init_required", [True, False])
@@ -115,13 +118,16 @@ class TestDistInitWithModel(DistributedTest):
     init_distributed = False
 
     def test_already_init(self, dist_init_required):
-        torch.distributed.init_process_group('nccl')
+        backend = 'nccl' if torch.cuda.is_available() else 'gloo'
+        torch.distributed.init_process_group(backend)
         model = SimpleModel(4)
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
             "optimizer": {
                 "type": "Adam",
-                "params": {}
+                "params": {
+                    "torch_backend": not torch.cuda.is_available()
+                }
             }
         }
         engine, *_ = deepspeed.initialize(
@@ -137,7 +143,9 @@ class TestDistInitWithModel(DistributedTest):
             "train_micro_batch_size_per_gpu": 1,
             "optimizer": {
                 "type": "Adam",
-                "params": {}
+                "params": {
+                    "torch_backend": not torch.cuda.is_available()
+                }
             }
         }
         if dist_init_required:
