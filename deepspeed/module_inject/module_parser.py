@@ -96,7 +96,7 @@ def update_name_list(parent_name, matches):
     new_list = []
     for match, linear in matches:
         if parent_name == "self":
-            new_list = new_list + [match]
+            new_list = new_list + ["." + match]
         else:
             new_list = new_list + [parent_name + "." + match] 
     return new_list
