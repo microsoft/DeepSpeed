@@ -114,7 +114,6 @@ def get_pld_params(param_dict):
     else:
         return False
 
-
 def get_amp_enabled(param_dict):
     if AMP in param_dict.keys():
         return get_scalar_param(param_dict[AMP], AMP_ENABLED, AMP_ENABLED_DEFAULT)
@@ -613,6 +612,21 @@ def get_wall_clock_breakdown(param_dict):
                             WALL_CLOCK_BREAKDOWN,
                             WALL_CLOCK_BREAKDOWN_DEFAULT)
 
+def get_powersgd_enabled(param_dict):
+    if POWERSGD in param_dict.keys():
+        return get_scalar_param(param_dict[POWERSGD],
+                                POWERSGD_ENABLED,
+                                POWERSGD_ENABLED_DEFAULT)
+    else:
+        return False
+
+def get_powersgd_params(param_dict):
+    if POWERSGD in param_dict.keys():
+        powersgd_params = copy.copy(param_dict[POWERSGD])
+        powersgd_params.pop(POWERSGD_ENABLED)
+        return powersgd_params
+    else:
+        return False
 
 def get_memory_breakdown(param_dict):
     return get_scalar_param(param_dict, MEMORY_BREAKDOWN, MEMORY_BREAKDOWN_DEFAULT)
@@ -949,6 +963,12 @@ class DeepSpeedConfig(object):
         self.aio_config = get_aio_config(param_dict)
 
         self.dataloader_drop_last = get_dataloader_drop_last(param_dict)
+
+        self.powersgd_enabled = get_powersgd_enabled(param_dict)
+        self.powersgd_params = get_powersgd_params(param_dict)
+
+        print(">>> self.powersgd", self.powersgd_enabled)
+        print(">>> self.powersgd_params", self.powersgd_params)
 
     def _batch_assertion(self):
 

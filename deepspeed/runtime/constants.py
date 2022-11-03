@@ -424,3 +424,24 @@ DATALOADER_DROP_LAST_DEFAULT = False
 # PIPELINE PARALLELISM
 #########################################
 PIPE_REPLICATED = 'ds_pipe_replicated'
+
+#########################################
+# POWERSGD
+#########################################
+
+POWERSGD = "powersgd"
+
+POWERSGD_ENABLED = 'powersgd_enabled'
+POWERSGD_ENABLED_DEFAULT = False
+
+POWERSGD_RANK = 'powersgd_rank'
+POWERSGD_RANK_DEFAULT = 1
+
+POWERSGD_RATE = 'powersgd_rate'
+POWERSGD_RATE_DEFAULT = 10
+
+POWERSGD_ITER = 'powersgd_iter'
+POWERSGD_ITER_DEFAULT = 2
+
+POWERSGD_START_STEP = 'powersgd_start_step'
+POWERSGD_START_STEP_DEFAULT = 100

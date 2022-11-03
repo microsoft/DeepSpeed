@@ -53,6 +53,9 @@ from deepspeed.utils import groups
 from deepspeed.runtime.utils import get_grad_norm
 from deepspeed.utils import logger, log_dist, instrument_w_nvtx
 from deepspeed.comm.comm import init_distributed
+from deepspeed.runtime.compression.powersgd.powersgd import PowerSGD, Config
+from deepspeed.runtime.compression.powersgd import optimizer_step
+from deepspeed.runtime.compression.powersgd.utils import params_in_optimizer
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils.debug import debug_extract_module_and_param_names
 from deepspeed.monitor.monitor import MonitorMaster
@@ -359,6 +362,26 @@ class DeepSpeedEngine(Module):
         util_ops = UtilsBuilder().load()
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
+
+        self.powersgd = None
+        if self.powersgd_enabled():
+            if torch.distributed.get_rank() == 0:
+                print(">> Init power sgd. ")
+                print("rank:", self.powersgd_params()["powersgd_rank"])
+                print("rate:", self.powersgd_params()["powersgd_rate"])
+                print("iter:", self.powersgd_params()["powersgd_iter"])
+                print("start step:", self.powersgd_params()["powersgd_start_step"])
+            #     for p in self.module.parameters():
+            #         print(p.shape)
+            #     print(">> 2 Init power sgd")
+            # params = list(self.optimizer.parameters())
+            params = params_in_optimizer(self.optimizer)
+            self.powersgd = PowerSGD(params, config=Config(
+                rank=self.powersgd_params()["powersgd_rank"],  # lower rank => more aggressive compression
+                min_compression_rate=self.powersgd_params()["powersgd_rate"],  # don't compress gradients with less compression
+                num_iters_per_step=self.powersgd_params()["powersgd_iter"],  #   # lower number => more aggressive compression
+                start_compressing_after_num_steps=self.powersgd_params()["powersgd_start_step"],
+            ))
 
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
@@ -698,6 +721,12 @@ class DeepSpeedEngine(Module):
 
     def gradient_accumulation_steps(self):
         return self._config.gradient_accumulation_steps
+
+    def powersgd_enabled(self):
+        return self._config.powersgd_enabled
+    
+    def powersgd_params(self):
+        return self._config.powersgd_params
 
     @property
     def communication_data_type(self):
@@ -1811,7 +1840,12 @@ class DeepSpeedEngine(Module):
                 clip_grad_norm_(parameters=master_params,
                                 max_norm=self.gradient_clipping(),
                                 mpu=self.mpu)
-        self.optimizer.step()
+        
+        if self.powersgd_enabled():
+            # print(">> power sgd step: ", self.powersgd)
+            optimizer_step(self.optimizer, self.powersgd)
+        else:
+            self.optimizer.step()
 
         if hasattr(self.optimizer, '_global_grad_norm'):
             self._global_grad_norm = self.optimizer._global_grad_norm
@@ -2157,6 +2191,9 @@ class DeepSpeedEngine(Module):
 
     def _reduce_non_expert_gradients(self, grads, elements_per_buffer):
         split_buckets = split_half_float_double_sparse(grads)
+        if self.global_rank == 0:
+            print("_reduce_non_expert_gradients")
+
         for _, bucket_tuple in enumerate(split_buckets):
             bucket_type, bucket = bucket_tuple
 
@@ -2327,6 +2364,7 @@ class DeepSpeedEngine(Module):
                     # loop all local_experts
                     for local_expert_id in range(num_local_experts):
                         global_expert_id = expp_rank * num_local_experts + local_expert_id
+                        
                         expert_state_dict = torch.load(
                             DeepSpeedEngine._get_expert_ckpt_name(
                                 checkpoint_path,
@@ -2335,6 +2373,13 @@ class DeepSpeedEngine(Module):
                                 tag,
                                 mpu),
                             map_location=torch.device('cpu'))
+                        ckpt_file_name = DeepSpeedEngine._get_expert_ckpt_name(
+                                checkpoint_path,
+                                moe_layer_id,
+                                global_expert_id,
+                                tag,
+                                mpu)
+                        print(">> ckpt file name: ", ckpt_file_name)
                         # print(expert_state_dict.keys())
                         # Updating global -> local expert ids
                         moe_str_prefix = '.deepspeed_moe.experts.deepspeed_experts.'

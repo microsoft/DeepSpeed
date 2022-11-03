@@ -29,7 +29,10 @@ class MoE(torch.nn.Module):
                  noisy_gate_policy: typing.Optional[str] = None,
                  drop_tokens: bool = True,
                  use_rts=True,
-                 use_tutel: bool = False):
+                 use_tutel: bool = False,
+                 all2all_freq=1,
+                 router="topK",
+                 global_gate_freq=1):
         """Initialize an MoE layer.
 
         Arguments:
@@ -74,12 +77,15 @@ class MoE(torch.nn.Module):
                                                min_capacity,
                                                noisy_gate_policy,
                                                drop_tokens,
-                                               use_rts),
+                                               use_rts,
+                                               router),
                                       experts,
                                       self.expert_group_name,
                                       self.ep_size,
                                       self.num_local_experts,
-                                      use_tutel=use_tutel)
+                                      use_tutel=use_tutel,
+                                      all2all_freq=all2all_freq,
+                                      global_gate_freq=global_gate_freq)
         if self.use_residual:
             self.mlp = expert
             # coefficient is used for weighted sum of the output of expert and mlp
@@ -103,7 +109,7 @@ class MoE(torch.nn.Module):
         self.deepspeed_moe._set_ep_group(
             groups._get_expert_parallel_group(self.expert_group_name))
 
-    def forward(self, hidden_states, used_token=None):
+    def forward(self, hidden_states, used_token=None, global_step=-1):
         """ MoE forward
 
         Arguments:
@@ -119,7 +125,7 @@ class MoE(torch.nn.Module):
 
             * exp_counts (int): expert count
         """
-        output = self.deepspeed_moe(hidden_states, used_token)
+        output = self.deepspeed_moe(hidden_states, used_token, global_step)
         if self.use_residual:
             # Residual MoE
             output_mlp = self.mlp(hidden_states)
