@@ -11,6 +11,7 @@ from deepspeed import comm as dist
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(),
                                 reason='bf16 is not supported on CPU-only builds')
 
+
 class TestAdamBF16ZeroOneCycleCompatibility(DistributedTest):
     world_size = 1
 

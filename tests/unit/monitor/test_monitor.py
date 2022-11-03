@@ -10,7 +10,6 @@ from deepspeed.runtime.config import DeepSpeedConfig
 import pytest
 
 
-
 class TestTensorBoard(DistributedTest):
     world_size = 2
 
@@ -44,6 +43,7 @@ class TestWandB(DistributedTest):
     world_size = 2
 
     wandb = pytest.importorskip("wandb")
+
     def test_wandb(self):
         config_dict = {
             "train_batch_size": 2,

@@ -9,6 +9,7 @@ pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(),
     reason='multi-output tests are not supported on CPU-only builds')
 
+
 class TestTwoOutputModel(DistributedTest):
     world_size = 1
 

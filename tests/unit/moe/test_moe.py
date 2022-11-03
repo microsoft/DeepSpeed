@@ -35,11 +35,12 @@ class TestMoE(DistributedTest):
                                               dist_init_required=False)
         #dist_init_required=False -- parameterize to True/False?
 
-        data_loader = sequence_dataloader(model=model,
-                                          total_samples=50,
-                                          hidden_dim=hidden_dim,
-                                          device=model.device,
-                                          dtype=torch.half if torch.cuda.is_available() else torch.float32)
+        data_loader = sequence_dataloader(
+            model=model,
+            total_samples=50,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
 
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -74,11 +75,12 @@ class TestPRMoE(DistributedTest):
                                               optimizer=optimizer,
                                               dist_init_required=False)
 
-        data_loader = sequence_dataloader(model=model,
-                                          total_samples=50,
-                                          hidden_dim=hidden_dim,
-                                          device=model.device,
-                                          dtype=torch.half if torch.cuda.is_available() else torch.float32)
+        data_loader = sequence_dataloader(
+            model=model,
+            total_samples=50,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
 
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])

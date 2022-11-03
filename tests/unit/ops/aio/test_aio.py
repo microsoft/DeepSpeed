@@ -16,7 +16,6 @@ IO_PARALLEL = 2
 if not deepspeed.ops.__compatible_ops__[AsyncIOBuilder.NAME]:
     pytest.skip('Skip tests since async-io is not compatible', allow_module_level=True)
 
-
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(),
                                 reason='aio is not supported on CPU-only builds')
 

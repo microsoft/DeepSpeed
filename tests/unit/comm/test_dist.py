@@ -129,7 +129,8 @@ class TestDistInit(DistributedTest):
         else:
             # torch.dist is not done and for some reason the user says they don't want it done
             with pytest.raises(Exception):
-                deepspeed.init_distributed(backend, dist_init_required=dist_init_required)
+                deepspeed.init_distributed(backend,
+                                           dist_init_required=dist_init_required)
 
 
 class TestDistInitNoEnv(DistributedTest):

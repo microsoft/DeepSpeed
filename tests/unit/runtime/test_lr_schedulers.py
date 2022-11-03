@@ -69,11 +69,12 @@ class TestGetLrBeforeTrain(DistributedTest):
         model, _, _, lr_scheduler = deepspeed.initialize(config=config_dict,
                                                          model=model,
                                                          model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.half if torch.cuda.is_available() else torch.float32)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=50,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
         for n, batch in enumerate(data_loader):
             # get lr before training starts
             lr_scheduler.get_lr()
@@ -119,11 +120,12 @@ class TestLrSchedule(DistributedTest):
                                                          model=model,
                                                          model_parameters=model.parameters())
 
-        data_loader = random_dataloader(model=model,
-                                        total_samples=total_num_steps * 2,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.half if torch.cuda.is_available() else torch.float32)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=total_num_steps * 2,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
         step_lrs = []
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -175,11 +177,12 @@ class TestLrSchedule(DistributedTest):
                                                          model=model,
                                                          model_parameters=model.parameters())
 
-        data_loader = random_dataloader(model=model,
-                                        total_samples=total_num_steps * 2,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.half if torch.cuda.is_available() else torch.float32)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=total_num_steps * 2,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
         step_lrs = []
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -249,11 +252,12 @@ class TestSchedulerOptimizerParity(DistributedTest):
         model, _, _, lr_scheduler = deepspeed.initialize(config=config_dict,
                                                          model=model,
                                                          model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.half if torch.cuda.is_available() else torch.float32)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=50,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -301,12 +305,13 @@ class TestLrRange(DistributedTest):
         model, _, _, lr_scheduler = deepspeed.initialize(config=config_dict,
                                                          model=model,
                                                          model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=max(50,
-                                                          step_size * 2),
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.half if torch.cuda.is_available() else torch.float32)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=max(50,
+                              step_size * 2),
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
 
         step_lrs = []
         for _, batch in enumerate(data_loader):
@@ -367,12 +372,13 @@ class TestOneCycle(DistributedTest):
         model, _, _, lr_scheduler = deepspeed.initialize(config=config_dict,
                                                          model=model,
                                                          model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=max(50,
-                                                          cycle_step_size * 3),
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.half if torch.cuda.is_available() else torch.float32)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=max(50,
+                              cycle_step_size * 3),
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
 
         step_lrs = []
         for _, batch in enumerate(data_loader):
@@ -435,12 +441,13 @@ class TestOneCycle(DistributedTest):
         model, _, _, lr_scheduler = deepspeed.initialize(config=config_dict,
                                                          model=model,
                                                          model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=max(50,
-                                                          step_size * 3),
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.half if torch.cuda.is_available() else torch.float32)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=max(50,
+                              step_size * 3),
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
 
         step_moms = []
         for _, batch in enumerate(data_loader):

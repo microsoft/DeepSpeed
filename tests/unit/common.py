@@ -69,7 +69,7 @@ class DistributedExec(ABC):
     methods needed for DistributedTest and DistributedFixture.
     """
     world_size = 2
-    self.backend = "nccl" if torch.cuda.is_available() else 'gloo'
+    backend = "nccl" if torch.cuda.is_available() else 'gloo'
     init_distributed = True
     set_dist_env = True
 

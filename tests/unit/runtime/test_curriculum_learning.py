@@ -1,6 +1,7 @@
 import deepspeed
 from unit.common import DistributedTest
 from unit.simple_model import Curriculum_SimpleModel, random_dataloader
+import torch
 
 
 class TestCurriculumScheduler(DistributedTest):
@@ -51,10 +52,12 @@ class TestCurriculumScheduler(DistributedTest):
         model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=20,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=20,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32)
         for n, batch in enumerate(data_loader):
             loss, seqlen = model(batch[0], batch[1])
             model.backward(loss)
@@ -102,10 +105,12 @@ class TestCurriculumScheduler(DistributedTest):
         model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=20,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=20,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32)
         for n, batch in enumerate(data_loader):
             loss, seqlen = model(batch[0], batch[1])
             model.backward(loss)

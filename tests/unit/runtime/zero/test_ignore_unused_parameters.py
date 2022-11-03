@@ -2,6 +2,7 @@ import pytest
 from unit.common import DistributedTest
 from unit.simple_model import UnusedParametersModel, random_dataloader
 from deepspeed.ops.op_builder import CPUAdamBuilder
+import torch
 
 import deepspeed
 
@@ -45,10 +46,12 @@ class TestStage2IgnoreUnusedParameters(DistributedTest):
                                                   model=model,
                                                   model_parameters=model.parameters())
 
-        data_loader = random_dataloader(model=model,
-                                        total_samples=10,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=10,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if config_dict['fp16']['enabled'] else torch.float32)
 
         def _loop():
             for n, batch in enumerate(data_loader):

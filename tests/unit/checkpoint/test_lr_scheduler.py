@@ -30,7 +30,7 @@ class TestLRSchedulerCheckpoint(DistributedTest):
             pytest.skip("cpu-adam is not compatible")
         if not torch.cuda.is_available() and zero_stage == 3:
             pytest.skip("Zero3 not supported on CPU-only builds")
-            
+
         use_gpu = torch.cuda.is_available()
         config_dict = {
             "train_batch_size": 2,

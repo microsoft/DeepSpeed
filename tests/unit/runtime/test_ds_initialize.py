@@ -48,11 +48,12 @@ class TestNoOptim(DistributedTest):
         see_memory_usage('pre-init', force=True)
         model, _, _, _ = deepspeed.initialize(model=model, config=ds_config)
         see_memory_usage('post-init', force=True)
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.half if torch.cuda.is_available() else torch.float32)
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=50,
+            hidden_dim=hidden_dim,
+            device=model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float32)
         for batch in data_loader:
             model(batch[0], batch[1])
         see_memory_usage('post-fwds', force=True)
@@ -65,6 +66,7 @@ class TestClientOptimizer(DistributedTest):
     def test(self, optimizer_type):
         if optimizer_type is None and not torch.cuda.is_available():
             pytest.skip("Fused kernel not available without CUDA")
+
         def _optimizer_callable(params) -> Optimizer:
             return AdamW(params=params)
 
@@ -130,6 +132,7 @@ class TestClientLrScheduler(DistributedTest):
     def test(self, scheduler_type, optimizer_type):
         if optimizer_type is None and not torch.cuda.is_available():
             pytest.skip("Fused kernel not available without CUDA")
+
         def _my_lambda(epoch):
             return epoch // 10
 

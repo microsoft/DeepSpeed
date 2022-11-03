@@ -769,6 +769,7 @@ class TestZero3ParamPartitioningLargeParam(DistributedTest):
     def test(self, init_context_manager: bool, param_sz: int = 8100) -> None:
         if not torch.cuda.is_available():
             pytest.skip("Zero3 not supported on CPU-only builds")
+
         class LargeParamModel(Module):
             def __init__(self):
                 super().__init__()
@@ -786,6 +787,7 @@ class TestZero3ParamPartitioningLargeParam(DistributedTest):
 
             def forward(self, x: Tensor) -> Tensor:
                 return x * self.param
+
         use_gpu = torch.cuda.is_available()
         ds_config = {
             "train_micro_batch_size_per_gpu": 1,
@@ -849,6 +851,7 @@ class TestZero3ParamPartitioningManyParams(DistributedTest):
     def test(self, param_sz: int, n_layers: int, init_context_manager: bool) -> None:
         if not torch.cuda.is_available():
             pytest.skip("Zero3 not supported on CPU-only builds")
+
         class ManyParamModel(Module):
             def __init__(self) -> None:
                 super().__init__()
@@ -947,6 +950,7 @@ class TestZero3InitForParentWeightInitialization(DistributedTest):
     def test(self):
         if not torch.cuda.is_available():
             pytest.skip("Zero3 not supported on CPU-only builds")
+
         class ModelWhereParentInitializesChildWeights(Module):
             def __init__(self) -> None:
                 super().__init__()
@@ -959,6 +963,7 @@ class TestZero3InitForParentWeightInitialization(DistributedTest):
                 if isinstance(module, Linear):
                     with torch.no_grad():
                         module.weight.fill_(1 + dist.get_rank())
+
         use_gpu = torch.cuda.is_available()
         ds_cfg = {
             "train_micro_batch_size_per_gpu": 1,
@@ -1334,11 +1339,12 @@ class TestZeroAdamOptimizerStepCount(DistributedTest):
             "optimizer": {
                 "type": "Adam",
                 "params": {
-                    "lr": 1e-3
+                    "lr": 1e-3,
+                    "torch_adam": not use_gpu
                 }
             },
             "fp16": {
-                "enabled": True,
+                "enabled": use_gpu,
                 "initial_scale_power": 8
             }
         }

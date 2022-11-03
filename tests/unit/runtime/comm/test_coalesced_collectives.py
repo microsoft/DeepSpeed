@@ -11,6 +11,7 @@ pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(),
     reason='coalesced collectives are not supported on CPU-only builds')
 
+
 class TestReduceScatterCoalesced(DistributedTest):
     world_size = 2
 

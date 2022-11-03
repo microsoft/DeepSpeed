@@ -473,11 +473,12 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
                                           model=model,
                                           base_optimizer=None)
 
-        data_loader = random_dataloader(model=ds_model,
-                                        total_samples=2,
-                                        hidden_dim=hidden_dim,
-                                        device=ds_model.device,
-                                        dtype=torch.half if torch.cuda.is_available() else torch.float)
+        data_loader = random_dataloader(
+            model=ds_model,
+            total_samples=2,
+            hidden_dim=hidden_dim,
+            device=ds_model.device,
+            dtype=torch.half if torch.cuda.is_available() else torch.float)
 
         batch = next(iter(data_loader))
         loss = ds_model(batch[0], batch[1])
