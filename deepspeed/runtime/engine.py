@@ -1711,10 +1711,10 @@ class DeepSpeedEngine(Module):
             for k, v in inputs.items():
                 new_inputs[k] = self._cast_inputs_half(v)
             return new_inputs
-        elif hasattr(inputs, 'half'):
-            return inputs.half()
-        else:
-            return inputs
+        elif hasattr(inputs, 'dtype'):
+            if inputs.dtype == torch.float32:
+                return inputs.half()
+        return inputs
 
     def print_forward_breakdown(self, fwd_time):
         gate_time = 0.0
