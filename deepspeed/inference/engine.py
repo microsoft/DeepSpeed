@@ -119,7 +119,7 @@ class InferenceEngine(Module):
                     save_mp_checkpoint_path=config.checkpoint_config.
                     save_mp_checkpoint_path,
                     base_dir=config.checkpoint_config.base_dir,
-                    max_out_tokens=max_out_tokens)
+                    max_out_tokens=config.max_out_tokens)
         elif self.replace_method == 'auto':
             self._apply_injection_policy(
                 return_tuple=config.return_tuple,
@@ -132,7 +132,7 @@ class InferenceEngine(Module):
                 if config.replace_with_kernel_inject else None,
                 save_mp_checkpoint_path=config.checkpoint_config.save_mp_checkpoint_path,
                 base_dir=config.checkpoint_config.base_dir,                 
-                max_out_tokens=max_out_tokens)
+                max_out_tokens=config.max_out_tokens)
 
         device = torch.cuda.current_device()
         self.module.to(device)

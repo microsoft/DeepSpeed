@@ -257,9 +257,6 @@ def init_inference(model, config=None, **kwargs):
     string = generator("DeepSpeed is")
     print(string)
 
-
-
-
     Arguments:
         model: Required: original nn.module object without any wrappers
 
