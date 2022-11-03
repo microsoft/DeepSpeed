@@ -172,37 +172,23 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
             return False
 
     def create_op_builder(self, class_name):
-        from deepspeed.ops.op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, DropoutBuilder,FeedForwardBuilder, FusedAdamBuilder, FusedLambBuilder, GeluBuilder, LayerReorderBuilder, NormalizeBuilder, QuantizerBuilder, SoftmaxBuilder, SparseAttnBuilder, StochasticTransformerBuilder, StridedBatchGemmBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
+        from deepspeed.ops.op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
         if class_name == "AsyncIOBuilder":
             return AsyncIOBuilder()
         elif class_name == "CPUAdagradBuilder":
             return CPUAdagradBuilder()
         elif class_name == "CPUAdamBuilder":
             return CPUAdamBuilder()
-        elif class_name == "DropoutBuilder":
-            return DropoutBuilder()
-        elif class_name == "FeedForwardBuilder":
-            return FeedForwardBuilder()
         elif class_name == "FusedAdamBuilder":
             return FusedAdamBuilder()
         elif class_name == "FusedLambBuilder":
             return FusedLambBuilder()
-        elif class_name == "GeluBuilder":
-            return GeluBuilder()
-        elif class_name == "LayerReorderBuilder":
-            return LayerReorderBuilder()
-        elif class_name == "NormalizeBuilder":
-            return NormalizeBuilder()
         elif class_name == "QuantizerBuilder":
             return QuantizerBuilder()
-        elif class_name == "SoftmaxBuilder":
-            return SoftmaxBuilder()
         elif class_name == "SparseAttnBuilder":
             return SparseAttnBuilder()
         elif class_name == "StochasticTransformerBuilder":
             return StochasticTransformerBuilder()
-        elif class_name == "StridedBatchGemmBuilder":
-            return StridedBatchGemmBuilder()
         elif class_name == "TransformerBuilder":
             return TransformerBuilder()
         elif class_name == "InferenceBuilder":
@@ -211,3 +197,7 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
             return UtilsBuilder()
         else:
             return None
+
+    def build_extension(self):
+        from torch.utils.cpp_extension import BuildExtension
+        return BuildExtension
