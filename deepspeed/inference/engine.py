@@ -34,45 +34,11 @@ class InferenceEngine(Module):
     inference_ep_group = None
     expert_mp_group = None
 
-    def __init__(self,
-                 model,
-                 triangular_masking=True,
-                 mp_size=1,
-                 training_mp_size=1,
-                 ep_size=1,
-                 mpu=None,
-                 ep_group=None,
-                 expert_mp_group=None,
-                 checkpoint=None,
-                 dtype=None,
-                 injection_dict=None,
-                 return_tuple=True,
-                 replace_method='auto',
-                 quantization_setting=None,
-                 replace_with_kernel_inject=False,
-                 moe=False,
-                 moe_experts=1,
-                 moe_type='standard',
-                 config=None,
-                 enable_cuda_graph=False,
-                 save_mp_checkpoint_path=None,
-                 base_dir=""):
+    def __init__(self, model, config):
         """
         Args:
             model: torch.nn.Module
-            mp_size: model-parallel size
-            mpu: model-parallel unit (used for Megatron-type models)
-            checkpoint: the json-path, showing the address of model-checkpoints
-                Example: {type: 'Megatron', 'checkpoints': [ckpt_mp0.pt, ckpt_mp1.pt], 'version': 1.0}
-            dtype: data-type by which inference is executed
-            injection_dict: the dictionary that shows the injection policy:
-                Example: {BertLayer: HFBertLayerPolicy}
-            return_tuple: if true, inference-API returns a tuple, otherwise a tensor
-            replace_method: the injection method, this can be passed as auto if no injection-policy is defined, in which case the injection is automatic based on the available policies
-            quantization_setting:
-                one of None, Tuple(mlp_extra_grouping, quantize_groups), quantize_groups
-            replace_with_kernel_inject: this flag need to be set to true to inject inference kernels for models such as, Bert, GPT2, GPT-Neo and GPT-J. Otherwise,
-            the injection_dict provides the names of two linear layers as a tuple: (attention_output projection, transformer output projection)
+            config: DeepSpeedInferenceConfig
         """
         global DS_INFERENCE_ENABLED
         DS_INFERENCE_ENABLED = True
@@ -80,41 +46,45 @@ class InferenceEngine(Module):
         super().__init__()
 
         self.module = model
-
-        self._get_model_config_generate(config)
+        self._get_model_config_generate(
+            config.config)  # keep for weird backward compatibility
 
         if hasattr(self.module, "config"):
             DSPolicy.hf_model_config = self.module.config
 
-        self.mp_world_size = mp_size
-        self.checkpoint = checkpoint
-        self.dtype = dtype
-        self.injection_dict = injection_dict
-        self.mp_group = None
-        self.mpu = mpu
-        self._validate_args(mpu, replace_with_kernel_inject)
-        self.replace_method = replace_method
+        self.mp_world_size = config.tensor_parallel.tp_size
+        self.checkpoint = config.checkpoint
+        self.dtype = config.dtype  #.float  # todo: uses config.dtype to set this later and it should return a torch dtype
+        self.injection_dict = config.injection_policy
+        self.mp_group = config.tensor_parallel.tp_group
+        self.mpu = config.tensor_parallel.mpu
+        self._validate_args(self.mpu, config.replace_with_kernel_inject)
+        self.replace_method = config.replace_method
+        self.return_tuple = config.return_tuple
         self.quantize_merge_count = 1
         self.quantization_scales = None
-        self.triangular_masking = triangular_masking
-        self.ep_size = ep_size
-        self.ep_group = ep_group
-        self.expert_mp_group = expert_mp_group
-        self.enable_cuda_graph = enable_cuda_graph
+        self.triangular_masking = config.triangular_masking
+        self.ep_size = config.moe.ep_size
+        self.ep_group = config.moe.ep_group
+        self.expert_mp_group = config.moe.ep_mp_group
+        self.enable_cuda_graph = config.enable_cuda_graph
         self.cuda_graph_created = False
         self.checkpoint_engine = TorchCheckpointEngine()
-        self._init_quantization_setting(quantization_setting)
+        quantization_setting = None
+        self._init_quantization_setting(
+            quantization_setting
+        )  # todo: update with the new quant config for weight quant
         self.model_profile_enabled = False
         self._model_times = []
 
         # This is a hack to remove the prepare_mask function on HF side for BLOOM architecture
         self.remove_mask_prepare_for_bloom()
 
-        if enable_cuda_graph:
+        if self.enable_cuda_graph:
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
                 "If you want to use cuda graph, please upgrade torch to at least v1.10"
 
-        if self.checkpoint and not replace_with_kernel_inject:
+        if self.checkpoint and not self.replace_with_kernel_inject:
             self._load_checkpoint(self.checkpoint)
 
         # convert model to intended dtype
@@ -124,7 +94,7 @@ class InferenceEngine(Module):
         if self.mpu:
             self.mp_world_size = dist.get_world_size(
                 group=self.mpu.get_model_parallel_group())
-            self.mp_group = mpu.get_model_parallel_group()
+            self.mp_group = self.mpu.get_model_parallel_group()
         elif self.mp_world_size > 1:
             self._create_model_parallel_group()
 
@@ -132,33 +102,35 @@ class InferenceEngine(Module):
             moe, _ = has_moe_layers(self.module)
 
         if moe and dist.get_world_size() > 1:
-            self._create_ep_parallel_group(moe_experts)
+            self._create_ep_parallel_group(config.moe.moe_experts)
 
         if self.injection_dict:
             for client_module, injection_policy in self.injection_dict.items():
                 self._apply_injection_policy(
                     client_module,
-                    injection_policy,
-                    return_tuple,
-                    replace_with_kernel_inject,
-                    moe,
-                    moe_experts,
-                    moe_type,
-                    training_mp_size,
-                    self.checkpoint if replace_with_kernel_inject else None,
-                    save_mp_checkpoint_path=save_mp_checkpoint_path,
-                    base_dir=base_dir)
-        elif replace_method == 'auto':
+                    config.injection_policy,
+                    config.return_tuple,
+                    config.replace_with_kernel_inject,
+                    config.moe,
+                    config.moe.moe_experts,
+                    config.moe.moe_type,
+                    config.training_mp_size,
+                    config.checkpoint if config.replace_with_kernel_inject else None,
+                    save_mp_checkpoint_path=config.checkpoint_config.
+                    save_mp_checkpoint_path,
+                    base_dir=config.checkpoint_config.base_dir)
+        elif self.replace_method == 'auto':
             self._apply_injection_policy(
-                return_tuple=return_tuple,
-                replace_with_kernel_inject=replace_with_kernel_inject,
-                moe=moe,
-                moe_experts=moe_experts,
-                moe_type=moe_type,
-                training_mp_size=training_mp_size,
-                checkpoint_dir=self.checkpoint if replace_with_kernel_inject else None,
-                save_mp_checkpoint_path=save_mp_checkpoint_path,
-                base_dir=base_dir)
+                return_tuple=config.return_tuple,
+                replace_with_kernel_inject=config.replace_with_kernel_inject,
+                moe=config.moe.enabled,
+                moe_experts=config.moe.moe_experts,
+                moe_type=config.moe.moe_type,
+                training_mp_size=config.training_mp_size,
+                checkpoint_dir=config.checkpoint
+                if config.replace_with_kernel_inject else None,
+                save_mp_checkpoint_path=config.checkpoint_config.save_mp_checkpoint_path,
+                base_dir=config.checkpoint_config.base_dir)
 
         device = torch.cuda.current_device()
         self.module.to(device)
