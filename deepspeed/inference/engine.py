@@ -56,7 +56,8 @@ class InferenceEngine(Module):
                  config=None,
                  enable_cuda_graph=False,
                  save_mp_checkpoint_path=None,
-                 base_dir=""):
+                 base_dir="",
+                 max_out_tokens=1024):
         """
         Args:
             model: torch.nn.Module
@@ -147,7 +148,8 @@ class InferenceEngine(Module):
                     training_mp_size,
                     self.checkpoint if replace_with_kernel_inject else None,
                     save_mp_checkpoint_path=save_mp_checkpoint_path,
-                    base_dir=base_dir)
+                    base_dir=base_dir,
+                    max_out_tokens=max_out_tokens)
         elif replace_method == 'auto':
             self._apply_injection_policy(
                 return_tuple=return_tuple,
@@ -158,7 +160,8 @@ class InferenceEngine(Module):
                 training_mp_size=training_mp_size,
                 checkpoint_dir=self.checkpoint if replace_with_kernel_inject else None,
                 save_mp_checkpoint_path=save_mp_checkpoint_path,
-                base_dir=base_dir)
+                base_dir=base_dir,
+                max_out_tokens=max_out_tokens)
 
         device = torch.cuda.current_device()
         self.module.to(device)
@@ -369,7 +372,8 @@ class InferenceEngine(Module):
                                 training_mp_size=1,
                                 checkpoint_dir=None,
                                 save_mp_checkpoint_path=False,
-                                base_dir=""):
+                                base_dir="",
+                                max_out_tokens=1024):
         checkpoint = SDLoaderFactory.get_sd_loader_json(
             checkpoint_dir,
             self.checkpoint_engine) if checkpoint_dir is not None else None
@@ -404,7 +408,8 @@ class InferenceEngine(Module):
                 checkpoint_dict=checkpoint,
                 save_mp_checkpoint_path=save_mp_checkpoint_path,
                 base_dir=base_dir,
-                enable_cuda_graph=self.enable_cuda_graph)
+                enable_cuda_graph=self.enable_cuda_graph,
+                max_out_tokens=max_out_tokens)
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
         ckpt_file_pattern = self._get_ckpt_name(checkpoints_path,
@@ -444,7 +449,8 @@ class InferenceEngine(Module):
             ckpt_list = self._get_all_ckpt_names(load_dir, tag)
             sd_loader = SDLoaderFactory.get_sd_loader(ckpt_list, self.checkpoint_engine)
         else:
-            sd_loader = SDLoaderFactory.get_sd_loader_json(load_dir)
+            sd_loader = SDLoaderFactory.get_sd_loader_json(load_dir,
+                                                           self.checkpoint_engine)
 
         if type(sd_loader) is list:
             self.sd = torch.load(sd_loader[0], map_location='cpu')
@@ -487,7 +493,6 @@ class InferenceEngine(Module):
 
             self.module.load_state_dict(
                 state_dict=checkpoint[self._choose_module_key(checkpoint)],
-                checkpoint_engine=self.checkpoint_engine,
                 strict=load_module_strict)
 
     def _choose_module_key(self, sd):
