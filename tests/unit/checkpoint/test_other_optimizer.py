@@ -14,6 +14,8 @@ class TestOtherOptimizerCheckpoint(DistributedTest):
 
     @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
                         reason="lamb is not compatible")
+    @pytest.mark.skipif(not torch.cuda.is_available(),
+                        reason="fused lamb requires GPU")
     def test_checkpoint_unfused_optimizer(self, tmpdir):
         config_dict = {
             "train_batch_size": 2,
@@ -64,6 +66,8 @@ class TestOtherOptimizerCheckpoint(DistributedTest):
                                             tmpdir=tmpdir,
                                             load_optimizer_states=False)
 
+    @pytest.mark.skipif(not torch.cuda.is_available(),
+                        reason="fused adam requires GPU")
     def test_checkpoint_fused_optimizer(self, tmpdir):
         config_dict = {
             "train_batch_size": 2,
@@ -102,6 +106,7 @@ class TestOtherOptimizerCheckpoint(DistributedTest):
                                             load_optimizer_states=False)
 
     def test_checkpoint_fp32_optimizer(self, tmpdir):
+        use_gpu = torch.cuda.is_available()
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -112,7 +117,8 @@ class TestOtherOptimizerCheckpoint(DistributedTest):
                     "betas": [0.8,
                               0.999],
                     "eps": 1e-8,
-                    "weight_decay": 3e-7
+                    "weight_decay": 3e-7,
+                    "torch_adam": not use_gpu
                 }
             },
             "fp16": {

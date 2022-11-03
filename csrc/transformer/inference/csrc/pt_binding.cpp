@@ -45,7 +45,7 @@ inline auto get_attn_mask_stride(at::Tensor& attn_mask) -> int
         // Bert style models have always a mask stride of 1.
         return 1;
     } else if (trnsfrmr_type == TransformerType::UNKNOWN) {
-        throw std::runtime_error("Unknown transformer type.");
+        return 0;
     }
 
     // this is just to make the compiler happy.
@@ -102,14 +102,25 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
 
 template <typename T>
 void allocate_workspace(size_t hidden_dim,
-                        size_t max_seq_len,
                         size_t batch_size,
+                        size_t prompt_length,
                         unsigned num_layers,
-                        size_t head_size = 128)
+                        unsigned num_heads,
+                        unsigned mp_size = 1,
+                        bool external_cache = false,
+                        unsigned rank = 0,
+                        unsigned max_out_tokens = 1024)
 {
-    size_t _workSpaceSize = 16 * (hidden_dim * batch_size * max_seq_len) +
-                            (num_layers * batch_size * max_seq_len * hidden_dim * 2);  // KV-cache
-    Context::Instance().GenWorkSpace(_workSpaceSize * sizeof(T));
+    Context::Instance().GenWorkSpace(num_layers,
+                                     num_heads,
+                                     batch_size,
+                                     prompt_length,
+                                     hidden_dim,
+                                     mp_size,
+                                     external_cache,
+                                     sizeof(T),
+                                     rank,
+                                     max_out_tokens);
 }
 
 template <typename T>
@@ -124,10 +135,13 @@ at::Tensor einsum_sec_sm_ecm(at::Tensor& Q, at::Tensor& W)
     float alpha = 1;
     float gemm_beta = 0.0;
 
-    if (!workspace) {
-        allocate_workspace<T>(W.size(1), MAX_OUT_TOKES, Q.size(0), 1);
-        workspace = (T*)Context::Instance().GetWorkSpace();
+    /*
+    // Reallocate memory if we received a new prompt
+    if (!workspace || input.size(1) != 1) {
+        allocate_workspace<T>(W.size(1), Context::Instance().GetMaxTokenLenght(), Q.size(0), 1,
+    head_size); workspace = (T*)Context::Instance().GetWorkSpace();
     }
+    */
 
     auto O = at::from_blob(workspace, {Q.size(1), Q.size(2), W.size(1)}, options);
     unsigned m = W.size(1);
@@ -349,7 +363,7 @@ void attention_unfused(T* prev_key_cont,
     float layer_scale = alibi.sizes().size() > 1 ? std::max(1, layer_id) : 1.0;
     float alpha = norm_factor * norm_factor / layer_scale;
     float gemm_beta = 0.0;
-    T* workspace = (T*)output + bsz * seq_len * heads * k;
+    T* workspace = (T*)Context::Instance().GetAttentionUnfusedWorkspace();
 
     cublasSetStream(Context::Instance().GetCublasHandle(), Context::Instance().GetCurrentStream());
     cublas_strided_batched_gemm(Context::Instance().GetCublasHandle(),
@@ -363,7 +377,7 @@ void attention_unfused(T* prev_key_cont,
                                 workspace,
                                 CUBLAS_OP_T,
                                 CUBLAS_OP_N,
-                                MAX_OUT_TOKES * k,
+                                Context::Instance().GetMaxTokenLenght() * k,
                                 seq_len * k,
                                 seq_len * soft_len,
                                 bsz * heads,
@@ -396,7 +410,7 @@ void attention_unfused(T* prev_key_cont,
                                 (T*)output,
                                 CUBLAS_OP_N,
                                 CUBLAS_OP_N,
-                                MAX_OUT_TOKES * k,
+                                Context::Instance().GetMaxTokenLenght() * k,
                                 seq_len * soft_len,
                                 seq_len * k,
                                 bsz * heads,
@@ -444,12 +458,11 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
     auto output = torch::from_blob(workspace + 4 * buf_size, {bsz, seq_len, hidden_dim}, options);
 
     auto query_cont = workspace + 8 * buf_size;
-    size_t offset =
-        16 * (hidden_dim * bsz * MAX_OUT_TOKES) + layer_id * 2 * bsz * MAX_OUT_TOKES * hidden_dim;
-
+    size_t offset = 16 * (hidden_dim * bsz * Context::Instance().GetMaxTokenLenght()) +
+                    layer_id * 2 * bsz * Context::Instance().GetMaxTokenLenght() * hidden_dim;
     unsigned all_tokens = soft_len;
     auto kv_cache = workspace + offset + (hidden_dim / heads) * (is_prompt ? 0 : soft_len - 1);
-    size_t value_offset = bsz * MAX_OUT_TOKES * hidden_dim;
+    size_t value_offset = bsz * Context::Instance().GetMaxTokenLenght() * hidden_dim;
 
     T* temp_buf = (T*)output.data_ptr() + at::numel(output);
     launch_bias_add_transform_0213<T>((T*)query_cont,
@@ -467,7 +480,8 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                       rotate_half,
                                       rotate_every_two,
                                       Context::Instance().GetCurrentStream(),
-                                      3);
+                                      3,
+                                      Context::Instance().GetMaxTokenLenght());
     if (rotary_dim > 0 && rotate_half)
         launch_apply_rotary_pos_emb(query_cont,
                                     kv_cache,
@@ -479,7 +493,8 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                     bsz,
                                     rotate_half,
                                     rotate_every_two,
-                                    Context::Instance().GetCurrentStream());
+                                    Context::Instance().GetCurrentStream(),
+                                    Context::Instance().GetMaxTokenLenght());
 
     attention_unfused<T>(workspace + offset,
                          (T*)query_cont,
@@ -614,16 +629,17 @@ void ds_layernorm_internal(T* workspace,
 }
 
 template <typename T>
-void quantized_gemm(at::Tensor& output,
+void quantized_gemm(void* output,
                     T* input,
                     at::Tensor& weight,
                     at::Tensor& qscale,
                     int groups,
                     int bsz)
 {
-    auto weight16 = at::empty({weight.size(0), weight.size(1)}, output.options());
+    T* weight16 = (T*)Context::Instance().GetWorkSpace() +
+                  12 * Context::Instance().GetMaxTokenLenght() * weight.size(1);
 
-    launch_dequantize((T*)weight16.data_ptr(),
+    launch_dequantize(weight16,
                       (int8_t*)weight.data_ptr(),
                       (float*)qscale.data_ptr(),
                       weight.size(0),
@@ -641,9 +657,9 @@ void quantized_gemm(at::Tensor& output,
                    weight.size(1),
                    &alpha,
                    &gemm_beta,
-                   (T*)weight16.data_ptr(),
+                   weight16,
                    (T*)input,
-                   (T*)output.data_ptr(),
+                   (T*)output,
 #ifdef __HIP_PLATFORM_HCC__
                    rocblas_gemm_algo_standard);
 #else
@@ -667,10 +683,9 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
     T* workspace = (T*)Context::Instance().GetWorkSpace();
     workspace += (3 * bsz * input.size(2));
     ds_layernorm_internal<T>(workspace, input, gamma, beta, epsilon);
-    // cudaEventRecord(Context::Instance().GetCompEvent(1), Context::Instance().GetCurrentStream());
 
     if (q_int8) {
-        quantized_gemm<T>(output, workspace, weight, q_scale, q_scale.size(0), bsz);
+        quantized_gemm<T>(output.data_ptr(), workspace, weight, q_scale, q_scale.size(0), bsz);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -713,17 +728,15 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
                                     const float epsilon,
                                     bool add_bias,
                                     unsigned num_layers,
+                                    bool external_cache,
+                                    unsigned mp_size,
+                                    unsigned rank,
                                     bool q_int8)
 {
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
     int out_size = q_int8 ? weight.size(0) : weight.size(1);
-    if (!workspace) {
-        cublasSetStream(Context::Instance().GetCublasHandle(),
-                        Context::Instance().GetCurrentStream());
-        allocate_workspace<T>(input.size(2), MAX_OUT_TOKES, input.size(0), num_layers);
-        workspace = (T*)Context::Instance().GetWorkSpace();
-    }
+
     auto options = at::TensorOptions()
                        .dtype(input.options().dtype())
                        .layout(at::kStrided)
@@ -820,6 +833,10 @@ template <typename T>
 at::Tensor ds_linear_layer(at::Tensor& input,
                            at::Tensor& weight,
                            at::Tensor& bias,
+                           bool add_bias,
+                           bool external_cache,
+                           bool do_flash_attn,
+                           int num_heads,
                            unsigned num_layers)
 {
     auto input_cont = input.contiguous();
@@ -829,12 +846,21 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                        .device(at::kCUDA)
                        .requires_grad(false);
 
+    int head_size = input_cont.size(2) / num_heads;
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
+    // Reallocate memory if we received a new prompt
     if (!workspace) {
         cublasSetStream(Context::Instance().GetCublasHandle(),
                         Context::Instance().GetCurrentStream());
-        allocate_workspace<T>(input.size(2), MAX_OUT_TOKES, input.size(0), num_layers);
+        allocate_workspace<T>(input.size(2),
+                              input.size(0),
+                              input.size(1),
+                              num_layers,
+                              num_heads,
+                              1,
+                              external_cache,
+                              0);
         workspace = (T*)Context::Instance().GetWorkSpace();
     }
     auto output = at::from_blob(workspace, {input.size(0), input.size(1), weight.size(1)}, options);
@@ -859,16 +885,172 @@ at::Tensor ds_linear_layer(at::Tensor& input,
 #else
                    CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
+    if (add_bias)
+        launch_bias_add((T*)output.data_ptr(),
+                        (T*)bias.data_ptr(),
+                        weight.size(1),
+                        bsz,
+                        Context::Instance().GetCurrentStream());
+    bool add_padding = (head_size % 32 != 0 && head_size < 64) || (head_size % 64 != 0);
+    if (do_flash_attn) {
+        if (add_padding) {
+            int padded_head_size = head_size < 32 ? 32 : (head_size < 64 ? 64 : 128);
+            auto padded_output = workspace + output.numel();
+            auto final_output =
+                padded_output + (input.size(0) * input.size(1) * 3 * num_heads * padded_head_size);
+            pad_data(padded_output,
+                     workspace,
+                     3 * bsz * num_heads,
+                     head_size,
+                     padded_head_size,
+                     Context::Instance().GetCurrentStream());
 
-    launch_bias_add((T*)output.data_ptr(),
-                    (T*)bias.data_ptr(),
-                    weight.size(1),
-                    bsz,
-                    Context::Instance().GetCurrentStream());
+            launch_bias_add_transform_0213<T>(
+                final_output,
+                final_output + (input.size(0) * input.size(1) * num_heads * padded_head_size),
+                final_output + (input.size(0) * input.size(1) * 2 * num_heads * padded_head_size),
+                padded_output,
+                nullptr,
+                input.size(0),
+                input.size(1),
+                0,
+                input.size(1),
+                (num_heads * padded_head_size),
+                num_heads,
+                -1,
+                false,
+                false,
+                Context::Instance().GetCurrentStream(),
+                3,
+                input.size(1));
+            return at::from_blob(final_output,
+                                 {3, input.size(0), num_heads, input.size(1), padded_head_size},
+                                 options);
+            // return at::from_blob(padded_output, {input.size(0) * input.size(1), 3, num_heads,
+            // padded_head_size}, options);
+        } else {
+            auto final_output = workspace + output.numel();
+            launch_bias_add_transform_0213<T>(
+                final_output,
+                final_output + (input.size(0) * input.size(1) * input_cont.size(2)),
+                final_output + (input.size(0) * input.size(1) * 2 * input_cont.size(2)),
+                workspace,
+                nullptr,
+                input.size(0),
+                input.size(1),
+                0,
+                input.size(1),
+                input_cont.size(2),
+                num_heads,
+                -1,
+                false,
+                false,
+                Context::Instance().GetCurrentStream(),
+                3,
+                input.size(1));
+            return at::from_blob(
+                final_output, {3, input.size(0), num_heads, input.size(1), head_size}, options);
+            // return at::from_blob(workspace, {input.size(0) * input.size(1), 3, num_heads,
+            // head_size}, options);
+        }
 
-    return output;
+    } else
+        return output;
 }
 
+template <typename T>
+std::vector<at::Tensor> add_padding(at::Tensor& query, at::Tensor& key, at::Tensor& value)
+{
+    int head_size = query.size(3);
+    int padded_head_size = head_size < 32 ? 32 : (head_size < 64 ? 64 : 128);
+    T* workspace = (T*)Context::Instance().GetWorkSpace();
+    T* key_pad_ptr = workspace + padded_head_size * query.size(0) * query.size(1) * query.size(2);
+    T* value_pad_ptr = key_pad_ptr + padded_head_size * query.size(0) * query.size(1) * 128;
+    pad_head_seq(workspace,
+                 (T*)query.data_ptr(),
+                 query.size(0) * query.size(1),
+                 query.size(2),
+                 query.size(2),
+                 head_size,
+                 padded_head_size,
+                 Context::Instance().GetCurrentStream());
+    pad_head_seq(key_pad_ptr,
+                 (T*)key.data_ptr(),
+                 query.size(0) * query.size(1),
+                 key.size(2),
+                 128,
+                 head_size,
+                 padded_head_size,
+                 Context::Instance().GetCurrentStream());
+    pad_head_seq(value_pad_ptr,
+                 (T*)value.data_ptr(),
+                 query.size(0) * query.size(1),
+                 key.size(2),
+                 128,
+                 head_size,
+                 padded_head_size,
+                 Context::Instance().GetCurrentStream());
+    return {
+        at::from_blob(workspace,
+                      {query.size(0), query.size(1), query.size(2), padded_head_size},
+                      query.options()),
+        at::from_blob(
+            key_pad_ptr, {query.size(0), query.size(1), 128, padded_head_size}, query.options()),
+        at::from_blob(
+            value_pad_ptr, {query.size(0), query.size(1), 128, padded_head_size}, query.options())};
+}
+
+template <typename T>
+std::vector<at::Tensor> padd_add_transform(at::Tensor& query,
+                                           at::Tensor& key,
+                                           at::Tensor& value,
+                                           int heads,
+                                           bool add_padding)
+{
+    int head_size = query.size(2) / heads;
+    int key_value_length = add_padding ? 128 : key.size(1);
+    int padded_head_size = add_padding ? (head_size < 32 ? 32 : (head_size < 64 ? 64 : 128))
+                                       : head_size;
+    T* workspace = (T*)Context::Instance().GetWorkSpace();
+    T* key_pad_ptr = workspace + padded_head_size * query.size(0) * heads * query.size(1);
+    T* value_pad_ptr = key_pad_ptr + padded_head_size * query.size(0) * heads * key_value_length;
+    launch_pad_add_transform_0213(workspace,
+                                  (T*)query.data_ptr(),
+                                  query.size(0),
+                                  query.size(2),
+                                  query.size(1),
+                                  query.size(1),
+                                  heads,
+                                  padded_head_size,
+                                  Context::Instance().GetCurrentStream());
+    launch_pad_add_transform_0213(key_pad_ptr,
+                                  (T*)key.data_ptr(),
+                                  key.size(0),
+                                  key.size(2),
+                                  key.size(1),
+                                  key_value_length,
+                                  heads,
+                                  padded_head_size,
+                                  Context::Instance().GetCurrentStream());
+    launch_pad_add_transform_0213(value_pad_ptr,
+                                  (T*)value.data_ptr(),
+                                  value.size(0),
+                                  value.size(2),
+                                  value.size(1),
+                                  key_value_length,
+                                  heads,
+                                  padded_head_size,
+                                  Context::Instance().GetCurrentStream());
+    return {
+        at::from_blob(
+            workspace, {query.size(0), heads, query.size(1), padded_head_size}, query.options()),
+        at::from_blob(key_pad_ptr,
+                      {query.size(0), heads, key_value_length, padded_head_size},
+                      query.options()),
+        at::from_blob(value_pad_ptr,
+                      {query.size(0), heads, key_value_length, padded_head_size},
+                      query.options())};
+}
 template <typename T>
 at::Tensor ds_linear_layer_int8(at::Tensor& input,
                                 at::Tensor& weight,
@@ -902,18 +1084,20 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
                             at::Tensor& q_scale,
                             bool q_int8)
 {
-    auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
-                       .dtype(input_cont.options().dtype())
+                       .dtype(input.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
                        .requires_grad(false);
 
     int out_size = q_int8 ? weight.size(0) : weight.size(1);
-    int bsz = input_cont.size(0) * input_cont.size(1);
-    auto output = at::empty({input_cont.size(0), input_cont.size(1), out_size}, options);
+    int bsz = input.size(0) * input.size(1);
+
+    T* workspace = (T*)Context::Instance().GetWorkSpace();
+    auto output = at::from_blob(workspace, {input.size(0), input.size(1), out_size}, options);
     if (q_int8) {
-        quantized_gemm<T>(output, (T*)input_cont.data_ptr(), weight, q_scale, q_scale.size(0), bsz);
+        quantized_gemm<T>(
+            output.data_ptr(), (T*)input.data_ptr(), weight, q_scale, q_scale.size(0), bsz);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -924,11 +1108,11 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
                        CUBLAS_OP_N,
                        weight.size(1),
                        bsz,
-                       input_cont.size(2),
+                       input.size(2),
                        &alpha,
                        &gemm_beta,
                        (T*)weight.data_ptr(),
-                       (T*)input_cont.data_ptr(),
+                       (T*)input.data_ptr(),
                        (T*)output.data_ptr(),
 #ifdef __HIP_PLATFORM_HCC__
                        rocblas_gemm_algo_standard);
@@ -965,6 +1149,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                               at::Tensor& residual,
                               at::Tensor& input_bias,
                               at::Tensor& weight,
+                              at::Tensor& weight1,
                               at::Tensor& bias,
                               at::Tensor& gamma,
                               at::Tensor& beta,
@@ -972,13 +1157,15 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                               bool preLayerNorm,
                               bool mlp_after_attn,
                               at::Tensor& q_scale,
+                              at::Tensor& q_scale1,
                               bool q_int8,
                               ActivationFuncType act_func_type)
 {
     int bsz = input.size(0) * input.size(1);
-    auto inp_norm = at::empty_like(input);
-
-    launch_residual_layer_norm((T*)inp_norm.data_ptr(),
+    T* inp_norm =
+        (T*)Context::Instance().GetWorkSpace() + torch::numel(input) + torch::numel(output);
+    T* intermediate = inp_norm + torch::numel(input);
+    launch_residual_layer_norm((T*)inp_norm,
                                (T*)nullptr,
                                (T*)input.data_ptr(),
                                (T*)residual.data_ptr(),
@@ -993,7 +1180,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                                Context::Instance().GetCurrentStream());
 
     if (q_int8) {
-        quantized_gemm<T>(output, (T*)inp_norm.data_ptr(), weight, q_scale, q_scale.size(0), bsz);
+        quantized_gemm<T>(intermediate, inp_norm, weight, q_scale, q_scale.size(0), bsz);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -1008,8 +1195,8 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                        &alpha,
                        &gemm_beta,
                        (T*)weight.data_ptr(),
-                       (T*)inp_norm.data_ptr(),
-                       (T*)output.data_ptr(),
+                       inp_norm,
+                       intermediate,
 #ifdef __HIP_PLATFORM_HCC__
                        rocblas_gemm_algo_standard);
 #else
@@ -1017,27 +1204,53 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
 #endif
     }
     if (act_func_type == ActivationFuncType::GELU) {
-        launch_bias_gelu((T*)output.data_ptr(),
+        launch_bias_gelu(intermediate,
                          (T*)bias.data_ptr(),
                          q_int8 ? weight.size(0) : weight.size(1),
                          bsz,
                          Context::Instance().GetCurrentStream());
     } else if (act_func_type == ActivationFuncType::ReLU) {
-        launch_bias_relu((T*)output.data_ptr(),
+        launch_bias_relu(intermediate,
                          (T*)bias.data_ptr(),
                          q_int8 ? weight.size(0) : weight.size(1),
                          bsz,
                          Context::Instance().GetCurrentStream());
     }
+    if (q_int8) {
+        quantized_gemm<T>(
+            output.data_ptr(), intermediate, weight1, q_scale1, q_scale1.size(0), bsz);
+    } else {
+        float alpha = (T)1.0;
+        float gemm_beta = (T)0.0;
+        cublasSetStream(Context::Instance().GetCublasHandle(),
+                        Context::Instance().GetCurrentStream());
+        cublas_gemm_ex(Context::Instance().GetCublasHandle(),
+                       CUBLAS_OP_N,
+                       CUBLAS_OP_N,
+                       weight1.size(1),
+                       bsz,
+                       weight1.size(0),
+                       &alpha,
+                       &gemm_beta,
+                       (T*)weight1.data_ptr(),
+                       intermediate,
+                       (T*)output.data_ptr(),
+#ifdef __HIP_PLATFORM_HCC__
+                       rocblas_gemm_algo_standard);
+#else
+                       CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+#endif
+    }
 
-    return inp_norm;
+    return torch::from_blob(inp_norm, input.sizes(), input.options());
 }
 
 template <typename T>
 std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                     at::Tensor& residual,
                                     at::Tensor& input_bias,
-                                    at::Tensor& weight,
+                                    at::Tensor& weight_interm,
+                                    at::Tensor& weight_out,
                                     at::Tensor& bias,
                                     at::Tensor& gamma,
                                     at::Tensor& beta,
@@ -1045,28 +1258,29 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                     bool preLayerNorm,
                                     bool mlp_after_attn,
                                     at::Tensor& q_scale,
+                                    at::Tensor& q_scale1,
                                     bool q_int8,
                                     int activation_type)
 {
-    auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
-                       .dtype(input_cont.options().dtype())
+                       .dtype(input.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
                        .requires_grad(false);
 
-    int out_size = q_int8 ? weight.size(0) : weight.size(1);
-    auto output = at::from_blob((T*)Context::Instance().GetWorkSpace(),
-                                {input_cont.size(0), input_cont.size(1), out_size},
+    int out_size = q_int8 ? weight_out.size(0) : weight_out.size(1);
+    auto output = at::from_blob((T*)Context::Instance().GetWorkSpace() + torch::numel(input),
+                                {input.size(0), input.size(1), out_size},
                                 options);
-    int bsz = input_cont.size(0) * input_cont.size(1);
+    int bsz = input.size(0) * input.size(1);
 
     auto act_func_type = static_cast<ActivationFuncType>(activation_type);
     auto res_add = mlp_unfused_cublas<T>(output,
                                          mlp_after_attn ? input : residual,
                                          residual,
                                          input_bias,
-                                         weight,
+                                         weight_interm,
+                                         weight_out,
                                          bias,
                                          gamma,
                                          beta,
@@ -1074,6 +1288,7 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                          preLayerNorm,
                                          mlp_after_attn,
                                          q_scale,
+                                         q_scale1,
                                          q_int8,
                                          act_func_type);
 
@@ -1182,63 +1397,42 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
     return output;
 }
 
-void residual_add_bias(at::Tensor& output,
-                       at::Tensor& input,
-                       at::Tensor& attention_output,
-                       at::Tensor& output_b,
-                       at::Tensor& attention_b,
-                       int mp_size,
-                       bool mlp_after_attn,
-                       bool add_bias,
-                       bool preln)
+template <typename T>
+at::Tensor& residual_add_bias(at::Tensor& hidden_state,
+                              at::Tensor& residual,
+                              const at::Tensor& attention_output,
+                              const at::Tensor& attention_bias,
+                              const at::Tensor& final_bias,
+                              const int mp_size,
+                              const bool mlp_after_attn,
+                              const bool add_bias,
+                              const bool preln)
 {
-    int bsz = input.size(0) * input.size(1);
-    int hidden_size = input.size(2);
-    // cudaStreamWaitEvent(
-    //    Context::Instance().GetCurrentStream(), Context::Instance().GetCompEvent(2), 0);
-    if (input.scalar_type() == at::kFloat)
-        if (mlp_after_attn)
-            launch_bias_residual((float*)input.data_ptr(),
-                                 (float*)output.data_ptr(),
-                                 (float*)attention_output.data_ptr(),
-                                 (float*)output_b.data_ptr(),
-                                 (float*)attention_b.data_ptr(),
-                                 bsz,
-                                 hidden_size,
-                                 mp_size,
-                                 preln,
-                                 Context::Instance().GetCurrentStream());
-        else
-            launch_gptj_residual_add<float>((float*)input.data_ptr(),
-                                            (float*)output.data_ptr(),
-                                            (float*)attention_output.data_ptr(),
-                                            (float*)output_b.data_ptr(),
-                                            (float*)(add_bias ? attention_b.data_ptr() : nullptr),
-                                            hidden_size,
-                                            bsz,
-                                            mp_size,
-                                            Context::Instance().GetCurrentStream());
-    else if (mlp_after_attn)
-        launch_bias_residual((__half*)input.data_ptr(),
-                             (__half*)output.data_ptr(),
-                             (__half*)attention_output.data_ptr(),
-                             (__half*)output_b.data_ptr(),
-                             (__half*)attention_b.data_ptr(),
+    int bsz = residual.size(0) * residual.size(1);
+    int hidden_size = residual.size(2);
+    if (mlp_after_attn)
+        launch_bias_residual(static_cast<T*>(residual.data_ptr()),
+                             static_cast<T*>(hidden_state.data_ptr()),
+                             static_cast<T*>(attention_output.data_ptr()),
+                             static_cast<T*>(final_bias.data_ptr()),
+                             static_cast<T*>(attention_bias.data_ptr()),
                              bsz,
                              hidden_size,
                              mp_size,
                              preln,
                              Context::Instance().GetCurrentStream());
     else
-        launch_gptj_residual_add<__half>((__half*)input.data_ptr(),
-                                         (__half*)output.data_ptr(),
-                                         (__half*)attention_output.data_ptr(),
-                                         (__half*)output_b.data_ptr(),
-                                         (__half*)(add_bias ? attention_b.data_ptr() : nullptr),
-                                         hidden_size,
-                                         bsz,
-                                         mp_size,
-                                         Context::Instance().GetCurrentStream());
+        launch_gptj_residual_add<T>(
+            static_cast<T*>(residual.data_ptr()),
+            static_cast<T*>(hidden_state.data_ptr()),
+            static_cast<T*>(attention_output.data_ptr()),
+            static_cast<T*>(final_bias.data_ptr()),
+            static_cast<T*>((add_bias ? attention_bias.data_ptr() : nullptr)),
+            hidden_size,
+            bsz,
+            mp_size,
+            Context::Instance().GetCurrentStream());
+    return residual;
 }
 
 std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
@@ -1267,7 +1461,8 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                            bsz,
                                            rotate_half,
                                            rotate_every_two,
-                                           Context::Instance().GetCurrentStream());
+                                           Context::Instance().GetCurrentStream(),
+                                           Context::Instance().GetMaxTokenLenght());
     else
         launch_apply_rotary_pos_emb<__half>((__half*)query_cont.data_ptr(),
                                             (__half*)key_cont.data_ptr(),
@@ -1279,7 +1474,8 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                             bsz,
                                             rotate_half,
                                             rotate_every_two,
-                                            Context::Instance().GetCurrentStream());
+                                            Context::Instance().GetCurrentStream(),
+                                            Context::Instance().GetMaxTokenLenght());
     return {query_cont, key_cont};
 }
 
@@ -1380,7 +1576,12 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           "DeepSpeed linear_layer with int8 (CUDA)");
     m.def("fused_gemm_gelu_fp32", &fused_gemm_gelu<float>, "DeepSpeed mlp with fp32 (CUDA)");
     m.def("fused_gemm_gelu_fp16", &fused_gemm_gelu<__half>, "DeepSpeed mlp with fp16 (CUDA)");
-    m.def("residual_add", &residual_add_bias, "DeepSpeed mlp with fp16 (CUDA)");
+    m.def("residual_add_bias_fp32",
+          &residual_add_bias<float>,
+          "DeepSpeed residual add with fp32 (CUDA)");
+    m.def("residual_add_bias_fp16",
+          &residual_add_bias<__half>,
+          "DeepSpeed residual add with fp16 (CUDA)");
     m.def("apply_rotary_pos_emb", &apply_rotary_pos_emb, "DeepSpeed mlp with fp16 (CUDA)");
     m.def("einsum_sec_sm_ecm_fp32",
           &einsum_sec_sm_ecm<float>,
@@ -1390,4 +1591,18 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           &einsum_sec_sm_ecm<__half>,
           "DeepSpeed vector-MM with fp16 (CUDA)");
     m.def("moe_res_matmul", &moe_res_matmul, "DeepSpeed moe residual matmul (CUDA)");
+    m.def("add_padding_fp32", &add_padding<float>, "DeepSpeed residual add with fp32 (CUDA)");
+    m.def("add_padding_fp16", &add_padding<__half>, "DeepSpeed residual add with fp16 (CUDA)");
+    m.def("pad_transform_fp32",
+          &padd_add_transform<float>,
+          "DeepSpeed residual add with fp32 (CUDA)");
+    m.def("pad_transform_fp16",
+          &padd_add_transform<__half>,
+          "DeepSpeed residual add with fp16 (CUDA)");
+    m.def("allocate_workspace_fp32",
+          &allocate_workspace<float>,
+          "DeepSpeed memory allocation for GPT inference with fp32 (CUDA)");
+    m.def("allocate_workspace_fp16",
+          &allocate_workspace<__half>,
+          "DeepSpeed memory allocation for GPT inference with fp16 (CUDA)");
 }

@@ -10,13 +10,15 @@ class TestLatestCheckpoint(DistributedTest):
     world_size = 1
 
     def test_existing_latest(self, tmpdir):
+        use_gpu = torch.cuda.is_available()
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
             "optimizer": {
                 "type": "Adam",
                 "params": {
-                    "lr": 0.00015
+                    "lr": 0.00015,
+                    "torch_adam": not use_gpu
                 }
             }
         }
@@ -32,13 +34,15 @@ class TestLatestCheckpoint(DistributedTest):
                                             empty_tag=True)
 
     def test_missing_latest(self, tmpdir):
+        use_gpu = torch.cuda.is_available()
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
             "optimizer": {
                 "type": "Adam",
                 "params": {
-                    "lr": 0.00015
+                    "lr": 0.00015,
+                    "torch_adam": not use_gpu
                 }
             }
         }

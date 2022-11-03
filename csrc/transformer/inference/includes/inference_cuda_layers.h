@@ -4,15 +4,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 #pragma once
 
-#ifdef __HIP_PLATFORM_HCC__
-#define HALF_PRECISION_AVAILABLE = 1
-#include <hip/hip_cooperative_groups.h>
-#else
-#if __CUDA_ARCH__ >= 530
-#define HALF_PRECISION_AVAILABLE = 1
-#endif
-#include <cooperative_groups.h>
-#endif
+#include "ds_kernel_utils.h"
 
 #include <cuda.h>
 #include <cuda_fp16.h>
@@ -21,7 +13,6 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #include <cassert>
 #include <iostream>
 
-#define MAX_OUT_TOKES 128
 #define MAX_WARP_NUM 32
 #define WARP_SIZE 32
 
@@ -142,7 +133,8 @@ void launch_apply_rotary_pos_emb(T* mixed_query,
                                  unsigned batch,
                                  bool rotate_half,
                                  bool rotate_every_two,
-                                 cudaStream_t stream);
+                                 cudaStream_t stream,
+                                 int max_out_tokens);
 
 template <typename T>
 void launch_moe_res_matmul(T* residual,
@@ -178,4 +170,33 @@ void launch_bias_add_transform_0213(T* outputs,
                                     bool rotate_half,
                                     bool rotate_every_two,
                                     cudaStream_t stream,
-                                    int trans_count);
+                                    int trans_count,
+                                    int max_out_tokens);
+template <typename T>
+void pad_data(T* padded_output,
+              T* output,
+              int bsz,
+              int head_size,
+              int padded_head_size,
+              cudaStream_t stream);
+
+template <typename T>
+void pad_head_seq(T* padded_output,
+                  T* output,
+                  int bsz,
+                  int seq_len,
+                  int padded_seq_len,
+                  int head_size,
+                  int padded_head_size,
+                  cudaStream_t stream);
+
+template <typename T>
+void launch_pad_add_transform_0213(T* output,
+                                   const T* vals,
+                                   int batch_size,
+                                   int hidden_dim,
+                                   int seq_length,
+                                   int padded_seq_len,
+                                   int heads,
+                                   int padded_head_size,
+                                   cudaStream_t stream);

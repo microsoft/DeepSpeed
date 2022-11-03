@@ -74,7 +74,8 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  mlp_after_attn=True,
                  mlp_act_func_type=ActivationFuncType.GELU,
                  training_mp_size=1,
-                 bigscience_bloom=False):
+                 bigscience_bloom=False,
+                 max_out_tokens=1024):
         super(DeepSpeedInferenceConfig,
               self).__init__(
                   hidden_size,
@@ -101,6 +102,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.specialized_mode = False
         self.training_mp_size = training_mp_size
         self.bigscience_bloom = bigscience_bloom
+        self.max_out_tokens = max_out_tokens
 
     @classmethod
     def from_dict(cls, json_object):
@@ -380,6 +382,8 @@ class DeepSpeedSelfAttentionFunction(Function):
                         ) else 0
                         sliced_alibi = alibi[offset:batch_heads + offset, :, :]
 
+
+#
                     attn_key_value = score_context_func(
                         qkv_out,
                         ((1 - input_mask).to(qkv_out.dype) *
@@ -402,29 +406,34 @@ class DeepSpeedSelfAttentionFunction(Function):
         def selfAttention_fp():
             vector_matmul_func = inference_cuda_module.vector_matmul_fp16 if config.fp16 else \
                                     inference_cuda_module.vector_matmul_fp32
+
             if not config.pre_layer_norm:
                 linear_func = inference_cuda_module.linear_layer_fp16 if config.fp16 else \
                                     inference_cuda_module.linear_layer_fp32
-
                 qkv_out = linear_func(input,
                                       attn_qkvw,
                                       attn_qkvb,
+                                      attn_qkvb is not None,
+                                      False,
+                                      False,
+                                      num_attention_heads_per_partition,
                                       DeepSpeedTransformerInference.layer_id)
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32
-                qkv_out = qkv_func(
-                    input,
-                    attn_qkvw,
-                    attn_qkvw.scale,
-                    (attn_qkvb if attn_qkvb is not None else norm_b),
-                    norm_w,
-                    norm_b,
-                    config.epsilon,
-                    (attn_qkvb is not None),
-                    1 if config.bigscience_bloom else
-                    DeepSpeedTransformerInference.layer_id,
-                    config.q_int8)
+                qkv_out = qkv_func(input,
+                                   attn_qkvw,
+                                   attn_qkvw.scale,
+                                   (attn_qkvb if attn_qkvb is not None else norm_b),
+                                   norm_w,
+                                   norm_b,
+                                   config.epsilon,
+                                   (attn_qkvb is not None),
+                                   DeepSpeedTransformerInference.layer_id,
+                                   config.bigscience_bloom,
+                                   config.mp_size,
+                                   dist.get_rank() if dist.is_initialized() else 0,
+                                   config.q_int8)
             context_layer, key_layer, value_layer = compute_attention(qkv_out[0] if isinstance(qkv_out, list) else qkv_out, input_mask)
             output = vector_matmul_func(context_layer,
                                         attn_ow,
@@ -495,20 +504,18 @@ class DeepSpeedSelfAttention(nn.Module):
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
         device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
-        self.attn_qkvw = nn.Parameter(torch.empty(
-            self.config.hidden_size,
-            (self.config.hidden_size // self.config.mp_size) * 3,
-            dtype=data_type,
-            device=device),
+        qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
+        self.attn_qkvw = nn.Parameter(torch.empty(self.config.hidden_size,
+                                                  qkv_size_per_partition,
+                                                  dtype=data_type,
+                                                  device=device),
                                       requires_grad=False)
-        self.attn_qkvb = nn.Parameter(torch.empty(
-            (self.config.hidden_size // self.config.mp_size) * 3,
-            dtype=data_type_fp,
-            device=device),
+        self.attn_qkvb = nn.Parameter(torch.empty(qkv_size_per_partition,
+                                                  dtype=data_type_fp,
+                                                  device=device),
                                       requires_grad=False)
-
-        self.attn_ow = nn.Parameter(torch.empty(self.config.hidden_size //
-                                                self.config.mp_size,
+        out_size_per_partition = self.config.hidden_size // self.config.mp_size
+        self.attn_ow = nn.Parameter(torch.empty(out_size_per_partition,
                                                 self.config.hidden_size,
                                                 dtype=data_type,
                                                 device=device),
@@ -601,6 +608,7 @@ class DeepSpeedMLPFunction(Function):
                 fused_gemm_gelu,
                 vector_matmul_func,
                 bias_residual_func,
+                residual_add_func,
                 activation_func_type=ActivationFuncType.GELU):
 
         if attn_nw is None:
@@ -612,10 +620,11 @@ class DeepSpeedMLPFunction(Function):
                                      config.pre_layer_norm,
                                      False)
         else:
-            intermediate, residual_add = mlp_gemm_func(input,
+            output, residual_add = mlp_gemm_func(input,
                                              residual,
                                              bias,
                                              inter_w,
+                                             output_w,
                                              inter_b,
                                              attn_nw,
                                              attn_nb,
@@ -623,26 +632,23 @@ class DeepSpeedMLPFunction(Function):
                                              config.pre_layer_norm,
                                              config.mlp_after_attn,
                                              inter_w.scale,
+                                             output_w.scale,
                                              config.q_int8,
                                              config.mlp_act_func_type)
-            output = vector_matmul_func(intermediate,
-                                        output_w,
-                                        False,
-                                        output_w.scale,
-                                        config.q_int8)
-        inference_cuda_module.residual_add(
-            output,
-            residual if config.pre_layer_norm else residual_add,
-            input,
-            output_b,
+        residual = residual if config.pre_layer_norm else residual_add
+        residual_add_func(
+            output,                # hidden state
+            residual,              # residual
+            input,                 # attention output
             bias if bias is not None else output_b,
-            config.mp_size,
-            config.mlp_after_attn,
-            bias is not None,
-            config.pre_layer_norm)
+            output_b,
+            config.mp_size,         # model parallel size
+            config.mlp_after_attn,  # whether mlp is after attention (GPTJ model architecture runs the MLP layer in parallel with attention)
+            bias is not None,       # whether bias addition is fused
+            config.pre_layer_norm)  # whether the layer norm is applied before attention
         if mp_group is not None and dist.get_world_size(group=mp_group) > 1:
-            dist.all_reduce(output, group=mp_group)
-        return output
+            dist.all_reduce(residual, group=mp_group)
+        return residual
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -672,22 +678,20 @@ class DeepSpeedMLP(nn.Module):
                                                 dtype=data_type_fp,
                                                 device=device),
                                     requires_grad=False)
+        intm_size_per_partition = self.config.intermediate_size // self.config.mp_size
         self.inter_w = nn.Parameter(torch.empty(self.config.hidden_size,
-                                                self.config.intermediate_size //
-                                                self.config.mp_size,
+                                                intm_size_per_partition,
                                                 dtype=data_type,
                                                 device=device),
                                     requires_grad=False)
-        self.inter_b = nn.Parameter(torch.empty(self.config.intermediate_size //
-                                                self.config.mp_size,
+        self.inter_b = nn.Parameter(torch.empty(intm_size_per_partition,
                                                 dtype=data_type_fp,
                                                 device=device),
                                     requires_grad=False)
-        self.output_w = nn.Parameter(torch.empty(
-            (self.config.intermediate_size // self.config.mp_size),
-            self.config.hidden_size,
-            dtype=data_type,
-            device=device),
+        self.output_w = nn.Parameter(torch.empty(intm_size_per_partition,
+                                                 self.config.hidden_size,
+                                                 dtype=data_type,
+                                                 device=device),
                                      requires_grad=False)
         self.output_b = nn.Parameter(torch.empty(self.config.hidden_size,
                                                  dtype=data_type_fp,
@@ -710,6 +714,9 @@ class DeepSpeedMLP(nn.Module):
         self.bias_residual_func = inference_cuda_module.bias_residual_fp16 if config.fp16 or config.q_int8 else \
                                     inference_cuda_module.bias_residual_fp32
 
+        self.residual_add_func = inference_cuda_module.residual_add_bias_fp16 if config.fp16 or config.q_int8 else \
+                                    inference_cuda_module.residual_add_bias_fp32
+
     def forward(self, input, residual, residual_norm, bias):
         return DeepSpeedMLPFunction.apply(input,
                                           residual,
@@ -729,7 +736,8 @@ class DeepSpeedMLP(nn.Module):
                                           self.mlp_gemm_func,
                                           self.fused_gemm_gelu,
                                           self.vector_matmul_func,
-                                          self.bias_residual_func)
+                                          self.bias_residual_func,
+                                          self.residual_add_func)
 
 
 class DeepSpeedTransformerInference(nn.Module):
@@ -796,6 +804,9 @@ class DeepSpeedTransformerInference(nn.Module):
                                                device=device),
                                    requires_grad=False)
         self.layer_past = None
+        self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if (not config.fp16) else \
+                                inference_cuda_module.allocate_workspace_fp16
+        self.iter = 0
 
     def forward(
             self,
@@ -817,6 +828,19 @@ class DeepSpeedTransformerInference(nn.Module):
             # This needs to be redesigned later!
             layer_head_mask=None,
             past_key_value=None):
+        # Allocate memory only on first layer forward
+        if self.config.layer_id == 0 and self.iter == 0:
+            self.iter += 1
+            self.allocate_workspace(self.config.hidden_size,
+                                    input.size()[0],
+                                    input.size()[1],
+                                    DeepSpeedTransformerInference.layer_id,
+                                    self.config.heads,
+                                    self.config.mp_size,
+                                    self.config.bigscience_bloom,
+                                    dist.get_rank() if dist.is_initialized() else 0,
+                                    self.config.max_out_tokens)
+
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 
