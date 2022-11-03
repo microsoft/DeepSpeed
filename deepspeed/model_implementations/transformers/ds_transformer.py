@@ -144,8 +144,8 @@ class DeepSpeedTransformerInference(nn.Module):
                                               output_attentions,
                                               self.norm_w,
                                               self.norm_b,
-                                              alibi,
-                                              DeepSpeedTransformerInference.layer_id)
+                                              alibi)
+
             presents = (key, value)
             self.layer_past = presents if layer_past is None else None
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
