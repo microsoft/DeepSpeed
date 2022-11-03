@@ -40,8 +40,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                 merge_count,
                 qkv_merging,
                 score_context_func,
-                alibi,
-                num_layers):
+                alibi):
         def _transpose_for_scores(x, key=False, reshape=False):
             attention_head_size = x.shape[-1] // num_attention_heads_per_partition
             new_x_shape = x.size()[:-1] + (num_attention_heads_per_partition,
