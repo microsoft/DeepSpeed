@@ -294,7 +294,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                         config.window_size,
                         no_masking,
                         config.layer_id,
-                        num_layers,
+                        DeepSpeedSelfAttention.num_layers,
                         sliced_alibi if alibi is not None else torch.empty(1))
                     context_layer, key_layer, value_layer = attn_key_value
                     return context_layer, key_layer, value_layer
@@ -313,7 +313,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                       False,
                                       False,
                                       num_attention_heads_per_partition,
-                                      num_layers)
+                                      DeepSpeedSelfAttention.num_layers)
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32
@@ -325,7 +325,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                    norm_b,
                                    config.epsilon,
                                    (attn_qkvb is not None),
-                                   num_layers,
+                                   DeepSpeedSelfAttention.num_layers,
                                    config.bigscience_bloom,
                                    config.mp_size,
                                    dist.get_rank() if dist.is_initialized() else 0,
@@ -456,8 +456,7 @@ class DeepSpeedSelfAttention(nn.Module):
                 output_attentions=False,
                 norm_w=None,
                 norm_b=None,
-                alibi=None,
-                num_layers=0):
+                alibi=None):
         output = DeepSpeedSelfAttentionFunction.apply(
             input,
             input_mask,
@@ -483,7 +482,6 @@ class DeepSpeedSelfAttention(nn.Module):
             self.merge_count,
             self.qkv_merging,
             self.score_context_func,
-            alibi,
-            num_layers)
+            alibi)
 
         return output
