@@ -63,7 +63,8 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  mlp_after_attn=True,
                  mlp_act_func_type=ActivationFuncType.GELU,
                  training_mp_size=1,
-                 bigscience_bloom=False):
+                 bigscience_bloom=False,
+                 max_out_tokens=1024):
         super(DeepSpeedInferenceConfig,
               self).__init__(
                   hidden_size,
@@ -90,6 +91,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.specialized_mode = False
         self.training_mp_size = training_mp_size
         self.bigscience_bloom = bigscience_bloom
+        self.max_out_tokens = max_out_tokens
 
     @classmethod
     def from_dict(cls, json_object):
