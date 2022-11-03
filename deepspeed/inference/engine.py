@@ -131,7 +131,7 @@ class InferenceEngine(Module):
                 checkpoint_dir=config.checkpoint
                 if config.replace_with_kernel_inject else None,
                 save_mp_checkpoint_path=config.checkpoint_config.save_mp_checkpoint_path,
-                base_dir=config.checkpoint_config.base_dir,                 
+                base_dir=config.checkpoint_config.base_dir,
                 max_out_tokens=config.max_out_tokens)
 
         device = torch.cuda.current_device()
