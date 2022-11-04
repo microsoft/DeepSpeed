@@ -878,12 +878,10 @@ class DeepSpeedTransformerInference(nn.Module):
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
 
             if not self.config.pre_layer_norm:
-                ds_layernorm = inference_cuda_module.layer_norm_fp16 if self.config.fp16 or self.config.q_int8 else \
-                                        inference_cuda_module.layer_norm_fp32
-                output = ds_layernorm(output,
-                                      self.norm_w,
-                                      self.norm_b,
-                                      self.config.epsilon)
+                output = inference_cuda_module.layer_norm(output,
+                                                          self.norm_w,
+                                                          self.norm_b,
+                                                          self.config.epsilon)
 
             output = output.to(input_type)
         if get_present:
