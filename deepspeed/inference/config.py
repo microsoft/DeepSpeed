@@ -48,7 +48,7 @@ class DeepSpeedTPConfig(DeepSpeedConfigModel):
 class DeepSpeedMoEConfig(DeepSpeedConfigModel):
     enabled: bool = True
     ep_size: int = 1
-    moe_experts = Field(1, alias="num_experts")
+    moe_experts : list = Field([1], alias="num_experts")
     moe_type: MoETypeEnum = MoETypeEnum.standard
     ep_mp_group: object = None
     ep_group: object = Field(None, alias="expert_group")

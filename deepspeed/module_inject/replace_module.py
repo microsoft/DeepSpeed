@@ -408,6 +408,7 @@ def replace_transformer_layer(orig_layer_impl,
             if moe:
                 ep_world_size = dist.get_world_size()
                 local_ep_size = 1 if num_experts < ep_world_size else num_experts // ep_world_size
+                bigscience_bloom = policy_cls is BLOOMLayerPolicy
 
                 transformer_config = transformer_inference.DeepSpeedMoEInferenceConfig(
                     hidden_size=hidden_size,
