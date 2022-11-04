@@ -43,9 +43,6 @@ __global__ void fused_ln(T* output,
     cg::thread_block tb = cg::this_thread_block();
     cg::thread_block_tile<hw_warp_size> warp = cg::tiled_partition<hw_warp_size>(tb);
 
-    __shared__ float sum_buffer[ln::max_warps];
-    __shared__ float var_buffer[ln::max_warps];
-
     // X-dimension of the block
     const int block_offset = tb.group_index().x * elems_per_row;
     const int thread_offset = tb.thread_index().x * T_per_load;
@@ -141,8 +138,6 @@ void launch_fused_ln(T* output,
                      int elems_per_row,
                      cudaStream_t stream)
 {
-    constexpr int max_unroll = 4;
-
     // 8 for __half, 4 for float
     constexpr int T_per_load = ln::granularity / sizeof(T);
     // 32 for __half, 16 for float
@@ -220,9 +215,6 @@ __global__ void fused_residual_ln(T* output,
 
     cg::thread_block tb = cg::this_thread_block();
     cg::thread_block_tile<hw_warp_size> warp = cg::tiled_partition<hw_warp_size>(tb);
-
-    __shared__ float sum_buffer[ln::max_warps];
-    __shared__ float var_buffer[ln::max_warps];
 
     // X-dimension of the block
     const int block_offset = tb.group_index().x * elems_per_row;
@@ -336,8 +328,6 @@ void launch_fused_residual_ln(T* output,
                               int elems_per_row,
                               cudaStream_t stream)
 {
-    constexpr int max_unroll = 4;
-
     // 8 for __half, 4 for float
     constexpr int T_per_load = ln::granularity / sizeof(T);
     // 32 for __half, 16 for float
@@ -383,8 +373,6 @@ void launch_fused_residual_ln_store(T* norm_output,
                                     int elems_per_row,
                                     cudaStream_t stream)
 {
-    constexpr int max_unroll = 4;
-
     // 8 for __half, 4 for float
     constexpr int T_per_load = ln::granularity / sizeof(T);
     // 32 for __half, 16 for float
