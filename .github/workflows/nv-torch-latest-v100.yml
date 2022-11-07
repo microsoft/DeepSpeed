@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   unit-tests:
-    runs-on: [self-hosted, nvidia, cu111, v100]
+    runs-on: [self-hosted, nvidia, cu113, v100]
 
     steps:
       - uses: actions/checkout@v2
@@ -32,7 +32,7 @@ jobs:
           nvcc --version
           pip install --upgrade pip
           pip uninstall --yes torch torchvision triton
-          pip install torch==1.12.0 torchvision --extra-index-url https://download.pytorch.org/whl/cu113 # Need to resolve errors with torch==1.13.0
+          pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu113
           # Since the cupy install that happens in DS's setup.py gets the cuda
           # version from pytorch/driver api (and not nvcc/runtime api), it's
           # possible that when torch releases a new version, the DS install
