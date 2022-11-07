@@ -51,6 +51,10 @@ jobs:
           pip install .[dev,1bit,autotuning,inf]
           ds_report
 
+      - name: Python environment
+        run: |
+          pip list
+
       - name: Unit tests
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch

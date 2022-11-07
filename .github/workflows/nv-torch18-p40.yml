@@ -36,10 +36,6 @@ jobs:
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
-      - name: Python environment
-        run: |
-          pip list
-
       - name: Install transformers
         run: |
           git clone https://github.com/huggingface/transformers
@@ -55,6 +51,10 @@ jobs:
           pip uninstall --yes deepspeed
           pip install .[dev,1bit,autotuning]
           ds_report
+
+      - name: Python environment
+        run: |
+          pip list
 
       - name: Unit tests
         run: |
