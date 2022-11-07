@@ -38,7 +38,7 @@ jobs:
           # possible that when torch releases a new version, the DS install
           # will install a new version of cupy. The resulting environment
           # causes an error when import cupy. To avoid this, we uninstall cupy.
-          pip uninstall --yes $(pip list | grep -Po "cupy[^\s]*" | tr '\n' ' ')
+          pip list | grep -Po "cupy[^\s]*" | xargs --no-run-if-empty pip uninstall --yes
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
