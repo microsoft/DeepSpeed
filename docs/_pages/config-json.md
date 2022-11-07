@@ -652,8 +652,8 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 {
   "autotuning": {
     "enabled": false,
-    "results_dir": null,
-    "exps_dir": null,
+    "results_dir": "autotuning_results",
+    "exps_dir": "autotuning_exps",
     "overwrite": false,
     "metric": "throughput",
     "start_profile_step": 3,
@@ -678,15 +678,15 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 <i>**results_dir**</i>: [string]
 
-| Description                                                                                                                      | Default |
-| -------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Path to the autotuning experiment results directory. If None, "autotuning_results" under the training script launching path is used. | `null`  |
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| Path to the autotuning experiment results directory.  The default appears in the working directory from which Deepspeed was launched. | "autotuning_results"  |
 
 <i>**exps_dir**</i>: [string]
 
-| Description                                                                                                                        | Default |
-| ---------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Path to the auotuning experiment descriptions directory. If None, "autotuning_exps" under the train script launching path is used. | `null`  |
+| Description                                                                                                                              | Default |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| Path to the auotuning experiment descriptions directory. The default appears in the working directory from which Deepspeed was launched. | "autotuning_exps"  |
 
 <i>**overwrite**</i>: [boolean]
 
@@ -1476,3 +1476,40 @@ Different pruning sets, this is used for different pruning parameters. In this e
 | <i>&emsp;&emsp;**dense_ratio**</i>: [float] | The percentage of weights to keep after pruning. | `0.5` |
 | <i>**modules**</i>: [list] | Scope of weight parameters associated to the params setting. | `"All CONV2D layers"` |
 | <i>**related_modules**</i>: [list[list]] | Related module to the channel pruned module. | `None` |
+
+### Checkpoint options
+
+```json
+"checkpoint": {
+    "tag_validation"="Warn",
+    "load_universal"=false,
+    "use_node_local_storage"=false,
+    "parallel_write":{
+        "pipeline_stage": false
+    }
+}
+```
+
+<i>**tag_validation**</i>: ["Ignore"|"Warn"|"Fail"]
+
+| Description                                                                                                                            | Default |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Enables level of checking to ensure checkpoint tags are consistent across all ranks. Useful when restoring with different world sizes. |  "Warn" |
+
+<i>**load_universal**</i>: [boolean]
+
+| Description                            | Default |
+| -------------------------------------- | ------- |
+| Load the latest checkpoint for all.    | `false` |
+
+<i>**use_node_local_storage**</i>: [boolean]
+
+| Description                                                                                                                                                               | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| If `true` DeepSpeed will store model parameter states and checkpoint states based on local rank allowing checkpoints to be loaded without access to a shared filesystem.  | `false` |
+
+<i>**pipeline_stage**</i>: [boolean]
+
+| Description                                                   | Default |
+| ------------------------------------------------------------- | ------- |
+| Use pipeline stages to parallelize the writing of checkpoints.| `false` |

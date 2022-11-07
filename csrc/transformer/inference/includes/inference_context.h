@@ -15,8 +15,6 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #define MEGABYTE (1024 * 1024)
 #define GIGABYTE (1024 * 1024 * 1024)
 
-#define MAX_OUT_TOKENS 8192
-
 // TODO: refactor out
 #define WARP_SIZE 32
 
@@ -55,7 +53,8 @@ public:
           _curr_offset(0),
           _stream(0),
           _free_memory_size(0),
-          _num_tokens(1)
+          _num_tokens(1),
+          _attention_unfused_workspace_offset(0)
     {
         if (cublasCreate(&_cublasHandle) != CUBLAS_STATUS_SUCCESS) {
             auto message = std::string("Fail to create cublas handle.");
@@ -88,25 +87,47 @@ public:
     }
 
     void GenWorkSpace(const unsigned& num_layers,
+                      const unsigned& num_heads,
                       const size_t& batch_size,
+                      const size_t& prompt_len,
                       const size_t& hidden_dim,
                       const unsigned& mp_size,
                       const bool& external_cache,
                       const size_t& elem_size,
-                      const unsigned& rank)
+                      const unsigned& rank,
+                      unsigned max_out_tokens)
     {
         size_t total_size;
         if (!_free_memory_size) { cudaMemGetInfo(&_free_memory_size, &total_size); }
 
-        size_t activation_size = 16 * hidden_dim * batch_size;
-        size_t cache_size = num_layers * batch_size * (hidden_dim / mp_size) * 2;
-        _max_seq_len =
-            (((_free_memory_size - (_free_memory_size > GIGABYTE ? 500 : 100) * MEGABYTE) /
-              elem_size)) /
-            (activation_size + cache_size);
-        size_t workSpaceSize = (external_cache ? activation_size : (activation_size + cache_size)) *
+        // Flash attention requires padded heads and we'll conservatively allocate
+        // for that here. Flash attention is only enabled for head size <= 128 right now
+        const int head_size = hidden_dim / num_heads;
+        const int padded_head_size = head_size < 32 ? 32 : (head_size < 64 ? 64 : 128);
+        const int effective_head_size = (head_size > 128) ? head_size : padded_head_size;
+
+        size_t activation_size = 16 * (num_heads * effective_head_size) * batch_size;
+        // Other sequence length dimension is added when the final workSpaceSize is calculated
+        size_t temp_size = batch_size * num_heads * max_out_tokens * 2;
+        size_t cache_size =
+            num_layers * batch_size * ((num_heads * effective_head_size) / mp_size) * 2;
+        size_t minimal_requirements =
+            temp_size + (_free_memory_size > GIGABYTE ? 500 : 100) * MEGABYTE;
+        if (_free_memory_size < minimal_requirements) {
+            printf("Requested:\t%lu\nFree:\t%lu\nTotal:\t%lu\n",
+                   minimal_requirements,
+                   _free_memory_size,
+                   total_size);
+            throw std::runtime_error("Workspace can't be allocated, no enough memory.");
+        }
+
+        _max_seq_len = ((_free_memory_size - minimal_requirements) / elem_size) /
+                       (activation_size + temp_size + cache_size);
+        _max_seq_len = std::min((size_t)max_out_tokens, _max_seq_len);
+        size_t workSpaceSize = ((external_cache ? (activation_size + temp_size)
+                                                : (activation_size + temp_size + cache_size))) *
                                _max_seq_len * elem_size;
-        _max_seq_len = std::min((size_t)MAX_OUT_TOKENS, _max_seq_len);
+        temp_size *= _max_seq_len * elem_size;
         if (rank == 0 && !_workspace)
             printf(
                 "Free memory : %lu (Bytes)  Total memory: %lu (Bytes)  Setting maximum total "
@@ -130,6 +151,7 @@ public:
             throw std::runtime_error("Workspace is null.");
         }
         _workSpaceSize = workSpaceSize;
+        _attention_unfused_workspace_offset = workSpaceSize - temp_size;
     }
     inline size_t GetMaxTokenLenght() const { return _max_seq_len; }
 
@@ -137,6 +159,10 @@ public:
 
     size_t get_workspace_size() const { return _workSpaceSize; }
     void* GetWorkSpace() { return _workspace; }
+    void* GetAttentionUnfusedWorkspace()
+    {
+        return (char*)_workspace + _attention_unfused_workspace_offset;
+    }
 
     inline unsigned new_token(unsigned layer_id)
     {
@@ -202,6 +228,8 @@ private:
     cudaEvent_t _comm_event;
 
     void* _workspace;
+    // offset from _workspace for attention unfused memory
+    size_t _attention_unfused_workspace_offset;
     uint64_t _seed;
     uint64_t _curr_offset;
 
