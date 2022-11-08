@@ -41,7 +41,13 @@ class Params<Type::Symmetric, numBits> {
 public:
     float scale;
 
-    DS_D_INLINE Params(float max) { scale = (1 << numBits) / (2 * max); }
+    DS_D_INLINE Params(float max) {
+        if (max == 0) {
+            scale = 1.0;
+        } else {
+            scale = (1 << numBits) / (2 * max);
+        }
+    }
 
     DS_D_INLINE int8_t quantize(__half val)
     {
@@ -91,7 +97,11 @@ public:
 
     DS_D_INLINE Params(float max, float min)
     {
-        scale = (1 << numBits) / (max - min);
+        if (max == min) {
+            scale = 1.0;
+        } else {
+            scale = (1 << numBits) / (max - min);
+        }
         offset = -(1 << (numBits - 1)) - (min * scale);
     }
 
