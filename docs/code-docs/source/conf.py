@@ -20,7 +20,8 @@ copyright = '2020, Microsoft'
 author = 'Microsoft'
 
 # The full version, including alpha/beta/rc tags
-release = '0.6'
+with open("../../../version.txt", "r") as f:
+    release = f.readline().rstrip()
 
 master_doc = 'index'
 
