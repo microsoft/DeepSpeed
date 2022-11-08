@@ -40,7 +40,7 @@ class UNetPolicy(DSPolicy):
         return isinstance(module, self._orig_layer_class)
 
     def apply(self, module):
-        from .unet import DSUNet
+        from ..model_implementations.diffusers.unet import DSUNet
         return DSUNet(module)
 
     def attention(self, client_module):
@@ -80,7 +80,7 @@ class VAEPolicy(DSPolicy):
         return isinstance(module, self._orig_layer_class)
 
     def apply(self, module):
-        from .unet import DSVAE
+        from ..model_implementations.diffusers.vae import DSVAE
         return DSVAE(module)
 
 

@@ -212,7 +212,7 @@ def generic_injection(module, fp16=False):
             triangular_masking=False,
             max_out_tokens=4096,
         )
-        attn_module = transformer_inference.DeepSpeedAttention(config)
+        attn_module = transformer_inference.DeepSpeedDiffusersAttention(config)
 
         def transpose(data):
             data.reshape(-1).copy_(data.transpose(-1, -2).contiguous().reshape(-1))
@@ -257,7 +257,7 @@ def generic_injection(module, fp16=False):
                                   replace_with_kernel_inject=True,
                                   triangular_masking=True,
                                   max_out_tokens=8192)
-        from .encoder import DSClipEncoder
+        from ..model_implementations.transformers.clip_encoder import DSClipEncoder
         cg_encoder = DSClipEncoder(module.text_encoder)
         setattr(module, 'text_encoder', cg_encoder)
         for name in module.__dict__.keys():
