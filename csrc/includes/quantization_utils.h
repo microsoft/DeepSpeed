@@ -41,7 +41,8 @@ class Params<Type::Symmetric, numBits> {
 public:
     float scale;
 
-    DS_D_INLINE Params(float max) {
+    DS_D_INLINE Params(float max)
+    {
         if (max == 0) {
             scale = 1.0;
         } else {

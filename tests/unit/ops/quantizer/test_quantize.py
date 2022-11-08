@@ -51,7 +51,8 @@ def get_scale_zero_point(q_bits,
     else:
         scale = torch.empty_like(max)
         for i, x in enumerate(max):
-            scale[i] = torch.ones_like(x) if max[i] == min[i] else q_range / (max[i] - min[i])
+            scale[i] = torch.ones_like(x) if max[i] == min[i] else q_range / (max[i] -
+                                                                              min[i])
         zero_point = q_min - (min * scale)
 
     return scale, zero_point
@@ -105,18 +106,22 @@ def run_float_quantize(q_bits, is_symmetric_quant, activations_ref, num_groups):
 @pytest.mark.parametrize("is_symmetric_quant", [True, False])
 @pytest.mark.parametrize("q_bits", [4, 8])
 @pytest.mark.parametrize("directed_case", ["all_zeros", None])
-def test_float_quantize(num_elems, num_groups, is_symmetric_quant, q_bits, directed_case):
+def test_float_quantize(num_elems,
+                        num_groups,
+                        is_symmetric_quant,
+                        q_bits,
+                        directed_case):
 
     if directed_case == "all_zeros":
         activations_ds = torch.zeros((num_groups,
-                                    num_elems),
-                                    dtype=torch.float16,
-                                    device='cuda')
+                                      num_elems),
+                                     dtype=torch.float16,
+                                     device='cuda')
     else:
         activations_ds = torch.randn((num_groups,
-                                    num_elems),
-                                    dtype=torch.float16,
-                                    device='cuda')
+                                      num_elems),
+                                     dtype=torch.float16,
+                                     device='cuda')
     activations_ref = activations_ds.clone().detach()
 
     ref_out_tensor, ref_params = run_float_quantize(q_bits, is_symmetric_quant, activations_ref, num_groups)
