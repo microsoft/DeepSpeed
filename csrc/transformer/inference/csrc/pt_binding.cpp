@@ -101,11 +101,11 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
 }
 
 template <typename T>
-void allocate_workspace(size_t hidden_dim,
-                        size_t batch_size,
-                        size_t prompt_length,
-                        unsigned num_layers,
+void allocate_workspace(unsigned hidden_dim,
                         unsigned num_heads,
+                        unsigned prompt_length,
+                        unsigned batch_size,
+                        unsigned num_layers,
                         unsigned mp_size = 1,
                         bool external_cache = false,
                         unsigned rank = 0,
@@ -931,7 +931,8 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                            bool external_cache,
                            bool do_flash_attn,
                            int num_heads,
-                           unsigned num_layers)
+                           unsigned num_layers,
+                           int max_out_tokens)
 {
     auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
@@ -948,13 +949,14 @@ at::Tensor ds_linear_layer(at::Tensor& input,
         cublasSetStream(Context::Instance().GetCublasHandle(),
                         Context::Instance().GetCurrentStream());
         allocate_workspace<T>(input.size(2),
-                              input.size(0),
-                              input.size(1),
-                              num_layers,
                               num_heads,
+                              input.size(1),
+                              input.size(0),
+                              num_layers,
                               1,
                               external_cache,
-                              0);
+                              0,
+                              max_out_tokens);
         workspace = (T*)Context::Instance().GetWorkSpace();
     }
     auto output = at::from_blob(workspace, {input.size(0), input.size(1), weight.size(1)}, options);

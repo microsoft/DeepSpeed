@@ -40,7 +40,7 @@ def ds_implementation(vals, gamma, beta, epsilon):
 
 @pytest.mark.inference
 @pytest.mark.parametrize("batch", [1, 32])
-@pytest.mark.parametrize("seq_len", [1, 4096])
+@pytest.mark.parametrize("seq_len", [1, 128])
 @pytest.mark.parametrize("channels", [384, 512, 768, 1024, 2048, 8192, 14432])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_layer_norm(batch, seq_len, channels, dtype):
@@ -81,7 +81,7 @@ def residual_ds_implementation(vals, bias, res, gamma, beta, epsilon):
 
 @pytest.mark.inference
 @pytest.mark.parametrize("batch", [1, 32])
-@pytest.mark.parametrize("seq_len", [1, 4096])
+@pytest.mark.parametrize("seq_len", [1, 128])
 @pytest.mark.parametrize("channels", [384, 512, 768, 1024, 2048, 8192, 14432])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_layer_norm_residual(batch, seq_len, channels, dtype):
@@ -149,7 +149,7 @@ def residual_store_ds_implementation(vals, bias, res, gamma, beta, epsilon):
 
 @pytest.mark.inference
 @pytest.mark.parametrize("batch", [1, 32])
-@pytest.mark.parametrize("seq_len", [1, 4096])
+@pytest.mark.parametrize("seq_len", [1, 128])
 @pytest.mark.parametrize("channels", [384, 512, 768, 1024, 2048, 8192, 14432])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_layer_norm_residual_store(batch, seq_len, channels, dtype):

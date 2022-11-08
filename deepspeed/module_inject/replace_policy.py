@@ -67,6 +67,23 @@ class UNetPolicy(DSPolicy):
                    client_module.heads
 
 
+class VAEPolicy(DSPolicy):
+    def __init__(self):
+        super().__init__()
+        try:
+            import diffusers
+            self._orig_layer_class = diffusers.models.vae.AutoencoderKL
+        except ImportError:
+            self._orig_layer_class = None
+
+    def match(self, module):
+        return isinstance(module, self._orig_layer_class)
+
+    def apply(self, module):
+        from .unet import DSVAE
+        return DSVAE(module)
+
+
 class TransformerPolicy(DSPolicy):
     # a static class variable containing the HuggingFace model configuration.
     # see e.g., transformers.models.opt.configuration_opt.OPTConfig
@@ -608,4 +625,4 @@ replace_policies = [
 ]
 
 # non-transformer-based policies
-generic_policies = [UNetPolicy]
+generic_policies = [UNetPolicy, VAEPolicy]
