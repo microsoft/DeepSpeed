@@ -545,6 +545,41 @@ at::Tensor ds_bias_gelu(at::Tensor& input, at::Tensor& bias)
     return input_cont;
 }
 
+at::Tensor ds_bias_geglu(at::Tensor& activation, at::Tensor& bias)
+{
+    /*
+    Used in FF of Stable diffusion
+    */
+
+    const int batch_size = activation.size(0);
+    const int seq_len = activation.size(1);
+    const int channels = activation.size(2);
+
+    const int rows = batch_size * seq_len;
+    // Dimensionality is cut in half
+    const int out_channels = channels / 2;
+
+    auto output = at::empty({batch_size, seq_len, out_channels}, activation.options());
+
+    if (activation.options().dtype() == torch::kFloat32) {
+        launch_fused_bias_geglu((float*)output.data_ptr(),
+                                (const float*)activation.data_ptr(),
+                                (const float*)bias.data_ptr(),
+                                rows,
+                                channels,
+                                Context::Instance().GetCurrentStream());
+    } else {
+        launch_fused_bias_geglu((__half*)output.data_ptr(),
+                                (const __half*)activation.data_ptr(),
+                                (const __half*)bias.data_ptr(),
+                                rows,
+                                channels,
+                                Context::Instance().GetCurrentStream());
+    }
+
+    return output;
+}
+
 template <typename T>
 at::Tensor ds_bias_relu(at::Tensor& input, at::Tensor& bias)
 {
@@ -928,11 +963,8 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                            at::Tensor& weight,
                            at::Tensor& bias,
                            bool add_bias,
-                           bool external_cache,
                            bool do_flash_attn,
-                           int num_heads,
-                           unsigned num_layers,
-                           int max_out_tokens)
+                           int num_heads)
 {
     auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
@@ -944,21 +976,6 @@ at::Tensor ds_linear_layer(at::Tensor& input,
     int head_size = input_cont.size(2) / num_heads;
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
-    // Reallocate memory if we received a new prompt
-    if (!workspace) {
-        cublasSetStream(Context::Instance().GetCublasHandle(),
-                        Context::Instance().GetCurrentStream());
-        allocate_workspace<T>(input.size(2),
-                              num_heads,
-                              input.size(1),
-                              input.size(0),
-                              num_layers,
-                              1,
-                              external_cache,
-                              0,
-                              max_out_tokens);
-        workspace = (T*)Context::Instance().GetWorkSpace();
-    }
     auto output = at::from_blob(workspace, {input.size(0), input.size(1), weight.size(1)}, options);
 
     float alpha = (T)1.0;
@@ -1644,6 +1661,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           "DeepSpeed attention with int8 (CUDA)");
     m.def("bias_gelu_fp32", &ds_bias_gelu<float>, "DeepSpeed Gelu with fp32 (CUDA)");
     m.def("bias_gelu_fp16", &ds_bias_gelu<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
+    m.def("bias_geglu", &ds_bias_geglu, "DeepSpeed Bias GEGLU (CUDA)");
     m.def("bias_add_fp32", &ds_bias_add<float>, "DeepSpeed Bias Add with fp32 (CUDA)");
     m.def("bias_add_fp16", &ds_bias_add<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
     m.def("bias_relu_fp32", &ds_bias_relu<float>, "DeepSpeed ReLU with fp32 (CUDA)");
