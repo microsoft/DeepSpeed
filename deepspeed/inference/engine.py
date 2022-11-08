@@ -163,7 +163,7 @@ class InferenceEngine(Module):
                 save_mp_checkpoint_path=save_mp_checkpoint_path,
                 base_dir=base_dir,
                 max_out_tokens=max_out_tokens)
-         elif replace_method in inference_dict_policy_map:     
+        elif replace_method in parser_policy_map:
             for client_module, injection_policy in parser_policy_map[replace_method].items():
                 self._apply_injection_policy(
                     client_module,
