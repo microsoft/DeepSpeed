@@ -251,12 +251,12 @@ def generic_injection(module, fp16=False):
         except ImportError:
             new_policies = {}
 
-        replace_transformer_layer(None,
-                                  module.text_encoder,
-                                  training=False,
-                                  replace_with_kernel_inject=True,
-                                  triangular_masking=True,
-                                  max_out_tokens=8192)
+        #replace_transformer_layer(None,
+        #                          module.text_encoder,
+        #                          training=False,
+        #                          replace_with_kernel_inject=True,
+        #                          triangular_masking=True,
+        #                          max_out_tokens=8192)
         from ..model_implementations.transformers.clip_encoder import DSClipEncoder
         cg_encoder = DSClipEncoder(module.text_encoder)
         setattr(module, 'text_encoder', cg_encoder)

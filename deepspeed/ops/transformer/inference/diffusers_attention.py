@@ -242,7 +242,7 @@ class DeepSpeedDiffusersAttention(nn.Module):
                                     input.size()[0],
                                     DeepSpeedDiffusersAttention.layer_id,
                                     self.config.mp_size,
-                                    True,
+                                    False,
                                     0,
                                     self.config.max_out_tokens)
 

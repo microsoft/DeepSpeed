@@ -13,6 +13,7 @@ from .diffusers_2d_transformer import Diffusers2DTransformerConfig
 
 # Ops will be loaded on demand
 transformer_cuda_module = None
+spatial_cuda_module = None
 
 
 def load_transformer_module():
@@ -20,6 +21,13 @@ def load_transformer_module():
     if transformer_cuda_module is None:
         transformer_cuda_module = op_builder.InferenceBuilder().load()
     return transformer_cuda_module
+
+
+def load_spatial_module():
+    global spatial_cuda_module
+    if spatial_cuda_module is None:
+        spatial_cuda_module = op_builder.SpatialInferenceBuilder().load()
+    return spatial_cuda_module
 
 
 class DeepSpeedDiffusersTransformerBlock(nn.Module):
@@ -80,6 +88,7 @@ class DeepSpeedDiffusersTransformerBlock(nn.Module):
                                              requires_grad=False)
 
         self.transformer_cuda_module = load_transformer_module()
+        load_spatial_module()
 
     def forward(self, hidden_states, context=None, timestep=None):
 
