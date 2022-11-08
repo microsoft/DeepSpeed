@@ -243,7 +243,7 @@ def generic_injection(module, fp16=False):
         try:
             import diffusers
             cross_attention = diffusers.models.attention.CrossAttention
-            attention_block = diffusers.models.attention.AttentionBlock
+            attention_block = diffusers.models.attention.BasicTransformerBlock
             new_policies = {
                 cross_attention: replace_attn,
                 attention_block: replace_attn_block,
