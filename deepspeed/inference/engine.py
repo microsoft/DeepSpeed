@@ -22,6 +22,7 @@ from ..moe.utils import has_moe_layers
 from ..runtime.zero import GatheredParameters
 from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
 from ..module_inject.replace_policy import DSPolicy
+from ..module_inject.parser_policies import inference_dict_policy_map 
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -162,7 +163,21 @@ class InferenceEngine(Module):
                 save_mp_checkpoint_path=save_mp_checkpoint_path,
                 base_dir=base_dir,
                 max_out_tokens=max_out_tokens)
-
+        elif replace_method in inference_dict_policy_map:     
+            for client_module, injection_policy in inference_dict_policy_map[replace_method].items():
+                self._apply_injection_policy(
+                    client_module,
+                    injection_policy,
+                    return_tuple,
+                    replace_with_kernel_inject,
+                    moe,
+                    moe_experts,
+                    moe_type,
+                    training_mp_size,
+                    self.checkpoint if replace_with_kernel_inject else None,
+                    save_mp_checkpoint_path=save_mp_checkpoint_path,
+                    base_dir=base_dir,
+                    max_out_tokens=max_out_tokens)
         device = torch.cuda.current_device()
         self.module.to(device)
 

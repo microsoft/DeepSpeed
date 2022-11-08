@@ -918,7 +918,7 @@ def replace_transformer_layer(orig_layer_impl,
 
         else:
             # copy relevant state from child -> new module
-            if replace_with_kernel_inject:
+            if replace_with_kernel_inject:  
                 new_module = replace_with_policy(child,
                                                  _policy,
                                                  triangular_masking,
@@ -1170,7 +1170,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy):
     Returns:
         A modified ``model``.
     """
-    policy = {}
+    policy = {} 
     if orig_class is not None:
         policy.update({orig_class: (replace_fn, _replace_policy)})
     else:
