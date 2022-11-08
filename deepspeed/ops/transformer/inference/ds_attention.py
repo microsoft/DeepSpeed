@@ -437,7 +437,7 @@ class DeepSpeedSelfAttention(nn.Module):
         self.qkv_merging = qkv_merging
 
         if self.config.scale_attn_by_inverse_layer_idx is True:
-            self.norm_factor *= float(self.layer_id + 1)
+            self.norm_factor *= float(self.config.layer_id + 1)
             # https://github.com/huggingface/transformers/blob/v4.24.0/src/transformers/models/gpt2/modeling_gpt2.py#L191
 
         global inference_cuda_module
