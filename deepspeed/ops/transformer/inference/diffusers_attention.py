@@ -44,6 +44,7 @@ class DeepSpeedDiffusersAttentionFunction(Function):
                 hidden_size_per_partition,
                 attn_ow,
                 attn_ob,
+                do_out_bias,
                 score_context_func,
                 linear_func,
                 triton_flash_attn_kernel):
@@ -97,11 +98,8 @@ class DeepSpeedDiffusersAttentionFunction(Function):
                                       attn_qkvw,
                                       attn_qkvb if attn_qkvb is not None else attn_qkvw,
                                       attn_qkvb is not None,
-                                      True,
                                       do_flash_attn,
-                                      config.heads,
-                                      DeepSpeedDiffusersAttention.layer_id,
-                                      config.max_out_tokens)
+                                      config.heads)
                 if do_flash_attn:
                     context_layer = triton_flash_attn_kernel(qkv_out[0],
                                                              qkv_out[1],
@@ -135,11 +133,9 @@ class DeepSpeedDiffusersAttentionFunction(Function):
             output = linear_func(context_layer,
                                  attn_ow,
                                  attn_ob,
-                                 attn_ob is not None,
-                                 True,
+                                 do_out_bias,
                                  False,
-                                 config.heads,
-                                 DeepSpeedDiffusersAttention.layer_id)
+                                 config.heads)
             return output
 
         output = selfAttention_fp(input, context, input_mask)
@@ -218,6 +214,8 @@ class DeepSpeedDiffusersAttention(nn.Module):
                                                 dtype=data_type_fp,
                                                 device=device),
                                     requires_grad=False)
+        self.do_out_bias = True
+
         if triton_flash_attn is None:
             load_triton_flash_attn()
         self.triton_flash_attn_kernel = triton_flash_attn()
@@ -263,6 +261,7 @@ class DeepSpeedDiffusersAttention(nn.Module):
             self.hidden_size_per_partition,
             self.attn_ow,
             self.attn_ob,
+            self.do_out_bias,
             self.score_context_func,
             self.linear_func,
             self.triton_flash_attn_kernel)
