@@ -5,7 +5,7 @@ import torch
 
 
 class DSClipEncoder(torch.nn.Module):
-    def __init__(self, enc):
+    def __init__(self, enc, enable_cuda_graph=False):
         super().__init__()
         enc.text_model._build_causal_attention_mask = self._build_causal_attention_mask
         self.enc = enc
@@ -17,7 +17,7 @@ class DSClipEncoder(torch.nn.Module):
         self.static_output = [None, None]
         self._cuda_graphs = [None, None]
         self.iter = 0
-        self.enable_cuda_graph = False
+        self.enable_cuda_graph = enable_cuda_graph
 
     def _build_causal_attention_mask(self, bsz, seq_len, dtype):
         mask = torch.empty(bsz,
@@ -50,10 +50,6 @@ class DSClipEncoder(torch.nn.Module):
             self.iter = (self.iter + 1) % 2
             return outputs
         else:
-            self.iter += 1
-            if self.iter == 2:
-                self.enable_cuda_graph = True
-                self.iter = 0
             return self.enc(*inputs, **kwargs)
 
     def _create_cuda_graph(self, *inputs, **kwargs):

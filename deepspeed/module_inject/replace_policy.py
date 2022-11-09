@@ -39,9 +39,10 @@ class UNetPolicy(DSPolicy):
     def match(self, module):
         return isinstance(module, self._orig_layer_class)
 
-    def apply(self, module):
+    def apply(self, module, enable_cuda_graph=True):
+        # TODO(cmikeh2): Enable cuda graph should be an inference configuration
         from ..model_implementations.diffusers.unet import DSUNet
-        return DSUNet(module)
+        return DSUNet(module, enable_cuda_graph=enable_cuda_graph)
 
     def attention(self, client_module):
         qw = client_module.to_q.weight
@@ -79,9 +80,10 @@ class VAEPolicy(DSPolicy):
     def match(self, module):
         return isinstance(module, self._orig_layer_class)
 
-    def apply(self, module):
+    def apply(self, module, enable_cuda_graph=True):
+        # TODO(cmikeh2): Enable cuda graph should be an inference configuration
         from ..model_implementations.diffusers.vae import DSVAE
-        return DSVAE(module)
+        return DSVAE(module, enable_cuda_graph=enable_cuda_graph)
 
 
 class TransformerPolicy(DSPolicy):
@@ -202,7 +204,7 @@ class HFBertLayerPolicy(TransformerPolicy):
 
 class HFCLIPLayerPolicy(TransformerPolicy):
     def __init__(self, client_module, inference=False):
-        super().__init__(inference, pre_attn_norm=True, scale_attention=False)
+        super().__init__(inference, pre_attn_norm=True, scale_attention=True)
         self.client_module = client_module
         self.cuda_graph_supported = True
 

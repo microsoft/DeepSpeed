@@ -5,7 +5,7 @@ import torch
 
 
 class DSVAE(torch.nn.Module):
-    def __init__(self, vae):
+    def __init__(self, vae, enable_cuda_graph=True):
         super().__init__()
         self.vae = vae
         self.device = self.vae.device
@@ -14,6 +14,7 @@ class DSVAE(torch.nn.Module):
         self.decoder_cuda_graph_created = False
         self.encoder_cuda_graph_created = False
         self.all_cuda_graph_created = False
+        self.enable_cuda_graph = enable_cuda_graph
 
     def _graph_replay_decoder(self, *inputs, **kwargs):
         for i in range(len(inputs)):
@@ -49,12 +50,15 @@ class DSVAE(torch.nn.Module):
         self.decoder_cuda_graph_created = True
 
     def decode(self, *inputs, **kwargs):
-        if self.decoder_cuda_graph_created:
-            outputs = self._graph_replay_decoder(*inputs, **kwargs)
+        if self.enable_cuda_graph:
+            if self.decoder_cuda_graph_created:
+                outputs = self._graph_replay_decoder(*inputs, **kwargs)
+            else:
+                self._create_cuda_graph_decoder(*inputs, **kwargs)
+                outputs = self._graph_replay_decoder(*inputs, **kwargs)
+            return outputs
         else:
-            self._create_cuda_graph_decoder(*inputs, **kwargs)
-            outputs = self._graph_replay_decoder(*inputs, **kwargs)
-        return outputs
+            return self._decode(*inputs, **kwargs)
 
     def _graph_replay_encoder(self, *inputs, **kwargs):
         for i in range(len(inputs)):
@@ -90,12 +94,15 @@ class DSVAE(torch.nn.Module):
         self.encoder_cuda_graph_created = True
 
     def encode(self, *inputs, **kwargs):
-        if self.encoder_cuda_graph_created:
-            outputs = self._graph_replay_encoder(*inputs, **kwargs)
+        if self.enable_cuda_graph:
+            if self.encoder_cuda_graph_created:
+                outputs = self._graph_replay_encoder(*inputs, **kwargs)
+            else:
+                self._create_cuda_graph_encoder(*inputs, **kwargs)
+                outputs = self._graph_replay_encoder(*inputs, **kwargs)
+            return outputs
         else:
-            self._create_cuda_graph_encoder(*inputs, **kwargs)
-            outputs = self._graph_replay_encoder(*inputs, **kwargs)
-        return outputs
+            return self._encode(*inputs, **kwargs)
 
     def _graph_replay_all(self, *inputs, **kwargs):
         for i in range(len(inputs)):
@@ -108,12 +115,15 @@ class DSVAE(torch.nn.Module):
         return self.static_output
 
     def forward(self, *inputs, **kwargs):
-        if self.cuda_graph_created:
-            outputs = self._graph_replay_all(*inputs, **kwargs)
+        if self.enable_cuda_graph:
+            if self.cuda_graph_created:
+                outputs = self._graph_replay_all(*inputs, **kwargs)
+            else:
+                self._create_cuda_graph(*inputs, **kwargs)
+                outputs = self._graph_replay_all(*inputs, **kwargs)
+            return outputs
         else:
-            self._create_cuda_graph(*inputs, **kwargs)
-            outputs = self._graph_replay_all(*inputs, **kwargs)
-        return outputs
+            return self._forward(*inputs, **kwargs)
 
     def _create_cuda_graph(self, *inputs, **kwargs):
         # warmup to create the workspace and cublas handle

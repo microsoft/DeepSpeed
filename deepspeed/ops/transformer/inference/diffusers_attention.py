@@ -233,7 +233,6 @@ class DeepSpeedDiffusersAttention(nn.Module):
         self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if not (config.fp16) else \
                                     inference_cuda_module.allocate_workspace_fp16
 
-    
     def forward(self, input, context=None, input_mask=None):
         if self.config.layer_id == 0:
             self.allocate_workspace(self.config.hidden_size,

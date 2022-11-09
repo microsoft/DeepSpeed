@@ -195,7 +195,7 @@ def _module_match(module):
     return None
 
 
-def generic_injection(module, fp16=False):
+def generic_injection(module, fp16=False, enable_cuda_graph=True):
     def replace_attn(child, policy):
         policy_attn = policy.attention(child)
         if policy_attn is None:
@@ -258,7 +258,8 @@ def generic_injection(module, fp16=False):
         #                          triangular_masking=True,
         #                          max_out_tokens=8192)
         from ..model_implementations.transformers.clip_encoder import DSClipEncoder
-        cg_encoder = DSClipEncoder(module.text_encoder)
+        cg_encoder = DSClipEncoder(module.text_encoder,
+                                   enable_cuda_graph=enable_cuda_graph)
         setattr(module, 'text_encoder', cg_encoder)
         for name in module.__dict__.keys():
             sub_module = getattr(module, name)
@@ -275,7 +276,8 @@ def generic_injection(module, fp16=False):
                             setattr(module, name, replaced_module)
 
                 _replace_module(sub_module, policy)
-                new_module = policy.apply(sub_module)
+                new_module = policy.apply(sub_module,
+                                          enable_cuda_graph=enable_cuda_graph)
                 print(f"**** found and replaced {name} w. {type(new_module)}")
                 setattr(module, name, new_module)
 
