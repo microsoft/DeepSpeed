@@ -11,13 +11,6 @@ parser.add_argument(
         default="",
         help="filepath of model file to be parsed",
         )
-#parser.add_argument(
-#        "--module",
-#        "-m",
-#        type=str,
-#        default="",
-#        help="target module inside model file",
-#        )
 parser.add_argument(
         "--output_file",
         "-o",
@@ -33,7 +26,6 @@ def get_class_source(node, class_name):
     classes = [n for n in node.body if isinstance(n, ast.ClassDef)]
     for class_ in classes:
         if class_.name == class_name:
-            #print("Class name:", class_.name)
             methods = [n for n in class_.body if isinstance(n, ast.FunctionDef)]
             for method in methods:
                 if method.name == "__init__":
@@ -67,9 +59,6 @@ def get_module(node):
 def get_linear_layers(source):
     linear_matches = re.findall(r"self.(.*?) = nn.(Linear)", source)
     
-    #check for attributes at stack level
-    #stack_matches = re.findall(r"self.(.*?) = nn.ModuleList\(\s*\[(.*?)\(", source)
-
     #check for attributes at block class level     
     block_matches = re.findall(r"self.(.*?).append\((.*?)\(", source)
 
@@ -129,21 +118,25 @@ def check_matches(need_all_reduce, matches):
     return i_need_all_reduce, new_matches
 
 
+def get_key_name():
+    model_name = re.search(r"modeling_(.*?).py", args.file)
+    #remove underscore characters
+    key = re.sub('_','', model_name.group(1))
+    return key
+
+
 if __name__ == "__main__":
 
     modules_policy_list = []    
-    model_name = re.search(r"modeling_(.*?).py", args.file)
 
     #parse file as abstract syntax tree
     with open(args.file, "r") as f:
         file_content = f.read()
         node = ast.parse(file_content)
 
-    #get module(s)
+    key = get_key_name()
     modules = get_module(node)
-    #if modules == []:
-        #exit()
-    
+        
     for module in modules:
         linear_layer_list = []
         injection_policy_list = []
@@ -186,7 +179,7 @@ if __name__ == "__main__":
     #write results to output file
     if len(modules_policy_list):
         print(modules_policy_list)
-        output_string = model_name.group(1) + "=dict("
+        output_string = key + "=dict("
         for module, injection_policy in modules_policy_list:
             output_string = output_string + module + "=("
             for gem in injection_policy:
