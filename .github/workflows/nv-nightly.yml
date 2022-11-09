@@ -45,9 +45,16 @@ jobs:
           pip install .[dev,1bit,autotuning,inf]
           ds_report
 
+      - name: Install lm-eval
+        run: |
+          pip uninstall --yes lm-eval
+          pip install git+https://github.com/EleutherAI/lm-evaluation-harness
+          # This is required until lm-eval makes a new release. v0.2.0 is
+          # broken for latest version of transformers
+
       - name: Unit tests
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --forked --verbose -m 'nightly' unit/ --torch_ver="1.8" --cuda_ver="11"
+          TRANSFORMERS_CACHE=/blob/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --forked --verbose -m 'nightly' unit/ --torch_ver="1.8" --cuda_ver="11"
