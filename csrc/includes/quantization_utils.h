@@ -54,7 +54,9 @@ public:
     }
 
     /*
-    Functiuon to do reduction of the group.
+    Functiuon to Return calculated Quantization params.
+    Template Arguments :
+        numBits -   Number of bits in quantized element.    int : 8 or 4
     Function Arguments :
         tb      -   Threadblock object. cg::thread_block
         warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
@@ -94,7 +96,9 @@ public:
     }
 
     /*
-    Functiuon to do reduction of the group.
+    Functiuon to Return calculated Quantization params.
+    Template Arguments :
+        numBits -   Number of bits in quantized element.    int : 8 or 4
     Function Arguments :
         tb      -   Threadblock object. cg::thread_block
         warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
@@ -138,7 +142,9 @@ public:
     }
 
     /*
-    Functiuon to do reduction of the group.
+    Functiuon to Return calculated Quantization params.
+    Template Arguments :
+        numBits -   Number of bits in quantized element.    int : 8 or 4
     Function Arguments :
         tb      -   Threadblock object. cg::thread_block
         warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
@@ -181,11 +187,8 @@ class Params<Type::Symmetric, numBits> {
 public:
     float scale;
 
-    DS_D_INLINE Params(cg::thread_block& tb,
-                       cg::thread_block_tile<hw_warp_size>& warp,
-                       GroupStats<Type::Symmetric> stats)
+    DS_D_INLINE Params(GroupStats<Type::Symmetric> stats)
     {
-        stats.reduce(tb, warp);
         if (stats.max == 0) {
             scale = 1.0;
         } else {
@@ -216,11 +219,8 @@ class Params<Type::IntegerSymmetric, numBits> {
 public:
     int32_t scale;
 
-    DS_D_INLINE Params(cg::thread_block& tb,
-                       cg::thread_block_tile<hw_warp_size>& warp,
-                       GroupStats<Type::IntegerSymmetric> stats)
+    DS_D_INLINE Params(GroupStats<Type::IntegerSymmetric> stats)
     {
-        stats.reduce(tb, warp);
         scale = conversion::to<int32_t>(stats.max + 0.5f);
     }
 
@@ -245,11 +245,8 @@ public:
     float scale;
     float offset;
 
-    DS_D_INLINE Params(cg::thread_block& tb,
-                       cg::thread_block_tile<hw_warp_size>& warp,
-                       GroupStats<Type::Asymmetric> stats)
+    DS_D_INLINE Params(GroupStats<Type::Asymmetric> stats)
     {
-        stats.reduce(tb, warp);
         if (stats.max == stats.min) {
             scale = 1.0;
         } else {
@@ -276,6 +273,34 @@ public:
         mem_access::store_global<sizeof(float)>(params + 2 * group_index + 1, &offset);
     }
 };
+
+/*
+Helper function to do parallel reduction and calculate params.
+Template Arguments :
+    qType           -   Type of quantization to perform.                            Type::Symmetric
+or Type::Asymmetric numChunks       -   Number of bits in quantized element. int : 8 or 4
+    elemsPerBlock   -   Number of elements to participate in Qunatization together. int : 8 or 4
+Function Arguments :
+    tb      -   Threadblock object. cg::thread_block
+    warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
+    stats   -   Group stats         GroupStats<qType>
+*/
+template <Type qType, int numBits, int elemsPerBlock>
+DS_D_INLINE Params<qType, numBits> _get_params(cg::thread_block& tb,
+                                               cg::thread_block_tile<hw_warp_size>& warp,
+                                               GroupStats<qType> stats);
+
+template <Type qType, int numBits, int elemsPerBlock>
+DS_D_INLINE Params<qType, numBits> _get_params(cg::thread_block& tb,
+                                               cg::thread_block_tile<hw_warp_size>& warp,
+                                               GroupStats<qType> stats)
+{
+    stats.reduce(tb, warp);
+
+    Params<qType, numBits> params(stats);
+
+    return params;
+}
 
 /*
 The kernel that quantizes 16 bytes of __half type input data.
@@ -430,7 +455,11 @@ DS_D_INLINE void local_array(cg::thread_block& tb,
     }
 }
 
-template <Type qType, int numBits, int numChunks, int numWarps = max_threads / hw_warp_size>
+template <Type qType,
+          int numBits,
+          int numChunks,
+          int numWarps = max_threads / hw_warp_size,
+          int elemsPerBlock = 0>
 __device__ void local_array(__half2* local_buffer,
                             float* __restrict__ global_params,
                             int8_t* __restrict__ output_data,
@@ -440,7 +469,7 @@ __device__ void local_array(__half2* local_buffer,
     cg::thread_block_tile<hw_warp_size> warp = cg::tiled_partition<hw_warp_size>(tb);
 
     auto group_stats = _local_serial_reduce<qType, numChunks>(local_buffer);
-    Params<qType, numBits> params(tb, warp, group_stats);
+    auto params = _get_params<qType, numBits, elemsPerBlock>(tb, warp, group_stats);
 
     quantize::local_array<qType, numBits, numChunks>(
         tb, warp, local_buffer, global_params, output_data, elems_per_group, params);
