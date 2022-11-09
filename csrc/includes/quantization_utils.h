@@ -16,6 +16,146 @@ constexpr int h2_per_load = granularity / sizeof(__half2);
 constexpr int max_threads = 1024;
 
 /*
+Group stats tracks the necessary statistics about the quantized group
+to abstract the particulars for the main loop. The scales in particular
+can be derived from
+*/
+template <Type qType>
+class GroupStats {
+public:
+    DS_D_INLINE void update(__half2 val);
+
+    DS_D_INLINE void reduce(cg::thread_block& tb, cg::thread_block_tile<hw_warp_size>& warp);
+};
+
+template <>
+class GroupStats<Type::Symmetric> {
+public:
+    // Symmetric quantization only tracks the maximum absolute value
+    __half2 cur_max;
+    float max;
+
+    /*
+    Technically, this would give bad results if there
+    are 0 values to process since the reduction would
+    give -inf instead of 0. We do not consider this
+    to be a reasonable edge case.
+    */
+    DS_D_INLINE GroupStats() { cur_max = reduce::init<rop::Max, __half2>(); }
+
+    /*
+    Updated the running absmax used to calculate params.
+    Function Arguments :
+        val : The __half2 value to update the running min and max with.
+    */
+    DS_D_INLINE void update(__half2 val)
+    {
+        cur_max = reduce::element<rop::Max>(cur_max, __habs2(val));
+    }
+
+    /*
+    Functiuon to do reduction of the group.
+    Function Arguments :
+        tb      -   Threadblock object. cg::thread_block
+        warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
+    */
+    DS_D_INLINE void reduce(cg::thread_block& tb, cg::thread_block_tile<hw_warp_size>& warp)
+    {
+        const float2 partial_max = conversion::to<float2>(cur_max);
+        max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
+
+        reduce::block<rop::Max>(tb, warp, max);
+    }
+};
+
+template <>
+class GroupStats<Type::IntegerSymmetric> {
+public:
+    // Symmetric quantization only tracks the maximum absolute value
+    __half2 cur_max;
+    float max;
+
+    /*
+    Technically, this would give bad results if there
+    are 0 values to process since the reduction would
+    give -inf instead of 0. We do not consider this
+    to be a reasonable edge case.
+    */
+    DS_D_INLINE GroupStats() { cur_max = reduce::init<rop::Max, __half2>(); }
+
+    /*
+    Updated the running absmax used to calculate params.
+    Function Arguments :
+        val : The __half2 value to update the running min and max with.
+    */
+    DS_D_INLINE void update(__half2 val)
+    {
+        cur_max = reduce::element<rop::Max>(cur_max, __habs2(val));
+    }
+
+    /*
+    Functiuon to do reduction of the group.
+    Function Arguments :
+        tb      -   Threadblock object. cg::thread_block
+        warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
+    */
+    DS_D_INLINE void reduce(cg::thread_block& tb, cg::thread_block_tile<hw_warp_size>& warp)
+    {
+        const float2 partial_max = conversion::to<float2>(cur_max);
+        max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
+
+        reduce::block<rop::Max>(tb, warp, max);
+    }
+};
+
+template <>
+class GroupStats<Type::Asymmetric> {
+public:
+    __half2 cur_max;
+    __half2 cur_min;
+    float max;
+    float min;
+
+    /*
+    Initialize cur_max to -inf, cur_min to inf since
+    we are doing a true range analysis.
+    */
+    DS_D_INLINE GroupStats()
+    {
+        cur_max = reduce::init<rop::Max, __half2>();
+        cur_min = reduce::init<rop::Min, __half2>();
+    }
+
+    /*
+    Updated the running min and max used to calculate params.
+    Function Arguments :
+        val : The __half2 value to update the running min and max with.
+    */
+    DS_D_INLINE void update(__half2 val)
+    {
+        cur_max = reduce::element<rop::Max>(cur_max, val);
+        cur_min = reduce::element<rop::Min>(cur_min, val);
+    }
+
+    /*
+    Functiuon to do reduction of the group.
+    Function Arguments :
+        tb      -   Threadblock object. cg::thread_block
+        warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
+    */
+    DS_D_INLINE void reduce(cg::thread_block& tb, cg::thread_block_tile<hw_warp_size>& warp)
+    {
+        const float2 partial_max = conversion::to<float2>(cur_max);
+        max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
+
+        const float2 partial_min = conversion::to<float2>(cur_min);
+        min = reduce::element<rop::Min>(partial_min.x, partial_min.y);
+
+        reduce::block<rop::Max, rop::Min>(tb, warp, max, min);
+    }
+};
+
+/*
 Class to hold the quantization parameters for a given tensor.
 Holds the implementation of the quantization operation.
 */
@@ -41,12 +181,15 @@ class Params<Type::Symmetric, numBits> {
 public:
     float scale;
 
-    DS_D_INLINE Params(float max)
+    DS_D_INLINE Params(cg::thread_block& tb,
+                       cg::thread_block_tile<hw_warp_size>& warp,
+                       GroupStats<Type::Symmetric> stats)
     {
-        if (max == 0) {
+        stats.reduce(tb, warp);
+        if (stats.max == 0) {
             scale = 1.0;
         } else {
-            scale = (1 << numBits) / (2 * max);
+            scale = (1 << numBits) / (2 * stats.max);
         }
     }
 
@@ -73,7 +216,13 @@ class Params<Type::IntegerSymmetric, numBits> {
 public:
     int32_t scale;
 
-    DS_D_INLINE Params(float max) { scale = conversion::to<int32_t>(max + 0.5f); }
+    DS_D_INLINE Params(cg::thread_block& tb,
+                       cg::thread_block_tile<hw_warp_size>& warp,
+                       GroupStats<Type::IntegerSymmetric> stats)
+    {
+        stats.reduce(tb, warp);
+        scale = conversion::to<int32_t>(stats.max + 0.5f);
+    }
 
     DS_D_INLINE int8_t quantize(__half val)
     {
@@ -96,14 +245,17 @@ public:
     float scale;
     float offset;
 
-    DS_D_INLINE Params(float max, float min)
+    DS_D_INLINE Params(cg::thread_block& tb,
+                       cg::thread_block_tile<hw_warp_size>& warp,
+                       GroupStats<Type::Asymmetric> stats)
     {
-        if (max == min) {
+        stats.reduce(tb, warp);
+        if (stats.max == stats.min) {
             scale = 1.0;
         } else {
-            scale = (1 << numBits) / (max - min);
+            scale = (1 << numBits) / (stats.max - stats.min);
         }
-        offset = -(1 << (numBits - 1)) - (min * scale);
+        offset = -(1 << (numBits - 1)) - (stats.min * scale);
     }
 
     DS_D_INLINE int8_t quantize(__half val)
@@ -122,170 +274,6 @@ public:
         const float store_scale = 1 / scale;
         mem_access::store_global<sizeof(float)>(params + 2 * group_index, &store_scale);
         mem_access::store_global<sizeof(float)>(params + 2 * group_index + 1, &offset);
-    }
-};
-
-/*
-Group stats tracks the necessary statistics about the quantized group
-to abstract the particulars for the main loop. The scales in particular
-can be derived from
-*/
-template <Type qType>
-class GroupStats {
-public:
-    DS_D_INLINE void update(__half2 val);
-
-    template <int numBits>
-    DS_D_INLINE Params<qType, numBits> get_params(cg::thread_block& tb,
-                                                  cg::thread_block_tile<hw_warp_size>& warp);
-};
-
-template <>
-class GroupStats<Type::Symmetric> {
-public:
-    // Symmetric quantization only tracks the maximum absolute value
-    __half2 cur_max;
-
-    /*
-    Technically, this would give bad results if there
-    are 0 values to process since the reduction would
-    give -inf instead of 0. We do not consider this
-    to be a reasonable edge case.
-    */
-    DS_D_INLINE GroupStats() { cur_max = reduce::init<rop::Max, __half2>(); }
-
-    /*
-    Updated the running absmax used to calculate params.
-    Function Arguments :
-        val : The __half2 value to update the running min and max with.
-    */
-    DS_D_INLINE void update(__half2 val)
-    {
-        cur_max = reduce::element<rop::Max>(cur_max, __habs2(val));
-    }
-
-    /*
-    Functiuon to Return calculated Quantization params.
-    Template Arguments :
-        numBits -   Number of bits in quantized element.    int : 8 or 4
-    Function Arguments :
-        tb      -   Threadblock object. cg::thread_block
-        warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
-    */
-    template <int numBits>
-    DS_D_INLINE Params<Type::Symmetric, numBits> get_params(
-        cg::thread_block& tb,
-        cg::thread_block_tile<hw_warp_size>& warp)
-    {
-        const float2 partial_max = conversion::to<float2>(cur_max);
-        float max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
-
-        reduce::block<rop::Max>(tb, warp, max);
-
-        Params<Type::Symmetric, numBits> params(max);
-
-        return params;
-    }
-};
-
-template <>
-class GroupStats<Type::IntegerSymmetric> {
-public:
-    // Symmetric quantization only tracks the maximum absolute value
-    __half2 cur_max;
-
-    /*
-    Technically, this would give bad results if there
-    are 0 values to process since the reduction would
-    give -inf instead of 0. We do not consider this
-    to be a reasonable edge case.
-    */
-    DS_D_INLINE GroupStats() { cur_max = reduce::init<rop::Max, __half2>(); }
-
-    /*
-    Updated the running absmax used to calculate params.
-    Function Arguments :
-        val : The __half2 value to update the running min and max with.
-    */
-    DS_D_INLINE void update(__half2 val)
-    {
-        cur_max = reduce::element<rop::Max>(cur_max, __habs2(val));
-    }
-
-    /*
-    Functiuon to Return calculated Quantization params.
-    Template Arguments :
-        numBits -   Number of bits in quantized element.    int : 8 or 4
-    Function Arguments :
-        tb      -   Threadblock object. cg::thread_block
-        warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
-    */
-    template <int numBits>
-    DS_D_INLINE Params<Type::IntegerSymmetric, numBits> get_params(
-        cg::thread_block& tb,
-        cg::thread_block_tile<hw_warp_size>& warp)
-    {
-        const float2 partial_max = conversion::to<float2>(cur_max);
-        float max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
-
-        reduce::block<rop::Max>(tb, warp, max);
-
-        Params<Type::IntegerSymmetric, numBits> params(max);
-
-        return params;
-    }
-};
-
-template <>
-class GroupStats<Type::Asymmetric> {
-public:
-    __half2 cur_max;
-    __half2 cur_min;
-
-    /*
-    Initialize cur_max to -inf, cur_min to inf since
-    we are doing a true range analysis.
-    */
-    DS_D_INLINE GroupStats()
-    {
-        cur_max = reduce::init<rop::Max, __half2>();
-        cur_min = reduce::init<rop::Min, __half2>();
-    }
-
-    /*
-    Updated the running min and max used to calculate params.
-    Function Arguments :
-        val : The __half2 value to update the running min and max with.
-    */
-    DS_D_INLINE void update(__half2 val)
-    {
-        cur_max = reduce::element<rop::Max>(cur_max, val);
-        cur_min = reduce::element<rop::Min>(cur_min, val);
-    }
-
-    /*
-    Functiuon to Return calculated Quantization params.
-    Template Arguments :
-        numBits -   Number of bits in quantized element.    int : 8 or 4
-    Function Arguments :
-        tb      -   Threadblock object. cg::thread_block
-        warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
-    */
-    template <int numBits>
-    DS_D_INLINE Params<Type::Asymmetric, numBits> get_params(
-        cg::thread_block& tb,
-        cg::thread_block_tile<hw_warp_size>& warp)
-    {
-        const float2 partial_max = conversion::to<float2>(cur_max);
-        float max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
-
-        const float2 partial_min = conversion::to<float2>(cur_min);
-        float min = reduce::element<rop::Min>(partial_min.x, partial_min.y);
-
-        reduce::block<rop::Max, rop::Min>(tb, warp, max, min);
-
-        Params<Type::Asymmetric, numBits> params(max, min);
-        return params;
     }
 };
 
@@ -452,7 +440,7 @@ __device__ void local_array(__half2* local_buffer,
     cg::thread_block_tile<hw_warp_size> warp = cg::tiled_partition<hw_warp_size>(tb);
 
     auto group_stats = _local_serial_reduce<qType, numChunks>(local_buffer);
-    auto params = group_stats.get_params<numBits>(tb, warp);
+    Params<qType, numBits> params(tb, warp, group_stats);
 
     quantize::local_array<qType, numBits, numChunks>(
         tb, warp, local_buffer, global_params, output_data, elems_per_group, params);
