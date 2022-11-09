@@ -40,7 +40,7 @@ class UNetPolicy(DSPolicy):
         return isinstance(module, self._orig_layer_class)
 
     def apply(self, module):
-        from .unet import DSUNet
+        from ..model_implementations.diffusers.unet import DSUNet
         return DSUNet(module)
 
     def attention(self, client_module):
@@ -65,6 +65,23 @@ class UNetPolicy(DSPolicy):
                    client_module.to_out[0].bias, \
                    qw.shape[-1], \
                    client_module.heads
+
+
+class VAEPolicy(DSPolicy):
+    def __init__(self):
+        super().__init__()
+        try:
+            import diffusers
+            self._orig_layer_class = diffusers.models.vae.AutoencoderKL
+        except ImportError:
+            self._orig_layer_class = None
+
+    def match(self, module):
+        return isinstance(module, self._orig_layer_class)
+
+    def apply(self, module):
+        from ..model_implementations.diffusers.vae import DSVAE
+        return DSVAE(module)
 
 
 class TransformerPolicy(DSPolicy):
@@ -608,4 +625,4 @@ replace_policies = [
 ]
 
 # non-transformer-based policies
-generic_policies = [UNetPolicy]
+generic_policies = [UNetPolicy, VAEPolicy]
