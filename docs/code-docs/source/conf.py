@@ -20,7 +20,8 @@ copyright = '2020, Microsoft'
 author = 'Microsoft'
 
 # The full version, including alpha/beta/rc tags
-release = '0.6'
+with open("../../../version.txt", "r") as f:
+    release = f.readline().rstrip()
 
 master_doc = 'index'
 
@@ -37,9 +38,21 @@ extensions = [
     'sphinx.ext.viewcode',
     'recommonmark',
     'sphinx_rtd_theme',
+    'sphinxcontrib.autodoc_pydantic',
 ]
 
 pygments_style = 'sphinx'
+
+# autodoc_pyandtic config
+autodoc_pydantic_model_show_field_summary = False
+autodoc_pydantic_model_show_json = False
+autodoc_pydantic_model_show_config_summary = False
+autodoc_pydantic_model_show_config_member = False
+autodoc_pydantic_model_show_validator_summary = False
+autodoc_pydantic_model_show_validator_members = False
+autodoc_pydantic_model_summary_list_order = 'bysource'
+autodoc_pydantic_model_member_order = 'bysource'
+autodoc_pydantic_field_list_validators = False
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

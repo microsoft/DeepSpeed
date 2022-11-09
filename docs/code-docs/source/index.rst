@@ -10,6 +10,14 @@ Model Setup
    initialize
    inference-init
 
+DeepSpeed Config
+----------------
+
+.. toctree::
+   :maxdepth: 2
+
+   ds-config
+
 Training API
 ------------
 
@@ -19,7 +27,7 @@ Training API
    training
 
 Inference API
-------------
+-------------
 
 .. toctree::
    :maxdepth: 2
@@ -64,7 +72,7 @@ Pipeline Parallelism
    pipeline
 
 Optimizers
---------------------
+----------
 .. toctree::
    :maxdepth: 2
 

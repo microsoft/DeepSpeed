@@ -51,6 +51,22 @@ for a complete list of options for configuration and performance tuning.
         our `optimizer config <https://www.deepspeed.ai/docs/config-json/#optimizer-parameters>`_
         to instruct :meth:`deepspeed.initialize` to build the optimizer for you.
 
+ZeRO Configurations
+===================
+
+All the settings for DeepSpeed ZeRO are set with the
+:class:`DeepSpeedZeroConfig`. The dictionary provided under the ``zero`` entry of
+the main DeepSpeed configuration dict will be parsed and validated with this
+class. Sub-configurations for parameter offload and optimzer offload settings
+are parsed by :class:`DeepSpeedZeroOffloadParamConfig` and
+:class:`DeepSpeedZeroOffloadOptimizerConfig`. For more information on the
+DeepSpeed configuration, please see :ref:`deepspeed-configs`.
+
+.. autopydantic_model:: deepspeed.runtime.zero.config.DeepSpeedZeroConfig
+
+.. autopydantic_model:: deepspeed.runtime.zero.config.DeepSpeedZeroOffloadParamConfig
+
+.. autopydantic_model:: deepspeed.runtime.zero.config.DeepSpeedZeroOffloadOptimizerConfig
 
 
 Example ZeRO-3 Configurations
