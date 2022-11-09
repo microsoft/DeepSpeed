@@ -22,7 +22,7 @@ from ..moe.utils import has_moe_layers
 from ..runtime.zero import GatheredParameters
 from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
 from ..module_inject.replace_policy import DSPolicy
-from ..module_inject.parser_policies import parser_policy_map
+from ..module_inject.parser_policies import ParserPolicies
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -163,8 +163,9 @@ class InferenceEngine(Module):
                 save_mp_checkpoint_path=save_mp_checkpoint_path,
                 base_dir=base_dir,
                 max_out_tokens=max_out_tokens)
-        elif replace_method in parser_policy_map:
-            for client_module, injection_policy in parser_policy_map[replace_method].items():
+        elif replace_method == 'dict':
+            key = ParserPolicies.get_map_key(str(model))
+            for client_module, injection_policy in ParserPolicies.parser_policy_map[key].items():
                 self._apply_injection_policy(
                     client_module,
                     injection_policy,
