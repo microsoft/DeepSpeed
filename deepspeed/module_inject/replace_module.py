@@ -240,6 +240,9 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
     if isinstance(module, torch.nn.Module):
         pass
     else:
+        if fp16 is False:
+            raise ValueError("Generic injection only supported with FP16")
+
         try:
             import diffusers
             cross_attention = diffusers.models.attention.CrossAttention
