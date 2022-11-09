@@ -26,10 +26,10 @@ class DtypeEnum(Enum):
         return obj
 
     def __repr__(self):
-        return '<%s.%s: %s>' % (
+        return "<%s.%s: %s>" % (
             self.__class__.__name__,
             self._name_,
-            ', '.join([repr(v) for v in self._all_values]),
+            ", ".join([repr(v) for v in self._all_values]),
         )
 
 
@@ -48,7 +48,7 @@ class DeepSpeedTPConfig(DeepSpeedConfigModel):
 class DeepSpeedMoEConfig(DeepSpeedConfigModel):
     enabled: bool = True
     ep_size: int = 1
-    moe_experts : list = Field([1], alias="num_experts")
+    moe_experts: list = Field([1], alias="num_experts")
     moe_type: MoETypeEnum = MoETypeEnum.standard
     ep_mp_group: object = None
     ep_group: object = Field(None, alias="expert_group")
@@ -92,7 +92,7 @@ class InferenceCheckpointConfig(DeepSpeedConfigModel):
     base_dir: str = None
 
 
-''' Public DS Inference config is defined in this class.
+""" Public DS Inference config is defined in this class.
     If you plan to extend the config, please create a new subclass
     e.g. NewQuantConfig and add as a field to this class
 
@@ -143,7 +143,7 @@ Arguments:
         base_dir: This shows the root directory under which all the checkpoint files exists. This can be passed through the json config too.
         max_out_tokens: This argument shows the maximum number of tokens inference-engine can work with, including the input and output tokens.
             Please consider increasing it to the required token-length required for your use-case.
-'''
+"""
 
 
 class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
@@ -163,17 +163,22 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
                                                          alias="ckpt_config")
     return_tuple: bool = True
     training_mp_size: int = 1
-    replace_method: str = 'auto'
+    replace_method: str = "auto"
     injection_policy: Dict = None
     config: Dict = None  # todo: really no need for this field if we can refactor
     max_out_tokens: int = 1024
     mp_size: int = 1
 
-    @validator('mp_size')
-    def tp_size_set(cls, value, values):
-        if values['tensor_parallel'].tp_size is None:
-            values['tensor_parallel'].tp_size = value
-        return value
+    @validator("mp_size")
+    def tp_size_set(cls, field_value, values):
+        print(values["tensor_parallel"].__fields_set__)
+        if "tp_size" in values["tensor_parallel"].__fields_set__:
+            assert (
+                values["tensor_parallel"].tp_size == field_value
+            ), f"Cannot provide different values for mp_size ({field_value}) and tensor_parallel.tp_size ({values['tensor_parallel'].tp_size})"
+        else:
+            values["tensor_parallel"].tp_size = field_value
+        return field_value
 
     class Config:
         # Get the str representation of the datatype for serialization
