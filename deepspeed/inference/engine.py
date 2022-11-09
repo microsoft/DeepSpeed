@@ -108,7 +108,7 @@ class InferenceEngine(Module):
             for client_module, injection_policy in self.injection_dict.items():
                 self._apply_injection_policy(
                     client_module,
-                    config.injection_policy,
+                    injection_policy,
                     config.return_tuple,
                     config.replace_with_kernel_inject,
                     config.moe,
