@@ -1,4 +1,3 @@
-import os
 import re
 import ast
 import argparse
@@ -193,4 +192,4 @@ if __name__ == "__main__":
         ofile.close()
     else:
         print(injection_policy_list)
-        print("no policy for ", model_name.group(1))
+        print("no policy for ", key)
