@@ -165,6 +165,7 @@ class InferenceEngine(Module):
                 max_out_tokens=max_out_tokens)
         elif replace_method == 'dict':
             key = ParserPolicies.get_map_key(str(model))
+            assert key in ParserPolicies.parser_policy_map, "dict replace method not supported for this model"
             for client_module, injection_policy in ParserPolicies.parser_policy_map[key].items():
                 self._apply_injection_policy(
                     client_module,
