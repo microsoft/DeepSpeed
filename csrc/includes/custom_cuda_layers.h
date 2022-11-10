@@ -323,3 +323,22 @@ void launch_softmax_dropout_grad(T* vals,
                                  int softmax_length,
                                  float ratio,
                                  cudaStream_t stream);
+
+template <typename T>
+void launch_bias_residual_layer_norm1(T* vals, const T* residual,
+    int batch_size,
+    int hidden_dim,
+    cudaStream_t stream,
+    T* vars,
+    T* means,
+    T* gamma,
+    T* beta,
+    float epsilon);
+
+template <typename T>
+void launch_bias_residual_layer_norm(const T* residual,
+    int batch_size,
+    int hidden_dim,
+    cudaStream_t stream,
+    T* vars,
+    T* means);
