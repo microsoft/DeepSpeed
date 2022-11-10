@@ -294,10 +294,7 @@ class TestStableDiffusion(DistributedTest):
     def test(self):
         from diffusers import DiffusionPipeline
 
-        prompt = ("photograph of inside a retrofuturistic and steampunk domed"
-                  " utopia city, overgrown with thick vines, lush vegetation, god rays"
-                  " shining through broken dome, highly detailed, sharp focus, dynamic"
-                  " lightning --no blur --no blurry --v 4")
+        prompt = "a dog on a rocket"
         model = "prompthero/midjourney-v4-diffusion"
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         device = torch.device(f"cuda:{local_rank}")
