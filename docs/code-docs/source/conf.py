@@ -39,6 +39,7 @@ extensions = [
     'recommonmark',
     'sphinx_rtd_theme',
     'sphinxcontrib.autodoc_pydantic',
+    'sphinx.ext.autosectionlabel',
 ]
 
 pygments_style = 'sphinx'
@@ -88,6 +89,6 @@ sys.path.insert(0, os.path.abspath('../../../'))
 # Prepend module names to class descriptions?
 add_module_names = True
 
-autoclass_content = 'both'
+autoclass_content = 'auto'
 
 autodoc_mock_imports = ["apex", "mpi4py", "tensorboardX", "numpy", "cupy"]

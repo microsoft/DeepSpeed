@@ -10,29 +10,77 @@ from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 
 class OffloadDeviceEnum(str, Enum):
+    """ Enum for valid offload devices """
     none = "none"
     cpu = "cpu"
     nvme = "nvme"
 
 
 class DeepSpeedZeroOffloadParamConfig(DeepSpeedConfigModel):
-    device: OffloadDeviceEnum = OffloadDeviceEnum.none
+    """ Set options for parameter offload. Valid only with stage 3. """
+
+    device: OffloadDeviceEnum = "none"
+    """
+    Device memory to offload model parameters. Supported options are `cpu` and
+    `nvme`.
+    """
+
     nvme_path: Path = None
+    """ Filesystem path for NVMe device for parameter offloading. """
+
     buffer_count: int = Field(5, ge=0)
+    """ Number of buffers in buffer pool for parameter offloading to NVMe. """
+
     buffer_size: int = Field(1e8, ge=0)
+    """ Size of buffers in buffer pool for parameter offloading to NVMe. """
+
     max_in_cpu: int = Field(1e9, ge=0)
+    """
+    Number of parameter elements to maintain in CPU memory when offloading to
+    NVMe is enabled.
+    """
+
     pin_memory: bool = False
+    """
+    Offload to page-locked CPU memory. This could boost throughput at the cost
+    of extra memory overhead.
+    """
 
 
 class DeepSpeedZeroOffloadOptimizerConfig(DeepSpeedConfigModel):
-    device: OffloadDeviceEnum = OffloadDeviceEnum.none
-    nvme_path: Path = None
-    buffer_count: int = Field(4, ge=0)
-    pin_memory: bool = False
-    pipeline_read: bool = False
-    pipeline_write: bool = False
-    fast_init: bool = False
+    """ Set options for optimizer offload. Valid with stage 1, 2, and 3. """
 
+    device: OffloadDeviceEnum = "none"
+    """
+    Device memory to offload optimizer state. Supported options are `cpu` and
+    `nvme`. Optimizer computation is offload to CPU regardless of device option.
+    """
+
+    nvme_path: Path = None
+    """ Filesystem path for NVMe device for optimizer state offloading. """
+
+    buffer_count: int = Field(4, ge=0)
+    """
+    Number of buffers in buffer pool for optimizer state offloading to NVMe.
+    This should be at least the number of states maintained per parameter by
+    the optimizer. For example, Adam optimizer has 4 states (parameter,
+    gradient, momentum, and variance).
+    """
+
+    pin_memory: bool = False
+    """
+    Offload to page-locked CPU memory. This could boost throughput at the cost
+    of extra memory overhead.
+    """
+
+    pipeline_read: bool = False
+    """ TODO: add docs """
+
+    pipeline_write: bool = False
+    """ TODO: add docs """
+
+    fast_init: bool = False
+    """ Enable fast optimizer initialization when offloading to NVMe. """
     @validator("pipeline_read", "pipeline_write", always=True)
     def set_pipeline(cls, field_value, values):
         values["pipeline"] = field_value or values.get("pipeline", False)

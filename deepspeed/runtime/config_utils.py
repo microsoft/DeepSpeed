@@ -47,6 +47,9 @@ class DeepSpeedConfigModel(BaseModel):
                                       new_param_fn=(lambda x: int(x)))
     """
     def __init__(self, strict=False, **data):
+        """
+        test one two
+        """
         if (
                 not strict
         ):  # This is temporary until we refactor all DS configs, allows HF to load models
