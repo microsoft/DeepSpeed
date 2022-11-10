@@ -16,6 +16,116 @@ constexpr int h2_per_load = granularity / sizeof(__half2);
 constexpr int max_threads = 1024;
 
 /*
+Class to hold the quantization parameters for a given tensor.
+Holds the implementation of the quantization operation.
+*/
+template <Type qType, int numBits>
+class Params {
+public:
+    /*
+    QUantization implementation, Supports
+    1) 4 Bit
+    2) 8 Bit
+    3) Symmetric
+    4) Asymmetric
+    Function Arguments :
+        val : The __half value to Quantize.
+    */
+    DS_D_INLINE int8_t quantize(__half val);
+
+    DS_D_INLINE void store(float* params, int group_index);
+};
+
+template <int numBits>
+class Params<Type::Symmetric, numBits> {
+public:
+    float scale;
+
+    DS_D_INLINE Params(float max)
+    {
+        if (max == 0) {
+            scale = 1.0;
+        } else {
+            scale = (1 << numBits) / (2 * max);
+        }
+    }
+
+    DS_D_INLINE int8_t quantize(__half val)
+    {
+        constexpr int32_t q_min = -(1 << (numBits - 1));
+        constexpr int32_t q_max = (1 << (numBits - 1)) - 1;
+
+        float val_f = conversion::to<float>(val) * scale;
+        int32_t data_i32 = conversion::to<int32_t>(val_f);
+        data_i32 = min(max(data_i32, q_min), q_max);
+        return (int8_t)data_i32;
+    }
+
+    DS_D_INLINE void store(float* params, int group_index)
+    {
+        const float store_scale = 1 / scale;
+        mem_access::store_global<sizeof(float)>(params + group_index, &store_scale);
+    }
+};
+
+template <int numBits>
+class Params<Type::IntegerSymmetric, numBits> {
+public:
+    int32_t scale;
+
+    DS_D_INLINE Params(float max) { scale = conversion::to<int32_t>(max + 0.5f); }
+
+    DS_D_INLINE int8_t quantize(__half val)
+    {
+        constexpr int32_t q_max = (1 << (numBits - 1)) - 1;
+        float val_f = conversion::to<float>(val) * q_max;
+        float scaled_val = val_f / conversion::to<float>(scale);
+        int32_t data_i32 = conversion::to<int32_t>(scaled_val);
+        return (int8_t)data_i32;
+    }
+
+    DS_D_INLINE void store(float* params, int group_index)
+    {
+        mem_access::store_global<sizeof(float)>(params + group_index, &scale);
+    }
+};
+
+template <int numBits>
+class Params<Type::Asymmetric, numBits> {
+public:
+    float scale;
+    float offset;
+
+    DS_D_INLINE Params(float max, float min)
+    {
+        if (max == min) {
+            scale = 1.0;
+        } else {
+            scale = (1 << numBits) / (max - min);
+        }
+        offset = -(1 << (numBits - 1)) - (min * scale);
+    }
+
+    DS_D_INLINE int8_t quantize(__half val)
+    {
+        constexpr int32_t q_min = -(1 << (numBits - 1));
+        constexpr int32_t q_max = (1 << (numBits - 1)) - 1;
+
+        float val_f = conversion::to<float>(val) * scale + offset;
+        int32_t data_i32 = conversion::to<int32_t>(val_f);
+        data_i32 = min(max(data_i32, q_min), q_max);
+        return (int8_t)data_i32;
+    }
+
+    DS_D_INLINE void store(float* params, int group_index)
+    {
+        const float store_scale = 1 / scale;
+        mem_access::store_global<sizeof(float)>(params + 2 * group_index, &store_scale);
+        mem_access::store_global<sizeof(float)>(params + 2 * group_index + 1, &offset);
+    }
+};
+
+/*
 Group stats tracks the necessary statistics about the quantized group
 to abstract the particulars for the main loop. The scales in particular
 can be derived from
@@ -61,12 +171,19 @@ public:
         tb      -   Threadblock object. cg::thread_block
         warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
     */
-    DS_D_INLINE void reduce(cg::thread_block& tb, cg::thread_block_tile<hw_warp_size>& warp)
+    template <int numBits, int maxWarps>
+    DS_D_INLINE Params<Type::Symmetric, numBits> get_params(
+        cg::thread_block& tb,
+        cg::thread_block_tile<hw_warp_size>& warp)
     {
         const float2 partial_max = conversion::to<float2>(cur_max);
-        max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
+        float max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
 
         reduce::block<rop::Max>(tb, warp, max);
+
+        Params<Type::Symmetric, numBits> params(max);
+
+        return params;
     }
 };
 
@@ -75,7 +192,6 @@ class GroupStats<Type::IntegerSymmetric> {
 public:
     // Symmetric quantization only tracks the maximum absolute value
     __half2 cur_max;
-    float max;
 
     /*
     Technically, this would give bad results if there
@@ -103,12 +219,19 @@ public:
         tb      -   Threadblock object. cg::thread_block
         warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
     */
-    DS_D_INLINE void reduce(cg::thread_block& tb, cg::thread_block_tile<hw_warp_size>& warp)
+    template <int numBits, int maxWarps>
+    DS_D_INLINE Params<Type::IntegerSymmetric, numBits> get_params(
+        cg::thread_block& tb,
+        cg::thread_block_tile<hw_warp_size>& warp)
     {
         const float2 partial_max = conversion::to<float2>(cur_max);
-        max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
+        float max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
 
         reduce::block<rop::Max>(tb, warp, max);
+
+        Params<Type::IntegerSymmetric, numBits> params(max);
+
+        return params;
     }
 };
 
@@ -117,8 +240,6 @@ class GroupStats<Type::Asymmetric> {
 public:
     __half2 cur_max;
     __half2 cur_min;
-    float max;
-    float min;
 
     /*
     Initialize cur_max to -inf, cur_min to inf since
@@ -149,158 +270,24 @@ public:
         tb      -   Threadblock object. cg::thread_block
         warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
     */
-    DS_D_INLINE void reduce(cg::thread_block& tb, cg::thread_block_tile<hw_warp_size>& warp)
+    template <int numBits, int maxWarps>
+    DS_D_INLINE Params<Type::Asymmetric, numBits> get_params(
+        cg::thread_block& tb,
+        cg::thread_block_tile<hw_warp_size>& warp)
     {
         const float2 partial_max = conversion::to<float2>(cur_max);
-        max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
+        float max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
 
         const float2 partial_min = conversion::to<float2>(cur_min);
-        min = reduce::element<rop::Min>(partial_min.x, partial_min.y);
+        float min = reduce::element<rop::Min>(partial_min.x, partial_min.y);
 
         reduce::block<rop::Max, rop::Min>(tb, warp, max, min);
+
+        Params<Type::Asymmetric, numBits> params(max, min);
+
+        return params;
     }
 };
-
-/*
-Class to hold the quantization parameters for a given tensor.
-Holds the implementation of the quantization operation.
-*/
-template <Type qType, int numBits>
-class Params {
-public:
-    /*
-    QUantization implementation, Supports
-    1) 4 Bit
-    2) 8 Bit
-    3) Symmetric
-    4) Asymmetric
-    Function Arguments :
-        val : The __half value to Quantize.
-    */
-    DS_D_INLINE int8_t quantize(__half val);
-
-    DS_D_INLINE void store(float* params, int group_index);
-};
-
-template <int numBits>
-class Params<Type::Symmetric, numBits> {
-public:
-    float scale;
-
-    DS_D_INLINE Params(GroupStats<Type::Symmetric> stats)
-    {
-        if (stats.max == 0) {
-            scale = 1.0;
-        } else {
-            scale = (1 << numBits) / (2 * stats.max);
-        }
-    }
-
-    DS_D_INLINE int8_t quantize(__half val)
-    {
-        constexpr int32_t q_min = -(1 << (numBits - 1));
-        constexpr int32_t q_max = (1 << (numBits - 1)) - 1;
-
-        float val_f = conversion::to<float>(val) * scale;
-        int32_t data_i32 = conversion::to<int32_t>(val_f);
-        data_i32 = min(max(data_i32, q_min), q_max);
-        return (int8_t)data_i32;
-    }
-
-    DS_D_INLINE void store(float* params, int group_index)
-    {
-        const float store_scale = 1 / scale;
-        mem_access::store_global<sizeof(float)>(params + group_index, &store_scale);
-    }
-};
-
-template <int numBits>
-class Params<Type::IntegerSymmetric, numBits> {
-public:
-    int32_t scale;
-
-    DS_D_INLINE Params(GroupStats<Type::IntegerSymmetric> stats)
-    {
-        scale = conversion::to<int32_t>(stats.max + 0.5f);
-    }
-
-    DS_D_INLINE int8_t quantize(__half val)
-    {
-        constexpr int32_t q_max = (1 << (numBits - 1)) - 1;
-        float val_f = conversion::to<float>(val) * q_max;
-        float scaled_val = val_f / conversion::to<float>(scale);
-        int32_t data_i32 = conversion::to<int32_t>(scaled_val);
-        return (int8_t)data_i32;
-    }
-
-    DS_D_INLINE void store(float* params, int group_index)
-    {
-        mem_access::store_global<sizeof(float)>(params + group_index, &scale);
-    }
-};
-
-template <int numBits>
-class Params<Type::Asymmetric, numBits> {
-public:
-    float scale;
-    float offset;
-
-    DS_D_INLINE Params(GroupStats<Type::Asymmetric> stats)
-    {
-        if (stats.max == stats.min) {
-            scale = 1.0;
-        } else {
-            scale = (1 << numBits) / (stats.max - stats.min);
-        }
-        offset = -(1 << (numBits - 1)) - (stats.min * scale);
-    }
-
-    DS_D_INLINE int8_t quantize(__half val)
-    {
-        constexpr int32_t q_min = -(1 << (numBits - 1));
-        constexpr int32_t q_max = (1 << (numBits - 1)) - 1;
-
-        float val_f = conversion::to<float>(val) * scale + offset;
-        int32_t data_i32 = conversion::to<int32_t>(val_f);
-        data_i32 = min(max(data_i32, q_min), q_max);
-        return (int8_t)data_i32;
-    }
-
-    DS_D_INLINE void store(float* params, int group_index)
-    {
-        const float store_scale = 1 / scale;
-        mem_access::store_global<sizeof(float)>(params + 2 * group_index, &store_scale);
-        mem_access::store_global<sizeof(float)>(params + 2 * group_index + 1, &offset);
-    }
-};
-
-/*
-Helper function to do parallel reduction and calculate params.
-Template Arguments :
-    qType           -   Type of quantization to perform.                            Type::Symmetric
-or Type::Asymmetric numChunks       -   Number of bits in quantized element. int : 8 or 4
-    elemsPerBlock   -   Number of elements to participate in Qunatization together. int : 8 or 4
-Function Arguments :
-    tb      -   Threadblock object. cg::thread_block
-    warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
-    stats   -   Group stats         GroupStats<qType>
-*/
-template <Type qType, int numBits, int elemsPerBlock>
-DS_D_INLINE Params<qType, numBits> _get_params(cg::thread_block& tb,
-                                               cg::thread_block_tile<hw_warp_size>& warp,
-                                               GroupStats<qType> stats);
-
-template <Type qType, int numBits, int elemsPerBlock>
-DS_D_INLINE Params<qType, numBits> _get_params(cg::thread_block& tb,
-                                               cg::thread_block_tile<hw_warp_size>& warp,
-                                               GroupStats<qType> stats)
-{
-    stats.reduce(tb, warp);
-
-    Params<qType, numBits> params(stats);
-
-    return params;
-}
 
 /*
 The kernel that quantizes 16 bytes of __half type input data.
@@ -469,7 +456,7 @@ __device__ void local_array(__half2* local_buffer,
     cg::thread_block_tile<hw_warp_size> warp = cg::tiled_partition<hw_warp_size>(tb);
 
     auto group_stats = _local_serial_reduce<qType, numChunks>(local_buffer);
-    auto params = _get_params<qType, numBits, elemsPerBlock>(tb, warp, group_stats);
+    auto params = group_stats.template get_params<numBits, numWarps>(tb, warp);
 
     quantize::local_array<qType, numBits, numChunks>(
         tb, warp, local_buffer, global_params, output_data, elems_per_group, params);
