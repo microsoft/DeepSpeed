@@ -47,7 +47,7 @@ jobs:
       - name: Install deepspeed
         run: |
           pip uninstall --yes deepspeed
-          pip install .[dev,1bit,autotuning,inf]
+          pip install .[dev,1bit,autotuning,inf,sd]
           ds_report
 
       - name: Python environment
