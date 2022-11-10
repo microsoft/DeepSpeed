@@ -34,6 +34,7 @@ except ImportError:
 
 from op_builder import get_default_compute_capabilities, OpBuilder
 from op_builder.all_ops import ALL_OPS
+from op_builder.builder import installed_cuda_version
 
 # fetch rocm state
 is_rocm_pytorch = OpBuilder.is_rocm_pytorch()
@@ -76,7 +77,7 @@ if torch_available and torch.cuda.is_available():
         if rocm_major <= 4:
             cupy = f"cupy-rocm-{rocm_major}-{rocm_minor}"
     else:
-        cupy = f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}"
+        cupy = f"cupy-cuda{''.join(map(str,installed_cuda_version()))}"
     if cupy:
         extras_require['1bit'].append(cupy)
         extras_require['1bit_mpi'].append(cupy)
