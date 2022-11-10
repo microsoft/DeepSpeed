@@ -26,7 +26,6 @@ from deepspeed.accelerator import get_accelerator
 torch_available = True
 try:
     import torch
-    from torch.utils.cpp_extension import BuildExtension  # noqa: F401
 except ImportError:
     torch_available = False
     print('[WARNING] Unable to import torch, pre-compiling ops will be disabled. ' \

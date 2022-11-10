@@ -6,6 +6,7 @@ import deepspeed
 import torch
 import pytest
 from deepspeed.ops.op_builder import InferenceBuilder
+from deepspeed.accelerator import get_accelerator
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system",
@@ -48,9 +49,13 @@ def test_layer_norm(batch, seq_len, channels, dtype):
                         seq_len,
                         channels),
                        dtype=dtype,
-                       device=torch.cuda.current_device())
-    gamma = torch.randn((channels), dtype=dtype, device=torch.cuda.current_device())
-    beta = torch.rand((channels), dtype=dtype, device=torch.cuda.current_device())
+                       device=get_accelerator().current_device_name())
+    gamma = torch.randn((channels),
+                        dtype=dtype,
+                        device=get_accelerator().current_device_name())
+    beta = torch.rand((channels),
+                      dtype=dtype,
+                      device=get_accelerator().current_device_name())
     epsilon = 1e-5
 
     ref_output = ref_implementation(vals, gamma, beta, epsilon, channels, dtype)
