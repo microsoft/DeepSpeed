@@ -16,6 +16,7 @@ __op_builders__ = [
     get_accelerator().create_op_builder("AsyncIOBuilder"),
     get_accelerator().create_op_builder("UtilsBuilder"),
     get_accelerator().create_op_builder("QuantizerBuilder"),
-    get_accelerator().create_op_builder("InferenceBuilder")
+    get_accelerator().create_op_builder("InferenceBuilder"),
+    get_accelerator().create_op_builder("SpatialInferenceBuilder")
 ]
 ALL_OPS = {op.name: op for op in __op_builders__ if op is not None}

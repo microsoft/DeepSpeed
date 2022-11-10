@@ -13,4 +13,5 @@ from .utils import UtilsBuilder
 from .async_io import AsyncIOBuilder
 from .transformer_inference import InferenceBuilder
 from .quantizer import QuantizerBuilder
+from .spatial_inference import SpatialInferenceBuilder
 from .builder import get_default_compute_capabilities, OpBuilder
