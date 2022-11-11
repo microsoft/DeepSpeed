@@ -114,7 +114,7 @@ class InferenceEngine(Module):
             for client_module, injection_policy in self.injection_dict.items():
                 # construct the tuple and pass that instead of a string or dict.
                 if isinstance(injection_policy, str):
-                    config.injection_policy_tuple = (injection_policy,)
+                    config.injection_policy_tuple = (injection_policy, )
                 else:
                     config.injection_policy_tuple = injection_policy
                 self._apply_injection_policy(config, client_module)
@@ -331,7 +331,7 @@ class InferenceEngine(Module):
         load_module_recursive(r_module)
 
     def _apply_injection_policy(self, config, client_module=None):
-        
+
         # client_module is only passed when using the injection_dict method.
         checkpoint_dir = config.checkpoint
         checkpoint = SDLoaderFactory.get_sd_loader_json(

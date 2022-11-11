@@ -169,7 +169,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     replace_method: str = "auto"
     injection_policy: Dict = Field(None, alias="injection_dict")
     injection_policy_tuple: tuple = Field(None)
-    
+
     config: Dict = None  # todo: really no need for this field if we can refactor
     max_out_tokens: int = 1024
     mp_size: int = 1
