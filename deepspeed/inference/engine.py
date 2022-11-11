@@ -46,7 +46,7 @@ class InferenceEngine(Module):
         super().__init__()
 
         self.module = model
-        self.config = config
+        self._config = config
 
         self._get_model_config_generate(config)  # keep for weird backward compatibility
 
@@ -85,7 +85,7 @@ class InferenceEngine(Module):
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
                 "If you want to use cuda graph, please upgrade torch to at least v1.10"
 
-        if config.checkpoint and not self.replace_with_kernel_inject:
+        if config.checkpoint and not config.replace_with_kernel_inject:
             self._load_checkpoint(config.checkpoint)
 
         # convert model to intended dtype
@@ -98,6 +98,7 @@ class InferenceEngine(Module):
             self.mp_group = self.mpu.get_model_parallel_group()
         elif config.tensor_parallel.tp_size > 1:
             self._create_model_parallel_group(config)
+            config.tensor_parallel.tp_group = self.mp_group
 
         if isinstance(self.module, torch.nn.Module):
             moe, _ = has_moe_layers(self.module)
@@ -105,34 +106,20 @@ class InferenceEngine(Module):
         if moe and dist.get_world_size() > 1:
             self._create_ep_parallel_group(config.moe.moe_experts)
 
+        # retain this from the old conditional argument being passed to apply_injection_policy()
+        if not config.replace_with_kernel_inject:
+            config.checkpoint = None
+
         if self.injection_dict:
             for client_module, injection_policy in self.injection_dict.items():
+                # construct the tuple and pass that instead of a string or dict.
+                if isinstance(injection_policy, str):
+                    config.injection_policy_tuple = (injection_policy,)
+                else:
+                    config.injection_policy_tuple = injection_policy
                 self._apply_injection_policy(config, client_module)
-                #,
-                #    injection_policy,
-                #    config.return_tuple,
-                #    config.replace_with_kernel_inject,
-                #    config.moe,
-                #    config.moe.moe_experts,
-                #    config.moe.moe_type,
-                #    config.training_mp_size,
-                #    config.checkpoint if config.replace_with_kernel_inject else None,
-                #    save_mp_checkpoint_path=config.checkpoint_config.save_mp_checkpoint_path,
-                #    base_dir=config.checkpoint_config.base_dir,
-                #    max_out_tokens=config.max_out_tokens)
         elif config.replace_method == 'auto':
             self._apply_injection_policy(config)
-            #return_tuple=config.return_tuple,
-            #replace_with_kernel_inject=config.replace_with_kernel_inject,
-            #moe=config.moe.enabled,
-            #moe_experts=config.moe.moe_experts,
-            #moe_type=config.moe.moe_type,
-            #training_mp_size=config.training_mp_size,
-            #checkpoint_dir=config.checkpoint
-            #if config.replace_with_kernel_inject else None,
-            #save_mp_checkpoint_path=config.checkpoint_config.save_mp_checkpoint_path,
-            #base_dir=config.checkpoint_config.base_dir,
-            #max_out_tokens=config.max_out_tokens)
 
         device = torch.cuda.current_device()
         self.module.to(device)
@@ -146,7 +133,7 @@ class InferenceEngine(Module):
             assert not config.enable_cuda_graph, "Cuda graph is not supported for model parallelism"
 
     def profile_model_time(self, use_cuda_events=True):
-        if not self.model_profile_enabled and not self.config.enable_cuda_graph:
+        if not self.model_profile_enabled and not self._config.enable_cuda_graph:
             self.module.register_forward_pre_hook(self._pre_forward_hook)
             self.module.register_forward_hook(self._post_forward_hook)
         self.model_profile_enabled = True
@@ -157,10 +144,9 @@ class InferenceEngine(Module):
     # todo: remove this once all the config dicts are centralized from top level pydantic config
     def _get_model_config_generate(self, config):
         # this is being passed to replace_transformer_layer(config=self.user_model_config_dict)
-        self.user_model_config_dict = getattr(
-            self.module,
-            'config',
-            None) if config.config is None else config.config
+        self.config = getattr(self.module,
+                              'config',
+                              None) if config.config is None else config.config
         # todo: clarify with Reza if this gets used anywhere
         self.generate = getattr(self.module, 'generate', None)
 
@@ -190,14 +176,12 @@ class InferenceEngine(Module):
         # Call the init process
         if InferenceEngine.inference_mp_group is None:
             init_distributed()
-
             local_rank = int(os.getenv('LOCAL_RANK', '0'))
             torch.cuda.set_device(local_rank)
 
             ranks = [i for i in range(config.tensor_parallel.tp_size)]
             self.mp_group = dist.new_group(ranks)
             InferenceEngine.inference_mp_group = self.mp_group
-
         else:
             self.mp_group = InferenceEngine.inference_mp_group
 
@@ -251,10 +235,10 @@ class InferenceEngine(Module):
         # TODO: to support SD pipeline we need to avoid this check for now
         if replace_with_kernel_inject and not isinstance(self.module, Module):
             raise ValueError(f"model must be a torch.nn.Module, got {type(self.module)}")
-        if not isinstance(self.config.tensor_parallel.tp_size,
-                          int) or self.config.tensor_parallel.tp_size < 1:
+        if not isinstance(self._config.tensor_parallel.tp_size,
+                          int) or self._config.tensor_parallel.tp_size < 1:
             raise ValueError(
-                f"mp_size must be an int >= 1, got {self.config.tensor_parallel.tp_size}"
+                f"mp_size must be an int >= 1, got {self._config.tensor_parallel.tp_size}"
             )
 
         if mpu:
@@ -262,18 +246,18 @@ class InferenceEngine(Module):
             for method in methods:
                 if not hasattr(mpu, method):
                     raise ValueError(f"mpu is missing {method}")
-        if self.config.checkpoint is not None and not isinstance(
-                self.config.checkpoint,
+        if self._config.checkpoint is not None and not isinstance(
+                self._config.checkpoint,
             (str,
              dict)):
             raise ValueError(
-                f"checkpoint must be None, str or dict, got {type(self.config.checkpoint)}"
+                f"checkpoint must be None, str or dict, got {type(self._config.checkpoint)}"
             )
 
         supported_dtypes = [None, torch.half, torch.int8, torch.float]
-        if self.config.dtype not in supported_dtypes:
+        if self._config.dtype not in supported_dtypes:
             raise ValueError(
-                f"{self.config.dtype} not supported, valid dtype: {supported_dtypes}")
+                f"{self._config.dtype} not supported, valid dtype: {supported_dtypes}")
 
         if self.injection_dict is not None and not isinstance(self.injection_dict, dict):
             raise ValueError(
@@ -282,7 +266,7 @@ class InferenceEngine(Module):
     def load_model_with_checkpoint(self, r_module):
         self.mp_replace = ReplaceWithTensorSlicing(
             mp_group=self.mp_group,
-            mp_size=self.config.tensor_parallel.tp_size)  #, out_dim=0, in_dim=1)
+            mp_size=self._config.tensor_parallel.tp_size)  #, out_dim=0, in_dim=1)
         error_msgs = []
 
         def load(module, state_dict, prefix):
@@ -347,17 +331,8 @@ class InferenceEngine(Module):
         load_module_recursive(r_module)
 
     def _apply_injection_policy(self, config, client_module=None):
-        #injection_policy=None,
-        #return_tuple=True,
-        #replace_with_kernel_inject=False,
-        #moe=False,
-        #moe_experts=1,
-        #moe_type='standard',
-        #training_mp_size=1,
-        #checkpoint_dir=None,
-        #save_mp_checkpoint_path=False,
-        #base_dir="",
-        #max_out_tokens=1024):
+        
+        # client_module is only passed when using the injection_dict method.
         checkpoint_dir = config.checkpoint
         checkpoint = SDLoaderFactory.get_sd_loader_json(
             checkpoint_dir,
@@ -373,12 +348,12 @@ class InferenceEngine(Module):
                 client_module,
                 self.module,
                 triangular_masking=config.triangular_masking,
-                policy=config.injection_policy,
+                policy=config.injection_policy_tuple,
                 mp_size=config.tensor_parallel.tp_size,
                 mp_group=self.mp_group,
                 ep_group=self.ep_group,
                 expert_mp_group=self.expert_mp_group,
-                config=self.user_model_config_dict,
+                config=self.config,
                 fp16=(config.dtype == torch.half) or (config.dtype == torch.int8),
                 training=False,
                 return_tuple=config.return_tuple,
@@ -392,9 +367,9 @@ class InferenceEngine(Module):
                 moe_experts=config.moe.moe_experts,
                 moe_type=config.moe.moe_type,
                 training_mp_size=config.training_mp_size,
-                checkpoint_dict=config.checkpoint,
-                save_mp_checkpoint_path=config.checkpoint_config.save_mp_checkpoint_path,
-                base_dir=config.checkpoint_config.base_dir,
+                checkpoint_dict=checkpoint,
+                save_mp_checkpoint_path=config.save_mp_checkpoint_path,
+                base_dir=config.base_dir,
                 enable_cuda_graph=config.enable_cuda_graph,
                 max_out_tokens=config.max_out_tokens)
 
@@ -454,10 +429,10 @@ class InferenceEngine(Module):
         else:
             mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
 
-            load_path, checkpoint, quantize_config = sd_loader.load(self.config.tensor_parallel.tp_size,
+            load_path, checkpoint, quantize_config = sd_loader.load(self._config.tensor_parallel.tp_size,
                                                     mp_rank,
                                                     is_pipe_parallel=is_pipe_parallel,
-                                                    quantize=(self.config.dtype is torch.int8),
+                                                    quantize=(self._config.dtype is torch.int8),
                                                     quantize_groups=self.quantize_groups,
                                                     mlp_extra_grouping=self.mlp_extra_grouping)
 
@@ -539,7 +514,7 @@ class InferenceEngine(Module):
     def model_times(self):
         assert self.model_profile_enabled, "model profiling is not enabled"
         model_times = self._model_times
-        if self.config.enable_cuda_graph and len(self._model_times) == 0:
+        if self._config.enable_cuda_graph and len(self._model_times) == 0:
             raise ValueError(
                 "Model times are empty and cuda graph is enabled. If "
                 "this is a GPT-style model this combo is not supported. If this is a "
@@ -556,11 +531,11 @@ class InferenceEngine(Module):
             **kwargs: variable length keyword arguments
         """
         start = None
-        if self.model_profile_enabled and self.config.enable_cuda_graph:
+        if self.model_profile_enabled and self._config.enable_cuda_graph:
             torch.cuda.synchronize()
             start = time.time()
 
-        if self.config.enable_cuda_graph:
+        if self._config.enable_cuda_graph:
             if self.cuda_graph_created:
                 outputs = self._graph_replay(*inputs, **kwargs)
             else:
@@ -569,7 +544,7 @@ class InferenceEngine(Module):
         else:
             outputs = self.module(*inputs, **kwargs)
 
-        if self.model_profile_enabled and self.config.enable_cuda_graph:
+        if self.model_profile_enabled and self._config.enable_cuda_graph:
             torch.cuda.synchronize()
             duration = time.time() - start
             self._model_times.append(duration)

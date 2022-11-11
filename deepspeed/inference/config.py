@@ -158,13 +158,18 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     triangular_masking = Field(True, alias="tm")
     moe = DeepSpeedMoEConfig()
     quant: QuantizationConfig = QuantizationConfig()
-    checkpoint: Dict = None
+    #todo: refactor the following 3 into the new checkpoint_config
+    checkpoint: str = None
+    base_dir: str = None
+    save_mp_checkpoint_path: str = None
     checkpoint_config: InferenceCheckpointConfig = Field(InferenceCheckpointConfig(),
                                                          alias="ckpt_config")
     return_tuple: bool = True
     training_mp_size: int = 1
     replace_method: str = "auto"
     injection_policy: Dict = Field(None, alias="injection_dict")
+    injection_policy_tuple: tuple = Field(None)
+    
     config: Dict = None  # todo: really no need for this field if we can refactor
     max_out_tokens: int = 1024
     mp_size: int = 1
