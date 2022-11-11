@@ -94,15 +94,21 @@ def test_layer_norm_residual(batch, seq_len, channels, dtype):
                         seq_len,
                         channels),
                        dtype=dtype,
-                       device=torch.cuda.current_device())
+                       device=get_accelerator().current_device_name())
     residual = torch.randn((batch,
                             seq_len,
                             channels),
                            dtype=dtype,
-                           device=torch.cuda.current_device())
-    bias = torch.randn((channels), dtype=dtype, device=torch.cuda.current_device())
-    gamma = torch.randn((channels), dtype=dtype, device=torch.cuda.current_device())
-    beta = torch.rand((channels), dtype=dtype, device=torch.cuda.current_device())
+                           device=get_accelerator().current_device_name())
+    bias = torch.randn((channels),
+                       dtype=dtype,
+                       device=get_accelerator().current_device_name())
+    gamma = torch.randn((channels),
+                        dtype=dtype,
+                        device=get_accelerator().current_device_name())
+    beta = torch.rand((channels),
+                      dtype=dtype,
+                      device=get_accelerator().current_device_name())
     epsilon = 1e-5
 
     new_output = residual_ds_implementation(vals, bias, residual, gamma, beta, epsilon)
@@ -162,15 +168,21 @@ def test_layer_norm_residual_store(batch, seq_len, channels, dtype):
                         seq_len,
                         channels),
                        dtype=dtype,
-                       device=torch.cuda.current_device())
+                       device=get_accelerator().current_device_name())
     residual = torch.randn((batch,
                             seq_len,
                             channels),
                            dtype=dtype,
-                           device=torch.cuda.current_device())
-    bias = torch.randn((channels), dtype=dtype, device=torch.cuda.current_device())
-    gamma = torch.randn((channels), dtype=dtype, device=torch.cuda.current_device())
-    beta = torch.rand((channels), dtype=dtype, device=torch.cuda.current_device())
+                           device=get_accelerator().current_device_name())
+    bias = torch.randn((channels),
+                       dtype=dtype,
+                       device=get_accelerator().current_device_name())
+    gamma = torch.randn((channels),
+                        dtype=dtype,
+                        device=get_accelerator().current_device_name())
+    beta = torch.rand((channels),
+                      dtype=dtype,
+                      device=get_accelerator().current_device_name())
     epsilon = 1e-5
 
     # Need to run the reference first since there's an in-place component to ours
