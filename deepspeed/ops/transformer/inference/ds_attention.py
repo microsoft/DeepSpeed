@@ -277,8 +277,6 @@ class DeepSpeedSelfAttentionFunction(Function):
                         ) else 0
                         sliced_alibi = alibi[offset:batch_heads + offset, :, :]
 
-
-#
                     attn_key_value = score_context_func(
                         qkv_out,
                         ((1 - input_mask).to(qkv_out.dype) *
@@ -310,9 +308,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                       attn_qkvb,
                                       attn_qkvb is not None,
                                       False,
-                                      False,
-                                      num_attention_heads_per_partition,
-                                      DeepSpeedSelfAttention.num_layers)
+                                      num_attention_heads_per_partition)
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32
@@ -435,6 +431,10 @@ class DeepSpeedSelfAttention(nn.Module):
         self.norm_factor = math.sqrt(
             math.sqrt(self.config.hidden_size // self.config.heads))
         self.qkv_merging = qkv_merging
+
+        if self.config.scale_attn_by_inverse_layer_idx is True:
+            self.norm_factor *= math.sqrt(self.config.layer_id + 1)
+            # https://github.com/huggingface/transformers/blob/v4.24.0/src/transformers/models/gpt2/modeling_gpt2.py#L191
 
         global inference_cuda_module
         if inference_cuda_module is None:
