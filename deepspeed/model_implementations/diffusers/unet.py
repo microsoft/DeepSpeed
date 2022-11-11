@@ -4,25 +4,19 @@ Copyright 2022 The Microsoft DeepSpeed Team
 import torch
 
 
-class DSClipEncoder(torch.nn.Module):
-    def __init__(self, enc):
+class DSUNet(torch.nn.Module):
+    def __init__(self, unet, enable_cuda_graph=True):
         super().__init__()
-        enc.text_model._build_causal_attention_mask = self._build_causal_attention_mask
-        self.enc = enc
-        self.device = self.enc.device
-        self.dtype = self.enc.dtype
+        self.unet = unet
+        # SD pipeline accesses this attribute
+        self.in_channels = unet.in_channels
+        self.device = self.unet.device
+        self.dtype = self.unet.dtype
+        self.fwd_count = 0
+        self.unet.requires_grad_(requires_grad=False)
+        self.unet.to(memory_format=torch.channels_last)
         self.cuda_graph_created = False
-
-    def _build_causal_attention_mask(self, bsz, seq_len, dtype):
-        mask = torch.empty(bsz,
-                           seq_len,
-                           seq_len,
-                           dtype=dtype,
-                           device=torch.cuda.current_device())
-        mask.fill_(torch.tensor(torch.finfo(dtype).min))
-        mask.triu_(1)
-        mask = mask.unsqueeze(1)
-        return mask
+        self.enable_cuda_graph = enable_cuda_graph
 
     def _graph_replay(self, *inputs, **kwargs):
         for i in range(len(inputs)):
@@ -35,12 +29,15 @@ class DSClipEncoder(torch.nn.Module):
         return self.static_output
 
     def forward(self, *inputs, **kwargs):
-        if self.cuda_graph_created:
-            outputs = self._graph_replay(*inputs, **kwargs)
+        if self.enable_cuda_graph:
+            if self.cuda_graph_created:
+                outputs = self._graph_replay(*inputs, **kwargs)
+            else:
+                self._create_cuda_graph(*inputs, **kwargs)
+                outputs = self._graph_replay(*inputs, **kwargs)
+            return outputs
         else:
-            self._create_cuda_graph(*inputs, **kwargs)
-            outputs = self._graph_replay(*inputs, **kwargs)
-        return outputs
+            return self._forward(*inputs, **kwargs)
 
     def _create_cuda_graph(self, *inputs, **kwargs):
         # warmup to create the workspace and cublas handle
@@ -61,6 +58,5 @@ class DSClipEncoder(torch.nn.Module):
 
         self.cuda_graph_created = True
 
-    def _forward(self, *inputs, **kwargs):
-
-        return self.enc(*inputs, **kwargs)
+    def _forward(self, sample, timestamp, encoder_hidden_states, return_dict=True):
+        return self.unet(sample, timestamp, encoder_hidden_states, return_dict)
