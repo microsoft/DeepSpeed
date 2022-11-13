@@ -7,9 +7,9 @@ from torch.autograd import Function
 from deepspeed.utils.types import ActivationFuncType
 from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import InferenceBuilder
 import torch.nn as nn
 import math
-from ... import op_builder
 
 inference_cuda_module = None
 
@@ -135,7 +135,7 @@ class DeepSpeedMLP(nn.Module):
         # load the cuda module
         global inference_cuda_module
         if inference_cuda_module is None:
-            builder = op_builder.InferenceBuilder()
+            builder = get_accelerator().create_op_builder(InferenceBuilder)
             inference_cuda_module = builder.load()
 
         self.mp_group = mp_group

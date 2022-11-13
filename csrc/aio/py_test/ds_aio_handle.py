@@ -11,6 +11,7 @@ import time
 from multiprocessing import Pool, Barrier
 from test_ds_aio_utils import report_results, task_log, task_barrier
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import AsyncIOBuilder
 
 
 def pre_handle(args, tid, read_op):
@@ -34,7 +35,7 @@ def pre_handle(args, tid, read_op):
     )
 
     io_parallel = args.io_parallel if args.io_parallel else 1
-    handle = get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_handle(
+    handle = get_accelerator().create_op_builder(AsyncIOBuilder).load().aio_handle(
         args.block_size,
         args.queue_depth,
         args.single_submit,

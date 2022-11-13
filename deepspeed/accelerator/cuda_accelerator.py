@@ -40,7 +40,7 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     # RNG APIs
     def random(self):
-        return torch.random()
+        return torch.random
 
     def set_rng_state(self, new_state, device_index=None):
         if device_index is None:
@@ -173,27 +173,39 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def create_op_builder(self, class_name):
         from deepspeed.ops.op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
-        if class_name == "AsyncIOBuilder":
+        from deepspeed.ops.op_builder.builder_names import AsyncIOBuilder as AsyncIOBuilderName
+        from deepspeed.ops.op_builder.builder_names import CPUAdagradBuilder as CPUAdagradBuilderName
+        from deepspeed.ops.op_builder.builder_names import CPUAdamBuilder as CPUAdamBuilderName
+        from deepspeed.ops.op_builder.builder_names import FusedAdamBuilder as FusedAdamBuilderName
+        from deepspeed.ops.op_builder.builder_names import FusedLambBuilder as FusedLambBuilderName
+        from deepspeed.ops.op_builder.builder_names import QuantizerBuilder as QuantizerBuilderName
+        from deepspeed.ops.op_builder.builder_names import SparseAttnBuilder as SparseAttnBuilderName
+        from deepspeed.ops.op_builder.builder_names import StochasticTransformerBuilder as StochasticTransformerBuilderName
+        from deepspeed.ops.op_builder.builder_names import TransformerBuilder as TransformerBuilderName
+        from deepspeed.ops.op_builder.builder_names import InferenceBuilder as InferenceBuilderName
+        from deepspeed.ops.op_builder.builder_names import UtilsBuilder as UtilsBuilderName
+
+        if class_name == AsyncIOBuilderName:
             return AsyncIOBuilder()
-        elif class_name == "CPUAdagradBuilder":
+        elif class_name == CPUAdagradBuilderName:
             return CPUAdagradBuilder()
-        elif class_name == "CPUAdamBuilder":
+        elif class_name == CPUAdamBuilderName:
             return CPUAdamBuilder()
-        elif class_name == "FusedAdamBuilder":
+        elif class_name == FusedAdamBuilderName:
             return FusedAdamBuilder()
-        elif class_name == "FusedLambBuilder":
+        elif class_name == FusedLambBuilderName:
             return FusedLambBuilder()
-        elif class_name == "QuantizerBuilder":
+        elif class_name == QuantizerBuilderName:
             return QuantizerBuilder()
-        elif class_name == "SparseAttnBuilder":
+        elif class_name == SparseAttnBuilderName:
             return SparseAttnBuilder()
-        elif class_name == "StochasticTransformerBuilder":
+        elif class_name == StochasticTransformerBuilderName:
             return StochasticTransformerBuilder()
-        elif class_name == "TransformerBuilder":
+        elif class_name == TransformerBuilderName:
             return TransformerBuilder()
-        elif class_name == "InferenceBuilder":
+        elif class_name == InferenceBuilderName:
             return InferenceBuilder()
-        elif class_name == "UtilsBuilder":
+        elif class_name == UtilsBuilderName:
             return UtilsBuilder()
         else:
             return None

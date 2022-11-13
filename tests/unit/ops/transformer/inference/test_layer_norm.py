@@ -5,10 +5,11 @@ Copyright 2022 The Microsoft DeepSpeed Team
 import deepspeed
 import torch
 import pytest
-from deepspeed.ops.op_builder import InferenceBuilder
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import InferenceBuilder
 
-if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
+if not deepspeed.ops.__compatible_ops__[get_accelerator().create_op_builder(
+        InferenceBuilder).name]:
     pytest.skip("Inference ops are not available on this system",
                 allow_module_level=True)
 
@@ -35,7 +36,7 @@ def ref_implementation(vals, gamma, beta, espilon, channels, dtype):
 def ds_implementation(vals, gamma, beta, epsilon):
     global inference_module
     if inference_module is None:
-        inference_module = InferenceBuilder().load()
+        inference_module = get_accelerator().create_op_builder(InferenceBuilder).load()
     return inference_module.layer_norm(vals, gamma, beta, epsilon)
 
 
@@ -80,7 +81,7 @@ def residual_ref_implementation(vals, bias, res, gamma, beta, espilon, channels,
 def residual_ds_implementation(vals, bias, res, gamma, beta, epsilon):
     global inference_module
     if inference_module is None:
-        inference_module = InferenceBuilder().load()
+        inference_module = get_accelerator().create_op_builder(InferenceBuilder).load()
     return inference_module._layer_norm_residual(vals, bias, res, gamma, beta, epsilon)
 
 
@@ -149,7 +150,7 @@ def residual_store_ref_implementation(vals,
 def residual_store_ds_implementation(vals, bias, res, gamma, beta, epsilon):
     global inference_module
     if inference_module is None:
-        inference_module = InferenceBuilder().load()
+        inference_module = get_accelerator().create_op_builder(InferenceBuilder).load()
     return inference_module.layer_norm_residual_store(vals,
                                                       bias,
                                                       res,

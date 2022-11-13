@@ -7,6 +7,7 @@ This file is adapted from NVIDIA/apex/optimizer/fused_adam and implements the LA
 import types
 import torch
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import FusedLambBuilder
 
 
 class FusedLamb(torch.optim.Optimizer):
@@ -49,7 +50,7 @@ class FusedLamb(torch.optim.Optimizer):
                  min_coeff=0.01,
                  amsgrad=False):
         self.fused_lamb_cuda = get_accelerator().create_op_builder(
-            "FusedLambBuilder").load()
+            FusedLambBuilder).load()
 
         if amsgrad:
             raise RuntimeError('FusedLamb does not support the AMSGrad variant.')

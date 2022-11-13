@@ -11,6 +11,7 @@ import time
 from multiprocessing import Pool, Barrier
 from test_ds_aio_utils import report_results, task_log, task_barrier
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import AsyncIOBuilder
 
 
 def pre_basic(args, tid, read_op):
@@ -59,7 +60,7 @@ def post_basic(pool_params):
 def main_basic_read(pool_params):
     args, tid, ctxt = pool_params
     start_time = time.time()
-    get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_read(
+    get_accelerator().create_op_builder(AsyncIOBuilder).load().aio_read(
         ctxt['buffer'],
         ctxt['file'],
         args.block_size,
@@ -76,7 +77,7 @@ def main_basic_read(pool_params):
 def main_basic_write(pool_params):
     args, tid, ctxt = pool_params
     start_time = time.time()
-    get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_write(
+    get_accelerator().create_op_builder(AsyncIOBuilder).load().aio_write(
         ctxt['buffer'],
         ctxt['file'],
         args.block_size,

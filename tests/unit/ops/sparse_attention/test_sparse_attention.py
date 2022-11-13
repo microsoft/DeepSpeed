@@ -7,9 +7,10 @@ import pytest
 import torch
 import deepspeed
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import SparseAttnBuilder
 
 if not deepspeed.ops.__compatible_ops__[get_accelerator().create_op_builder(
-        "SparseAttnBuilder").name]:
+        SparseAttnBuilder).name]:
     pytest.skip("sparse attention op is not compatible on this system",
                 allow_module_level=True)
 

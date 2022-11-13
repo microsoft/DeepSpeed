@@ -6,9 +6,10 @@ import pytest
 import torch
 import deepspeed
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import InferenceBuilder
 
 if not deepspeed.ops.__compatible_ops__[get_accelerator().create_op_builder(
-        "InferenceBuilder").name]:
+        InferenceBuilder).name]:
     pytest.skip("Inference ops are not available on this system",
                 allow_module_level=True)
 
@@ -42,7 +43,7 @@ def run_bias_gelu_reference(activations, bias):
 def run_bias_gelu_ds(activations, bias):
     global inference_module
     if inference_module is None:
-        inference_module = get_accelerator().create_op_builder("InferenceBuilder").load()
+        inference_module = get_accelerator().create_op_builder(InferenceBuilder).load()
     if activations.dtype == torch.float16:
         return inference_module.bias_gelu_fp16(activations, bias)
     else:

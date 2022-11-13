@@ -5,6 +5,7 @@ import torch
 import deepspeed
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import AsyncIOBuilder
 from unit.common import DistributedTest
 
 MEGA_BYTE = 1024**2
@@ -14,7 +15,7 @@ IO_SIZE = 16 * MEGA_BYTE
 IO_PARALLEL = 2
 
 if not deepspeed.ops.__compatible_ops__[get_accelerator().create_op_builder(
-        "AsyncIOBuilder").name]:
+        AsyncIOBuilder).name]:
     pytest.skip('Skip tests since async-io is not compatible', allow_module_level=True)
 
 
@@ -59,7 +60,7 @@ class TestRead(DistributedTest):
             torch.empty(IO_SIZE,
                         dtype=torch.uint8,
                         device='cpu'))
-        h = get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_handle(
+        h = get_accelerator().create_op_builder(AsyncIOBuilder).load().aio_handle(
             BLOCK_SIZE,
             QUEUE_DEPTH,
             single_submit,
@@ -89,7 +90,7 @@ class TestRead(DistributedTest):
                             dtype=torch.uint8,
                             device='cpu'))
 
-        h = get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_handle(
+        h = get_accelerator().create_op_builder(AsyncIOBuilder).load().aio_handle(
             BLOCK_SIZE,
             QUEUE_DEPTH,
             single_submit,
@@ -118,7 +119,7 @@ class TestWrite(DistributedTest):
         ref_file, ref_buffer = _do_ref_write(tmpdir)
         aio_file, aio_buffer = _get_test_file_and_buffer(tmpdir, ref_buffer, False)
 
-        h = get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_handle(
+        h = get_accelerator().create_op_builder(AsyncIOBuilder).load().aio_handle(
             BLOCK_SIZE,
             QUEUE_DEPTH,
             single_submit,
@@ -140,7 +141,7 @@ class TestWrite(DistributedTest):
         ref_file, ref_buffer = _do_ref_write(tmpdir)
         aio_file, aio_buffer = _get_test_file_and_buffer(tmpdir, ref_buffer, cuda_device)
 
-        h = get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_handle(
+        h = get_accelerator().create_op_builder(AsyncIOBuilder).load().aio_handle(
             BLOCK_SIZE,
             QUEUE_DEPTH,
             single_submit,
@@ -187,7 +188,7 @@ class TestAsyncQueue(DistributedTest):
 
         single_submit = True
         overlap_events = True
-        h = get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_handle(
+        h = get_accelerator().create_op_builder(AsyncIOBuilder).load().aio_handle(
             BLOCK_SIZE,
             QUEUE_DEPTH,
             single_submit,
@@ -226,7 +227,7 @@ class TestAsyncQueue(DistributedTest):
 
         single_submit = True
         overlap_events = True
-        h = get_accelerator().create_op_builder("AsyncIOBuilder").load().aio_handle(
+        h = get_accelerator().create_op_builder(AsyncIOBuilder).load().aio_handle(
             BLOCK_SIZE,
             QUEUE_DEPTH,
             single_submit,

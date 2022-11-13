@@ -35,7 +35,7 @@ def get_master_port():
     return master_port
 
 
-def set_accelerator_visibile():
+def set_accelerator_visible():
     cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
     xdist_worker_id = get_xdist_worker_id()
     if xdist_worker_id is None:
@@ -167,7 +167,7 @@ class DistributedExec(ABC):
         # turn off NCCL logging if set
         os.environ.pop('NCCL_DEBUG', None)
 
-        set_accelerator_visibile()
+        set_accelerator_visible()
 
         if self.init_distributed:
             deepspeed.init_distributed(dist_backend=self.backend)

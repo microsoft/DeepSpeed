@@ -78,6 +78,7 @@ from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist
 
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import UtilsBuilder
 
 # Set to torch's distributed package or deepspeed.comm based inside DeepSpeedEngine init
 dist = None
@@ -373,7 +374,7 @@ class DeepSpeedEngine(Module):
                 print_configuration(self, "DeepSpeedEngine")
 
         # Load pre-installed or JIT compile (un)flatten ops
-        util_ops = get_accelerator().create_op_builder("UtilsBuilder").load()
+        util_ops = get_accelerator().create_op_builder(UtilsBuilder).load()
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 
