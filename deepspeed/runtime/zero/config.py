@@ -123,12 +123,16 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
 
     load_from_fp32_weights: bool = True
     """
-    TODO: add docs
+    Boolean indicating whether to initialize fp32 master weights from fp32
+    copies in checkpoint (no precision loss) or from model's fp16 copies (with
+    precision loss). This can be used to initialize optimizer state even when
+    checkpoint is missing optimizer state.
     """
 
     elastic_checkpoint: bool = False
     """
-    TODO: add docs
+    Enable loading checkpoint that was saved by job with different GPU count.
+    No longer supported.
     """
 
     offload_param: Optional[DeepSpeedZeroOffloadParamConfig] = None
@@ -148,7 +152,8 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
 
     sub_group_size: int = Field(1e9, ge=0)
     """
-    TODO: add docs
+    Tile size for parameter processing to fit massive models (with trillions of
+    parameters). Used by ZeRO3-Offload and ZeRO-Infinity
     """
 
     cpu_offload_param: bool = Field(
@@ -181,7 +186,8 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
 
     prefetch_bucket_size: int = Field(5e7, ge=0, alias="stage3_prefetch_bucket_size")
     """
-    TODO: add docs
+    Maximum number of parameter elements to fetch ahead of use. Used by ZeRO3,
+    ZeRO3-Offload, ZeRO-Infinity, and ZeRO-Inference.
     """
 
     param_persistence_threshold: int = Field(1e5,
@@ -198,7 +204,10 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
                                              alias="stage3_model_persistence_threshold")
     """
     Defaults to ``sys.maxsize``
-    TODO: add docs
+    Maximum number of parameter elements that can be persisted in GPU and not
+    partitioned. This imposes an upper bound on the number of unpartitioned
+    parameters resulting from param_persistence_threshold setting. Used by
+    ZeRO3-Offload, ZeRO-Infinity and ZeRO-Inference
     """
 
     max_live_parameters: int = Field(1e9, ge=0, alias="stage3_max_live_parameters")
@@ -240,7 +249,8 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
 
     legacy_stage1: bool = False
     """
-    TODO: add docs
+    For backward-compatibility enable old ZeRO stage 1 implementation. Use at
+    your own risk, will be deprecated soon.
     """
 
     round_robin_gradients: bool = False

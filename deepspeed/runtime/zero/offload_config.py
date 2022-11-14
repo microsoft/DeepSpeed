@@ -74,10 +74,16 @@ class DeepSpeedZeroOffloadOptimizerConfig(DeepSpeedConfigModel):
     """
 
     pipeline_read: bool = False
-    """ TODO: add docs """
+    """
+    For tile-based optimizer step processing, overlap read of next tile with
+    computation of current tile. Used in ZeRO-Infinity.
+    """
 
     pipeline_write: bool = False
-    """ TODO: add docs """
+    """
+    For tile-based optimizer step processing, overlap write of previous tile
+    with computation of current tile.
+    """
 
     fast_init: bool = False
     """ Enable fast optimizer initialization when offloading to NVMe. """
