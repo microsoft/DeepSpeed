@@ -440,7 +440,7 @@ class DeepSpeedSelfAttention(nn.Module):
 
         global inference_cuda_module
         if inference_cuda_module is None:
-            builder = get_accelerator.create_op_builder(InferenceBuilder)
+            builder = get_accelerator().create_op_builder(InferenceBuilder)
             inference_cuda_module = builder.load()
 
         self.score_context_func = inference_cuda_module.softmax_context_fp32 if (not config.fp16) else \
