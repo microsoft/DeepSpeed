@@ -46,6 +46,8 @@ pygments_style = 'sphinx'
 
 # autodoc_pyandtic config
 autodoc_pydantic_model_show_field_summary = False
+autodoc_pydantic_field_signature_prefix = ' '
+autodoc_pydantic_model_signature_prefix = 'class'
 autodoc_pydantic_model_show_json = False
 autodoc_pydantic_model_show_config_summary = False
 autodoc_pydantic_model_show_config_member = False

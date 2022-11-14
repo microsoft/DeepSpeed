@@ -6,7 +6,7 @@ Licensed under the MIT license.
 from pydantic import Field, validator
 from enum import Enum
 from pathlib import Path
-from deepspeed.runtime.config_utils import DeepSpeedConfigModel
+from deepspeed.runtime.config_utils import DeepSpeedConfigModel, pp_int
 
 
 class OffloadDeviceEnum(str, Enum):
@@ -31,10 +31,10 @@ class DeepSpeedZeroOffloadParamConfig(DeepSpeedConfigModel):
     buffer_count: int = Field(5, ge=0)
     """ Number of buffers in buffer pool for parameter offloading to NVMe. """
 
-    buffer_size: int = Field(1e8, ge=0)
+    buffer_size: int = Field(pp_int(1e8), ge=0)
     """ Size of buffers in buffer pool for parameter offloading to NVMe. """
 
-    max_in_cpu: int = Field(1e9, ge=0)
+    max_in_cpu: int = Field(pp_int(1e9), ge=0)
     """
     Number of parameter elements to maintain in CPU memory when offloading to
     NVMe is enabled.

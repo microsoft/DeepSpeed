@@ -7,7 +7,7 @@ from pydantic import Field, validator
 import sys
 from typing import Optional
 from enum import Enum
-from deepspeed.runtime.config_utils import get_scalar_param, DeepSpeedConfigModel
+from deepspeed.runtime.config_utils import get_scalar_param, pp_int, DeepSpeedConfigModel
 from deepspeed.utils import logger
 from .offload_config import DeepSpeedZeroOffloadParamConfig, DeepSpeedZeroOffloadOptimizerConfig, OffloadDeviceEnum
 
@@ -98,7 +98,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     Uses reduce or reduce scatter instead of allreduce to average gradients
     """
 
-    reduce_bucket_size: int = Field(5e8, ge=0)
+    reduce_bucket_size: int = Field(pp_int(5e8), ge=0)
     """
     Number of elements reduced/allreduced at a time. Limits the memory required
     for the allgather for large model sizes
@@ -110,7 +110,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     to gather updated parameters from all the GPUs at the end of each step
     """
 
-    allgather_bucket_size: int = Field(5e8, ge=0)
+    allgather_bucket_size: int = Field(pp_int(5e8), ge=0)
     """
     Number of elements allgathered at a time. Limits the memory required for
     the allgather for large model sizes
@@ -150,7 +150,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     for `DeepSpeedZeroOffloadOptimizerConfig`_.
     """
 
-    sub_group_size: int = Field(1e9, ge=0)
+    sub_group_size: int = Field(pp_int(1e9), ge=0)
     """
     Tile size for parameter processing to fit massive models (with trillions of
     parameters). Used by ZeRO3-Offload and ZeRO-Infinity
@@ -184,13 +184,15 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     )
     """ Deprecated, please use ``offload_optimizer`` """
 
-    prefetch_bucket_size: int = Field(5e7, ge=0, alias="stage3_prefetch_bucket_size")
+    prefetch_bucket_size: int = Field(pp_int(5e7),
+                                      ge=0,
+                                      alias="stage3_prefetch_bucket_size")
     """
     Maximum number of parameter elements to fetch ahead of use. Used by ZeRO3,
     ZeRO3-Offload, ZeRO-Infinity, and ZeRO-Inference.
     """
 
-    param_persistence_threshold: int = Field(1e5,
+    param_persistence_threshold: int = Field(pp_int(1e5),
                                              ge=0,
                                              alias="stage3_param_persistence_threshold")
     """
@@ -199,24 +201,26 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     latency-bound messages).
     """
 
-    model_persistence_threshold: int = Field(sys.maxsize,
+    model_persistence_threshold: int = Field(pp_int(sys.maxsize,
+                                                    "sys.maxsize"),
                                              ge=0,
                                              alias="stage3_model_persistence_threshold")
     """
-    Defaults to ``sys.maxsize``
     Maximum number of parameter elements that can be persisted in GPU and not
     partitioned. This imposes an upper bound on the number of unpartitioned
     parameters resulting from param_persistence_threshold setting. Used by
-    ZeRO3-Offload, ZeRO-Infinity and ZeRO-Inference
+    ZeRO3-Offload, ZeRO-Infinity and ZeRO-Inference.
     """
 
-    max_live_parameters: int = Field(1e9, ge=0, alias="stage3_max_live_parameters")
+    max_live_parameters: int = Field(pp_int(1e9),
+                                     ge=0,
+                                     alias="stage3_max_live_parameters")
     """
     The maximum number of parameters resident per GPU before releasing. Smaller
     values use less memory, but perform more communication.
     """
 
-    max_reuse_distance: int = Field(1e9, ge=0, alias="stage3_max_reuse_distance")
+    max_reuse_distance: int = Field(pp_int(1e9), ge=0, alias="stage3_max_reuse_distance")
     """
     Do not release a parameter if it will be reused within this threshold of
     parameters. Smaller values use less memory, but perform more communication.
