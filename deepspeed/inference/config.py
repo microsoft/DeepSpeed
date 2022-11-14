@@ -10,6 +10,7 @@ from enum import Enum
 class DtypeEnum(Enum):
     # The torch dtype must always be the first value (so we return torch.dtype)
     fp16 = torch.float16, "torch.float16", "fp16", "float16", "half"
+    bf16 = torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16"
     fp32 = torch.float32, "torch.float32", "fp32", "float32", "float"
     int8 = torch.int8, "torch.int8", "int8"
 
