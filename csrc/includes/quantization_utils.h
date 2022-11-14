@@ -46,7 +46,7 @@ public:
         if (max == 0) {
             scale = 1.0;
         } else {
-            scale = (1 << numBits) / (2 * max);
+        scale = (1 << numBits) / (2 * max);
         }
     }
 
@@ -171,7 +171,7 @@ public:
         tb      -   Threadblock object. cg::thread_block
         warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
     */
-    template <int numBits, int maxWarps>
+    template <int numBits, int threads_per_group>
     DS_D_INLINE Params<Type::Symmetric, numBits> get_params(
         cg::thread_block& tb,
         cg::thread_block_tile<hw_warp_size>& warp)
@@ -179,8 +179,7 @@ public:
         const float2 partial_max = conversion::to<float2>(cur_max);
         float max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
 
-        reduce::block<rop::Max>(tb, warp, max);
-
+        reduce::partitioned_block<rop::Max, threads_per_group>(tb, warp, max);
         Params<Type::Symmetric, numBits> params(max);
 
         return params;
@@ -219,7 +218,7 @@ public:
         tb      -   Threadblock object. cg::thread_block
         warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
     */
-    template <int numBits, int maxWarps>
+    template <int numBits, int threads_per_group>
     DS_D_INLINE Params<Type::IntegerSymmetric, numBits> get_params(
         cg::thread_block& tb,
         cg::thread_block_tile<hw_warp_size>& warp)
@@ -227,7 +226,7 @@ public:
         const float2 partial_max = conversion::to<float2>(cur_max);
         float max = reduce::element<rop::Max>(partial_max.x, partial_max.y);
 
-        reduce::block<rop::Max>(tb, warp, max);
+        reduce::partitioned_block<rop::Max, threads_per_group>(tb, warp, max);
 
         Params<Type::IntegerSymmetric, numBits> params(max);
 
@@ -270,7 +269,7 @@ public:
         tb      -   Threadblock object. cg::thread_block
         warp    -   Warp object.        cg::thread_block_tile<hw_warp_size>
     */
-    template <int numBits, int maxWarps>
+    template <int numBits, int threads_per_group>
     DS_D_INLINE Params<Type::Asymmetric, numBits> get_params(
         cg::thread_block& tb,
         cg::thread_block_tile<hw_warp_size>& warp)
@@ -281,7 +280,7 @@ public:
         const float2 partial_min = conversion::to<float2>(cur_min);
         float min = reduce::element<rop::Min>(partial_min.x, partial_min.y);
 
-        reduce::block<rop::Max, rop::Min>(tb, warp, max, min);
+        reduce::partitioned_block<rop::Max, rop::Min, threads_per_group>(tb, warp, max, min);
 
         Params<Type::Asymmetric, numBits> params(max, min);
 
@@ -341,7 +340,7 @@ Function Arguments :
     elems_per_group -   Number of elements to quantize in a group.
     q_parems        -   Quantization parameters.
 */
-template <int numBits, Type qType, int numChunks>
+template <int numBits, Type qType, int numChunks, int numWarps = max_threads / hw_warp_size>
 DS_D_INLINE void local_array(cg::thread_block& tb,
                              cg::thread_block_tile<hw_warp_size>& warp,
                              __half2* local_buffer,
@@ -409,7 +408,7 @@ DS_D_INLINE GroupStats<qType> _local_serial_reduce(__half2* local_buffer)
     return stats;
 }
 
-template <Type qType, int numBits, int numChunks>
+template <Type qType, int numBits, int numChunks, int threads_per_group>
 DS_D_INLINE void local_array(cg::thread_block& tb,
                              cg::thread_block_tile<hw_warp_size>& warp,
                              __half2* local_buffer,
@@ -422,14 +421,14 @@ DS_D_INLINE void local_array(cg::thread_block& tb,
     constexpr int num_int8_out = quantize::h_per_load / num_ele_int8;
 
     // Indexing offsets
-    const int block_offset = tb.group_index().x * elems_per_group;
+    const int block_offset = (tb.group_index().x * 256/threads_per_group * elems_per_group) + (tb.thread_index().y * elems_per_group);
     const int elem_offset = tb.thread_index().x * quantize::h_per_load;
     const int base_offset = (block_offset + elem_offset) / num_ele_int8;
     const int stride = tb.size() * quantize::h_per_load / num_ele_int8;
 
     int8_t local_output[num_int8_out];
 
-    if (tb.thread_index().x == 0) { q_params.store(global_params, tb.group_index().x); }
+    if (tb.thread_index().x == 0) q_params.store(global_params, (tb.group_index().x * 256/threads_per_group) + tb.thread_index().y);
 
 #pragma unroll
     for (int i = 0; i < numChunks; i++) {
@@ -445,7 +444,7 @@ DS_D_INLINE void local_array(cg::thread_block& tb,
 template <Type qType,
           int numBits,
           int numChunks,
-          int numWarps = max_threads / hw_warp_size,
+          int threads_per_group = max_threads,
           int elemsPerBlock = 0>
 __device__ void local_array(__half2* local_buffer,
                             float* __restrict__ global_params,
@@ -456,9 +455,9 @@ __device__ void local_array(__half2* local_buffer,
     cg::thread_block_tile<hw_warp_size> warp = cg::tiled_partition<hw_warp_size>(tb);
 
     auto group_stats = _local_serial_reduce<qType, numChunks>(local_buffer);
-    auto params = group_stats.template get_params<numBits, numWarps>(tb, warp);
+    auto params = group_stats.template get_params<numBits, threads_per_group>(tb, warp);
 
-    quantize::local_array<qType, numBits, numChunks>(
+    quantize::local_array<qType, numBits, numChunks, threads_per_group>(
         tb, warp, local_buffer, global_params, output_data, elems_per_group, params);
 }
 

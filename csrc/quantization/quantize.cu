@@ -10,7 +10,7 @@ namespace cg = cooperative_groups;
 /*
 Pure quantization kernel with no fusion.
 */
-template <int q_bits, quantize::Type quant_type, int UNROLL, int internal_unroll>
+template <int q_bits, quantize::Type quant_type, int UNROLL, int internal_unroll, int threads_per_group>
 __global__ void cached_quantization(int8_t* __restrict__ output_data,
                                     float* __restrict__ params,
                                     const __half* __restrict__ input_data,
@@ -20,13 +20,15 @@ __global__ void cached_quantization(int8_t* __restrict__ output_data,
     cg::thread_block tb = cg::this_thread_block();
     cg::thread_block_tile<hw_warp_size> warp = cg::tiled_partition<hw_warp_size>(tb);
 
+
     // Indexing offsets
-    const int block_offset = tb.group_index().x * elems_per_group;
+    const int block_offset = (tb.group_index().x * (256/threads_per_group) * elems_per_group) + (tb.thread_index().y * elems_per_group);
     const int elem_offset = tb.thread_index().x * quantize::h_per_load;
     const int base_offset = block_offset + elem_offset;
     const int stride = tb.size() * quantize::h_per_load;
 
     const __half* input_base = input_data + base_offset;  //..
+
 
     __half2 local_buffer[UNROLL * internal_unroll * quantize::h2_per_load];
 
@@ -44,56 +46,82 @@ __global__ void cached_quantization(int8_t* __restrict__ output_data,
         }
     }
 
-    quantize::local_array<quant_type, q_bits, UNROLL * internal_unroll>(
+    quantize::local_array<quant_type, q_bits, UNROLL * internal_unroll, threads_per_group>(
         local_buffer, params, output_data, elems_per_group);
 }
 
 /********* Launcher methods ***********/
+int next_pow2(const int val) {
+    int rounded_val = val - 1;
+    rounded_val |= rounded_val >> 1;
+    rounded_val |= rounded_val >> 2;
+    rounded_val |= rounded_val >> 4;
+    rounded_val |= rounded_val >> 8;
+    return rounded_val + 1;
+}
 
 int32_t round_to_32(int32_t raw_value) { return (((raw_value - 1) >> 5) + 1) << 5; }
 
-#define LAUNCH_CACHED_QUANT(q_bits, quant_type, unroll_factor, internal_unroll) \
-    cached_quantization<q_bits, quant_type, unroll_factor, internal_unroll>     \
+#define LAUNCH_CACHED_QUANT(q_bits, quant_type, unroll_factor, internal_unroll, threads_per_group) \
+    cached_quantization<q_bits, quant_type, unroll_factor, internal_unroll, threads_per_group>     \
         <<<grid, block, 0, stream>>>(output_data, params, input_data, groups, elems_per_group);
 
 template <int numBits, quantize::Type qType>
 void launch_quant(int8_t* output_data,
                   float* params,
                   const __half* input_data,
-                  int groups,
-                  int elems_per_group,
+                  const int groups,
+                  const int elems_per_group,
                   cudaStream_t stream)
 {
     constexpr int max_threads = 256;
 
     constexpr int internal_unroll = 2;
 
-    constexpr int h_per_step = quantize::h_per_load * internal_unroll;
+    const bool is_subblock_schedule = (elems_per_group <= 1024) ? true : false;
+    const int h_per_step = is_subblock_schedule ? quantize::h_per_load : quantize::h_per_load * internal_unroll;
 
     // Scheduling concern: may be slightly faster for some inputs to assign multiple stages of
     // warp-sized blocks rather than stepping up to 64/96 threads
-    const int one_step_threads = round_to_32((elems_per_group + h_per_step - 1) / h_per_step);
-    const int threads = (one_step_threads < max_threads) ? one_step_threads : max_threads;
+    const int one_step_threads = next_pow2((elems_per_group + h_per_step - 1) / h_per_step);
+    const int threads_per_group = (one_step_threads < max_threads) ? one_step_threads : max_threads;
+    const int warps_per_group = threads_per_group / hw_warp_size;
 
-    dim3 block(threads);
-    dim3 grid(groups);
+    const int groups_per_block = is_subblock_schedule ? (max_threads + threads_per_group - 1) / threads_per_group : 1;
+    const int groups_launch = (groups_per_block + groups - 1) / groups_per_block;
 
-    const int elems_per_step = threads * h_per_step;
+
+    dim3 block(threads_per_group, groups_per_block);
+    dim3 grid(groups_launch);
+
+    const int elems_per_step = threads_per_group * h_per_step;
     const int external_unroll = (elems_per_group + elems_per_step - 1) / elems_per_step;
 
-    if (external_unroll == 1) {
-        // 0 - 4096 elems
+    if (threads_per_group == 16){
+        // <=128
+        LAUNCH_CACHED_QUANT(numBits, qType, 1, 1, 16);
+    } else if (threads_per_group == 32){
+        // <=512
+        LAUNCH_CACHED_QUANT(numBits, qType, 1, 1, 32);
+    } else if (threads_per_group == 64){
+        // <=1024
+        LAUNCH_CACHED_QUANT(numBits, qType, 1, 1, 64);
+    } else if (threads_per_group == 128){
+        // <=1024
+        LAUNCH_CACHED_QUANT(numBits, qType, 1, 1, 128);
+    } else if (external_unroll == 1) {
+        // 1025 - 4096 elems
         // (this can launch with 1-7 warps as well)
-        LAUNCH_CACHED_QUANT(numBits, qType, 1, internal_unroll);
+        LAUNCH_CACHED_QUANT(numBits, qType, 1, internal_unroll, max_threads / hw_warp_size);
     } else if (external_unroll == 2) {
         // 4097 - 8192 elems
-        LAUNCH_CACHED_QUANT(numBits, qType, 2, internal_unroll);
+        LAUNCH_CACHED_QUANT(numBits, qType, 2, internal_unroll, max_threads / hw_warp_size);
     } else if (external_unroll == 3) {
         // 8193 - 12288 elems
-        LAUNCH_CACHED_QUANT(numBits, qType, 3, internal_unroll);
+        LAUNCH_CACHED_QUANT(numBits, qType, 3, internal_unroll, max_threads / hw_warp_size);
     } else if (external_unroll == 4) {
         // 12289 - 16384 elems
-        LAUNCH_CACHED_QUANT(numBits, qType, 4, internal_unroll);
+        LAUNCH_CACHED_QUANT(numBits, qType, 4, internal_unroll, max_threads / hw_warp_size);
     }
 }
 
