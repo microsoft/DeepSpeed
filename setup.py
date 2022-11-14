@@ -21,7 +21,6 @@ import subprocess
 from setuptools import setup, find_packages
 from setuptools.command import egg_info
 import time
-from deepspeed.accelerator import get_accelerator
 
 torch_available = True
 try:
@@ -92,6 +91,7 @@ cmdclass = {}
 
 # For any pre-installed ops force disable ninja
 if torch_available:
+    from deepspeed.accelerator import get_accelerator
     cmdclass['build_ext'] = get_accelerator().build_extension().with_options(
         use_ninja=False)
 
