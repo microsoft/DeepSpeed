@@ -12,15 +12,18 @@
 #include <cuda_runtime_api.h>
 #include "cuda.h"
 #include "custom_cuda_layers.h"
+typedef __half ds_half_precision_t;
+#else
+typedef unsigned short ds_half_precision_t;
 #endif
 
-#define STEP(SPAN)                                \
-    void Step_##SPAN(float* _params,              \
-                     float* grads,                \
-                     float* _exp_avg,             \
-                     float* _exp_avg_sq,          \
-                     size_t _param_size,          \
-                     __half* dev_param = nullptr, \
+#define STEP(SPAN)                                             \
+    void Step_##SPAN(float* _params,                           \
+                     float* grads,                             \
+                     float* _exp_avg,                          \
+                     float* _exp_avg_sq,                       \
+                     size_t _param_size,                       \
+                     ds_half_precision_t* dev_param = nullptr, \
                      bool half_precision = false);
 
 class Adam_Optimizer {
@@ -47,7 +50,7 @@ public:
 
         _streams[0] = Context::Instance().GetCurrentStream();
         _streams[1] = Context::Instance().GetNewStream();
-        _buf_index = false
+        _buf_index = false;
 #endif
     }
     ~Adam_Optimizer()
@@ -66,7 +69,7 @@ public:
                   float* _exp_avg,
                   float* _exp_avg_sq,
                   size_t param_size,
-                  __half* dev_param = nullptr,
+                  ds_half_precision_t* dev_param = nullptr,
                   bool half_precision = false);
 #endif
     STEP(1)
@@ -143,7 +146,7 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
                               float* _exp_avg,
                               float* _exp_avg_sq,
                               size_t _param_size,
-                              __half* dev_params,
+                              ds_half_precision_t* dev_params,
                               bool half_precision)
 {
     size_t new_rounded_size = 0;

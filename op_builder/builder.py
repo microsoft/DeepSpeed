@@ -362,7 +362,7 @@ class OpBuilder(ABC):
             return '-mcpu=native'
         return '-march=native'
 
-    def is_cuda_available(self):
+    def is_cuda_enable(self):
         try:
             if torch.cuda.is_available():
                 return '-D__ENABLE_CUDA__'
@@ -712,10 +712,12 @@ class TorchCPUOpBuilder(CUDAOpBuilder):
 
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
+        CUDA_ENABLE = self.is_cuda_enable()
         args += [
             CPU_ARCH,
             '-fopenmp',
             SIMD_WIDTH,
+            CUDA_ENABLE,
         ]
 
         return args
