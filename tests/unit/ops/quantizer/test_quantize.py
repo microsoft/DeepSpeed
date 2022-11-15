@@ -101,8 +101,8 @@ def run_float_quantize(q_bits, is_symmetric_quant, activations_ref, num_groups):
 
 
 @pytest.mark.inference
-@pytest.mark.parametrize("num_groups", [1, 2, 4, 8, 16, 32, 64, 512])
-@pytest.mark.parametrize("num_elems", [4096, 8192, 12288, 16384])
+@pytest.mark.parametrize("num_groups", [1, 13, 512])
+@pytest.mark.parametrize("num_elems", [8, 16, 32, 64, 128, 256, 4096, 8192, 12288, 16384])
 @pytest.mark.parametrize("is_symmetric_quant", [True, False])
 @pytest.mark.parametrize("q_bits", [4, 8])
 @pytest.mark.parametrize("directed_case", ["all_zeros", None])
