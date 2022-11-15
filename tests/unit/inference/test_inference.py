@@ -361,7 +361,7 @@ class TestLowCpuMemUsage(DistributedTest):
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
         tokenizer = AutoTokenizer.from_pretrained(model)
-        model = AutoModelForCausalLM.from_pretrained(model, low_cpu_mem_usage=False)
+        model = AutoModelForCausalLM.from_pretrained(model, low_cpu_mem_usage=True)
 
         # We have to load these large models on CPU with pipeline because not
         # enough GPU memory
