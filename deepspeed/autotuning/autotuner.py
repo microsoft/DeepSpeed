@@ -60,7 +60,7 @@ class Autotuner:
             shutil.rmtree(self.exps_dir, ignore_errors=True)
         if not os.path.exists(self.exps_dir):
             os.makedirs(self.exps_dir, exist_ok=True)
-
+        print(f"Current exps directory: {self.exps_dir}")
         self.results_dir = self.autotuning_config.results_dir
         if self.autotuning_config.overwrite and os.path.exists(self.results_dir):
             shutil.rmtree(self.results_dir, ignore_errors=True)
