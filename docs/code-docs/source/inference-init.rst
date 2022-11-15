@@ -6,12 +6,11 @@ Example usage:
 
 .. code-block:: python
 
-    engine = deepspeed.init_inference(model=net)
+    engine = deepspeed.init_inference(model=net, config=config)
 
 The ``DeepSpeedInferenceConfig`` is used to control all aspects of initializing
 the ``InferenceEngine``. The config should be passed as a dictionary to
-``init_inference``, but parameters can also be passed as keyword arguments as
-well.
+``init_inference``, but parameters can also be passed as keyword arguments.
 
 .. _DeepSpeedInferenceConfig:
 .. autopydantic_model:: deepspeed.inference.config.DeepSpeedInferenceConfig
