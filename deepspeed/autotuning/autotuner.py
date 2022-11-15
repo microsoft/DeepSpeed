@@ -5,6 +5,7 @@ import time
 import datetime
 import math
 import hjson
+from contextlib import nullcontext
 
 from ..runtime.config_utils import dict_raise_error_on_duplicate_keys
 from ..runtime.constants import *
@@ -21,6 +22,13 @@ try:
     from tabulate import tabulate
 except ImportError:
     tabulate = None
+
+try:
+    import mlflow
+    has_mlflow = True
+except Exception as e:
+    print("MLFlow does not exist. Disabling MLFlow logging")
+    has_mlflow = False
 
 ZERO_OPTIMIZATION_STAGE = "stage"
 OFFLOAD_OPTIMIZER = "offload_optimizer"
@@ -52,7 +60,7 @@ class Autotuner:
             shutil.rmtree(self.exps_dir, ignore_errors=True)
         if not os.path.exists(self.exps_dir):
             os.makedirs(self.exps_dir, exist_ok=True)
-
+        print(f"Current exps directory: {self.exps_dir}")
         self.results_dir = self.autotuning_config.results_dir
         if self.autotuning_config.overwrite and os.path.exists(self.results_dir):
             shutil.rmtree(self.results_dir, ignore_errors=True)
@@ -394,6 +402,7 @@ class Autotuner:
     def tune(self):
         """ Tunes Zero stages, micro batch size per GPU, and other Zero configurations. Performance metrics of different tuning spaces are recorded in self.records.
         """
+        mlflow.start_run()
         self.start_time = time.time()
         if self.fast_enabled():
             logger.info(f"Fast mode is enabled. Tuning micro batch size only.")
@@ -443,6 +452,8 @@ class Autotuner:
                     mbs = next_mbs
                     max_mbs = next_max_mbs
                     metric_val = next_metric_val
+                if has_mlflow:
+                    mlflow.log_metric(f"z0{self.metric()}", next_metric_val)
         else:
             logger.info(
                 f"The model is not runable with ZERO stage {ZeroStageEnum.disabled} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
@@ -461,6 +472,8 @@ class Autotuner:
                     mbs = next_mbs
                     max_mbs = next_max_mbs
                     metric_val = next_metric_val
+                if has_mlflow:
+                    mlflow.log_metric(f"z1{self.metric()}", next_metric_val)
         else:
             logger.info(
                 f"The model is not runable with ZERO stage {ZeroStageEnum.optimizer_states} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
@@ -479,6 +492,8 @@ class Autotuner:
                     mbs = next_mbs
                     max_mbs = next_max_mbs
                     metric_val = next_metric_val
+                if has_mlflow:
+                    mlflow.log_metric(f"z2{self.metric()}", next_metric_val)
         else:
             logger.info(
                 f"The model is not runable with ZERO stage {ZeroStageEnum.gradients} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
@@ -491,8 +506,10 @@ class Autotuner:
                 logger.info(
                     f"The model might be runable with ZERO 3 (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory), adding DEFAULT_TUNING_SPACE_ZERO_3 to the global tuning space"
                 )
-                _, _, _ = self.tune_space(
+                _, _, next_metric_val = self.tune_space(
                     DEFAULT_TUNING_SPACE_ZERO_3, prev_max_mbs = max_mbs, prev_best_mbs=mbs, prev_best_metric_val=metric_val)
+                if has_mlflow:
+                    mlflow.log_metric(f"z3{self.metric()}", next_metric_val)
         else:
             logger.info(
                 f"The model has {self.get_model_num_params()} parameters and requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory per GPU with DeepSpeed Zero stage {ZeroStageEnum.weights} optimization. Memory per GPU in system is {memory_to_string(self.gpu_mem)}. No tuning is performed."
@@ -504,9 +521,11 @@ class Autotuner:
                    prev_max_mbs=0,
                    prev_best_mbs=0,
                    prev_best_metric_val=0):
+
         config_zero = tuning_space.get(ZERO_OPTIMIZATION, {})
         stage = config_zero.get(ZERO_OPTIMIZATION_STAGE, None)
         tuning_space_name = TUNING_MICRO_BATCH_SIZE_PREFIX + str(stage)
+
         tuning_micro_batch_sizes = []
         max_train_batch_size_per_gpu = 0
         tuning_micro_batch_sizes_overwritten = False
@@ -533,7 +552,7 @@ class Autotuner:
             tuning_micro_batch_sizes = [
                 s for s in self.user_config[TRAIN_MICRO_BATCH_SIZE_PER_GPU]
                 if isinstance(s,
-                              int)
+                            int)
             ]
             gas = self.get_gas_from_user_config()
             min_micro_batch_size = min(tuning_micro_batch_sizes)
@@ -594,9 +613,9 @@ class Autotuner:
 
         tuning_space[TRAIN_MICRO_BATCH_SIZE_PER_GPU] = tuning_micro_batch_sizes
         tuning_space_name = canonical_name(tuning_space,
-                                           tuning_keys=get_tuning_keys(tuning_space),
-                                           prefix="z" + str(stage) + "_",
-                                           omit_val=True)
+                                        tuning_keys=get_tuning_keys(tuning_space),
+                                        prefix="z" + str(stage) + "_",
+                                        omit_val=True)
 
         logger.info(f'Tuning space is {tuning_space}')
         logger.info(f'Tuning space name is {tuning_space_name}')
@@ -614,8 +633,8 @@ class Autotuner:
         sample_size = len(self.rm.nodes) * self.rm.num_gpus_per_node // (
             self.exp_num_gpus * self.exp_num_nodes)
         num_exps = t.tune(sample_size=sample_size,
-                          n_trials=self.autotuning_config.tuner_num_trials,
-                          early_stopping=self.autotuning_config.tuner_early_stopping)
+                        n_trials=self.autotuning_config.tuner_num_trials,
+                        early_stopping=self.autotuning_config.tuner_early_stopping)
         exp = t.best_exp
         metric_val = t.best_metric_val
         if exp:
@@ -787,18 +806,21 @@ class Autotuner:
         self.rm.run()
         for exp_id, (exp, err) in self.rm.finished_experiments.items():
             if exp:
-                metric_file = exp[DS_CONFIG][AUTOTUNING][AUTOTUNING_METRIC_PATH]
-
-                if os.path.exists(metric_file):
-                    with open(metric_file, 'r') as f:
-                        results = hjson.load(f)
-                        metric_val = results[self.metric()]
-                        self.update_records(tuning_space_name, exp, metric_val, 1)
-                        if max_micro_batch_size == exp[DS_CONFIG][
-                                TRAIN_MICRO_BATCH_SIZE_PER_GPU]:
-                            max_micro_batch_size_metric_val = metric_val
-                else:
-                    self.update_records(tuning_space_name, exp, 0, 1)
+                with mlflow.start_run(nested=True, run_name=exp['name']) if has_mlflow else nullcontext():
+                    metric_file = exp[DS_CONFIG][AUTOTUNING][AUTOTUNING_METRIC_PATH]
+                    if os.path.exists(metric_file):
+                        with open(metric_file, 'r') as f:
+                            results = hjson.load(f)
+                            metric_val = results[self.metric()]
+                            self.update_records(tuning_space_name, exp, metric_val, 1)
+                            if max_micro_batch_size == exp[DS_CONFIG][
+                                    TRAIN_MICRO_BATCH_SIZE_PER_GPU]:
+                                max_micro_batch_size_metric_val = metric_val
+                            if has_mlflow:
+                                for metric in results:
+                                    mlflow.log_metric(metric, results[metric])
+                    else:
+                        self.update_records(tuning_space_name, exp, 0, 1)
             else:
                 mbs = exp[DS_CONFIG][TRAIN_MICRO_BATCH_SIZE_PER_GPU]
                 logger.info(f"micro batch size = {mbs} was not run successfully")
@@ -833,6 +855,16 @@ class Autotuner:
             exp, metric_val = self.run_ds_config(ds_config, exp_name)
             if metric_val:
                 self.update_records(tuning_space_name, exp, metric_val, 1)
+                with mlflow.start_run(nested=True, run_name=exp['name']) if has_mlflow else nullcontext():
+                    metric_file = exp[DS_CONFIG][AUTOTUNING][AUTOTUNING_METRIC_PATH]
+                    if os.path.exists(metric_file):
+                        with open(metric_file, 'r') as f:
+                            results = hjson.load(f)
+                            if has_mlflow:
+                                for metric in results:
+                                    mlflow.log_metric(metric, results[metric])
+                    else:
+                        self.update_records(tuning_space_name, exp, 0, 1)
                 if metric_val > prev_best_metric_val * (1 + METRIC_PERCENT_DIFF_CONST):
                     prev_best_metric_val = metric_val
                     prev_best_mbs = mbs
