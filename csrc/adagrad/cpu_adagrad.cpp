@@ -4,13 +4,13 @@
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
-#if defined (__ENABLE_CUDA__)
+#if defined(__ENABLE_CUDA__)
 #include <cuda_runtime_api.h>
 #include "cublas_v2.h"
 #include "cuda.h"
 #include "curand.h"
 #include "custom_cuda_layers.h"
-#endif 
+#endif
 
 static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 
@@ -40,9 +40,9 @@ void Adagrad_Optimizer::Step_1(float* _params,
             size_t copy_size = TILE;
             if ((t + TILE) > _param_size) copy_size = _param_size - t;
             size_t offset = copy_size + t;
-#if defined(__ENABLE_CUDA__)            
+#if defined(__ENABLE_CUDA__)
             if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]); }
-#endif             
+#endif
 #pragma omp parallel for
             for (size_t k = t; k < offset; k++) {
                 float grad = half_precision ? (float)grads_cast_h[k] : grads[k];
@@ -67,13 +67,13 @@ void Adagrad_Optimizer::Step_1(float* _params,
                 grads[k] = grad * step_size;
                 _exp_avg_sq[k] = variance;
             }
-#if defined(__ENABLE_CUDA__)            
+#if defined(__ENABLE_CUDA__)
             if (dev_params) {
                 launch_param_update(
                     _doubled_buffer[_buf_index], dev_params + t, (copy_size), _streams[_buf_index]);
                 _buf_index = !_buf_index;
             }
-#endif         
+#endif
         }
     }
 }

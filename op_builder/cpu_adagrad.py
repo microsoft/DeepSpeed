@@ -24,7 +24,7 @@ class CPUAdagradBuilder(TorchCPUOpBuilder):
     def libraries_args(self):
         args = super().libraries_args()
         if self.build_for_cpu:
-            return args 
+            return args
 
         if not self.is_rocm_pytorch():
             args += ['curand']

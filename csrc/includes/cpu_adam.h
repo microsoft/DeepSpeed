@@ -12,8 +12,7 @@
 #include <cuda_runtime_api.h>
 #include "cuda.h"
 #include "custom_cuda_layers.h"
-#endif 
-
+#endif
 
 #define STEP(SPAN)                                \
     void Step_##SPAN(float* _params,              \
@@ -42,21 +41,21 @@ public:
           _step(0),
           _adamw_mode(adamw_mode)
     {
-#if defined(__ENABLE_CUDA__)        
+#if defined(__ENABLE_CUDA__)
         cudaMallocHost((void**)_doubled_buffer, TILE * sizeof(float));
         cudaMallocHost((void**)(_doubled_buffer + 1), TILE * sizeof(float));
 
         _streams[0] = Context::Instance().GetCurrentStream();
         _streams[1] = Context::Instance().GetNewStream();
-          _buf_index = false 
-#endif        
+        _buf_index = false
+#endif
     }
     ~Adam_Optimizer()
     {
-#if defined(__ENABLE_CUDA__)        
+#if defined(__ENABLE_CUDA__)
         cudaFreeHost(_doubled_buffer[0]);
         cudaFreeHost(_doubled_buffer[1]);
-#endif         
+#endif
     }
 
 #if defined(__AVX512__) or defined(__AVX256__)
@@ -73,12 +72,12 @@ public:
     STEP(1)
     STEP(4)
     STEP(8)
-#if defined(__ENABLE_CUDA__)        
+#if defined(__ENABLE_CUDA__)
     inline void SynchronizeStreams()
     {
         for (int i = 0; i < 2; i++) cudaStreamSynchronize(_streams[i]);
     }
-#endif         
+#endif
     inline void IncrementStep(size_t step, float beta1, float beta2)
     {
         if (beta1 != _betta1 || beta2 != _betta2) {
@@ -133,7 +132,7 @@ private:
     float* _doubled_buffer[2];
     cudaStream_t _streams[2];
     bool _buf_index;
-#endif 
+#endif
 };
 
 #if defined(__AVX512__) or defined(__AVX256__)
@@ -181,9 +180,9 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
         size_t copy_size = TILE;
         if ((t + TILE) > new_rounded_size) copy_size = new_rounded_size - t;
         size_t offset = copy_size + t;
-#if defined(__ENABLE_CUDA__)        
+#if defined(__ENABLE_CUDA__)
         if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]); }
-#endif         
+#endif
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += SIMD_WIDTH * span) {
             AVX_Data grad_4[span];
@@ -218,11 +217,11 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
             simd_fma<span>(param_4, grad_4, step_size_4, param_4);
 
             simd_store<span>(_params + (i >> rshft), param_4, half_precision);
-#if defined(__ENABLE_CUDA__)            
+#if defined(__ENABLE_CUDA__)
             if (dev_params) {
                 simd_store<span>(_doubled_buffer[_buf_index] + (i - t), param_4, half_precision);
             }
-#endif             
+#endif
             simd_store<span>(_exp_avg + i, momentum_4, false);
             simd_store<span>(_exp_avg_sq + i, variance_4, false);
         }
@@ -237,7 +236,7 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
 
             _buf_index = !_buf_index;
         }
-#endif         
+#endif
     }
     *rounded_size = new_rounded_size;
 }

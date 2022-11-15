@@ -607,7 +607,7 @@ class CUDAOpBuilder(OpBuilder):
         compile_args = {'cxx': self.strip_empty_entries(self.cxx_args())} if self.build_for_cpu else \
                        {'cxx': self.strip_empty_entries(self.cxx_args()), \
                            'nvcc': self.strip_empty_entries(self.nvcc_args())}
-                           
+
         cuda_ext = ExtensionBuilder(
             name=self.absolute_name(),
             sources=self.strip_empty_entries(self.sources()),
@@ -677,7 +677,7 @@ class CUDAOpBuilder(OpBuilder):
     def libraries_args(self):
         if self.build_for_cpu:
             return []
-            
+
         if sys.platform == "win32":
             return ['cublas', 'curand']
         else:
@@ -713,9 +713,9 @@ class TorchCPUOpBuilder(CUDAOpBuilder):
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
         args += [
-                CPU_ARCH,
-                '-fopenmp',
-                SIMD_WIDTH,
+            CPU_ARCH,
+            '-fopenmp',
+            SIMD_WIDTH,
         ]
 
         return args
