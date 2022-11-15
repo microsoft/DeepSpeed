@@ -18,7 +18,7 @@ class parallel_norm_func(torch.autograd.Function):
         if mp_group is not None:
             mp_group.all_reduce(mean)
             mp_group.all_reduce(var)
-        out = cuda_module.partialNorm1(inp, mean, var, gamma, beta, epsilon)
+        out, var = cuda_module.partialNorm1(inp, mean, var, gamma, beta, epsilon)
 
         ctx.save_for_backward(out, var, gamma, beta)
         return out

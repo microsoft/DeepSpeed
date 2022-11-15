@@ -176,10 +176,10 @@ std::vector<at::Tensor> ds_partial_norm_bwd(at::Tensor& input,
                                        {stream, stream},
                                        true,
                                        (__half*)betta.data_ptr());
-    return {inp_grad, gamm_grad, beta_grad}
+    return {inp_grad, gamm_grad, beta_grad};
 }
 
-at::Tensor ds_partial_norm1(at::Tensor& input, 
+std::vector<at::Tensor> ds_partial_norm1(at::Tensor& input, 
                             at::Tensor& mean, 
                             at::Tensor& var, 
                             at::Tensor& gamma, 
@@ -213,7 +213,7 @@ at::Tensor ds_partial_norm1(at::Tensor& input,
                                         (__half*)means.data_ptr(),
                                         (__half*)gamma.data_ptr(),
                                         (__half*)beta.data_ptr());
-    return norm_out;
+    return {norm_out, vars};
 }
 
 

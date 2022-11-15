@@ -505,6 +505,9 @@ __global__ void fused_bias_residual_layer_norm1(__half* vals, const __half* resi
     
     variance = variance - mean * mean;
     variance += epsilon;
+    
+    if (threadIdx.x == 0)
+        vars[row] = __float2half(variance);
 
     __half2 variance_h = __float2half2_rn(variance);
     const __half2* gamma_cast = reinterpret_cast<const __half2*>(gamma);
