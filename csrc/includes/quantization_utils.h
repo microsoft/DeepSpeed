@@ -23,13 +23,13 @@ template <Type qType, int numBits>
 class Params {
 public:
     /*
-    QUantization implementation, Supports
+    Quantization implementation, supports
     1) 4 Bit
     2) 8 Bit
     3) Symmetric
     4) Asymmetric
     Function Arguments :
-        val : The __half value to Quantize.
+        val : The __half value to quantize.
     */
     DS_D_INLINE int8_t quantize(__half val);
 
@@ -127,8 +127,7 @@ public:
 
 /*
 Group stats tracks the necessary statistics about the quantized group
-to abstract the particulars for the main loop. The scales in particular
-can be derived from
+to abstract the particulars for the main loop.
 */
 template <Type qType>
 class GroupStats {
@@ -164,7 +163,7 @@ public:
     }
 
     /*
-    Functiuon to Return calculated Quantization params.
+    Function to return calculated quantization params.
     Template Arguments :
         numBits -   Number of bits in quantized element.    int : 8 or 4
     Function Arguments :
@@ -211,7 +210,7 @@ public:
     }
 
     /*
-    Functiuon to Return calculated Quantization params.
+    Function to return calculated quantization params.
     Template Arguments :
         numBits -   Number of bits in quantized element.    int : 8 or 4
     Function Arguments :
@@ -262,7 +261,7 @@ public:
     }
 
     /*
-    Functiuon to Return calculated Quantization params.
+    Function to return calculated quantization params.
     Template Arguments :
         numBits -   Number of bits in quantized element.    int : 8 or 4
     Function Arguments :
@@ -289,7 +288,7 @@ public:
 };
 
 /*
-The kernel that quantizes 16 bytes of __half type input data.
+Device function that quantizes 16 bytes of __half type input data.
 Template Arguments :
     numBits -   Number of bits in quantized element.    int : 8 or 4
     qType   - Type of quantization to perform.          Type::Symmetric or Type::Asymmetric
@@ -302,7 +301,7 @@ template <int numBits, Type qType>
 DS_D_INLINE void _chunk(int8_t* local_output, const __half* data, Params<qType, numBits> q_params);
 
 /*
-The kernel that quantizes 16 bytes of __half2 type input data.
+Device function that quantizes 16 bytes of __half2 type input data.
 Template Arguments :
     numBits -   Number of bits in quantized element.    int : 8 or 4
     qType   -   Type of quantization to perform.        Type::Symmetric or Type::Asymmetric
@@ -315,7 +314,7 @@ template <int numBits, Type qType>
 DS_D_INLINE void _chunk(int8_t* local_output, const __half2* data, Params<qType, numBits> q_params);
 
 /*
-Helper function to do serial reduction on local memory.
+Helper function to do serial reduction on register-file arrays.
 Template Arguments :
     qType       -   Type of quantization to perform.        Type::Symmetric or Type::Asymmetric
     numChunks   -   Number of bits in quantized element.    int : 8 or 4
@@ -338,7 +337,7 @@ Function Arguments :
     offsets         -   Pointer to output offsets.
     output_data     -   Pointer to output data.
     elems_per_group -   Number of elements to quantize in a group.
-    q_parems        -   Quantization parameters.
+    q_params        -   Quantization parameters.
 */
 template <int numBits, Type qType, int numChunks, int threads_per_group, int max_threads>
 DS_D_INLINE void local_array(cg::thread_block& tb,
