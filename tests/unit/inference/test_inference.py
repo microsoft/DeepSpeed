@@ -8,7 +8,7 @@ from deepspeed.git_version_info import torch_info
 from unit.common import DistributedTest
 from packaging import version as pkg_version
 from deepspeed.ops.op_builder import OpBuilder
-from transformers import pipeline
+from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 from transformers.models.t5.modeling_t5 import T5Block
 from transformers.models.roberta.modeling_roberta import RobertaLayer
 from huggingface_hub import HfApi
@@ -321,6 +321,55 @@ class TestMPSize(DistributedTest):
         # We have to load these large models on CPU with pipeline because not
         # enough GPU memory
         pipe = pipeline(task, model=model, device=-1, framework="pt")
+        bs_output = pipe(query, **inf_kwargs)
+
+        pipe.model = deepspeed.init_inference(pipe.model,
+                                              mp_size=self.world_size,
+                                              dtype=dtype,
+                                              replace_method="auto",
+                                              replace_with_kernel_inject=True)
+        # Switch device to GPU so that input tensors are not on CPU
+        pipe.device = torch.device(f"cuda:{local_rank}")
+        ds_output = pipe(query, **inf_kwargs)
+
+        print(local_rank, "baseline", bs_output)
+        print(local_rank, "deepspeed", ds_output)
+        assert assert_fn(bs_output, ds_output)
+
+
+@pytest.mark.seq_inference
+@pytest.mark.parametrize("model_w_task",
+                         [("EleutherAI/gpt-j-6B",
+                           "text-generation")],
+                         ids=["gpt-j"])
+class TestLowCpuMemUsage(DistributedTest):
+    world_size = 1
+
+    def test(
+        self,
+        model_w_task,
+        dtype,
+        query,
+        inf_kwargs,
+        assert_fn,
+        invalid_model_task_config,
+    ):
+        if invalid_model_task_config:
+            pytest.skip(invalid_model_task_config)
+
+        model, task = model_w_task
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+
+        tokenizer = AutoTokenizer.from_pretrained(model)
+        model = AutoModelForCausalLM.from_pretrained(model, low_cpu_mem_usage=False)
+
+        # We have to load these large models on CPU with pipeline because not
+        # enough GPU memory
+        pipe = pipeline(task,
+                        model=model,
+                        tokenizer=tokenizer,
+                        device=-1,
+                        framework="pt")
         bs_output = pipe(query, **inf_kwargs)
 
         pipe.model = deepspeed.init_inference(pipe.model,
