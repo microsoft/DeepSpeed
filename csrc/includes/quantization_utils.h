@@ -46,7 +46,7 @@ public:
         if (max == 0) {
             scale = 1.0;
         } else {
-        scale = (1 << numBits) / (2 * max);
+            scale = (1 << numBits) / (2 * max);
         }
     }
 
@@ -340,7 +340,7 @@ Function Arguments :
     elems_per_group -   Number of elements to quantize in a group.
     q_parems        -   Quantization parameters.
 */
-template <int numBits, Type qType, int numChunks, int numWarps = max_threads / hw_warp_size, int max_threads>
+template <int numBits, Type qType, int numChunks, int threads_per_group, int max_threads>
 DS_D_INLINE void local_array(cg::thread_block& tb,
                              cg::thread_block_tile<hw_warp_size>& warp,
                              __half2* local_buffer,
@@ -348,6 +348,7 @@ DS_D_INLINE void local_array(cg::thread_block& tb,
                              float* __restrict__ offsets,
                              int8_t* __restrict__ output_data,
                              const int& elems_per_group,
+                             const int& groups,
                              Params<qType, numBits> q_params);
 
 /*
@@ -364,12 +365,13 @@ Function Arguments :
     output_data     -   Pointer to output data.
     elems_per_group -   Number of elements to quantize in a group.
 */
-template <Type qType, int numBits, int numChunks, int numWarps>
+template <Type qType, int numBits, int numChunks, int threads_per_group, int max_threads>
 __device__ void local_array(__half2* local_buffer,
                             float* __restrict__ scales,
                             float* __restrict__ offsets,
                             int8_t* __restrict__ output_data,
-                            const int& elems_per_group);
+                            const int& elems_per_group,
+                            const int& groups);
 
 template <int numBits, Type qType>
 DS_D_INLINE void _chunk(int8_t* local_output, const __half* data, Params<qType, numBits> q_params)
@@ -415,24 +417,30 @@ DS_D_INLINE void local_array(cg::thread_block& tb,
                              float* __restrict__ global_params,
                              int8_t* __restrict__ output_data,
                              const int& elems_per_group,
+                             const int& groups,
                              Params<qType, numBits> q_params)
 {
     constexpr int num_ele_int8 = 8 / numBits;
     constexpr int num_int8_out = quantize::h_per_load / num_ele_int8;
 
     // Indexing offsets
-    const int block_offset = (tb.group_index().x * max_threads/threads_per_group * elems_per_group) + (tb.thread_index().y * elems_per_group);
+    const int block_num =
+        (tb.group_index().x * max_threads / threads_per_group) + tb.thread_index().y;
+    const int block_offset = block_num * elems_per_group;
     const int elem_offset = tb.thread_index().x * quantize::h_per_load;
     const int base_offset = (block_offset + elem_offset) / num_ele_int8;
     const int stride = tb.size() * quantize::h_per_load / num_ele_int8;
 
     int8_t local_output[num_int8_out];
 
-    if (tb.thread_index().x == 0) q_params.store(global_params, (tb.group_index().x * max_threads/threads_per_group) + tb.thread_index().y);
-
+    if (tb.thread_index().x == 0 && block_num < groups) {
+        q_params.store(
+            global_params,
+            (tb.group_index().x * max_threads / threads_per_group) + tb.thread_index().y);
+    }
 #pragma unroll
     for (int i = 0; i < numChunks; i++) {
-        if (elem_offset + i * stride * num_ele_int8 < elems_per_group) {
+        if (elem_offset + i * stride * num_ele_int8 < elems_per_group && block_num < groups) {
             quantize::_chunk<numBits, qType>(
                 local_output, local_buffer + i * quantize::h2_per_load, q_params);
             mem_access::store_global<num_int8_out>(output_data + (base_offset + i * stride),
@@ -449,7 +457,8 @@ template <Type qType,
 __device__ void local_array(__half2* local_buffer,
                             float* __restrict__ global_params,
                             int8_t* __restrict__ output_data,
-                            const int& elems_per_group)
+                            const int& elems_per_group,
+                            const int& groups)
 {
     cg::thread_block tb = cg::this_thread_block();
     cg::thread_block_tile<hw_warp_size> warp = cg::tiled_partition<hw_warp_size>(tb);
@@ -458,7 +467,7 @@ __device__ void local_array(__half2* local_buffer,
     auto params = group_stats.template get_params<numBits, threads_per_group>(tb, warp);
 
     quantize::local_array<qType, numBits, numChunks, threads_per_group, max_threads>(
-        tb, warp, local_buffer, global_params, output_data, elems_per_group, params);
+        tb, warp, local_buffer, global_params, output_data, elems_per_group, groups, params);
 }
 
 }  // namespace quantize

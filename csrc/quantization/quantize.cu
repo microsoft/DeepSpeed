@@ -10,7 +10,12 @@ namespace cg = cooperative_groups;
 /*
 Pure quantization kernel with no fusion.
 */
-template <int q_bits, quantize::Type quant_type, int UNROLL, int internal_unroll, int threads_per_group, int max_threads>
+template <int q_bits,
+          quantize::Type quant_type,
+          int UNROLL,
+          int internal_unroll,
+          int threads_per_group,
+          int max_threads>
 __global__ void cached_quantization(int8_t* __restrict__ output_data,
                                     float* __restrict__ params,
                                     const __half* __restrict__ input_data,
@@ -20,15 +25,15 @@ __global__ void cached_quantization(int8_t* __restrict__ output_data,
     cg::thread_block tb = cg::this_thread_block();
     cg::thread_block_tile<hw_warp_size> warp = cg::tiled_partition<hw_warp_size>(tb);
 
-
     // Indexing offsets
-    const int block_offset = (tb.group_index().x * (max_threads/threads_per_group) * elems_per_group) + (tb.thread_index().y * elems_per_group);
+    const int block_offset =
+        (tb.group_index().x * (max_threads / threads_per_group) * elems_per_group) +
+        (tb.thread_index().y * elems_per_group);
     const int elem_offset = tb.thread_index().x * quantize::h_per_load;
     const int base_offset = block_offset + elem_offset;
     const int stride = tb.size() * quantize::h_per_load;
 
     const __half* input_base = input_data + base_offset;  //..
-
 
     __half2 local_buffer[UNROLL * internal_unroll * quantize::h2_per_load];
 
@@ -46,12 +51,14 @@ __global__ void cached_quantization(int8_t* __restrict__ output_data,
         }
     }
 
-    quantize::local_array<quant_type, q_bits, UNROLL * internal_unroll, threads_per_group, max_threads>(
-        local_buffer, params, output_data, elems_per_group);
+    quantize::
+        local_array<quant_type, q_bits, UNROLL * internal_unroll, threads_per_group, max_threads>(
+            local_buffer, params, output_data, elems_per_group, groups);
 }
 
 /********* Launcher methods ***********/
-int next_pow2(const int val) {
+int next_pow2(const int val)
+{
     int rounded_val = val - 1;
     rounded_val |= rounded_val >> 1;
     rounded_val |= rounded_val >> 2;
@@ -62,8 +69,14 @@ int next_pow2(const int val) {
 
 int32_t round_to_32(int32_t raw_value) { return (((raw_value - 1) >> 5) + 1) << 5; }
 
-#define LAUNCH_CACHED_QUANT(q_bits, quant_type, unroll_factor, internal_unroll, threads_per_group, max_threads) \
-    cached_quantization<q_bits, quant_type, unroll_factor, internal_unroll, threads_per_group, max_threads>     \
+#define LAUNCH_CACHED_QUANT(                                                            \
+    q_bits, quant_type, unroll_factor, internal_unroll, threads_per_group, max_threads) \
+    cached_quantization<q_bits,                                                         \
+                        quant_type,                                                     \
+                        unroll_factor,                                                  \
+                        internal_unroll,                                                \
+                        threads_per_group,                                              \
+                        max_threads>                                                    \
         <<<grid, block, 0, stream>>>(output_data, params, input_data, groups, elems_per_group);
 
 template <int numBits, quantize::Type qType>
@@ -79,7 +92,8 @@ void launch_quant(int8_t* output_data,
     constexpr int internal_unroll = 2;
 
     const bool is_subblock_schedule = (elems_per_group <= 128) ? true : false;
-    const int h_per_step = is_subblock_schedule ? quantize::h_per_load : quantize::h_per_load * internal_unroll;
+    const int h_per_step = is_subblock_schedule ? quantize::h_per_load
+                                                : quantize::h_per_load * internal_unroll;
 
     // Scheduling concern: may be slightly faster for some inputs to assign multiple stages of
     // warp-sized blocks rather than stepping up to 64/96 threads
@@ -87,9 +101,9 @@ void launch_quant(int8_t* output_data,
     const int threads_per_group = (one_step_threads < max_threads) ? one_step_threads : max_threads;
     const int warps_per_group = threads_per_group / hw_warp_size;
 
-    const int groups_per_block = is_subblock_schedule ? (max_threads + threads_per_group - 1) / threads_per_group : 1;
+    const int groups_per_block =
+        is_subblock_schedule ? (max_threads + threads_per_group - 1) / threads_per_group : 1;
     const int groups_launch = (groups_per_block + groups - 1) / groups_per_block;
-
 
     dim3 block(threads_per_group, groups_per_block);
     dim3 grid(groups_launch);
@@ -97,7 +111,7 @@ void launch_quant(int8_t* output_data,
     const int elems_per_step = threads_per_group * h_per_step;
     const int external_unroll = (elems_per_group + elems_per_step - 1) / elems_per_step;
 
-    if (is_subblock_schedule){
+    if (is_subblock_schedule) {
         // <=128
         if (threads_per_group == 1) {
             LAUNCH_CACHED_QUANT(numBits, qType, 1, 1, 1, max_threads);
