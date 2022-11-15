@@ -78,6 +78,8 @@ from ..git_version_info import version
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist
 
+from deepspeed.inference.config import DtypeEnum
+
 # Set to torch's distributed package or deepspeed.comm based inside DeepSpeedEngine init
 dist = None
 
@@ -803,13 +805,10 @@ class DeepSpeedEngine(Module):
         elif self.bfloat16_enabled():
             model_dtype = torch.bfloat16
 
-        grad_accum_dtype = model_dtype
-        if self._config.grad_accum_dtype == "fp32":
-            grad_accum_dtype = torch.float32
-        elif self._config.grad_accum_dtype == "fp16":
-            grad_accum_dtype = torch.float16
-        elif self._config.grad_accum_dtype == "bf16":
-            grad_accum_dtype = torch.bfloat16
+        if self._config.grad_accum_dtype == None:
+            grad_accum_dtype = model_dtype
+        else:
+            grad_accum_dtype = DtypeEnum(self._config.grad_accum_dtype).value
 
         return (model_dtype, grad_accum_dtype)
 
