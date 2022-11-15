@@ -3,6 +3,8 @@ Copyright 2020 The Microsoft DeepSpeed Team
 """
 from .builder import CUDAOpBuilder
 
+import sys
+
 
 class FusedLambBuilder(CUDAOpBuilder):
     BUILD_VAR = 'DS_BUILD_FUSED_LAMB'
@@ -25,7 +27,17 @@ class FusedLambBuilder(CUDAOpBuilder):
         return args + self.version_dependent_macros()
 
     def nvcc_args(self):
-        return ['-lineinfo',
-                '-O3',
+        nvcc_flags = ['-O3'] + self.version_dependent_macros()
+        if self.is_rocm_pytorch():
+            ROCM_MAJOR, ROCM_MINOR = self.installed_rocm_version()
+            nvcc_flags += [
+                '-DROCM_VERSION_MAJOR=%s' % ROCM_MAJOR,
+                '-DROCM_VERSION_MINOR=%s' % ROCM_MINOR
+            ]
+        else:
+            nvcc_flags.extend([
+                '-allow-unsupported-compiler' if sys.platform == "win32" else '',
+                '-lineinfo',
                 '--use_fast_math'
-                ] + self.version_dependent_macros() + self.compute_capability_args()
+            ] + self.compute_capability_args())
+        return nvcc_flags

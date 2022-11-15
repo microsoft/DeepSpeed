@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright (c) 2019, The Microsoft DeepSpeed Team. All rights reserved.
 #
 # Note: please copy webtext data to "Megatron-LM" folder, before running this script.
@@ -6,7 +5,6 @@
 import unittest
 import subprocess
 import os
-import time
 import re
 from .test_common import BaseTestCase
 
@@ -27,7 +25,7 @@ def grep_loss_from_file(file_name):
     with open(file_name, 'r') as f:
         lines = f.readlines()
         line_filter = "validation loss at the end of training for test data | LM loss:"
-        match_number = re.compile('LM loss: ([-+]?[0-9]+\.?[0-9]*(?:[Ee][-+]?[0-9]+)?)')
+        match_number = re.compile(r'LM loss: ([-+]?[0-9]+\.?[0-9]*(?:[Ee][-+]?[0-9]+)?)')
 
         for line in lines:
             if line_filter in line:

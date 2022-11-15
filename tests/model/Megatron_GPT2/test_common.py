@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright (c) 2019, The Microsoft DeepSpeed Team. All rights reserved.
 #
 
@@ -6,7 +5,6 @@ import unittest
 import subprocess
 import os
 import time
-import re
 
 
 class BaseTestCase(unittest.TestCase):

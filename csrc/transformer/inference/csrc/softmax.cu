@@ -1,15 +1,21 @@
-#include <limits>
-#include "custom_cuda_layers.h"
+/*
+Copyright 2022 The Microsoft DeepSpeed Team
+*/
 
+#include <limits>
+#include "inference_cuda_layers.h"
+
+#ifndef __HIP_PLATFORM_HCC__
 #include <cuda_profiler_api.h>
+#endif
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 
-#define ATTN_THREADS 1024
+#define ATTN_THREADS 256
 #define MAX_REG_SIZE 8
 
-#define minus_infinity (-1 * std::numeric_limits<float>::infinity())
+#define minus_infinity -10000.0
 
 void CheckCudaErrorAux(const char* file, unsigned line)
 {
@@ -26,6 +32,8 @@ namespace cg = cooperative_groups;
 
 __global__ void attn_softmax_v2(__half* vals,
                                 __half* mask,
+                                __half* alibi,
+                                float layer_scale,
                                 bool triangular,
                                 bool recompute,
                                 bool local_attention,
@@ -34,19 +42,20 @@ __global__ void attn_softmax_v2(__half* vals,
                                 int heads,
                                 int sequence_length,
                                 int num_seq,
-                                float scale,
+                                int head_offset,
+                                int mask_stride,
+                                int mp_size,
                                 int iterations,
                                 int reduceWidth)
 {
-#if __CUDA_ARCH__ >= 700
+#ifdef HALF_PRECISION_AVAILABLE
 
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
 
     float2 low_data[MAX_REG_SIZE];
     float2 high_data[MAX_REG_SIZE];
-
-    __half2 h_scale = __float2half2_rn(scale);
+    const __half zero_h = __float2half(0.f);
 
     int wid = threadIdx.x >> 5;
     int lane = threadIdx.x & 0x1f;
@@ -58,11 +67,15 @@ __global__ void attn_softmax_v2(__half* vals,
     __shared__ float partialSum[MAX_WARP_NUM];
 
     int iter_offset = blockIdx.x * (warp_num / reduce_blocks) + (wid / reduce_blocks);
+    int batch_idx = iter_offset / (num_seq * heads);
+    int alibi_offset = batch_idx * heads * mp_size + head_offset;
+    int mask_offset = batch_idx * mask_stride + (iter_offset % mask_stride);
 
     if (iter_offset < total_count) {
         vals += (iter_offset * sequence_length);
 
-        int mask_offset = (iter_offset / (heads * num_seq)) * (sequence_length);
+        alibi_offset = (alibi_offset + ((iter_offset / num_seq) % heads)) * sequence_length;
+        mask_offset = mask_offset * sequence_length;
         int seq_id = iter_offset % num_seq;
         int seq_id4 = seq_id >> 2;
 
@@ -74,55 +87,75 @@ __global__ void attn_softmax_v2(__half* vals,
             (local_attention && real_seq_id >= window_size) ? real_seq_id - window_size : -1;
 
         float max_val = minus_infinity;
-
+        // if (lane == 0) printf("%d, %d: %d \n", wid, blockIdx.x, mask_offset);
         for (int i = 0; i < iterations; i++) {
             int data_id = i * (reduceWidth << 2) + (seq_lane << 2);
             if ((!triangular || ((data_id >> 2) <= seq_id4)) && (data_id >> 2) >= window_stride4 &&
                 data_id < sequence_length) {
                 if ((sequence_length - data_id) >= 4) {
-                    low_data[i].x = data_id > window_stride ? __half2float(vals[data_id])
-                                                            : minus_infinity;
+                    low_data[i].x = data_id > window_stride
+                                        ? __half2float(vals[data_id]) * layer_scale
+                                        : minus_infinity;
                     low_data[i].y = ((!triangular || ((data_id + 1) <= seq_id)) &&
                                      (data_id + 1) > window_stride)
-                                        ? __half2float(vals[data_id + 1])
+                                        ? __half2float(vals[data_id + 1]) * layer_scale
                                         : minus_infinity;
                     high_data[i].x = ((!triangular || ((data_id + 2) <= seq_id)) &&
                                       (data_id + 2) > window_stride)
-                                         ? __half2float(vals[data_id + 2])
+                                         ? __half2float(vals[data_id + 2]) * layer_scale
                                          : minus_infinity;
                     high_data[i].y = ((!triangular || ((data_id + 3) <= seq_id)) &&
                                       (data_id + 3) > window_stride)
-                                         ? __half2float(vals[data_id + 3])
+                                         ? __half2float(vals[data_id + 3]) * layer_scale
                                          : minus_infinity;
-                    if (mask && !triangular && recompute) {
+                    if (alibi) {
+                        low_data[i].x = low_data[i].x + __half2float(alibi[data_id + alibi_offset]);
+                        low_data[i].y =
+                            low_data[i].y + __half2float(alibi[data_id + alibi_offset + 1]);
+                        high_data[i].x =
+                            high_data[i].x + __half2float(alibi[data_id + alibi_offset + 2]);
+                        high_data[i].y =
+                            high_data[i].y + __half2float(alibi[data_id + alibi_offset + 3]);
+                    }
+                    if (mask) {
                         low_data[i].x += __half2float(mask[data_id + mask_offset]);
                         low_data[i].y += __half2float(mask[data_id + mask_offset + 1]);
-                        high_data[i].y += __half2float(mask[data_id + mask_offset + 2]);
+                        high_data[i].x += __half2float(mask[data_id + mask_offset + 2]);
                         high_data[i].y += __half2float(mask[data_id + mask_offset + 3]);
                     }
                 } else {
-                    low_data[i].x = data_id > window_stride ? __half2float(vals[data_id])
-                                                            : minus_infinity;
+                    low_data[i].x = data_id > window_stride
+                                        ? __half2float(vals[data_id]) * layer_scale
+                                        : minus_infinity;
                     low_data[i].y = (((!triangular || (data_id + 1) <= seq_id) &&
                                       (data_id + 1) > window_stride) &&
                                      (data_id + 1) < sequence_length)
-                                        ? __half2float(vals[data_id + 1])
+                                        ? __half2float(vals[data_id + 1]) * layer_scale
                                         : minus_infinity;
                     high_data[i].x = (((!triangular || (data_id + 2) <= seq_id) &&
                                        (data_id + 2) > window_stride) &&
                                       (data_id + 2) < sequence_length)
-                                         ? __half2float(vals[data_id + 2])
+                                         ? __half2float(vals[data_id + 2]) * layer_scale
                                          : minus_infinity;
+                    if (alibi) {
+                        low_data[i].x = low_data[i].x + __half2float(alibi[data_id + alibi_offset]);
+                        if ((data_id + 1) < sequence_length)
+                            low_data[i].y =
+                                low_data[i].y + __half2float(alibi[data_id + alibi_offset + 1]);
+                        if ((data_id + 2) < sequence_length)
+                            high_data[i].x =
+                                high_data[i].x + __half2float(alibi[data_id + alibi_offset + 2]);
+                    }
                     high_data[i].y = minus_infinity;
-                    if (mask && !triangular && recompute) {
+                    if (mask) {
                         low_data[i].x += __half2float(mask[data_id + mask_offset]);
                         if ((data_id + 1) < sequence_length)
                             low_data[i].y += __half2float(mask[data_id + mask_offset + 1]);
                         if ((data_id + 2) < sequence_length)
                             high_data[i].x += __half2float(mask[data_id + mask_offset + 2]);
-                        // high_data[i].y += __half2float(mask[data_id + mask_offset + 3]);
                     }
                 }
+                // if(lane == 0) printf("%f , %d, %d \n", low_data[i].x, data_id, seq_id);
                 max_val = (low_data[i].x > max_val ? low_data[i].x : max_val);
                 max_val = (low_data[i].y > max_val ? low_data[i].y : max_val);
                 max_val = (high_data[i].x > max_val ? high_data[i].x : max_val);
@@ -155,7 +188,6 @@ __global__ void attn_softmax_v2(__half* vals,
 
             max_val = g.shfl(max_val, threadIdx.x / WARP_SIZE);
         }
-
         float sum = 0;
         for (int i = 0; i < iterations; i++) {
             low_data[i].x = __expf(low_data[i].x - max_val);
@@ -181,20 +213,21 @@ __global__ void attn_softmax_v2(__half* vals,
             sum = g.shfl(sum, threadIdx.x / WARP_SIZE);
         }
         sum += 1e-6;
-
         for (int i = 0; i < iterations; i++) {
             int data_id = i * (reduceWidth << 2) + (seq_lane << 2);
 
             if (data_id < sequence_length) {
                 if ((sequence_length - data_id) >= 4) {
-                    vals[data_id] = low_data[i].x / sum;
-                    vals[data_id + 1] = low_data[i].y / sum;
-                    vals[data_id + 2] = high_data[i].x / sum;
-                    vals[data_id + 3] = high_data[i].y / sum;
+                    vals[data_id] = __float2half(low_data[i].x / sum);
+                    vals[data_id + 1] = __float2half(low_data[i].y / sum);
+                    vals[data_id + 2] = __float2half(high_data[i].x / sum);
+                    vals[data_id + 3] = __float2half(high_data[i].y / sum);
                 } else {
-                    vals[data_id] = low_data[i].x / sum;
-                    if ((data_id + 1) < sequence_length) vals[data_id + 1] = low_data[i].y / sum;
-                    if ((data_id + 2) < sequence_length) vals[data_id + 2] = high_data[i].x / sum;
+                    vals[data_id] = __float2half(low_data[i].x / sum);
+                    if ((data_id + 1) < sequence_length)
+                        vals[data_id + 1] = __float2half(low_data[i].y / sum);
+                    if ((data_id + 2) < sequence_length)
+                        vals[data_id + 2] = __float2half(high_data[i].x / sum);
                 }
             }
         }
@@ -204,6 +237,8 @@ __global__ void attn_softmax_v2(__half* vals,
 
 __global__ void attn_softmax_v2(float* vals,
                                 float* attn_mask,
+                                float* alibi,
+                                float layer_scale,
                                 bool triangular,
                                 bool recompute,
                                 bool local_attention,
@@ -212,7 +247,9 @@ __global__ void attn_softmax_v2(float* vals,
                                 int heads,
                                 int sequence_length,
                                 int num_seq,
-                                float scale,
+                                int head_offset,
+                                int mask_stride,
+                                int mp_size,
                                 int iterations,
                                 int reduceWidth)
 {
@@ -234,7 +271,10 @@ __global__ void attn_softmax_v2(float* vals,
     if (iter_offset < total_count) {
         vals += (iter_offset * sequence_length);
 
-        int mask_offset = (iter_offset / (heads * num_seq)) * (sequence_length);
+        int batch_idx = iter_offset / (num_seq * heads);
+        int alibi_offset = batch_idx * heads * mp_size + head_offset;
+        int mask_offset = batch_idx * mask_stride + (iter_offset % mask_stride);
+        mask_offset = mask_offset * sequence_length;
         int seq_id = iter_offset % num_seq;
         int seq_id4 = seq_id >> 2;
 
@@ -265,7 +305,7 @@ __global__ void attn_softmax_v2(float* vals,
                                  (data_id + 3) > window_stride)
                                     ? vals[data_id + 3]
                                     : minus_infinity;
-                    if (attn_mask && !triangular && recompute) {
+                    if (attn_mask) {
                         data[i].x += attn_mask[data_id + mask_offset];
                         data[i].y += attn_mask[data_id + mask_offset + 1];
                         data[i].z += attn_mask[data_id + mask_offset + 2];
@@ -282,7 +322,7 @@ __global__ void attn_softmax_v2(float* vals,
                                     ? (vals[data_id + 2])
                                     : minus_infinity;
                     data[i].w = minus_infinity;
-                    if (attn_mask && !triangular && recompute) {
+                    if (attn_mask) {
                         data[i].x += attn_mask[data_id + mask_offset];
                         if ((data_id + 1) < sequence_length)
                             data[i].y += attn_mask[data_id + mask_offset + 1];
@@ -371,6 +411,8 @@ __global__ void attn_softmax_v2(float* vals,
 template <typename T>
 void launch_attn_softmax_v2(T* vals,
                             T* mask,
+                            T* alibi,
+                            float layer_scale,
                             bool triangular,
                             bool recompute,
                             bool local_attention,
@@ -379,19 +421,25 @@ void launch_attn_softmax_v2(T* vals,
                             int heads,
                             int num_seq,
                             int sequence_length,
-                            float scale,
+                            int head_offset,
+                            int mask_stride,
+                            int mp_size,
                             cudaStream_t stream)
 {
     int total_count = batch_size * heads * num_seq;
-    dim3 grid_dim((total_count - 1) / (WARP_SIZE / ((sequence_length - 1) / ATTN_THREADS + 1)) + 1);
+    int warp_num = ATTN_THREADS / WARP_SIZE;
+    int reduce_width = ((sequence_length - 1) / ATTN_THREADS + 1);
+    reduce_width = (int)pow(2.0, floor(log2((float)(reduce_width)))) * WARP_SIZE;
+    dim3 grid_dim((total_count - 1) / (ATTN_THREADS / reduce_width) + 1);
     dim3 block_dim(ATTN_THREADS);
 
-    const int reduce_width = ((sequence_length - 1) / ATTN_THREADS + 1) * WARP_SIZE;
     const int iterations = (sequence_length - 1) / (reduce_width << 2) + 1;
 
     if (sequence_length <= 32768)
         attn_softmax_v2<<<grid_dim, block_dim, 0, stream>>>(vals,
                                                             mask,
+                                                            alibi,
+                                                            layer_scale,
                                                             triangular,
                                                             recompute,
                                                             local_attention,
@@ -400,7 +448,9 @@ void launch_attn_softmax_v2(T* vals,
                                                             heads,
                                                             sequence_length,
                                                             num_seq,
-                                                            scale,
+                                                            head_offset,
+                                                            mask_stride,
+                                                            mp_size,
                                                             iterations,
                                                             reduce_width);
     else
@@ -409,6 +459,8 @@ void launch_attn_softmax_v2(T* vals,
 
 template void launch_attn_softmax_v2(float* vals,
                                      float* mask,
+                                     float* alibi,
+                                     float layer_scale,
                                      bool triangular,
                                      bool recompute,
                                      bool local_attention,
@@ -417,10 +469,14 @@ template void launch_attn_softmax_v2(float* vals,
                                      int heads,
                                      int num_seq,
                                      int sequence_length,
-                                     float scale,
+                                     int head_offset,
+                                     int mask_stride,
+                                     int mp_size,
                                      cudaStream_t stream);
 template void launch_attn_softmax_v2(__half* vals,
                                      __half* mask,
+                                     __half* alibi,
+                                     float layer_scale,
                                      bool triangular,
                                      bool recompute,
                                      bool local_attention,
@@ -429,5 +485,7 @@ template void launch_attn_softmax_v2(__half* vals,
                                      int heads,
                                      int num_seq,
                                      int sequence_length,
-                                     float scale,
+                                     int head_offset,
+                                     int mask_stride,
+                                     int mp_size,
                                      cudaStream_t stream);

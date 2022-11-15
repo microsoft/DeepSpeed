@@ -8,7 +8,10 @@ import copy
 import collections
 import json
 from abc import ABC, abstractmethod
+
 from deepspeed.utils import logger
+from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
+
 from .weight_quantizer import WeightQuantization
 
 AUTO_MODULE_KEY = 'auto'
@@ -16,28 +19,41 @@ AUTO_MODULE_KEY = 'auto'
 
 class SDLoaderFactory:
     @staticmethod
-    def get_sd_loader_json(json_file):
-        with open(json_file) as f:
-            data = json.load(f)
-            sd_type = data['type']
-            ckpt_list = data['checkpoints']
-            version = data['version']
-            return SDLoaderFactory.get_sd_loader(ckpt_list, sd_type, version)
+    def get_sd_loader_json(json_file, checkpoint_engine):
+        if isinstance(json_file, str):
+            with open(json_file) as f:
+                data = json.load(f)
+        else:
+            assert isinstance(json_file, dict)
+            data = json_file
+        sd_type = data['type']
+        ckpt_list = data['checkpoints']
+        version = data['version']
+        ckpt_type = data.get('parallelization', 'pp')
+        mp_size = data.get('mp_size', 0)
+        if 'bloom' in sd_type.lower():
+            return data
+        return SDLoaderFactory.get_sd_loader(ckpt_list,
+                                             checkpoint_engine,
+                                             sd_type,
+                                             version)
 
     @staticmethod
-    def get_sd_loader(ckpt_list, sd_type='Megatron', version=None):
+    def get_sd_loader(ckpt_list, checkpoint_engine, sd_type='Megatron', version=None):
         if sd_type == 'Megatron':
-            return MegatronSDLoader(ckpt_list, version)
+            return MegatronSDLoader(ckpt_list, version, checkpoint_engine)
         else:
             assert False, '{} checkpoint type is not supported'.format(sd_type)
 
 
 class SDLoaderBase(ABC):
-    def __init__(self, ckpt_list, version):
+    def __init__(self, ckpt_list, version, checkpoint_engine):
         self.module_key = None
         self.ckpt_list = ckpt_list
-        self.check_ckpt_list()
         self.version = version
+        self.checkpoint_engine = TorchCheckpointEngine(
+        ) if checkpoint_engine is None else checkpoint_engine
+        self.check_ckpt_list()
 
     def load(self,
              mp_world_size,
@@ -51,10 +67,6 @@ class SDLoaderBase(ABC):
         self.module_key = module_key
         num_ckpt = len(self.ckpt_list)
         idx = mp_rank * num_ckpt // mp_world_size
-
-        logger.info(
-            f'mp_world_size: {mp_world_size}, mp_rank: {mp_rank}, module_key: {module_key}'
-        )
         """ We have multiple cases to handle here for both training and inference:
             1. PipeModule loading mp_rank_*.pt files, is_pipe_parallel=True, module_key is not None
                 a. if no mp_size/pp_size resizing occurs, for both training & inference, loading
@@ -67,7 +79,7 @@ class SDLoaderBase(ABC):
                 a. if no mp_size resizing occurs, for both training & inference, loading
                    the mp_rank related checkpoint directly.
                 b. if has mp_size resizing, only Megatron model inference is supported,
-                   checkpoint file(s) will be merged/splitted according to mp_rank, mp_world_size and
+                   checkpoint file(s) will be merged/split according to mp_rank, mp_world_size and
                    checkpoint file list.
 
             3. Non-PipeModule loading mp_rank_*.pt files, is_pipe_parallel=False
@@ -82,8 +94,9 @@ class SDLoaderBase(ABC):
         merge_count = 1
         if num_ckpt == mp_world_size:
             assert os.path.exists(load_path)
-            logger.info(f'rank: {mp_rank} loading checkpoint: {load_path}')
-            sd = torch.load(load_path, map_location=lambda storage, loc: storage)
+            #logger.info(f'rank: {mp_rank} loading checkpoint: {load_path}')
+            sd = self.checkpoint_engine.load(load_path, map_location=lambda storage, \
+                loc: storage)
 
             if quantize:
                 quantizer = WeightQuantization(mlp_extra_grouping=mlp_extra_grouping,
@@ -112,9 +125,9 @@ class SDLoaderBase(ABC):
 
         logger.info(f"mp_rank: {mp_rank}, ckpt_list: {ckpt_list}")
         sd_list = [
-            torch.load(ckpt,
-                       map_location=lambda storage,
-                       loc: storage) for ckpt in ckpt_list
+            self.checkpoint_engine.load(ckpt,
+                                        map_location=lambda storage,
+                                        loc: storage) for ckpt in ckpt_list
         ]
         return sd_list
 
@@ -130,9 +143,9 @@ class SDLoaderBase(ABC):
             f"mp_rank: {mp_rank}, ckpt_list: {self.ckpt_list[ckpt_index]}, offset: {ckpt_offset}"
         )
 
-        sd = torch.load(self.ckpt_list[ckpt_index],
-                        map_location=lambda storage,
-                        loc: storage)
+        sd = self.checkpoint_engine.load(self.ckpt_list[ckpt_index],
+                                         map_location=lambda storage,
+                                         loc: storage)
 
         return sd, num_to_split, ckpt_offset
 
@@ -145,7 +158,7 @@ class SDLoaderBase(ABC):
             return 'model'
 
     def get_module(self, sd):
-        if sd is None:
+        if self.module_key is None:
             return sd
         elif self.module_key == AUTO_MODULE_KEY:
             return sd[self._choose_module_key(sd)]
@@ -162,10 +175,12 @@ class SDLoaderBase(ABC):
         return sd
 
     def check_ckpt_list(self):
-        logger.info(f'checkpoint file list: {self.ckpt_list}')
+        #logger.info(f'checkpoint file list: {self.ckpt_list}')
         assert len(self.ckpt_list) > 0
 
-        sd = torch.load(self.ckpt_list[0], map_location=lambda storage, loc: storage)
+        sd = self.checkpoint_engine.load(self.ckpt_list[0],
+                                         map_location=lambda storage,
+                                         loc: storage)
 
         # check checkpoint count is same with saved mp_world_size
         if 'mp_world_size' in sd.keys():
@@ -197,8 +212,8 @@ class SDLoaderBase(ABC):
 
 
 class MegatronSDLoader(SDLoaderBase):
-    def __init__(self, ckpt_list, version):
-        super().__init__(ckpt_list, version)
+    def __init__(self, ckpt_list, version, checkpoint_engine):
+        super().__init__(ckpt_list, version, checkpoint_engine)
         """
         ## Q/K/V data need special processing
         key: transformer.layers.0.attention.query_key_value.weight, shape: torch.Size([3192, 4256])
@@ -375,7 +390,7 @@ class MegatronSDLoader(SDLoaderBase):
                          quantize_bits=8,
                          groups=64,
                          mlp_extra_grouping=True):
-        self.sanity_check(self.ckpt_list[0])
+        #self.sanity_check(self.ckpt_list[0])
 
         sd, num_to_split, ckpt_offset = self.get_split_state_dict(mp_world_size, mp_rank)
         ds_sd = copy.deepcopy(sd)
@@ -409,7 +424,7 @@ class MegatronSDLoader(SDLoaderBase):
                     num_to_split,
                     ckpt_offset,
                     ckpt_ver)
-            elif "mlp.dense_h_to_4h.weight" in key or "word_embeddings.weight" in key or "mlp.dense_h_to_4h.bias" in key:
+            elif "mlp.dense_h_to_4h.weight" in key or "word_embeddings.weight" in key or "mlp.dense_h_to_4h.bias" in key or "final_linear.weight" in key:
                 assert value.shape[0] % num_to_split == 0
                 split_size = value.shape[0] // num_to_split
                 if quantize and "mlp.dense_h_to_4h.weight" in key:
@@ -435,9 +450,11 @@ class MegatronSDLoader(SDLoaderBase):
             "mlp.dense_h_to_4h.bias"
         ]
 
-        sd = torch.load(ckpt_file_name, map_location=lambda storage, loc: storage)
+        sd = self.checkpoint_engine.load(ckpt_file_name,
+                                         map_location=lambda storage,
+                                         loc: storage)
 
-        # partail_key is a sub-string of one key in the sd
+        # partial_key is a sub-string of one key in the sd
         def check_key_exist(partial_key, sd):
             keys = sd.keys()
             found = False

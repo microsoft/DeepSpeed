@@ -3,7 +3,6 @@ Copyright 2020 The Microsoft DeepSpeed Team
 '''
 import json
 import math
-import importlib
 import torch
 from torch import nn
 from torch.autograd import Function
@@ -41,8 +40,6 @@ class DeepSpeedTransformerConfig(TransformerConfig):
 
         Arguments:
             batch_size: The maximum batch size used for running the kernel on each GPU
-
-            max_seq_length: The sequence-length of the model being trained with DeepSpeed
 
             hidden_size: The hidden size of the transformer layer
 
@@ -88,7 +85,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                 a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend
                 to turn it off in order to be able to reproduce the same result through the regular kernel execution.
 
-            huggingface: Enbale if using the HuggingFace interface style for sending out the forward results.
+            return_tuple: Enable if using the return_tuple interface style for sending out the forward results.
 
             training: Enable for training rather than inference.
     """
@@ -111,7 +108,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                  adjust_init_range=True,
                  attn_dropout_checkpoint=False,
                  stochastic_mode=False,
-                 huggingface=False,
+                 return_tuple=False,
                  training=True):
         super(DeepSpeedTransformerConfig,
               self).__init__(
@@ -136,7 +133,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
         self.is_grad_enabled = True
         self.attn_dropout_checkpoint = attn_dropout_checkpoint
         self.stochastic_mode = stochastic_mode
-        self.huggingface = huggingface
+        self.return_tuple = return_tuple
 
     @classmethod
     def from_dict(cls, json_object):
@@ -220,7 +217,7 @@ class DeepSpeedTransformerFunction(Function):
                                          output_b,
                                          norm_w,
                                          norm_b,
-                                         config.training,
+                                         config.training and config.is_grad_enabled,
                                          config.pre_layer_norm,
                                          config.attn_dropout_checkpoint,
                                          config.normalize_invertible,
@@ -318,7 +315,7 @@ class DeepSpeedTransformerFunction(Function):
         if inp_size[1] % 16 != 0:
             output = torch.narrow(output, 1, 0, inp_size[1])
 
-        if config.huggingface:
+        if config.return_tuple:
             return (output, )  # outputs -> (output) : outputs[0] = output
         else:
             return output

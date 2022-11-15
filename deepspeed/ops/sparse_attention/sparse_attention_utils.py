@@ -2,7 +2,7 @@
 Copyright 2020 The Microsoft DeepSpeed Team
 """
 
-from torch import nn
+import torch
 from torch.nn import functional as F
 from deepspeed.ops.sparse_attention import BertSparseSelfAttention, SparsityConfig
 '''
@@ -94,21 +94,21 @@ class SparseAttentionUtils:
         Arguments:
             model: required: a transformer model
             max_position: required: an integer determining new position embedding size
-            sparsity_config: optional: this parameter determins sparsity pattern configuration; it is based on SparsityConfig class
+            sparsity_config: optional: this parameter determines sparsity pattern configuration; it is based on SparsityConfig class
 
         Return:
-            model: updated model; in which self attention layer has been repleaced with DeepSpeed Sparse Self Attention layer.
+            model: updated model; in which self attention layer has been replaced with DeepSpeed Sparse Self Attention layer.
         """
 
         if hasattr(model, 'bert'):
             model.config.max_position_embeddings = max_position
-            replace_self_attention_layer_with_sparse_self_attention_layer(
+            model.replace_self_attention_layer_with_sparse_self_attention_layer(
                 model.config,
                 model.bert.encoder.layer,
                 sparsity_config)
         elif hasattr(model, 'roberta'):
             model.config.max_position_embeddings = max_position + 2
-            replace_self_attention_layer_with_sparse_self_attention_layer(
+            model.replace_self_attention_layer_with_sparse_self_attention_layer(
                 model.config,
                 model.roberta.encoder.layer,
                 sparsity_config)
@@ -131,10 +131,10 @@ class SparseAttentionUtils:
         Arguments:
             config: required: transformer model config
             layers: required: transformer model attention layers
-            sparsity_config: optional: this parameter determins sparsity pattern configuration; it is based on SparsityConfig class
+            sparsity_config: optional: this parameter determines sparsity pattern configuration; it is based on SparsityConfig class
 
         Return:
-            layers: updated attention layers; in which self attention layers have been repleaced with DeepSpeed Sparse Self Attention layer.
+            layers: updated attention layers; in which self attention layers have been replaced with DeepSpeed Sparse Self Attention layer.
         """
 
         for layer in layers:
@@ -155,13 +155,13 @@ class SparseAttentionUtils:
                           position_ids,
                           inputs_embeds,
                           pad_token_id,
-                          model_mbeddings):
+                          model_embeddings):
         """This function pads input tokens and attention mask on sequence length dimension to be multiple of block size.
             This is a requirement for Sparse Transformer in which the self attention layer works on sequences of length multiple of block size.
             It needs to be called in your model, such as BertModel, right before you calculate the embedding outputs.
             Note)
             1- instead of passing your embedding layer to this function, you can simply add this function to your model. It can be more simplified if given attention_mask and/or token_type_ids are none.
-            2- you need to call unpdad function before returning your model output to unpad the encoder sequence output.
+            2- you need to call unpad function before returning your model output to unpad the encoder sequence output.
 
             Arguments:
                 block_size: required: an integer determining the block size of sparsity config.

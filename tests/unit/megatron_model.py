@@ -2,6 +2,8 @@ import torch
 import os
 import sys
 import math
+
+from .common import get_test_path
 from deepspeed.pipe import PipelineModule, LayerSpec
 
 
@@ -18,8 +20,8 @@ def get_gpt2_model(args_others, mp_size=1):
     from megatron.initialize import initialize_megatron
 
     args_defaults = {
-        'vocab_file': 'tests/unit/gpt2-vocab.json',
-        'merge_file': 'tests/unit/gpt2-merges.txt',
+        'vocab_file': get_test_path('gpt2-vocab.json'),
+        'merge_file': get_test_path('gpt2-merges.txt'),
         'tokenizer_type': 'GPT2BPETokenizer',
     }
 
@@ -47,13 +49,13 @@ def get_gpt2_model(args_others, mp_size=1):
     return model
 
 
-class GPT2ModelPipe(PipelineModule):
+class MockGPT2ModelPipe(PipelineModule):
     def __init__(self, num_layers, mp_size, args_others, topo, **kwargs):
         from megatron.initialize import initialize_megatron
 
         args_defaults = {
-            'vocab_file': 'tests/unit/gpt2-vocab.json',
-            'merge_file': 'tests/unit/gpt2-merges.txt',
+            'vocab_file': get_test_path('gpt2-vocab.json'),
+            'merge_file': get_test_path('gpt2-merges.txt'),
             'tokenizer_type': 'GPT2BPETokenizer',
         }
 
@@ -73,8 +75,10 @@ class GPT2ModelPipe(PipelineModule):
 
         class ParallelTransformerLayerPipe(ParallelTransformerLayer):
             def forward(self, args):
-                hidden_states, attention_mask = args[0], args[1]
-                return super().forward(*args), attention_mask
+                # hardcode attn mask for testing, PP requires the attn_mask to be stashed
+                attention_mask = torch.tensor([[True]],
+                                              device=torch.cuda.current_device())
+                return super().forward(args, attention_mask)
 
         layers = []
         for x in range(num_layers):

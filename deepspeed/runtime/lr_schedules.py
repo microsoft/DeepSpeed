@@ -10,9 +10,7 @@ https://github.com/pytorch/pytorch/blob/v1.1.0/torch/optim/lr_scheduler.py
 
 import argparse
 from torch.optim import Optimizer
-from typing import Union, List
 import math
-from deepspeed.runtime.constants import *
 from deepspeed.utils import logger
 
 LR_SCHEDULE = 'lr_schedule'
@@ -47,6 +45,9 @@ DECAY_MOM_RATE = 'decay_mom_rate'
 WARMUP_MIN_LR = 'warmup_min_lr'
 WARMUP_MAX_LR = 'warmup_max_lr'
 WARMUP_NUM_STEPS = 'warmup_num_steps'
+WARMUP_TYPE = 'warmup_type'
+WARMUP_LOG_RATE = 'log'
+WARMUP_LINEAR_RATE = 'linear'
 
 TOTAL_NUM_STEPS = 'total_num_steps'
 
@@ -148,7 +149,10 @@ def add_tuning_arguments(parser):
                        type=int,
                        default=1000,
                        help='WarmupLR step count for LR warmup.')
-
+    group.add_argument('--warmup_type',
+                       type=str,
+                       default=WARMUP_LOG_RATE,
+                       help='WarmupLR increasing function during warmup')
     return parser
 
 
@@ -225,6 +229,9 @@ def override_warmupLR_params(args, params):
 
     if hasattr(args, WARMUP_NUM_STEPS) and args.warmup_num_steps is not None:
         params[WARMUP_NUM_STEPS] = args.warmup_num_steps
+
+    if hasattr(args, WARMUP_TYPE) and args.warmup_type is not None:
+        params[WARMUP_TYPE] = args.warmup_type
 
 
 def override_params(args, params):
@@ -305,7 +312,7 @@ class LRRangeTest(object):
     the paper `A disciplined approach to neural network hyper-parameters: Part1`_.
 
     LRRT policy is used for finding maximum LR that trains a model without divergence, and can be used to
-    configure the LR boundaries for Cylic LR schedules.
+    configure the LR boundaries for Cyclic LR schedules.
 
     LRRT changes the learning rate after every batch.
     `step` should be called after a batch has been used for training.
@@ -316,7 +323,7 @@ class LRRangeTest(object):
             lower boundary in the range test for each parameter group.
         lr_range_test_step_size (int): Interval of training steps to increase learning rate. Default: 2000
         lr_range_test_step_rate (float): Scaling rate for range test. Default: 1.0
-        lr_range_test_staircase (bool): Scale in staircase fashion, rather than continous. Default: False.
+        lr_range_test_staircase (bool): Scale in staircase fashion, rather than continuous. Default: False.
         last_batch_iteration (int): The index of the last batch. This parameter is used when
             resuming a training job. Since `step()` should be invoked after each
             batch instead of after each epoch, this number represents the total
@@ -326,7 +333,7 @@ class LRRangeTest(object):
 
     Example:
         >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
-        >>> scheduler = torch.optim.LRRangeTest(optimizer)
+        >>> scheduler = LRRangeTest(optimizer)
         >>> data_loader = torch.utils.data.DataLoader(...)
         >>> for epoch in range(10):
         >>>     for batch in data_loader:
@@ -361,7 +368,7 @@ class LRRangeTest(object):
         self.step_rate = lr_range_test_step_rate
         self.last_batch_iteration = last_batch_iteration
         self.staircase = lr_range_test_staircase
-        self.interval_fn = self._staircase_interval if lr_range_test_staircase else self._continous_interval
+        self.interval_fn = self._staircase_interval if lr_range_test_staircase else self._continuous_interval
 
         if last_batch_iteration == -1:
             self._update_optimizer(self.min_lr)
@@ -369,7 +376,7 @@ class LRRangeTest(object):
     def _staircase_interval(self):
         return math.floor(float(self.last_batch_iteration + 1) / self.step_size)
 
-    def _continous_interval(self):
+    def _continuous_interval(self):
         return float(self.last_batch_iteration + 1) / self.step_size
 
     def _get_increase(self):
@@ -463,7 +470,7 @@ class OneCycle(object):
 
     Example:
         >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
-        >>> scheduler = torch.optim.OneCycle(optimizer)
+        >>> scheduler = OneCycle(optimizer, 0.0001, 0.0010)
         >>> data_loader = torch.utils.data.DataLoader(...)
         >>> for epoch in range(10):
         >>>     for batch in data_loader:
@@ -514,7 +521,7 @@ class OneCycle(object):
                                       decay_mom_rate,
                                       last_batch_iteration)
 
-        # Initalize batch iteration tracker
+        # Initialize batch iteration tracker
         self.last_batch_iteration = last_batch_iteration
 
     # Configure cycle shape
@@ -536,6 +543,13 @@ class OneCycle(object):
         self.second_stair_count = cycle_first_stair_count if cycle_second_stair_count is None else cycle_second_stair_count
         self.decay_step_size = decay_step_size
 
+        if math.isclose(self.decay_step_size, 0):
+            self.skip_lr_decay = True
+            self.skip_mom_decay = True
+        else:
+            self.skip_lr_decay = False
+            self.skip_mom_decay = False
+
     # Configure lr schedule
     def _initialize_lr(self,
                        optimizer,
@@ -550,6 +564,9 @@ class OneCycle(object):
 
         self.max_lrs = [cycle_max_lr] * len(optimizer.param_groups)
         self.decay_lr_rate = decay_lr_rate
+
+        if math.isclose(self.decay_lr_rate, 0):
+            self.skip_lr_decay = True
 
     # Configure momentum schedule
     def _initialize_momentum(self,
@@ -573,6 +590,9 @@ class OneCycle(object):
         if last_batch_iteration == -1:
             for momentum, group in zip(self.min_moms, optimizer.param_groups):
                 group['betas'] = momentum
+
+        if math.isclose(self.decay_mom_rate, 0):
+            self.skip_mom_decay = True
 
     def _get_scale_factor(self):
         batch_iteration = (self.last_batch_iteration + 1)
@@ -607,9 +627,13 @@ class OneCycle(object):
         return lrs
 
     def _get_decay_mom(self, decay_batch_iteration):
+        if self.skip_mom_decay:
+            return self.max_moms
+
         decay_interval = decay_batch_iteration / self.decay_step_size
         mom_decay_factor = (1 + self.decay_mom_rate * decay_interval)
         momentums = [(beta0 * mom_decay_factor, beta1) for beta0, beta1 in self.max_moms]
+
         return momentums
 
     def _get_decay_lr(self, decay_batch_iteration):
@@ -617,6 +641,9 @@ class OneCycle(object):
         after the cycle completes and post cycle decaying of lr/mom is enabled.
         This function treats `self.last_batch_iteration` as the last batch index.
         """
+        if self.skip_lr_decay:
+            return self.min_lrs
+
         decay_interval = decay_batch_iteration / self.decay_step_size
         lr_decay_factor = (1 + self.decay_lr_rate * decay_interval)
         lrs = [cycle_min_lr / lr_decay_factor for cycle_min_lr in self.min_lrs]
@@ -683,10 +710,11 @@ class WarmupLR(object):
             warmup_min_lr (float or list): minimum learning rate. Default: 0
             warmup_max_lr (float or list): maximum learning rate. Default: 0.001
             warmup_num_steps (int): number of steps to warm up from min_lr to max_lr. Default: 1000
+            warmup_type {‘log’, ‘linear’}: increasing function from min_lr to max_lr during warmup. Default: log
             last_batch_iteration (int): The index of the last batch. Default: -1.
         Example:
             >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
-            >>> scheduler = torch.optim.WarmupLR(optimizer)
+            >>> scheduler = WarmupLR(optimizer)
             >>> data_loader = torch.utils.data.DataLoader(...)
             >>> for epoch in range(10):
             >>>     for batch in data_loader:
@@ -699,6 +727,7 @@ class WarmupLR(object):
                  warmup_min_lr: float = 0.0,
                  warmup_max_lr: float = 0.001,
                  warmup_num_steps: int = 1000,
+                 warmup_type: str = WARMUP_LOG_RATE,
                  last_batch_iteration: int = -1):
 
         self.optimizer = get_torch_optimizer(optimizer)
@@ -707,6 +736,13 @@ class WarmupLR(object):
         self.max_lrs = self._format_param(self.optimizer, warmup_max_lr, "max_lr")
         self.delta_lrs = [big - small for big, small in zip(self.max_lrs, self.min_lrs)]
         self.warmup_num_steps = max(2, warmup_num_steps)
+        # Currently only support linear and log function
+        if warmup_type not in {WARMUP_LOG_RATE, WARMUP_LINEAR_RATE}:
+            logger.warning(
+                f"Using unknown warmup_type: {warmup_type}. The increasing function "
+                f"is set to default (log)")
+            warmup_type = WARMUP_LOG_RATE
+        self.warmup_type = warmup_type
         self.inverse_log_warm_up = 1.0 / math.log(self.warmup_num_steps)
         self.last_batch_iteration = last_batch_iteration
 
@@ -744,7 +780,10 @@ class WarmupLR(object):
 
     def _get_gamma(self):
         if self.last_batch_iteration < self.warmup_num_steps:
-            return self.inverse_log_warm_up * math.log(self.last_batch_iteration + 1)
+            if self.warmup_type == WARMUP_LOG_RATE:
+                return self.inverse_log_warm_up * math.log(self.last_batch_iteration + 1)
+            elif self.warmup_type == WARMUP_LINEAR_RATE:
+                return self.last_batch_iteration / self.warmup_num_steps
         return 1.0
 
     def _format_param(self, optimizer, param_value, param_name):
@@ -768,6 +807,7 @@ class WarmupDecayLR(WarmupLR):
             warmup_min_lr (float or list): minimum learning rate. Default: 0
             warmup_max_lr (float or list): maximum learning rate. Default: 0.001
             warmup_num_steps (int): number of steps to warm up from min_lr to max_lr. Default: 1000
+            warmup_type {‘log’, ‘linear’}: increasing function from min_lr to max_lr during warmup. Default: log
             last_batch_iteration (int): The index of the last batch. Default: -1.
         Example:
             >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
@@ -785,6 +825,7 @@ class WarmupDecayLR(WarmupLR):
                  warmup_min_lr: float = 0.0,
                  warmup_max_lr: float = 0.001,
                  warmup_num_steps: int = 1000,
+                 warmup_type: str = WARMUP_LOG_RATE,
                  last_batch_iteration: int = -1):
 
         self.total_num_steps = total_num_steps
@@ -793,6 +834,7 @@ class WarmupDecayLR(WarmupLR):
                              warmup_min_lr,
                              warmup_max_lr,
                              warmup_num_steps,
+                             warmup_type,
                              last_batch_iteration)
         if self.total_num_steps < self.warmup_num_steps:
             logger.warning('total_num_steps {} is less than warmup_num_steps {}'.format(
@@ -801,7 +843,10 @@ class WarmupDecayLR(WarmupLR):
 
     def _get_gamma(self):
         if self.last_batch_iteration < self.warmup_num_steps:
-            return self.inverse_log_warm_up * math.log(self.last_batch_iteration + 1)
+            if self.warmup_type == WARMUP_LOG_RATE:
+                return self.inverse_log_warm_up * math.log(self.last_batch_iteration + 1)
+            elif self.warmup_type == WARMUP_LINEAR_RATE:
+                return self.last_batch_iteration / self.warmup_num_steps
         return max(
             0.0,
             float(self.total_num_steps - self.last_batch_iteration) /

@@ -1,7 +1,9 @@
-torch>=1.2
-tqdm
-tensorboardX==1.8
+hjson
 ninja
 numpy
-psutil
 packaging
+psutil
+py-cpuinfo
+pydantic
+torch
+tqdm

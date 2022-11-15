@@ -4,22 +4,22 @@ Copyright 2020 The Microsoft DeepSpeed Team
 DeepSpeed library
 
 To build wheel on Windows:
-    1. Install pytorch, such as pytorch 1.8 + cuda 11.1
+    1. Install pytorch, such as pytorch 1.12 + cuda 11.6
     2. Install visual cpp build tool
-    3. Launch cmd console with Administrator privilege for creating required symlink folders
+    3. Include cuda toolkit
+    4. Launch cmd console with Administrator privilege for creating required symlink folders
 
 Create a new wheel via the following command:
-    python setup.py bdist_wheel
+    build_win.bat
 
 The wheel will be located at: dist/*.whl
 """
 
 import os
 import sys
-import shutil
 import subprocess
-import warnings
 from setuptools import setup, find_packages
+from setuptools.command import egg_info
 import time
 
 torch_available = True
@@ -31,7 +31,12 @@ except ImportError:
     print('[WARNING] Unable to import torch, pre-compiling ops will be disabled. ' \
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
 
-from op_builder import ALL_OPS, get_default_compute_capatabilities
+from op_builder import ALL_OPS, get_default_compute_capabilities, OpBuilder
+from op_builder.builder import installed_cuda_version
+
+# fetch rocm state
+is_rocm_pytorch = OpBuilder.is_rocm_pytorch()
+rocm_version = OpBuilder.installed_rocm_version()
 
 RED_START = '\033[31m'
 RED_END = '\033[0m'
@@ -50,16 +55,30 @@ def fetch_requirements(path):
 
 install_requires = fetch_requirements('requirements/requirements.txt')
 extras_require = {
-    '1bit_adam': fetch_requirements('requirements/requirements-1bit-adam.txt'),
+    '1bit': [], # add cupy based on cuda/rocm version
+    '1bit_mpi': fetch_requirements('requirements/requirements-1bit-mpi.txt'),
     'readthedocs': fetch_requirements('requirements/requirements-readthedocs.txt'),
     'dev': fetch_requirements('requirements/requirements-dev.txt'),
+    'autotuning': fetch_requirements('requirements/requirements-autotuning.txt'),
+    'autotuning_ml': fetch_requirements('requirements/requirements-autotuning-ml.txt'),
+    'sparse_attn': fetch_requirements('requirements/requirements-sparse_attn.txt'),
+    'inf': fetch_requirements('requirements/requirements-inf.txt'),
+    'sd': fetch_requirements('requirements/requirements-sd.txt')
 }
 
-# If MPI is available add 1bit-adam requirements
+# Add specific cupy version to both onebit extension variants
 if torch_available and torch.cuda.is_available():
-    if shutil.which('ompi_info') or shutil.which('mpiname'):
-        cupy = f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}"
-        extras_require['1bit_adam'].append(cupy)
+    cupy = None
+    if is_rocm_pytorch:
+        rocm_major, rocm_minor = rocm_version
+        # XXX cupy support for rocm 5 is not available yet
+        if rocm_major <= 4:
+            cupy = f"cupy-rocm-{rocm_major}-{rocm_minor}"
+    else:
+        cupy = f"cupy-cuda{''.join(map(str,installed_cuda_version()))}"
+    if cupy:
+        extras_require['1bit'].append(cupy)
+        extras_require['1bit_mpi'].append(cupy)
 
 # Make an [all] extra that installs all needed dependencies
 all_extras = set()
@@ -88,7 +107,7 @@ if torch_available and not torch.cuda.is_available():
         "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
         "(compute capabilities 6.0, 6.1, 6.2)")
     if os.environ.get("TORCH_CUDA_ARCH_LIST", None) is None:
-        os.environ["TORCH_CUDA_ARCH_LIST"] = get_default_compute_capatabilities()
+        os.environ["TORCH_CUDA_ARCH_LIST"] = get_default_compute_capabilities()
 
 ext_modules = []
 
@@ -134,10 +153,9 @@ for op_name, builder in ALL_OPS.items():
             builder.warning(f"One can disable {op_name} with {env_var}=0")
         abort(f"Unable to pre-compile {op_name}")
 
-    # If op is compatible update install reqs so it can potentially build/run later
-    if op_compatible:
-        reqs = builder.python_requirements()
-        install_requires += builder.python_requirements()
+    # if op is compatible but install is not enabled (JIT mode)
+    if is_rocm_pytorch and op_compatible and not op_enabled(op_name):
+        builder.hipify_extension()
 
     # If op install enabled, add builder to extensions
     if op_enabled(op_name) and op_compatible:
@@ -177,6 +195,7 @@ if sys.platform == "win32":
     # It needs Administrator privilege to create symlinks on Windows.
     create_dir_symlink('..\\..\\csrc', '.\\deepspeed\\ops\\csrc')
     create_dir_symlink('..\\..\\op_builder', '.\\deepspeed\\ops\\op_builder')
+    egg_info.manifest_maker.template = 'MANIFEST_win.in'
 
 # Parse the DeepSpeed version string from version.txt
 version_str = open('version.txt', 'r').read().strip()
@@ -199,11 +218,31 @@ else:
     version_str += f'+{git_hash}'
 
 torch_version = ".".join([TORCH_MAJOR, TORCH_MINOR])
+bf16_support = False
 # Set cuda_version to 0.0 if cpu-only
 cuda_version = "0.0"
+nccl_version = "0.0"
+# Set hip_version to 0.0 if cpu-only
+hip_version = "0.0"
 if torch_available and torch.version.cuda is not None:
     cuda_version = ".".join(torch.version.cuda.split('.')[:2])
-torch_info = {"version": torch_version, "cuda_version": cuda_version}
+    if sys.platform != "win32":
+        if isinstance(torch.cuda.nccl.version(), int):
+            # This will break if minor version > 9
+            nccl_version = ".".join(str(torch.cuda.nccl.version())[:2])
+        else:
+            nccl_version = ".".join(map(str, torch.cuda.nccl.version()[:2]))
+    if hasattr(torch.cuda, 'is_bf16_supported') and torch.cuda.is_available():
+        bf16_support = torch.cuda.is_bf16_supported()
+if torch_available and hasattr(torch.version, 'hip') and torch.version.hip is not None:
+    hip_version = ".".join(torch.version.hip.split('.')[:2])
+torch_info = {
+    "version": torch_version,
+    "bf16_support": bf16_support,
+    "cuda_version": cuda_version,
+    "nccl_version": nccl_version,
+    "hip_version": hip_version
+}
 
 print(f"version={version_str}, git_hash={git_hash}, git_branch={git_branch}")
 with open('deepspeed/git_version_info_installed.py', 'w') as fd:
@@ -233,10 +272,24 @@ setup(name='deepspeed',
       author='DeepSpeed Team',
       author_email='deepspeed@microsoft.com',
       url='http://deepspeed.ai',
+      project_urls={
+          'Documentation': 'https://deepspeed.readthedocs.io',
+          'Source': 'https://github.com/microsoft/DeepSpeed',
+      },
       install_requires=install_requires,
       extras_require=extras_require,
-      packages=find_packages(exclude=["docker",
-                                      "third_party"]),
+      packages=find_packages(exclude=[
+          "azure",
+          "csrc",
+          "docker",
+          "docs",
+          "examples",
+          "op_builder",
+          "release",
+          "requirements",
+          "scripts",
+          "tests"
+      ]),
       include_package_data=True,
       scripts=[
           'bin/deepspeed',
@@ -244,12 +297,15 @@ setup(name='deepspeed',
           'bin/ds',
           'bin/ds_ssh',
           'bin/ds_report',
+          'bin/ds_bench',
+          'bin/dsr',
           'bin/ds_elastic'
       ],
       classifiers=[
           'Programming Language :: Python :: 3.6',
           'Programming Language :: Python :: 3.7',
-          'Programming Language :: Python :: 3.8'
+          'Programming Language :: Python :: 3.8',
+          'Programming Language :: Python :: 3.9'
       ],
       license='MIT',
       ext_modules=ext_modules,

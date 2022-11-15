@@ -6,19 +6,21 @@ Copyright NVIDIA/Megatron
 Helper functions and classes from multiple sources.
 '''
 
-from deepspeed.moe.utils import is_moe_param, split_params_into_shared_and_expert_params
+from collections.abc import Iterable
+from deepspeed.moe.utils import is_moe_param
 import os
 import psutil
 import gc
-from math import ceil
+from math import sqrt
 from math import floor
-from bisect import bisect_left, bisect_right
+from bisect import bisect_left
 
 import torch
 from torch._six import inf
-import torch.distributed as dist
+from deepspeed import comm as dist
 
 from deepspeed.utils import groups, logger
+from deepspeed.runtime.constants import PIPE_REPLICATED
 from numpy import prod
 
 # pt-1.9 deprecations
@@ -30,6 +32,16 @@ if hasattr(torch.cuda, "max_memory_reserved"):
     torch_max_memory_reserved = torch.cuda.max_memory_reserved
 else:
     torch_max_memory_reserved = torch.cuda.memory_cached
+
+
+class DummyOptim():
+    """
+    Dummy optimizer presents model parameters as a param group, this is
+    primarily used to allow ZeRO-3 without an optimizer
+    """
+    def __init__(self, params):
+        self.param_groups = []
+        self.param_groups.append({'params': params})
 
 
 def noop_decorator(func):
@@ -57,6 +69,54 @@ def set_random_seed(seed):
     random.seed(seed)
     numpy.random.seed(seed)
     torch.manual_seed(seed)
+
+
+def is_model_parallel_parameter(p) -> bool:
+    if hasattr(p, 'model_parallel') and p.model_parallel:
+        return True
+
+    if hasattr(p, 'tensor_model_parallel') and p.tensor_model_parallel:
+        return True
+
+    return False
+
+
+def bwc_tensor_model_parallel_rank(mpu=None):
+    """Backwards-compatible way of querying the tensor model parallel rank from
+    an ``mpu`` object.
+
+    *Tensor* model parallelism means that tensors are physically split across
+    processes. This contrasts with *pipeline* model parallelism, in which the
+    layers are partitioned but tensors left intact.
+
+    The API for tensor model parallelism has changed across versions and this
+    helper provides a best-effort implementation across versions of ``mpu``
+    objects.  The preferred mechanism is
+    ``mpu.get_tensor_model_parallel_rank()``.
+
+    This should "just work" with both Megatron-LM and DeepSpeed's pipeline
+    parallelism.
+
+    Args:
+        mpu (model parallel unit, optional): The tensor model parallel rank.
+            If ``mpu=None``, returns 0. Defaults to ``None``.
+
+    Returns:
+        int: the rank
+    """
+    if mpu is None:
+        # No model parallelism in easy :)
+        return 0
+
+    if hasattr(mpu, 'get_tensor_model_parallel_rank'):
+        # New Megatron and DeepSpeed convention (post pipeline-parallelism release)
+        return mpu.get_tensor_model_parallel_rank()
+    elif hasattr(mpu, 'get_slice_parallel_rank'):
+        # Some DeepSpeed + pipeline parallelism versions
+        return mpu.get_slice_parallel_rank()
+    else:
+        # Deprecated Megatron and DeepSpeed convention
+        return mpu.get_model_parallel_rank()
 
 
 def copy_to_device(item, device, criterion_func):
@@ -136,15 +196,17 @@ class CheckOverflow(object):
             # In this case, we need to do an all_reduce across
             # the expert_parallel_group, so that if there was
             # an overflow due to expert weights, we detect it
+
+            # Only need to check groups.get_largest_expert_parallel_group()
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=groups.get_expert_parallel_group())
+                            group=groups._get_max_expert_parallel_group())
         if self.mpu is not None:
-            torch.distributed.all_reduce(overflow_gpu,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=self.mpu.get_model_parallel_group())
+            dist.all_reduce(overflow_gpu,
+                            op=dist.ReduceOp.MAX,
+                            group=self.mpu.get_model_parallel_group())
         elif reduce_overflow:
-            dist.all_reduce(overflow_gpu, op=torch.distributed.ReduceOp.MAX)
+            dist.all_reduce(overflow_gpu, op=dist.ReduceOp.MAX)
             dist.barrier()
         overflow = overflow_gpu[0].item()
         return bool(overflow)
@@ -181,19 +243,19 @@ class CheckOverflow(object):
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
         overflow_gpu = torch.cuda.ByteTensor([overflow])
-        # torch.distributed.all_reduce(overflow_gpu,
-        #                             op=torch.distributed.ReduceOp.MAX,
+        # deepspeeed.comm.all_reduce(overflow_gpu,
+        #                             op=deepspeed.comm.ReduceOp.MAX,
         #                             group=mpu.get_model_parallel_group())
         if has_moe_params:
             # All reduce this across expert_parallel_group, so that if an expert
             # overflows, we detect it here
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=groups.get_expert_parallel_group())
+                            group=groups._get_max_expert_parallel_group())
         if self.zero_reduce_scatter:
-            torch.distributed.all_reduce(overflow_gpu,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=torch.distributed.group.WORLD)
+            dist.all_reduce(overflow_gpu,
+                            op=dist.ReduceOp.MAX,
+                            group=dist.get_world_group())
         elif self.mpu is not None:
             if self.deepspeed is not None:
                 using_pipeline = hasattr(self.deepspeed,
@@ -202,17 +264,16 @@ class CheckOverflow(object):
                         and self.deepspeed.pipeline_enable_backward_allreduce is False
                     ) or (not using_pipeline
                           and self.deepspeed.enable_backward_allreduce is False):
-                    torch.distributed.all_reduce(
-                        overflow_gpu,
-                        op=torch.distributed.ReduceOp.MAX,
-                        group=self.mpu.get_data_parallel_group())
-            torch.distributed.all_reduce(overflow_gpu,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=self.mpu.get_model_parallel_group())
+                    dist.all_reduce(overflow_gpu,
+                                    op=dist.ReduceOp.MAX,
+                                    group=self.mpu.get_data_parallel_group())
+            dist.all_reduce(overflow_gpu,
+                            op=dist.ReduceOp.MAX,
+                            group=self.mpu.get_model_parallel_group())
         elif self.deepspeed is not None and self.deepspeed.enable_backward_allreduce is False:
-            torch.distributed.all_reduce(overflow_gpu,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=torch.distributed.group.WORLD)
+            dist.all_reduce(overflow_gpu,
+                            op=dist.ReduceOp.MAX,
+                            group=dist.get_world_group())
 
         overflow = overflow_gpu[0].item()
         return bool(overflow)
@@ -242,7 +303,7 @@ class CheckOverflow(object):
 
 def _handle_overflow(cpu_sum, x, i):
     import math
-    rank = torch.distributed.get_rank()
+    rank = dist.get_rank()
     if rank == 0:
         t_i = -1
         for v_i, v in enumerate(x.data.contiguous().view(-1)):
@@ -252,6 +313,15 @@ def _handle_overflow(cpu_sum, x, i):
         logger.info(
             f"rank {rank} detected overflow {cpu_sum} in tensor {i}:{t_i} shape {x.shape}"
         )
+
+
+def get_global_norm(norm_list):
+    """ Compute total from a list of norms
+    """
+    total_norm = 0.0
+    for norm in norm_list:
+        total_norm += norm**2.0
+    return sqrt(total_norm)
 
 
 def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
@@ -285,16 +355,16 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
         # Take max across all GPUs.
         if mpu is not None:
-            torch.distributed.all_reduce(total_norm_cuda,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=mpu.get_model_parallel_group())
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.MAX,
+                            group=mpu.get_model_parallel_group())
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0
         for p in parameters:
             if mpu is not None:
-                if (mpu.get_model_parallel_rank() == 0
-                    ) or is_model_parallel_parameter(p):
+                if (mpu.get_model_parallel_rank()
+                        == 0) or is_model_parallel_parameter(p):
                     param_norm = p.grad.data.norm(norm_type)
                     total_norm += param_norm.item()**norm_type
             else:
@@ -304,13 +374,13 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
         if mpu is not None:
-            torch.distributed.all_reduce(total_norm_cuda,
-                                         op=torch.distributed.ReduceOp.SUM,
-                                         group=mpu.get_model_parallel_group())
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.SUM,
+                            group=mpu.get_model_parallel_group())
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
     # Need to average total_norm across different GPUs due to the presence of moe params
-    pg = groups.get_data_parallel_group()
+    pg = groups._get_data_parallel_group()
     scaled_norm = total_norm * 1.0 / float(dist.get_world_size(group=pg))
 
     scaled_norm_tensor = torch.cuda.FloatTensor([float(scaled_norm)])
@@ -351,28 +421,32 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
         # Take max across all GPUs.
         if mpu is not None:
-            torch.distributed.all_reduce(total_norm_cuda,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=mpu.get_model_parallel_group())
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.MAX,
+                            group=mpu.get_model_parallel_group())
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0.
+        tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
         for p in parameters:
-            if mpu is not None:
-                if (mpu.get_model_parallel_rank() == 0
-                    ) or is_model_parallel_parameter(p):
-                    param_norm = p.grad.data.float().norm(norm_type)
-                    total_norm += param_norm.item()**norm_type
-            else:
-                param_norm = p.grad.data.float().norm(norm_type)
-                total_norm += param_norm.item()**norm_type
+            # Pipeline parallelism may replicate parameters. Avoid multi-counting.
+            if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
+                continue
+
+            # Filter to avoid over-counting replicated tensors from tensor
+            # model parallelism
+            if (tensor_mp_rank > 0) and not is_model_parallel_parameter(p):
+                continue
+
+            param_norm = p.grad.data.float().norm(norm_type)
+            total_norm += param_norm.item()**norm_type
 
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
         if mpu is not None:
-            torch.distributed.all_reduce(total_norm_cuda,
-                                         op=torch.distributed.ReduceOp.SUM,
-                                         group=mpu.get_model_parallel_group())
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.SUM,
+                            group=mpu.get_model_parallel_group())
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
     if total_norm == float(
@@ -380,6 +454,48 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
         total_norm = -1
 
     return total_norm
+
+
+def get_grad_zeros(parameters, mpu=None):
+    """Compute the number of grads with zero values.
+
+    This is adapted from get_grad_norm
+
+    Arguments:
+        parameters (Iterable[Tensor] or Tensor): an iterable of Tensors or a
+            single Tensor that will have gradients normalized
+
+    Returns:
+        Total number of params with zero values (viewed as a single vector).
+    """
+    if isinstance(parameters, torch.Tensor):
+        parameters = [parameters]
+    parameters = list(filter(lambda p: p.grad is not None, parameters))
+
+    total_zeros = 0.
+    tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
+    for p in parameters:
+        # Pipeline parallelism may replicate parameters. Avoid multi-counting.
+        if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
+            continue
+
+        # Filter to avoid over-counting replicated tensors from tensor
+        # model parallelism
+        if (tensor_mp_rank > 0) and not is_model_parallel_parameter(p):
+            continue
+
+        count_zeros = p.grad.numel() - torch.count_nonzero(p.grad)
+        total_zeros += count_zeros.item()
+
+    # Sum across all model parallel GPUs.
+    total_zeros_cuda = torch.cuda.FloatTensor([float(total_zeros)])
+    if mpu is not None:
+        dist.all_reduce(total_zeros_cuda,
+                        op=dist.ReduceOp.SUM,
+                        group=mpu.get_model_parallel_group())
+    total_zeros = total_zeros_cuda[0].item()
+
+    return total_zeros
 
 
 def get_weight_norm(parameters, norm_type=2, mpu=None):
@@ -408,37 +524,32 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
         # Take max across all GPUs.
         if mpu is not None:
-            torch.distributed.all_reduce(total_norm_cuda,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=mpu.get_model_parallel_group())
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.MAX,
+                            group=mpu.get_model_parallel_group())
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0.
+        tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
         for p in parameters:
-            if mpu is not None:
-                if (mpu.get_model_parallel_rank() == 0
-                    ) or is_model_parallel_parameter(p):
-                    try:
-                        param_norm = float(torch.norm(p, norm_type, dtype=torch.float32))
-                    except TypeError as err:
-                        param_norm = float(torch.norm(p.float(), norm_type))
+            # Pipeline parallelism may replicate parameters. Avoid multi-counting.
+            if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
+                continue
 
-                    #param_norm = p.data.float().norm(norm_type)
-                    total_norm += param_norm**norm_type
-            else:
-                try:
-                    param_norm = float(torch.norm(p, norm_type, dtype=torch.float32))
-                except TypeError as err:
-                    param_norm = float(torch.norm(p.float(), norm_type))
-                #param_norm = p.data.float().norm(norm_type)
-                total_norm += param_norm**norm_type
+            # Filter to avoid over-counting replicated tensors from tensor
+            # model parallelism
+            if (tensor_mp_rank > 0) and not is_model_parallel_parameter(p):
+                continue
+
+            param_norm = p.data.float().norm(norm_type)
+            total_norm += param_norm**norm_type
 
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
         if mpu is not None:
-            torch.distributed.all_reduce(total_norm_cuda,
-                                         op=torch.distributed.ReduceOp.SUM,
-                                         group=mpu.get_model_parallel_group())
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.SUM,
+                            group=mpu.get_model_parallel_group())
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
     if total_norm == float(
@@ -446,10 +557,6 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
         total_norm = -1
 
     return total_norm
-
-
-def is_model_parallel_parameter(p):
-    return hasattr(p, 'model_parallel') and p.model_parallel
 
 
 def prefix_sum_inc(weights):
@@ -701,10 +808,16 @@ def memory_status(msg, print_rank=-1, reset_max=False):
     )
 
 
+def get_ma_status():
+    if dist.is_initialized() and not dist.get_rank() == 0:
+        return 0
+    return torch.cuda.memory_allocated()
+
+
 def see_memory_usage(message, force=False):
     if not force:
         return
-    if torch.distributed.is_initialized() and not torch.distributed.get_rank() == 0:
+    if dist.is_initialized() and not dist.get_rank() == 0:
         return
 
     # python doesn't do real-time garbage collection so do it explicitly to get the correct RAM reports
@@ -748,3 +861,158 @@ def call_to_str(base, *args, **kwargs):
         name += ', '.join(f'{key}={repr(arg)}' for key, arg in kwargs.items())
     name += ')'
     return name
+
+
+def get_only_unique_item(items):
+    item_set = set(items)
+    if len(item_set) != 1:
+        raise RuntimeError(f"expected there to be only one unique element in {items}")
+    unique_item, = item_set
+
+    return unique_item
+
+
+def clip_gradients(parameters, max_norm=1.0, global_grad_norm=None, mpu=None, eps=1e-6):
+    """Clip the gradient of a list of parameters.
+    Args:
+        parameters: List of parameters whose .grad will be clipped.
+        global_grad_norm (float, optional): Precomputed gradient norm. Defaults to None.
+        mpu (optional): model parallelism unit. Defaults to None.
+        eps (float, optional): epsilon value added to grad norm. Defaults to 1e-6
+    Returns:
+        float: the global gradient norm
+    """
+    if global_grad_norm is None:
+        global_grad_norm = get_grad_norm(parameters, mpu=mpu)
+    clip_coef = max_norm / (global_grad_norm + eps)
+    if clip_coef < 1:
+        for p in parameters:
+            p.grad.detach().mul_(clip_coef)
+    return global_grad_norm
+
+
+def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None):
+    """Get norm of an iterable of tensors.
+
+    This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
+    added functionality to handle model parallel parameters. Taken from Nvidia Megatron.
+
+    Arguments:
+        input_tensors (Iterable[Tensor]): an iterable of Tensors will have norm computed
+        norm_type (float or int): type of the used p-norm. Can be ``'inf'`` for
+            infinity norm.
+
+    Returns:
+        Total norm of the tensors (viewed as a single vector).
+    """
+
+    assert isinstance(input_tensors, Iterable), f'expected Iterable type not {type(input_tensors)}'
+    assert all([torch.is_tensor(t) for t in input_tensors]), f'expected list of only tensors'
+
+    norm_type = float(norm_type)
+    if norm_type == inf:
+        total_norm = max(t.data.abs().max() for t in input_tensors)
+        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        if mpu is not None:
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.MAX,
+                            group=mpu.get_model_parallel_group())
+            total_norm = total_norm_cuda[0].item()
+    else:
+        total_norm = sum(
+            [t.data.float().norm(norm_type).item()**norm_type for t in input_tensors])
+        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        if mpu is not None:
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.SUM,
+                            group=mpu.get_model_parallel_group())
+        total_norm = total_norm_cuda[0].item()**(1. / norm_type)
+
+    if total_norm == float(
+            'inf') or total_norm == -float('inf') or total_norm != total_norm:
+        total_norm = -1
+
+    return total_norm
+
+
+def clip_tensors_by_global_norm(input_tensors,
+                                max_norm=1.0,
+                                global_norm=None,
+                                mpu=None,
+                                eps=1e-6):
+    """Clip list of tensors by global norm.
+    Args:
+        input_tensors: List of tensors to be clipped
+        global_norm (float, optional): Precomputed norm. Defaults to None.
+        mpu (optional): model parallelism unit. Defaults to None.
+        eps (float, optional): epsilon value added to grad norm. Defaults to 1e-6
+    Returns:
+        float: the global norm
+    """
+    if global_norm is None:
+        global_norm = get_global_norm_of_tensors(input_tensors, mpu=mpu)
+
+    clip_coef = max_norm / (global_norm + eps)
+
+    if clip_coef < 1:
+        for t in input_tensors:
+            t.detach().mul_(clip_coef)
+
+    return global_norm
+
+
+def align_dense_tensors(tensor_list, alignment):
+    num_elements = sum(t.numel() for t in tensor_list)
+    remaining = num_elements % alignment
+
+    if remaining:
+        elements_to_add = alignment - remaining
+        pad_tensor = torch.zeros(elements_to_add,
+                                 device=tensor_list[0].device,
+                                 dtype=tensor_list[0].dtype)
+        padded_tensor_list = tensor_list + [pad_tensor]
+    else:
+        padded_tensor_list = tensor_list
+
+    return padded_tensor_list
+
+
+def all_gather_dp_groups(partitioned_param_groups,
+                         dp_process_group,
+                         start_alignment_factor,
+                         allgather_bucket_size):
+    for group_id, partitioned_params in enumerate(partitioned_param_groups):
+        # Sequential AllGather Best of both worlds
+        partition_id = dist.get_rank(group=dp_process_group[group_id])
+        dp_world_size = dist.get_world_size(group=dp_process_group[group_id])
+
+        num_shards = max(
+            1,
+            partitioned_params[partition_id].numel() * dp_world_size //
+            allgather_bucket_size)
+
+        shard_size = partitioned_params[partition_id].numel() // num_shards
+
+        # Enforce nccl/rccl alignment of start location of each shard
+        shard_size = shard_size - (shard_size % start_alignment_factor)
+
+        num_elements = shard_size
+
+        assert shard_size * num_shards <= partitioned_params[partition_id].numel()
+
+        for shard_id in range(num_shards):
+
+            if shard_id == (num_shards - 1):
+                num_elements = partitioned_params[partition_id].numel(
+                ) - shard_id * shard_size
+
+            shard_list = []
+            for dp_id in range(dp_world_size):
+                curr_shard = partitioned_params[dp_id].narrow(0,
+                                                              shard_id * shard_size,
+                                                              num_elements).detach()
+                shard_list.append(curr_shard)
+
+            dist.all_gather(shard_list,
+                            shard_list[partition_id],
+                            dp_process_group[group_id])

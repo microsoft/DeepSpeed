@@ -1,15 +1,13 @@
 import os
 import glob
-import enum
 
 import re as regex
 
-from collections import defaultdict
 from functools import partial
 
 import torch
 import torch.nn as nn
-import torch.distributed as dist
+from deepspeed import comm as dist
 
 from deepspeed.utils import logger
 from .. import utils as ds_utils
@@ -95,7 +93,8 @@ class PipelineModule(nn.Module):
                  base_seed=1234,
                  partition_method='parameters',
                  activation_checkpoint_interval=0,
-                 activation_checkpoint_func=checkpointing.checkpoint):
+                 activation_checkpoint_func=checkpointing.checkpoint,
+                 checkpointable_layers=None):
         """Modules to be parallelized with pipeline parallelism.
 
         The key constraint that enables pipeline parallelism is the
@@ -120,7 +119,7 @@ class PipelineModule(nn.Module):
         Args:
             layers (Iterable): A sequence of layers defining pipeline structure. Can be a ``torch.nn.Sequential`` module.
             num_stages (int, optional): The degree of pipeline parallelism. If not specified, ``topology`` must be provided.
-            topology (``deepseed.pipe.ProcessTopology``, optional): Defines the axes of parallelism axes for training. Must be provided if ``num_stages`` is ``None``.
+            topology (``deepspeed.runtime.pipe.ProcessTopology``, optional): Defines the axes of parallelism axes for training. Must be provided if ``num_stages`` is ``None``.
             loss_fn (callable, optional): Loss is computed ``loss = loss_fn(outputs, label)``
             base_seed (int, optional): [description]. Defaults to 1234.
             partition_method (str, optional): [description]. Defaults to 'parameters'.
@@ -136,6 +135,10 @@ class PipelineModule(nn.Module):
         self.micro_offset = 0
 
         self.loss_fn = loss_fn
+
+        self.checkpointable_layers = checkpointable_layers
+        if checkpointable_layers is not None:
+            assert isinstance(checkpointable_layers, list), "param `checkpointable_layers` must be type of list."
 
         self.seed_layers = seed_layers
         self.seed_fn = seed_fn
@@ -170,7 +173,7 @@ class PipelineModule(nn.Module):
                 topology = PipeDataParallelTopology(num_pp=num_stages, num_dp=dp)
                 self._topo = topology
 
-        # Contruct communicators for pipeline topology
+        # Construct communicators for pipeline topology
         self._grid = PipelineParallelGrid(process_group=self.world_group,
                                           topology=self._topo)
 
@@ -184,6 +187,7 @@ class PipelineModule(nn.Module):
         self._partition_layers(method=partition_method)
 
         self.forward_funcs = []
+        self.fwd_map = {}
         self.tied_modules = nn.ModuleDict()
         self.tied_weight_attrs = {}
 
@@ -220,6 +224,7 @@ class PipelineModule(nn.Module):
             elif isinstance(layer, nn.Module):
                 name = str(layer_idx)
                 self.forward_funcs.append(layer)
+                self.fwd_map.update({name: len(self.forward_funcs) - 1})
                 self.add_module(name, layer)
 
             # TiedLayerSpec objects contain an nn.Module that should be allocated now.
@@ -243,6 +248,7 @@ class PipelineModule(nn.Module):
                 module = layer.build()
                 name = str(layer_idx)
                 self.forward_funcs.append(module)
+                self.fwd_map.update({name: len(self.forward_funcs) - 1})
                 self.add_module(name, module)
 
             # Last option: layer may be a functional (e.g., lambda). We do nothing in
@@ -253,7 +259,7 @@ class PipelineModule(nn.Module):
         # All pipeline parameters should be considered as model parallel in the context
         # of our FP16 optimizer
         for p in self.parameters():
-            p.model_parallel = True
+            p.ds_pipe_replicated = False
 
     def _count_layer_params(self):
         """Count the trainable parameters in individual layers.
@@ -375,9 +381,8 @@ class PipelineModule(nn.Module):
             binary_weights = [0] * len(self._layer_specs)
             for idx in self._find_layer_type(layertype):
                 binary_weights[idx] = 1
-            else:
-                self.parts = ds_utils.partition_balanced(weights=binary_weights,
-                                                         num_parts=num_stages)
+            self.parts = ds_utils.partition_balanced(weights=binary_weights,
+                                                     num_parts=num_stages)
         elif method == 'profile':
             raise NotImplementedError(f'Partitioning method {method} not implemented.')
         else:
@@ -414,6 +419,13 @@ class PipelineModule(nn.Module):
         for key, comm in self.tied_comms.items():
             weight = getattr(self.tied_modules[key], comm['weight_attr'])
             dist.all_reduce(weight.grad, group=comm['group'])
+
+    def get_tied_weights_and_groups(self):
+        weight_group_list = []
+        for key, comm in self.tied_comms.items():
+            weight = getattr(self.tied_modules[key], comm['weight_attr'])
+            weight_group_list.append((weight, comm['group']))
+        return weight_group_list
 
     def _synchronize_tied_weights(self):
         for key, comm in self.tied_comms.items():
@@ -472,7 +484,7 @@ class PipelineModule(nn.Module):
                             # Only count the tied module once in the eyes of the FP16 optimizer
                             if self.global_rank != tied_ranks[0]:
                                 for p in self.tied_modules[key].parameters():
-                                    p.model_parallel = False
+                                    p.ds_pipe_replicated = True
         '''
         if len(tied_comms) > 0:
             print(f'RANK={self.global_rank} tied_comms={tied_comms}')
@@ -543,20 +555,35 @@ class PipelineModule(nn.Module):
     def ckpt_layer_path_list(self, ckpt_dir, local_layer_idx):
         """Get all ckpt file list for a specific pipeline module layer. """
         idx = local_layer_idx + self._local_start
-        layer_ckpt_path = os.path.join(ckpt_dir, f'layer_{idx:02d}')
+        layer_ckpt_path = os.path.join(ckpt_dir, f'layer_{idx:02d}-')
         layer_ckpt_path += "*model_states.pt"
         ckpt_files = glob.glob(layer_ckpt_path)
         ckpt_files.sort()
         return ckpt_files
 
-    def save_state_dict(self, save_dir):
-        if self._grid.data_parallel_id != 0:
-            return
+    def save_state_dict(self, save_dir, checkpoint_engine):
+        # Processes having the same model parallel rank on different data parallel instances
+        # have identical layer weights.  We can distribute the task of saving the layer weights
+        # among the data parallel ranks.  For example, if a pipeline stage has 9 layers and
+        # if there are 2 data parallel instances, rank 0 will save the first 5 layers and
+        # rank 1 will save the last 4.
+        dp_rank = self._grid.data_parallel_id
+        dp_size = self._grid.data_parallel_size
+        num_layers = len(self.forward_funcs)
+        if self.checkpoint_parallel_write_pipeline:
+            # spread layers evenly across data parallel ranks
+            offsets = ds_utils.partition_uniform(num_layers, dp_size)
+            start, end = offsets[dp_rank], offsets[dp_rank + 1]
+        else:
+            # data parallel rank 0 writes all layers
+            if dp_rank != 0:
+                return
+            start, end = 0, num_layers
+        layer_list = self.forward_funcs[start:end]
 
         os.makedirs(save_dir, exist_ok=True)
-        layer_offset = self._local_start
-        for idx, layer in enumerate(self.forward_funcs):
-            model_ckpt_path = self.ckpt_layer_path(save_dir, idx)
+        for idx, layer in enumerate(layer_list):
+            model_ckpt_path = self.ckpt_layer_path(save_dir, start + idx)
             if not hasattr(layer, 'state_dict'):
                 continue
             # We pass cloned tensors to torch.save() to avoid checkpoint bloat which occurs because torch.save()
@@ -570,9 +597,9 @@ class PipelineModule(nn.Module):
                 {k: v.clone()
                  for k,
                  v in orig_state_dict.items()})
-            torch.save(final_state_dict, model_ckpt_path)
+            checkpoint_engine.save(final_state_dict, model_ckpt_path)
 
-    def load_state_dir(self, load_dir, strict=True):
+    def load_state_dir(self, load_dir, checkpoint_engine, strict=True):
         for idx, layer in enumerate(self.forward_funcs):
             # Functions, etc. will not have state_dicts
             if not hasattr(layer, 'load_state_dict'):
@@ -583,22 +610,30 @@ class PipelineModule(nn.Module):
             mp_rank = self._grid.get_slice_parallel_rank()
             mp_world_size = self._grid.get_slice_parallel_world_size()
 
-            sd_loader = SDLoaderFactory.get_sd_loader(model_ckpt_list, version=2.0)
+            sd_loader = SDLoaderFactory.get_sd_loader(
+                model_ckpt_list,
+                version=2.0,
+                checkpoint_engine=checkpoint_engine)
             load_path, checkpoint, _ = sd_loader.load(mp_world_size, mp_rank, module_key=None, is_pipe_parallel=True)
 
             layer.load_state_dict(checkpoint)
 
-            if self._grid.data_parallel_id == 0:
-                logger.info(
-                    f'RANK={self.global_rank} Loaded layer={idx+self._local_start} file={load_path}'
-                )
+            # if self._grid.data_parallel_id == 0:
+            #     logger.info(
+            #         f'RANK={self.global_rank} Loaded layer={idx+self._local_start} file={load_path}'
+            #     )
 
         self._synchronize_tied_weights()
 
     def _is_checkpointable(self, funcs):
-        if self.__class__.__name__ == 'GPT2ModelPipe':
+        # This is an unfortunate hack related to torch and deepspeed activation checkpoint implementations.
+        # Some layers like torch.nn.Embedding will not receive grads if checkpointed, which breaks things.
+        # I presume it's related to the discrete inputs that cannot require_grad? Need to revisit.
+        if self.__class__.__name__ in ('GPTModelPipe', 'GPT2ModelPipe'):
             return all('ParallelTransformerLayerPipe' in f.__class__.__name__
                        for f in funcs)
+        if self.checkpointable_layers is not None:
+            return all(f.__class__.__name__ in self.checkpointable_layers for f in funcs)
 
         params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
         return any(len(list(p)) > 0 for p in params)

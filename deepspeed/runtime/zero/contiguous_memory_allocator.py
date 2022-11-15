@@ -1,8 +1,10 @@
 import torch
 
+from deepspeed import comm as dist
+
 
 def print_rank_0(message):
-    if torch.distributed.get_rank() == 0:
+    if dist.get_rank() == 0:
         print(message)
 
 
@@ -10,7 +12,7 @@ class ContiguousMemoryAllocator(object):
     def __init__(self, size, dtype, device):
         self.buffer = torch.zeros(size, dtype=dtype, device=device)
 
-        #address to contiguous size avaialble
+        #address to contiguous size available
         self.contiguous_sizes = {}
 
         self.contiguous_sizes[0] = size
@@ -65,7 +67,7 @@ class ContiguousMemoryAllocator(object):
         print_rank_0(
             f"Free before allocation {free_before}. Allocating {size}. Free after allocation {self.total_free}. Max allocated {self.max_allocated}"
         )
-        assert self.total_free + size == free_before, "Allcation bookeeping error"
+        assert self.total_free + size == free_before, "Allocation bookkeeping error"
 
         return ret_tensor
 
@@ -96,7 +98,7 @@ class ContiguousMemoryAllocator(object):
         print_rank_0(
             f"Free before release {free_before}. Released {tensor.numel()}. Total free after {self.total_free}."
         )
-        assert self.total_free - tensor_size == free_before, "Release bookeeping error"
+        assert self.total_free - tensor_size == free_before, "Release bookkeeping error"
 
     def release_tensor_with_id(self, tensor_id):
         free_before = self.total_free
@@ -109,7 +111,7 @@ class ContiguousMemoryAllocator(object):
         print_rank_0(
             f"Free before release {free_before}. Released {tensor.numel()}. Total free after {self.total_free}."
         )
-        assert self.total_free - tensor_size == free_before, "Release bookeeping error"
+        assert self.total_free - tensor_size == free_before, "Release bookkeeping error"
 
     #shows the current memory allocation at specified resolution
     def print_allocation(self, resolution=200):

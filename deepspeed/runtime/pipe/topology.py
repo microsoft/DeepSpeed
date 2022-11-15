@@ -1,9 +1,6 @@
 # Copyright 2019 The Microsoft DeepSpeed Team
 
-from deepspeed.utils import logger
-
-import torch.distributed as dist
-import sys
+from deepspeed import comm as dist
 
 from collections import namedtuple
 from itertools import product as cartesian_product
@@ -58,7 +55,7 @@ class ProcessTopology:
             raise ValueError('get_rank() does not support slices. Use filter_match())')
 
         key = self.ProcessCoord(**coord_kwargs)
-        assert key in self.mapping, f'key {kwargs} invalid'
+        assert key in self.mapping, f'key {coord_kwargs} invalid'
         return self.mapping[key]
 
     def get_axis_names(self):
@@ -191,7 +188,7 @@ class ProcessTopology:
             return True
 
         coords = filter(_filter_helper, self.mapping.keys())
-        return [self.mapping[coo] for coo in coords]
+        return [self.mapping[coord] for coord in coords]
 
     def get_axis_list(self, axis, idx):
         """Returns the list of global ranks whose coordinate in an axis is idx.
@@ -233,7 +230,7 @@ def _prime_factors(N):
 
 
 class PipeDataParallelTopology(ProcessTopology):
-    """ A topology specialiation for hybrid data and pipeline parallelism.
+    """ A topology specialization for hybrid data and pipeline parallelism.
 
         Uses data parallelism on the last dimension to encourage gradient
         reductions to use high-bandwidth intra-node links and lower-volume

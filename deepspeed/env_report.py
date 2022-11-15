@@ -1,9 +1,9 @@
 import torch
 import deepspeed
 import subprocess
+import argparse
 from .ops.op_builder import ALL_OPS
 from .git_version_info import installed_ops, torch_info
-from .ops import __compatible_ops__ as compatible_ops
 
 GREEN = '\033[92m'
 RED = '\033[91m'
@@ -20,7 +20,7 @@ okay = f"{GREEN}[OKAY]{END}"
 warning = f"{YELLOW}[WARNING]{END}"
 
 
-def op_report():
+def op_report(verbose=True):
     max_dots = 23
     max_dots2 = 11
     h = ["op name", "installed", "compatible"]
@@ -43,7 +43,7 @@ def op_report():
     no = f"{YELLOW}[NO]{END}"
     for op_name, builder in ALL_OPS.items():
         dots = "." * (max_dots - len(op_name))
-        is_compatible = OKAY if builder.is_compatible() else no
+        is_compatible = OKAY if builder.is_compatible(verbose) else no
         is_installed = installed if installed_ops[op_name] else no
         dots2 = '.' * ((len(h[1]) + (max_dots2 - len(h[1]))) -
                        (len(is_installed) - color_len))
@@ -53,7 +53,7 @@ def op_report():
 
 def ninja_installed():
     try:
-        import ninja
+        import ninja  # noqa: F401
     except ImportError:
         return False
     return True
@@ -78,6 +78,11 @@ def nvcc_version():
 
 def debug_report():
     max_dots = 33
+
+    hip_version = None
+    if hasattr(torch.version, 'hip'):
+        hip_version = torch.version.hip
+
     report = [
         ("torch install path",
          torch.__path__),
@@ -85,24 +90,50 @@ def debug_report():
          torch.__version__),
         ("torch cuda version",
          torch.version.cuda),
+        ("torch hip version",
+         hip_version),
         ("nvcc version",
-         nvcc_version()),
+         (None if hip_version else nvcc_version())),
         ("deepspeed install path",
          deepspeed.__path__),
         ("deepspeed info",
          f"{deepspeed.__version__}, {deepspeed.__git_hash__}, {deepspeed.__git_branch__}"
          ),
         ("deepspeed wheel compiled w.",
-         f"torch {torch_info['version']}, cuda {torch_info['cuda_version']}"),
+         f"torch {torch_info['version']}, " +
+         (f"hip {torch_info['hip_version']}"
+          if hip_version else f"cuda {torch_info['cuda_version']}")),
     ]
     print("DeepSpeed general environment info:")
     for name, value in report:
         print(name, "." * (max_dots - len(name)), value)
 
 
-def main():
-    op_report()
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--hide_operator_status',
+        action='store_true',
+        help=
+        'Suppress display of installation and compatibility statuses of DeepSpeed operators. '
+    )
+    parser.add_argument('--hide_errors_and_warnings',
+                        action='store_true',
+                        help='Suppress warning and error messages.')
+    args = parser.parse_args()
+    return args
+
+
+def main(hide_operator_status=False, hide_errors_and_warnings=False):
+    if not hide_operator_status:
+        op_report(verbose=not hide_errors_and_warnings)
     debug_report()
+
+
+def cli_main():
+    args = parse_arguments()
+    main(hide_operator_status=args.hide_operator_status,
+         hide_errors_and_warnings=args.hide_errors_and_warnings)
 
 
 if __name__ == "__main__":

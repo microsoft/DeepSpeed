@@ -1,6 +1,7 @@
 '''
 Copyright 2020 The Microsoft DeepSpeed Team
 '''
+
 import sys
 import types
 from typing import Optional, Union
@@ -23,10 +24,11 @@ from .runtime.activation_checkpointing import checkpointing
 from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from .module_inject import replace_transformer_layer, revert_transformer_layer
 
-from .utils import log_dist
-from .utils.distributed import init_distributed
+from .utils import log_dist, OnDevice
+from .comm.comm import init_distributed
 
 from .runtime import zero
+from .runtime import DeepSpeedOptimizer, ZeROOptimizer
 
 from .pipe import PipelineModule
 
@@ -44,18 +46,6 @@ __version__ = version
 __version_major__, __version_minor__, __version_patch__ = _parse_version(__version__)
 __git_hash__ = git_hash
 __git_branch__ = git_branch
-
-# Provide backwards compatability with old deepspeed.pt module structure, should hopefully not be used
-pt = types.ModuleType('pt', 'dummy pt module for backwards compatability')
-deepspeed = sys.modules[__name__]
-setattr(deepspeed, 'pt', pt)
-setattr(deepspeed.pt, 'deepspeed_utils', deepspeed.runtime.utils)
-sys.modules['deepspeed.pt'] = deepspeed.pt
-sys.modules['deepspeed.pt.deepspeed_utils'] = deepspeed.runtime.utils
-setattr(deepspeed.pt, 'deepspeed_config', deepspeed.runtime.config)
-sys.modules['deepspeed.pt.deepspeed_config'] = deepspeed.runtime.config
-setattr(deepspeed.pt, 'loss_scaler', deepspeed.runtime.fp16.loss_scaler)
-sys.modules['deepspeed.pt.loss_scaler'] = deepspeed.runtime.fp16.loss_scaler
 
 
 def initialize(args=None,
@@ -93,7 +83,7 @@ def initialize(args=None,
         mpu: Optional: A model parallelism unit object that implements
             get_{model,data}_parallel_{rank,group,world_size}()
 
-        dist_init_required: Optional: None will auto-initialize torch.distributed if needed,
+        dist_init_required: Optional: None will auto-initialize torch distributed if needed,
             otherwise the user can force it to be initialized or not via boolean.
 
         collate_fn: Optional: Merges a list of samples to form a
@@ -124,6 +114,9 @@ def initialize(args=None,
         __git_hash__,
         __git_branch__),
              ranks=[0])
+
+    # Disable zero.Init context if it's currently enabled
+    zero.partition_parameters.shutdown_init_context()
 
     assert model is not None, "deepspeed.initialize requires a model"
 
@@ -230,21 +223,41 @@ def add_config_arguments(parser):
 
 
 def init_inference(model,
+                   triangular_masking=True,
                    mp_size=1,
+                   training_mp_size=1,
                    mpu=None,
+                   ep_group=None,
+                   expert_mp_group=None,
                    checkpoint=None,
-                   module_key='module',
                    dtype=None,
                    injection_policy=None,
                    replace_method='auto',
-                   quantization_setting=None):
+                   quantization_setting=None,
+                   replace_with_kernel_inject=False,
+                   return_tuple=True,
+                   ep_size=1,
+                   moe=False,
+                   moe_experts=1,
+                   moe_type='standard',
+                   args=None,
+                   enable_cuda_graph=False,
+                   save_mp_checkpoint_path=None,
+                   base_dir="",
+                   max_tokens=1024):
     """Initialize the DeepSpeed InferenceEngine.
 
     Arguments:
         model: Required: nn.module class before apply any wrappers
 
+        triangular_masking: Required: this shows the type of masking for attention scores in transformer layer
+            note that the masking is application specific.
+
         mp_size: Optional: Desired model parallel size, default is 1 meaning no
             model parallelism.
+
+        training_mp_size: Optional: if loading a checkpoint this is the mp size that it was trained with,
+            it may be different than what the mp size that you want to use during inference.
 
         mpu: Optional: A model parallelism unit object that implements
             get_{model,data}_parallel_{rank,group,world_size}()
@@ -267,7 +280,21 @@ def init_inference(model,
             of groups used in quantization. A tuple is passed in if we want to mention that there is extra-grouping
             for the MLP part of a Transformer layer (e.g. (True, 8) shows we quantize the model using 8 groups for
             all the network except the MLP part that we use 8 extra grouping).
-
+        replace_with_kernel_inject: this flag need to be set to true to inject inference kernels for models such as, Bert, GPT2, GPT-Neo and GPT-J. Otherwise,
+            the injection_dict provides the names of two linear layers as a tuple: (attention_output projection, transformer output projection)
+        return_tuple: Specify whether or not the transformer layers need to return a tuple or a Tensor. It is set to True by default (returning a tuple).
+        ep_size: The expert-parallelism size which is used for partitioning the experts across the GPUs in the expert-parallel group.
+        moe: Specify if the type of Transformer is MoE. It is set to False by default.
+        moe_experts: The global number of experts used in an MoE layer.
+        moe_type: Specify the type of MoE layer. We have two types of MoE layer: 'Standard' and 'Residual'. It is set to 'Standard' type by default.
+        args: All the arguments used for launching the inference api that can be useful at the inference-engine for injecting the optimizations.
+        enable_cuda_graph: use this flag for capturing the CUDA-Graph of the inference ops, so that it can run faster using the graph replay method,
+            this is set to False by default
+        save_mp_checkpoint_path: The path for which we want to save the loaded model with a checkpoint. This feature is used for adjusting the
+            parallelism degree to help alleviate the model loading overhead. It does not save any new checkpoint if no path is passed.
+        base_dir: This shows the root directory under which all the checkpoint files exists. This can be passed through the json config too.
+        max_tokens: This argument shows the maximum number of tokens inference-engine can work with, including the input and output tokens.
+            Please consider increasing it to the required token-length required for your use-case.
     Returns:
         A deepspeed.InferenceEngine wrapped model.
     """
@@ -277,16 +304,28 @@ def init_inference(model,
         __git_branch__),
              ranks=[0])
 
-    if isinstance(model, PipelineModule):
-        raise NotImplementedError("pipeline module support is not implemented yet")
-    else:
-        engine = InferenceEngine(model,
-                                 mp_size,
-                                 mpu,
-                                 checkpoint,
-                                 dtype,
-                                 injection_policy,
-                                 replace_method,
-                                 quantization_setting)
+    engine = InferenceEngine(model,
+                             triangular_masking,
+                             mp_size,
+                             training_mp_size,
+                             ep_size,
+                             mpu,
+                             ep_group,
+                             expert_mp_group,
+                             checkpoint,
+                             dtype,
+                             injection_policy,
+                             return_tuple,
+                             replace_method,
+                             quantization_setting,
+                             replace_with_kernel_inject,
+                             moe,
+                             moe_experts,
+                             moe_type,
+                             args,
+                             enable_cuda_graph,
+                             save_mp_checkpoint_path,
+                             base_dir,
+                             max_tokens)
 
     return engine
