@@ -45,7 +45,7 @@ def get_module(node):
         for method in methods:
             if method.name == "__init__":
                 source = ast.get_source_segment(file_content, method)
-                match = re.search("nn.ModuleList\(\s*\[\s*(.*?)\(\s*\w*config(\)|,|.)",
+                match = re.search(r"nn.ModuleList\(\s*\[\s*(.*?)\(\s*\w*config(\)|,|.)",
                                   source)
                 if match is not None:
                     module_list = module_list + [match.group(1)]
