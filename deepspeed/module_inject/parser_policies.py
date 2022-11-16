@@ -1,5 +1,6 @@
 import re
 
+# yapf: disable
 class ParserPolicies():
     parser_policy_map = dict( 
         albert=dict(AlbertLayer=(".ffn_output", "attention.dense", ), ),
