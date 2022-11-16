@@ -1,8 +1,9 @@
 import re
 
+
 # yapf: disable
 class ParserPolicies():
-    parser_policy_map = dict( 
+    parser_policy_map = dict(
         albert=dict(AlbertLayer=(".ffn_output", "attention.dense", ), ),
         bart=dict(BartEncoderLayer=("self_attn.out_proj", ".fc2", ), BartDecoderLayer=("encoder_attn.out_proj", "self_attn.out_proj", ".fc2", ), ),
         beit=dict(BeitLayer=("intermediate.dense", "output.dense", ), ),
