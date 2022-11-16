@@ -6,13 +6,6 @@ class DeepSpeedAccelerator(ABC):
     def __init__(self):
         self._name = None
         self._communication_backend_name = None
-        self.BFloat16Tensor = None
-        self.ByteTensor = None
-        self.DoubleTensor = None
-        self.FloatTensor = None
-        self.HalfTensor = None
-        self.IntTensor = None
-        self.LongTensor = None
 
     # Device APIs
     @abc.abstractmethod
@@ -24,7 +17,7 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     @abc.abstractmethod
-    def set_device(self):
+    def set_device(self, device_index):
         ...
 
     @abc.abstractmethod
@@ -65,7 +58,7 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     @abc.abstractmethod
-    def initial_seed(self):
+    def initial_seed(self, seed):
         ...
 
     @abc.abstractmethod
@@ -181,6 +174,34 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     # Tensor operations
+    @abc.abstractproperty
+    def BFloat16Tensor(self):
+        ...
+
+    @abc.abstractproperty
+    def ByteTensor(self):
+        ...
+
+    @abc.abstractproperty
+    def DoubleTensor(self):
+        ...
+
+    @abc.abstractproperty
+    def FloatTensor(self):
+        ...
+
+    @abc.abstractproperty
+    def HalfTensor(self):
+        ...
+
+    @abc.abstractproperty
+    def IntTensor(self):
+        ...
+
+    @abc.abstractproperty
+    def LongTensor(self):
+        ...
+
     @abc.abstractmethod
     def pin_memory(self, tensor):
         ...
