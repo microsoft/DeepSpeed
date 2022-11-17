@@ -15,20 +15,20 @@
 /op_builder/ @jeffra
 /release/ @jeffra @mrwyattii
 /requirements/ @jeffra @mrwyattii
-/scripts/ @jeffra @awan-10 @Quentin-Anthony
+/scripts/ @jeffra @awan-10
 /tests/ @jeffra @mrwyattii @tjruwase
 
 # deepspeed
 /deepspeed/autotuning/ @cli99
 /deepspeed/checkpoint/ @tjruwase
-/deepspeed/comm/ @awan-10 @Quentin-Anthony
+/deepspeed/comm/ @awan-10
 /deepspeed/compression/ @yaozhewei @minjiaz @xiaoxiawu-microsoft @conglongli
 /deepspeed/elasticity/ @aj-prime @awan-10
 /deepspeed/launcher/ @jeffra @awan-10
 /deepspeed/module_inject/ @RezaYazdaniAminabadi @jeffra @mrwyattii @awan-10 @cmikeh2 @arashb
 /deepspeed/moe/ @awan-10
-/deepspeed/monitor/ @Quentin-Anthony @awan-10 @jeffra
-/deepspeed/nebula/ @trajepl @tjruwase @jeffra
+/deepspeed/monitor/ @awan-10 @jeffra
+/deepspeed/nebula/ @tjruwase @jeffra
 /deepspeed/ops/ @RezaYazdaniAminabadi @jeffra @mrwyattii @awan-10 @cmikeh2 @arashb
 /deepspeed/pipe/ @ShadenSmith @duli2012
 /deepspeed/profiling/ @cli99
@@ -38,11 +38,11 @@
 /deepspeed/inference/ @RezaYazdaniAminabadi @jeffra @mrwyattii @awan-10 @cmikeh2 @arashb
 /deepspeed/model_implementations/ @RezaYazdaniAminabadi @jeffra @mrwyattii @awan-10 @cmikeh2 @arashb
 
-# deepspeed training runtime
+# training
 /deepspeed/runtime/ @jeffra @tjruwase
 /deepspeed/runtime/activation_checkpointing/ @jeffra @tjruwase
-/deepspeed/runtime/checkpoint_engine/ @trajepl @tjruwase @jeffra
-/deepspeed/runtime/comm/ @awan-10 @Quentin-Anthony
+/deepspeed/runtime/checkpoint_engine/ @tjruwase @jeffra
+/deepspeed/runtime/comm/ @awan-10
 /deepspeed/runtime/compression/ @awan-10 @conglongli
 /deepspeed/runtime/data_pipeline/ @conglongli
 /deepspeed/runtime/fp16/ @jeffra @tjruwase
