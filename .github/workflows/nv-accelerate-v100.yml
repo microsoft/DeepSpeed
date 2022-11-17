@@ -51,11 +51,12 @@ jobs:
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           git clone https://github.com/huggingface/accelerate
           cd accelerate
+          git rev-parse --short HEAD
           # installing dependencies
           pip install .[testing]
           # force protobuf version due to issues
           pip install "protobuf<4.21.0"
           # tmp fix: force newer datasets version
-          pip install "datasets>=2.0.0"
+          #pip install "datasets>=2.0.0"
           pip list
           HF_DATASETS_CACHE=/blob/datasets_cache/ TRANSFORMERS_CACHE=/blob/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose tests/deepspeed
