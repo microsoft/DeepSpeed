@@ -1,6 +1,10 @@
 # This file is used to subscribe for notifications for PRs
 # related to specific file paths, does not necessarily mean
 # approval is required from these people before merging.
+#
+# Learn more about CODEOWNERS syntax here: 
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
 
 # top-level repo folders
 /.github/ @jeffra @mrwyattii
