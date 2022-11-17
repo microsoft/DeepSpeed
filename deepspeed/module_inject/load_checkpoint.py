@@ -63,8 +63,8 @@ def load_model_with_checkpoint(r_module,
                                         transpose(tmp_data) if weight_quantizer.
                                         q_int8 else tmp_data)
                                 else:
-                                    p = torch.nn.parameter.Parameter(tmp_data,
-                                                                     requires_grad=False)
+                                    p = weight_quantizer.quantize(torch.nn.parameter.Parameter(tmp_data,
+                                                                     requires_grad=False), scale=scale)
                                     p.scale = scale
                                 setattr(module, n, p)
                             else:

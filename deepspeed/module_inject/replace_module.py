@@ -142,11 +142,15 @@ class GroupQuantizer:
         self.num_bits = num_bits
         self.q_int8 = q_int8
 
-    def quantize(self, inputs, qkv=True, count=1, parallel_dim=0):
+    def quantize(self, inputs, qkv=True, count=1, parallel_dim=0, scale=None):
         if not self.q_int8 or not qkv:
             inputs = torch.nn.Parameter(inputs, requires_grad=False)
             inputs.scale = torch.empty(1)
             return inputs
+        if scale is not None and inputs.dtype == torch.int8:
+            input_flat = inputs.reshape(self.num_groups, -1).contiguous()
+            input_flat = input_flat * scale.view(-1)[:32].unsqueeze(1)
+            inputs = input_flat.reshape(inputs.shape).to(torch.half).contiguous()
         q_range = 2**self.num_bits
         inputs = inputs.to(torch.cuda.current_device())
         input_flat = inputs.reshape(self.num_groups, -1).contiguous()
@@ -157,7 +161,7 @@ class GroupQuantizer:
         inputs_q = input_flat.reshape(inputs.shape).to(torch.int8).contiguous()
         if self.num_bits == 4:
             int4_data = torch.empty(inputs_q.size(0), inputs_q.size(1) // 2, dtype=torch.uint8, device=inputs_q.device)
-            int4_data = (inputs_q[:, 1::2].to(torch.uint8)) | inputs_q[:, ::2]
+            int4_data = (inputs_q[:, 1::2].to(torch.uint8) << 4) | inputs_q[:, ::2]
             out = torch.nn.Parameter(int4_data, requires_grad=False)
         else:
             out = torch.nn.Parameter(inputs_q, requires_grad=False)
@@ -956,7 +960,7 @@ def replace_transformer_layer(orig_layer_impl,
                                      replace_fn=replace_fn,
                                      _replace_policy=policy)
 
-    quantizer = GroupQuantizer(q_int8=quantize)
+    quantizer = GroupQuantizer(q_int8=quantize, num_bits=quantization_bits)
     world_size = dist.get_world_size() if dist.is_initialized() else 1
     rank = dist.get_rank() if dist.is_initialized() else 0
     if checkpoint_dict is not None:
