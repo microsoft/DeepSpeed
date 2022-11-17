@@ -49,7 +49,8 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  local_rank=-1,
                  mp_size=1,
                  fp16=False,
-                 q_int8=False,
+                 quantize=False,
+                 quantization_bits=8,
                  pre_layer_norm=True,
                  stochastic_mode=False,
                  scale_attention=True,
@@ -78,7 +79,8 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.stochastic_mode = stochastic_mode
         self.epsilon = layer_norm_eps
         self.mp_size = mp_size
-        self.q_int8 = q_int8
+        self.quantize = quantize
+        self.quantization_bits = quantization_bits
         self.scale_attention = scale_attention
         self.triangular_masking = triangular_masking
         self.local_attention = local_attention

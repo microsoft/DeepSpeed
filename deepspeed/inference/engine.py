@@ -358,6 +358,7 @@ class InferenceEngine(Module):
                 training=False,
                 return_tuple=config.return_tuple,
                 quantize=(config.dtype == torch.int8),
+                quantization_bits=config.quantization_bits,
                 quantize_settings=(self.quantization_scales,
                                    self.quantize_merge_count,
                                    self.mlp_extra_grouping,

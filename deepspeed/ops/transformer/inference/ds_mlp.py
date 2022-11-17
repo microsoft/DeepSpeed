@@ -60,7 +60,8 @@ class DeepSpeedMLPFunction(Function):
                                              config.mlp_after_attn,
                                              inter_w.scale,
                                              output_w.scale,
-                                             config.q_int8,
+                                             config.quantize,
+                                             config.quantization_bits,
                                              config.mlp_act_func_type)
         residual = residual if config.pre_layer_norm else residual_add
         residual_add_func(
@@ -107,7 +108,7 @@ class DeepSpeedMLP(nn.Module):
                                     requires_grad=False)
         intm_size_per_partition = self.config.intermediate_size // self.config.mp_size
         self.inter_w = nn.Parameter(torch.empty(self.config.hidden_size,
-                                                intm_size_per_partition,
+                                                intm_size_per_partition // 2 if self.config.quantization_bits==4 else intm_size_per_partition,
                                                 dtype=data_type,
                                                 device=device),
                                     requires_grad=False)
@@ -116,7 +117,7 @@ class DeepSpeedMLP(nn.Module):
                                                 device=device),
                                     requires_grad=False)
         self.output_w = nn.Parameter(torch.empty(intm_size_per_partition,
-                                                 self.config.hidden_size,
+                                                 self.config.hidden_size // 2 if self.config.quantization_bits==4 else self.config.hidden_size,
                                                  dtype=data_type,
                                                  device=device),
                                      requires_grad=False)

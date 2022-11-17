@@ -137,9 +137,8 @@ def get_transformer_name(replaced_module):
 
 
 class GroupQuantizer:
-    def __init__(self, q_int8=True, num_groups=32, group_size=32, num_bits=8):
+    def __init__(self, q_int8=True, num_bits=8, num_groups=32):
         self.num_groups = num_groups
-        self.group_size = group_size
         self.num_bits = num_bits
         self.q_int8 = q_int8
 
@@ -156,7 +155,12 @@ class GroupQuantizer:
         scale = torch.max(input_min.abs(), input_max.abs()) * 2.0 / (q_range)
         input_flat = (input_flat / scale).round().clamp(-q_range // 2, q_range // 2 - 1)
         inputs_q = input_flat.reshape(inputs.shape).to(torch.int8).contiguous()
-        out = torch.nn.Parameter(inputs_q, requires_grad=False)
+        if self.num_bits == 4:
+            int4_data = torch.empty(inputs_q.size(0), inputs_q.size(1) // 2, dtype=torch.uint8, device=inputs_q.device)
+            int4_data = (inputs_q[:, 1::2].to(torch.uint8)) | inputs_q[:, ::2]
+            out = torch.nn.Parameter(int4_data, requires_grad=False)
+        else:
+            out = torch.nn.Parameter(inputs_q, requires_grad=False)
         #print(inputs.shape)
         inputs_split = inputs.split(inputs.shape[parallel_dim] // 2, dim=parallel_dim)
         input_flat = [
@@ -304,6 +308,7 @@ def replace_transformer_layer(orig_layer_impl,
                               stochastic_mode=True,
                               training=True,
                               quantize=False,
+                              quantization_bits=8,
                               quantize_settings=None,
                               triangular_masking=False,
                               return_tuple=True,
@@ -415,7 +420,7 @@ def replace_transformer_layer(orig_layer_impl,
 
         #expert_mp_replace = ReplaceWithTensorSlicing(mp_group=expert_mp_group)
 
-        quantizer = GroupQuantizer(q_int8=quantize)
+        quantizer = GroupQuantizer(q_int8=quantize, num_bits=quantization_bits)
         if inference:
             scale_attn_by_inverse_layer_idx = config.scale_attn_by_inverse_layer_idx if hasattr(
                 config,
@@ -457,7 +462,8 @@ def replace_transformer_layer(orig_layer_impl,
                     fp16=fp16,
                     pre_layer_norm=policy.pre_attn_norm,
                     mp_size=mp_size,
-                    q_int8=quantize,
+                    quantize=quantize,
+                    quantization_bits=quantization_bits,
                     return_tuple=(return_tuple or (policy_cls is HFBertLayerPolicy)),
                     triangular_masking=(policy_cls is not HFBertLayerPolicy),
                     local_attention=((config.attention_layers[layer_id] == "local")

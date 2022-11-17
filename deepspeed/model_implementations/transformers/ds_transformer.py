@@ -128,7 +128,7 @@ class DeepSpeedTransformerInference(nn.Module):
             input = input[0]
         input_type = input.dtype
 
-        if (self.config.fp16 or self.config.q_int8) \
+        if (self.config.fp16 or self.config.qunatize) \
             and input.dtype == torch.float:
             input = input.half()
 
