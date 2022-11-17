@@ -95,7 +95,7 @@ class DeepSpeedMLP(nn.Module):
         super(DeepSpeedMLP, self).__init__()
 
         self.config = config
-        data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.float
+        data_type = torch.int8 if config.quantize else torch.half if config.fp16 else torch.float
         data_type_fp = torch.half if config.fp16 else torch.float
         device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
         self.attn_nw = nn.Parameter(torch.empty(self.config.hidden_size,
@@ -145,10 +145,10 @@ class DeepSpeedMLP(nn.Module):
         self.fused_gemm_gelu = inference_cuda_module.fused_gemm_gelu_fp16 if config.fp16 else \
                                     inference_cuda_module.fused_gemm_gelu_fp32
 
-        self.bias_residual_func = inference_cuda_module.bias_residual_fp16 if config.fp16 or config.q_int8 else \
+        self.bias_residual_func = inference_cuda_module.bias_residual_fp16 if config.fp16 or config.quantize else \
                                     inference_cuda_module.bias_residual_fp32
 
-        self.residual_add_func = inference_cuda_module.residual_add_bias_fp16 if config.fp16 or config.q_int8 else \
+        self.residual_add_func = inference_cuda_module.residual_add_bias_fp16 if config.fp16 or config.quantize else \
                                     inference_cuda_module.residual_add_bias_fp32
 
     def forward(self, input, residual, residual_norm, bias):

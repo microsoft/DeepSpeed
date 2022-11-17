@@ -182,7 +182,7 @@ __global__ void dequantize_kernel_4bits(__half* output,
     float local_scale = qscale[blockIdx.x];
 
     const float* input_cast = reinterpret_cast<const float*>(input);
-    float4* output_cast = reinterpret_cast<float2*>(output);
+    float4* output_cast = reinterpret_cast<float4*>(output);
 
     input_cast += bid * merge_hidden;
     output_cast += bid * merge_hidden;
@@ -210,7 +210,7 @@ __global__ void dequantize_kernel_4bits(__half* output,
 }
 
 template <typename T>
-void launch_dequantize(T* output,
+void launch_dequantize_v2(T* output,
                        const int8_t* input,
                        const float* qscale,
                        unsigned output_size,
@@ -237,7 +237,7 @@ void launch_dequantize(T* output,
             output, input, qscale, hidden_dim, hid_cnt * hidden_dim, thd_cnt);
 }
 
-template void launch_dequantize<float>(float*,
+template void launch_dequantize_v2<float>(float*,
                                        const int8_t*,
                                        const float*,
                                        unsigned,
@@ -245,7 +245,7 @@ template void launch_dequantize<float>(float*,
                                        unsigned,
                                        int,
                                        cudaStream_t);
-template void launch_dequantize<__half>(__half*,
+template void launch_dequantize_v2<__half>(__half*,
                                         const int8_t*,
                                         const float*,
                                         unsigned,

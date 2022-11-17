@@ -769,7 +769,7 @@ void quantized_gemm(void* output,
     T* weight16 = (T*)Context::Instance().GetWorkSpace() +
                   12 * Context::Instance().GetMaxTokenLenght() * weight.size(1);
 
-    launch_dequantize(weight16,
+    launch_dequantize_v2(weight16,
                       (int8_t*)weight.data_ptr(),
                       (float*)qscale.data_ptr(),
                       weight.size(0),
@@ -778,7 +778,7 @@ void quantized_gemm(void* output,
                       q_bits,
                       Context::Instance().GetCurrentStream());
 
-    int out_size = quantize ? weight.size(0) : weight.size(1);
+    int out_size = weight.size(0);
     if (q_bits == 4) out_size *= 2;
     float alpha = (T)1.0;
     float gemm_beta = (T)0.0;
@@ -1286,7 +1286,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                               ActivationFuncType act_func_type)
 {
     int bsz = input.size(0) * input.size(1);
-    int out_size = quantize ? weight_out.size(0) : weight_out.size(1);
+    int out_size = quantize ? weight.size(0) : weight.size(1);
     if (q_bits == 4) out_size *= 2;
     T* inp_norm =
         (T*)Context::Instance().GetWorkSpace() + torch::numel(input) + torch::numel(output);
@@ -1344,9 +1344,9 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                          bsz,
                          Context::Instance().GetCurrentStream());
     }
-    if (quanitze) {
+    if (quantize) {
         quantized_gemm<T>(
-            output.data_ptr(), intermediate, weight1, q_scale1, q_scale1.size(0), bsz);
+            output.data_ptr(), intermediate, weight1, q_scale1, q_scale1.size(0), bsz, q_bits);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
