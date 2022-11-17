@@ -1149,6 +1149,7 @@ def get_model_profile(
     as_string=True,
     output_file=None,
     ignore_modules=None,
+    mode='forward'
 ):
     """Returns the total floating-point operations, MACs, and parameters of a model.
 
@@ -1196,18 +1197,29 @@ def get_model_profile(
 
         args = [input]
     assert (len(args) > 0) or (len(kwargs) > 0), "args and/or kwargs must be specified if input_shape is None"
-
     for _ in range(warm_up):
         if kwargs:
-            _ = model(*args, **kwargs)
+            if mode == 'forward':
+                _ = model(*args, **kwargs)
+            if mode == 'generate':
+                _ = model.generate(*args, **kwargs)
         else:
-            _ = model(*args)
+            if mode == 'forward':
+                _ = model(*args)
+            if mode == 'generate':
+                _ = model.generate(*args)
     prof.start_profile(ignore_list=ignore_modules)
 
     if kwargs:
-        _ = model(*args, **kwargs)
+        if mode == 'forward':
+            _ = model(*args, **kwargs)
+        if mode == 'generate':
+            _ = model.generate(*args, **kwargs)
     else:
-        _ = model(*args)
+        if mode == 'forward':
+            _ = model(*args)
+        if mode == 'generate':
+            _ = model.generate(*args)
 
     flops = prof.get_total_flops()
     macs = prof.get_total_macs()
