@@ -478,47 +478,40 @@ def _prod(dims):
     return p
 
 
-def torch_numel(tensor):
-    n = torch.numel(tensor)
-    if isinstance(n, torch.Tensor):
-        n = n.item()
-    return n
-
-
 def _linear_flops_compute(input, weight, bias=None):
     out_features = weight.shape[0]
-    macs = torch_numel(input) * out_features
+    macs = input.numel() * out_features
     return 2 * macs, macs
 
 
 def _relu_flops_compute(input, inplace=False):
-    return torch_numel(input), 0
+    return input.numel(), 0
 
 
 def _prelu_flops_compute(input: Tensor, weight: Tensor):
-    return torch_numel(input), 0
+    return input.numel(), 0
 
 
 def _elu_flops_compute(input: Tensor, alpha: float = 1.0, inplace: bool = False):
-    return torch_numel(input), 0
+    return input.numel(), 0
 
 
 def _leaky_relu_flops_compute(input: Tensor,
                               negative_slope: float = 0.01,
                               inplace: bool = False):
-    return torch_numel(input), 0
+    return input.numel(), 0
 
 
 def _relu6_flops_compute(input: Tensor, inplace: bool = False):
-    return torch_numel(input), 0
+    return input.numel(), 0
 
 
 def _silu_flops_compute(input: Tensor, inplace: bool = False):
-    return torch_numel(input), 0
+    return input.numel(), 0
 
 
 def _gelu_flops_compute(input):
-    return torch_numel(input), 0
+    return input.numel(), 0
 
 
 def _pool_flops_compute(input,
@@ -530,7 +523,7 @@ def _pool_flops_compute(input,
                         count_include_pad=True,
                         divisor_override=None,
                         return_indices=None):
-    return torch_numel(input), 0
+    return input.numel(), 0
 
 
 def _conv_flops_compute(input,
@@ -632,8 +625,8 @@ def _batch_norm_flops_compute(
     has_affine = weight is not None
     if training:
         # estimation
-        return torch_numel(input) * (5 if has_affine else 4), 0
-    flops = torch_numel(input) * (2 if has_affine else 1)
+        return input.numel() * (5 if has_affine else 4), 0
+    flops = input.numel() * (2 if has_affine else 1)
     return flops, 0
 
 
@@ -646,7 +639,7 @@ def _layer_norm_flops_compute(
 ):
     has_affine = weight is not None
     # estimation
-    return torch_numel(input) * (5 if has_affine else 4), 0
+    return input.numel() * (5 if has_affine else 4), 0
 
 
 def _group_norm_flops_compute(input: Tensor,
@@ -656,7 +649,7 @@ def _group_norm_flops_compute(input: Tensor,
                               eps: float = 1e-5):
     has_affine = weight is not None
     # estimation
-    return torch_numel(input) * (5 if has_affine else 4), 0
+    return input.numel() * (5 if has_affine else 4), 0
 
 
 def _instance_norm_flops_compute(
@@ -671,7 +664,7 @@ def _instance_norm_flops_compute(
 ):
     has_affine = weight is not None
     # estimation
-    return torch_numel(input) * (5 if has_affine else 4), 0
+    return input.numel() * (5 if has_affine else 4), 0
 
 
 def _upsample_flops_compute(input,
@@ -685,7 +678,7 @@ def _upsample_flops_compute(input,
         else:
             return int(size), 0
     assert scale_factor is not None, "either size or scale_factor should be defined"
-    flops = torch_numel(input)
+    flops = input.numel()
     if isinstance(scale_factor, tuple) and len(scale_factor) == len(input):
         flops * int(_prod(scale_factor))
     else:
@@ -694,7 +687,7 @@ def _upsample_flops_compute(input,
 
 
 def _softmax_flops_compute(input, dim=None, _stacklevel=3, dtype=None):
-    return torch_numel(input), 0
+    return input.numel(), 0
 
 
 def _embedding_flops_compute(
