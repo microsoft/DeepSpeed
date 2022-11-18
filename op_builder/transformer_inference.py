@@ -37,7 +37,7 @@ class InferenceBuilder(CUDAOpBuilder):
             'csrc/transformer/inference/csrc/pt_binding.cpp',
             'csrc/transformer/inference/csrc/gelu.cu',
             'csrc/transformer/inference/csrc/relu.cu',
-            'csrc/transformer/inference/csrc/normalize.cu',
+            'csrc/transformer/inference/csrc/layer_norm.cu',
             'csrc/transformer/inference/csrc/softmax.cu',
             'csrc/transformer/inference/csrc/dequantize.cu',
             'csrc/transformer/inference/csrc/apply_rotary_pos_emb.cu',
