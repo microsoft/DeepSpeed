@@ -193,6 +193,9 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         else:
             return False
 
+    def op_builder_dir(self):
+        return "deepspeed.ops.op_builder"
+
     def create_op_builder(self, class_name):
         from deepspeed.ops.op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
         from deepspeed.ops.op_builder.builder_names import AsyncIOBuilder as AsyncIOBuilderName
