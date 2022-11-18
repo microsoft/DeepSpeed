@@ -427,7 +427,9 @@ def replace_transformer_layer(orig_layer_impl,
 
         #expert_mp_replace = ReplaceWithTensorSlicing(mp_group=expert_mp_group)
 
-        quantizer = GroupQuantizer(q_int8=quantize, num_bits=quantization_bits, num_groups=num_groups)
+        quantizer = GroupQuantizer(q_int8=quantize,
+                                   num_bits=quantization_bits,
+                                   num_groups=num_groups)
         if inference:
             scale_attn_by_inverse_layer_idx = config.scale_attn_by_inverse_layer_idx if hasattr(
                 config,
@@ -963,7 +965,9 @@ def replace_transformer_layer(orig_layer_impl,
                                      replace_fn=replace_fn,
                                      _replace_policy=policy)
 
-    quantizer = GroupQuantizer(q_int8=quantize, num_bits=quantization_bits, num_groups=num_groups)
+    quantizer = GroupQuantizer(q_int8=quantize,
+                               num_bits=quantization_bits,
+                               num_groups=num_groups)
     world_size = dist.get_world_size() if dist.is_initialized() else 1
     rank = dist.get_rank() if dist.is_initialized() else 0
     if checkpoint_dict is not None:

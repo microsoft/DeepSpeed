@@ -134,7 +134,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     Desired model data type, will convert model to this type.
     Supported target types: torch.half, torch.int8, torch.float
     """
-    
+
     quantization_bits: int = 8
     """
     Number of bits used to quantize the model using ZeroQuant technology

@@ -66,8 +66,11 @@ def load_model_with_checkpoint(r_module,
                                         q_int8 else tmp_data)
                                 else:
 
-                                    p = weight_quantizer.quantize(torch.nn.parameter.Parameter(tmp_data,
-                                                                     requires_grad=False), scale=scale)
+                                    p = weight_quantizer.quantize(
+                                        torch.nn.parameter.Parameter(
+                                            tmp_data,
+                                            requires_grad=False),
+                                        scale=scale)
                                 setattr(module, n, p)
                             else:
                                 dim = inner_dim if src_shape[inner_dim] != dst_shape[
@@ -93,9 +96,14 @@ def load_model_with_checkpoint(r_module,
                                     if tmp_data.dtype == torch.int8:
                                         for j in range(len(sd)):
                                             inputs, scal = sd[j][prefix + n]
-                                            input_flat = inputs.to('cpu').reshape(scal.shape[0], -1).contiguous()
-                                            input_flat = input_flat * scal.view(-1)[:scal.shape[0]].unsqueeze(1)
-                                            sd[j][prefix + n] = input_flat.reshape(inputs.shape).to(torch.half).contiguous()
+                                            input_flat = inputs.to('cpu').reshape(
+                                                scal.shape[0],
+                                                -1).contiguous()
+                                            input_flat = input_flat * scal.view(
+                                                -1)[:scal.shape[0]].unsqueeze(1)
+                                            sd[j][prefix + n] = input_flat.reshape(
+                                                inputs.shape).to(
+                                                    torch.half).contiguous()
                                     all_data = [
                                         sd[j][prefix +
                                               n] if type(sd[j][prefix + n]) is list else
@@ -103,8 +111,8 @@ def load_model_with_checkpoint(r_module,
                                         for j in range(len(sd))
                                     ]
                                     weight_partition = torch.cat([
-                                        ad[0]
-                                        if type(ad) is list else ad for ad in all_data
+                                        ad[0] if type(ad) is list else ad
+                                        for ad in all_data
                                     ],
                                                                  dim=dim)
                                     scale = None
@@ -116,9 +124,11 @@ def load_model_with_checkpoint(r_module,
                                         parallel_dim=(0 if dim == 1 else 1)) if weight_quantizer.q_int8 else \
                                         weight_quantizer.quantize(weight_partition)
                                 else:
-                                    weight_partition = weight_quantizer.quantize(torch.nn.parameter.Parameter(
-                                        weight_partition,
-                                        requires_grad=False), scale=scale)
+                                    weight_partition = weight_quantizer.quantize(
+                                        torch.nn.parameter.Parameter(
+                                            weight_partition,
+                                            requires_grad=False),
+                                        scale=scale)
                                 setattr(module, n, weight_partition)
                         else:
                             if src_shape[0] == dst_shape[0]:

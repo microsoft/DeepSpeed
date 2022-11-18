@@ -236,7 +236,7 @@ void launch_dequantize_v2(T* output,
     dim3 block_dims(threads);
     dim3 grid_dims(groups, blocks);
 
-    if (q_bits == 4) 
+    if (q_bits == 4)
         dequantize_kernel_4bits<<<grid_dims, block_dims, 0, stream>>>(
             output, input, qscale, hidden_dim, hid_cnt * hidden_dim, thd_cnt);
     else
@@ -324,7 +324,7 @@ void launch_dequantize_v2(T* output,
     dim3 block_dims(threads);
     dim3 grid_dims(1, blocks);
 
-    if (q_bits == 4) 
+    if (q_bits == 4)
         dequantize_kernel_4bits<<<grid_dims, block_dims, 0, stream>>>(
             output, input, hidden_dim, hid_cnt * hidden_dim, thd_cnt);
 }
@@ -341,4 +341,3 @@ template void launch_dequantize_v2<__half>(__half*,
                                         unsigned,
                                         int,
                                         cudaStream_t);
-

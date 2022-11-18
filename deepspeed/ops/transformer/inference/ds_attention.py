@@ -173,7 +173,6 @@ class DeepSpeedSelfAttentionFunction(Function):
 
             context_layer = _transpose_for_context(context_layer)
 
-
             return context_layer, presents
 
         ###################### End of HF modeling_bloom addition ########################
@@ -337,7 +336,6 @@ class DeepSpeedSelfAttentionFunction(Function):
                                         config.quantize,
                                         config.quantization_bits)
 
-
             return output, key_layer, value_layer, context_layer, qkv_out[-1]
 
         def selfAttention_int8():
@@ -403,20 +401,24 @@ class DeepSpeedSelfAttention(nn.Module):
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
         device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
         qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
-        self.attn_qkvw = nn.Parameter(torch.empty(self.config.hidden_size,
-                                                  qkv_size_per_partition // 2 if self.config.quantization_bits==4 else qkv_size_per_partition,
-                                                  dtype=data_type,
-                                                  device=device),
+        self.attn_qkvw = nn.Parameter(torch.empty(
+            self.config.hidden_size,
+            qkv_size_per_partition //
+            2 if self.config.quantization_bits == 4 else qkv_size_per_partition,
+            dtype=data_type,
+            device=device),
                                       requires_grad=False)
         self.attn_qkvb = nn.Parameter(torch.empty(qkv_size_per_partition,
                                                   dtype=data_type_fp,
                                                   device=device),
                                       requires_grad=False)
         out_size_per_partition = self.config.hidden_size // self.config.mp_size
-        self.attn_ow = nn.Parameter(torch.empty(out_size_per_partition,
-                                                self.config.hidden_size // 2 if self.config.quantization_bits==4 else self.config.hidden_size,
-                                                dtype=data_type,
-                                                device=device),
+        self.attn_ow = nn.Parameter(torch.empty(
+            out_size_per_partition,
+            self.config.hidden_size //
+            2 if self.config.quantization_bits == 4 else self.config.hidden_size,
+            dtype=data_type,
+            device=device),
                                     requires_grad=False)
 
         self.attn_ob = nn.Parameter(torch.empty(self.config.hidden_size,

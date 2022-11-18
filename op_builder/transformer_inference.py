@@ -44,6 +44,7 @@ class InferenceBuilder(CUDAOpBuilder):
             'csrc/transformer/inference/csrc/transform.cu',
         ]
 
+
 #    def extra_ldflags(self):
 #        if not self.is_rocm_pytorch():
 #            return ['-lcurand']

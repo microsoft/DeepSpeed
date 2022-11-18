@@ -108,19 +108,23 @@ class DeepSpeedMLP(nn.Module):
                                                 device=device),
                                     requires_grad=False)
         intm_size_per_partition = self.config.intermediate_size // self.config.mp_size
-        self.inter_w = nn.Parameter(torch.empty(self.config.hidden_size,
-                                                intm_size_per_partition // 2 if self.config.quantization_bits==4 else intm_size_per_partition,
-                                                dtype=data_type,
-                                                device=device),
+        self.inter_w = nn.Parameter(torch.empty(
+            self.config.hidden_size,
+            intm_size_per_partition //
+            2 if self.config.quantization_bits == 4 else intm_size_per_partition,
+            dtype=data_type,
+            device=device),
                                     requires_grad=False)
         self.inter_b = nn.Parameter(torch.empty(intm_size_per_partition,
                                                 dtype=data_type_fp,
                                                 device=device),
                                     requires_grad=False)
-        self.output_w = nn.Parameter(torch.empty(intm_size_per_partition,
-                                                 self.config.hidden_size // 2 if self.config.quantization_bits==4 else self.config.hidden_size,
-                                                 dtype=data_type,
-                                                 device=device),
+        self.output_w = nn.Parameter(torch.empty(
+            intm_size_per_partition,
+            self.config.hidden_size //
+            2 if self.config.quantization_bits == 4 else self.config.hidden_size,
+            dtype=data_type,
+            device=device),
                                      requires_grad=False)
         self.output_b = nn.Parameter(torch.empty(self.config.hidden_size,
                                                  dtype=data_type_fp,
