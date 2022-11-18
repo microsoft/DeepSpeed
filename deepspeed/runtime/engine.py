@@ -2097,6 +2097,7 @@ class DeepSpeedEngine(Module):
             msg["throughput"] = self.train_batch_size() * 1000 / \
                 msg["latency"]
             print_json_dist(msg, [0], path=self.autotuning_metric_path())
+            log_dist(f"Wrote metrics to {self.autotuning_metric_path()}, {os.path.abspath(self.autotuning_metric_path())}", ranks=[0])
             import atexit
             atexit.register(print, "Autotuning: done with running current ds config.")
         exit()

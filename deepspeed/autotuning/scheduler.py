@@ -8,6 +8,7 @@ import threading
 import time
 import base64
 
+import os
 import hjson
 from tqdm import tqdm
 
@@ -336,21 +337,27 @@ def run_experiment(exp: dict, reservations, user_script, user_args):
     exp["job_id"] = get_job_id()
     exp_dir = exp["result_dir"]
     os.makedirs(exp_dir, exist_ok=True)
+    ds_config_path = os.path.join(exp_dir, "ds_config.json")
+    exp["ds_config_path"] = ds_config_path
 
     ds_config = copy.deepcopy(exp["ds_config"])
     ds_config_json = json.dumps(ds_config).encode('utf-8')
 
-    exp["ds_config_path"] = os.path.join(exp_dir, "ds_config.json")
     exp["ds_config_base64"] = base64.urlsafe_b64encode(ds_config_json).decode('utf-8')
 
     with open(exp["ds_config_path"], "w", buffering=BUFSIZE) as fd:
         json.dump(ds_config, fd)
         fd.flush()
         os.fsync(fd)
+        path = exp["ds_config_path"]
+        logger.info(f"Scheduler wrote ds_config to {path}, {os.path.abspath(path)}")
+
     with open(os.path.join(exp_dir, "exp.json"), "w", buffering=BUFSIZE) as fd:
         json.dump(exp, fd)
         fd.flush()
         os.fsync(fd)
+        path = os.path.join(exp_dir, "exp.json")
+        logger.info(f"Scheduler wrote exp to {path}, {os.path.abspath(path)}")
 
     # remove "--deepspeed_config ds_config.json" from user_args
     if user_args:
@@ -378,7 +385,7 @@ def run_experiment(exp: dict, reservations, user_script, user_args):
         os.fsync(fd)
 
     logger.info(
-        f"Launching exp_id = {exp['exp_id']}, exp_name = {exp['name']}, with resource = {include_str}"
+        f"Launching exp_id = {exp['exp_id']}, exp_name = {exp['name']}, with resource = {include_str}, and ds_config = {os.path.abspath(ds_config_path)}"
     )
 
     with open(os.path.join(exp_dir, "stdout.log"), "wb") as out, open(
