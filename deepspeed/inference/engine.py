@@ -23,6 +23,7 @@ from ..runtime.zero import GatheredParameters
 from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
 from ..module_inject.replace_policy import DSPolicy
 from ..module_inject.parser_policies import ParserPolicies
+import import_string
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -125,7 +126,9 @@ class InferenceEngine(Module):
             key = ParserPolicies.get_map_key(str(model))
             assert key in ParserPolicies.parser_policy_map, "dict replace method not supported for this model"
             for client_module, injection_policy in ParserPolicies.parser_policy_map[key].items():
-                # construct the tuple and pass that instead of a string or dict.
+                client_module = import_string('transformers.models.' + key +
+                                              '.modeling_' + key + ':' + client_module,
+                                              silent=True)
                 if isinstance(injection_policy, str):
                     config.injection_policy_tuple = (injection_policy, )
                 else:

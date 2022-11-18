@@ -113,5 +113,7 @@ class ParserPolicies():
     )
 
     def get_map_key(model):
-        key = re.search(": (.*?)Model", model)
+        key = re.search(r": (.*?)Model", model)
+        if key is None:
+            key = re.search(r": (.*?)Stack", model)
         return key.group(1).lower()
