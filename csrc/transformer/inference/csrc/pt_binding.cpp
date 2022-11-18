@@ -1762,7 +1762,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("allocate_workspace_fp16",
           &allocate_workspace<__half>,
           "DeepSpeed memory allocation for GPT inference with fp16 (CUDA)");
-
     m.def("dequantize_fp16", &dequantize<half>, "dequantize fp16");
     m.def("dequantize_fp32", &dequantize<float>, "dequantize fp32");
 }

@@ -68,8 +68,6 @@ def load_model_with_checkpoint(r_module,
 
                                     p = weight_quantizer.quantize(torch.nn.parameter.Parameter(tmp_data,
                                                                      requires_grad=False), scale=scale)
-                                    #p.scale = scale
-
                                 setattr(module, n, p)
                             else:
                                 dim = inner_dim if src_shape[inner_dim] != dst_shape[
@@ -121,7 +119,6 @@ def load_model_with_checkpoint(r_module,
                                     weight_partition = weight_quantizer.quantize(torch.nn.parameter.Parameter(
                                         weight_partition,
                                         requires_grad=False), scale=scale)
-                                    #weight_partition.scale = scale
                                 setattr(module, n, weight_partition)
                         else:
                             if src_shape[0] == dst_shape[0]:

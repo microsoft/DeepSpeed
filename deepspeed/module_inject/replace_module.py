@@ -134,11 +134,11 @@ def get_transformer_name(replaced_module):
                     break
             break
     return transformer_name
-iter1 = 1
+
 
 class GroupQuantizer:
     def __init__(self, q_int8=True, num_bits=8, num_groups=32):
-        self.num_groups = 128 #num_groups
+        self.num_groups = num_groups
         self.num_bits = num_bits
         self.q_int8 = q_int8
 
@@ -164,17 +164,10 @@ class GroupQuantizer:
         input_flat = (input_flat / scale).round().clamp(-q_range // 2, q_range // 2 - 1)
         inputs_q = input_flat.reshape(inputs.shape).to(torch.int).contiguous()
         if self.num_bits < 8:
-            #global iter1
-            #iter1 += 1
-            #int4_data = torch.empty(inputs_q.size(0), inputs_q.size(1) // 2, dtype=torch.uint8, device=inputs_q.device)
             int4_data = ((inputs_q[:, 1::2].to(torch.uint8) << 4) | (inputs_q[:, ::2] & 0xf).to(torch.uint8)).to(torch.uint8).reshape(inputs.shape[0]//2, inputs.shape[1])
             out = torch.nn.Parameter(int4_data, requires_grad=False)
-            #print(f'{inputs_q} \n ---------------------------- \n {out}')
-            #if iter1 == 4:
-            #    exit()
         else:
             out = torch.nn.Parameter(inputs_q, requires_grad=False)
-        #print(inputs.shape)
         inputs_split = inputs.split(inputs.shape[parallel_dim] // 2, dim=parallel_dim)
         input_flat = [
             inputs_split[i].reshape(self.num_groups,
@@ -322,6 +315,7 @@ def replace_transformer_layer(orig_layer_impl,
                               training=True,
                               quantize=False,
                               quantization_bits=8,
+                              num_groups=256,
                               quantize_settings=None,
                               triangular_masking=False,
                               return_tuple=True,
@@ -433,7 +427,7 @@ def replace_transformer_layer(orig_layer_impl,
 
         #expert_mp_replace = ReplaceWithTensorSlicing(mp_group=expert_mp_group)
 
-        quantizer = GroupQuantizer(q_int8=quantize, num_bits=quantization_bits)
+        quantizer = GroupQuantizer(q_int8=quantize, num_bits=quantization_bits, num_groups=num_groups)
         if inference:
             scale_attn_by_inverse_layer_idx = config.scale_attn_by_inverse_layer_idx if hasattr(
                 config,
@@ -969,7 +963,7 @@ def replace_transformer_layer(orig_layer_impl,
                                      replace_fn=replace_fn,
                                      _replace_policy=policy)
 
-    quantizer = GroupQuantizer(q_int8=quantize, num_bits=quantization_bits)
+    quantizer = GroupQuantizer(q_int8=quantize, num_bits=quantization_bits, num_groups=num_groups)
     world_size = dist.get_world_size() if dist.is_initialized() else 1
     rank = dist.get_rank() if dist.is_initialized() else 0
     if checkpoint_dict is not None:

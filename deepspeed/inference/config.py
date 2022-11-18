@@ -136,6 +136,14 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     """
     
     quantization_bits: int = 8
+    """
+    Number of bits used to quantize the model using ZeroQuant technology
+    """
+
+    num_groups: int = 256
+    """
+    Number of groups used to quantize the model using ZeroQuant technology
+    """
 
     tensor_parallel: DeepSpeedTPConfig = Field({}, alias="tp")
     """

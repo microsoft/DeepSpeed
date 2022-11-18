@@ -172,7 +172,6 @@ __global__ void dequantize_kernel_4bits(float* output,
 
 
 struct PackedInt4 {
-
     int8_t low : 4;
     int8_t high : 4;
 };
