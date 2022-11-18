@@ -726,7 +726,7 @@ class DeepSpeedConfig(object):
                 self._param_dict = json.loads(config_decoded)
             except (UnicodeDecodeError, AttributeError):
                 raise ValueError(
-                    f"Expected a string path to an existing deepspeed config, or a dictionary. Received: {config}"
+                    f"Expected a string path to an existing deepspeed config, or a dictionary or a valid base64. Received: {config}"
                 )
         try:
             self.global_rank = dist.get_rank()
