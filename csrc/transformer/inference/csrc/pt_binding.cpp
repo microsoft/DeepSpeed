@@ -758,6 +758,27 @@ std::vector<at::Tensor> ds_layer_norm_residual_store(at::Tensor& input,
 }
 
 template <typename T>
+at::Tensor dequantize(at::Tensor& weight,
+                    int q_bits)
+{
+    auto options = at::TensorOptions()
+                       .dtype(at::kHalf)
+                       .layout(at::kStrided)
+                       .device(at::kCUDA)
+                       .requires_grad(false);
+
+    auto out = torch::empty(
+            {weight.size(0), weight.size(1) * 2}, options);
+    launch_dequantize_v2((T*)out.data_ptr(),
+                      (int8_t*)weight.data_ptr(),
+                      weight.size(0),
+                      weight.size(1),
+                      q_bits,
+                      Context::Instance().GetCurrentStream());
+    return out;
+}
+
+template <typename T>
 void quantized_gemm(void* output,
                     T* input,
                     at::Tensor& weight,
@@ -768,18 +789,18 @@ void quantized_gemm(void* output,
 {
     T* weight16 = (T*)Context::Instance().GetWorkSpace() +
                   12 * Context::Instance().GetMaxTokenLenght() * weight.size(1);
-
+    int out_size = weight.size(0);
+    if (q_bits == 4) out_size *= 2;
     launch_dequantize_v2(weight16,
                       (int8_t*)weight.data_ptr(),
                       (float*)qscale.data_ptr(),
-                      weight.size(0),
+                      out_size,
                       weight.size(1),
                       groups,
                       q_bits,
                       Context::Instance().GetCurrentStream());
 
-    int out_size = weight.size(0);
-    if (q_bits == 4) out_size *= 2;
+
     float alpha = (T)1.0;
     float gemm_beta = (T)0.0;
     cublas_gemm_ex(Context::Instance().GetCublasHandle(),
@@ -1741,4 +1762,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("allocate_workspace_fp16",
           &allocate_workspace<__half>,
           "DeepSpeed memory allocation for GPT inference with fp16 (CUDA)");
+
+    m.def("dequantize_fp16", &dequantize<half>, "dequantize fp16");
+    m.def("dequantize_fp32", &dequantize<float>, "dequantize fp32");
 }

@@ -157,6 +157,7 @@ class DeepSpeedTransformerInference(nn.Module):
                                                           self.config.epsilon)
 
             output = output.to(input_type)
+        #print(output.shape, presents[0].shape)
         if get_present:
             output = (output, presents)
 

@@ -158,6 +158,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                 offset,
                 config.mp_size)
             # change view [batch_size x num_heads, q_length, k_length]
+
             attention_probs_reshaped = attention_probs.view(*matmul_result.shape)
 
             # matmul: [batch_size * num_heads, q_length, head_dim]
@@ -171,6 +172,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                 context_layer.shape[-1])
 
             context_layer = _transpose_for_context(context_layer)
+
 
             return context_layer, presents
 
@@ -326,6 +328,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                    dist.get_rank() if dist.is_initialized() else 0,
                                    config.quantize,
                                    config.quantization_bits)
+
             context_layer, key_layer, value_layer = compute_attention(qkv_out[0] if isinstance(qkv_out, list) else qkv_out, input_mask)
             output = vector_matmul_func(context_layer,
                                         attn_ow,
@@ -333,6 +336,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                         attn_ow.scale,
                                         config.quantize,
                                         config.quantization_bits)
+
 
             return output, key_layer, value_layer, context_layer, qkv_out[-1]
 
@@ -356,6 +360,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                     q_scales[0],
                     (q_groups * (3 if qkv_merging else 1) * (2**merge_count)),
                     (attn_qkvb is not None))
+
             context_layer, key_layer, value_layer = compute_attention(qkv_out)
             output = inference_cuda_module.vector_matmul_int8(context_layer,
                                                               attn_ow,

@@ -134,11 +134,11 @@ def get_transformer_name(replaced_module):
                     break
             break
     return transformer_name
-
+iter1 = 1
 
 class GroupQuantizer:
     def __init__(self, q_int8=True, num_bits=8, num_groups=32):
-        self.num_groups = num_groups
+        self.num_groups = 128 #num_groups
         self.num_bits = num_bits
         self.q_int8 = q_int8
 
@@ -147,10 +147,14 @@ class GroupQuantizer:
             inputs = torch.nn.Parameter(inputs, requires_grad=False)
             inputs.scale = torch.empty(1)
             return inputs
-        if scale is not None and inputs.dtype == torch.int8:
-            input_flat = inputs.reshape(self.num_groups, -1).contiguous()
+        if scale is not None and inputs.dtype == torch.int8 and self.num_bits < 8:
+            input_flat = inputs.reshape(32, -1).contiguous()
             input_flat = input_flat * scale.view(-1)[:32].unsqueeze(1)
             inputs = input_flat.reshape(inputs.shape).to(torch.half).contiguous()
+        elif inputs.dtype != torch.half:
+            inputs = torch.nn.Parameter(inputs, requires_grad=False)
+            inputs.scale = scale
+            return inputs
         q_range = 2**self.num_bits
         inputs = inputs.to(torch.cuda.current_device())
         input_flat = inputs.reshape(self.num_groups, -1).contiguous()
@@ -158,11 +162,16 @@ class GroupQuantizer:
         input_max = torch.max(input_flat, dim=1, keepdim=True)[0].float()
         scale = torch.max(input_min.abs(), input_max.abs()) * 2.0 / (q_range)
         input_flat = (input_flat / scale).round().clamp(-q_range // 2, q_range // 2 - 1)
-        inputs_q = input_flat.reshape(inputs.shape).to(torch.int8).contiguous()
-        if self.num_bits == 4:
-            int4_data = torch.empty(inputs_q.size(0), inputs_q.size(1) // 2, dtype=torch.uint8, device=inputs_q.device)
-            int4_data = (inputs_q[:, 1::2].to(torch.uint8) << 4) | inputs_q[:, ::2]
+        inputs_q = input_flat.reshape(inputs.shape).to(torch.int).contiguous()
+        if self.num_bits < 8:
+            #global iter1
+            #iter1 += 1
+            #int4_data = torch.empty(inputs_q.size(0), inputs_q.size(1) // 2, dtype=torch.uint8, device=inputs_q.device)
+            int4_data = ((inputs_q[:, 1::2].to(torch.uint8) << 4) | (inputs_q[:, ::2] & 0xf).to(torch.uint8)).to(torch.uint8).reshape(inputs.shape[0]//2, inputs.shape[1])
             out = torch.nn.Parameter(int4_data, requires_grad=False)
+            #print(f'{inputs_q} \n ---------------------------- \n {out}')
+            #if iter1 == 4:
+            #    exit()
         else:
             out = torch.nn.Parameter(inputs_q, requires_grad=False)
         #print(inputs.shape)

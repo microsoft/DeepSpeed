@@ -63,6 +63,7 @@ class DeepSpeedMLPFunction(Function):
                                              config.quantize,
                                              config.quantization_bits,
                                              config.mlp_act_func_type)
+
         residual = residual if config.pre_layer_norm else residual_add
         residual_add_func(
             output,                # hidden state
