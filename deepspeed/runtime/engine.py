@@ -1127,13 +1127,13 @@ class DeepSpeedEngine(Module):
 
     def _do_optimizer_sanity_check(self, basic_optimizer):
         model_dtype, grad_accum_dtype = self.get_data_types()
-        zero = self.zero_optimization()
-        amp = self.amp_enabled()
+        zero_enabled = self.zero_optimization()
+        amp_enabled = self.amp_enabled()
         # config based assertions
         assert (
-            not (amp and zero)
+            not (amp_enabled and zero_enabled)
         ), "Amp and ZeRO are not currently compatible, please use (legacy) fp16 mode which performs similar to amp opt_mode=O2"
-        if zero:
+        if zero_enabled:
             if model_dtype != grad_accum_dtype:
                 raise NotImplementedError(
                     "Model data type and gradient accumulation data type must be equal to use ZeRO"
@@ -1150,7 +1150,7 @@ class DeepSpeedEngine(Module):
                         "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
                     )
             return 'zero'
-        elif amp:
+        elif amp_enabled:
             if model_dtype != grad_accum_dtype:
                 raise NotImplementedError(
                     "Model data type and gradient accumulation data type must be equal to use Amp"
