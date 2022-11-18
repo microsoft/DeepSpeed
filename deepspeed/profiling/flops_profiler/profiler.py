@@ -1136,21 +1136,19 @@ def get_module_duration(module):
     return duration
 
 
-def get_model_profile(
-    model,
-    input_shape=None,
-    args=[],
-    kwargs={},
-    print_profile=True,
-    detailed=True,
-    module_depth=-1,
-    top_modules=1,
-    warm_up=1,
-    as_string=True,
-    output_file=None,
-    ignore_modules=None,
-    mode='forward'
-):
+def get_model_profile(model,
+                      input_shape=None,
+                      args=[],
+                      kwargs={},
+                      print_profile=True,
+                      detailed=True,
+                      module_depth=-1,
+                      top_modules=1,
+                      warm_up=1,
+                      as_string=True,
+                      output_file=None,
+                      ignore_modules=None,
+                      mode='forward'):
     """Returns the total floating-point operations, MACs, and parameters of a model.
 
     Example:
