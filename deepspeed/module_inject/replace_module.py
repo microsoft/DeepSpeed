@@ -4,7 +4,7 @@ import tqdm
 import deepspeed
 import deepspeed.ops.transformer as transformer_inference
 from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, BLOOMLayerPolicy
-from .replace_policy import replace_policies
+from .replace_policy import replace_policies, generic_policies
 #from ..runtime.weight_quantizer import WeightQuantization
 from deepspeed import comm as dist
 from torch import nn
@@ -187,6 +187,105 @@ class GroupQuantizer:
         return out
 
 
+def _module_match(module):
+    for policy in generic_policies:
+        policy = policy()
+        if policy.match(module):
+            return policy
+    return None
+
+
+def generic_injection(module, fp16=False, enable_cuda_graph=True):
+    def replace_attn(child, policy):
+        policy_attn = policy.attention(child)
+        if policy_attn is None:
+            return child
+        if len(policy_attn) == 5:
+            qkvw, attn_ow, attn_ob, hidden_size, heads = policy_attn
+        else:
+            qw, kw, vw, attn_ow, attn_ob, hidden_size, heads = policy_attn
+
+        config = transformer_inference.DeepSpeedInferenceConfig(
+            hidden_size=hidden_size,
+            heads=heads,
+            fp16=fp16,
+            triangular_masking=False,
+            max_out_tokens=4096,
+        )
+        attn_module = transformer_inference.DeepSpeedDiffusersAttention(config)
+
+        def transpose(data):
+            data = data.contiguous()
+            data.reshape(-1).copy_(data.transpose(-1, -2).contiguous().reshape(-1))
+            data = data.reshape(data.shape[-1], data.shape[-2])
+            data.to(torch.cuda.current_device())
+            return data
+
+        if len(policy_attn) == 5:
+            attn_module.attn_qkvw.data = transpose(qkvw.data)
+        else:
+            attn_module.attn_qkvw = None
+            attn_module.attn_qw.data = transpose(qw.data)
+            attn_module.attn_kw.data = transpose(kw.data)
+            attn_module.attn_vw.data = transpose(vw.data)
+
+        attn_module.attn_qkvb = None
+        attn_module.attn_ow.data = transpose(attn_ow.data)
+        attn_module.attn_ob.data.copy_(attn_ob.data.to(torch.cuda.current_device()))
+        return attn_module
+
+    def replace_attn_block(child, policy):
+        config = transformer_inference.Diffusers2DTransformerConfig()
+        return transformer_inference.DeepSpeedDiffusersTransformerBlock(child, config)
+
+    if isinstance(module, torch.nn.Module):
+        pass
+    else:
+        if fp16 is False:
+            raise ValueError("Generic injection only supported with FP16")
+
+        try:
+            import diffusers
+            cross_attention = diffusers.models.attention.CrossAttention
+            attention_block = diffusers.models.attention.BasicTransformerBlock
+            new_policies = {
+                cross_attention: replace_attn,
+                attention_block: replace_attn_block,
+            }
+        except ImportError:
+            new_policies = {}
+
+        #replace_transformer_layer(None,
+        #                          module.text_encoder,
+        #                          training=False,
+        #                          replace_with_kernel_inject=True,
+        #                          triangular_masking=True,
+        #                          max_out_tokens=8192)
+        from ..model_implementations.transformers.clip_encoder import DSClipEncoder
+        cg_encoder = DSClipEncoder(module.text_encoder,
+                                   enable_cuda_graph=enable_cuda_graph)
+        setattr(module, 'text_encoder', cg_encoder)
+        for name in module.__dict__.keys():
+            sub_module = getattr(module, name)
+            policy = _module_match(sub_module)
+
+            if policy is not None:
+
+                def _replace_module(module, policy):
+                    for name, child in module.named_children():
+                        _replace_module(child, policy)
+                        if child.__class__ in new_policies:
+                            replaced_module = new_policies[child.__class__](child,
+                                                                            policy)
+                            setattr(module, name, replaced_module)
+
+                _replace_module(sub_module, policy)
+                new_module = policy.apply(sub_module,
+                                          enable_cuda_graph=enable_cuda_graph)
+                print(f"**** found and replaced {name} w. {type(new_module)}")
+                setattr(module, name, new_module)
+
+
 def replace_transformer_layer(orig_layer_impl,
                               model,
                               policy=None,
@@ -216,7 +315,8 @@ def replace_transformer_layer(orig_layer_impl,
                               checkpoint_dict=None,
                               save_mp_checkpoint_path=None,
                               base_dir="",
-                              enable_cuda_graph=False):
+                              enable_cuda_graph=False,
+                              max_out_tokens=1024):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
@@ -251,6 +351,7 @@ def replace_transformer_layer(orig_layer_impl,
     Returns:
         Updated nn.module with replaced transformer layers
     """
+
     mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group,
                                           mp_size=mp_size)  #, out_dim=0, in_dim=1)
 
@@ -316,9 +417,13 @@ def replace_transformer_layer(orig_layer_impl,
 
         quantizer = GroupQuantizer(q_int8=quantize)
         if inference:
+            scale_attn_by_inverse_layer_idx = config.scale_attn_by_inverse_layer_idx if hasattr(
+                config,
+                'scale_attn_by_inverse_layer_idx') else False
             if moe:
                 ep_world_size = dist.get_world_size()
                 local_ep_size = 1 if num_experts < ep_world_size else num_experts // ep_world_size
+                bigscience_bloom = policy_cls is BLOOMLayerPolicy
 
                 transformer_config = transformer_inference.DeepSpeedMoEInferenceConfig(
                     hidden_size=hidden_size,
@@ -332,7 +437,8 @@ def replace_transformer_layer(orig_layer_impl,
                     q_int8=quantize,
                     moe_experts=local_ep_size,
                     global_experts=num_experts,
-                    mlp_type=moe_type)
+                    mlp_type=moe_type,
+                    scale_attn_by_inverse_layer_idx=scale_attn_by_inverse_layer_idx)
             else:
                 rotary_dim = config.rotary_dim if hasattr(config, 'rotary_dim') else child.attention.rotary_ndims \
                                             if hasattr(child, 'attention') and hasattr(child.attention,'rotary_ndims') else -1
@@ -363,7 +469,9 @@ def replace_transformer_layer(orig_layer_impl,
                     mlp_after_attn=(rotary_dim is None or rotary_dim < 0),
                     mlp_act_func_type=policy.mlp_act_func_type,
                     training_mp_size=training_mp_size,
-                    bigscience_bloom=bigscience_bloom)
+                    bigscience_bloom=bigscience_bloom,
+                    max_out_tokens=max_out_tokens,
+                    scale_attn_by_inverse_layer_idx=scale_attn_by_inverse_layer_idx)
 
             if quantize and quantize_settings is not None:
                 (quantization_scales,
@@ -425,7 +533,7 @@ def replace_transformer_layer(orig_layer_impl,
             # transpose it here to reduce inference cost!
             def transpose(data):
                 # temp move to cpu to avoid requiring extra GPU memory during the reshape
-                data = data.to('cpu')
+                data = data.to('cpu').contiguous()
                 data.reshape(-1).copy_(data.transpose(-1, -2).contiguous().reshape(-1))
                 data = data.reshape(data.shape[-1], data.shape[-2])
                 data.to(torch.cuda.current_device())
@@ -454,9 +562,8 @@ def replace_transformer_layer(orig_layer_impl,
                     dense_w.data = transpose(dense_w.data)
 
             def _transpose(x):
-                num_attention_heads_per_partition = transformer_config.heads // transformer_config.mp_size
-                attention_head_size = x.shape[-1] // num_attention_heads_per_partition
-                new_x_shape = x.size()[:-1] + (num_attention_heads_per_partition,
+                attention_head_size = x.shape[-1] // transformer_config.heads
+                new_x_shape = x.size()[:-1] + (transformer_config.heads,
                                                attention_head_size)
                 x_1 = x.view(*new_x_shape)
                 (q, k, v) = torch.split(x_1, (x_1.shape[-1] // 3), dim=(x_1.dim() - 1))
@@ -690,9 +797,7 @@ def replace_transformer_layer(orig_layer_impl,
                 weight_shape = child.weight.ds_shape
             else:
                 weight_shape = child.weight.shape
-            if (isinstance(all_reduce_linears,
-                           tuple) or isinstance(all_reduce_linears,
-                                                str)) and name in all_reduce_linears:
+            if name in all_reduce_linears:
                 new_weight = torch.empty((
                     weight_shape[1] if conv_linear_layer else weight_shape[0],
                     (weight_shape[0] if conv_linear_layer else weight_shape[1]) //

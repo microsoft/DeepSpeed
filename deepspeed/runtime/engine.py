@@ -196,7 +196,6 @@ class DeepSpeedEngine(Module):
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
         self.client_optimizer = optimizer
-        self.client_model_parameters = model_parameters
         self.client_lr_scheduler = lr_scheduler
         self.training_data = training_data
         self.collate_fn = collate_fn
@@ -316,7 +315,15 @@ class DeepSpeedEngine(Module):
         self.optimizer = None
         self.basic_optimizer = None
         self.lr_scheduler = None
-        if model_parameters or optimizer:
+        has_optimizer = False
+
+        if optimizer or self.optimizer_name():
+            has_optimizer = True
+        # If no parameters given by init default to module parameters
+        if model_parameters is None:
+            model_parameters = self.module.parameters()
+
+        if has_optimizer:
             self._configure_optimizer(optimizer, model_parameters)
             self._configure_lr_scheduler(lr_scheduler)
             self._report_progress(0)
@@ -325,8 +332,6 @@ class DeepSpeedEngine(Module):
             self.optimizer = self._configure_zero_optimizer(optimizer=None)
         elif self.bfloat16_enabled():
             self.optimizer = self._configure_bf16_optimizer(optimizer=None)
-
-        self._get_model_parameters()
 
         # Bookkeeping for sparse support
         self.sparse_tensor_module_names = set()
@@ -737,6 +742,9 @@ class DeepSpeedEngine(Module):
     def gradient_accumulation_steps(self):
         return self._config.gradient_accumulation_steps
 
+    def use_node_local_storage(self):
+        return self._config.use_node_local_storage
+
     def load_universal_checkpoint(self):
         return self._config.load_universal_checkpoint
 
@@ -826,9 +834,13 @@ class DeepSpeedEngine(Module):
         if self.mpu:
             dp_rank = self.mpu.get_data_parallel_rank()
 
+        rank = self.local_rank if self.use_node_local_storage() else dp_rank
+
         # only the first data parallel process needs to store the model checkpoint
+        # if you want to use node local storage this must be done by rank 0 on each
+        # node
         self.save_non_zero_checkpoint = (
-            dp_rank == 0) or self.zero_optimization_partition_weights()
+            rank == 0) or self.zero_optimization_partition_weights()
 
         if self.zero_optimization() or self.bfloat16_enabled():
             param_rank = dist.get_rank(group=self.optimizer.dp_process_group)
@@ -1030,10 +1042,6 @@ class DeepSpeedEngine(Module):
                     hasattr(param,
                             'ds_id') for param in self.module.parameters()):
                 self.__check_params(self.module, torch.bfloat16)
-            if self.zero_optimization_stage() == 0 and not self.pipeline_parallelism:
-                raise NotImplementedError(
-                    "When not running ZeRO, BF16 training support is only supported for Pipeline parallelism"
-                )
             self.module.bfloat16()
         else:
             self.__check_params(self.module, torch.float)
@@ -1117,7 +1125,8 @@ class DeepSpeedEngine(Module):
         self._check_for_duplicates(basic_optimizer)
 
         self.basic_optimizer = basic_optimizer
-        log_dist("DeepSpeed Basic Optimizer = {basic_optimizer.__class__.__name__}",
+        log_dist("DeepSpeed Basic Optimizer = {}".format(
+            basic_optimizer.__class__.__name__),
                  ranks=[0])
 
         if self.zero_optimization():
@@ -1371,7 +1380,7 @@ class DeepSpeedEngine(Module):
             overlap_comm = self.zero_overlap_comm()
             contiguous_gradients = self.zero_contiguous_gradients()
             round_robin_gradients = self.zero_round_robin_gradients()
-            assert not isinstance(optimizer, DummyOptim), "zero stage 2 requires an optimizer"
+            assert not isinstance(optimizer, DummyOptim), "zero stage {} requires an optimizer".format(zero_stage)
 
             log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage),
                      ranks=[0])
@@ -1388,6 +1397,7 @@ class DeepSpeedEngine(Module):
                     overlap_comm = False
             optimizer = DeepSpeedZeroOptimizer(
                 optimizer,
+                self.param_names,
                 timers=timers,
                 static_loss_scale=self.loss_scale(),
                 dynamic_loss_scale=self.dynamic_loss_scale(),
@@ -2795,7 +2805,6 @@ class DeepSpeedEngine(Module):
             mp_rank=mp_rank,
             dp_world_size=self.loaded_checkpoint_dp_world_size,
             bf16_mode=bf16_mode)
-        invalid_zero_ckpt_paths = []
         for i, ckpt_name in enumerate(zero_ckpt_names):
             if not os.path.exists(ckpt_name):
                 # transparently handle the old file pattern for optim_states
@@ -2805,13 +2814,6 @@ class DeepSpeedEngine(Module):
                     if os.path.exists(ckpt_name_try):
                         zero_ckpt_names[i] = ckpt_name_try
                         continue
-                invalid_zero_ckpt_paths.append(ckpt_name)
-
-        if len(invalid_zero_ckpt_paths) > 0:
-            logger.warn(
-                f"The following zero checkpoints paths are missing: {invalid_zero_ckpt_paths}"
-            )
-            return None
 
         return zero_ckpt_names
 
@@ -2819,8 +2821,10 @@ class DeepSpeedEngine(Module):
         zero_sd_list = []
         for i, ckpt_name in enumerate(zero_ckpt_names):
             _state = None
+            if ckpt_name is None:
+                _state = {OPTIMIZER_STATE_DICT: None}
             # Fully load state for current rank
-            if self.zero_elastic_checkpoint() or dist.get_rank(
+            elif self.zero_elastic_checkpoint() or dist.get_rank(
                     group=self.optimizer.dp_process_group) == i:
                 _state = self.checkpoint_engine.load(
                     ckpt_name,
@@ -2889,6 +2893,8 @@ class DeepSpeedEngine(Module):
             # Prepare for checkpoint save by ensuring all parameters are partitioned
             self.optimizer.checkpoint_event_prologue()
 
+        rank = self.local_rank if self.use_node_local_storage() else self.global_rank
+
         # This is to make sure the checkpoint names are created without collision
         # There seems to be issue creating them in parallel
 
@@ -2911,7 +2917,11 @@ class DeepSpeedEngine(Module):
             self._create_checkpoint_file(save_dir, tag, False)
             self._save_moe_checkpoint(save_dir, tag, client_state=client_state)
 
-        if self.save_non_zero_checkpoint:
+        # We distribute the task of saving layer checkpoint files among
+        # data parallel instances, so all procs should call _save_checkpoint.
+        # All procs then call module_state_dict(), but only procs of data
+        # parallel rank 0 save the general model params.
+        if not self.has_moe_layers:
             self._create_checkpoint_file(save_dir, tag, False)
             self._save_checkpoint(save_dir, tag, client_state=client_state)
 
@@ -2924,7 +2934,7 @@ class DeepSpeedEngine(Module):
 
         # Save latest checkpoint tag
         self.checkpoint_engine.commit(tag)
-        if save_latest and self.global_rank == 0:
+        if save_latest and rank == 0:
             with open(os.path.join(save_dir, 'latest'), 'w') as fd:
                 fd.write(tag)
 
@@ -2983,8 +2993,9 @@ class DeepSpeedEngine(Module):
                         num_local_experts + int(local_expert_id)
                     expert_key = key.replace(f'{moe_str_prefix}{local_expert_id}',
                                              f'{moe_str_prefix}{global_expert_id}')
-                    experts_state_dict[str(
-                        global_expert_id)][expert_key] = moe_state_dict.pop(key)
+                    # truncating extra tensor (shared) storage
+                    truncated = moe_state_dict.pop(key).clone().detach()
+                    experts_state_dict[str(global_expert_id)][expert_key] = truncated
 
                 # let save the moe parameters
                 for global_expert_id, expert_state_dict in experts_state_dict.items():
@@ -3077,12 +3088,18 @@ class DeepSpeedEngine(Module):
     def _save_checkpoint(self, save_dir, tag, client_state={}):
 
         save_path = self._get_ckpt_name(save_dir, tag)
+
+        zero_optimizer_state = self.zero_optimization() or self.bfloat16_enabled()
+
         # A hack to save the checkpointing directory. Pipeline parallelism overrides
         # module_state_dict() and uses this path to save the model. module_state_dict()
-        # then instead just returns None.
+        # then instead just returns None.  The module_state_dict() implementation in
+        # PipelineEngine expects the save path to be set in self._curr_ckpt_path.
         self._curr_ckpt_path = os.path.join(save_dir, tag)
-        zero_optimizer_state = self.zero_optimization() or self.bfloat16_enabled()
-        state = dict(module=self.module_state_dict(),
+        module = self.module_state_dict()
+        self._curr_ckpt_path = None
+
+        state = dict(module=module,
                      buffer_names=self._get_buffer_names(),
                      optimizer=self.optimizer.state_dict()
                      if self.optimizer and not zero_optimizer_state else None,
@@ -3100,9 +3117,9 @@ class DeepSpeedEngine(Module):
                      ds_version=version)
         state.update(client_state)
 
-        log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0, 1])
-        self.checkpoint_engine.save(state, save_path)
-        self._curr_save_path = None
+        if self.save_non_zero_checkpoint:
+            log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0, 1])
+            self.checkpoint_engine.save(state, save_path)
 
     def _get_buffer_names(self):
         buffer_names = []

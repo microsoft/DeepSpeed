@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   unit-tests:
-    runs-on: [self-hosted, nvidia, cu113, v100]
+    runs-on: [self-hosted, nvidia, cu116, v100]
 
     steps:
       - uses: actions/checkout@v2
@@ -31,8 +31,8 @@ jobs:
           which nvcc
           nvcc --version
           pip install --upgrade pip
-          pip uninstall --yes torch torchvision
-          pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu113
+          pip uninstall --yes torch torchvision triton
+          pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu116
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -44,21 +44,20 @@ jobs:
           pip uninstall --yes transformers
           pip install .
 
-      - name: Python environment
-        run: |
-          pip list
-
       - name: Install deepspeed
         run: |
           pip uninstall --yes deepspeed
-          pip install .[dev,1bit,autotuning,sparse_attn,inf]
+          pip install .[dev,1bit,autotuning,inf]
           ds_report
+
+      - name: Python environment
+        run: |
+          pip list
 
       - name: Unit tests
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
-          EXPECTED_TORCH=$(pip index versions torch | grep -oP -m1 "^\s*LATEST.*\s\K\d+\.\d+")
-          TRANSFORMERS_CACHE=/blob/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose -m 'seq_inference' unit/ --torch_ver=$EXPECTED_TORCH --cuda_ver="11.3"
-          TRANSFORMERS_CACHE=/blob/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 -n 4 --verbose -m 'inference' unit/ --torch_ver=$EXPECTED_TORCH --cuda_ver="11.3"
+          TRANSFORMERS_CACHE=/blob/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose -m 'seq_inference' unit/ --torch_ver="1.13" --cuda_ver="11.6"
+          TRANSFORMERS_CACHE=/blob/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --forked -n 4 --verbose -m 'inference' unit/ --torch_ver="1.13" --cuda_ver="11.6"

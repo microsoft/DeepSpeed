@@ -475,3 +475,224 @@ template void launch_moe_res_matmul(__half* residual,
                                     int seq_len,
                                     int hidden_dim,
                                     cudaStream_t stream);
+
+__global__ void pad_data_kernel(__half* padded_output,
+                                __half* output,
+                                int head_size,
+                                int padded_head_size)
+{
+    float4* padded_output_cast = reinterpret_cast<float4*>(padded_output);
+    float4* output_cast = reinterpret_cast<float4*>(output);
+    int bid = blockIdx.x * (blockDim.y) + threadIdx.y;
+    int idx = threadIdx.x;
+    padded_output_cast += (bid * padded_head_size);
+    output_cast += (bid * head_size);
+    float4 ZERO;
+    const __half2 zero_h = __float2half2_rn(0.f);
+    __half2* ZERO_h = reinterpret_cast<__half2*>(&ZERO);
+#pragma unroll
+    for (int i = 0; i < 4; i++) ZERO_h[i] = zero_h;
+    if (idx < head_size)
+        padded_output_cast[idx] = output_cast[idx];
+    else
+        padded_output_cast[idx] = ZERO;
+}
+__global__ void pad_data_kernel(float* padded_output,
+                                float* output,
+                                int head_size,
+                                int padded_head_size)
+{
+}
+template <typename T>
+void pad_data(T* padded_output,
+              T* output,
+              int bsz,
+              int head_size,
+              int padded_head_size,
+              cudaStream_t stream)
+{
+    dim3 grid_dim((bsz - 1) / 16 + 1);
+    dim3 block_dim(padded_head_size / 8, 16);
+    pad_data_kernel<<<grid_dim, block_dim, 0, stream>>>(
+        padded_output, output, head_size / 8, padded_head_size / 8);
+}
+template void pad_data(__half* padded_output,
+                       __half* output,
+                       int bsz,
+                       int head_size,
+                       int padded_head_size,
+                       cudaStream_t stream);
+template void pad_data(float* padded_output,
+                       float* output,
+                       int bsz,
+                       int head_size,
+                       int padded_head_size,
+                       cudaStream_t stream);
+
+__global__ void pad_head_seq_kernel(__half* padded_output,
+                                    __half* output,
+                                    int seq_len,
+                                    int padded_seq_len,
+                                    int head_size,
+                                    int padded_head_size)
+{
+    float4* padded_output_cast = reinterpret_cast<float4*>(padded_output);
+    float4* output_cast = reinterpret_cast<float4*>(output);
+    int bsz = blockIdx.x;
+    int bid = blockIdx.y * (blockDim.y) + threadIdx.y;
+    int idx = threadIdx.x;
+    padded_output_cast += (bsz * padded_seq_len + bid) * padded_head_size;
+    output_cast += (bsz * seq_len + bid) * head_size;
+    float4 ZERO;
+    const __half2 zero_h = __float2half2_rn(0.f);
+    __half2* ZERO_h = reinterpret_cast<__half2*>(&ZERO);
+#pragma unroll
+    for (int i = 0; i < 4; i++) ZERO_h[i] = zero_h;
+
+    if (idx < head_size && bid < seq_len)
+        padded_output_cast[idx] = output_cast[idx];
+    else
+        padded_output_cast[idx] = ZERO;
+}
+__global__ void pad_head_seq_kernel(float* padded_output,
+                                    float* output,
+                                    int seq_len,
+                                    int padded_seq_len,
+                                    int head_size,
+                                    int padded_head_size)
+{
+}
+template <typename T>
+void pad_head_seq(T* padded_output,
+                  T* output,
+                  int bsz,
+                  int seq_len,
+                  int padded_seq_len,
+                  int head_size,
+                  int padded_head_size,
+                  cudaStream_t stream)
+{
+    dim3 grid_dim(bsz, padded_seq_len / 16);
+    dim3 block_dim(padded_head_size / 8, 16);
+    pad_head_seq_kernel<<<grid_dim, block_dim, 0, stream>>>(
+        padded_output, output, seq_len, padded_seq_len, head_size / 8, padded_head_size / 8);
+}
+template void pad_head_seq(__half* padded_output,
+                           __half* output,
+                           int bsz,
+                           int seq_len,
+                           int padded_seq_len,
+                           int head_size,
+                           int padded_head_size,
+                           cudaStream_t stream);
+template void pad_head_seq(float* padded_output,
+                           float* output,
+                           int bsz,
+                           int seq_len,
+                           int padded_seq_len,
+                           int head_size,
+                           int padded_head_size,
+                           cudaStream_t stream);
+
+// TODO(cmikeh2): evaluate different GeLU performance
+__device__ __forceinline__ float old_gelu(float val)
+{
+    // 1 / sqrt(2)
+    constexpr float rsqrt_2 = 0.707106769084930419922;
+    return val * 0.5f * (1.0f + erff(val * rsqrt_2));
+}
+
+namespace fused_geglu {
+constexpr int threads = 256;
+constexpr int steps = 2;
+constexpr int granularity = 16;
+}  // namespace fused_geglu
+
+template <typename T>
+__global__ void fused_bias_geglu(T* output,
+                                 const T* activation,
+                                 const T* bias,
+                                 int base_channels,
+                                 int total_elems)
+{
+    constexpr int T_per_access = fused_geglu::granularity / sizeof(T);
+    constexpr int T_per_step = T_per_access * fused_geglu::threads;
+    constexpr int T_per_block = T_per_step * fused_geglu::steps;
+
+    const int id = blockIdx.x * T_per_block + threadIdx.x * T_per_access;
+
+#pragma unroll
+    for (int i = 0; i < fused_geglu::steps; i++) {
+        T activation_buffer_1[T_per_access];
+        T activation_buffer_2[T_per_access];
+        T bias_buffer_1[T_per_access];
+        T bias_buffer_2[T_per_access];
+
+        const int iter_id = id + T_per_step * i;
+        if (iter_id < total_elems) {
+            const int channel_id = iter_id % base_channels;
+            const int seq_id = iter_id / base_channels;
+            const int seq_offset = seq_id * base_channels * 2;
+
+            mem_access::load_global<fused_geglu::granularity>(activation_buffer_1,
+                                                              activation + seq_offset + channel_id);
+            mem_access::load_global<fused_geglu::granularity>(
+                activation_buffer_2, activation + seq_offset + channel_id + base_channels);
+            mem_access::load_global<fused_geglu::granularity>(bias_buffer_1, bias + channel_id);
+            mem_access::load_global<fused_geglu::granularity>(bias_buffer_2,
+                                                              bias + channel_id + base_channels);
+
+            // Since the GeLU is going to happen at float, might as well
+            // convert
+#pragma unroll
+            for (int v = 0; v < T_per_access; v++) {
+                T hidden_state = activation_buffer_1[v] + bias_buffer_1[v];
+                T pre_gate = activation_buffer_2[v] + bias_buffer_2[v];
+                float gate_f = old_gelu(conversion::to<float>(pre_gate));
+                T gate = conversion::to<T>(gate_f);
+                activation_buffer_1[v] = hidden_state * gate;
+            }
+
+            mem_access::store_global<fused_geglu::granularity>(output + iter_id,
+                                                               activation_buffer_1);
+        }
+    }
+}
+
+template <typename T>
+void launch_fused_bias_geglu(T* output,
+                             const T* activation,
+                             const T* bias,
+                             int rows,
+                             int elems_per_row,
+                             cudaStream_t stream)
+{
+    /*
+    Fused bias GEGLU is a variant of the gated activation functions.
+    The input here is a matrix of [batch, seq_len, 2 * intermediate_dim]
+    where the second half of the channels act as GeLU gates for the first
+    half.
+    */
+
+    // Re-derive the above figures
+    constexpr int T_per_access = fused_geglu::granularity / sizeof(T);
+    constexpr int T_per_step = T_per_access * fused_geglu::threads;
+    constexpr int T_per_block = T_per_step * fused_geglu::steps;
+
+    const int base_channels = elems_per_row / 2;
+    const int total_elems = base_channels * rows;
+
+    dim3 block(fused_geglu::threads);
+    dim3 grid((total_elems + T_per_block - 1) / T_per_block);
+
+    fused_bias_geglu<<<grid, block, 0, stream>>>(
+        output, activation, bias, base_channels, total_elems);
+}
+
+template void launch_fused_bias_geglu(__half*,
+                                      const __half*,
+                                      const __half*,
+                                      int,
+                                      int,
+                                      cudaStream_t);
+template void launch_fused_bias_geglu(float*, const float*, const float*, int, int, cudaStream_t);
