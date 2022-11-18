@@ -691,7 +691,9 @@ class Autotuner:
 
         ds_config = copy.deepcopy(self.user_config)
         replace_dict(ds_config, DEFAULT_MIN_MEM_CONFIG)
-
+        if ds_config.get(PRESCALE_GRADIENTS, PRESCALE_GRADIENTS_DEFAULT):
+            logger.info(f"{PRESCALE_GRADIENTS} is true, setting ZeRO to 0 for model info profiling since it's not supported in ZeRO yet.")
+            ds_config[ZERO_OPTIMIZATION] = {ZERO_OPTIMIZATION_STAGE: 0}
         model_info_path = os.path.join(self.results_dir,
                                        "profile_model_info",
                                        "model_info.json")
