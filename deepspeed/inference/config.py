@@ -89,7 +89,7 @@ class BaseQuantConfig(DeepSpeedConfigModel):
     enabled = True
     num_bits = 8
     q_type: QuantTypeEnum = QuantTypeEnum.sym
-    q_groups: int = 1
+    q_groups: int = 256
 
 
 class WeightQuantConfig(BaseQuantConfig):
@@ -133,16 +133,6 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     """
     Desired model data type, will convert model to this type.
     Supported target types: `torch.half`, `torch.int8`, `torch.float`
-    """
-
-    quantization_bits: int = 8
-    """
-    Number of bits used to quantize the model using ZeroQuant technology
-    """
-
-    num_groups: int = 256
-    """
-    Number of groups used to quantize the model using ZeroQuant technology
     """
 
     tensor_parallel: DeepSpeedTPConfig = Field({}, alias="tp")

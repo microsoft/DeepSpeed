@@ -314,8 +314,6 @@ def replace_transformer_layer(orig_layer_impl,
                               stochastic_mode=True,
                               training=True,
                               quantize=False,
-                              quantization_bits=8,
-                              num_groups=256,
                               quantize_settings=None,
                               triangular_masking=False,
                               return_tuple=True,
@@ -428,8 +426,8 @@ def replace_transformer_layer(orig_layer_impl,
         #expert_mp_replace = ReplaceWithTensorSlicing(mp_group=expert_mp_group)
 
         quantizer = GroupQuantizer(q_int8=quantize,
-                                   num_bits=quantization_bits,
-                                   num_groups=num_groups)
+                                   num_bits=config.quant.weight.num_bits,
+                                   num_groups=config.quant.weight.q_groups)
         if inference:
             scale_attn_by_inverse_layer_idx = config.scale_attn_by_inverse_layer_idx if hasattr(
                 config,
@@ -472,7 +470,7 @@ def replace_transformer_layer(orig_layer_impl,
                     pre_layer_norm=policy.pre_attn_norm,
                     mp_size=mp_size,
                     quantize=quantize,
-                    quantization_bits=quantization_bits,
+                    quantization_bits=config.quant.weight.num_bits,
                     return_tuple=(return_tuple or (policy_cls is HFBertLayerPolicy)),
                     triangular_masking=(policy_cls is not HFBertLayerPolicy),
                     local_attention=((config.attention_layers[layer_id] == "local")
@@ -966,8 +964,8 @@ def replace_transformer_layer(orig_layer_impl,
                                      _replace_policy=policy)
 
     quantizer = GroupQuantizer(q_int8=quantize,
-                               num_bits=quantization_bits,
-                               num_groups=num_groups)
+                               num_bits=config.quant.weight.num_bits,
+                               num_groups=config.quant.weight.q_groups)
     world_size = dist.get_world_size() if dist.is_initialized() else 1
     rank = dist.get_rank() if dist.is_initialized() else 0
     if checkpoint_dict is not None:
