@@ -936,11 +936,7 @@ class DeepSpeedEngine(Module):
                     args, "deepspeed_config") and args.deepspeed_config is not None
             ), "DeepSpeed requires --deepspeed_config to specify configuration file"
 
-            assert os.path.isfile(
-                os.path.abspath(args.deepspeed_config)
-            ), "DeepSpeed configuration file: {} is not an existing file".format(
-                os.path.abspath(args.deepspeed_config)
-            )
+            log_dist(f"args.deepspeed_config = {os.path.isfile(args.deepspeed_config)}, abspath = {os.path.abspath(args.deepspeed_config)}", [0])
 
     def _is_supported_optimizer(self, optimizer_name):
         return (optimizer_name in DEEPSPEED_OPTIMIZERS
