@@ -494,12 +494,12 @@ class MOELayer(Base):
             self.timers('moe').start()
 
         # Implement Algorithm 2 from GShard paper.
-        d_model = input[0].shape[-1]
+        d_in = input[0].shape[-1]
 
         # Initial implementation -> Reshape into S tokens by dropping sequence dimension.
         # Reshape into G groups so that each group can distribute tokens equally
         # group_size = kwargs['group_size'] if 'group_size' in kwargs.keys() else 1
-        reshaped_input = input[0].reshape(-1, d_model)
+        reshaped_input = input[0].reshape(-1, d_in)
 
         if self.use_tutel:
             self.l_aux, C, E, indices_, locations_, gates_, self.exp_counts = self.gate(reshaped_input, input[1], True)
@@ -541,7 +541,7 @@ class MOELayer(Base):
         dispatched_input = dispatched_input.reshape(self.ep_size,
                                                     self.num_local_experts,
                                                     -1,
-                                                    d_model)
+                                                    d_in)
 
         expert_output = self.experts(dispatched_input)
 
@@ -550,6 +550,8 @@ class MOELayer(Base):
 
         expert_output = _AllToAll.apply(self.ep_group, expert_output)
 
+        d_out = expert_output.shape[-1]
+
         if self.wall_clock_breakdown:
             self.timers('salltoall').stop()
             self.time_salltoall = self.timers('salltoall').elapsed(reset=False)
@@ -557,7 +559,7 @@ class MOELayer(Base):
         # Re-shape back: gecm -> ecm
         expert_output = expert_output.reshape(self.ep_size * self.num_local_experts,
                                               -1,
-                                              d_model)
+                                              d_out)
 
         if groups._get_expert_model_parallel_world_size() == 1:
             # the dropped duplicate tokens need to be gathered on each
@@ -572,7 +574,9 @@ class MOELayer(Base):
                                      combine_weights.type_as(input[0]),
                                      expert_output)
 
-        a = combined_output.reshape(input[0].shape)
+        final_shape = list(input[0].shape)[:-1] + [d_out]
+
+        a = combined_output.reshape(final_shape)
 
         if self.wall_clock_breakdown:
             self.timers('moe').stop()
