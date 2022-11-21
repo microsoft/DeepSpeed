@@ -158,18 +158,14 @@ __global__ void dequantize_kernel(__half* output,
     }
 }
 
-
-
-
 __global__ void dequantize_kernel_4bits(float* output,
-                                  const int8_t* input,
-                                  const float* qscale,
-                                  int hidden_dim,
-                                  unsigned merge_hidden,
-                                  int cnt)
+                                        const int8_t* input,
+                                        const float* qscale,
+                                        int hidden_dim,
+                                        unsigned merge_hidden,
+                                        int cnt)
 {
 }
-
 
 struct PackedInt4 {
     int8_t low : 4;
@@ -177,11 +173,11 @@ struct PackedInt4 {
 };
 
 __global__ void dequantize_kernel_4bits(__half* output,
-                                  const int8_t* input,
-                                  const float* qscale,
-                                  unsigned hidden_dim,
-                                  unsigned merge_hidden,
-                                  int cnt)
+                                        const int8_t* input,
+                                        const float* qscale,
+                                        unsigned hidden_dim,
+                                        unsigned merge_hidden,
+                                        int cnt)
 {
     unsigned bid = blockIdx.x * gridDim.y + blockIdx.y;
     unsigned tid = threadIdx.x;
@@ -218,13 +214,13 @@ __global__ void dequantize_kernel_4bits(__half* output,
 
 template <typename T>
 void launch_dequantize_v2(T* output,
-                       const int8_t* input,
-                       const float* qscale,
-                       unsigned output_size,
-                       unsigned hidden_dim,
-                       unsigned groups,
-                       int q_bits,
-                       cudaStream_t stream)
+                          const int8_t* input,
+                          const float* qscale,
+                          unsigned output_size,
+                          unsigned hidden_dim,
+                          unsigned groups,
+                          int q_bits,
+                          cudaStream_t stream)
 {
     unsigned threads = 1024;
     hidden_dim = (q_bits == 4) ? hidden_dim / 8 : hidden_dim / 4;
@@ -245,35 +241,35 @@ void launch_dequantize_v2(T* output,
 }
 
 template void launch_dequantize_v2<float>(float*,
-                                       const int8_t*,
-                                       const float*,
-                                       unsigned,
-                                       unsigned,
-                                       unsigned,
-                                       int,
-                                       cudaStream_t);
+                                          const int8_t*,
+                                          const float*,
+                                          unsigned,
+                                          unsigned,
+                                          unsigned,
+                                          int,
+                                          cudaStream_t);
 template void launch_dequantize_v2<__half>(__half*,
-                                        const int8_t*,
-                                        const float*,
-                                        unsigned,
-                                        unsigned,
-                                        unsigned,
-                                        int,
-                                        cudaStream_t);
+                                           const int8_t*,
+                                           const float*,
+                                           unsigned,
+                                           unsigned,
+                                           unsigned,
+                                           int,
+                                           cudaStream_t);
 
 __global__ void dequantize_kernel_4bits(float* output,
-    const int8_t* input,
-    int hidden_dim,
-    unsigned merge_hidden,
-    int cnt)
+                                        const int8_t* input,
+                                        int hidden_dim,
+                                        unsigned merge_hidden,
+                                        int cnt)
 {
 }
 
 __global__ void dequantize_kernel_4bits(__half* output,
-                                  const int8_t* input,
-                                  unsigned hidden_dim,
-                                  unsigned merge_hidden,
-                                  int cnt)
+                                        const int8_t* input,
+                                        unsigned hidden_dim,
+                                        unsigned merge_hidden,
+                                        int cnt)
 {
     unsigned bid = blockIdx.x * gridDim.y + blockIdx.y;
     unsigned tid = threadIdx.x;
@@ -288,7 +284,6 @@ __global__ void dequantize_kernel_4bits(__half* output,
         if (tid < merge_hidden) {
             float q = input_cast[tid];
             PackedInt4* q_int8 = (PackedInt4*)&q;
-
 
             float4 q_f;
             __half* q_h = (__half*)&q_f;
@@ -308,11 +303,11 @@ __global__ void dequantize_kernel_4bits(__half* output,
 
 template <typename T>
 void launch_dequantize_v2(T* output,
-                       const int8_t* input,
-                       unsigned output_size,
-                       unsigned hidden_dim,
-                       int q_bits,
-                       cudaStream_t stream)
+                          const int8_t* input,
+                          unsigned output_size,
+                          unsigned hidden_dim,
+                          int q_bits,
+                          cudaStream_t stream)
 {
     unsigned threads = 1024;
     hidden_dim = (q_bits == 4) ? hidden_dim / 4 : hidden_dim / 4;
@@ -330,14 +325,14 @@ void launch_dequantize_v2(T* output,
 }
 
 template void launch_dequantize_v2<float>(float*,
-                                       const int8_t*,
-                                       unsigned,
-                                       unsigned,
-                                       int,
-                                       cudaStream_t);
+                                          const int8_t*,
+                                          unsigned,
+                                          unsigned,
+                                          int,
+                                          cudaStream_t);
 template void launch_dequantize_v2<__half>(__half*,
-                                        const int8_t*,
-                                        unsigned,
-                                        unsigned,
-                                        int,
-                                        cudaStream_t);
+                                           const int8_t*,
+                                           unsigned,
+                                           unsigned,
+                                           int,
+                                           cudaStream_t);

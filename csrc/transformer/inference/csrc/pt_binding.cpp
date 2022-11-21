@@ -758,8 +758,7 @@ std::vector<at::Tensor> ds_layer_norm_residual_store(at::Tensor& input,
 }
 
 template <typename T>
-at::Tensor dequantize(at::Tensor& weight,
-                    int q_bits)
+at::Tensor dequantize(at::Tensor& weight, int q_bits)
 {
     auto options = at::TensorOptions()
                        .dtype(at::kHalf)
@@ -767,14 +766,13 @@ at::Tensor dequantize(at::Tensor& weight,
                        .device(at::kCUDA)
                        .requires_grad(false);
 
-    auto out = torch::empty(
-            {weight.size(0), weight.size(1) * 2}, options);
+    auto out = torch::empty({weight.size(0), weight.size(1) * 2}, options);
     launch_dequantize_v2((T*)out.data_ptr(),
-                      (int8_t*)weight.data_ptr(),
-                      weight.size(0),
-                      weight.size(1),
-                      q_bits,
-                      Context::Instance().GetCurrentStream());
+                         (int8_t*)weight.data_ptr(),
+                         weight.size(0),
+                         weight.size(1),
+                         q_bits,
+                         Context::Instance().GetCurrentStream());
     return out;
 }
 
@@ -792,14 +790,13 @@ void quantized_gemm(void* output,
     int out_size = weight.size(0);
     if (q_bits == 4) out_size *= 2;
     launch_dequantize_v2(weight16,
-                      (int8_t*)weight.data_ptr(),
-                      (float*)qscale.data_ptr(),
-                      out_size,
-                      weight.size(1),
-                      groups,
-                      q_bits,
-                      Context::Instance().GetCurrentStream());
-
+                         (int8_t*)weight.data_ptr(),
+                         (float*)qscale.data_ptr(),
+                         out_size,
+                         weight.size(1),
+                         groups,
+                         q_bits,
+                         Context::Instance().GetCurrentStream());
 
     float alpha = (T)1.0;
     float gemm_beta = (T)0.0;
@@ -842,7 +839,8 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
     int out_size = quantize ? weight.size(0) : weight.size(1);
     if (q_bits == 4) out_size *= 2;
     if (quantize) {
-        quantized_gemm<T>(output.data_ptr(), workspace, weight, q_scale, q_scale.size(0), bsz, q_bits);
+        quantized_gemm<T>(
+            output.data_ptr(), workspace, weight, q_scale, q_scale.size(0), bsz, q_bits);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
