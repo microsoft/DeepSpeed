@@ -6,7 +6,7 @@ from torch.optim.lr_scheduler import _LRScheduler, LambdaLR
 
 from unit.simple_model import SimpleModel, random_dataloader
 from unit.common import DistributedTest
-from unit.util import required_torch_version
+from unit.util import required_torch_version, bf16_required_version_check, required_amp_check
 
 import deepspeed
 from deepspeed.ops.adam import FusedAdam
@@ -127,6 +127,13 @@ class TestOptimizerImplementation(DistributedTest):
         amp = True if optimizer_extension == 'amp' else False
         fp16 = True if model_dtype == 'fp16' else False
         bf16 = True if model_dtype == 'bf16' else False
+        # Skip checks
+        if bf16 and not bf16_required_version_check():
+            pytest.skip(
+                "DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
+            )
+        if amp and not required_amp_check():
+            pytest.skip("Amp is not installed can't run amp check")
         ds_config = {
             "train_batch_size": 1,
             'fp16': {
