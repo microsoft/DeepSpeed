@@ -87,7 +87,8 @@ __global__ void pipelined_quantization(int8_t* __restrict__ output_data,
 
     if (tb.thread_index().x == 0) { q_params.store(params, tb.group_index().x); }
 
-    // TODO(cmikeh2): Refactor into helper functions
+    // TODO(cmikeh2): Refactor into helper functions when this isn't only needed
+    // for generality purposes.
     constexpr int packed_vals = 8 / numBits;
     constexpr int out_chunk_buffer_size = quantize::h_per_load / packed_vals;
     constexpr int out_stride = stride / packed_vals;
