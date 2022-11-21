@@ -6,7 +6,7 @@
 
 namespace quantize {
 
-enum class Type { Symmetric, Asymmetric, IntegerSymmetric };
+enum class Type { Symmetric, Asymmetric };
 
 struct PackedInt4 {
     int8_t high : 4;
@@ -17,12 +17,13 @@ DS_HD_INLINE bool requires_offset(Type qType) { return qType == Type::Asymmetric
 
 }  // namespace quantize
 
-template <int numBits, quantize::Type qType>
 void launch_quant(int8_t* output_data,
                   float* params,
                   const __half* input_data,
                   int groups,
                   int elems_per_group,
+                  int num_bits,
+                  quantize::Type q_type,
                   cudaStream_t stream);
 
 void launch_dequantize_kernel(__half* dequant_data,
