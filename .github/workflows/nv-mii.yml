@@ -38,7 +38,7 @@ jobs:
 
       - name: Install MII
         run: |
-          pip uninstall --yes deepspeed mii transformers
+          pip uninstall --yes deepspeed deepspeed-mii transformers
           pip install .[dev]
           pip install git+https://github.com/huggingface/transformers.git
 
