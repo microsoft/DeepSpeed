@@ -174,6 +174,23 @@ def parse_args(args=None):
     return parser.parse_args(args=args)
 
 
+def fetch_hosts_from_env():
+    hosts = os.environ.get('AZ_ML_HOSTS_PRIVATE_ADDR', None)
+    hosts = hosts.split(',')
+    gpu_count = os.environ.get('AZ_ML_GPU_COUNT', None)
+    if gpu_count is None:
+        raise ValueError("AZ_ML_GPU_COUNT is not set")
+
+    resource_pool = collections.OrderedDict()
+
+    for hostname in hosts:
+        h = hostname.strip()
+        resource_pool[h] = int(gpu_count)
+
+    print("Resource pool: {}".format(resource_pool))
+    return resource_pool
+
+
 def fetch_hostfile(hostfile_path):
     if not os.path.isfile(hostfile_path):
         logger.warning("Unable to find hostfile, will proceed with training "
@@ -356,7 +373,11 @@ def main(args=None):
     if args.elastic_training:
         assert args.master_addr != "", "Master Addr is required when elastic training is enabled"
 
-    resource_pool = fetch_hostfile(args.hostfile)
+    if os.environ.get('AZ_ML_HOSTS_PRIVATE_ADDR') is not None:
+        print("detected AZ_ML_HOSTS_PRIVATE_ADDR, using it for resource pool creation")
+        resource_pool = fetch_hosts_from_env()
+    else:
+        resource_pool = fetch_hostfile(args.hostfile)
 
     # respect CUDA_VISIBLE_DEVICES for a single node and no explicit resource filters
     cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
