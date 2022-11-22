@@ -13,7 +13,6 @@ import hjson
 from tqdm import tqdm
 
 from ..utils import logger
-from .constants import *
 from .constants import AUTOTUNING, AUTOTUNING_METRIC_PATH
 from .utils import get_val_by_key, search_error, was_interruptted
 """
