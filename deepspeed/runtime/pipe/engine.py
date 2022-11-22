@@ -992,7 +992,7 @@ class PipelineEngine(DeepSpeedEngine):
                 first_input = inputs[0]
                 assert all([torch.is_tensor(elt) for elt in inputs[1:]])
                 inputs_grad_tail = [
-                    elt.grad for elt in inputs[1:] if elt.grad is not None
+                    elt.grad for elt in inputs[1:]
                 ]
             elif torch.is_tensor(inputs):
                 first_input = inputs
@@ -1023,9 +1023,7 @@ class PipelineEngine(DeepSpeedEngine):
             if self.is_grad_partitioned:
                 # First two sends are partitioned gradient
                 p2p.send(inputs[0], self.prev_stage)
-                # Only communicate the grad tail if it's not None
-                if len(inputs) > 1:
-                    p2p.send(inputs[1], self.prev_stage)
+                p2p.send(inputs[1], self.prev_stage)
             else:
                 for idx, buffer in enumerate(inputs):
                     # Skip tensors that will not produce a grad
