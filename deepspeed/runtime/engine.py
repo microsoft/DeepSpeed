@@ -37,7 +37,7 @@ from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    PLD_THETA, PLD_GAMMA, BFLOAT16, FP16
+    PLD_THETA, PLD_GAMMA, BFLOAT16, FP16, AMP
 from deepspeed.runtime.zero.config import ZeroStageEnum
 from deepspeed.compression import compression_scheduler
 from deepspeed.compression.constants import \
@@ -1164,22 +1164,22 @@ class DeepSpeedEngine(Module):
                 # If apex/amp is available it will be imported above
                 raise RuntimeError(
                     "Unable to import apex/amp, please make sure it is installed")
-            return 'amp'
+            return AMP
         # data type checks
         elif model_dtype == grad_accum_dtype:
             if model_dtype == torch.bfloat16:
                 raise NotImplementedError(
                     "Bfloat16 must use a gradient accumulation type of fp32")
             if model_dtype == torch.float16:
-                return 'fp16'
-            # else optimizer_implementation = 'basic'
+                return FP16
+            # else optimizer_implementation = None
         elif model_dtype == torch.bfloat16 and grad_accum_dtype == torch.float32:
-            return 'bf16'
+            return BFLOAT16
         else:
             raise NotImplementedError(
                 "unsupported mix of model dtype and gradient accummulation type")
 
-        return 'basic'
+        return None
 
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
@@ -1214,7 +1214,7 @@ class DeepSpeedEngine(Module):
 
         if optimizer_implementation == 'zero':
             self.optimizer = self._configure_zero_optimizer(basic_optimizer)
-        elif optimizer_implementation == 'amp':
+        elif optimizer_implementation == AMP:
             amp_params = self.amp_params()
             log_dist(f"Initializing AMP with these params: {amp_params}", ranks=[0])
             model, self.optimizer = amp.initialize(
@@ -1223,9 +1223,9 @@ class DeepSpeedEngine(Module):
             self._set_client_model(model)
             self._broadcast_model()
             # TODO: maybe need to broadcast experts differently?
-        elif optimizer_implementation == 'fp16':
+        elif optimizer_implementation == FP16:
             self.optimizer = self._configure_fp16_optimizer(basic_optimizer)
-        elif optimizer_implementation == 'bf16':
+        elif optimizer_implementation == BFLOAT16:
             self.optimizer = self._configure_bf16_optimizer(basic_optimizer)
         else:
             self.optimizer = basic_optimizer
