@@ -134,6 +134,7 @@ class TestOptimizerImplementation(DistributedTest):
             )
         if amp and not required_amp_check():
             pytest.skip("Amp is not installed can't run amp check")
+        # Config declaration
         ds_config = {
             "train_batch_size": 1,
             'fp16': {
@@ -159,30 +160,34 @@ class TestOptimizerImplementation(DistributedTest):
             }
         }
 
-        if grad_accum_dtype == None:
-            grad_type_supported = True
-        elif model_dtype == grad_accum_dtype and model_dtype != 'bf16':
-            grad_type_supported = True
-        elif model_dtype == 'bf16' and grad_accum_dtype == 'fp32':
-            grad_type_supported = True
-        else:
-            grad_type_supported = False
+        key = (optimizer_extension, model_dtype, grad_accum_dtype)
 
-        if optimizer_extension == 'zero' and grad_type_supported:
-            is_supported = False if model_dtype == 'bf16' else True
-        elif optimizer_extension == 'amp' and grad_type_supported:
-            if model_dtype == 'bf16' or model_dtype == 'fp16':
-                is_supported = False
-            else:
-                is_supported = True
-        else:
-            is_supported = grad_type_supported
+        # Enumerate supported configurations
+        is_supported = {}
+        # Zero Wrapper
+        is_supported[('zero', 'fp16', None)] = True
+        is_supported[('zero', 'fp16', 'fp16')] = True
+        is_supported[('zero', 'bf16', 'bf16')] = True
+        is_supported[('zero', 'fp32', None)] = True
+        is_supported[('zero', 'fp32', 'fp32')] = True
+        # Amp Wrapper
+        is_supported[('amp', 'fp32', None)] = True
+        is_supported[('amp', 'fp32', 'fp32')] = True
+        # FP16 Wrapper
+        is_supported[(None, 'fp16', None)] = True
+        is_supported[(None, 'fp16', 'fp16')] = True
+        # BF16 Wrapper
+        is_supported[(None, 'bf16', 'fp32')] = True
+        is_supported[(None, 'bf16', None)] = True
+        # No Wrapper
+        is_supported[(None, 'fp32', None)] = True
+        is_supported[(None, 'fp32', 'fp32')] = True
 
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
         model_parameters = list(model.parameters())
 
-        if is_supported:
+        if key in is_supported:
             _, ds_optimizer, _, _ = deepspeed.initialize(config=ds_config,
                                                         model=model,
                                                         model_parameters=model_parameters)

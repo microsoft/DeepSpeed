@@ -25,6 +25,7 @@ from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
 from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
+from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION
 
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
@@ -1138,8 +1139,6 @@ class DeepSpeedEngine(Module):
                 raise NotImplementedError(
                     "Model data type and gradient accumulation data type must be equal to use ZeRO"
                 )
-            if model_dtype == torch.bfloat16:
-                raise NotImplementedError("Bfloat16 only works with ZeRO stage 0")
             if not is_zero_supported_optimizer(basic_optimizer):
                 assert (
                     self.zero_allow_untested_optimizer()
@@ -1149,7 +1148,7 @@ class DeepSpeedEngine(Module):
                     logger.warning(
                         "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
                     )
-            return 'zero'
+            return ZERO_OPTIMIZATION
         elif amp_enabled:
             if model_dtype != grad_accum_dtype:
                 raise NotImplementedError(
@@ -1169,10 +1168,11 @@ class DeepSpeedEngine(Module):
         elif model_dtype == grad_accum_dtype:
             if model_dtype == torch.bfloat16:
                 raise NotImplementedError(
-                    "Bfloat16 must use a gradient accumulation type of fp32")
+                    "Bfloat16 wrapper must use a gradient accumulation type of fp32, enable ZeRO to use Bfloat16 gradient accumulation"
+                )
             if model_dtype == torch.float16:
                 return FP16
-            # else optimizer_implementation = None
+            # else optimizer_wrapper = None
         elif model_dtype == torch.bfloat16 and grad_accum_dtype == torch.float32:
             return BFLOAT16
         else:
@@ -1210,11 +1210,11 @@ class DeepSpeedEngine(Module):
             basic_optimizer.__class__.__name__),
                  ranks=[0])
 
-        optimizer_implementation = self._do_optimizer_sanity_check(basic_optimizer)
+        optimizer_wrapper = self._do_optimizer_sanity_check(basic_optimizer)
 
-        if optimizer_implementation == 'zero':
+        if optimizer_wrapper == ZERO_OPTIMIZATION:
             self.optimizer = self._configure_zero_optimizer(basic_optimizer)
-        elif optimizer_implementation == AMP:
+        elif optimizer_wrapper == AMP:
             amp_params = self.amp_params()
             log_dist(f"Initializing AMP with these params: {amp_params}", ranks=[0])
             model, self.optimizer = amp.initialize(
@@ -1223,9 +1223,9 @@ class DeepSpeedEngine(Module):
             self._set_client_model(model)
             self._broadcast_model()
             # TODO: maybe need to broadcast experts differently?
-        elif optimizer_implementation == FP16:
+        elif optimizer_wrapper == FP16:
             self.optimizer = self._configure_fp16_optimizer(basic_optimizer)
-        elif optimizer_implementation == BFLOAT16:
+        elif optimizer_wrapper == BFLOAT16:
             self.optimizer = self._configure_bf16_optimizer(basic_optimizer)
         else:
             self.optimizer = basic_optimizer
