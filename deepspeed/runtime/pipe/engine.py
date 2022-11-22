@@ -991,9 +991,7 @@ class PipelineEngine(DeepSpeedEngine):
             if isinstance(inputs, tuple):
                 first_input = inputs[0]
                 assert all([torch.is_tensor(elt) for elt in inputs[1:]])
-                inputs_grad_tail = [
-                    elt.grad for elt in inputs[1:]
-                ]
+                inputs_grad_tail = [elt.grad for elt in inputs[1:]]
             elif torch.is_tensor(inputs):
                 first_input = inputs
                 inputs_grad_tail = []
