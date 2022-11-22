@@ -1,6 +1,7 @@
 clang-format>=14.0.6
 docutils<0.18
 future
+import_string
 importlib-metadata>=4
 megatron-lm==1.1.5
 pre-commit>=2.20.0

@@ -1,5 +1,4 @@
 google
-import_string
 lm-eval>=0.2.0
 protobuf
 transformers
