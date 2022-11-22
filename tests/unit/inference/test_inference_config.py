@@ -35,5 +35,5 @@ class TestInferenceConfig(DistributedTest):
         config = {"replace_with_kernel_inject": True}
         config_json = create_config_from_dict(tmpdir, config)
 
-        engine = deepspeed.init_inference(torch.nn.Module(), config=config)
+        engine = deepspeed.init_inference(torch.nn.Module(), config=config_json)
         assert engine._config.replace_with_kernel_inject
