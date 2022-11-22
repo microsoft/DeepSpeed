@@ -1023,7 +1023,9 @@ class PipelineEngine(DeepSpeedEngine):
             if self.is_grad_partitioned:
                 # First two sends are partitioned gradient
                 p2p.send(inputs[0], self.prev_stage)
-                p2p.send(inputs[1], self.prev_stage)
+                # Only communicate the grad tail if it's not None
+                if len(inputs) > 1:
+                    p2p.send(inputs[1], self.prev_stage)
             else:
                 for idx, buffer in enumerate(inputs):
                     # Skip tensors that will not produce a grad
