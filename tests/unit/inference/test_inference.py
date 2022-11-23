@@ -216,7 +216,6 @@ def assert_fn(model_w_task):
     return assert_fn
 
 
-@pytest.fixture
 def check_injection(model):
     def verify_injection(module):
         for child in module.children():
