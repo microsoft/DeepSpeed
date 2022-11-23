@@ -333,7 +333,6 @@ class InferenceEngine(Module):
         load_module_recursive(r_module)
 
     def _apply_injection_policy(self, config, client_module=None):
-
         # client_module is only passed when using the injection_dict method.
         checkpoint_dir = config.checkpoint
         checkpoint = SDLoaderFactory.get_sd_loader_json(
@@ -346,7 +345,12 @@ class InferenceEngine(Module):
                           enable_cuda_graph=config.enable_cuda_graph)
 
         if isinstance(self.module, torch.nn.Module):
-            replace_transformer_layer(client_module, self.module, checkpoint, config)
+            # config is our DeepSpeedInferenceConfig and self.config is the HF model config
+            replace_transformer_layer(client_module,
+                                      self.module,
+                                      checkpoint,
+                                      config,
+                                      self.config)
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
         ckpt_file_pattern = self._get_ckpt_name(checkpoints_path,

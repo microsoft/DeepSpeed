@@ -286,7 +286,11 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
                 setattr(module, name, new_module)
 
 
-def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config):
+def replace_transformer_layer(orig_layer_impl,
+                              model,
+                              checkpoint_dict,
+                              config,
+                              model_config):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
@@ -294,6 +298,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config):
         model (torch.nn.Module): user's nn.module representing their model
         checkpoint_dict: Dictionary for checkpoint passed from the Inference Engine
         config: top-level DS Inference config defined in inference/config.py
+        model_config: HuggingFace model config passed from the inference/engine.py
     Returns:
         Updated nn.module with replaced transformer layers
     """
@@ -400,19 +405,19 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config):
                     mlp_type=config.moe.type,
                     scale_attn_by_inverse_layer_idx=scale_attn_by_inverse_layer_idx)
             else:
-                rotary_dim = config.rotary_dim if hasattr(config, 'rotary_dim') else child.attention.rotary_ndims \
+                rotary_dim = model_config.rotary_dim if hasattr(model_config, 'rotary_dim') else child.attention.rotary_ndims \
                                             if hasattr(child, 'attention') and hasattr(child.attention,'rotary_ndims') else -1
                 bigscience_bloom = policy_cls is BLOOMLayerPolicy
                 transformer_config = transformer_inference.DeepSpeedInferenceConfig(
                     hidden_size=hidden_size,
                     heads=num_attention_heads,
-                    layer_norm_eps=config.layer_norm_eps if hasattr(
-                        config,
+                    layer_norm_eps=model_config.layer_norm_eps if hasattr(
+                        model_config,
                         'layer_norm_eps') else
-                    (config.layer_norm_epsilon
-                     if hasattr(config,
-                                'layer_norm_epsilon') else config.layernorm_epsilon
-                     if hasattr(config,
+                    (model_config.layer_norm_epsilon if hasattr(
+                        model_config,
+                        'layer_norm_epsilon') else model_config.layernorm_epsilon
+                     if hasattr(model_config,
                                 'layernorm_epsilon') else 1.0e-12),
                     fp16=fp16,
                     pre_layer_norm=policy.pre_attn_norm,
@@ -422,10 +427,11 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config):
                                   or (policy_cls is HFBertLayerPolicy)),
                     triangular_masking=(policy_cls is not HFBertLayerPolicy),
                     local_attention=((config.attention_layers[layer_id] == "local")
-                                     if hasattr(config,
+                                     if hasattr(model_config,
                                                 'attention_layers') else False),
-                    window_size=(config.window_size if hasattr(config,
-                                                               'window_size') else 1),
+                    window_size=(model_config.window_size if hasattr(
+                        model_config,
+                        'window_size') else 1),
                     rotary_dim=rotary_dim,
                     mlp_after_attn=(rotary_dim is None or rotary_dim < 0),
                     mlp_act_func_type=policy.mlp_act_func_type,
