@@ -351,7 +351,18 @@ class HFGPTJLayerPolicy(TransformerPolicy):
                self.client_module.ln_1.weight, \
                self.client_module.ln_1.bias
 
-
+    def get_param_names(self):
+        return 'attn.q_proj.weight', \
+               'attn.k_proj.weight', \
+               'attn.v_proj.weight', \
+               'attn.out_proj.weight', \
+               'mlp.fc_in.weight', \
+               'mlp.fc_in.bias', \
+               'mlp.fc_out.weight', \
+               'mlp.fc_out.bias', \
+               'ln_1.weight', \
+               'ln_1.bias', 
+               
 class MegatronLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
     version = 0
@@ -580,6 +591,19 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
 
+    def get_param_names(self):
+        return 'attention.query_key_value.weight', \
+               'attention.query_key_value.bias', \
+               'attention.dense.weight', \
+               'attention.dense.bias', \
+               'mlp.dense_h_to_4h.weight', \
+               'mlp.dense_h_to_4h.bias', \
+               'mlp.dense_4h_to_h.weight', \
+               'mlp.dense_4h_to_h.bias', \
+               'input_layernorm.weight', \
+               'input_layernorm.bias', \
+               'post_attention_layernorm.weight', \
+               'post_attention_layernorm.bias',
 
 class HFOPTLayerPolicy(TransformerPolicy):
     _orig_layer_class = None

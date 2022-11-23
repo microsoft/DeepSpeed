@@ -183,6 +183,10 @@ def load_model_with_checkpoint(r_module,
                 qkv_w, qkv_b, attn_ow, attn_ob, \
                 mlp_intw, mlp_intb, mlp_ow, mlp_ob, \
                 inp_normw, inp_normb, attn_nw, attn_nb = param_names
+            elif len(param_names) < 12:                
+                q_w, k_w, v_w, attn_ow, \
+                mlp_intw, mlp_intb, mlp_ow, mlp_ob, \
+                inp_normw, inp_normb = param_names
             else:
                 q_w, q_b, k_w, k_b, v_w, v_b, attn_ow, attn_ob, \
                 mlp_intw, mlp_intb, mlp_ow, mlp_ob, \
@@ -192,6 +196,12 @@ def load_model_with_checkpoint(r_module,
             if len(param_names) == 12:
                 maybe_copy(module.attention, 'attn_qkvw', prefix + qkv_w, qkv=True)
                 maybe_copy(module.attention, 'attn_qkvb', prefix + qkv_b, qkv=True)
+            elif len(param_names) < 12:                
+                maybe_copy1(module.attention,
+                            'attn_qkvw',
+                            [prefix + q_w,
+                             prefix + k_w,
+                             prefix + v_w])
             else:
                 maybe_copy1(module.attention,
                             'attn_qkvw',
@@ -204,9 +214,10 @@ def load_model_with_checkpoint(r_module,
                              prefix + k_b,
                              prefix + v_b])
             maybe_copy(module.attention, 'attn_ow', prefix + attn_ow)
-            maybe_copy(module.attention, 'attn_ob', prefix + attn_ob)
-            maybe_copy(module.mlp, 'attn_nw', prefix + attn_nw)
-            maybe_copy(module.mlp, 'attn_nb', prefix + attn_nb)
+            if len(param_names) > 12:
+                maybe_copy(module.attention, 'attn_ob', prefix + attn_ob)
+                maybe_copy(module.mlp, 'attn_nw', prefix + attn_nw)
+                maybe_copy(module.mlp, 'attn_nb', prefix + attn_nb)
             maybe_copy(module.mlp, 'inter_w', prefix + mlp_intw)
             maybe_copy(module.mlp, 'inter_b', prefix + mlp_intb)
             maybe_copy(module.mlp, 'output_w', prefix + mlp_ow)
@@ -274,6 +285,7 @@ def load_model_with_checkpoint(r_module,
 
                 layer_policies[child.__class__](child, prefix + name + '.')
             else:
+                
                 load_module_recursive(
                     child,
                     prefix if level == 0 and ckpt_type == 'pp' else prefix + name + '.',
