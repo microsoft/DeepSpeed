@@ -1,121 +1,16 @@
 '''
-Copyright 2020 The Microsoft DeepSpeed Team
+Copyright 2022 The Microsoft DeepSpeed Team
 '''
-import json
+
 import math
 import torch
 from torch.autograd import Function
 from ... import op_builder
 import torch.nn as nn
 from deepspeed import comm as dist
-from deepspeed.utils.logging import log_dist
-from deepspeed.utils.types import ActivationFuncType
 
-# Cuda modules will be imported if needed
-inference_cuda_module = None
 minus_inf = -10000.0
-
-
-class TransformerConfig():
-    def __init__(self, hidden_size, intermediate_size, heads, num_hidden_layers):
-        self.layer_id = -1
-        self.hidden_size = hidden_size
-        self.intermediate_size = intermediate_size
-        self.heads = heads
-        self.num_hidden_layers = num_hidden_layers
-
-
-class DeepSpeedInferenceConfig(TransformerConfig):
-    """Initialize the DeepSpeed Transformer Config.
-        Arguments:
-            hidden_size: The hidden size of the transformer layer
-            intermediate_size: The intermediate size of the feed-forward part of transformer layer
-            heads: The number of heads in the self-attention of the transformer layer
-            num_hidden_layers: The number of transformer layers
-            layer_norm_eps: The epsilon value for the layer norm
-            local_rank: Optional: The rank of GPU running the transformer kernel, it is not required
-                to use if the model already set the current device, otherwise need to set it
-                so that the transformer kernel can work on the right device
-            mp_size (optional): This argument is mainly used to create the parameters on the kernel side
-                using model-parallel architecture. If the client model already takes care of this, there is no
-                need to pass this argument.
-            fp16: Enable half-precision computation
-            pre_layer_norm: Select between Pre-LN or Post-LN transformer architecture
-            stochastic_mode:  Enable for high performance, please note that this flag has some level of
-                non-determinism and can produce different results on different runs.  However, we have seen
-                that by enabling it, the pretraining tasks such as BERT are not affected and can obtain
-                a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend
-                to turn it off in order to be able to reproduce the same result through the regular kernel execution.
-
-            scale_attention: If true, both q and k are scaled by 1/sqrt(attention_heads) before attention computation.
-            return_tuple: if True, returns the transformer output as a tuple, otherwise returns as a tensor
-            bigscience_bloom: This flag is added temporarily for supporting the BLOOM-176B model architecture.
-    """
-    def __init__(self,
-                 hidden_size=-1,
-                 intermediate_size=-1,
-                 heads=-1,
-                 num_hidden_layers=-1,
-                 layer_norm_eps=1e-12,
-                 local_rank=-1,
-                 mp_size=1,
-                 fp16=False,
-                 q_int8=False,
-                 pre_layer_norm=True,
-                 stochastic_mode=False,
-                 scale_attention=True,
-                 triangular_masking=True,
-                 local_attention=False,
-                 window_size=256,
-                 rotary_dim=-1,
-                 rotate_half=False,
-                 rotate_every_two=True,
-                 return_tuple=True,
-                 mlp_after_attn=True,
-                 mlp_act_func_type=ActivationFuncType.GELU,
-                 training_mp_size=1,
-                 bigscience_bloom=False,
-                 max_out_tokens=1024):
-        super(DeepSpeedInferenceConfig,
-              self).__init__(
-                  hidden_size,
-                  (intermediate_size if intermediate_size > 0 else 4 * hidden_size),
-                  heads,
-                  num_hidden_layers)
-        self.fp16 = fp16
-        self.pre_layer_norm = pre_layer_norm
-        self.local_rank = local_rank
-        self.stochastic_mode = stochastic_mode
-        self.epsilon = layer_norm_eps
-        self.mp_size = mp_size
-        self.q_int8 = q_int8
-        self.scale_attention = scale_attention
-        self.triangular_masking = triangular_masking
-        self.local_attention = local_attention
-        self.window_size = window_size
-        self.rotary_dim = rotary_dim
-        self.rotate_half = rotate_half
-        self.rotate_every_two = rotate_every_two
-        self.return_tuple = return_tuple
-        self.mlp_after_attn = mlp_after_attn
-        self.mlp_act_func_type = mlp_act_func_type
-        self.specialized_mode = False
-        self.training_mp_size = training_mp_size
-        self.bigscience_bloom = bigscience_bloom
-        self.max_out_tokens = max_out_tokens
-
-    @classmethod
-    def from_dict(cls, json_object):
-        config = DeepSpeedInferenceConfig()
-        for key, value in json_object.items():
-            config.__dict__[key] = value
-        return config
-
-    @classmethod
-    def from_json_file(cls, json_file):
-        with open(json_file, "r", encoding='utf-8') as reader:
-            text = reader.read()
-        return cls.from_dict(json.loads(text))
+inference_cuda_module = None
 
 
 class DeepSpeedSelfAttentionFunction(Function):
@@ -382,8 +277,6 @@ class DeepSpeedSelfAttentionFunction(Function):
                         ) else 0
                         sliced_alibi = alibi[offset:batch_heads + offset, :, :]
 
-
-#
                     attn_key_value = score_context_func(
                         qkv_out,
                         ((1 - input_mask).to(qkv_out.dype) *
@@ -398,7 +291,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                         config.window_size,
                         no_masking,
                         config.layer_id,
-                        DeepSpeedTransformerInference.layer_id,
+                        DeepSpeedSelfAttention.num_layers,
                         sliced_alibi if alibi is not None else torch.empty(1))
                     context_layer, key_layer, value_layer = attn_key_value
                     return context_layer, key_layer, value_layer
@@ -415,9 +308,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                       attn_qkvb,
                                       attn_qkvb is not None,
                                       False,
-                                      False,
-                                      num_attention_heads_per_partition,
-                                      DeepSpeedTransformerInference.layer_id)
+                                      num_attention_heads_per_partition)
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32
@@ -429,7 +320,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                    norm_b,
                                    config.epsilon,
                                    (attn_qkvb is not None),
-                                   DeepSpeedTransformerInference.layer_id,
+                                   DeepSpeedSelfAttention.num_layers,
                                    config.bigscience_bloom,
                                    config.mp_size,
                                    dist.get_rank() if dist.is_initialized() else 0,
@@ -540,6 +431,15 @@ class DeepSpeedSelfAttention(nn.Module):
         self.norm_factor = math.sqrt(
             math.sqrt(self.config.hidden_size // self.config.heads))
         self.qkv_merging = qkv_merging
+
+        if self.config.scale_attn_by_inverse_layer_idx is True:
+            self.norm_factor *= math.sqrt(self.config.layer_id + 1)
+            # https://github.com/huggingface/transformers/blob/v4.24.0/src/transformers/models/gpt2/modeling_gpt2.py#L191
+
+        global inference_cuda_module
+        if inference_cuda_module is None:
+            builder = op_builder.InferenceBuilder()
+            inference_cuda_module = builder.load()
 
         self.score_context_func = inference_cuda_module.softmax_context_fp32 if (not config.fp16) else \
                                     inference_cuda_module.softmax_context_fp16
@@ -669,7 +569,7 @@ class DeepSpeedMLP(nn.Module):
         self.config = config
         data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.float
         data_type_fp = torch.half if config.fp16 else torch.float
-        device = torch.cuda.current_device() #if config.bigscience_bloom else 'cpu'
+        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
         self.attn_nw = nn.Parameter(torch.empty(self.config.hidden_size,
                                                 dtype=data_type_fp,
                                                 device=device),
@@ -794,7 +694,7 @@ class DeepSpeedTransformerInference(nn.Module):
                                 merge_count,
                                 mlp_extra_grouping)
 
-        device = torch.cuda.current_device() #if config.bigscience_bloom else 'cpu'
+        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
         self.norm_w = nn.Parameter(torch.empty(self.config.hidden_size,
                                                dtype=data_type,
                                                device=device),
