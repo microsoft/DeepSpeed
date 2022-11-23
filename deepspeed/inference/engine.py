@@ -127,6 +127,7 @@ class InferenceEngine(Module):
         elif config.replace_method == 'dict':
             key = ParserPolicies.get_map_key(str(model))
             new_key = None
+
             def SML(module):
                 for child in module.children():
                     if isinstance(child, nn.ModuleList):
