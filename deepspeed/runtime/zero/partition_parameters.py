@@ -1310,8 +1310,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         tensor_size = partition_size * self.world_size
         flat_tensor = torch.empty(tensor_size,
                                   dtype=param_list[0].dtype,
-                                  device=self.local_device)
-        flat_tensor.requres_grad = False
+                                  device=self.local_device,
+                                  requires_grad=False,)
         partitions = []
         for i in range(self.world_size):
             start = partition_size * i
