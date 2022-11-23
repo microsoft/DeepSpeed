@@ -183,7 +183,7 @@ def load_model_with_checkpoint(r_module,
                 qkv_w, qkv_b, attn_ow, attn_ob, \
                 mlp_intw, mlp_intb, mlp_ow, mlp_ob, \
                 inp_normw, inp_normb, attn_nw, attn_nb = param_names
-            elif len(param_names) < 12:                
+            elif len(param_names) < 12:
                 q_w, k_w, v_w, attn_ow, \
                 mlp_intw, mlp_intb, mlp_ow, mlp_ob, \
                 inp_normw, inp_normb = param_names
@@ -196,7 +196,7 @@ def load_model_with_checkpoint(r_module,
             if len(param_names) == 12:
                 maybe_copy(module.attention, 'attn_qkvw', prefix + qkv_w, qkv=True)
                 maybe_copy(module.attention, 'attn_qkvb', prefix + qkv_b, qkv=True)
-            elif len(param_names) < 12:                
+            elif len(param_names) < 12:
                 maybe_copy1(module.attention,
                             'attn_qkvw',
                             [prefix + q_w,
@@ -285,7 +285,7 @@ def load_model_with_checkpoint(r_module,
 
                 layer_policies[child.__class__](child, prefix + name + '.')
             else:
-                
+
                 load_module_recursive(
                     child,
                     prefix if level == 0 and ckpt_type == 'pp' else prefix + name + '.',

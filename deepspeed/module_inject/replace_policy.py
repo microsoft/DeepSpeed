@@ -361,8 +361,8 @@ class HFGPTJLayerPolicy(TransformerPolicy):
                'mlp.fc_out.weight', \
                'mlp.fc_out.bias', \
                'ln_1.weight', \
-               'ln_1.bias', 
-               
+               'ln_1.bias',
+
 class MegatronLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
     version = 0
