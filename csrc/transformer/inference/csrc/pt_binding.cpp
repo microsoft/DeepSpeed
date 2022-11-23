@@ -1293,7 +1293,6 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
     } else {
         ds_layer_norm_internal(inp_norm, input, gamma, beta, epsilon);
     }
-
     if (q_int8) {
         quantized_gemm<T>(intermediate, inp_norm, weight, q_scale, q_scale.size(0), bsz);
     } else {
@@ -1407,7 +1406,7 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                          q_int8,
                                          act_func_type);
 
-    return {output, res_add};
+    return {output, output}; //res_add};
 }
 
 template <typename T>

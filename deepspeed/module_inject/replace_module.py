@@ -553,6 +553,10 @@ def replace_transformer_layer(orig_layer_impl,
 
             if qkvw.is_meta or qkvw.numel() == 0 or qkvw.is_meta:
                 if qkvw.is_meta or qkvw.ds_tensor.numel() < attn_block.attn_qkvw.numel():
+                    if qkvb is None:
+                        attn_block.attn_qkvb = None
+                    if dense_b is None:
+                        attn_block.attn_ob = None
                     pass
                 else:
                     with GatheredParameters([
@@ -996,7 +1000,7 @@ def replace_transformer_layer(orig_layer_impl,
                     if transformer_name not in k
                 }),
                 f'{config.save_mp_checkpoint_path}/{non_tp_ckpt_name}')
-            config = json.dumps({
+            new_config = json.dumps({
                 'type':
                 ckpt_name,
                 'base_dir':
@@ -1020,7 +1024,7 @@ def replace_transformer_layer(orig_layer_impl,
             })
             with open(f"{config.save_mp_checkpoint_path}/ds-inference_config.json",
                       "w") as cfg:
-                cfg.write(config)
+                cfg.write(new_config)
 
         rep_sd = replaced_module.state_dict()
         for n, p in replaced_module.named_parameters():

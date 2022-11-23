@@ -208,7 +208,7 @@ def load_model_with_checkpoint(r_module,
                                           eps=child.eps)
                         setattr(module, name, child)
                     elif child.__class__ is nn.Linear:
-                        child = LinearLayer(weight=child.weight, bias=child.bias)
+                        child = LinearLayer(weight_shape=child.weight.shape, bias=child.bias)
                         setattr(module, name, child)
                     else:
                         ds_id = None
@@ -224,7 +224,8 @@ def load_model_with_checkpoint(r_module,
             else:
                 load_module_recursive(
                     child,
-                    prefix if level == 0 and ckpt_type == 'pp' else prefix + name + '.',
+                    #prefix if level == 0 and ckpt_type == 'pp' else \
+                    prefix + name + '.',
                     level + 1)
 
     load_module_recursive(r_module)
