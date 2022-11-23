@@ -426,7 +426,7 @@ def replace_transformer_layer(orig_layer_impl,
                     return_tuple=(config.return_tuple
                                   or (policy_cls is HFBertLayerPolicy)),
                     triangular_masking=(policy_cls is not HFBertLayerPolicy),
-                    local_attention=((config.attention_layers[layer_id] == "local")
+                    local_attention=((model_config.attention_layers[layer_id] == "local")
                                      if hasattr(model_config,
                                                 'attention_layers') else False),
                     window_size=(model_config.window_size if hasattr(
