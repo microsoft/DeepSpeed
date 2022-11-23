@@ -89,10 +89,10 @@ std::vector<at::Tensor> quantize_kernel(at::Tensor& input_vals,
                               .layout(at::kStrided)
                               .device(at::kCUDA)
                               .requires_grad(false);
-    int K = input_vals.size(1) / (numBits == 8 ? 1 : 2);
-    int M = input_vals.size(0);
 
-    auto output = torch::empty({M, K}, output_options);
+    auto output_sizes = numBits == 8 ? input_vals.sizes()
+                                     : input_vals.split(input_vals.size(-1) / 2, -1)[0].sizes();
+    auto output = torch::empty(output_sizes, output_options);
 
     const int elems_per_group = at::numel(input_vals) / groups;
 
