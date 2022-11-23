@@ -111,7 +111,6 @@ class InferenceEngine(Module):
         # retain this from the old conditional argument being passed to apply_injection_policy()
         if not config.replace_with_kernel_inject:
             config.checkpoint = None
-        import pdb;pdb.set_trace()
         if self.injection_dict:
             for client_module, injection_policy in self.injection_dict.items():
                 # construct the tuple and pass that instead of a string or dict.

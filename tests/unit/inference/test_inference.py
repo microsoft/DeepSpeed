@@ -215,17 +215,20 @@ def assert_fn(model_w_task):
         NotImplementedError(f'assert_fn for task "{task}" is not implemented')
     return assert_fn
 
+
 @pytest.fixture
 def check_injection(model):
     def verify_injection(module):
         for child in module.children():
             if isinstance(child, nn.ModuleList):
-                assert isinstance(child[0], DeepSpeedTransformerInference),
+                assert isinstance(child[0], DeepSpeedTransformerInference),\
                     "DeepSpeed-Inference Transformer kernels has not been injected in the model"
                 break
             else:
                 verify_injection(child)
+
     verify_injection(model)
+
 
 """
 Tests
