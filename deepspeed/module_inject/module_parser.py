@@ -84,7 +84,7 @@ def check_layer_norm(source):
 def update_name_list(parent_name, matches):
     new_list = []
     for match, linear in matches:
-        if parent_name == "self":
+        if parent_name == "":
             new_list = new_list + ["." + match]
         else:
             new_list = new_list + [parent_name + "." + match]
@@ -111,8 +111,6 @@ def check_matches(need_all_reduce, matches):
                 #add linear layers to list
                 linear_matches = update_name_list(name, linear_matches)
                 linear_layer_list.append(linear_matches)
-                #reset i_need_all_reduce
-                i_need_all_reduce = False
             if i_matches:
                 #add next level of class methods to check
                 new_matches = new_matches + i_matches
@@ -122,7 +120,7 @@ def check_matches(need_all_reduce, matches):
 def get_key_name():
     model_name = re.search(r"modeling_(.*?).py", args.file)
     #remove underscore characters
-    key = re.sub('_', '', model_name.group(1))
+    key = model_name.group(1)
     return key
 
 
@@ -156,7 +154,7 @@ if __name__ == "__main__":
 
             if result & need_all_reduce:
                 #add linear layers to list
-                linear_matches = update_name_list("self", linear_matches)
+                linear_matches = update_name_list("", linear_matches)
                 linear_layer_list.append(linear_matches)
             if matches is not None:
                 while len(matches):
