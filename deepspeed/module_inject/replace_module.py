@@ -434,61 +434,21 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config):
                     max_out_tokens=config.max_out_tokens,
                     scale_attn_by_inverse_layer_idx=scale_attn_by_inverse_layer_idx)
 
-            if quantize and config.quantize_settings is not None:
-                (quantization_scales,
-                 merge_count,
-                 mlp_extra_grouping,
-                 quantize_groups) = config.quantize_settings
-                if moe:
-                    new_module = transformer_inference.DeepSpeedMoEInference(
-                        transformer_config,
-                        mp_group=config.tensor_parallel.tp_group,
-                        ep_group=None if config.moe.ep_group is None else
-                        config.moe.ep_group[num_experts],
-                        expert_mp_group=None if config.moe.expert_mp_group is None else
-                        config.moe.expert_mp_group[num_experts],
-                        quantize_scales=quantization_scales[layer_id],
-                        quantize_groups=quantize_groups,
-                        merge_count=merge_count,
-                        mlp_extra_grouping=mlp_extra_grouping,
-                        qkv_merging=(policy_cls is HFBertLayerPolicy))
+            if moe:
+                new_module = transformer_inference.DeepSpeedMoEInference(
+                    transformer_config,
+                    mp_group=config.tensor_parallel.tp_group,
+                    ep_group=None
+                    if config.moe.ep_group is None else config.moe.ep_group[num_experts],
+                    expert_mp_group=None if config.moe.ep_mp_group is None else
+                    config.moe.ep_mp_group[num_experts],
+                )
 
-                else:
-                    new_module = transformer_inference.DeepSpeedTransformerInference(
-                        transformer_config,
-                        mp_group=config.tensor_parallel.tp_group,
-                        #quantize_scales=quantization_scales[layer_id],
-                        quantize_groups=quantize_groups,
-                        merge_count=merge_count,
-                        mlp_extra_grouping=mlp_extra_grouping,
-                        qkv_merging=(policy_cls is HFBertLayerPolicy))
-
-                #if quantize and qkvw.dtype != torch.int8:
-                #    quantize_bits = 8
-                #    quantizer = WeightQuantization()
-                #    if policy_cls is HFBertLayerPolicy:
-                #        data_quantized, _ = quantizer.quantize_data(qkvw.data, quantize_bits, quantize_groups * 3)
-                #    else:
-                #        data_quantized, _ = quantizer.quantize_data(qkvw.data, quantize_bits, quantize_groups)
-                #    qkvw.data.copy_(data_quantized)
-                #    qkvw.data = qkvw.data.to(torch.int8)
             else:
-
-                if moe:
-                    new_module = transformer_inference.DeepSpeedMoEInference(
-                        transformer_config,
-                        mp_group=config.tensor_parallel.tp_group,
-                        ep_group=None if config.moe.ep_group is None else
-                        config.moe.ep_group[num_experts],
-                        expert_mp_group=None if config.moe.expert_mp_group is None else
-                        config.moe.expert_mp_group[num_experts],
-                    )
-
-                else:
-                    new_module = transformer_inference.DeepSpeedTransformerInference(
-                        transformer_config,
-                        mp_group=config.tensor_parallel.tp_group,
-                    )
+                new_module = transformer_inference.DeepSpeedTransformerInference(
+                    transformer_config,
+                    mp_group=config.tensor_parallel.tp_group,
+                )
             new_module.config.scale_attention = scale_attention
 
             # we want the weights in [input, output] shape
