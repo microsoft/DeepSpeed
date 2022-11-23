@@ -39,7 +39,7 @@ class ParserPolicies():
         fnet=dict(FNetLayer=("output.dense", ), ),
         fsmt=dict(EncoderLayer=(".fc2", "self_attn.out_proj", ), DecoderLayer=("encoder_attn.out_proj", ".fc2", "self_attn.out_proj", ), ),
         funnel=dict(FunnelLayer=("ffn.linear_2", "attention.post_proj", ), ),
-        gptneo=dict(GPTNeoBlock=("mlp.c_proj", ), ),
+        gpt_neo=dict(GPTNeoBlock=("mlp.c_proj", "attention.out_proj" ), ),
         gptneox=dict(GPTNeoXLayer=("attention.dense", "mlp.dense_4h_to_h", ), ),
         gptneoxjapanese=dict(GPTNeoXJapaneseLayer=("attention.dense", "mlp.dense_4h_to_h", ), ),
         gptj=dict(GPTJBlock=("attn.out_proj", "mlp.fc_out", ), ),
