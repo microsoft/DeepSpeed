@@ -286,6 +286,9 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
                 setattr(module, name, new_module)
 
 
+selected_policy_g = None
+
+
 def replace_transformer_layer(orig_layer_impl,
                               model,
                               checkpoint_dict,
@@ -325,6 +328,10 @@ def replace_transformer_layer(orig_layer_impl,
                             inference=False,
                             layer_id=0):
         policy = policy_cls(child, inference=inference)
+
+        global selected_policy_g
+        if selected_policy_g is None:
+            selected_policy_g = policy
         if not policy.cuda_graph_supported:
             # policy says cuda graph is not supported raise an error if set
             assert not config.enable_cuda_graph, "cuda graph is not supported with this model, please disable"
@@ -915,6 +922,7 @@ def replace_transformer_layer(orig_layer_impl,
                     mp_replace,
                     ckpt_type,
                     quantizer,
+                    param_names=selected_policy_g.get_param_names(),
                 )
                 pbar.update(1)
         else:
@@ -939,12 +947,14 @@ def replace_transformer_layer(orig_layer_impl,
                     torch.load(ckpt_file,
                                map_location='cpu') for ckpt_file in ckpt_files
                 ]
-                load_model_with_checkpoint(replaced_module,
-                                           sds,
-                                           mp_replace,
-                                           ckpt_type,
-                                           quantizer,
-                                           int(rank % tp_split_size))
+                load_model_with_checkpoint(
+                    replaced_module,
+                    sds,
+                    mp_replace,
+                    ckpt_type,
+                    quantizer,
+                    int(rank % tp_split_size),
+                    param_names=selected_policy_g.get_param_names())
                 sds = [None for _ in sds]
                 gc.collect()
 
@@ -959,12 +969,14 @@ def replace_transformer_layer(orig_layer_impl,
                                              checkpoint["non_tp"][i]
                                              ) if base_dir1 else checkpoint["non_tp"][i]
                     sds = [torch.load(ckpt_file, map_location='cpu')]
-                    load_model_with_checkpoint(replaced_module,
-                                               sds,
-                                               mp_replace,
-                                               ckpt_type,
-                                               quantizer,
-                                               int(rank % tp_split_size))
+                    load_model_with_checkpoint(
+                        replaced_module,
+                        sds,
+                        mp_replace,
+                        ckpt_type,
+                        quantizer,
+                        int(rank % tp_split_size),
+                        param_names=selected_policy_g.get_param_names())
                     sds = [None for _ in sds]
                     gc.collect()
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")

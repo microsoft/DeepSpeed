@@ -41,10 +41,13 @@ class DeepSpeedMLPFunction(Function):
         if attn_nw is None:
             output = fused_gemm_gelu(residual_norm,
                                      inter_w,
+                                     inter_w.scale,
                                      inter_b,
                                      output_w,
+                                     output_w.scale,
                                      config.epsilon,
                                      config.pre_layer_norm,
+                                     config.q_int8,
                                      False)
         else:
             output, residual_add = mlp_gemm_func(input,

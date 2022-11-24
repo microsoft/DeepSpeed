@@ -139,6 +139,9 @@ class TransformerPolicy(DSPolicy):
         """
         raise NotImplementedError
 
+    def get_param_names(self):
+        raise NotImplementedError
+
 
 class HFBertLayerPolicy(TransformerPolicy):
     def __init__(self, client_module, inference=False):
@@ -294,6 +297,20 @@ class HFGPTNEOLayerPolicy(TransformerPolicy):
                self.client_module.ln_1.weight, \
                self.client_module.ln_1.bias
 
+    def get_param_names(self):
+        return 'attention.query_key_value.weight', \
+               'attention.query_key_value.bias', \
+               'attention.dense.weight', \
+               'attention.dense.bias', \
+               'mlp.dense_h_to_4h.weight', \
+               'mlp.dense_h_to_4h.bias', \
+               'mlp.dense_4h_to_h.weight', \
+               'mlp.dense_4h_to_h.bias', \
+               'input_layernorm.weight', \
+               'input_layernorm.bias', \
+               'post_attention_layernorm.weight', \
+               'post_attention_layernorm.bias',
+
 
 class HFGPTJLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
@@ -338,6 +355,18 @@ class HFGPTJLayerPolicy(TransformerPolicy):
                None, \
                self.client_module.ln_1.weight, \
                self.client_module.ln_1.bias
+
+    def get_param_names(self):
+        return 'attn.q_proj.weight', \
+               'attn.k_proj.weight', \
+               'attn.v_proj.weight', \
+               'attn.out_proj.weight', \
+               'mlp.fc_in.weight', \
+               'mlp.fc_in.bias', \
+               'mlp.fc_out.weight', \
+               'mlp.fc_out.bias', \
+               'ln_1.weight', \
+               'ln_1.bias',
 
 
 class MegatronLayerPolicy(TransformerPolicy):
@@ -501,6 +530,20 @@ class BLOOMLayerPolicy(TransformerPolicy):
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
 
+    def get_param_names(self):
+        return 'self_attention.query_key_value.weight', \
+               'self_attention.query_key_value.bias', \
+               'self_attention.dense.weight', \
+               'self_attention.dense.bias', \
+               'mlp.dense_h_to_4h.weight', \
+               'mlp.dense_h_to_4h.bias', \
+               'mlp.dense_4h_to_h.weight', \
+               'mlp.dense_4h_to_h.bias', \
+               'input_layernorm.weight', \
+               'input_layernorm.bias', \
+               'post_attention_layernorm.weight', \
+               'post_attention_layernorm.bias',
+
 
 class GPTNEOXLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
@@ -554,6 +597,20 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
                self.client_module.post_attention_layernorm.bias, \
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
+
+    def get_param_names(self):
+        return 'attention.query_key_value.weight', \
+               'attention.query_key_value.bias', \
+               'attention.dense.weight', \
+               'attention.dense.bias', \
+               'mlp.dense_h_to_4h.weight', \
+               'mlp.dense_h_to_4h.bias', \
+               'mlp.dense_4h_to_h.weight', \
+               'mlp.dense_4h_to_h.bias', \
+               'input_layernorm.weight', \
+               'input_layernorm.bias', \
+               'post_attention_layernorm.weight', \
+               'post_attention_layernorm.bias',
 
 
 class HFOPTLayerPolicy(TransformerPolicy):
@@ -611,6 +668,24 @@ class HFOPTLayerPolicy(TransformerPolicy):
             self.client_module.final_layer_norm.bias, \
             self.client_module.self_attn_layer_norm.weight, \
             self.client_module.self_attn_layer_norm.bias
+
+    def get_param_names(self):
+        return 'self_attn.q_proj.weight', \
+               'self_attn.q_proj.bias', \
+               'self_attn.k_proj.weight', \
+               'self_attn.k_proj.bias', \
+               'self_attn.v_proj.weight', \
+               'self_attn.v_proj.bias', \
+               'self_attn.out_proj.weight', \
+               'self_attn.out_proj.bias', \
+               'fc1.weight', \
+               'fc1.bias', \
+               'fc2.weight', \
+               'fc2.bias', \
+               'final_layer_norm.weight', \
+               'final_layer_norm.bias', \
+               'self_attn_layer_norm.weight', \
+               'self_attn_layer_norm.bias',
 
 
 # transformer-based policies
