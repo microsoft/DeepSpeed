@@ -1480,7 +1480,6 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
                        .layout(at::kStrided)
                        .device(at::kCUDA)
                        .requires_grad(false);
-    q_int8 = true;
 
     int intm_dim = q_int8 ? weight.size(0) : weight.size(1);
 
@@ -1528,7 +1527,6 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
                      bsz,
                      Context::Instance().GetCurrentStream());
 
-    q_int8 = true;
     int out_size = q_int8 ? weight_out.size(0) : weight_out.size(1);
     auto output = at::empty({input.size(0), input.size(1), out_size}, options);
     if (q_int8) {

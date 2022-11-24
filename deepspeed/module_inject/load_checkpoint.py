@@ -201,7 +201,8 @@ def load_model_with_checkpoint(r_module,
                             'attn_qkvw',
                             [prefix + q_w,
                              prefix + k_w,
-                             prefix + v_w])
+                             prefix + v_w],
+                            qkv=True)
             else:
                 maybe_copy1(module.attention,
                             'attn_qkvw',
