@@ -126,23 +126,12 @@ class InferenceEngine(Module):
             self._apply_injection_policy(config)
         elif config.replace_method == 'dict':
             key = ParserPolicies.get_map_key(str(model))
-            new_key = None
-
-            def SML(module):
-                for child in module.children():
-                    if isinstance(child, nn.ModuleList):
-                        return child[0].__class__
-                    else:
-                        new_key = SML(child)
-                    if new_key is not None:
-                        return new_key
-
-            new_key = SML(model)
+            new_key = ParserPolicies.search_module_list(nn.ModuleList, model)
             if new_key is not None:
                 key = str(new_key).split('models.')[1].split('.')[0]
             assert key in ParserPolicies.parser_policy_map, "dict replace method not supported for this model"
             for client_module, injection_policy in ParserPolicies.parser_policy_map[key].items():
-                module_name = 'transformers.models.' + key +'.modeling_' + key
+                module_name = 'transformers.models.' + key + '.modeling_' + key
                 module_name = importlib.import_module(module_name)
                 client_module = getattr(module_name, client_module)
                 if isinstance(injection_policy, str):

@@ -112,8 +112,18 @@ class ParserPolicies():
         yoso=dict(YosoLayer=("self.value", "output.dense", ), ),
     )
 
+
     def get_map_key(model):
         key = re.search(r": (.*?)Model", model)
         if key is None:
             key = re.search(r": (.*?)Stack", model)
         return key.group(1).lower()
+
+    def search_module_list(modulelist, module):
+        for child in module.children():
+            if isinstance(child, modulelist):
+                return child[0].__class__
+            else:
+                new_key = ParserPolicies.search_module_list(modulelist, child)
+            if new_key is not None:
+                return new_key
