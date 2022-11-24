@@ -55,13 +55,15 @@ def calc_bw_log(comm_op, size, duration):
 
 class CommsLogger:
     def __init__(self):
-        from deepspeed.comm.constants import COMMS_LOGGER_VERBOSE_DEFAULT, COMMS_LOGGER_DEBUG_DEFAULT, COMMS_LOGGER_PROF_OPS_DEFAULT, COMMS_LOGGER_PROF_ALL_DEFAULT, COMMS_LOGGER_ENABLED_DEFAULT
+        from deepspeed.comm.config import DeepSpeedCommsConfig
+
         self.comms_dict = {}
-        self.verbose = COMMS_LOGGER_VERBOSE_DEFAULT
-        self.debug = COMMS_LOGGER_DEBUG_DEFAULT
-        self.prof_ops = COMMS_LOGGER_PROF_OPS_DEFAULT
-        self.prof_all = COMMS_LOGGER_PROF_ALL_DEFAULT
-        self.enabled = COMMS_LOGGER_ENABLED_DEFAULT
+        self.comms_config = DeepSpeedCommsConfig()
+        self.verbose = self.comms_config.verbose
+        self.debug = self.comms_config.debug
+        self.prof_ops = self.comms_config.prof_ops
+        self.prof_all = self.comms_config.prof_all
+        self.enabled = self.comms_config.enabled
 
     def configure(self, comms_config):
         self.enabled = comms_config.comms_logger_enabled

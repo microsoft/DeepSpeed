@@ -3,6 +3,7 @@ import copy
 from numpy import BUFSIZE
 import json
 import subprocess
+import os
 import sys
 import threading
 import time
@@ -11,8 +12,7 @@ import hjson
 from tqdm import tqdm
 
 from ..utils import logger
-from .constants import *
-from .constants import AUTOTUNING, AUTOTUNING_METRIC_PATH
+from .config import AUTOTUNING
 from .utils import get_val_by_key, search_error, was_interruptted
 """
 thread-0: loop over experiment queue dispatching experiments if they become available
@@ -71,8 +71,7 @@ class ResourceManager:
                         exp['name'])
                     if AUTOTUNING in exp["ds_config"]:
                         metric_file = os.path.join(result_dir, "metrics.json")
-                        exp["ds_config"][AUTOTUNING][
-                            AUTOTUNING_METRIC_PATH] = metric_file
+                        exp["ds_config"][AUTOTUNING].metric_path = metric_file
                     stderr_file = os.path.join(result_dir, "stderr.log")
                     model_info_file = os.path.join(result_dir, "model_info.json")
                     metric_file = os.path.join(result_dir, "metrics.json")
@@ -237,7 +236,7 @@ class ResourceManager:
                 )
                 continue
 
-            metric_file = exp["ds_config"][AUTOTUNING][AUTOTUNING_METRIC_PATH]
+            metric_file = exp["ds_config"][AUTOTUNING].metric_path
 
             if os.path.exists(metric_file):
                 with open(metric_file, 'r') as f:

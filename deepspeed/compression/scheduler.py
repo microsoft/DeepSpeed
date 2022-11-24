@@ -26,7 +26,7 @@ class compression_scheduler():
 
     def make_init(self):
         self.different_compression_methods = {}
-        for method, method_content in self.compression_config.items():
+        for method, method_content in self.compression_config:
             if LAYER_REDUCTION in method:
                 continue
             self.different_compression_methods[method] = {
@@ -35,22 +35,22 @@ class compression_scheduler():
                 DIFFERENT_GROUPS: []
             }
             exist_module_name = set()
-            shared_parameters = method_content[SHARED_PARAMETERS]
+            shared_parameters = method_content.shared_parameters
             self.different_compression_methods[method][
-                TECHNIQUE_ENABLED] = shared_parameters[TECHNIQUE_ENABLED]
+                TECHNIQUE_ENABLED] = shared_parameters.enabled
             self.different_compression_methods[method][
                 SHARED_PARAMETERS] = shared_parameters
 
-            for group_name, method_parameters in method_content[DIFFERENT_GROUPS].items():
+            for group_name, method_parameters in method_content.different_groups.items():
                 module_name_list = []
-                for key_word in method_parameters[DIFFERENT_GROUPS_MODULE_SCOPE]:
+                for key_word in method_parameters.modules:
                     module_name, exist_module_name = get_module_name(group_name, self.model, key_word, exist_module_name, verbose=False)
                     module_name_list.extend(module_name)
                 if module_name_list:
                     self.different_compression_methods[method][DIFFERENT_GROUPS].append([
                         group_name,
                         module_name_list,
-                        method_parameters.copy().pop('params')
+                        method_parameters.dict().pop('params')
                     ])
 
     def check_weight_quantization(self):

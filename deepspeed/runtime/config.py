@@ -22,9 +22,9 @@ from .config_utils import (
     ScientificNotationEncoder,
 )
 from .zero.config import get_zero_config, ZeroStageEnum
-from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
-from ..comm.config import DeepSpeedCommsConfig
-from ..monitor.config import DeepSpeedMonitorConfig
+from .activation_checkpointing.config import get_activation_checkpointing_config
+from ..comm.config import get_comms_config
+from ..monitor.config import get_monitor_config
 
 from deepspeed import comm as dist
 
@@ -47,11 +47,11 @@ from ..elasticity.constants import (
     NUM_GPUS_PER_NODE_DEFAULT,
 )
 
-from ..profiling.config import DeepSpeedFlopsProfilerConfig
-from ..autotuning.config import DeepSpeedAutotuningConfig
-from ..nebula.config import DeepSpeedNebulaConfig
+from ..profiling.config import get_flops_profiler_config
+from ..autotuning.config import get_autotuning_config
+from ..nebula.config import get_nebula_config
 
-from ..compression.config import get_compression_config, get_quantize_enabled
+from ..compression.config import get_compression_config
 from ..compression.constants import *
 from .swap_tensor.aio_config import get_aio_config
 
@@ -551,8 +551,8 @@ def get_memory_breakdown(param_dict):
     return get_scalar_param(param_dict, MEMORY_BREAKDOWN, MEMORY_BREAKDOWN_DEFAULT)
 
 
-def get_eigenvalue_config(param_dict):
-    if get_quantize_enabled(param_dict):
+def get_eigenvalue_config(param_dict, compression_config):
+    if compression_config.weight_quantization.shared_parameters.enabled:
         param_dict = param_dict[QUANTIZE_TRAINING]
         assert not get_eigenvalue_enabled(param_dict), "Eigenvalue based MoQ is temporarily disabled"
         return (
@@ -831,11 +831,11 @@ class DeepSpeedConfig(object):
         self.zero_optimization_stage = self.zero_config.stage
         self.zero_enabled = self.zero_optimization_stage > 0
 
-        self.activation_checkpointing_config = DeepSpeedActivationCheckpointingConfig(
+        self.activation_checkpointing_config = get_activation_checkpointing_config(
             param_dict)
 
-        self.comms_config = DeepSpeedCommsConfig(param_dict)
-        self.monitor_config = DeepSpeedMonitorConfig(param_dict)
+        self.comms_config = get_comms_config(param_dict)
+        self.monitor_config = get_monitor_config(param_dict)
 
         self.gradient_clipping = get_gradient_clipping(param_dict)
         self.fp16_enabled = get_fp16_enabled(param_dict)
@@ -866,11 +866,11 @@ class DeepSpeedConfig(object):
         self.scheduler_name = get_scheduler_name(param_dict)
         self.scheduler_params = get_scheduler_params(param_dict)
 
-        self.flops_profiler_config = DeepSpeedFlopsProfilerConfig(param_dict)
+        self.flops_profiler_config = get_flops_profiler_config(param_dict)
         self.wall_clock_breakdown = (get_wall_clock_breakdown(param_dict)
                                      | self.flops_profiler_config.enabled)
         self.memory_breakdown = get_memory_breakdown(param_dict)
-        self.autotuning_config = DeepSpeedAutotuningConfig(param_dict)
+        self.autotuning_config = get_autotuning_config(param_dict)
 
         (
             self.eigenvalue_enabled,
@@ -881,7 +881,8 @@ class DeepSpeedConfig(object):
             self.eigenvalue_gas_boundary_resolution,
             self.eigenvalue_layer_name,
             self.eigenvalue_layer_num,
-        ) = get_eigenvalue_config(param_dict)
+        ) = get_eigenvalue_config(param_dict,
+                                  self.compression_config)
 
         self.sparse_attention = get_sparse_attention(param_dict)
         self.pipeline = get_pipeline_config(param_dict)
@@ -912,7 +913,7 @@ class DeepSpeedConfig(object):
 
         self.dataloader_drop_last = get_dataloader_drop_last(param_dict)
 
-        self.nebula_config = DeepSpeedNebulaConfig(param_dict)
+        self.nebula_config = get_nebula_config(param_dict)
 
     def _batch_assertion(self):
 

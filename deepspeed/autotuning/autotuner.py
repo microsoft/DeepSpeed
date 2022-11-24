@@ -11,7 +11,7 @@ from ..runtime.constants import *
 
 from ..runtime.zero.config import ZERO_OPTIMIZATION, ZeroStageEnum
 from ..utils import logger
-from .config import DeepSpeedAutotuningConfig
+from .config import AUTOTUNING, DeepSpeedAutotuningConfig, TunerTypeEnum
 from .constants import *
 from .scheduler import ResourceManager
 from .tuner import GridSearchTuner, RandomTuner, ModelBasedTuner
@@ -621,9 +621,9 @@ class Autotuner:
         exps = self._generate_experiments(tuning_space, max_train_batch_size_per_gpu)
 
         logger.info(f'Tuner type is {self.autotuning_config.tuner_type}')
-        if self.autotuning_config.tuner_type == AUTOTUNING_TUNER_MODELBASED:
+        if self.autotuning_config.tuner_type == TunerTypeEnum.model_based:
             t = ModelBasedTuner(exps, self.rm, self.metric(), tuning_space)
-        elif self.autotuning_config.tuner_type == AUTOTUNING_TUNER_RANDOM:
+        elif self.autotuning_config.tuner_type == TunerTypeEnum.random:
             t = RandomTuner(exps, self.rm, self.metric())
         else:
             t = GridSearchTuner(exps, self.rm, self.metric())
@@ -695,13 +695,14 @@ class Autotuner:
         model_info_path = os.path.join(self.results_dir,
                                        "profile_model_info",
                                        "model_info.json")
-        ds_config[AUTOTUNING] = {
+        at_config_dict = {
             "enabled": True,
             "model_info_path": model_info_path,
             "model_info": {
                 "profile": True
             }
         }
+        ds_config[AUTOTUNING] = DeepSpeedAutotuningConfig(**at_config_dict)
 
         exp_config = {}
         exp_name = "profile_model_info"
@@ -804,7 +805,7 @@ class Autotuner:
         self.rm.run()
         for exp_id, (exp, err) in self.rm.finished_experiments.items():
             if exp:
-                metric_file = exp[DS_CONFIG][AUTOTUNING][AUTOTUNING_METRIC_PATH]
+                metric_file = exp[DS_CONFIG][AUTOTUNING].metric_path
 
                 if os.path.exists(metric_file):
                     with open(metric_file, 'r') as f:

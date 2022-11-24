@@ -30,7 +30,6 @@ import torch
 import os
 
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
-from .constants import *
 
 
 class ReduceOp(Enum):
@@ -75,7 +74,7 @@ from deepspeed.comm.utils import *
 
 
 def _configure_using_config_file(config):
-    if config.comms_logger_enabled:
+    if config.enabled:
         comms_logger.configure(config)
 
 
