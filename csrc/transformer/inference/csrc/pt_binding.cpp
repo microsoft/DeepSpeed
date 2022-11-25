@@ -1424,7 +1424,7 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                          q_int8,
                                          act_func_type);
 
-    return {output, output};  // res_add};
+    return {output, res_add};
 }
 
 template <typename T>
