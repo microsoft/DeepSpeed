@@ -309,12 +309,12 @@ def top2gating(logits: Tensor,
     locations2 += torch.sum(mask1, dim=0, keepdim=True)
 
     # gating decisions
-    exp_counts = torch.sum(mask1, dim=0).detach().to('cpu')
+    exp_counts = torch.sum(mask1 + mask2, dim=0).detach().to('cpu')
 
     # Compute l_aux
     me = torch.mean(gates, dim=0)
-    ce = torch.mean(mask1.float(), dim=0)
-    l_aux = torch.mean(me * ce) * num_experts * num_experts
+    ce = torch.mean((mask1 + mask2).float(), dim=0)
+    l_aux = torch.mean(me * ce) * num_experts * num_experts * 1/2
 
     # Remove locations outside capacity from mask
     mask1 *= torch.lt(locations1, capacity)
