@@ -1,0 +1,71 @@
+Workflow
+--------
+
+ds_model = ds.init_inference(model)
+
+init_inference() {
+    1. check model type
+    2. check if replace policy exists
+    3. create a new nn.module and replace the current nn.module
+    4. return the new nn.module
+}
+
+output = ds_model(input)
+
+ds_model() {
+    1. invoke the forward pass using DeepSpeedInference module
+}
+
+API Issues:
+- why do we need to set both  replace_with_kernel_inject=True and replace_method='auto'?
+- How to test other models with ds inference besides huggingface?
+    -- megatron ckpt?
+    -- megatron-moe ckpt?
+-------------------------------------
+-------------------------------------
+
+
+Questions
+----------
+1. replace_with_kernel_inject -- can we detect it through the supported model list instead of asking users to set true/false?
+
+2. Why are the following functions defined inside replace_transformer_layer?
+ -- def replace_with_policy(child,
+ -- def replace_wo_policy(module, all_reduce_linears):
+ -- ...
+
+3.  Define steps in replace_with_policy() so we can modularize these in some systematic way based on model type, mode, policy, etc.
+    a- check the policy object sanity
+    b- local_objects = policy.get_hidden_heads()
+    c- ensure heads with tensor-parallelism - num_attention_heads % mp_size == 0
+    d- local_objects += policy.get_attention()
+    e- local_objects += policy.get_mlp()
+    f- local_objects += policy.get_layernorm()
+    g- handle datatypes on local_objects -- maybe convert_dtypes(local_objects)
+    h- create local transformer_config using local_objects (for various cases, 1. inference, 2. inference-moe, 3. training)
+        -- example: transformer_inference.DeepSpeedInferenceConfig() for inference where transformer_inference is a deepspeed op
+    i- create new module using the local config created above
+    j- transpose for inference acceleration
+    k- do a ton of things (tensor/expert parallel, meta tensor, megatron, special dealing) on the new_module
+    l- finally return the new_module to replace_fn
+
+4. The replace_fn() is a helper to choose whether to replace with a policy or without a policy
+    if policy
+        replace_with_policy
+    else:
+        replace_wo_policy
+    TODO: Ask/clarify with Reza about replace_wo_policy vs. training mode vs. inference mode in this function
+
+5. Expanding on the DeepSpeedInference (transformer_inference) op further
+ -- given that this is yet another massive yet model agnostic module, we need to study it and find out if we can do a model-policy-specific module
+ -- reading more in the code, it seems that the forward pass of this op is very simple and just does self.* for attention, mlp, and layernorms
+ -- so if the model config and replace_fn is developed per model-type/family, we should be able to have a very simple forward pass that does:
+    def forward(25 args)
+      self.layernorms()
+      self.attention()
+      self.mlp()
+      self.layernorms()
+
+DeepSpeedTransformerInference -- base class
+  -- BERT
+  -- GPT2

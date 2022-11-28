@@ -1,5 +1,10 @@
 from torch import nn
-import deepspeed.ops.transformer as transformer_inference
+
+use_containers = True  # LEV: Use this for container based bloom-3b example
+if use_containers:
+    from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
+else:
+    import deepspeed.ops.transformer as transformer_inference
 from ..runtime.zero import GatheredParameters
 from .layers import LinearLayer, Normalize, EmbeddingLayer
 import torch
@@ -138,30 +143,41 @@ def load_model_with_checkpoint(r_module,
             for n, child in module.named_children():
                 load_parameters(child, prefix + n + '.')
         else:
+            # input_layernorm weight + bias copy
             module.norm_w.data.copy_(sd[0][prefix + 'input_layernorm.' + 'weight'])
             module.norm_b.data.copy_(sd[0][prefix + 'input_layernorm.' + 'bias'])
+
+            # attention query_key_value weight + bias copy
             module.attention.attn_qkvw = mp_replace.copy(module.attention.attn_qkvw,
                 weight_quantizer.quantize(sd[0][prefix + 'self_attention.query_key_value.' + 'weight']) if weight_quantizer.q_int8 else \
                 weight_quantizer.quantize(transpose(sd[0][prefix + 'self_attention.query_key_value.' + 'weight'])))
             module.attention.attn_qkvb = mp_replace.copy(
                 module.attention.attn_qkvb.data,
                 sd[0][prefix + 'self_attention.query_key_value.' + 'bias'])
+
+            # attention dense weight + bias copy
             module.attention.attn_ow = mp_replace.copy(module.attention.attn_ow,
                 weight_quantizer.quantize(sd[0][prefix + 'self_attention.dense.' + 'weight']) if weight_quantizer.q_int8 else \
                 weight_quantizer.quantize(transpose(sd[0][prefix + 'self_attention.dense.' + 'weight'])))
             module.attention.attn_ob = mp_replace.copy(
                 module.attention.attn_ob.data,
                 sd[0][prefix + 'self_attention.dense.' + 'bias'])
+
+            # post_attention_layernorm weight + bias copy
             module.mlp.attn_nw.data.copy_(sd[0][prefix + 'post_attention_layernorm.' +
                                                 'weight'])
             module.mlp.attn_nb.data.copy_(sd[0][prefix + 'post_attention_layernorm.' +
                                                 'bias'])
+
+            # mlp.dense_h_to_4h weight + bias copy
             module.mlp.inter_w = mp_replace.copy(module.mlp.inter_w,
                 weight_quantizer.quantize(sd[0][prefix + 'mlp.dense_h_to_4h.' + 'weight']) if weight_quantizer.q_int8 else \
                 weight_quantizer.quantize(transpose(sd[0][prefix + 'mlp.dense_h_to_4h.' + 'weight'])))
             module.mlp.inter_b = mp_replace.copy(
                 module.mlp.inter_b.data,
                 sd[0][prefix + 'mlp.dense_h_to_4h.' + 'bias'])
+
+            # mlp.dense_4h_to_h weight + bias copy
             module.mlp.output_w = mp_replace.copy(module.mlp.output_w,
                 weight_quantizer.quantize(sd[0][prefix + 'mlp.dense_4h_to_h.' + 'weight']) if weight_quantizer.q_int8 else \
                 weight_quantizer.quantize(transpose(sd[0][prefix + 'mlp.dense_4h_to_h.' + 'weight'])))
@@ -170,13 +186,22 @@ def load_model_with_checkpoint(r_module,
                 sd[0][prefix + 'mlp.dense_4h_to_h.' + 'bias'])
 
     layer_policies = {
-        nn.Linear: load,
-        nn.Embedding: load,
-        nn.LayerNorm: load,
-        EmbeddingLayer: load,
-        LinearLayer: load,
-        Normalize: load,
-        transformer_inference.DeepSpeedTransformerInference: load_transformer_layer
+        nn.Linear:
+        load,
+        nn.Embedding:
+        load,
+        nn.LayerNorm:
+        load,
+        EmbeddingLayer:
+        load,
+        LinearLayer:
+        load,
+        Normalize:
+        load,
+        DeepSpeedBloomInference if use_containers else transformer_inference.DeepSpeedTransformerInference:
+        # w/ containers
+        #transformer_inference.DeepSpeedTransformerInference: # w/o containers
+        load_transformer_layer
     }
 
     all_ds_ids = {}

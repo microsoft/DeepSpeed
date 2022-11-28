@@ -382,8 +382,8 @@ def replace_transformer_layer(orig_layer_impl,
 
         quantizer = GroupQuantizer(q_int8=quantize)
         if inference:
-            scale_attn_by_inverse_layer_idx = config.scale_attn_by_inverse_layer_idx if hasattr(
-                config,
+            scale_attn_by_inverse_layer_idx = model_config.scale_attn_by_inverse_layer_idx if hasattr(
+                model_config,
                 'scale_attn_by_inverse_layer_idx') else False
             if moe:
                 ep_world_size = dist.get_world_size()
@@ -393,8 +393,8 @@ def replace_transformer_layer(orig_layer_impl,
                 transformer_config = transformer_inference.DeepSpeedMoEInferenceConfig(
                     hidden_size=hidden_size,
                     heads=num_attention_heads,
-                    layer_norm_eps=config.layer_norm_eps if hasattr(
-                        config,
+                    layer_norm_eps=model_config.layer_norm_eps if hasattr(
+                        model_config,
                         'layer_norm_eps') else 1e-12,
                     fp16=fp16,
                     pre_layer_norm=policy.pre_attn_norm,

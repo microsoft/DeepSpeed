@@ -58,8 +58,8 @@ class DeepSpeedMLPFunction(Function):
                                              config.epsilon,
                                              config.pre_layer_norm,
                                              config.mlp_after_attn,
-                                             inter_w.scale,
-                                             output_w.scale,
+                                             inter_w, #inter_w.scale,
+                                             output_w, #output_w.scale,
                                              config.q_int8,
                                              config.mlp_act_func_type)
         residual = residual if config.pre_layer_norm else residual_add

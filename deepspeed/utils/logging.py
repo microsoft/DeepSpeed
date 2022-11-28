@@ -44,6 +44,15 @@ class LoggerFactory:
 logger = LoggerFactory.create_logger(name="DeepSpeed", level=logging.INFO)
 
 
+def print_configuration(args, name):
+    print("----------------------------------------")
+    print("{}:".format(name))
+    for arg in sorted(vars(args)):
+        dots = "." * (29 - len(arg))
+        print("  {} {} {}".format(arg, dots, getattr(args, arg)))
+    print("----------------------------------------")
+
+
 def log_dist(message, ranks=None, level=logging.INFO):
     from deepspeed import comm as dist
     """Log message when one of following condition meets

@@ -15,7 +15,7 @@ from deepspeed.utils.timer import SynchronizedWallClockTimer
 
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
-from ..module_inject.replace_module import replace_transformer_layer, generic_injection
+from ..module_inject import replace_transformer_layer, generic_injection
 from ..comm.comm import init_distributed
 from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
