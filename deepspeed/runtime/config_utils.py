@@ -8,6 +8,7 @@ Collection of DeepSpeed configuration utilities
 import json
 import collections
 import collections.abc
+from functools import reduce
 from pydantic import BaseModel
 from deepspeed.utils import logger
 
@@ -55,21 +56,41 @@ class DeepSpeedConfigModel(BaseModel):
         self._deprecated_fields_check(self)
 
     def _process_deprecated_field(self, pydantic_config, field):
+        # Get information about the deprecated field
         fields_set = pydantic_config.__fields_set__
         dep_param = field.name
+        kwargs = field.field_info.extra
+        new_param_fn = kwargs.get("new_param_fn", lambda x: x)
+        param_value = new_param_fn(getattr(pydantic_config, dep_param))
+        new_param = kwargs.get("new_param", "")
         if dep_param in fields_set:
-            kwargs = field.field_info.extra
-            new_param = kwargs.get("new_param", "")
             logger.warning(f"Config parameter {dep_param} is deprecated" +
                            (f" use {new_param} instead" if new_param else ""))
+            # Check if there is a new param and if it should be set with a value
             if new_param and kwargs.get("set_new_param", True):
-                assert (
-                    new_param not in fields_set
-                ), f"Cannot provide deprecated parameter '{dep_param}' and replacing parameter '{new_param}' together"
-                new_param_fn = kwargs.get("new_param_fn", lambda x: x)
-                param_value = new_param_fn(getattr(pydantic_config, dep_param))
+                # Remove the deprecate field if there is a replacing field
                 try:
-                    setattr(pydantic_config, new_param, param_value)
+                    delattr(pydantic_config, dep_param)
+                except Exception as e:
+                    logger.error(f"Tried removing deprecated '{dep_param}' from config")
+                    raise e
+
+                # Set new param value
+                new_param_nested = new_param.split(".")
+                if len(new_param_nested) > 1:
+                    # If the new param exists in a subconfig, we need to get
+                    # the fields set for that subconfig
+                    pydantic_config = reduce(getattr,
+                                             new_param_nested[:-1],
+                                             pydantic_config)
+                    fields_set = pydantic_config.__fields_set__
+                new_param_name = new_param_nested[-1]
+                assert (
+                    new_param_name not in fields_set
+                ), f"Cannot provide deprecated parameter '{dep_param}' and replacing parameter '{new_param}' together"
+                # A custom function for converting the old param value to new param value can be provided
+                try:
+                    setattr(pydantic_config, new_param_name, param_value)
                 except Exception as e:
                     logger.error(
                         f"Tried setting value for '{new_param}' with value from deprecated '{dep_param}'"
@@ -88,6 +109,23 @@ class DeepSpeedConfigModel(BaseModel):
         use_enum_values = True
         allow_population_by_field_name = True
         extra = "forbid"
+
+
+class pp_int(int):
+    """
+    A wrapper for integers that will return a custom string or comma-formatted
+    string of the integer. For example, print(pp_int(1e5)) will return
+    "10,000". This is useful mainly for auto-generated documentation purposes.
+    """
+    def __new__(cls, val, custom_print_str=None):
+        inst = super().__new__(cls, val)
+        inst.custom_print_str = custom_print_str
+        return inst
+
+    def __repr__(self):
+        if self.custom_print_str:
+            return self.custom_print_str
+        return f"{self.real:,}"
 
 
 # adapted from https://stackoverflow.com/a/50701137/9201239
