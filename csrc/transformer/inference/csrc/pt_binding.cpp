@@ -1343,6 +1343,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                          bsz,
                          Context::Instance().GetCurrentStream());
     }
+
     if (q_int8) {
         quantized_gemm<T>(output.data_ptr(),
                           intermediate,

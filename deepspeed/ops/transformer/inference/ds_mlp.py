@@ -99,7 +99,7 @@ class DeepSpeedMLP(nn.Module):
         self.config = config
         data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.float
         data_type_fp = torch.half if config.fp16 else torch.float
-        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
+        device = torch.cuda.current_device()  #if config.bigscience_bloom else 'cpu'
         self.attn_nw = nn.Parameter(torch.empty(self.config.hidden_size,
                                                 dtype=data_type_fp,
                                                 device=device),

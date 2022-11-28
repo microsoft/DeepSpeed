@@ -309,7 +309,9 @@ class HFGPTNEOLayerPolicy(TransformerPolicy):
                'input_layernorm.weight', \
                'input_layernorm.bias', \
                'post_attention_layernorm.weight', \
-               'post_attention_layernorm.bias',
+               'post_attention_layernorm.bias', \
+               False, \
+               True
 
 
 class HFGPTJLayerPolicy(TransformerPolicy):
@@ -366,7 +368,9 @@ class HFGPTJLayerPolicy(TransformerPolicy):
                'mlp.fc_out.weight', \
                'mlp.fc_out.bias', \
                'ln_1.weight', \
-               'ln_1.bias',
+               'ln_1.bias', \
+               False, \
+               True
 
 
 class MegatronLayerPolicy(TransformerPolicy):
@@ -542,7 +546,9 @@ class BLOOMLayerPolicy(TransformerPolicy):
                'input_layernorm.weight', \
                'input_layernorm.bias', \
                'post_attention_layernorm.weight', \
-               'post_attention_layernorm.bias',
+               'post_attention_layernorm.bias', \
+               True, \
+               False
 
 
 class GPTNEOXLayerPolicy(TransformerPolicy):
@@ -610,7 +616,9 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
                'input_layernorm.weight', \
                'input_layernorm.bias', \
                'post_attention_layernorm.weight', \
-               'post_attention_layernorm.bias',
+               'post_attention_layernorm.bias', \
+               False, \
+               False
 
 
 class HFOPTLayerPolicy(TransformerPolicy):
@@ -625,9 +633,9 @@ class HFOPTLayerPolicy(TransformerPolicy):
         try:
             import transformers
             HFOPTLayerPolicy._orig_layer_class = transformers.models.opt.modeling_opt.OPTDecoderLayer
-            if isinstance(DSPolicy.hf_model_config,
+            if isinstance(TransformerPolicy.hf_model_config,
                           transformers.models.opt.configuration_opt.OPTConfig):
-                self.pre_attn_norm = self.hf_model_config.do_layer_norm_before
+                self.pre_attn_norm = TransformerPolicy.hf_model_config.do_layer_norm_before
         except:
             HFOPTLayerPolicy._orig_layer_class = None
 
@@ -682,10 +690,12 @@ class HFOPTLayerPolicy(TransformerPolicy):
                'fc1.bias', \
                'fc2.weight', \
                'fc2.bias', \
+               'self_attn_layer_norm.weight', \
+               'self_attn_layer_norm.bias', \
                'final_layer_norm.weight', \
                'final_layer_norm.bias', \
-               'self_attn_layer_norm.weight', \
-               'self_attn_layer_norm.bias',
+               True, \
+               True
 
 
 # transformer-based policies

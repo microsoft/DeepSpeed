@@ -33,10 +33,12 @@ class LinearLayer(nn.Module):
                 torch.empty(weight_shape,
                             dtype=dtype,
                             device=torch.cuda.current_device()))
+
             self.bias = Parameter(
                 torch.empty(weight_shape[0],
                             dtype=dtype,
-                            device=torch.cuda.current_device()))
+                            device=torch.cuda.current_device())) \
+                if bias is not None else None
 
     def forward(self, input):
         output = torch.matmul(input, self.weight.transpose(-1, -2))
@@ -57,7 +59,7 @@ class Normalize(nn.Module):
 
 
 class EmbeddingLayer(nn.Module):
-    def __init__(self, weight_shape, dtype=torch.float):
+    def __init__(self, weight_shape, dtype=torch.half):
         super(EmbeddingLayer, self).__init__()
         self.weight = Parameter(
             torch.empty(weight_shape[0],
