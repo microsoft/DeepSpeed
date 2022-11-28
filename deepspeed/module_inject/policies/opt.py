@@ -53,6 +53,6 @@ class HFOPTLayerPolicy(TransformerPolicy):
 
     def layernorm(self):
         return self.client_module.final_layer_norm.weight, \
-            self.client_module.final_layer_norm.bias, \
-            self.client_module.self_attn_layer_norm.weight, \
-            self.client_module.self_attn_layer_norm.bias
+               self.client_module.final_layer_norm.bias, \
+               self.client_module.self_attn_layer_norm.weight, \
+               self.client_module.self_attn_layer_norm.bias

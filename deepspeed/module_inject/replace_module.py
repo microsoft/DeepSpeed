@@ -457,6 +457,10 @@ def replace_transformer_layer(orig_layer_impl,
                 )
             new_module.config.scale_attention = scale_attention
 
+            #from rich.pretty import pprint
+            #pprint(new_module.config.__dict__)
+            #print(f"scale_attention = {scale_attention}")
+
             # we want the weights in [input, output] shape
             # linear layer is created with [input, output] shape
             # transpose it here to reduce inference cost!

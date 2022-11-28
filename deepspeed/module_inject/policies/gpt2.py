@@ -27,9 +27,9 @@ class HFGPT2LayerPolicy(TransformerPolicy):
 
     def mlp(self):
         return self.client_module.mlp.c_fc.weight, \
-            self.client_module.mlp.c_fc.bias, \
-            self.client_module.mlp.c_proj.weight, \
-            self.client_module.mlp.c_proj.bias
+               self.client_module.mlp.c_fc.bias, \
+               self.client_module.mlp.c_proj.weight, \
+               self.client_module.mlp.c_proj.bias
 
     def layernorm(self):
         return self.client_module.ln_2.weight, \

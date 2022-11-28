@@ -7,7 +7,6 @@ class DS_GPTNEOContainer(BaseTransformerContainer):
     def __init__(self, policy):
         super().__init__(policy)
 
-        # TODO: Check if scale_attention in config
         self.attn_linear_layer = True
         self.mlp_linear_layer = True
         self.layer_norm_eps = 1e-05

@@ -7,19 +7,19 @@ class DS_OPTContainer(BaseTransformerContainer):
     def __init__(self, policy):
         super().__init__(policy)
 
-        self.attn_linear_layer = False
-        self.mlp_linear_layer = False
+        self.attn_linear_layer = True
+        self.mlp_linear_layer = True
         self.scale_attention = True
-        self.layer_norm_eps = 1e-5
-        self.pre_layer_norm = True
+        self.mlp_act_func_type = self.policy.mlp_act_func_type
+        self.window_size = 1
 
     def create_config(self):
         self.config = DeepSpeedInferenceConfig(hidden_size=self.hidden_size,
                                                heads=self.num_attention_heads,
-                                               layer_norm_eps=self.layer_norm_eps,
                                                fp16=self.fp16,
-                                               pre_layer_norm=self.pre_layer_norm,
-                                               mp_size=self.mp_size)
+                                               mp_size=self.mp_size,
+                                               mlp_act_func_type=self.mlp_act_func_type,
+                                               window_size=self.window_size)
         return self.config
 
     def create_module(self, config=None):
@@ -27,7 +27,3 @@ class DS_OPTContainer(BaseTransformerContainer):
         self.module = DeepSpeedOPTInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
         return self.module
-
-    def transpose(self):
-        # GPT2 does not need a transpose so override and pass
-        pass
