@@ -15,11 +15,6 @@ class DS_GPTJContainer(BaseTransformerContainer):
         self.rotary_dim = 64
         self.window_size = 1
         self.mlp_after_attn = False
-        # self.fp16 is in the base.py and set_dtpye() will set it from the replace_with_policy() call site.
-
-        #self.tensors.append(alibi)
-        #self.tensors = [self.qkvw, self.qkvb, self.dense_w, self.dense_b, self._h4h_w, self._h4h_b, self._4hh_w, self._4hh_b, self.attn_nw, self.attn_nb, self.input_nw, self.input_nb, self.new_tensor_type]
-        #self.config = {'hidden_size': self.hidden_size, 'num_attention_heads': self.num_attention_heads, 'attn_linear_layer': self.attn_linear_layer, 'mlp_linear_layer': self.mlp_linear_layer, 'scale_attention': self.scale_attention, 'megatron_v2': self.megatron_v2, 'mp_size': self.mp_size}
 
     def create_config(self):
         self.config = DeepSpeedInferenceConfig(hidden_size=self.hidden_size,

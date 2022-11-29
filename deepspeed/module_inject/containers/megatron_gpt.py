@@ -1,9 +1,9 @@
 from .base import *
-from deepspeed.model_implementations.transformers.ds_transformer import DeepSpeedTransformerInference
+from deepspeed.model_implementations.transformers.ds_megatron_gpt import DeepSpeedMegatronGPTInference
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 
 
-class DS_MegatronContainer(BaseTransformerContainer):
+class DS_MegatronGPTContainer(BaseTransformerContainer):
     def __init__(self, policy):
         super().__init__(policy)
 
@@ -22,6 +22,6 @@ class DS_MegatronContainer(BaseTransformerContainer):
 
     def create_module(self, config=None):
         _config = config if config is not None else self.config
-        self.module = DeepSpeedTransformerInference(_config, mp_group=self.mp_group)
+        self.module = DeepSpeedMegatronGPTInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
         return self.module

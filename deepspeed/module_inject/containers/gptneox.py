@@ -7,17 +7,13 @@ class DS_GPTNEOXContainer(BaseTransformerContainer):
     def __init__(self, policy):
         super().__init__(policy)
 
-        # TODO: Check if these are in fact true
         self.attn_linear_layer = True
         self.mlp_linear_layer = True
-
-        # TODO: Check if scale_attention in config
         self.layer_norm_eps = 1e-05
         self.scale_attention = True
         self.window_size = 1
         self.rotary_dim = 24
         self.mlp_after_attn = False
-
         self.rotate_half = True
         self.rotate_every_two = False
 

@@ -93,8 +93,8 @@ def policy_to_ds_container(policy):
             container = DS_OPTContainer(policy)
         elif isinstance(policy, MegatronLayerPolicy):
             print(f"policy is MegatronLayerPolicy")
-            from .containers import DS_MegatronContainer
-            container = DS_MegatronContainer(policy)
+            from .containers import DS_MegatronGPTContainer
+            container = DS_MegatronGPTContainer(policy)
         else:
             print("policy file is not recognized")
 
