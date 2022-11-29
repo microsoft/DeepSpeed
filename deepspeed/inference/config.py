@@ -70,7 +70,7 @@ class DeepSpeedMoEConfig(DeepSpeedConfigModel):
     moe_experts: list = Field([1], alias="num_experts")
     """ The global number of experts used in an MoE layer. """
 
-    moe_type: MoETypeEnum = MoETypeEnum.standard
+    type: MoETypeEnum = MoETypeEnum.standard
     """
     Specify the type of MoE layer. We have two types of MoE layer: 'Standard'
     and 'Residual'.
@@ -233,7 +233,9 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     injection_policy_tuple: tuple = None
     """ TODO: Add docs """
 
-    config: Dict = None  # todo: really no need for this field if we can refactor
+    config: Dict = Field(
+        None,
+        alias="args")  # todo: really no need for this field if we can refactor
 
     max_out_tokens: int = Field(1024, alias="max_tokens")
     """
