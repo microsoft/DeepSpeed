@@ -6,7 +6,7 @@ from deepspeed.model_implementations.transformers.ds_transformer import DeepSpee
 
 
 class DeepSpeedMegatronGPTInference(DeepSpeedTransformerInference):
-    """Initialize the DeepSpeed GPT Transformer Layer.
+    """Initialize the DeepSpeed Megatron GPT Transformer Layer.
     """
     def __init__(self,
                  config,

@@ -234,9 +234,15 @@ class DS_BloomContainer(BaseTransformerContainer):
     def create_module(self, config=None):
         print(f"BLOOM create_module")
         _config = config if config is not None else self.config
-        self.module = DeepSpeedBloomInference(_config,
-                                              mp_group=self.mp_group)  # w/ containers
-        #self.module = transformer_inference.DeepSpeedTransformerInference(_config, mp_group=self.mp_group) w/o containers
+
+        if use_containers:
+            self.module = DeepSpeedBloomInference(
+                _config,
+                mp_group=self.mp_group)  # w/ containers
+        else:
+            self.module = transformer_inference.DeepSpeedTransformerInference(
+                _config,
+                mp_group=self.mp_group)  # w/o containers
         self.module.config.scale_attention = self.scale_attention
         return self.module
 
