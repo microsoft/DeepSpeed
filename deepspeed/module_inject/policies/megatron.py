@@ -35,13 +35,10 @@ class MegatronLayerPolicy(TransformerPolicy):
             else:
                 attention = self.client_module.self_attention
 
-        return self.linear_layer, \
-                attention.query_key_value.weight, \
-                attention.query_key_value.bias, \
-                attention.dense.weight, \
-                attention.dense.bias, \
-                self.scale_attention, \
-                self.is_megatron_v2
+        return attention.query_key_value.weight, \
+               attention.query_key_value.bias, \
+               attention.dense.weight, \
+               attention.dense.bias
 
     def mlp(self, moe_type='standard'):
         from deepspeed.moe.utils import has_moe_layers
@@ -52,32 +49,29 @@ class MegatronLayerPolicy(TransformerPolicy):
                             self.client_module.mlp.moe.deepspeed_moe.experts.deepspeed_experts
             num_experts = len(moe_experts)
             if moe_type == 'standard':
-                return self.linear_layer, \
-                    [moe_experts[i].dense_h_to_4h.weight for i in range(num_experts)], \
-                    [moe_experts[i].dense_h_to_4h.bias for i in range(num_experts)], \
-                    [moe_experts[i].dense_4h_to_h.weight for i in range(num_experts)], \
-                    [moe_experts[i].dense_4h_to_h.bias for i in range(num_experts)]
+                return [moe_experts[i].dense_h_to_4h.weight for i in range(num_experts)], \
+                       [moe_experts[i].dense_h_to_4h.bias for i in range(num_experts)], \
+                       [moe_experts[i].dense_4h_to_h.weight for i in range(num_experts)], \
+                       [moe_experts[i].dense_4h_to_h.bias for i in range(num_experts)]
             else:
 
-                return self.linear_layer, \
-                    [moe_experts[i].dense_h_to_4h.weight for i in range(num_experts)], \
-                    [moe_experts[i].dense_h_to_4h.bias for i in range(num_experts)], \
-                    [moe_experts[i].dense_4h_to_h.weight for i in range(num_experts)], \
-                    [moe_experts[i].dense_4h_to_h.bias for i in range(num_experts)], \
-                    self.client_module.mlp.mlp.dense_h_to_4h.weight, \
-                    self.client_module.mlp.mlp.dense_h_to_4h.bias, \
-                    self.client_module.mlp.mlp.dense_4h_to_h.weight, \
-                    self.client_module.mlp.mlp.dense_4h_to_h.bias, \
-                    self.client_module.mlp.coefficient.weight
+                return [moe_experts[i].dense_h_to_4h.weight for i in range(num_experts)], \
+                       [moe_experts[i].dense_h_to_4h.bias for i in range(num_experts)], \
+                       [moe_experts[i].dense_4h_to_h.weight for i in range(num_experts)], \
+                       [moe_experts[i].dense_4h_to_h.bias for i in range(num_experts)], \
+                       self.client_module.mlp.mlp.dense_h_to_4h.weight, \
+                       self.client_module.mlp.mlp.dense_h_to_4h.bias, \
+                       self.client_module.mlp.mlp.dense_4h_to_h.weight, \
+                       self.client_module.mlp.mlp.dense_4h_to_h.bias, \
+                       self.client_module.mlp.coefficient.weight
 
         else:
-            return self.linear_layer, \
-                self.client_module.mlp.dense_h_to_4h.weight, \
-                self.client_module.mlp.dense_h_to_4h.bias, \
-                self.client_module.mlp.dense_4h_to_h.weight, \
-                self.client_module.mlp.dense_4h_to_h.bias
+            return self.client_module.mlp.dense_h_to_4h.weight, \
+                   self.client_module.mlp.dense_h_to_4h.bias, \
+                   self.client_module.mlp.dense_4h_to_h.weight, \
+                   self.client_module.mlp.dense_4h_to_h.bias
 
-    def layerNorm(self):
+    def layernorm(self):
         return self.client_module.post_attention_layernorm.weight, \
                self.client_module.post_attention_layernorm.bias, \
                self.client_module.input_layernorm.weight, \

@@ -14,5 +14,5 @@ from .gptneo import DS_GPTNEOContainer
 from .gptneox import DS_GPTNEOXContainer
 
 # use transformers
-#from .megatron import DS_MegatronContainer
+from .megatron import DS_MegatronContainer
 from .opt import DS_OPTContainer

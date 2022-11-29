@@ -13,13 +13,14 @@ from .load_checkpoint import load_model_with_checkpoint
 from .utils import policy_to_ds_container
 
 # import new policy files
+from .policies import HFGPT2LayerPolicy
 from .policies import HFBertLayerPolicy
 from .policies import BLOOMLayerPolicy
-from .policies import HFGPT2LayerPolicy
 from .policies import HFGPTJLayerPolicy
 from .policies import HFGPTNEOLayerPolicy
 from .policies import GPTNEOXLayerPolicy
 from .policies import HFOPTLayerPolicy
+from .policies import MegatronLayerPolicy
 
 import time
 import tqdm
@@ -27,13 +28,14 @@ import os
 
 # Local list of replacement policies to use instead of the original list imported from replace_policy.py
 replace_policies = [
+    HFGPT2LayerPolicy,
     HFBertLayerPolicy,
     BLOOMLayerPolicy,
-    HFGPT2LayerPolicy,
     HFGPTJLayerPolicy,
     HFGPTNEOLayerPolicy,
     GPTNEOXLayerPolicy,
     HFOPTLayerPolicy,
+    MegatronLayerPolicy,
 ]
 
 
