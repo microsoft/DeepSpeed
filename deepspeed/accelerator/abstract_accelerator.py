@@ -174,31 +174,38 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     # Tensor operations
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def BFloat16Tensor(self):
         ...
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def ByteTensor(self):
         ...
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def DoubleTensor(self):
         ...
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def FloatTensor(self):
         ...
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def HalfTensor(self):
         ...
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def IntTensor(self):
         ...
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def LongTensor(self):
         ...
 
