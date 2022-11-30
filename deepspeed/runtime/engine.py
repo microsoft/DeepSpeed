@@ -956,12 +956,6 @@ class DeepSpeedEngine(Module):
                     args, "deepspeed_config") and args.deepspeed_config is not None
             ), "DeepSpeed requires --deepspeed_config to specify configuration file"
 
-            assert os.path.isfile(
-                args.deepspeed_config
-            ), "DeepSpeed configuration file: {} is not an existing file".format(
-                args.deepspeed_config
-            )
-
     def _is_supported_optimizer(self, optimizer_name):
         return (optimizer_name in DEEPSPEED_OPTIMIZERS
                 or getattr(torch.optim,
@@ -2038,7 +2032,7 @@ class DeepSpeedEngine(Module):
         assert self.optimizer is not None and not isinstance(self.optimizer, DummyOptim), \
             "must provide optimizer during init in order to use step"
 
-        report_progress = self.global_rank == 0 if self.global_rank else True
+        report_progress = False
 
         self._step_applied = False  # assume False, will flip to True
 
@@ -2064,6 +2058,8 @@ class DeepSpeedEngine(Module):
                 self._take_model_step(lr_kwargs, self.block_eigenvalue)
             else:
                 self._take_model_step(lr_kwargs)
+
+            report_progress = self.global_rank == 0 if self.global_rank else True
 
         self.tput_timer.stop(report_progress)
 
@@ -2160,6 +2156,9 @@ class DeepSpeedEngine(Module):
             msg["throughput"] = self.train_batch_size() * 1000 / \
                 msg["latency"]
             print_json_dist(msg, [0], path=self.autotuning_metric_path())
+            log_dist(
+                f"Wrote metrics to {self.autotuning_metric_path()}, {os.path.abspath(self.autotuning_metric_path())}",
+                ranks=[0])
             import atexit
             atexit.register(print, "Autotuning: done with running current ds config.")
         exit()
