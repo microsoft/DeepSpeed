@@ -1,0 +1,116 @@
+#ifndef DS_GPU_LIB_CUDA_HPP
+#define DS_GPU_LIB_CUDA_HPP
+
+#include <cublas_v2.h>
+#include <cuda.h>
+
+namespace cuda {
+using blasHandle_t = cublasHandle_t;
+using blasOperation_t = cublasOperation_t;
+using blasGemmAlgo_t = cublasGemmAlgo_t;
+using blasStatus_t = cublasStatus_t;
+
+constexpr cudaDataType_t DT_R_32F = CUDA_R_32F;
+constexpr cudaDataType_t DT_R_16F = CUDA_R_16F;
+
+constexpr cublasGemmAlgo_t BLAS_GEMM_DEFAULT = CUBLAS_GEMM_DEFAULT;
+constexpr cublasGemmAlgo_t BLAS_GEMM_DEFAULT_TENSOR_OP =
+    CUBLAS_GEMM_DEFAULT_TENSOR_OP;  // TODO: this is deprecated in cublas
+constexpr cublasGemmAlgo_t BLAS_GEMM_ALGO15_TENSOR_OP =
+    CUBLAS_GEMM_ALGO15_TENSOR_OP;  // TODO: this is deprecated in cublas
+constexpr cublasOperation_t BLAS_OP_N = CUBLAS_OP_N;
+constexpr cublasStatus_t BLAS_STATUS_SUCCESS = CUBLAS_STATUS_SUCCESS;
+
+inline cublasStatus_t blasGemmEx(cublasHandle_t handle,
+                                 cublasOperation_t transa,
+                                 cublasOperation_t transb,
+                                 int m,
+                                 int n,
+                                 int k,
+                                 const void* alpha,
+                                 const void* A,
+                                 cudaDataType Atype,
+                                 int lda,
+                                 const void* B,
+                                 cudaDataType Btype,
+                                 int ldb,
+                                 const void* beta,
+                                 void* C,
+                                 cudaDataType Ctype,
+                                 int ldc,
+                                 cudaDataType computeType,
+                                 cublasGemmAlgo_t algo)
+{
+    cublasStatus_t status = cublasGemmEx(handle,
+                                         transa,
+                                         transb,
+                                         m,
+                                         n,
+                                         k,
+                                         alpha,
+                                         A,
+                                         Atype,
+                                         lda,
+                                         B,
+                                         Btype,
+                                         ldb,
+                                         beta,
+                                         C,
+                                         Ctype,
+                                         ldc,
+                                         computeType,
+                                         algo);
+    return status;
+}
+
+inline cublasStatus_t blasGemmStridedBatchedEx(cublasHandle_t handle,
+                                               cublasOperation_t transa,
+                                               cublasOperation_t transb,
+                                               int m,
+                                               int n,
+                                               int k,
+                                               const void* alpha,
+                                               const void* A,
+                                               cudaDataType Atype,
+                                               int lda,
+                                               long long int strideA,
+                                               const void* B,
+                                               cudaDataType Btype,
+                                               int ldb,
+                                               long long int strideB,
+                                               const void* beta,
+                                               void* C,
+                                               cudaDataType Ctype,
+                                               int ldc,
+                                               long long int strideC,
+                                               int batchCount,
+                                               cudaDataType computeType,
+                                               cublasGemmAlgo_t algo)
+{
+    cublasStatus_t status = cublasGemmStridedBatchedEx(handle,
+                                                       transa,
+                                                       transb,
+                                                       m,
+                                                       n,
+                                                       k,
+                                                       alpha,
+                                                       A,
+                                                       Atype,
+                                                       lda,
+                                                       strideA,
+                                                       B,
+                                                       Btype,
+                                                       ldb,
+                                                       strideB,
+                                                       beta,
+                                                       C,
+                                                       Ctype,
+                                                       ldc,
+                                                       strideC,
+                                                       batchCount,
+                                                       computeType,
+                                                       algo);
+    return status;
+}
+}  // namespace cuda
+#endif  // #ifndef DS_GPU_LIB_CUDA_HPP

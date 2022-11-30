@@ -13,6 +13,7 @@
 #include <memory>
 #include "StopWatch.h"
 #include "cublas_wrappers.h"
+#include "gpu_lib/gpu_lib.h"
 
 template <typename T>
 void check(T result, char const* const func, const char* const file, int const line)
@@ -114,12 +115,8 @@ public:
         float fast_latency = (std::numeric_limits<float>::max)();
         int fast_algo = 0;
 
-#ifdef __HIP_PLATFORM_HCC__
-        for (int algo = (int)rocblas_gemm_algo_standard; algo <= (int)rocblas_gemm_algo_standard;
-#else
-        for (int algo = (int)CUBLAS_GEMM_DEFAULT_TENSOR_OP;
-             algo <= (int)CUBLAS_GEMM_ALGO15_TENSOR_OP;
-#endif
+        for (int algo = (int)gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP;
+             algo <= (int)gpu_lib::BLAS_GEMM_ALGO15_TENSOR_OP;
              algo++) {
             int warm_up = 5;
             for (int i = 0; i < warm_up; ++i) f(algo);
@@ -285,12 +282,8 @@ public:
         float fast_latency = (std::numeric_limits<float>::max)();
         int fast_algo = 0;
 
-#ifdef __HIP_PLATFORM_HCC__
-        for (int algo = (int)rocblas_gemm_algo_standard; algo <= (int)rocblas_gemm_algo_standard;
-#else
-        for (int algo = (int)CUBLAS_GEMM_DEFAULT_TENSOR_OP;
-             algo <= (int)CUBLAS_GEMM_ALGO15_TENSOR_OP;
-#endif
+        for (int algo = (int)gpu_lib::BLAS_GEMM_DEFAULT_TENSOR_OP;
+             algo <= (int)gpu_lib::BLAS_GEMM_ALGO15_TENSOR_OP;
              algo++) {
             int warm_up = 5;
             for (int i = 0; i < warm_up; ++i) f(algo);
