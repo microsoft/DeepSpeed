@@ -4,6 +4,8 @@ from ..policy import TransformerPolicy
 from packaging import version as pkg_version
 
 
+# TODO: Megatron GPT MoE inherits from Megatron policy and replaces mlp
+# TODO: Generalize MoE overall goal, expand beyond Megatron
 class MegatronLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
     version = 0

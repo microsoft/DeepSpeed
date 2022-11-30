@@ -12,6 +12,10 @@ class DS_MegatronGPTContainer(BaseTransformerContainer):
         self.scale_attention = True
         self.window_size = 1
 
+        # Create DS_MegatromGPTMoE container
+        # Override MLP part
+        # new variables for tensors (list)
+
     def create_config(self):
         self.config = DeepSpeedInferenceConfig(hidden_size=self.hidden_size,
                                                heads=self.num_attention_heads,
