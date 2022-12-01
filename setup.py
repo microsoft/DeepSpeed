@@ -25,13 +25,15 @@ import time
 torch_available = True
 try:
     import torch
+    from op_builder.all_ops import ALL_OPS
 except ImportError:
     torch_available = False
     print('[WARNING] Unable to import torch, pre-compiling ops will be disabled. ' \
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
+    # in the case of no pre-compiler set ALL_OPS to empty dictionary
+    ALL_OPS = {}
 
 from op_builder import get_default_compute_capabilities, OpBuilder
-from op_builder.all_ops import ALL_OPS
 from op_builder.builder import installed_cuda_version
 
 # fetch rocm state
