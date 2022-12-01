@@ -277,7 +277,8 @@ def top1gating(logits: Tensor,
 
 def top2gating(logits: Tensor,
                capacity_factor: float,
-               min_capacity: int) -> Tuple[Tensor,
+               min_capacity: int,
+               use_both_masks=False) -> Tuple[Tensor,
                                            Tensor,
                                            Tensor,
                                            Tensor]:
@@ -313,8 +314,14 @@ def top2gating(logits: Tensor,
 
     # Compute l_aux
     me = torch.mean(gates, dim=0)
-    ce = torch.mean((mask1 + mask2).float(), dim=0)
-    l_aux = torch.mean(me * ce) * num_experts * num_experts * 1/2
+    
+    # Whether to use both masks in calculating l_aux
+    if use_both_masks is True:
+        ce = torch.mean((mask1 + mask2).float(), dim=0)
+        l_aux = torch.mean(me * ce) * num_experts * num_experts * 1/2
+    else:
+        ce = torch.mean(mask1.float(), dim=0)
+        l_aux = torch.mean(me * ce) * num_experts * num_experts
 
     # Remove locations outside capacity from mask
     mask1 *= torch.lt(locations1, capacity)
