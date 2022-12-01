@@ -80,7 +80,7 @@ class TestCheckpointShard(DistributedTest):
             },
             "checkpoint": os.path.join(class_tmpdir,
                                        model_name,
-                                       "ds-inference_config.json"),
+                                       "ds_inference_config.json"),
         }
 
         model = AutoModelForCausalLM.from_pretrained(model_name,
@@ -100,7 +100,7 @@ class TestCheckpointShard(DistributedTest):
             },
             "checkpoint": os.path.join(class_tmpdir,
                                        model_name,
-                                       "ds-inference_config.json"),
+                                       "ds_inference_config.json"),
         }
 
         # Load model on meta tensors
