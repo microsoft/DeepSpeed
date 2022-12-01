@@ -1,9 +1,8 @@
 from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
 try:
     import torch.cuda
-    torch_installed = True
 except ImportError:
-    torch_installed = False
+    pass
 
 
 class CUDA_Accelerator(DeepSpeedAccelerator):
@@ -198,16 +197,18 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
             return False
 
     def op_builder_dir(self):
-        if torch_installed:
-            return "deepspeed.ops.op_builder"
-        else:
+        try:
+            # during installation time op_builder is visible, otherwise return deepspeed.ops.op_builder
+            import op_builder  # noqa: F401
             return "op_builder"
+        except ImportError:
+            return "deepspeed.ops.op_builder"
 
     def create_op_builder(self, class_name):
-        if torch_installed:
-            from deepspeed.ops.op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
-        else:
+        try:
             from op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
+        except ImportError:
+            from deepspeed.ops.op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
 
         if class_name == "AsyncIOBuilder":
             return AsyncIOBuilder()

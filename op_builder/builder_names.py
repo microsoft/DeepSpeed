@@ -6,10 +6,10 @@ import importlib
 # List of all available op builders from deepspeed op_builder
 
 try:
-    import torch  # noqa: F401
-    op_builder_dir = "deepspeed.ops.op_builder"
-except ImportError:
+    import op_builder  # noqa: F401
     op_builder_dir = "op_builder"
+except ImportError:
+    op_builder_dir = "deepspeed.ops.op_builder"
 
 op_builder_module = importlib.import_module(op_builder_dir)
 __op_builders__ = []
