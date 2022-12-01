@@ -5,9 +5,10 @@ Copyright 2022 The Microsoft DeepSpeed Team
 import math
 import torch
 from torch.autograd import Function
-from ... import op_builder
 import torch.nn as nn
 from deepspeed import comm as dist
+from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import InferenceBuilder
 
 minus_inf = -10000.0
 inference_cuda_module = None
@@ -91,7 +92,7 @@ class DeepSpeedSelfAttentionFunction(Function):
             return tensor_list
 
         def backup_attention(mixed_x_layer, layer_past, alibi, input_mask, norm_factor):
-            alibi = alibi.to(torch.cuda.current_device())
+            alibi = alibi.to(get_accelerator().current_device_name())
             head_dim = hidden_size_per_partition // num_attention_heads_per_partition
             new_tensor_shape = mixed_x_layer.size()[:-1] + (
                 num_attention_heads_per_partition,
@@ -394,7 +395,8 @@ class DeepSpeedSelfAttention(nn.Module):
         data_type_fp = torch.half if config.fp16 else torch.float
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
-        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
+        device = get_accelerator().current_device_name(
+        ) if config.bigscience_bloom else 'cpu'
         qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
         self.attn_qkvw = nn.Parameter(torch.empty(self.config.hidden_size,
                                                   qkv_size_per_partition,
@@ -438,7 +440,7 @@ class DeepSpeedSelfAttention(nn.Module):
 
         global inference_cuda_module
         if inference_cuda_module is None:
-            builder = op_builder.InferenceBuilder()
+            builder = get_accelerator().create_op_builder(InferenceBuilder)
             inference_cuda_module = builder.load()
 
         self.score_context_func = inference_cuda_module.softmax_context_fp32 if (not config.fp16) else \

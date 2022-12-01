@@ -1,5 +1,9 @@
 from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
-import torch.cuda
+try:
+    import torch.cuda
+    torch_installed = True
+except ImportError:
+    torch_installed = False
 
 
 class CUDA_Accelerator(DeepSpeedAccelerator):
@@ -194,43 +198,38 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
             return False
 
     def op_builder_dir(self):
-        return "deepspeed.ops.op_builder"
+        if torch_installed:
+            return "deepspeed.ops.op_builder"
+        else:
+            return "op_builder"
 
     def create_op_builder(self, class_name):
-        from deepspeed.ops.op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
-        from deepspeed.ops.op_builder.builder_names import AsyncIOBuilder as AsyncIOBuilderName
-        from deepspeed.ops.op_builder.builder_names import CPUAdagradBuilder as CPUAdagradBuilderName
-        from deepspeed.ops.op_builder.builder_names import CPUAdamBuilder as CPUAdamBuilderName
-        from deepspeed.ops.op_builder.builder_names import FusedAdamBuilder as FusedAdamBuilderName
-        from deepspeed.ops.op_builder.builder_names import FusedLambBuilder as FusedLambBuilderName
-        from deepspeed.ops.op_builder.builder_names import QuantizerBuilder as QuantizerBuilderName
-        from deepspeed.ops.op_builder.builder_names import SparseAttnBuilder as SparseAttnBuilderName
-        from deepspeed.ops.op_builder.builder_names import StochasticTransformerBuilder as StochasticTransformerBuilderName
-        from deepspeed.ops.op_builder.builder_names import TransformerBuilder as TransformerBuilderName
-        from deepspeed.ops.op_builder.builder_names import InferenceBuilder as InferenceBuilderName
-        from deepspeed.ops.op_builder.builder_names import UtilsBuilder as UtilsBuilderName
+        if torch_installed:
+            from deepspeed.ops.op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
+        else:
+            from op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
 
-        if class_name == AsyncIOBuilderName:
+        if class_name == "AsyncIOBuilder":
             return AsyncIOBuilder()
-        elif class_name == CPUAdagradBuilderName:
+        elif class_name == "CPUAdagradBuilder":
             return CPUAdagradBuilder()
-        elif class_name == CPUAdamBuilderName:
+        elif class_name == "CPUAdamBuilder":
             return CPUAdamBuilder()
-        elif class_name == FusedAdamBuilderName:
+        elif class_name == "FusedAdamBuilder":
             return FusedAdamBuilder()
-        elif class_name == FusedLambBuilderName:
+        elif class_name == "FusedLambBuilder":
             return FusedLambBuilder()
-        elif class_name == QuantizerBuilderName:
+        elif class_name == "QuantizerBuilder":
             return QuantizerBuilder()
-        elif class_name == SparseAttnBuilderName:
+        elif class_name == "SparseAttnBuilder":
             return SparseAttnBuilder()
-        elif class_name == StochasticTransformerBuilderName:
+        elif class_name == "StochasticTransformerBuilder":
             return StochasticTransformerBuilder()
-        elif class_name == TransformerBuilderName:
+        elif class_name == "TransformerBuilder":
             return TransformerBuilder()
-        elif class_name == InferenceBuilderName:
+        elif class_name == "InferenceBuilder":
             return InferenceBuilder()
-        elif class_name == UtilsBuilderName:
+        elif class_name == "UtilsBuilder":
             return UtilsBuilder()
         else:
             return None
