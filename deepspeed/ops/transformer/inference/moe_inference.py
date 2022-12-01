@@ -15,7 +15,7 @@ from .config import DeepSpeedInferenceConfig
 from ....moe.sharded_moe import TopKGate
 from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder.builder_names import InferenceBuilder, InferenceSpecializedBuilder
+from deepspeed.ops.op_builder.builder_names import InferenceBuilder
 
 
 class DeepSpeedMoEInferenceConfig(DeepSpeedInferenceConfig):
@@ -242,7 +242,8 @@ class DeepSpeedMoEInference(nn.Module):
         global specialized_mode
         if inference_cuda_module is None:
             specialized_mode = False
-            builder = get_accelerator().create_op_builder(InferenceSpecializedBuilder)
+            # InferenceSpecializedBuilder is not among DeepSpeed provided builder yet, so we infer by builder name string
+            builder = get_accelerator().create_op_builder("InferenceSpecializedBuilder")
             if builder != None and builder.is_compatible():
                 inference_cuda_module = builder.load()
                 specialized_mode = True
