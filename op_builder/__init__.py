@@ -1,7 +1,6 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
-from deepspeed.accelerator import get_accelerator
 from .cpu_adam import CPUAdamBuilder
 from .cpu_adagrad import CPUAdagradBuilder
 from .fused_adam import FusedAdamBuilder
