@@ -387,7 +387,7 @@ def main(args=None):
 
     if not multi_node_exec and args.num_nodes > 1:
         raise ValueError("Num nodes is >1 but no extra nodes available via hostfile")
-
+    logger.info(f"Current Resources :) {resource_pool}")
     active_resources = parse_inclusion_exclusion(resource_pool,
                                                  args.include,
                                                  args.exclude)
