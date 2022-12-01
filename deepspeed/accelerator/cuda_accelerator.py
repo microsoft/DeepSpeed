@@ -6,13 +6,6 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
         self._name = 'cuda'
         self._communication_backend_name = 'nccl'
-        self.DoubleTensor = torch.cuda.DoubleTensor
-        self.LongTensor = torch.cuda.LongTensor
-        self.FloatTensor = torch.cuda.FloatTensor
-        self.BFloat16Tensor = torch.cuda.BFloat16Tensor
-        self.HalfTensor = torch.cuda.HalfTensor
-        self.IntTensor = torch.cuda.IntTensor
-        self.ByteTensor = torch.cuda.ByteTensor
 
     # Device APIs
     def device_name(self, device_index=None):
@@ -161,6 +154,35 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         return self._communication_backend_name
 
     # Tensor operations
+
+    @property
+    def BFloat16Tensor(self):
+        return torch.cuda.BFloat16Tensor
+
+    @property
+    def ByteTensor(self):
+        return torch.cuda.ByteTensor
+
+    @property
+    def DoubleTensor(self):
+        return torch.cuda.DoubleTensor
+
+    @property
+    def FloatTensor(self):
+        return torch.cuda.FloatTensor
+
+    @property
+    def HalfTensor(self):
+        return torch.cuda.HalfTensor
+
+    @property
+    def IntTensor(self):
+        return torch.cuda.IntTensor
+
+    @property
+    def LongTensor(self):
+        return torch.cuda.LongTensor
+
     def pin_memory(self, tensor):
         return tensor.pin_memory()
 
@@ -170,6 +192,9 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
             return True
         else:
             return False
+
+    def op_builder_dir(self):
+        return "deepspeed.ops.op_builder"
 
     def create_op_builder(self, class_name):
         from deepspeed.ops.op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
