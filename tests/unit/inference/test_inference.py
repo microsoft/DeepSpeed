@@ -246,7 +246,7 @@ class TestModelTask(DistributedTest):
             pipe.model.half()
 
         # Switch device to GPU after converting to half
-        device = torch.device(f"cuda:{local_rank}")
+        device = torch.device(get_accelerator().device_name(local_rank))
         pipe.device = device
         pipe.model.to(device)
 
@@ -391,7 +391,7 @@ class TestInjectionPolicy(DistributedTest):
                                               dtype=dtype,
                                               injection_policy=injection_policy)
         # Switch device to GPU so that input tensors are not on CPU
-        pipe.device = torch.device(f"cuda:{local_rank}")
+        pipe.device = torch.device(get_accelerator().device_name(local_rank))
         ds_output = pipe(query, **inf_kwargs)
 
         print(local_rank, "baseline", bs_output)

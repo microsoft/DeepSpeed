@@ -4,7 +4,8 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 import pytest
 import torch
-from deepspeed.ops import op_builder
+from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import QuantizerBuilder
 
 inference_module = None
 
@@ -12,7 +13,7 @@ inference_module = None
 def run_quantize_ds(activations, num_groups, q_bits, is_symmetric_quant):
     global inference_module
     if inference_module is None:
-        inference_module = op_builder.QuantizerBuilder().load()
+        inference_module = get_accelerator().create_op_builder(QuantizerBuilder).load()
 
     return inference_module.quantize(
         activations,
@@ -162,7 +163,7 @@ def test_float_quantize(num_elems,
 def run_integer_quantize_ds(activations, num_groups, q_bits):
     global inference_module
     if inference_module is None:
-        inference_module = op_builder.QuantizerBuilder().load()
+        inference_module = get_accelerator().create_op_builder(QuantizerBuilder).load()
 
     return inference_module.quantize(activations,
                                      num_groups,

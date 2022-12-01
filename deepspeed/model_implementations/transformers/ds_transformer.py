@@ -3,7 +3,6 @@ Copyright 2022 The Microsoft DeepSpeed Team
 '''
 
 import torch
-from deepspeed.ops import op_builder
 import torch.nn as nn
 from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
@@ -11,6 +10,7 @@ from deepspeed.utils.logging import log_dist
 from deepspeed.ops.transformer.inference.ds_mlp import DeepSpeedMLP
 from deepspeed.ops.transformer.inference.ds_attention import DeepSpeedSelfAttention
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import InferenceBuilder
 
 inference_cuda_module = None
 
@@ -50,7 +50,7 @@ class DeepSpeedTransformerInference(nn.Module):
         data_type = torch.half if config.fp16 else torch.float
         global inference_cuda_module
         if inference_cuda_module is None:
-            builder = op_builder.InferenceBuilder()
+            builder = get_accelerator().create_op_builder(InferenceBuilder)
             inference_cuda_module = builder.load()
 
         if DeepSpeedTransformerInference.layer_id == 1:
