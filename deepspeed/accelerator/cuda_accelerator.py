@@ -206,9 +206,9 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def create_op_builder(self, class_name):
         try:
-            from op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
+            from op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder, SpatialInferenceBuilder
         except ImportError:
-            from deepspeed.ops.op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
+            from deepspeed.ops.op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder, SpatialInferenceBuilder
 
         if class_name == "AsyncIOBuilder":
             return AsyncIOBuilder()
@@ -232,6 +232,8 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
             return InferenceBuilder()
         elif class_name == "UtilsBuilder":
             return UtilsBuilder()
+        elif class_name == "SpatialInferenceBuilder":
+            return SpatialInferenceBuilder()
         else:
             return None
 
