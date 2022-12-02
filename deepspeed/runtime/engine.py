@@ -1130,9 +1130,14 @@ class DeepSpeedEngine(Module):
         ), "Amp and ZeRO are not currently compatible, please use (legacy) fp16 mode which performs similar to amp opt_mode=O2"
         if zero_enabled:
             if model_dtype != grad_accum_dtype:
-                raise NotImplementedError(
-                    "Model data type and gradient accumulation data type must be equal to use ZeRO"
-                )
+                if model_dtype == torch.bfloat16 and grad_accum_dtype == torch.float32:
+                    # when model_dtype is bfloat16, grad_accum_dtype of float32 should be valid, because
+                    # bfloat16 needs fp32 accumulation to maintain accuracy
+                    pass
+                else:
+                    raise NotImplementedError(
+                        "Model data type and gradient accumulation data type must be equal to use ZeRO"
+                    )
             if not is_zero_supported_optimizer(basic_optimizer):
                 assert (
                     self.zero_allow_untested_optimizer()
