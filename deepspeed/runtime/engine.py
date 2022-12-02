@@ -1150,9 +1150,14 @@ class DeepSpeedEngine(Module):
             return ZERO_OPTIMIZATION
         elif amp_enabled:
             if model_dtype != grad_accum_dtype:
-                raise NotImplementedError(
-                    "Model data type and gradient accumulation data type must be equal to use Amp"
-                )
+                if model_dtype == torch.bfloat16 and grad_accum_dtype == torch.float32:
+                    # when model_dtype is bfloat16, grad_accum_dtype of float32 should be valid, because
+                    # bfloat16 needs fp32 accumulation to maintain accuracy
+                    pass
+                else:
+                    raise NotImplementedError(
+                        "Model data type and gradient accumulation data type must be equal to use Amp"
+                    )
             if model_dtype == torch.bfloat16 or model_dtype == torch.float16:
                 raise NotImplementedError(
                     "Cannot enable both amp with (legacy) fp16 or bfloat16 mode")
