@@ -309,7 +309,5 @@ try:
         return engine
 
 except ImportError:
-    torch_available = False
     print('[WARNING] Unable to import torch.  Pytorch is needed unless in deepspeed installation without pre-compiling ops. ' \
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
-    # in the case of no pre-compiler set ALL_OPS to empty dictionary
