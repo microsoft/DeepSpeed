@@ -168,7 +168,7 @@ class TorchBackend(Backend):
         return torch.distributed.new_group(ranks)
 
     def get_global_rank(self, group, group_rank):
-        is hasattr(torch.distributed.distributed_c10d, "get_global_rank"):
+        if hasattr(torch.distributed.distributed_c10d, "get_global_rank"):
             from torch.distributed.distributed_c10d import get_global_rank as _get_global_rank
         else:
             from torch.distributed.distributed_c10d import _get_global_rank
