@@ -151,10 +151,15 @@ class TorchBackend(Backend):
                                          group=group,
                                          async_op=async_op)
 
-    def barrier(self, group=torch.distributed.GroupMember.WORLD, async_op=False, device_ids=None):
+    def barrier(self,
+                group=torch.distributed.GroupMember.WORLD,
+                async_op=False,
+                device_ids=None):
         if group is None:
             group = torch.distributed.GroupMember.WORLD
-        return torch.distributed.barrier(group=group, async_op=async_op, device_ids=device_ids)
+        return torch.distributed.barrier(group=group,
+                                         async_op=async_op,
+                                         device_ids=device_ids)
 
     def get_rank(self, group=None):
         return torch.distributed.get_rank(group=group)
