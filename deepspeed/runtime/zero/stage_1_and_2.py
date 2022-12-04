@@ -940,7 +940,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def average_tensor(self, tensor):
         if self.overlap_comm:
             stream = self.reduction_stream
-            stream.wait_stream(torch.cuda.default_stream())
+            stream.wait_stream(torch.cuda.current_stream())
         else:
             stream = torch.cuda.current_stream()
 
