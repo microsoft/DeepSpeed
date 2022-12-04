@@ -95,11 +95,13 @@ class TorchBackend(Backend):
     def reduce_scatter_base(self,
                             output_tensor,
                             input_tensor,
+                            op=ReduceOp.SUM,
                             group=None,
                             async_op=False):
         if self.has_reduce_scatter_base:
             return torch.distributed._reduce_scatter_base(output_tensor,
                                                           input_tensor,
+                                                          op=op,
                                                           group=group,
                                                           async_op=async_op)
         else:
@@ -149,8 +151,10 @@ class TorchBackend(Backend):
                                          group=group,
                                          async_op=async_op)
 
-    def barrier(self):
-        return torch.distributed.barrier()
+    def barrier(self, group=torch.distributed.GroupMember.WORLD, async_op=False, device_ids=None):
+        if group is None:
+            group = torch.distributed.GroupMember.WORLD
+        return torch.distributed.barrier(group=group, async_op=async_op, device_ids=device_ids)
 
     def get_rank(self, group=None):
         return torch.distributed.get_rank(group=group)
