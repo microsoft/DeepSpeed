@@ -111,6 +111,13 @@ class OpenMPIRunner(MultiNodeRunner):
         super().__init__(args, world_info_base64)
         self.resource_pool = resource_pool
         self.add_export('UCX_TLS', 'tcp')
+        self.add_export('LD_PRELOAD', '/opt/nccl/build/lib/libnccl.so')
+        self.add_export('FI_EFA_FORK_SAFE', '1')
+        self.add_export('NCCL_DEBUG_SYBSYS', '')
+        self.add_export('FI_EFA_USE_DEVICE_RDMA', '1')
+        self.add_export('NCCL_TREE_THRESHOLD', '0')
+        self.add_export('NCCL_PROTO', 'simple')
+        self.add_export('NCCL_SOCKET_IFNAME', '^docker0,lo')
 
     def backend_exists(self):
         #TODO: if IB is available we should suggestion mvapich
@@ -139,9 +146,18 @@ class OpenMPIRunner(MultiNodeRunner):
             f'{total_process_count}',
             '-hostfile',
             f'{self.args.hostfile}',
+            '-x',
+            'PATH',
+            '-x',
+            'LD_LIBRARY_PATH',
+            '-x',
+            'LD_PRELOAD',
             '--mca',
             'btl',
             '^openib',
+            '--mca',
+            'plm',
+            '^slurm',
             '--mca',
             'btl_tcp_if_include',
             'eth0',
