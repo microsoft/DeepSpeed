@@ -557,7 +557,9 @@ class CUDAOpBuilder(OpBuilder):
 
         ccs = self.filter_ccs(ccs)
         if len(ccs) == 0:
-            raise RuntimeError(f"Unable to load {self.name} op due to no compute capabilities remaining after filtering")
+            raise RuntimeError(
+                f"Unable to load {self.name} op due to no compute capabilities remaining after filtering"
+            )
 
         args = []
         for cc in ccs:

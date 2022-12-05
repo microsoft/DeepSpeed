@@ -26,7 +26,9 @@ class InferenceBuilder(CUDAOpBuilder):
             torch_cuda_major = int(torch.version.cuda.split('.')[0])
             cuda_capability = torch.cuda.get_device_properties(0).major
             if cuda_capability < 6:
-                self.warning("NVIDIA Inference is only supported on Pascal and newer architectures")
+                self.warning(
+                    "NVIDIA Inference is only supported on Pascal and newer architectures"
+                )
                 cuda_okay = False
             if cuda_capability >= 8:
                 if torch_cuda_major < 11 or sys_cuda_major < 11:

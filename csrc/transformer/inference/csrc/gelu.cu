@@ -97,10 +97,10 @@ __global__ void fused_bias_add(T* input, const T* bias, int total_count, int int
 
 template <typename T>
 void launch_bias_add(T* input,
-                      const T* bias,
-                      int intermediate_size,
-                      int batch_size,
-                      cudaStream_t stream)
+                     const T* bias,
+                     int intermediate_size,
+                     int batch_size,
+                     cudaStream_t stream)
 {
     constexpr int threads = 1024;
     constexpr int granularity = 16;
