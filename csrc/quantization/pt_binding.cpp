@@ -137,7 +137,7 @@ at::Tensor dequantize(at::Tensor& quantized_data,
                               .device(at::kCUDA)
                               .requires_grad(false);
 
-    auto output_sizes = input_vals.sizes().vec();
+    auto output_sizes = quantized_data.sizes().vec();
     output_sizes[output_sizes.size() - 1] *= numBits == 8 ? 1 : 2;
     auto output = torch::empty(output_sizes, output_options);
 
