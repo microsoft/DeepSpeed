@@ -227,9 +227,8 @@ def parse_resource_filter(host_info, include_str="", exclude_str=""):
         exclude_str="worker-1:0" will use all available resources except
           slot 0 on worker-1.
     '''
-    logger.info(f'This is hostinfo: {host_info}')
-    logger.info(f'This is inclusion: {include_str}')
-    logger.info(f'This is exclusion: {include_str}')
+    logger.info(f'This is hostinfo before first return: {host_info}')
+
     # Constants that define our syntax
     NODE_SEP = '@'
     SLOT_LIST_START = ':'
@@ -250,7 +249,10 @@ def parse_resource_filter(host_info, include_str="", exclude_str=""):
     if exclude_str != "":
         filtered_hosts = deepcopy(host_info)
         parse_str = exclude_str
+    logger.info(f'This is inclusion: {include_str}')
+    logger.info(f'This is exclusion: {include_str}')
     logger.info(f'This is parse_str: {parse_str}')
+    logger.info(f'This is host_info: {host_info}')
     # foreach node in the list
     for node_config in parse_str.split(NODE_SEP):
         # Node can either be alone or node:slot,slot,slot
@@ -358,7 +360,8 @@ def main(args=None):
         assert args.master_addr != "", "Master Addr is required when elastic training is enabled"
 
     resource_pool = fetch_hostfile(args.hostfile)
-
+    logger.info(f'hostfile path: {args.hostfile}')
+    logger.info(f'resource pool from hostfile at hostfile path: {resource_pool}')
     # respect CUDA_VISIBLE_DEVICES for a single node and no explicit resource filters
     cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
     if not resource_pool and len(cuda_visible_devices):
