@@ -257,7 +257,7 @@ def parse_resource_filter(host_info, include_str="", exclude_str=""):
         if SLOT_LIST_START in node_config:
             hostname, slots = node_config.split(SLOT_LIST_START)
             slots = [int(x) for x in slots.split(SLOT_SEP)]
-
+            logger.info(f'This is hostname:{hostname}')
             # sanity checks
             if hostname not in host_info:
                 raise ValueError(f"Hostname '{hostname}' not found in hostfile")
