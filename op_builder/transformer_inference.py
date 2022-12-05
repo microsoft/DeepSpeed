@@ -45,7 +45,7 @@ class InferenceBuilder(CUDAOpBuilder):
                 ccs_retained.append(cc)
             else:
                 ccs_pruned.append(cc)
-        if len(ccs_pruned > 0):
+        if len(ccs_pruned) > 0:
             self.warning(f"Filtered compute capabilities {ccs_pruned}")
         return ccs_retained
 
