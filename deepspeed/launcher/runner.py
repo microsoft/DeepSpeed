@@ -227,7 +227,9 @@ def parse_resource_filter(host_info, include_str="", exclude_str=""):
         exclude_str="worker-1:0" will use all available resources except
           slot 0 on worker-1.
     '''
-
+    logger.info(f'This is hostinfo: {host_info}')
+    logger.info(f'This is inclusion: {include_str}')
+    logger.info(f'This is exclusion: {include_str}')
     # Constants that define our syntax
     NODE_SEP = '@'
     SLOT_LIST_START = ':'
@@ -248,7 +250,7 @@ def parse_resource_filter(host_info, include_str="", exclude_str=""):
     if exclude_str != "":
         filtered_hosts = deepcopy(host_info)
         parse_str = exclude_str
-
+    logger.info(f'This is parse_str: {parse_str}')
     # foreach node in the list
     for node_config in parse_str.split(NODE_SEP):
         # Node can either be alone or node:slot,slot,slot
