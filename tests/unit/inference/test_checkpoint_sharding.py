@@ -28,7 +28,7 @@ def check_dtype(model, expected_dtype):
     "bigscience/bloom-560m",
     "EleutherAI/gpt-j-6B",
     "EleutherAI/gpt-neo-125M",
-    "facebook/opt-350m"
+    "facebook/opt-125m"
 ])
 def model_name(request):
     return request.param
@@ -40,7 +40,7 @@ def dtype(request):
 
 
 class save_shard(DistributedFixture):
-    world_size = 4
+    world_size = 2
 
     def run(self, model_name, class_tmpdir):
         # Only write a checkpoint if one does not exist
@@ -66,9 +66,9 @@ class save_shard(DistributedFixture):
 
 @pytest.mark.seq_inference
 class TestCheckpointShard(DistributedTest):
-    world_size = 4
+    world_size = 2
 
-    def test_without_meta(self, model_name, dtype, class_tmpdir, save_shard):
+    def test(self, model_name, dtype, class_tmpdir, save_shard):
         world_size = int(os.getenv("WORLD_SIZE", "1"))
         inf_config = {
             "replace_with_kernel_inject": True,
@@ -80,27 +80,7 @@ class TestCheckpointShard(DistributedTest):
             },
             "checkpoint": os.path.join(class_tmpdir,
                                        model_name,
-                                       "ds_inference_config.json"),
-        }
-
-        model = AutoModelForCausalLM.from_pretrained(model_name,
-                                                     torch_dtype=torch.float16)
-        model = deepspeed.init_inference(model, config=inf_config)
-        check_dtype(model, dtype)
-
-    def test_with_meta(self, model_name, dtype, class_tmpdir, save_shard):
-        world_size = int(os.getenv("WORLD_SIZE", "1"))
-        inf_config = {
-            "replace_with_kernel_inject": True,
-            "dtype": dtype,
-            "replace_method": "auto",
-            "enable_cuda_graph": False,
-            "tensor_parallel": {
-                "tp_size": world_size
-            },
-            "checkpoint": os.path.join(class_tmpdir,
-                                       model_name,
-                                       "ds_inference_config.json"),
+                                       "ds-inference_config.json"),
         }
 
         # Load model on meta tensors
