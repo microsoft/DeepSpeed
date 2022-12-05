@@ -136,10 +136,12 @@ at::Tensor dequantize(at::Tensor& quantized_data,
                               .layout(at::kStrided)
                               .device(at::kCUDA)
                               .requires_grad(false);
-    const int final_dim_size = num_decompressed_elems(quantized_data, num_bits);
-    auto output = torch::empty({quantized_data.size(0), final_dim_size}, output_options);
+    
+    auto output_sizes = input_vals.sizes().vec();
+    output_sizes[output_sizes.size() - 1] *= numBits == 8 ? 1 : 2;
+    auto output = torch::empty(output_sizes, output_options);
 
-    const int total_elems = quantized_data.size(0) * final_dim_size;
+    const int total_elems = at::numel(quantized_data);
     const int elems_per_group = total_elems / groups;
 
     launch_dequantize_kernel((__half*)output.data_ptr(),
