@@ -1,5 +1,5 @@
 '''
-Copyright 2020 The Microsoft DeepSpeed Team
+Copyright 2022 The Microsoft DeepSpeed Team
 '''
 import math
 import torch
@@ -27,7 +27,7 @@ def load_triton_flash_attn():
     from .triton_ops import triton_flash_attn
 
 
-class DeepSpeedAttentionFunction(Function):
+class DeepSpeedDiffusersAttentionFunction(Function):
     @staticmethod
     def forward(ctx,
                 input,
@@ -44,6 +44,7 @@ class DeepSpeedAttentionFunction(Function):
                 hidden_size_per_partition,
                 attn_ow,
                 attn_ob,
+                do_out_bias,
                 score_context_func,
                 linear_func,
                 triton_flash_attn_kernel):
@@ -61,84 +62,54 @@ class DeepSpeedAttentionFunction(Function):
             x = x.permute(0, 2, 1, 3)
             return x.contiguous()
 
-        def compute_attention(qkv_out, input_mask):
-            no_masking = input_mask is None
-
-            head_size = (qkv_out.shape[-1] // 3 // num_attention_heads_per_partition)
-            if no_masking:
-                input_mask = torch.empty(1)
-
-            context_layer, _, _ = score_context_func(
-                qkv_out,
-                ((1 - input_mask).to(qkv_out.dype) *
-                 minus_inf) if input_mask.dtype == torch.int64 else input_mask,
-                config.rotary_dim,
-                config.rotate_half,
-                config.rotate_every_two,
-                num_attention_heads_per_partition,
-                (1 / norm_factor if config.scale_attention else 1.0),
-                config.triangular_masking,
-                config.local_attention,
-                config.window_size,
-                no_masking,
-                config.layer_id,
-                DeepSpeedAttention.layer_id,
-                torch.empty(1))
-            return context_layer
-
         def selfAttention_fp(input, context, input_mask):
             if config.fp16 and input.dtype == torch.float32:
                 input = input.half()
             head_size = input.shape[-1] // config.heads
             do_flash_attn = (head_size <= 128)
             scale = (1 / norm_factor) * (1 / norm_factor)
-            if context == None:
+            if do_flash_attn and context == None:
                 qkv_out = linear_func(input,
                                       attn_qkvw,
                                       attn_qkvb if attn_qkvb is not None else attn_qkvw,
                                       attn_qkvb is not None,
-                                      True,
                                       do_flash_attn,
-                                      config.heads,
-                                      DeepSpeedAttention.layer_id)
-                if do_flash_attn:
-                    context_layer = triton_flash_attn_kernel(qkv_out[0],
-                                                             qkv_out[1],
-                                                             qkv_out[2],
-                                                             scale,
-                                                             input.shape[-2] % 128 == 0)
-                    context_layer = _transpose_for_context(context_layer[:,:,:,:head_size])
-                else:
-                    context_layer = compute_attention(qkv_out, input_mask)
+                                      config.heads)
+
+                context_layer = triton_flash_attn_kernel(qkv_out[0],
+                                                         qkv_out[1],
+                                                         qkv_out[2],
+                                                         scale,
+                                                         input.shape[-2] % 128 == 0)
+                context_layer = _transpose_for_context(context_layer[:,:,:,:head_size])
+
             else:
-                query = torch.matmul(input, attn_qw)
-                key = torch.matmul(context, attn_kw)
-                value = torch.matmul(context, attn_vw)
-                query, key, value = inference_cuda_module.pad_transform_fp16(query, key, value, config.heads, do_flash_attn)
-                if do_flash_attn:
-                    context_layer = triton_flash_attn_kernel(query,
-                                                             key,
-                                                             value,
-                                                             scale,
-                                                             input.shape[-2] % 128 == 0)
-                    context_layer = _transpose_for_context(context_layer[:,:,:,:head_size])
+                do_flash_attn = False
+                if context is not None:
+                    query = torch.matmul(input, attn_qw)
+                    key = torch.matmul(context, attn_kw)
+                    value = torch.matmul(context, attn_vw)
                 else:
-                    attention_scores = (torch.matmul(query,
-                                                     key.transpose(-1,
-                                                                   -2)) *
-                                        scale).softmax(dim=-1)
-                    context_layer = _transpose_for_context(
-                        torch.matmul(attention_scores,
-                                     value))
+                    qkv = torch.matmul(input, attn_qkvw)
+                    query, key, value = qkv.chunk(3, dim=-1)
+                    query = query.contiguous()
+                    key = key.contiguous()
+                    value = value.contiguous()
+                query, key, value = inference_cuda_module.pad_transform_fp16(query, key, value, config.heads, do_flash_attn)
+                attention_scores = (torch.matmul(query,
+                                                 key.transpose(-1,
+                                                               -2)) *
+                                    scale).softmax(dim=-1)
+                context_layer = _transpose_for_context(
+                    torch.matmul(attention_scores,
+                                 value))
 
             output = linear_func(context_layer,
                                  attn_ow,
                                  attn_ob,
-                                 attn_ob is not None,
-                                 True,
+                                 do_out_bias,
                                  False,
-                                 config.heads,
-                                 DeepSpeedAttention.layer_id)
+                                 config.heads)
             return output
 
         output = selfAttention_fp(input, context, input_mask)
@@ -151,7 +122,7 @@ class DeepSpeedAttentionFunction(Function):
                             Please switch to Training mode for running backward!')
 
 
-class DeepSpeedAttention(nn.Module):
+class DeepSpeedDiffusersAttention(nn.Module):
     """Initialize the DeepSpeed Transformer Layer.
         Arguments:
             layer_id: The layer index starting from 0, e.g. if model has 24 transformer layers,
@@ -164,11 +135,11 @@ class DeepSpeedAttention(nn.Module):
         self,
         config,
     ):
-        super(DeepSpeedAttention, self).__init__()
+        super(DeepSpeedDiffusersAttention, self).__init__()
 
         self.config = config
-        self.config.layer_id = DeepSpeedAttention.layer_id
-        DeepSpeedAttention.layer_id += 1
+        self.config.layer_id = DeepSpeedDiffusersAttention.layer_id
+        DeepSpeedDiffusersAttention.layer_id += 1
         device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
         qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
 
@@ -179,7 +150,7 @@ class DeepSpeedAttention(nn.Module):
             builder = op_builder.InferenceBuilder()
             inference_cuda_module = builder.load()
 
-        if DeepSpeedAttention.layer_id == 1:
+        if DeepSpeedDiffusersAttention.layer_id == 1:
             log_dist(f"DeepSpeed-Attention config: {self.config.__dict__}", [0])
 
         self.attn_qkvw = nn.Parameter(torch.empty(self.config.hidden_size,
@@ -217,6 +188,8 @@ class DeepSpeedAttention(nn.Module):
                                                 dtype=data_type_fp,
                                                 device=device),
                                     requires_grad=False)
+        self.do_out_bias = True
+
         if triton_flash_attn is None:
             load_triton_flash_attn()
         self.triton_flash_attn_kernel = triton_flash_attn()
@@ -227,70 +200,46 @@ class DeepSpeedAttention(nn.Module):
         self.norm_factor = math.sqrt(
             math.sqrt(self.config.hidden_size // self.config.heads))
 
+        if self.config.scale_attn_by_inverse_layer_idx is True:
+            self.norm_factor *= math.sqrt(self.config.layer_id + 1)
+            # https://github.com/huggingface/transformers/blob/v4.24.0/src/transformers/models/gpt2/modeling_gpt2.py#L191
+
         self.score_context_func = inference_cuda_module.softmax_context_fp32 if (not config.fp16) else \
                                     inference_cuda_module.softmax_context_fp16
         self.linear_func = inference_cuda_module.linear_layer_fp16 if config.fp16 else \
                                     inference_cuda_module.linear_layer_fp32
-        self.cuda_graph_created = False
-        self.enable_cuda_graph = False
+        self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if not (config.fp16) else \
+                                    inference_cuda_module.allocate_workspace_fp16
 
-    def _graph_replay(self, *inputs, **kwargs):
-        for i in range(len(inputs)):
-            if torch.is_tensor(inputs[i]):
-                self.static_inputs[i].copy_(inputs[i])
-        for k in kwargs:
-            if torch.is_tensor(kwargs[k]):
-                self.static_kwargs[k].copy_(kwargs[k])
-        self._cuda_graphs.replay()
-        return self.static_output
-
-    def _create_cuda_graph(self, *inputs, **kwargs):
-        # warmup to create the workspace and cublas handle
-        cuda_stream = torch.cuda.Stream()
-        cuda_stream.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(cuda_stream):
-            for i in range(3):
-                ret = self._forward(*inputs, **kwargs)
-        torch.cuda.current_stream().wait_stream(cuda_stream)
-
-        # create cuda_graph and assign static_inputs and static_outputs
-        self._cuda_graphs = torch.cuda.CUDAGraph()
-        self.static_inputs = inputs
-        self.static_kwargs = kwargs
-
-        with torch.cuda.graph(self._cuda_graphs):
-            self.static_output = self._forward(*self.static_inputs, **self.static_kwargs)
-
-        self.cuda_graph_created = True
-
-    def forward(self, *inputs, **kwargs):
-        if self.enable_cuda_graph:
-            if self.cuda_graph_created:
-                outputs = self._graph_replay(*inputs, **kwargs)
-            else:
-                self._create_cuda_graph(*inputs, **kwargs)
-                outputs = self._graph_replay(*inputs, **kwargs)
-        else:
-            outputs = self._forward(*inputs, **kwargs)
-        return outputs
-
-    def _forward(self, input, context=None, input_mask=None):
-        output = DeepSpeedAttentionFunction.apply(input,
-                                                  context,
-                                                  input_mask,
-                                                  self.config,
-                                                  self.attn_qkvw,
-                                                  self.attn_qw,
-                                                  self.attn_kw,
-                                                  self.attn_vw,
-                                                  self.attn_qkvb,
-                                                  self.num_attention_heads_per_partition,
-                                                  self.norm_factor,
-                                                  self.hidden_size_per_partition,
-                                                  self.attn_ow,
-                                                  self.attn_ob,
-                                                  self.score_context_func,
-                                                  self.linear_func,
-                                                  self.triton_flash_attn_kernel)
+    def forward(self, input, context=None, input_mask=None):
+        if self.config.layer_id == 0:
+            self.allocate_workspace(self.config.hidden_size,
+                                    self.config.heads,
+                                    input.size()[1],
+                                    input.size()[0],
+                                    DeepSpeedDiffusersAttention.layer_id,
+                                    self.config.mp_size,
+                                    False,
+                                    0,
+                                    self.config.max_out_tokens)
+        output = DeepSpeedDiffusersAttentionFunction.apply(
+            input,
+            context,
+            input_mask,
+            self.config,
+            self.attn_qkvw,
+            self.attn_qw,
+            self.attn_kw,
+            self.attn_vw,
+            self.attn_qkvb,
+            self.num_attention_heads_per_partition,
+            self.norm_factor,
+            self.hidden_size_per_partition,
+            self.attn_ow,
+            self.attn_ob,
+            self.do_out_bias,
+            self.score_context_func,
+            self.linear_func,
+            self.triton_flash_attn_kernel)
 
         return output

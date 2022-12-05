@@ -41,7 +41,7 @@ _gpt_models = [
     "gpt2",
     "distilgpt2",
     "Norod78/hebrew-bad_wiki-gpt_neo-tiny",
-    "EleutherAI/gpt-j-6B",
+    #"EleutherAI/gpt-j-6B", # Removed as this is causing OOM errors randomly
     "bigscience/bloom-560m",
 ]
 _opt_models = [
@@ -293,10 +293,13 @@ class TestModelTask(DistributedTest):
                           ("EleutherAI/gpt-neox-20b",
                            "text-generation"),
                           ("bigscience/bloom-3b",
+                           "text-generation"),
+                          ("EleutherAI/gpt-j-6B",
                            "text-generation")],
                          ids=["gpt-neo",
                               "gpt-neox",
-                              "bloom"])
+                              "bloom",
+                              "gpt-j"])
 class TestMPSize(DistributedTest):
     world_size = 4
 
@@ -433,7 +436,7 @@ class TestLMCorrectness(DistributedTest):
         else:
             lm = lm_eval.models.get_model(model_family).create_from_arg_string(
                 f"pretrained={model_name}",
-                {"device": f"cuda:{local_rank}"})
+                {"device": "cuda"})
 
         torch.cuda.synchronize()
         start = time.time()

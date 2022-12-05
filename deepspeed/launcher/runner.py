@@ -27,7 +27,7 @@ from ..utils import logger
 from ..autotuning import Autotuner
 
 DLTS_HOSTFILE = "/job/hostfile"
-EXPORT_ENVS = ['NCCL', 'PYTHON', 'MV2', 'UCX']
+EXPORT_ENVS = ['MLFLOW', 'NCCL', 'PYTHON', 'MV2', 'UCX']
 EXPORT_ENVS += NEBULA_EXPORT_ENVS
 DEEPSPEED_ENVIRONMENT_NAME = ".deepspeed_env"
 DEEPSPEED_ENVIRONMENT_PATHS = [os.path.expanduser("~"), '.']
@@ -329,6 +329,7 @@ def run_autotuning(args, active_resources):
     tuner.print_tuning_results()
 
     logger.info("[End] Running autotuning")
+    tuner.write_optimal_config()
 
     if args.autotuning == "run":
         tuner.run_after_tuning()
