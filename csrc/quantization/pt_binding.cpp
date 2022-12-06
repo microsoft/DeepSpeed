@@ -138,7 +138,7 @@ at::Tensor dequantize(at::Tensor& quantized_data,
                               .requires_grad(false);
 
     auto output_sizes = quantized_data.sizes().vec();
-    output_sizes[output_sizes.size() - 1] *= numBits == 8 ? 1 : 2;
+    output_sizes[output_sizes.size() - 1] *= num_bits == 8 ? 1 : 2;
     auto output = torch::empty(output_sizes, output_options);
 
     const int total_elems = at::numel(quantized_data);
