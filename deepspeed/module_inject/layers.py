@@ -14,12 +14,12 @@ class LinearAllreduce(nn.Module):
         self.mp_group = mp_group
 
     def forward(self, input):
-        output = torch.matmul(input, self.weight.transpose(-1, -2))
-        if self.mp_group is not None:
-            dist.all_reduce(output, group=self.mp_group)
-        if self.bias is not None:
-            output += self.bias
-        return output
+        if self.mp_group is None:
+            return F.linear(input, self.weight, bias=self.bias)
+        else:
+            output = F.linear(input, self.weight, bias=self.bias)
+            dist.all_reduce(F.linear(input, self.weight, bias=self.bias), group=self.mp_group)
+            return output
 
 
 class LinearLayer(nn.Module):
@@ -39,10 +39,7 @@ class LinearLayer(nn.Module):
                             device=torch.cuda.current_device()))
 
     def forward(self, input):
-        output = torch.matmul(input, self.weight.transpose(-1, -2))
-        if self.bias is not None:
-            output += self.bias
-        return output
+        return F.linear(input, self.weight, bias=self.bias)
 
 
 class Normalize(nn.Module):
