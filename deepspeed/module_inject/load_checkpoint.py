@@ -163,6 +163,8 @@ def load_model_with_checkpoint(r_module,
                                       v.reshape(-1)),
                                      dim=-1).reshape(x.shape)
 
+            # This checks if the parameter exits in the checkpoint file and maybe copies it into the corresponding destination tensor.
+            # Note that not all parameters are saved in one checkpoint, that's why we always need to check if they exist!
             def maybe_copy(module,
                            dst_name,
                            src_name,
@@ -194,7 +196,8 @@ def load_model_with_checkpoint(r_module,
                             dst.scale = scale1
                     setattr(module, dst_name, dst)
 
-            def maybe_copy1(module, dst_name, src_names, qkv=False):
+            # Extending the maybe_copy function for when the q, k, and v are in separate parameters!
+            def maybe_copy_qkv(module, dst_name, src_names, split_qkv=False):
                 if src_names[0] in sd[0]:
                     q = sd[0][src_names[0]]
                     k = sd[0][src_names[1]]
@@ -202,13 +205,13 @@ def load_model_with_checkpoint(r_module,
                     qkv_data = torch.cat((q, k, v), dim=0)
                     dst = getattr(module, dst_name)
                     if len(dst.shape) == 1:
-                        if qkv:
+                        if split_qkv:
                             dst = mp_replace.qkv_copy(dst,
                                                       (qkv_data.cuda()).contiguous())
                         else:
                             dst = mp_replace.copy(dst, qkv_data.cuda())
                     else:
-                        if qkv:
+                        if split_qkv:
                             dst = weight_quantizer.quantize(mp_replace.qkv_copy(dst, qkv_data.cuda() if weight_quantizer.q_int8 else \
                                                             ((transpose(qkv_data.cuda())).contiguous())))
                         else:
@@ -228,6 +231,7 @@ def load_model_with_checkpoint(r_module,
                 q_w, q_b, k_w, k_b, v_w, v_b, attn_ow, attn_ob, \
                 mlp_intw, mlp_intb, mlp_ow, mlp_ob, \
                 inp_normw, inp_normb, attn_nw, attn_nb, _, split_qkv = param_names
+
             maybe_copy(module, 'norm_w', prefix + inp_normw)
             maybe_copy(module, 'norm_b', prefix + inp_normb)
             if len(param_names) == 14:
@@ -244,25 +248,25 @@ def load_model_with_checkpoint(r_module,
                            megatron_v2=megatron_v2,
                            split_qkv=split_qkv)
             elif len(param_names) < 14:
-                maybe_copy1(module.attention,
-                            'attn_qkvw',
-                            [prefix + q_w,
-                             prefix + k_w,
-                             prefix + v_w],
-                            qkv=split_qkv)
+                maybe_copy_qkv(module.attention,
+                               'attn_qkvw',
+                               [prefix + q_w,
+                                prefix + k_w,
+                                prefix + v_w],
+                               split_qkv=split_qkv)
             else:
-                maybe_copy1(module.attention,
-                            'attn_qkvw',
-                            [prefix + q_w,
-                             prefix + k_w,
-                             prefix + v_w],
-                            qkv=split_qkv)
-                maybe_copy1(module.attention,
-                            'attn_qkvb',
-                            [prefix + q_b,
-                             prefix + k_b,
-                             prefix + v_b],
-                            qkv=split_qkv)
+                maybe_copy_qkv(module.attention,
+                               'attn_qkvw',
+                               [prefix + q_w,
+                                prefix + k_w,
+                                prefix + v_w],
+                               split_qkv=split_qkv)
+                maybe_copy_qkv(module.attention,
+                               'attn_qkvb',
+                               [prefix + q_b,
+                                prefix + k_b,
+                                prefix + v_b],
+                               split_qkv=split_qkv)
             maybe_copy(module.attention, 'attn_ow', prefix + attn_ow)
             if len(param_names) >= 14:
                 maybe_copy(module.attention, 'attn_ob', prefix + attn_ob)
