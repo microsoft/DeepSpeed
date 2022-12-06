@@ -599,17 +599,16 @@ at::Tensor ds_bias_relu(at::Tensor& input, at::Tensor& bias)
 template <typename T>
 at::Tensor ds_bias_add(at::Tensor& input, at::Tensor& bias)
 {
-    auto input_cont = input.contiguous();
+    auto size = input.sizes().size();
+    int bsz = size < 3 ? input.size(0) : input.size(0) * input.size(1);
+    int hidden_size = input.size(size-1);
 
-    int bsz = input_cont.size(0) * input_cont.size(1);
-    int hidden_size = input_cont.size(2);
-
-    launch_bias_add((T*)input_cont.data_ptr(),
+    launch_bias_add((T*)input.data_ptr(),
                     (T*)bias.data_ptr(),
                     hidden_size,
                     bsz,
                     Context::Instance().GetCurrentStream());
-    return input_cont;
+    return input;
 }
 
 template <typename T>
@@ -1204,10 +1203,12 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
                        .requires_grad(false);
 
     int out_size = q_int8 ? weight.size(0) : weight.size(1);
-    int bsz = input.size(0) * input.size(1);
+    auto size = input.sizes().size();
+    int bsz = size < 3 ? input.size(0) : input.size(0) * input.size(1);
 
     T* workspace = (T*)Context::Instance().GetWorkSpace();
-    auto output = at::from_blob(workspace, {input.size(0), input.size(1), out_size}, options);
+    auto output = size < 3 ? at::from_blob(workspace, {input.size(0), out_size}, options) : 
+                             at::from_blob(workspace, {input.size(0), input.size(1), out_size}, options) ;
     if (q_int8) {
         quantized_gemm<T>(
             output.data_ptr(), (T*)input.data_ptr(), weight, q_scale, q_scale.size(0), bsz);
@@ -1221,7 +1222,7 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
                        CUBLAS_OP_N,
                        weight.size(1),
                        bsz,
-                       input.size(2),
+                       input.size(size-1),
                        &alpha,
                        &gemm_beta,
                        (T*)weight.data_ptr(),
