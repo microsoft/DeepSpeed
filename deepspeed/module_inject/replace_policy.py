@@ -565,10 +565,11 @@ class HFOPTLayerPolicy(TransformerPolicy):
                          mlp_act_func_type=ActivationFuncType.ReLU,
                          pre_attn_norm=True)
         self.client_module = client_module
+
         try:
             import transformers
             HFOPTLayerPolicy._orig_layer_class = transformers.models.opt.modeling_opt.OPTDecoderLayer
-            if isinstance(DSPolicy.hf_model_config,
+            if isinstance(TransformerPolicy.hf_model_config,
                           transformers.models.opt.configuration_opt.OPTConfig):
                 self.pre_attn_norm = self.hf_model_config.do_layer_norm_before
         except:
