@@ -457,7 +457,6 @@ def scatter(tensor,
                        async_op=async_op)
 
 
-
 @timed_op
 def barrier(group=None,
             async_op=False,
