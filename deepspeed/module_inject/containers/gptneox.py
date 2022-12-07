@@ -44,8 +44,10 @@ class DS_GPTNEOXContainer(BaseTransformerContainer):
         self.qkvw = self.transpose_impl(self.qkvw.data)
         self.dense_w = self.transpose_impl(self.dense_w.data)
 
-        self.qkvw = torch.nn.parameter.Parameter(self._transpose(self.qkvw).contiguous())
-        self.qkvb = torch.nn.parameter.Parameter(self._transpose(self.qkvb).contiguous())
+        self.qkvw = torch.nn.parameter.Parameter(
+            self.transpose_qkv_alignment(self.qkvw).contiguous())
+        self.qkvb = torch.nn.parameter.Parameter(
+            self.transpose_qkv_alignment(self.qkvb).contiguous())
 
         #if self.mlp_linear_layer:
         self._h4h_w = self.transpose_impl(self._h4h_w.data)

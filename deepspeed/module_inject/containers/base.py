@@ -144,11 +144,7 @@ class BaseTransformerContainer(ABC):
         return data
 
     # TODO Lev: Move this to base container since used in Megatron and GPTNEOX?
-    # TODO Lev: Give this a more descriptive name?
-    def _transpose(self, x):
-        #attention_head_size = x.shape[-1] // transformer_config.heads
-        #new_x_shape = x.size()[:-1] + (transformer_config.heads,
-        #                                attention_head_size)
+    def transpose_qkv_alignment(self, x):
         attention_head_size = x.shape[-1] // self.num_attention_heads
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, attention_head_size)
         x_1 = x.view(*new_x_shape)

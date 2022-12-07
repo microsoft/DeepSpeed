@@ -16,6 +16,7 @@ class DS_MegatronGPTContainer(BaseTransformerContainer):
         # Override MLP part
         # new variables for tensors (list)
 
+    # TODO Lev: Should the creation of the config be moved to __init__?
     def create_config(self):
         self.config = DeepSpeedInferenceConfig(hidden_size=self.hidden_size,
                                                heads=self.num_attention_heads,
@@ -35,8 +36,10 @@ class DS_MegatronGPTContainer(BaseTransformerContainer):
         self.qkvw = self.transpose_impl(self.qkvw.data)
         self.dense_w = self.transpose_impl(self.dense_w.data)
 
-        self.qkvw = torch.nn.parameter.Parameter(self._transpose(self.qkvw).contiguous())
-        self.qkvb = torch.nn.parameter.Parameter(self._transpose(self.qkvb).contiguous())
+        self.qkvw = torch.nn.parameter.Parameter(
+            self.transpose_qkv_alignment(self.qkvw).contiguous())
+        self.qkvb = torch.nn.parameter.Parameter(
+            self.transpose_qkv_alignment(self.qkvb).contiguous())
 
         #if self.mlp_linear_layer:
         self._h4h_w = self.transpose_impl(self._h4h_w.data)

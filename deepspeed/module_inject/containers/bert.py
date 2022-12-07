@@ -79,7 +79,3 @@ class DS_BERTContainer(BaseTransformerContainer):
         # quantize mlp weights
         self.module.mlp.inter_w = self.quantizer.quantize(self.module.mlp.inter_w)
         self.module.mlp.output_w = self.quantizer.quantize(self.module.mlp.output_w)
-
-
-#test = DS_GPT2Container(1,2,3,4,5,6,7,8,9,10,11,12,13,14)
-#print(test.__dict__)

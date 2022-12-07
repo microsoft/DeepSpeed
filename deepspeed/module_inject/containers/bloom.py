@@ -210,27 +210,6 @@ class DS_BloomContainer(BaseTransformerContainer):
                 self._h4h_w = self.transpose_impl(self._h4h_w.data)
                 self._4hh_w = self.transpose_impl(self._4hh_w.data)
 
-    # todo: this function is not currently used for bloom but should be kept for future use
-    def _transpose(self, x):
-        print(f"BLOOM _transpose")
-        attention_head_size = x.shape[-1] // self.num_attention_heads
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, attention_head_size)
-        x_1 = x.view(*new_x_shape)
-        (q, k, v) = torch.split(x_1, (x_1.shape[-1] // 3), dim=(x_1.dim() - 1))
-        if len(q.shape) > 2:
-            return torch.cat((q.reshape(q.shape[0],
-                                        -1),
-                              k.reshape(q.shape[0],
-                                        -1),
-                              v.reshape(q.shape[0],
-                                        -1)),
-                             dim=-1).reshape(x.shape)
-        else:
-            return torch.cat((q.reshape(-1),
-                              k.reshape(-1),
-                              v.reshape(-1)),
-                             dim=-1).reshape(x.shape)
-
     def create_module(self, config=None):
         print(f"BLOOM create_module")
         _config = config if config is not None else self.config
@@ -245,7 +224,3 @@ class DS_BloomContainer(BaseTransformerContainer):
                 mp_group=self.mp_group)  # w/o containers
         self.module.config.scale_attention = self.scale_attention
         return self.module
-
-
-#test = DS_GPT2Container(1,2,3,4,5,6,7,8,9,10,11,12,13,14)
-#print(test.__dict__)
