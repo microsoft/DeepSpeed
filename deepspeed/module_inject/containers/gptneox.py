@@ -7,6 +7,8 @@ class DS_GPTNEOXContainer(BaseTransformerContainer):
     def __init__(self, policy):
         super().__init__(policy)
 
+        self.megatron_v2 = self.policy.megatron_v2
+
         self.attn_linear_layer = True
         self.mlp_linear_layer = True
         self.layer_norm_eps = 1e-05
@@ -40,15 +42,16 @@ class DS_GPTNEOXContainer(BaseTransformerContainer):
         return self.module
 
     def transpose(self):
-        #if self.attn_linear_layer:
-        self.qkvw = self.transpose_impl(self.qkvw.data)
-        self.dense_w = self.transpose_impl(self.dense_w.data)
+        if self.attn_linear_layer:
+            self.qkvw = self.transpose_impl(self.qkvw.data)
+            self.dense_w = self.transpose_impl(self.dense_w.data)
 
-        self.qkvw = torch.nn.parameter.Parameter(
-            self.transpose_qkv_alignment(self.qkvw).contiguous())
-        self.qkvb = torch.nn.parameter.Parameter(
-            self.transpose_qkv_alignment(self.qkvb).contiguous())
+        if self.megatron_v2:
+            self.qkvw = torch.nn.parameter.Parameter(
+                self.transpose_qkv_alignment(self.qkvw).contiguous())
+            self.qkvb = torch.nn.parameter.Parameter(
+                self.transpose_qkv_alignment(self.qkvb).contiguous())
 
-        #if self.mlp_linear_layer:
-        self._h4h_w = self.transpose_impl(self._h4h_w.data)
-        self._4hh_w = self.transpose_impl(self._4hh_w.data)
+        if self.mlp_linear_layer:
+            self._h4h_w = self.transpose_impl(self._h4h_w.data)
+            self._4hh_w = self.transpose_impl(self._4hh_w.data)

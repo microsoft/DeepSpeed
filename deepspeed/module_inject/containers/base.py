@@ -140,10 +140,8 @@ class BaseTransformerContainer(ABC):
         data.reshape(-1).copy_(data.transpose(-1, -2).contiguous().reshape(-1))
         data = data.reshape(data.shape[-1], data.shape[-2])
         data.to(torch.cuda.current_device())
-        #print(f"bert model comes here returning new data with shape {data.shape}")
         return data
 
-    # TODO Lev: Move this to base container since used in Megatron and GPTNEOX?
     def transpose_qkv_alignment(self, x):
         attention_head_size = x.shape[-1] // self.num_attention_heads
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, attention_head_size)
