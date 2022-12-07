@@ -42,10 +42,13 @@ class DeepSpeedMLPFunction(Function):
         if attn_nw is None:
             output = fused_gemm_gelu(residual_norm,
                                      inter_w,
+                                     inter_w.scale,
                                      inter_b,
                                      output_w,
+                                     output_w.scale,
                                      config.epsilon,
                                      config.pre_layer_norm,
+                                     config.q_int8,
                                      False)
         else:
             output, residual_add = mlp_gemm_func(input,
@@ -98,7 +101,7 @@ class DeepSpeedMLP(nn.Module):
         data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.float
         data_type_fp = torch.half if config.fp16 else torch.float
         device = get_accelerator().current_device_name(
-        ) if config.bigscience_bloom else 'cpu'
+        )  #if config.bigscience_bloom else 'cpu'
         self.attn_nw = nn.Parameter(torch.empty(self.config.hidden_size,
                                                 dtype=data_type_fp,
                                                 device=device),

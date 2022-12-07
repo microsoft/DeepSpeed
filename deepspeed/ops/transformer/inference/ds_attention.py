@@ -332,7 +332,6 @@ class DeepSpeedSelfAttentionFunction(Function):
                                         False,
                                         attn_ow.scale,
                                         config.q_int8)
-
             return output, key_layer, value_layer, context_layer, qkv_out[-1]
 
         def selfAttention_int8():
@@ -396,7 +395,7 @@ class DeepSpeedSelfAttention(nn.Module):
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
         device = get_accelerator().current_device_name(
-        ) if config.bigscience_bloom else 'cpu'
+        )  #if config.bigscience_bloom else 'cpu'
         qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
         self.attn_qkvw = nn.Parameter(torch.empty(self.config.hidden_size,
                                                   qkv_size_per_partition,
