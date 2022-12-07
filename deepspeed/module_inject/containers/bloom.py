@@ -1,5 +1,5 @@
 from .base import *
-# TODO LEV: use transformer_inference.DeepSpeedTransformerInference when creating module w/o containers
+
 use_containers = True
 if use_containers:
     from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference

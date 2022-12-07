@@ -7,7 +7,7 @@ class DS_GPTNEOXContainer(BaseTransformerContainer):
     def __init__(self, policy):
         super().__init__(policy)
 
-        self.megatron_v2 = self.policy.megatron_v2
+        self.megatron_v2 = self.policy.is_megatron_v2
 
         self.attn_linear_layer = True
         self.mlp_linear_layer = True
@@ -16,29 +16,28 @@ class DS_GPTNEOXContainer(BaseTransformerContainer):
         self.window_size = 1
         self.rotary_dim = 24
         self.mlp_after_attn = False
-        self.rotate_half = True
-        self.rotate_every_two = False
 
     def create_config(self):
-        self.config = DeepSpeedInferenceConfig(
-            hidden_size=self.hidden_size,
-            heads=self.num_attention_heads,
-            fp16=self.fp16,
-            mp_size=self.mp_size,
-            layer_norm_eps=self.layer_norm_eps,
-            scale_attention=self.scale_attention,
-            window_size=self.window_size,
-            rotary_dim=self.rotary_dim,
-            mlp_after_attn=self.mlp_after_attn,
-            rotate_half=self.rotate_half,
-            rotate_every_two=self.rotate_every_two,
-        )
+        self.config = DeepSpeedInferenceConfig(hidden_size=self.hidden_size,
+                                               heads=self.num_attention_heads,
+                                               fp16=self.fp16,
+                                               mp_size=self.mp_size,
+                                               layer_norm_eps=self.layer_norm_eps,
+                                               scale_attention=self.scale_attention,
+                                               window_size=self.window_size,
+                                               rotary_dim=self.rotary_dim,
+                                               mlp_after_attn=self.mlp_after_attn)
         return self.config
 
     def create_module(self, config=None):
         _config = config if config is not None else self.config
         self.module = DeepSpeedGPTInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
+
+        if self.megatron_v2:
+            self.module.config.rotate_half = True
+            self.module.config.rotate_every_two = False
+
         return self.module
 
     def transpose(self):

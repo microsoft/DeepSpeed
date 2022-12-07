@@ -7,14 +7,14 @@ class DS_MegatronGPTContainer(BaseTransformerContainer):
     def __init__(self, policy):
         super().__init__(policy)
 
-        self.megatron_v2 = self.policy.megatron_v2
+        self.megatron_v2 = self.policy.is_megatron_v2
 
         self.attn_linear_layer = True
         self.mlp_linear_layer = True
         self.scale_attention = True
         self.window_size = 1
 
-        # Create DS_MegatromGPTMoE container
+        # Create DS_MegatronGPTMoE container
         # Override MLP part
         # new variables for tensors (list)
 
@@ -31,6 +31,11 @@ class DS_MegatronGPTContainer(BaseTransformerContainer):
         _config = config if config is not None else self.config
         self.module = DeepSpeedMegatronGPTInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
+
+        if self.megatron_v2:
+            self.module.config.rotate_half = True
+            self.module.config.rotate_every_two = False
+
         return self.module
 
     def transpose(self):
