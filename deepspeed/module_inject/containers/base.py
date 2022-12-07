@@ -142,3 +142,27 @@ class BaseTransformerContainer(ABC):
         data.to(torch.cuda.current_device())
         #print(f"bert model comes here returning new data with shape {data.shape}")
         return data
+
+    # TODO Lev: Move this to base container since used in Megatron and GPTNEOX?
+    # TODO Lev: Give this a more descriptive name?
+    def _transpose(self, x):
+        #attention_head_size = x.shape[-1] // transformer_config.heads
+        #new_x_shape = x.size()[:-1] + (transformer_config.heads,
+        #                                attention_head_size)
+        attention_head_size = x.shape[-1] // self.num_attention_heads
+        new_x_shape = x.size()[:-1] + (self.num_attention_heads, attention_head_size)
+        x_1 = x.view(*new_x_shape)
+        (q, k, v) = torch.split(x_1, (x_1.shape[-1] // 3), dim=(x_1.dim() - 1))
+        if len(q.shape) > 2:
+            return torch.cat((q.reshape(q.shape[0],
+                                        -1),
+                              k.reshape(q.shape[0],
+                                        -1),
+                              v.reshape(q.shape[0],
+                                        -1)),
+                             dim=-1).reshape(x.shape)
+        else:
+            return torch.cat((q.reshape(-1),
+                              k.reshape(-1),
+                              v.reshape(-1)),
+                             dim=-1).reshape(x.shape)
