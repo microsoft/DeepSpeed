@@ -113,18 +113,6 @@ std::vector<at::Tensor> quantize_kernel(at::Tensor& input_vals,
     return {output, params};
 }
 
-int num_decompressed_elems(at::Tensor& quantized_data, int num_bits)
-{
-    if (num_bits == 8) {
-        return quantized_data.size(-1);
-    } else if (num_bits == 4) {
-        return quantized_data.size(-1) * 2;
-    } else {
-        assert(false);
-        return 0;
-    }
-}
-
 at::Tensor dequantize(at::Tensor& quantized_data,
                       at::Tensor& params,
                       int groups,
@@ -141,7 +129,7 @@ at::Tensor dequantize(at::Tensor& quantized_data,
     output_sizes[output_sizes.size() - 1] *= num_bits == 8 ? 1 : 2;
     auto output = torch::empty(output_sizes, output_options);
 
-    const int total_elems = at::numel(quantized_data);
+    const int total_elems = at::numel(output);
     const int elems_per_group = total_elems / groups;
 
     launch_dequantize_kernel((__half*)output.data_ptr(),
