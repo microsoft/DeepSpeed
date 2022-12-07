@@ -51,6 +51,7 @@ class DS_GPTNEOXContainer(BaseTransformerContainer):
         self._h4h_w = self.transpose_impl(self._h4h_w.data)
         self._4hh_w = self.transpose_impl(self._4hh_w.data)
 
+    # TODO Lev: Move this to base container since used in Megatron and GPTNEOX?
     def _transpose(self, x):
         #attention_head_size = x.shape[-1] // transformer_config.heads
         #new_x_shape = x.size()[:-1] + (transformer_config.heads,
