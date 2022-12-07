@@ -3,6 +3,9 @@ import time
 import deepspeed
 import argparse
 from transformers import pipeline
+from transformers.models.auto.modeling_auto import AutoModelForMaskedLM
+from transformers.pipelines import PIPELINE_REGISTRY
+from optimized_fill_mask import OptimizedFillMask
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", "-m", type=str, help="hf model name")
@@ -15,6 +18,13 @@ parser.add_argument("--kernel-inject", action="store_true", help="inject kernels
 parser.add_argument("--graphs", action="store_true", help="CUDA Graphs on")
 args = parser.parse_args()
 
+PIPELINE_REGISTRY.register_pipeline(
+    "opt-fill-mask",
+    pipeline_class=OptimizedFillMask,
+    pt_model=AutoModelForMaskedLM,
+    default={"pt": ("distilroberta-base", "ec58a5b"), "tf": ("distilroberta-base", "ec58a5b")},
+    type="text",  # current support type: text, audio, image, multimodal
+)
 
 def print_latency(latency_set, title, warmup=3):
     # trim warmup queries
@@ -44,7 +54,7 @@ def print_latency(latency_set, title, warmup=3):
         print("\t999 Latency: {0:8.2f} ms".format(p999 * 1000))
 
 
-deepspeed.init_distributed("nccl")
+# deepspeed.init_distributed("nccl")
 
 print(args.model, args.max_tokens, args.dtype)
 
@@ -54,6 +64,7 @@ else:
     dtype = torch.float32
 
 pipe = pipeline("fill-mask", model=args.model, framework="pt", device=args.local_rank)
+# pipe = pipeline("opt-fill-mask", model=args.model, framework="pt", device=args.local_rank)
 
 if dtype == torch.half:
     pipe.model.half()
