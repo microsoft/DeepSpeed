@@ -10,7 +10,6 @@ try:
     import torch
     from torch.optim import Optimizer
     from torch.optim.lr_scheduler import _LRScheduler
-
     from packaging import version as pkg_version
 
     from . import ops
@@ -154,160 +153,163 @@ try:
         ]
         return tuple(return_items)
 
-    def _add_core_arguments(parser):
-        r"""Helper (internal) function to update an argument parser with an argument group of the core DeepSpeed arguments.
-            The core set of DeepSpeed arguments include the following:
-            1) --deepspeed: boolean flag to enable DeepSpeed
-            2) --deepspeed_config <json file path>: path of a json configuration file to configure DeepSpeed runtime.
-
-            This is a helper function to the public add_config_arguments()
-
-        Arguments:
-            parser: argument parser
-        Return:
-            parser: Updated Parser
-        """
-        group = parser.add_argument_group('DeepSpeed', 'DeepSpeed configurations')
-
-        group.add_argument(
-            '--deepspeed',
-            default=False,
-            action='store_true',
-            help=
-            'Enable DeepSpeed (helper flag for user code, no impact on DeepSpeed backend)'
-        )
-
-        group.add_argument('--deepspeed_config',
-                           default=None,
-                           type=str,
-                           help='DeepSpeed json configuration file.')
-
-        group.add_argument(
-            '--deepscale',
-            default=False,
-            action='store_true',
-            help=
-            'Deprecated enable DeepSpeed (helper flag for user code, no impact on DeepSpeed backend)'
-        )
-
-        group.add_argument('--deepscale_config',
-                           default=None,
-                           type=str,
-                           help='Deprecated DeepSpeed json configuration file.')
-
-        group.add_argument(
-            '--deepspeed_mpi',
-            default=False,
-            action='store_true',
-            help=
-            "Run via MPI, this will attempt to discover the necessary variables to initialize torch "
-            "distributed from the MPI environment")
-
-        return parser
-
-    def add_config_arguments(parser):
-        r"""Update the argument parser to enabling parsing of DeepSpeed command line arguments.
-            The set of DeepSpeed arguments include the following:
-            1) --deepspeed: boolean flag to enable DeepSpeed
-            2) --deepspeed_config <json file path>: path of a json configuration file to configure DeepSpeed runtime.
-
-        Arguments:
-            parser: argument parser
-        Return:
-            parser: Updated Parser
-        """
-        parser = _add_core_arguments(parser)
-
-        return parser
-
-    def default_inference_config():
-        """
-            Return a default DeepSpeed inference configuration dictionary.
-        """
-        return DeepSpeedInferenceConfig().dict()
-
-    def init_inference(model, config=None, **kwargs):
-        """Initialize the DeepSpeed InferenceEngine.
-
-        Description: all four cases are valid and supported in DS init_inference() API.
-
-        # Case 1: user provides no config and no kwargs. Default config will be used.
-
-        .. code-block:: python
-
-            generator.model = deepspeed.init_inference(generator.model)
-            string = generator("DeepSpeed is")
-            print(string)
-
-        # Case 2: user provides a config and no kwargs. User supplied config will be used.
-
-        .. code-block:: python
-
-            generator.model = deepspeed.init_inference(generator.model, config=config)
-            string = generator("DeepSpeed is")
-            print(string)
-
-        # Case 3: user provides no config and uses keyword arguments (kwargs) only.
-
-        .. code-block:: python
-
-            generator.model = deepspeed.init_inference(generator.model,
-                                                        mp_size=world_size,
-                                                        dtype=torch.half,
-                                                        replace_with_kernel_inject=True)
-            string = generator("DeepSpeed is")
-            print(string)
-
-        # Case 4: user provides config and keyword arguments (kwargs). Both config and kwargs are merged and kwargs take precedence.
-
-        .. code-block:: python
-
-            generator.model = deepspeed.init_inference(generator.model, config={"dtype": torch.half}, replace_with_kernel_inject=True)
-            string = generator("DeepSpeed is")
-            print(string)
-
-        Arguments:
-            model: Required: original nn.module object without any wrappers
-
-            config: Optional: instead of arguments, you can pass in a DS inference config dict or path to JSON file
-
-        Returns:
-            A deepspeed.InferenceEngine wrapped model.
-        """
-        log_dist("DeepSpeed info: version={}, git-hash={}, git-branch={}".format(
-            __version__,
-            __git_hash__,
-            __git_branch__),
-                 ranks=[0])
-
-        # Load config_dict from config first
-        if config is None:
-            config = {}
-        if isinstance(config, str):
-            with open(config, "r") as f:
-                config_dict = json.load(f)
-        elif isinstance(config, dict):
-            config_dict = config
-        else:
-            raise ValueError(
-                f"'config' argument expected string or dictionary, got {type(config)}")
-
-        # Update with values from kwargs, ensuring no conflicting overlap between config and kwargs
-        overlap_keys = set(config_dict.keys()).intersection(kwargs.keys())
-        # If there is overlap, error out if values are different
-        for key in overlap_keys:
-            if config_dict[key] != kwargs[key]:
-                raise ValueError(
-                    f"Conflicting argument '{key}' in 'config':{config_dict[key]} and kwargs:{kwargs[key]}"
-                )
-        config_dict.update(kwargs)
-
-        ds_inference_config = DeepSpeedInferenceConfig(**config_dict)
-
-        engine = InferenceEngine(model, config=ds_inference_config)
-
-        return engine
-
 except ImportError:
     print('[WARNING] Unable to import torch.  Pytorch is needed unless in deepspeed installation without pre-compiling ops. ' \
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
+
+
+def _add_core_arguments(parser):
+    r"""Helper (internal) function to update an argument parser with an argument group of the core DeepSpeed arguments.
+        The core set of DeepSpeed arguments include the following:
+        1) --deepspeed: boolean flag to enable DeepSpeed
+        2) --deepspeed_config <json file path>: path of a json configuration file to configure DeepSpeed runtime.
+
+        This is a helper function to the public add_config_arguments()
+
+    Arguments:
+        parser: argument parser
+    Return:
+        parser: Updated Parser
+    """
+    group = parser.add_argument_group('DeepSpeed', 'DeepSpeed configurations')
+
+    group.add_argument(
+        '--deepspeed',
+        default=False,
+        action='store_true',
+        help=
+        'Enable DeepSpeed (helper flag for user code, no impact on DeepSpeed backend)')
+
+    group.add_argument('--deepspeed_config',
+                       default=None,
+                       type=str,
+                       help='DeepSpeed json configuration file.')
+
+    group.add_argument(
+        '--deepscale',
+        default=False,
+        action='store_true',
+        help=
+        'Deprecated enable DeepSpeed (helper flag for user code, no impact on DeepSpeed backend)'
+    )
+
+    group.add_argument('--deepscale_config',
+                       default=None,
+                       type=str,
+                       help='Deprecated DeepSpeed json configuration file.')
+
+    group.add_argument(
+        '--deepspeed_mpi',
+        default=False,
+        action='store_true',
+        help=
+        "Run via MPI, this will attempt to discover the necessary variables to initialize torch "
+        "distributed from the MPI environment")
+
+    return parser
+
+
+def add_config_arguments(parser):
+    r"""Update the argument parser to enabling parsing of DeepSpeed command line arguments.
+        The set of DeepSpeed arguments include the following:
+        1) --deepspeed: boolean flag to enable DeepSpeed
+        2) --deepspeed_config <json file path>: path of a json configuration file to configure DeepSpeed runtime.
+
+    Arguments:
+        parser: argument parser
+    Return:
+        parser: Updated Parser
+    """
+    parser = _add_core_arguments(parser)
+
+    return parser
+
+
+def default_inference_config():
+    """
+        Return a default DeepSpeed inference configuration dictionary.
+    """
+    return DeepSpeedInferenceConfig().dict()
+
+
+def init_inference(model, config=None, **kwargs):
+    """Initialize the DeepSpeed InferenceEngine.
+
+    Description: all four cases are valid and supported in DS init_inference() API.
+
+    # Case 1: user provides no config and no kwargs. Default config will be used.
+
+    .. code-block:: python
+
+        generator.model = deepspeed.init_inference(generator.model)
+        string = generator("DeepSpeed is")
+        print(string)
+
+    # Case 2: user provides a config and no kwargs. User supplied config will be used.
+
+    .. code-block:: python
+
+        generator.model = deepspeed.init_inference(generator.model, config=config)
+        string = generator("DeepSpeed is")
+        print(string)
+
+    # Case 3: user provides no config and uses keyword arguments (kwargs) only.
+
+    .. code-block:: python
+
+        generator.model = deepspeed.init_inference(generator.model,
+                                                    mp_size=world_size,
+                                                    dtype=torch.half,
+                                                    replace_with_kernel_inject=True)
+        string = generator("DeepSpeed is")
+        print(string)
+
+    # Case 4: user provides config and keyword arguments (kwargs). Both config and kwargs are merged and kwargs take precedence.
+
+    .. code-block:: python
+
+        generator.model = deepspeed.init_inference(generator.model, config={"dtype": torch.half}, replace_with_kernel_inject=True)
+        string = generator("DeepSpeed is")
+        print(string)
+
+    Arguments:
+        model: Required: original nn.module object without any wrappers
+
+        config: Optional: instead of arguments, you can pass in a DS inference config dict or path to JSON file
+
+    Returns:
+        A deepspeed.InferenceEngine wrapped model.
+    """
+    log_dist("DeepSpeed info: version={}, git-hash={}, git-branch={}".format(
+        __version__,
+        __git_hash__,
+        __git_branch__),
+             ranks=[0])
+
+    # Load config_dict from config first
+    if config is None:
+        config = {}
+    if isinstance(config, str):
+        with open(config, "r") as f:
+            config_dict = json.load(f)
+    elif isinstance(config, dict):
+        config_dict = config
+    else:
+        raise ValueError(
+            f"'config' argument expected string or dictionary, got {type(config)}")
+
+    # Update with values from kwargs, ensuring no conflicting overlap between config and kwargs
+    overlap_keys = set(config_dict.keys()).intersection(kwargs.keys())
+    # If there is overlap, error out if values are different
+    for key in overlap_keys:
+        if config_dict[key] != kwargs[key]:
+            raise ValueError(
+                f"Conflicting argument '{key}' in 'config':{config_dict[key]} and kwargs:{kwargs[key]}"
+            )
+    config_dict.update(kwargs)
+
+    ds_inference_config = DeepSpeedInferenceConfig(**config_dict)
+
+    engine = InferenceEngine(model, config=ds_inference_config)
+
+    return engine
