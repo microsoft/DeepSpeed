@@ -18,7 +18,6 @@ class DS_MegatronGPTContainer(BaseTransformerContainer):
         # Override MLP part
         # new variables for tensors (list)
 
-    # TODO Lev: Should the creation of the config be moved to __init__?
     def create_config(self):
         self.config = DeepSpeedInferenceConfig(hidden_size=self.hidden_size,
                                                heads=self.num_attention_heads,
