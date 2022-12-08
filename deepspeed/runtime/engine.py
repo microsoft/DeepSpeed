@@ -64,14 +64,14 @@ from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.utils import clip_grad_norm_
 from deepspeed.runtime.eigenvalue import Eigenvalue
-from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING, DATA_ROUTING, \
-    DATA_SAMPLING_ENABLED, CURRICULUM_LEARNING, CURRICULUM_LEARNING_ENABLED
+from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING, \
+    DATA_ROUTING, DATA_SAMPLING_ENABLED, CURRICULUM_LEARNING, \
+    CURRICULUM_LEARNING_ENABLED, DATA_SAMPLING_NUM_WORKERS, RANDOM_LTD, \
+    RANDOM_LTD_ENABLED, RANDOM_LTD_LAYER_ID, RANDOM_LTD_LAYER_NUM, \
+    RANDOM_LTD_LAYER_TOKEN_LR_SCHEDULE, RANDOM_LTD_LAYER_TOKEN_LR_ENABLED, \
+    RANDOM_LTD_GLOBAL_BATCH_SIZE, RANDOM_LTD_MICRO_BATCH_SIZE
 from deepspeed.runtime.data_pipeline.curriculum_scheduler import CurriculumScheduler
-
 from deepspeed.runtime.data_pipeline.data_routing.scheduler import RandomLTDScheduler
-from deepspeed.runtime.data_pipeline.constants import RANDOM_LTD, RANDOM_LTD_ENABLED,\
-    RANDOM_LTD_LAYER_ID, RANDOM_LTD_LAYER_NUM, RANDOM_LTD_LAYER_TOKEN_LR_SCHEDULE, \
-    RANDOM_LTD_LAYER_TOKEN_LR_ENABLED, RANDOM_LTD_GLOBAL_BATCH_SIZE, RANDOM_LTD_MICRO_BATCH_SIZE
 
 from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 
@@ -1703,8 +1703,18 @@ class DeepSpeedEngine(Module):
             data_parallel_world_size = self.mpu.get_data_parallel_world_size()
             data_parallel_rank = self.mpu.get_data_parallel_rank()
 
+        deepspeed_engine_config = {}
+        if self.curriculum_learning_enabled():
+            deepspeed_engine_config = {
+                "curriculum_learning_enabled": self.curriculum_learning_enabled(),
+                "data_efficiency_config": self.data_efficiency_config(),
+                "data_parallel_group": self.data_parallel_group,
+                "gradient_accumulation_steps": self.gradient_accumulation_steps(),
+                "global_rank": self.global_rank,
+                "num_workers": self.data_sampling_config()[DATA_SAMPLING_NUM_WORKERS]
+            }
+
         return DeepSpeedDataLoader(dataset=dataset,
-                                   deepspeed=self,
                                    batch_size=batch_size,
                                    pin_memory=pin_memory,
                                    collate_fn=collate_fn,
@@ -1714,7 +1724,8 @@ class DeepSpeedEngine(Module):
                                    data_sampler=data_sampler,
                                    data_parallel_world_size=data_parallel_world_size,
                                    data_parallel_rank=data_parallel_rank,
-                                   dataloader_drop_last=self.dataloader_drop_last())
+                                   dataloader_drop_last=self.dataloader_drop_last(),
+                                   deepspeed_engine_config=deepspeed_engine_config)
 
     def train(self, mode=True):
         r""""""

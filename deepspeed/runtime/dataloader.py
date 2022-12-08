@@ -7,7 +7,6 @@ from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 
 from deepspeed.runtime.data_pipeline.data_sampling.data_sampler import DeepSpeedDataSampler
-from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING_NUM_WORKERS
 
 
 class RepeatingLoader:
@@ -36,7 +35,6 @@ class RepeatingLoader:
 class DeepSpeedDataLoader(object):
     def __init__(self,
                  dataset,
-                 deepspeed,
                  batch_size,
                  pin_memory,
                  local_rank,
@@ -46,25 +44,29 @@ class DeepSpeedDataLoader(object):
                  data_sampler=None,
                  data_parallel_world_size=None,
                  data_parallel_rank=None,
-                 dataloader_drop_last=False):
-        self.deepspeed = deepspeed
+                 dataloader_drop_last=False,
+                 deepspeed_engine_config={}):
+        self.deepspeed_engine_config = deepspeed_engine_config
         self.tput_timer = tput_timer
         self.batch_size = batch_size
+        self.curriculum_learning_enabled = False
+        if "curriculum_learning_enabled" in deepspeed_engine_config:
+            self.curriculum_learning_enabled = deepspeed_engine_config[
+                "curriculum_learning_enabled"]
 
-        if self.deepspeed.curriculum_learning_enabled():
+        if self.curriculum_learning_enabled:
             data_sampler = DeepSpeedDataSampler(
-                self.deepspeed.data_efficiency_config(),
+                self.deepspeed_engine_config["data_efficiency_config"],
                 len(dataset),
                 self.batch_size,
                 data_parallel_rank,
                 data_parallel_world_size,
-                self.deepspeed.data_parallel_group,
-                self.deepspeed.gradient_accumulation_steps(),
-                self.deepspeed.global_rank,
+                self.deepspeed_engine_config["data_parallel_group"],
+                self.deepspeed_engine_config["gradient_accumulation_steps"],
+                self.deepspeed_engine_config["global_rank"],
                 drop_last=dataloader_drop_last)
             device_count = torch.cuda.device_count()
-            num_local_io_workers = self.deepspeed.data_sampling_config(
-            )[DATA_SAMPLING_NUM_WORKERS]
+            num_local_io_workers = self.deepspeed_engine_config["num_workers"]
         else:
             if local_rank >= 0:
                 if data_sampler is None:
@@ -109,7 +111,7 @@ class DeepSpeedDataLoader(object):
     def __next__(self):
         if self.tput_timer:
             self.tput_timer.start()
-        if self.deepspeed.curriculum_learning_enabled():
+        if self.curriculum_learning_enabled:
             data = next(self.data_iterator)
             if self.post_process_func is not None:
                 data = self.post_process_func(data, self.data_sampler.state_dict())
@@ -118,7 +120,7 @@ class DeepSpeedDataLoader(object):
             return next(self.data)
 
     def _create_dataloader(self):
-        if self.deepspeed.curriculum_learning_enabled():
+        if self.curriculum_learning_enabled:
             self.dataloader = DataLoader(self.dataset,
                                          pin_memory=self.pin_memory,
                                          batch_sampler=self.data_sampler,
