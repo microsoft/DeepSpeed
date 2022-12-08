@@ -63,8 +63,8 @@ if args.dtype.lower() == "fp16":
 else:
     dtype = torch.float32
 
-pipe = pipeline("fill-mask", model=args.model, framework="pt", device=args.local_rank)
-# pipe = pipeline("opt-fill-mask", model=args.model, framework="pt", device=args.local_rank)
+# pipe = pipeline("fill-mask", model=args.model, framework="pt", device=args.local_rank)
+pipe = pipeline("opt-fill-mask", model=args.model, framework="pt", device=args.local_rank)
 
 if dtype == torch.half:
     pipe.model.half()
