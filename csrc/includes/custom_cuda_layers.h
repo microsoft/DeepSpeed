@@ -5,7 +5,6 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #pragma once
 
 #include "ds_kernel_utils.h"
-#include "quantization.h"
 
 #include <cuda.h>
 #include <cuda_fp16.h>
