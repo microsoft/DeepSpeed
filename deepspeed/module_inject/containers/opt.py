@@ -9,7 +9,7 @@ class DS_OPTContainer(BaseTransformerContainer):
 
         self.attn_linear_layer = True
         self.mlp_linear_layer = True
-        self.scale_attention = True
+        self.scale_attention = self.policy.scale_attention
         self.mlp_act_func_type = self.policy.mlp_act_func_type
         self.window_size = 1
 

@@ -12,7 +12,7 @@ class DS_GPTNEOXContainer(BaseTransformerContainer):
         self.attn_linear_layer = True
         self.mlp_linear_layer = True
         self.layer_norm_eps = 1e-05
-        self.scale_attention = True
+        self.scale_attention = self.policy.scale_attention
         self.window_size = 1
         self.rotary_dim = 24
         self.mlp_after_attn = False

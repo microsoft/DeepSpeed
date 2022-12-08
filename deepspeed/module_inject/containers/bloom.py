@@ -15,7 +15,7 @@ class DS_BloomContainer(BaseTransformerContainer):
         super().__init__(policy)
 
         # All model specific things should be defined here instead of the base class.
-        self.scale_attention = True
+        self.scale_attention = self.policy.scale_attention
         self.pre_attn_norm = False
         self.attn_linear_layer = True
         self.mlp_linear_layer = True

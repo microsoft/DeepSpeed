@@ -9,7 +9,7 @@ class DS_GPTJContainer(BaseTransformerContainer):
 
         self.attn_linear_layer = True
         self.mlp_linear_layer = True
-        self.scale_attention = True
+        self.scale_attention = self.policy.scale_attention
         self.layer_norm_eps = 1e-05
         self.pre_layer_norm = True
         self.rotary_dim = 64

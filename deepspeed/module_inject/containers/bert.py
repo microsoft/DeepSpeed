@@ -9,7 +9,7 @@ class DS_BERTContainer(BaseTransformerContainer):
 
         # All model specific things should be defined here instead of the base class.
         self.is_megatron_v2 = False
-        self.scale_attention = True
+        self.scale_attention = self.policy.scale_attention
         self.layer_norm_eps = 1e-12
         self.attn_linear_layer = True
         self.mlp_linear_layer = True

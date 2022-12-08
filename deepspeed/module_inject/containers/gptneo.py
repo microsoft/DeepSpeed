@@ -11,7 +11,7 @@ class DS_GPTNEOContainer(BaseTransformerContainer):
         self.mlp_linear_layer = True
         self.layer_norm_eps = 1e-05
         self.pre_layer_norm = True
-        self.scale_attention = False
+        self.scale_attention = self.policy.scale_attention
         self.local_attention = True
 
     def create_config(self):

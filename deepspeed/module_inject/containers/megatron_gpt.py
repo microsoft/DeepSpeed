@@ -11,7 +11,7 @@ class DS_MegatronGPTContainer(BaseTransformerContainer):
 
         self.attn_linear_layer = True
         self.mlp_linear_layer = True
-        self.scale_attention = True
+        self.scale_attention = self.policy.scale_attention
         self.window_size = 1
 
         # Create DS_MegatronGPTMoE container
