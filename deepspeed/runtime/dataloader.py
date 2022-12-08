@@ -6,6 +6,9 @@ import torch
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 
+from deepspeed.runtime.data_pipeline.data_sampling.data_sampler import DeepSpeedDataSampler
+from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING_NUM_WORKERS
+
 
 class RepeatingLoader:
     def __init__(self, loader):
@@ -33,6 +36,7 @@ class RepeatingLoader:
 class DeepSpeedDataLoader(object):
     def __init__(self,
                  dataset,
+                 deepspeed,
                  batch_size,
                  pin_memory,
                  local_rank,
@@ -43,23 +47,40 @@ class DeepSpeedDataLoader(object):
                  data_parallel_world_size=None,
                  data_parallel_rank=None,
                  dataloader_drop_last=False):
+        self.deepspeed = deepspeed
         self.tput_timer = tput_timer
         self.batch_size = batch_size
 
-        if local_rank >= 0:
-            if data_sampler is None:
-                data_sampler = DistributedSampler(dataset=dataset,
-                                                  num_replicas=data_parallel_world_size,
-                                                  rank=data_parallel_rank)
-            device_count = 1
-        else:
-            if data_sampler is None:
-                data_sampler = RandomSampler(dataset)
+        if self.deepspeed.curriculum_learning_enabled():
+            data_sampler = DeepSpeedDataSampler(
+                self.deepspeed.data_efficiency_config(),
+                len(dataset),
+                self.batch_size,
+                data_parallel_rank,
+                data_parallel_world_size,
+                self.deepspeed.data_parallel_group,
+                self.deepspeed.gradient_accumulation_steps(),
+                self.deepspeed.global_rank,
+                drop_last=dataloader_drop_last)
             device_count = torch.cuda.device_count()
-            batch_size *= device_count
+            num_local_io_workers = self.deepspeed.data_sampling_config(
+            )[DATA_SAMPLING_NUM_WORKERS]
+        else:
+            if local_rank >= 0:
+                if data_sampler is None:
+                    data_sampler = DistributedSampler(
+                        dataset=dataset,
+                        num_replicas=data_parallel_world_size,
+                        rank=data_parallel_rank)
+                device_count = 1
+            else:
+                if data_sampler is None:
+                    data_sampler = RandomSampler(dataset)
+                device_count = torch.cuda.device_count()
+                batch_size *= device_count
 
-        if num_local_io_workers is None:
-            num_local_io_workers = 2 * device_count
+            if num_local_io_workers is None:
+                num_local_io_workers = 2 * device_count
 
         self.num_local_io_workers = num_local_io_workers
         self.data_sampler = data_sampler
@@ -70,6 +91,7 @@ class DeepSpeedDataLoader(object):
         self.pin_memory = pin_memory
         self.data = None
         self.dataloader_drop_last = dataloader_drop_last
+        self.post_process_func = None
 
         if self.dataloader_drop_last:
             self.len = len(self.data_sampler) // self.batch_size
@@ -87,27 +109,41 @@ class DeepSpeedDataLoader(object):
     def __next__(self):
         if self.tput_timer:
             self.tput_timer.start()
-        return next(self.data)
+        if self.deepspeed.curriculum_learning_enabled():
+            data = next(self.data_iterator)
+            if self.post_process_func is not None:
+                data = self.post_process_func(data, self.data_sampler.state_dict())
+            return data
+        else:
+            return next(self.data)
 
     def _create_dataloader(self):
-        if self.collate_fn is None:
+        if self.deepspeed.curriculum_learning_enabled():
             self.dataloader = DataLoader(self.dataset,
-                                         batch_size=self.batch_size,
                                          pin_memory=self.pin_memory,
-                                         sampler=self.data_sampler,
-                                         num_workers=self.num_local_io_workers,
-                                         drop_last=self.dataloader_drop_last)
+                                         batch_sampler=self.data_sampler,
+                                         num_workers=self.num_local_io_workers)
+            self.data_iterator = iter(self.dataloader)
+            return self.dataloader
         else:
-            self.dataloader = DataLoader(self.dataset,
-                                         batch_size=self.batch_size,
-                                         pin_memory=self.pin_memory,
-                                         sampler=self.data_sampler,
-                                         collate_fn=self.collate_fn,
-                                         num_workers=self.num_local_io_workers,
-                                         drop_last=self.dataloader_drop_last)
-        self.data = (x for x in self.dataloader)
+            if self.collate_fn is None:
+                self.dataloader = DataLoader(self.dataset,
+                                             batch_size=self.batch_size,
+                                             pin_memory=self.pin_memory,
+                                             sampler=self.data_sampler,
+                                             num_workers=self.num_local_io_workers,
+                                             drop_last=self.dataloader_drop_last)
+            else:
+                self.dataloader = DataLoader(self.dataset,
+                                             batch_size=self.batch_size,
+                                             pin_memory=self.pin_memory,
+                                             sampler=self.data_sampler,
+                                             collate_fn=self.collate_fn,
+                                             num_workers=self.num_local_io_workers,
+                                             drop_last=self.dataloader_drop_last)
+            self.data = (x for x in self.dataloader)
 
-        return self.dataloader
+            return self.dataloader
 
 
 # DataLoader([(torch.randn(3, 3), torch.tensor(i % 2)) for i in range(10)], batch_size=2))

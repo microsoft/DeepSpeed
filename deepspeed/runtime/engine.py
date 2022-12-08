@@ -64,7 +64,15 @@ from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.utils import clip_grad_norm_
 from deepspeed.runtime.eigenvalue import Eigenvalue
+from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING, DATA_ROUTING, \
+    DATA_SAMPLING_ENABLED, CURRICULUM_LEARNING, CURRICULUM_LEARNING_ENABLED
 from deepspeed.runtime.data_pipeline.curriculum_scheduler import CurriculumScheduler
+
+from deepspeed.runtime.data_pipeline.data_routing.scheduler import RandomLTDScheduler
+from deepspeed.runtime.data_pipeline.constants import RANDOM_LTD, RANDOM_LTD_ENABLED,\
+    RANDOM_LTD_LAYER_ID, RANDOM_LTD_LAYER_NUM, RANDOM_LTD_LAYER_TOKEN_LR_SCHEDULE, \
+    RANDOM_LTD_LAYER_TOKEN_LR_ENABLED, RANDOM_LTD_GLOBAL_BATCH_SIZE, RANDOM_LTD_MICRO_BATCH_SIZE
+
 from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 
 from .pipe.module import PipelineModule
@@ -358,8 +366,17 @@ class DeepSpeedEngine(Module):
         if self.pld_enabled():
             self.progressive_layer_drop = self._configure_progressive_layer_drop()
 
-        if self.curriculum_enabled():
-            self.curriculum_scheduler = self._configure_curriculum_scheduler()
+        if self.curriculum_enabled_legacy():
+            self.curriculum_scheduler_legacy = self._configure_curriculum_scheduler_legacy(
+            )
+
+        if self.random_ltd_enabled():
+            random_ltd_config = self.random_ltd_config()
+            random_ltd_config[RANDOM_LTD_GLOBAL_BATCH_SIZE] = self.train_batch_size()
+            random_ltd_config[
+                RANDOM_LTD_MICRO_BATCH_SIZE] = self.train_micro_batch_size_per_gpu()
+            self.random_ltd_scheduler = self._configure_random_ltd_scheduler(
+                random_ltd_config)
 
         # Engine timers
 
@@ -443,6 +460,15 @@ class DeepSpeedEngine(Module):
         self._config.train_batch_size = train_batch_size
         self._config.gradient_accumulation_steps = new_gas
 
+    def set_data_post_process_func(self, post_process_func):
+        if self.training_dataloader is not None:
+            self.training_dataloader.post_process_func = post_process_func
+
+    def set_custom_curriculum_learning_schedule(self, schedule_func_dict):
+        if self.training_dataloader is not None and self.curriculum_learning_enabled():
+            self.training_dataloader.data_sampler.set_custom_curriculum_learning_schedule(
+                schedule_func_dict)
+
     def get_global_grad_norm(self) -> float:
         """Return the 2-norm of all gradients. If there is model parallelism,
         the norm will be global.
@@ -524,11 +550,69 @@ class DeepSpeedEngine(Module):
     def eigenvalue_layer_num(self):
         return self._config.eigenvalue_layer_num
 
-    def curriculum_enabled(self):
-        return self._config.curriculum_enabled
+    def curriculum_enabled_legacy(self):
+        return self._config.curriculum_enabled_legacy
 
-    def curriculum_params(self):
-        return self._config.curriculum_params
+    def curriculum_params_legacy(self):
+        return self._config.curriculum_params_legacy
+
+    def data_efficiency_enabled(self):
+        return self._config.data_efficiency_enabled
+
+    def data_efficiency_config(self):
+        return self._config.data_efficiency_config
+
+    def data_sampling_enabled(self):
+        return self._config.data_efficiency_config[DATA_SAMPLING][DATA_SAMPLING_ENABLED]
+
+    def data_sampling_config(self):
+        return self._config.data_efficiency_config[DATA_SAMPLING]
+
+    def curriculum_learning_enabled(self):
+        return self._config.data_efficiency_config[DATA_SAMPLING][CURRICULUM_LEARNING][
+            CURRICULUM_LEARNING_ENABLED]
+
+    def curriculum_learning_config(self):
+        return self._config.data_efficiency_config[DATA_SAMPLING][CURRICULUM_LEARNING]
+
+    def random_ltd_enabled(self):
+        return self._config.data_efficiency_config[DATA_ROUTING][RANDOM_LTD][
+            RANDOM_LTD_ENABLED]
+
+    def random_ltd_config(self):
+        return self._config.data_efficiency_config[DATA_ROUTING][RANDOM_LTD]
+
+    def random_ltd_initialize(self):
+        assert self.random_ltd_enabled()
+        # need to put this import here to avoid "unable to compile CUDA
+        # op(s)" error on CPU-only unit testing machine, because it will
+        # trigger CUDA kernels compilation
+        from deepspeed.runtime.data_pipeline.data_routing.basic_layer import RandomLayerTokenDrop
+        random_ltd_config = self.random_ltd_config()
+        from collections import deque
+        random_ltd_queue = deque(
+            [x for x in sorted(random_ltd_config[RANDOM_LTD_LAYER_ID])])
+        count = 0
+        for name, layer in self.module.named_modules():
+            if isinstance(layer, RandomLayerTokenDrop):
+                if len(random_ltd_queue) != 0 and str(
+                        random_ltd_queue[0]) in name:  ###[1,2,3]
+                    layer.init_config(random_ltd_config,
+                                      self.random_ltd_scheduler,
+                                      count)
+                    random_ltd_queue.popleft()
+                    count += 1
+
+        if random_ltd_config[RANDOM_LTD_LAYER_NUM] != count:
+            raise ValueError(
+                f'random_ltd_layer_num {random_ltd_config[RANDOM_LTD_LAYER_NUM]} must be \
+                equivalent to the len of random_ltd_layer_id {count}')
+
+        if random_ltd_config[RANDOM_LTD_LAYER_TOKEN_LR_SCHEDULE][
+                RANDOM_LTD_LAYER_TOKEN_LR_ENABLED]:
+            assert self.client_lr_scheduler is None
+            raise ValueError(f'not yet support')
+            #self.lr_scheduler = lr_schedules.WarmupLayerTokenDecayLR(self.optimizer, self.random_ltd_scheduler)
 
     def wall_clock_breakdown(self):
         return self._config.wall_clock_breakdown
@@ -1313,6 +1397,9 @@ class DeepSpeedEngine(Module):
     def _configure_compression_scheduler(self):
         return compression_scheduler(self.module, self._config.compression_config)
 
+    def _configure_random_ltd_scheduler(self, configs):
+        return RandomLTDScheduler(configs)
+
     def _configure_quantization(self):
         (
             quantize_weight_in_forward,
@@ -1556,8 +1643,8 @@ class DeepSpeedEngine(Module):
 
         return pld
 
-    def _configure_curriculum_scheduler(self):
-        scheduler = CurriculumScheduler(self.curriculum_params())
+    def _configure_curriculum_scheduler_legacy(self):
+        scheduler = CurriculumScheduler(self.curriculum_params_legacy())
         return scheduler
 
     @staticmethod
@@ -1617,6 +1704,7 @@ class DeepSpeedEngine(Module):
             data_parallel_rank = self.mpu.get_data_parallel_rank()
 
         return DeepSpeedDataLoader(dataset=dataset,
+                                   deepspeed=self,
                                    batch_size=batch_size,
                                    pin_memory=pin_memory,
                                    collate_fn=collate_fn,
@@ -1701,13 +1789,16 @@ class DeepSpeedEngine(Module):
         if self.__class__.__name__ != "PipelineEngine":
             # TODO: The above if condition is a HACK since for PipelineEngine
             # it's difficult to inject argument in forward pass.
-            if self.module.training and self.curriculum_enabled():
-                self.curriculum_scheduler.update_difficulty(self.global_steps + 1)
-                if self.curriculum_params()["curriculum_type"] == "seqlen":
+            if self.module.training and self.curriculum_enabled_legacy():
+                self.curriculum_scheduler_legacy.update_difficulty(self.global_steps + 1)
+                if self.curriculum_params_legacy()["curriculum_type"] == "seqlen":
                     kwargs.update({
                         "curriculum_seqlen":
-                        self.curriculum_scheduler.get_current_difficulty()
+                        self.curriculum_scheduler_legacy.get_current_difficulty()
                     })
+
+        if self.module.training and self.random_ltd_enabled():
+            self.random_ltd_scheduler.update_seq(self.global_steps)
 
         if self.zero_optimization_partition_weights():
             # Enable automated discovery of external parameters by indicating that
@@ -2435,6 +2526,12 @@ class DeepSpeedEngine(Module):
 
     def module_state_dict(self, destination=None, prefix="", keep_vars=False):
         sd = self.module.state_dict(destination, prefix, keep_vars)
+        if self.random_ltd_enabled():
+            # need to put this import here to avoid "unable to compile CUDA
+            # op(s)" error on CPU-only unit testing machine, because it will
+            # trigger CUDA kernels compilation
+            from deepspeed.runtime.data_pipeline.data_routing.helper import remove_random_ltd_state_dict
+            sd = remove_random_ltd_state_dict(sd)
         return sd
 
     @staticmethod
@@ -2744,6 +2841,15 @@ class DeepSpeedEngine(Module):
             if load_lr_scheduler_states and self.lr_scheduler is not None:
                 self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
 
+            if self.random_ltd_enabled(
+            ) and self.random_ltd_scheduler is not None and 'random_ltd' in checkpoint:
+                self.random_ltd_scheduler.load_state_dict(checkpoint['random_ltd'])
+
+            if self.training_dataloader is not None and self.curriculum_learning_enabled(
+            ) and 'data_sampler' in checkpoint:
+                self.training_dataloader.data_sampler.load_state_dict(
+                    checkpoint['data_sampler'])
+
             def get_sparse_tensor_module_names(original_set,
                                                loaded_set,
                                                original_parameters,
@@ -2790,7 +2896,9 @@ class DeepSpeedEngine(Module):
                 'skipped_steps',
                 'global_steps',
                 'dp_world_size',
-                'mp_world_size'
+                'mp_world_size',
+                'data_sampler',
+                'random_ltd'
             ]
         client_state = {}
 
@@ -3169,6 +3277,11 @@ class DeepSpeedEngine(Module):
                      if self.optimizer and zero_optimizer_state else None,
                      lr_scheduler=self.lr_scheduler.state_dict()
                      if self.lr_scheduler is not None else None,
+                     data_sampler=self.training_dataloader.data_sampler.state_dict() if
+                     (self.training_dataloader is not None
+                      and self.curriculum_learning_enabled()) else None,
+                     random_ltd=self.random_ltd_scheduler.state_dict()
+                     if self.random_ltd_enabled() else None,
                      sparse_tensor_module_names=self.sparse_tensor_module_names,
                      skipped_steps=self.skipped_steps,
                      global_steps=self.global_steps,
