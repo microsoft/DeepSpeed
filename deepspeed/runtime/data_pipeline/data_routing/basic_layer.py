@@ -1,3 +1,7 @@
+'''
+Copyright 2022 The Microsoft DeepSpeed Team
+'''
+
 from deepspeed.utils import logger
 from torch import Tensor
 from torch.nn import Module

@@ -1,3 +1,7 @@
+'''
+Copyright 2022 The Microsoft DeepSpeed Team
+'''
+
 import math
 
 from deepspeed.utils import logger
