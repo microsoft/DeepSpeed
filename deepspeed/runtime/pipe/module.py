@@ -121,10 +121,13 @@ class PipelineModule(nn.Module):
             num_stages (int, optional): The degree of pipeline parallelism. If not specified, ``topology`` must be provided.
             topology (``deepspeed.runtime.pipe.ProcessTopology``, optional): Defines the axes of parallelism axes for training. Must be provided if ``num_stages`` is ``None``.
             loss_fn (callable, optional): Loss is computed ``loss = loss_fn(outputs, label)``
-            base_seed (int, optional): [description]. Defaults to 1234.
-            partition_method (str, optional): [description]. Defaults to 'parameters'.
+            seed_layers(bool, optional): Use a different seed for each layer. Defaults to False.
+            seed_fn(type, optional): The custom seed generating function. Defaults to random seed generator.
+            base_seed (int, optional): The starting seed. Defaults to 1234.
+            partition_method (str, optional): The method upon which the layers are partitioned. Defaults to 'parameters'.
             activation_checkpoint_interval (int, optional): The granularity activation checkpointing in terms of number of layers. 0 disables activation checkpointing.
             activation_checkpoint_func (callable, optional): The function to use for activation checkpointing. Defaults to ``deepspeed.checkpointing.checkpoint``.
+            checkpointable_layers(list, optional): Checkpointable layers may not be checkpointed. Defaults to None which does not additional filtering.
         """
 
         super().__init__()
