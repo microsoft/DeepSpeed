@@ -1,3 +1,6 @@
+'''
+Copyright 2022 The Microsoft DeepSpeed Team
+'''
 from ..policy import DSPolicy
 
 

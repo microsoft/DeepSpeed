@@ -1,3 +1,6 @@
+'''
+Copyright 2022 The Microsoft DeepSpeed Team
+'''
 import torch
 from torch.nn.parameter import Parameter
 from ..policy import TransformerPolicy
@@ -8,7 +11,7 @@ from deepspeed.utils.types import ActivationFuncType
 class HFOPTLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
 
-    def __init__(self, client_module, inference=True):
+    def __init__(self, client_module, inference=True, use_load_prefix=True):
         super().__init__(inference,
                          linear_layer=True,
                          mlp_act_func_type=ActivationFuncType.ReLU,
@@ -19,7 +22,7 @@ class HFOPTLayerPolicy(TransformerPolicy):
             HFOPTLayerPolicy._orig_layer_class = transformers.models.opt.modeling_opt.OPTDecoderLayer
             if isinstance(TransformerPolicy.hf_model_config,
                           transformers.models.opt.configuration_opt.OPTConfig):
-                self.pre_attn_norm = self.hf_model_config.do_layer_norm_before
+                self.pre_attn_norm = TransformerPolicy.hf_model_config.do_layer_norm_before
         except:
             HFOPTLayerPolicy._orig_layer_class = None
 
@@ -56,3 +59,23 @@ class HFOPTLayerPolicy(TransformerPolicy):
                self.client_module.final_layer_norm.bias, \
                self.client_module.self_attn_layer_norm.weight, \
                self.client_module.self_attn_layer_norm.bias
+
+    def get_param_names(self):
+        return 'self_attn.q_proj.weight', \
+               'self_attn.q_proj.bias', \
+               'self_attn.k_proj.weight', \
+               'self_attn.k_proj.bias', \
+               'self_attn.v_proj.weight', \
+               'self_attn.v_proj.bias', \
+               'self_attn.out_proj.weight', \
+               'self_attn.out_proj.bias', \
+               'fc1.weight', \
+               'fc1.bias', \
+               'fc2.weight', \
+               'fc2.bias', \
+               'self_attn_layer_norm.weight', \
+               'self_attn_layer_norm.bias', \
+               'final_layer_norm.weight', \
+               'final_layer_norm.bias', \
+               self.use_load_prefix, \
+               self.split_qkv

@@ -1,3 +1,6 @@
+'''
+Copyright 2022 The Microsoft DeepSpeed Team
+'''
 import torch
 from ..policy import TransformerPolicy
 
@@ -8,7 +11,7 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
     version = 0
 
-    def __init__(self, client_module, inference=True, megatron_v2=True):
+    def __init__(self, client_module, inference=True, megatron_v2=True, split_qkv=False):
         super().__init__(inference, megatron_v2=megatron_v2)
         self.client_module = client_module
         if GPTNEOXLayerPolicy._orig_layer_class is None:
@@ -52,3 +55,19 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
                self.client_module.post_attention_layernorm.bias, \
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
+
+    def get_param_names(self):
+        return 'attention.query_key_value.weight', \
+               'attention.query_key_value.bias', \
+               'attention.dense.weight', \
+               'attention.dense.bias', \
+               'mlp.dense_h_to_4h.weight', \
+               'mlp.dense_h_to_4h.bias', \
+               'mlp.dense_4h_to_h.weight', \
+               'mlp.dense_4h_to_h.bias', \
+               'input_layernorm.weight', \
+               'input_layernorm.bias', \
+               'post_attention_layernorm.weight', \
+               'post_attention_layernorm.bias', \
+               self.use_load_prefix, \
+               self.split_qkv

@@ -1,3 +1,6 @@
+'''
+Copyright 2022 The Microsoft DeepSpeed Team
+'''
 from ..policy import TransformerPolicy
 
 
@@ -8,7 +11,6 @@ class HFGPT2LayerPolicy(TransformerPolicy):
         # HuggingFace GPT2 uses convolutional layer instead of linear layer
         super().__init__(inference, linear_layer=False)
         self.client_module = client_module
-        #print(f">--- replace_policy.py: HFGPT2LayerPolicy.__init__. Detected HFGPT2 model, client_module: {client_module}")
         try:
             import transformers
             HFGPT2LayerPolicy._orig_layer_class = transformers.models.gpt2.modeling_gpt2.GPT2Block

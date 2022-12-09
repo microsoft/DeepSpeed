@@ -1,3 +1,6 @@
+'''
+Copyright 2022 The Microsoft DeepSpeed Team
+'''
 import torch
 from torch.nn.parameter import Parameter
 from ..policy import TransformerPolicy

@@ -27,6 +27,7 @@ import tqdm
 import os
 
 # Local list of replacement policies to use instead of the original list imported from replace_policy.py
+# TODO (lekurile): Is this the correct place for this to live?
 replace_policies = [
     HFGPT2LayerPolicy,
     HFBertLayerPolicy,
@@ -37,6 +38,10 @@ replace_policies = [
     HFOPTLayerPolicy,
     MegatronLayerPolicy,
 ]
+
+# TODO (lekurile): Need to test the generic_policies
+# non-transformer-based policies
+#generic_policies = [UNetPolicy, VAEPolicy]
 
 
 # This function is called by replace_transormer_layer() in replace_layer.py and used _replace_module() helper from the replace_module.py file
