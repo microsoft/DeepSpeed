@@ -180,5 +180,5 @@ def test_layer_norm_residual_store(batch, seq_len, channels, dtype):
 
     ds_norm_output, ds_res_output = residual_store_ds_implementation(vals, bias, residual, gamma, beta, epsilon)
 
-    assert allclose(ds_norm_output, ref_norm_output)
     assert allclose(ds_res_output, norm_res_output)
+    assert allclose(ds_norm_output, ref_norm_output)
