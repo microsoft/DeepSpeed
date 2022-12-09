@@ -214,7 +214,7 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
             triangular_masking=False,
             max_out_tokens=4096,
         )
-        attn_module = transformer_inference.DeepSpeedDiffusersAttention(config)
+        attn_module = DeepSpeedDiffusersAttention(config)
 
         def transpose(data):
             data = data.contiguous()
