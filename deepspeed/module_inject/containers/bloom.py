@@ -48,33 +48,34 @@ class DS_BloomContainer(BaseTransformerContainer):
         print(f"BLOOM apply_attn_tp")
         # setup the new Attention module
         if self.qkvw.is_meta or self.qkvw.numel() == 0 or self.qkvw.is_meta:
-            #print("bert model comes qkvw.is_meta ------------------")
-            #exit(0)
             if self.qkvw.is_meta or self.qkvw.ds_tensor.numel(
-            ) < self.module.attn_block.attn_qkvw.numel():
+            ) < self.module.attention.attn_qkvw.numel():
+                if qkvb is None:
+                    self.attention.attn_qkvb = None
+                if dense_b is None:
+                    self.attention.attn_ob = None
                 pass
             else:
                 print(
                     "bloom model comes into attn. GatheredParameters ------------------")
-                #exit(0)
                 with GatheredParameters([
-                        self.module.attn_block.attn_qkvw,
-                        self.module.attn_block.attn_qkvb,
-                        self.module.attn_block.attn_ow,
-                        self.module.attn_block.attn_ob
+                        self.module.attention.attn_qkvw,
+                        self.module.attention.attn_qkvb,
+                        self.module.attention.attn_ow,
+                        self.module.attention.attn_ob
                 ],
                                         modifier_rank=0):
-                    self.module.attn_block.attn_qkvw = mp_replace.copy(
-                        self.module.attn_block.attn_qkvw,
+                    self.module.attention.attn_qkvw = mp_replace.copy(
+                        self.module.attention.attn_qkvw,
                         self.qkvw)
-                    self.module.attn_block.attn_qkvb = mp_replace.copy(
-                        self.module.attn_block.attn_qkvb,
+                    self.module.attention.attn_qkvb = mp_replace.copy(
+                        self.module.attention.attn_qkvb,
                         self.qkvb)
-                    self.module.attn_block.attn_ow = mp_replace.copy(
-                        self.module.attn_block.attn_ow,
+                    self.module.attention.attn_ow = mp_replace.copy(
+                        self.module.attention.attn_ow,
                         self.dense_w)
-                    self.module.attn_block.attn_ob = mp_replace.copy(
-                        self.module.attn_block.attn_ob,
+                    self.module.attention.attn_ob = mp_replace.copy(
+                        self.module.attention.attn_ob,
                         self.dense_b)
         else:
             # note that we don't use qkv_copy here and this is bloom specific
@@ -172,7 +173,7 @@ class DS_BloomContainer(BaseTransformerContainer):
         if self.attn_linear_layer:
             if self.qkvw.numel() == 0 or self.qkvw.is_meta:
                 if self.qkvw.is_meta or self.qkvw.ds_tensor.numel(
-                ) < self.module.attn_block.attn_qkvw.numel():
+                ) < self.module.attention.attn_qkvw.numel():
                     pass
                 else:
                     with GatheredParameters(

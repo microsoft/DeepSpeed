@@ -86,6 +86,12 @@ def replace_module(model, orig_class, replace_fn, _replace_policy):
     return replaced_module
 
 
+# TODO (lekurile): Do these need to be defined here, if they're defined as globals in replace_with_policy()?
+selected_policy_g = None
+megatron_v2_g = False
+transformer_config_g = None
+
+
 def replace_transformer_layer(orig_layer_impl,
                               model,
                               checkpoint_dict,
@@ -172,6 +178,17 @@ def replace_transformer_layer(orig_layer_impl,
         # 10. copy the tensors from the model-specific container to the new module
         _container.copy_data_to_new_module()
 
+        # 11. set globals for generic checkpoint loading
+        global selected_policy_g
+        global megatron_v2_g
+        global transformer_config_g
+
+        if selected_policy_g is None:
+            selected_policy_g = _container.policy
+
+        megatron_v2_g = _container.megatron_v2
+        transformer_config_g = _container.config
+
         return new_module
 
     def replace_wo_policy(module, all_reduce_linears):
@@ -186,9 +203,7 @@ def replace_transformer_layer(orig_layer_impl,
                 weight_shape = child.weight.ds_shape
             else:
                 weight_shape = child.weight.shape
-            if (isinstance(all_reduce_linears,
-                           tuple) or isinstance(all_reduce_linears,
-                                                str)) and name in all_reduce_linears:
+            if name in all_reduce_linears:
                 new_weight = torch.empty((
                     weight_shape[1] if conv_linear_layer else weight_shape[0],
                     (weight_shape[0] if conv_linear_layer else weight_shape[1]) //
@@ -292,7 +307,6 @@ def replace_transformer_layer(orig_layer_impl,
             if len(linear_layer_setting) == 2:
                 linear_policies.update({linear_layer_setting[1]: _slice_embedding})
         else:
-            from .policies import HFGPT2LayerPolicy
             if orig_layer_impl is HFGPT2LayerPolicy._orig_layer_class:
                 try:
                     import transformers
@@ -375,7 +389,9 @@ def replace_transformer_layer(orig_layer_impl,
                     mp_replace,
                     ckpt_type,
                     quantizer,
-                )
+                    param_names=selected_policy_g.get_param_names(),
+                    transformer_config=transformer_config_g,
+                    megatron_v2=megatron_v2_g)
                 pbar.update(1)
         else:
             import gc
@@ -399,12 +415,16 @@ def replace_transformer_layer(orig_layer_impl,
                     torch.load(ckpt_file,
                                map_location='cpu') for ckpt_file in ckpt_files
                 ]
-                load_model_with_checkpoint(replaced_module,
-                                           sds,
-                                           mp_replace,
-                                           ckpt_type,
-                                           quantizer,
-                                           int(rank % tp_split_size))
+                load_model_with_checkpoint(
+                    replaced_module,
+                    sds,
+                    mp_replace,
+                    ckpt_type,
+                    quantizer,
+                    int(rank % tp_split_size),
+                    param_names=selected_policy_g.get_param_names(),
+                    transformer_config=transformer_config_g,
+                    megatron_v2=megatron_v2_g)
                 sds = [None for _ in sds]
                 gc.collect()
 
@@ -419,12 +439,16 @@ def replace_transformer_layer(orig_layer_impl,
                                              checkpoint["non_tp"][i]
                                              ) if base_dir1 else checkpoint["non_tp"][i]
                     sds = [torch.load(ckpt_file, map_location='cpu')]
-                    load_model_with_checkpoint(replaced_module,
-                                               sds,
-                                               mp_replace,
-                                               ckpt_type,
-                                               quantizer,
-                                               int(rank % tp_split_size))
+                    load_model_with_checkpoint(
+                        replaced_module,
+                        sds,
+                        mp_replace,
+                        ckpt_type,
+                        quantizer,
+                        int(rank % tp_split_size),
+                        param_names=selected_policy_g.get_param_names(),
+                        transformer_config=transformer_config_g,
+                        megatron_v2=megatron_v2_g)
                     sds = [None for _ in sds]
                     gc.collect()
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
@@ -460,7 +484,7 @@ def replace_transformer_layer(orig_layer_impl,
                     if transformer_name not in k
                 }),
                 f'{config.save_mp_checkpoint_path}/{non_tp_ckpt_name}')
-            config = json.dumps({
+            ckpt_config = json.dumps({
                 'type':
                 ckpt_name,
                 'base_dir':
@@ -482,9 +506,9 @@ def replace_transformer_layer(orig_layer_impl,
                 'dtype':
                 'int8' if quantize else ('float16' if fp16 else 'float32')
             })
-            with open(f"{config.save_mp_checkpoint_path}/ds-inference_config.json",
+            with open(f"{config.save_mp_checkpoint_path}/ds_inference_config.json",
                       "w") as cfg:
-                cfg.write(config)
+                cfg.write(ckpt_config)
 
         rep_sd = replaced_module.state_dict()
         for n, p in replaced_module.named_parameters():
