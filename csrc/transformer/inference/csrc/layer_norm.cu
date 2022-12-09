@@ -40,9 +40,8 @@ __global__ void fused_ln(T* output,
     cg::thread_block_tile<hw_warp_size> warp = cg::tiled_partition<hw_warp_size>(tb);
 
     // X-dimension of the block
-    const int block_offset =
-        (tb.group_index().x * (maxThreads / threadsPerGroup) * elems_per_row) +
-        (tb.thread_index().y * elems_per_row);
+    const int block_offset = (tb.group_index().x * (maxThreads / threadsPerGroup) * elems_per_row) +
+                             (tb.thread_index().y * elems_per_row);
     const int thread_offset = tb.thread_index().x * T_per_load;
     const int base_offset = block_offset + thread_offset;
     const int stride = tb.size() * T_per_load;
@@ -237,9 +236,8 @@ __global__ void fused_residual_ln(T* output,
     cg::thread_block_tile<hw_warp_size> warp = cg::tiled_partition<hw_warp_size>(tb);
 
     // X-dimension of the block
-    const int block_offset =
-        (tb.group_index().x * (maxThreads / threadsPerGroup) * elems_per_row) +
-        (tb.thread_index().y * elems_per_row);
+    const int block_offset = (tb.group_index().x * (maxThreads / threadsPerGroup) * elems_per_row) +
+                             (tb.thread_index().y * elems_per_row);
     const int thread_offset = tb.thread_index().x * T_per_load;
     const int base_offset = block_offset + thread_offset;
     const int stride = tb.size() * T_per_load;
@@ -336,7 +334,7 @@ __global__ void fused_residual_ln(T* output,
 // TODO(cmikeh2): There's a bunch of redundancy here that needs to be removed/simplified.
 #define LAUNCH_FUSED_RES_LN(unRollFactor, threadsPerGroup, maxThreads)     \
     fused_residual_ln<T, unRollFactor, threadsPerGroup, maxThreads, false> \
-        <<<grid, block, 0, stream>>>(                                          \
+        <<<grid, block, 0, stream>>>(                                      \
             output, nullptr, vals, residual, bias, gamma, beta, epsilon, elems_per_row);
 
 template <typename T>
@@ -409,7 +407,7 @@ void launch_fused_residual_ln(T* output,
 
 #define LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(unRollFactor, threadsPerGroup, maxThreads) \
     fused_residual_ln<T, unRollFactor, threadsPerGroup, maxThreads, true>               \
-        <<<grid, block, 0, stream>>>(                                                       \
+        <<<grid, block, 0, stream>>>(                                                   \
             norm_output, res_output, vals, residual, bias, gamma, beta, epsilon, elems_per_row);
 
 template <typename T>
