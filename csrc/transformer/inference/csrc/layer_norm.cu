@@ -200,7 +200,8 @@ Template arg:
     StoreResidual: controls whether the residual calculation is stored
         or not. When set to false, the input `res_output` is unused.
 */
-template <typename T, int UNROLL,
+template <typename T,
+          int UNROLL,
           int internal_unroll,
           int threads_per_group,
           int max_threads,
@@ -318,9 +319,10 @@ __global__ void fused_residual_ln(T* output,
 }
 
 // TODO(cmikeh2): There's a bunch of redundancy here that needs to be removed/simplified.
-#define LAUNCH_FUSED_RES_LN(unroll_factor, internal_unroll, threads_per_group, max_threads)                                  \
-    fused_residual_ln<T, unroll_factor, internal_unroll, threads_per_group, max_threads, false><<<grid, block, 0, stream>>>( \
-        output, nullptr, vals, residual, bias, gamma, beta, epsilon, elems_per_row);
+#define LAUNCH_FUSED_RES_LN(unroll_factor, internal_unroll, threads_per_group, max_threads)     \
+    fused_residual_ln<T, unroll_factor, internal_unroll, threads_per_group, max_threads, false> \
+        <<<grid, block, 0, stream>>>(                                                           \
+            output, nullptr, vals, residual, bias, gamma, beta, epsilon, elems_per_row);
 
 template <typename T>
 void launch_fused_residual_ln(T* output,
@@ -343,8 +345,7 @@ void launch_fused_residual_ln(T* output,
     constexpr int internal_unroll = sizeof(T) == 4 ? 4 : 2;
 
     const bool is_subblock_schedule = (elems_per_row <= 128) ? true : false;
-    const int h_per_step = is_subblock_schedule ? T_per_load
-                                                : T_per_load * internal_unroll;
+    const int h_per_step = is_subblock_schedule ? T_per_load : T_per_load * internal_unroll;
 
     // Scheduling concern: may be slightly faster for some inputs to assign multiple stages of
     // warp-sized blocks rather than stepping up to 64/96 threads
@@ -379,27 +380,23 @@ void launch_fused_residual_ln(T* output,
     } else if (external_unroll == 1) {
         // 129 - 4096 elems
         // (this can launch with 1-7 warps as well)
-        LAUNCH_FUSED_RES_LN(
-            1, internal_unroll, max_threads, max_threads);
+        LAUNCH_FUSED_RES_LN(1, internal_unroll, max_threads, max_threads);
     } else if (external_unroll == 2) {
         // 4097 - 8192 elems
-        LAUNCH_FUSED_RES_LN(
-            2, internal_unroll, max_threads, max_threads);
+        LAUNCH_FUSED_RES_LN(2, internal_unroll, max_threads, max_threads);
     } else if (external_unroll == 3) {
         // 8193 - 12288 elems
-        LAUNCH_FUSED_RES_LN(
-            3, internal_unroll, max_threads, max_threads);
+        LAUNCH_FUSED_RES_LN(3, internal_unroll, max_threads, max_threads);
     } else if (external_unroll == 4) {
         // 12289 - 16384 elems
-        LAUNCH_FUSED_RES_LN(
-            4, internal_unroll, max_threads, max_threads);
+        LAUNCH_FUSED_RES_LN(4, internal_unroll, max_threads, max_threads);
     }
-
 }
 
-#define LAUNCH_FUSED_RES_LN_STORE(unroll_factor, internal_unroll, threads_per_group, max_threads)                           \
-    fused_residual_ln<T, unroll_factor, internal_unroll, threads_per_group, max_threads, true><<<grid, block, 0, stream>>>( \
-        norm_output, res_output, vals, residual, bias, gamma, beta, epsilon, elems_per_row);
+#define LAUNCH_FUSED_RES_LN_STORE(unroll_factor, internal_unroll, threads_per_group, max_threads) \
+    fused_residual_ln<T, unroll_factor, internal_unroll, threads_per_group, max_threads, true>    \
+        <<<grid, block, 0, stream>>>(                                                             \
+            norm_output, res_output, vals, residual, bias, gamma, beta, epsilon, elems_per_row);
 
 template <typename T>
 void launch_fused_residual_ln_store(T* norm_output,
@@ -423,8 +420,7 @@ void launch_fused_residual_ln_store(T* norm_output,
     constexpr int internal_unroll = sizeof(T) == 4 ? 4 : 2;
 
     const bool is_subblock_schedule = (elems_per_row <= 128) ? true : false;
-    const int h_per_step = is_subblock_schedule ? T_per_load
-                                                : T_per_load * internal_unroll;
+    const int h_per_step = is_subblock_schedule ? T_per_load : T_per_load * internal_unroll;
 
     // Scheduling concern: may be slightly faster for some inputs to assign multiple stages of
     // warp-sized blocks rather than stepping up to 64/96 threads
@@ -459,20 +455,16 @@ void launch_fused_residual_ln_store(T* norm_output,
     } else if (external_unroll == 1) {
         // 129 - 4096 elems
         // (this can launch with 1-7 warps as well)
-        LAUNCH_FUSED_RES_LN_STORE(
-            1, internal_unroll, max_threads, max_threads);
+        LAUNCH_FUSED_RES_LN_STORE(1, internal_unroll, max_threads, max_threads);
     } else if (external_unroll == 2) {
         // 4097 - 8192 elems
-        LAUNCH_FUSED_RES_LN_STORE(
-            2, internal_unroll, max_threads, max_threads);
+        LAUNCH_FUSED_RES_LN_STORE(2, internal_unroll, max_threads, max_threads);
     } else if (external_unroll == 3) {
         // 8193 - 12288 elems
-        LAUNCH_FUSED_RES_LN_STORE(
-            3, internal_unroll, max_threads, max_threads);
+        LAUNCH_FUSED_RES_LN_STORE(3, internal_unroll, max_threads, max_threads);
     } else if (external_unroll == 4) {
         // 12289 - 16384 elems
-        LAUNCH_FUSED_RES_LN_STORE(
-            4, internal_unroll, max_threads, max_threads);
+        LAUNCH_FUSED_RES_LN_STORE(4, internal_unroll, max_threads, max_threads);
     }
 }
 
