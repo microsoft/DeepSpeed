@@ -9,15 +9,15 @@ on:
     branches:
       '**'
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# concurrency:
+#   group: ${{ github.workflow }}-${{ github.ref }}
+#   cancel-in-progress: true
 
 jobs:
   vCheck:
     strategy:
       matrix:
-        pyVersion: [3.6, 3.8, 3.9, 3.10]
+        pyVersion: ["3.6", "3.7", "3.8", "3.9", "3.10"]
 
     runs-on: ubuntu-20.04
     container:
