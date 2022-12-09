@@ -3,15 +3,9 @@ import torch
 import tqdm
 import deepspeed
 import deepspeed.ops.transformer as transformer_inference
-
-# okay on py38
 from deepspeed.ops.transformer.inference.diffusers_attention import DeepSpeedDiffusersAttention
-
-# adds cicular import error
-#from deepspeed.ops.transformer.inference.diffusers_transformer_block import DeepSpeedDiffusersTransformerBlock
-
+from deepspeed.ops.transformer.inference.diffusers_transformer_block import DeepSpeedDiffusersTransformerBlock
 from deepspeed.ops.transformer.inference.diffusers_2d_transformer import Diffusers2DTransformerConfig
-
 from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, BLOOMLayerPolicy
 from .replace_policy import replace_policies, generic_policies
 
