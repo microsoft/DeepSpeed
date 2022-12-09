@@ -26,10 +26,7 @@ Args:
     epsilon: numeric stability
     elems_per_row: number of elements each block will normalize
 */
-template <typename T, int UNROLL,
-          int internal_unroll,
-          int threads_per_group,
-          int max_threads>
+template <typename T, int UNROLL, int internal_unroll, int threads_per_group, int max_threads>
 __global__ void fused_ln(T* output,
                          const T* vals,
                          const T* gamma,
@@ -421,23 +418,24 @@ void launch_fused_residual_ln(T* output,
     }
 }
 
-#define LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(unroll_factor, internal_unroll, threads_per_group, max_threads) \
-    fused_residual_ln<T, unroll_factor, internal_unroll, threads_per_group, max_threads, true>    \
-        <<<grid, block, 0, stream>>>(                                                             \
+#define LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(                                                  \
+    unroll_factor, internal_unroll, threads_per_group, max_threads)                            \
+    fused_residual_ln<T, unroll_factor, internal_unroll, threads_per_group, max_threads, true> \
+        <<<grid, block, 0, stream>>>(                                                          \
             norm_output, res_output, vals, residual, bias, gamma, beta, epsilon, elems_per_row);
 
 template <typename T>
 void launch_fused_residual_ln_store_pre_ln_res(T* norm_output,
-                                    T* res_output,
-                                    const T* vals,
-                                    const T* residual,
-                                    const T* bias,
-                                    const T* gamma,
-                                    const T* beta,
-                                    float epsilon,
-                                    int rows,
-                                    int elems_per_row,
-                                    cudaStream_t stream)
+                                               T* res_output,
+                                               const T* vals,
+                                               const T* residual,
+                                               const T* bias,
+                                               const T* gamma,
+                                               const T* beta,
+                                               float epsilon,
+                                               int rows,
+                                               int elems_per_row,
+                                               cudaStream_t stream)
 {
     // 8 for __half, 4 for float
     constexpr int T_per_load = ln::granularity / sizeof(T);
@@ -521,25 +519,25 @@ template void launch_fused_residual_ln(float*,
 
 // Store specializations
 template void launch_fused_residual_ln_store_pre_ln_res(__half*,
-                                             __half*,
-                                             const __half*,
-                                             const __half*,
-                                             const __half*,
-                                             const __half*,
-                                             const __half*,
-                                             float,
-                                             int,
-                                             int,
-                                             cudaStream_t);
+                                                        __half*,
+                                                        const __half*,
+                                                        const __half*,
+                                                        const __half*,
+                                                        const __half*,
+                                                        const __half*,
+                                                        float,
+                                                        int,
+                                                        int,
+                                                        cudaStream_t);
 
 template void launch_fused_residual_ln_store_pre_ln_res(float*,
-                                             float*,
-                                             const float*,
-                                             const float*,
-                                             const float*,
-                                             const float*,
-                                             const float*,
-                                             float,
-                                             int,
-                                             int,
-                                             cudaStream_t);
+                                                        float*,
+                                                        const float*,
+                                                        const float*,
+                                                        const float*,
+                                                        const float*,
+                                                        const float*,
+                                                        float,
+                                                        int,
+                                                        int,
+                                                        cudaStream_t);

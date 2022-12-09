@@ -717,11 +717,11 @@ at::Tensor ds_layer_norm_residual(at::Tensor& input,
 
 /* Currently only used in unit testing */
 std::vector<at::Tensor> ds_layer_norm_residual_store_pre_ln_res(at::Tensor& input,
-                                                     at::Tensor& bias,
-                                                     at::Tensor& residual,
-                                                     at::Tensor& gamma,
-                                                     at::Tensor& beta,
-                                                     float epsilon)
+                                                                at::Tensor& bias,
+                                                                at::Tensor& residual,
+                                                                at::Tensor& gamma,
+                                                                at::Tensor& beta,
+                                                                float epsilon)
 {
     const int rows = input.size(0) * input.size(1);
     const int elems_per_row = input.size(2);
@@ -730,28 +730,28 @@ std::vector<at::Tensor> ds_layer_norm_residual_store_pre_ln_res(at::Tensor& inpu
 
     if (input.options().dtype() == torch::kFloat16) {
         launch_fused_residual_ln_store_pre_ln_res((__half*)norm_output.data_ptr(),
-                                       (__half*)res_output.data_ptr(),
-                                       (const __half*)input.data_ptr(),
-                                       (const __half*)residual.data_ptr(),
-                                       (const __half*)bias.data_ptr(),
-                                       (const __half*)gamma.data_ptr(),
-                                       (const __half*)beta.data_ptr(),
-                                       epsilon,
-                                       rows,
-                                       elems_per_row,
-                                       Context::Instance().GetCurrentStream());
+                                                  (__half*)res_output.data_ptr(),
+                                                  (const __half*)input.data_ptr(),
+                                                  (const __half*)residual.data_ptr(),
+                                                  (const __half*)bias.data_ptr(),
+                                                  (const __half*)gamma.data_ptr(),
+                                                  (const __half*)beta.data_ptr(),
+                                                  epsilon,
+                                                  rows,
+                                                  elems_per_row,
+                                                  Context::Instance().GetCurrentStream());
     } else {
         launch_fused_residual_ln_store_pre_ln_res((float*)norm_output.data_ptr(),
-                                       (float*)res_output.data_ptr(),
-                                       (const float*)input.data_ptr(),
-                                       (const float*)residual.data_ptr(),
-                                       (const float*)bias.data_ptr(),
-                                       (const float*)gamma.data_ptr(),
-                                       (const float*)beta.data_ptr(),
-                                       epsilon,
-                                       rows,
-                                       elems_per_row,
-                                       Context::Instance().GetCurrentStream());
+                                                  (float*)res_output.data_ptr(),
+                                                  (const float*)input.data_ptr(),
+                                                  (const float*)residual.data_ptr(),
+                                                  (const float*)bias.data_ptr(),
+                                                  (const float*)gamma.data_ptr(),
+                                                  (const float*)beta.data_ptr(),
+                                                  epsilon,
+                                                  rows,
+                                                  elems_per_row,
+                                                  Context::Instance().GetCurrentStream());
     }
 
     return {norm_output, res_output};

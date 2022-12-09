@@ -139,12 +139,13 @@ def residual_store_ds_implementation(vals, bias, res, gamma, beta, epsilon):
     global inference_module
     if inference_module is None:
         inference_module = InferenceBuilder().load()
-    return inference_module.layer_norm_residual_store_pre_ln_res(vals,
-                                                      bias,
-                                                      res,
-                                                      gamma,
-                                                      beta,
-                                                      epsilon)
+    return inference_module.layer_norm_residual_store_pre_ln_res(
+        vals,
+        bias,
+        res,
+        gamma,
+        beta,
+        epsilon)
 
 
 @pytest.mark.inference

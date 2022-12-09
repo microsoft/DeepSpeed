@@ -170,7 +170,7 @@ class DeepSpeedTransformerFunction(Function):
                 norm_w,
                 norm_b,
                 config):
-
+        print(config.__dict__)
         cuda_module = stochastic_transformer_cuda_module if config.stochastic_mode else transformer_cuda_module
         forward_func = cuda_module.forward_fp16 if config.fp16 else cuda_module.forward_fp32
 
@@ -586,6 +586,7 @@ class DeepSpeedTransformerLayer(nn.Module):
                 output_attentions=False,
                 grads=None):
         self.config.is_grad_enabled = torch.is_grad_enabled()
+        print("Calling forward")
         return DeepSpeedTransformerFunction.apply(hidden_states,
                                                   attention_mask,
                                                   self,
