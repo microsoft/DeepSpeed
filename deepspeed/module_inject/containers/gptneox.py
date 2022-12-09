@@ -7,8 +7,6 @@ class DS_GPTNEOXContainer(BaseTransformerContainer):
     def __init__(self, policy):
         super().__init__(policy)
 
-        self.megatron_v2 = self.policy.is_megatron_v2
-
         self.attn_linear_layer = True
         self.mlp_linear_layer = True
         self.layer_norm_eps = 1e-05

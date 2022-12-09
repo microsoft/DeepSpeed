@@ -13,6 +13,8 @@ class BaseTransformerContainer(ABC):
     def __init__(self, policy):
         self.policy = policy
 
+        self.megatron_v2 = self.policy.is_megatron_v2
+
         # configuration for models. todo: can this be moved to a pydantic model config?
         self.hidden_size = None
         self.num_attention_heads = None

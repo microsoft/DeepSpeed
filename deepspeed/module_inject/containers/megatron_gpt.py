@@ -7,8 +7,6 @@ class DS_MegatronGPTContainer(BaseTransformerContainer):
     def __init__(self, policy):
         super().__init__(policy)
 
-        self.megatron_v2 = self.policy.is_megatron_v2
-
         self.attn_linear_layer = True
         self.mlp_linear_layer = True
         self.scale_attention = self.policy.scale_attention
