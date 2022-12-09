@@ -220,11 +220,7 @@ Template arg:
     StoreResidual: controls whether the residual calculation is stored
         or not. When set to false, the input `res_output` is unused.
 */
-template <typename T,
-          int UNROLL,
-          int threads_per_group,
-          int max_threads,
-          bool PreLnResidual>
+template <typename T, int UNROLL, int threads_per_group, int max_threads, bool PreLnResidual>
 __global__ void fused_residual_ln(T* output,
                                   T* res_output,
                                   const T* vals,
@@ -340,7 +336,7 @@ __global__ void fused_residual_ln(T* output,
 // TODO(cmikeh2): There's a bunch of redundancy here that needs to be removed/simplified.
 #define LAUNCH_FUSED_RES_LN(unroll_factor, threads_per_group, max_threads)     \
     fused_residual_ln<T, unroll_factor, threads_per_group, max_threads, false> \
-        <<<grid, block, 0, stream>>>(                                                           \
+        <<<grid, block, 0, stream>>>(                                          \
             output, nullptr, vals, residual, bias, gamma, beta, epsilon, elems_per_row);
 
 template <typename T>
@@ -411,10 +407,9 @@ void launch_fused_residual_ln(T* output,
     }
 }
 
-#define LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(                                                  \
-    unroll_factor, threads_per_group, max_threads)                            \
-    fused_residual_ln<T, unroll_factor, threads_per_group, max_threads, true> \
-        <<<grid, block, 0, stream>>>(                                                          \
+#define LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(unroll_factor, threads_per_group, max_threads) \
+    fused_residual_ln<T, unroll_factor, threads_per_group, max_threads, true>               \
+        <<<grid, block, 0, stream>>>(                                                       \
             norm_output, res_output, vals, residual, bias, gamma, beta, epsilon, elems_per_row);
 
 template <typename T>
