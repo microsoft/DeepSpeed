@@ -3,9 +3,12 @@ import torch
 import tqdm
 import deepspeed
 import deepspeed.ops.transformer as transformer_inference
+from deepspeed.ops.transformer.inference.diffusers_attention import DeepSpeedDiffusersAttention
+from deepspeed.ops.transformer.inference.diffusers_transformer_block import DeepSpeedDiffusersTransformerBlock
+from deepspeed.ops.transformer.inference.diffusers_2d_transformer import Diffusers2DTransformerConfig
 from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, BLOOMLayerPolicy
 from .replace_policy import replace_policies, generic_policies
-#from ..runtime.weight_quantizer import WeightQuantization
+
 from deepspeed import comm as dist
 from torch import nn
 
@@ -211,7 +214,7 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
             triangular_masking=False,
             max_out_tokens=4096,
         )
-        attn_module = transformer_inference.DeepSpeedDiffusersAttention(config)
+        attn_module = DeepSpeedDiffusersAttention(config)
 
         def transpose(data):
             data = data.contiguous()
@@ -234,8 +237,8 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
         return attn_module
 
     def replace_attn_block(child, policy):
-        config = transformer_inference.Diffusers2DTransformerConfig()
-        return transformer_inference.DeepSpeedDiffusersTransformerBlock(child, config)
+        config = Diffusers2DTransformerConfig()
+        return DeepSpeedDiffusersTransformerBlock(child, config)
 
     if isinstance(module, torch.nn.Module):
         pass
@@ -1022,7 +1025,7 @@ def replace_transformer_layer(orig_layer_impl,
                     if transformer_name not in k
                 }),
                 f'{config.save_mp_checkpoint_path}/{non_tp_ckpt_name}')
-            new_config = json.dumps({
+            ckpt_config = json.dumps({
                 'type':
                 ckpt_name,
                 'base_dir':
@@ -1044,9 +1047,9 @@ def replace_transformer_layer(orig_layer_impl,
                 'dtype':
                 'int8' if quantize else ('float16' if fp16 else 'float32')
             })
-            with open(f"{config.save_mp_checkpoint_path}/ds-inference_config.json",
+            with open(f"{config.save_mp_checkpoint_path}/ds_inference_config.json",
                       "w") as cfg:
-                cfg.write(new_config)
+                cfg.write(ckpt_config)
 
         rep_sd = replaced_module.state_dict()
         for n, p in replaced_module.named_parameters():
