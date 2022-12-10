@@ -10,7 +10,7 @@ Returns:
     new_mask: [batch_size, 1, reserved_length, reserved_length]
 """
 
-random_ltd_module = RandomLTDBuilder().load()
+random_ltd_module = None
 
 
 def gpt_sample_tokens(reserved_length: int,
@@ -64,11 +64,9 @@ def bert_sample_tokens(reserved_length: int,
     sampled_indices = sampled_indices.reshape(layers,
                                               batch_size,
                                               reserved_length).to(torch.int32)
-    """
     global random_ltd_module
     if random_ltd_module is None:
         random_ltd_module = RandomLTDBuilder().load()
-    """
 
     sampled_indices = random_ltd_module.token_sort_(sampled_indices, seq_length)
     dtype = sampled_indices.dtype
@@ -90,11 +88,9 @@ def bert_sample_tokens(reserved_length: int,
 class GatherTokens(torch.autograd.Function):
     @staticmethod
     def forward(ctx, activations: torch.Tensor, sorted_indices: torch.Tensor):
-        """
         global random_ltd_module
         if random_ltd_module is None:
             random_ltd_module = RandomLTDBuilder().load()
-        """
         ctx.save_for_backward(activations, sorted_indices)
         # print(activations.size())
         return activations, random_ltd_module.token_gather(activations, sorted_indices)
@@ -105,11 +101,9 @@ class GatherTokens(torch.autograd.Function):
     def backward(ctx, a_gradients: torch.Tensor, g_gradients: torch.Tensor):
 
         g_gradients = g_gradients.contiguous()
-        """
         global random_ltd_module
         if random_ltd_module is None:
             random_ltd_module = RandomLTDBuilder().load()
-        """
         activations, sorted_indices = ctx.saved_tensors
         #new_grads = torch.zeros((activations.shape),
         #                        dtype=out_gradients.dtype,
@@ -126,11 +120,9 @@ class ScatterTokens(torch.autograd.Function):
                 all_activations: torch.Tensor,
                 layer_activations: torch.Tensor,
                 sorted_indices: torch.Tensor):
-        """
         global random_ltd_module
         if random_ltd_module is None:
             random_ltd_module = RandomLTDBuilder().load()
-        """
         scatter_results = random_ltd_module.token_scatter_(
             all_activations.clone(),
             # all_activations,
@@ -145,11 +137,9 @@ class ScatterTokens(torch.autograd.Function):
     def backward(ctx, out_gradients: torch.Tensor):
 
         out_gradients = out_gradients.contiguous()
-        """
         global random_ltd_module
         if random_ltd_module is None:
             random_ltd_module = RandomLTDBuilder().load()
-        """
         sorted_indices, = ctx.saved_tensors
 
         ret_val = random_ltd_module.token_gather(out_gradients, sorted_indices)
