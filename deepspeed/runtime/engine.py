@@ -7,7 +7,7 @@ import re
 import stat
 import torch
 import hashlib
-from collections import defaultdict, OrderedDict
+from collections import defaultdict, OrderedDict, deque
 from shutil import copyfile
 
 from torch.nn.modules import Module
@@ -72,6 +72,8 @@ from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING, \
     RANDOM_LTD_GLOBAL_BATCH_SIZE, RANDOM_LTD_MICRO_BATCH_SIZE
 from deepspeed.runtime.data_pipeline.curriculum_scheduler import CurriculumScheduler
 from deepspeed.runtime.data_pipeline.data_routing.scheduler import RandomLTDScheduler
+from deepspeed.runtime.data_pipeline.data_routing.helper import remove_random_ltd_state_dict
+from deepspeed.runtime.data_pipeline.data_routing.basic_layer import RandomLayerTokenDrop
 
 from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 
@@ -584,12 +586,7 @@ class DeepSpeedEngine(Module):
 
     def random_ltd_initialize(self):
         assert self.random_ltd_enabled()
-        # need to put this import here to avoid "unable to compile CUDA
-        # op(s)" error on CPU-only unit testing machine, because it will
-        # trigger CUDA kernels compilation
-        from deepspeed.runtime.data_pipeline.data_routing.basic_layer import RandomLayerTokenDrop
         random_ltd_config = self.random_ltd_config()
-        from collections import deque
         random_ltd_queue = deque(
             [x for x in sorted(random_ltd_config[RANDOM_LTD_LAYER_ID])])
         count = 0
@@ -2538,10 +2535,6 @@ class DeepSpeedEngine(Module):
     def module_state_dict(self, destination=None, prefix="", keep_vars=False):
         sd = self.module.state_dict(destination, prefix, keep_vars)
         if self.random_ltd_enabled():
-            # need to put this import here to avoid "unable to compile CUDA
-            # op(s)" error on CPU-only unit testing machine, because it will
-            # trigger CUDA kernels compilation
-            from deepspeed.runtime.data_pipeline.data_routing.helper import remove_random_ltd_state_dict
             sd = remove_random_ltd_state_dict(sd)
         return sd
 
