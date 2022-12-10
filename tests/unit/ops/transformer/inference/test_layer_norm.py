@@ -149,36 +149,32 @@ def residual_store_ds_implementation(vals, bias, res, gamma, beta, epsilon):
 
 @pytest.mark.inference
 @pytest.mark.parametrize("batch", [1, 32])
-@pytest.mark.parametrize("seq_len", [1, 128])
+@pytest.mark.parametrize("seq_len", [1, 64, 128])
 @pytest.mark.parametrize("channels", [384, 512, 768, 1024, 2048, 8192, 14432])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_layer_norm_residual_store(batch, seq_len, channels, dtype):
-    vals = torch.randn((batch,
-                        seq_len,
-                        channels),
-                       dtype=dtype,
-                       device=torch.cuda.current_device())
-    residual = torch.randn((batch,
-                            seq_len,
-                            channels),
-                           dtype=dtype,
-                           device=torch.cuda.current_device())
-    bias = torch.randn((channels), dtype=dtype, device=torch.cuda.current_device())
-    gamma = torch.randn((channels), dtype=dtype, device=torch.cuda.current_device())
-    beta = torch.rand((channels), dtype=dtype, device=torch.cuda.current_device())
-    epsilon = 1e-5
+    g = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(g):
+        for _ in range(1):
+            vals = torch.randn((batch,
+                                seq_len,
+                                channels),
+                            dtype=dtype,
+                            device=torch.cuda.current_device())
+            residual = torch.randn((batch,
+                                    seq_len,
+                                    channels),
+                                dtype=dtype,
+                                device=torch.cuda.current_device())
+            bias = torch.randn((channels), dtype=dtype, device=torch.cuda.current_device())
+            gamma = torch.randn((channels), dtype=dtype, device=torch.cuda.current_device())
+            beta = torch.rand((channels), dtype=dtype, device=torch.cuda.current_device())
+            epsilon = 1e-5
+            vals_ = torch.randn((1,
+                                16384,
+                                16384),
+                            dtype=dtype,
+                            device=torch.cuda.current_device())
 
-    # Need to run the reference first since there's an in-place component to ours
-    ref_norm_output, norm_res_output = residual_store_ref_implementation(vals,
-                                        bias,
-                                        residual,
-                                        gamma,
-                                        beta,
-                                        epsilon,
-                                        channels,
-                                        dtype)
-
-    ds_norm_output, ds_res_output = residual_store_ds_implementation(vals, bias, residual, gamma, beta, epsilon)
-
-    assert allclose(ds_norm_output, ref_norm_output)
-    assert allclose(ds_res_output, norm_res_output)
+            residual_store_ds_implementation(vals, bias, residual, gamma, beta, epsilon)
+    g.replay()
