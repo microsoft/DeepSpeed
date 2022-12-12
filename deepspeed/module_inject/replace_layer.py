@@ -481,6 +481,7 @@ def replace_transformer_layer(orig_layer_impl,
         non_tp_ckpt_name = f'non-tp.pt'
         ckpt_files = [non_tp_ckpt_name]
         os.makedirs(config.save_mp_checkpoint_path, exist_ok=True)
+
         if not dist.is_initialized() or dist.get_rank() == 0:
             print("Saving tp-sharded checkpoints")
             torch.save(
