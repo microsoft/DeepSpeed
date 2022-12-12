@@ -312,25 +312,29 @@ class DeepSpeedSelfAttentionFunction(Function):
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32
-                qkv_out = qkv_func(input,
-                                   attn_qkvw,
-                                   attn_qkvw,#.scale,
-                                   (attn_qkvb if attn_qkvb is not None else norm_b),
-                                   norm_w,
-                                   norm_b,
-                                   config.epsilon,
-                                   (attn_qkvb is not None),
-                                   DeepSpeedSelfAttention.num_layers,
-                                   config.bigscience_bloom,
-                                   config.mp_size,
-                                   dist.get_rank() if dist.is_initialized() else 0,
-                                   config.q_int8)
+                qkv_out = qkv_func(
+                    input,
+                    attn_qkvw,
+                    #attn_qkvw,#.scale,
+                    attn_qkvw.scale,
+                    (attn_qkvb if attn_qkvb is not None else norm_b),
+                    norm_w,
+                    norm_b,
+                    config.epsilon,
+                    (attn_qkvb is not None),
+                    DeepSpeedSelfAttention.num_layers,
+                    config.bigscience_bloom,
+                    config.mp_size,
+                    dist.get_rank() if dist.is_initialized() else 0,
+                    config.q_int8)
             context_layer, key_layer, value_layer = compute_attention(qkv_out[0] if isinstance(qkv_out, list) else qkv_out, input_mask)
-            output = vector_matmul_func(context_layer,
-                                        attn_ow,
-                                        False,
-                                        attn_ow,#.scale,
-                                        config.q_int8)
+            output = vector_matmul_func(
+                context_layer,
+                attn_ow,
+                False,
+                #attn_ow,#.scale,
+                attn_ow.scale,
+                config.q_int8)
             return output, key_layer, value_layer, context_layer, qkv_out[-1]
 
         def selfAttention_int8():

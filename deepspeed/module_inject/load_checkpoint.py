@@ -1,6 +1,6 @@
 from torch import nn
 
-use_containers = True  # LEV: Use this for container based bloom-3b example
+use_containers = False  # LEV: Use this for container based bloom-3b example
 if use_containers:
     from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
 else:
