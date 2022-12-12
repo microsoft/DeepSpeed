@@ -42,8 +42,6 @@ def gpt_sample_tokens(reserved_length: int,
     return sampled_indices, new_mask
 
 
-# TODO(cmikeh2): This probably won't actually work yet, need to sync
-# on specifics of BERT token sampling
 """
 Returns:
     sampled_indices: [layers, batch_size, reserved_length]
@@ -72,8 +70,6 @@ def bert_sample_tokens(reserved_length: int,
     dtype = sampled_indices.dtype
 
     sampled_indices = sampled_indices.to(torch.long)
-    # new_mask = random_ltd_module.mask_gather_bert(attn_mask, sampled_indices)
-    # fake_mask = torch.ones((layers, batch_size, 1, reserved_length, reserved_length), dtype=attn_mask.dtype, device=attn_mask.device)
     new_mask = []
     for l in range(layers):
         tmp_mask_list = []
@@ -92,10 +88,7 @@ class GatherTokens(torch.autograd.Function):
         if random_ltd_module is None:
             random_ltd_module = RandomLTDBuilder().load()
         ctx.save_for_backward(activations, sorted_indices)
-        # print(activations.size())
         return activations, random_ltd_module.token_gather(activations, sorted_indices)
-        # print(A.size(), activations.size())
-        # import pdb; pdb.set_trace()
 
     @staticmethod
     def backward(ctx, a_gradients: torch.Tensor, g_gradients: torch.Tensor):
@@ -105,9 +98,6 @@ class GatherTokens(torch.autograd.Function):
         if random_ltd_module is None:
             random_ltd_module = RandomLTDBuilder().load()
         activations, sorted_indices = ctx.saved_tensors
-        #new_grads = torch.zeros((activations.shape),
-        #                        dtype=out_gradients.dtype,
-        #                        device=out_gradients.device)
 
         return random_ltd_module.token_scatter_(a_gradients,
                                                     g_gradients,
@@ -123,13 +113,10 @@ class ScatterTokens(torch.autograd.Function):
         global random_ltd_module
         if random_ltd_module is None:
             random_ltd_module = RandomLTDBuilder().load()
-        scatter_results = random_ltd_module.token_scatter_(
-            all_activations.clone(),
-            # all_activations,
-            layer_activations,
-            sorted_indices)
+        scatter_results = random_ltd_module.token_scatter_(all_activations.clone(),
+                                                           layer_activations,
+                                                           sorted_indices)
 
-        # ctx.mark_dirty(all_activations)
         ctx.save_for_backward(sorted_indices)
         return scatter_results
 
