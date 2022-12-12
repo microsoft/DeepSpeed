@@ -22,6 +22,7 @@ class RandomLayerTokenDrop(Module):
         self.max_length = None
         self.reserved_length = -1
         self.curr_seq = -1
+        self.batch_first = False
 
     def init_config(self, config, scheduler, random_ltd_layer_id):
         self.random_ltd_scheduler = scheduler
@@ -36,8 +37,10 @@ class RandomLayerTokenDrop(Module):
 
         if hs_order == 'batch_seq_dim':
             self.get_hidden_tensor_shape = self.get_bsh
+            self.batch_first = True
         elif hs_order == 'seq_batch_dim':
             self.get_hidden_tensor_shape = self.get_sbh
+            self.batch_first = False
         else:
             logger.warning(
                 "************For now, we only support batch_seq_dim or seq_batch_dim inputs. You can easily \
@@ -86,7 +89,7 @@ class RandomLayerTokenDrop(Module):
                     RANDOM_LTD_ATTENTION_MASK]
 
 
-            hidden_states, part_hidden_states = GatherTokens.apply(hidden_states, sampled_indices[self.random_ltd_layer_id,:,:])
+            hidden_states, part_hidden_states = GatherTokens.apply(hidden_states, sampled_indices[self.random_ltd_layer_id,:,:], self.batch_first)
             if self.mask_name is not None:
                 if self.model_type == 'encoder':
                     kwargs[self.mask_name] = part_attention_mask[
@@ -97,12 +100,12 @@ class RandomLayerTokenDrop(Module):
             outputs = self.random_ltd_layer(part_hidden_states, **kwargs)
 
             if isinstance(outputs, tuple):
-                hidden_states = ScatterTokens.apply(hidden_states, outputs[0], sampled_indices[self.random_ltd_layer_id,:,:])
+                hidden_states = ScatterTokens.apply(hidden_states, outputs[0], sampled_indices[self.random_ltd_layer_id,:,:], self.batch_first)
                 my_list = list(outputs)
                 my_list[0] = hidden_states
                 return tuple(my_list)
             elif isinstance(outputs, Tensor):
-                hidden_states = ScatterTokens.apply(hidden_states, outputs, sampled_indices[self.random_ltd_layer_id,:,:])
+                hidden_states = ScatterTokens.apply(hidden_states, outputs, sampled_indices[self.random_ltd_layer_id,:,:], self.batch_first)
                 return hidden_states
             else:
                 logger.warning(

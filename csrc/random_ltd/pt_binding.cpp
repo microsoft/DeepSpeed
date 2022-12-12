@@ -22,7 +22,9 @@ torch::Tensor token_sort_(torch::Tensor& unsorted_token_ids, int64_t original_to
     return unsorted_token_ids;
 }
 
-torch::Tensor token_gather(torch::Tensor& activations, torch::Tensor& sorted_indices)
+torch::Tensor token_gather(torch::Tensor& activations,
+                           torch::Tensor& sorted_indices,
+                           bool batch_first)
 {
     // Activations may be in either [N, S, C] or [S, N, C] while sorted_indices is
     // always in [N, retained]
@@ -33,7 +35,7 @@ torch::Tensor token_gather(torch::Tensor& activations, torch::Tensor& sorted_ind
        shape."); TORCH_CHECK(activations.size(2) % 8 == 0, "Channels must be divisible by 8 to align
        with vectorized loads.");
     */
-    bool batch_first = sorted_indices.size(0) == activations.size(0);
+    // bool batch_first = sorted_indices.size(0) == activations.size(0);
 
     const int64_t dim_0 = (batch_first) ? sorted_indices.size(0) : sorted_indices.size(1);
     const int64_t dim_1 = (batch_first) ? sorted_indices.size(1) : sorted_indices.size(0);
@@ -80,7 +82,8 @@ torch::Tensor token_gather(torch::Tensor& activations, torch::Tensor& sorted_ind
 
 torch::Tensor token_scatter_(torch::Tensor& all_activations,
                              torch::Tensor& layer_activations,
-                             torch::Tensor& sorted_indices)
+                             torch::Tensor& sorted_indices,
+                             bool batch_first)
 {
     // Activations may be in either [N, S, C] or [S, N, C] while sorted_indices is
     // always in [N, retained]
@@ -91,7 +94,7 @@ torch::Tensor token_scatter_(torch::Tensor& all_activations,
        shape."); TORCH_CHECK(all_activations.size(2) % 8 != 0, "Channels must be divisible by 8 to
        align with vectorized loads.");
     */
-    bool batch_first = sorted_indices.size(0) == all_activations.size(0);
+    // bool batch_first = sorted_indices.size(0) == all_activations.size(0);
 
     const int batch_size = sorted_indices.size(0);
     const int channels = all_activations.size(2);
