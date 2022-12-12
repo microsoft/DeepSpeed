@@ -6,6 +6,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #include "quantization.h"
 #include "quantization_utils.h"
 #include "reduction_utils.h"
+#include "ds_kernel_utils.h"
 
 namespace cg = cooperative_groups;
 
