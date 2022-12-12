@@ -18,7 +18,7 @@ class LinearAllreduce(nn.Module):
             return F.linear(input, self.weight, bias=self.bias)
         else:
             output = F.linear(input, self.weight, bias=self.bias)
-            dist.all_reduce(output, group=self.mp_group)
+            dist.all_reduce(F.linear(input, self.weight, bias=self.bias), group=self.mp_group)
             return output
 
 
