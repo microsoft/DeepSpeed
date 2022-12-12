@@ -8,6 +8,7 @@ from typing import Union
 import torch
 import json
 import copy
+import base64
 
 from .constants import *
 from .fp16.loss_scaler import (
@@ -656,6 +657,10 @@ def get_checkpoint_params(param_dict):
     return param_dict.get(CHECKPOINT, {})
 
 
+def get_data_types_params(param_dict):
+    return param_dict.get(DATA_TYPES, {})
+
+
 def get_checkpoint_tag_validation_mode(checkpoint_params):
     tag_validation_mode = checkpoint_params.get(CHECKPOINT_TAG_VALIDATION,
                                                 CHECKPOINT_TAG_VALIDATION_DEFAULT)
@@ -720,9 +725,13 @@ class DeepSpeedConfig(object):
                      "r"),
                 object_pairs_hook=dict_raise_error_on_duplicate_keys)
         else:
-            raise ValueError(
-                f"Expected a string path to an existing deepspeed config, or a dictionary. Received: {config}"
-            )
+            try:
+                config_decoded = base64.urlsafe_b64decode(config).decode('utf-8')
+                self._param_dict = json.loads(config_decoded)
+            except (UnicodeDecodeError, AttributeError):
+                raise ValueError(
+                    f"Expected a string path to an existing deepspeed config, or a dictionary or a valid base64. Received: {config}"
+                )
         try:
             self.global_rank = dist.get_rank()
             if mpu is None:
@@ -904,6 +913,10 @@ class DeepSpeedConfig(object):
         self.use_node_local_storage = checkpoint_params.get(
             USE_NODE_LOCAL_STORAGE_CHECKPOINT,
             USE_NODE_LOCAL_STORAGE_CHECKPOINT_DEFAULT)
+
+        data_types_params = get_data_types_params(param_dict)
+        self.grad_accum_dtype = data_types_params.get(GRAD_ACCUM_DTYPE,
+                                                      GRAD_ACCUM_DTYPE_DEFAULT)
 
         par_write_pipe = get_checkpoint_parallel_write_pipeline(checkpoint_params)
         self.checkpoint_parallel_write_pipeline = par_write_pipe
