@@ -6,6 +6,9 @@ import copy
 from ..config_utils import get_scalar_param
 
 
+# TODO: Reducing config verbosity by returning None or {} when disabled.
+# One challenge is that we still need to somehow include the default values,
+# for example the *_ENABLED has default of false.
 def get_data_efficiency_config(param_dict):
     output = {}
     output[DATA_EFFICIENCY_ENABLED] = get_data_efficiency_enabled(param_dict)

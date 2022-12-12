@@ -38,7 +38,8 @@ from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    PLD_THETA, PLD_GAMMA, BFLOAT16, FP16, AMP
+    PLD_THETA, PLD_GAMMA, BFLOAT16, FP16, AMP, GRADIENT_ACCUMULATION_STEPS, \
+    DATA_PARALLEL_GROUP, GLOBAL_RANK
 from deepspeed.runtime.zero.config import ZeroStageEnum
 from deepspeed.compression import compression_scheduler
 from deepspeed.compression.constants import \
@@ -69,7 +70,7 @@ from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING, \
     CURRICULUM_LEARNING_ENABLED, DATA_SAMPLING_NUM_WORKERS, RANDOM_LTD, \
     RANDOM_LTD_ENABLED, RANDOM_LTD_LAYER_ID, RANDOM_LTD_LAYER_NUM, \
     RANDOM_LTD_LAYER_TOKEN_LR_SCHEDULE, RANDOM_LTD_LAYER_TOKEN_LR_ENABLED, \
-    RANDOM_LTD_GLOBAL_BATCH_SIZE, RANDOM_LTD_MICRO_BATCH_SIZE
+    RANDOM_LTD_GLOBAL_BATCH_SIZE, RANDOM_LTD_MICRO_BATCH_SIZE, DATA_EFFICIENCY
 from deepspeed.runtime.data_pipeline.curriculum_scheduler import CurriculumScheduler
 from deepspeed.runtime.data_pipeline.data_routing.scheduler import RandomLTDScheduler
 from deepspeed.runtime.data_pipeline.data_routing.helper import remove_random_ltd_state_dict
@@ -1700,29 +1701,36 @@ class DeepSpeedEngine(Module):
             data_parallel_world_size = self.mpu.get_data_parallel_world_size()
             data_parallel_rank = self.mpu.get_data_parallel_rank()
 
-        deepspeed_engine_config = {}
+        deepspeed_dataloader_config = {}
         if self.curriculum_learning_enabled():
-            deepspeed_engine_config = {
-                "curriculum_learning_enabled": self.curriculum_learning_enabled(),
-                "data_efficiency_config": self.data_efficiency_config(),
-                "data_parallel_group": self.data_parallel_group,
-                "gradient_accumulation_steps": self.gradient_accumulation_steps(),
-                "global_rank": self.global_rank,
-                "num_workers": self.data_sampling_config()[DATA_SAMPLING_NUM_WORKERS]
+            deepspeed_dataloader_config = {
+                CURRICULUM_LEARNING:
+                self.curriculum_learning_enabled(),
+                DATA_EFFICIENCY:
+                self.data_efficiency_config(),
+                DATA_PARALLEL_GROUP:
+                self.data_parallel_group,
+                GRADIENT_ACCUMULATION_STEPS:
+                self.gradient_accumulation_steps(),
+                GLOBAL_RANK:
+                self.global_rank,
+                DATA_SAMPLING_NUM_WORKERS:
+                self.data_sampling_config()[DATA_SAMPLING_NUM_WORKERS]
             }
 
-        return DeepSpeedDataLoader(dataset=dataset,
-                                   batch_size=batch_size,
-                                   pin_memory=pin_memory,
-                                   collate_fn=collate_fn,
-                                   local_rank=self.local_rank,
-                                   tput_timer=deepspeed_io_timer,
-                                   num_local_io_workers=num_local_io_workers,
-                                   data_sampler=data_sampler,
-                                   data_parallel_world_size=data_parallel_world_size,
-                                   data_parallel_rank=data_parallel_rank,
-                                   dataloader_drop_last=self.dataloader_drop_last(),
-                                   deepspeed_engine_config=deepspeed_engine_config)
+        return DeepSpeedDataLoader(
+            dataset=dataset,
+            batch_size=batch_size,
+            pin_memory=pin_memory,
+            collate_fn=collate_fn,
+            local_rank=self.local_rank,
+            tput_timer=deepspeed_io_timer,
+            num_local_io_workers=num_local_io_workers,
+            data_sampler=data_sampler,
+            data_parallel_world_size=data_parallel_world_size,
+            data_parallel_rank=data_parallel_rank,
+            dataloader_drop_last=self.dataloader_drop_last(),
+            deepspeed_dataloader_config=deepspeed_dataloader_config)
 
     def train(self, mode=True):
         r""""""

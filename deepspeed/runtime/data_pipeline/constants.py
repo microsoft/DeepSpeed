@@ -3,6 +3,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 '''
 #########################################
 # Data efficiency library
+# See sample config at https://www.deepspeed.ai/docs/config-json/#data-efficiency
 #########################################
 DATA_EFFICIENCY = "data_efficiency"
 DATA_EFFICIENCY_ENABLED = "enabled"
@@ -32,7 +33,11 @@ CURRICULUM_LEARNING_METRICS = "curriculum_metrics"
 CURRICULUM_LEARNING_SAMPLE_PATH = "index_to_sample_path"
 CURRICULUM_LEARNING_METRIC_PATH = "index_to_metric_path"
 CURRICULUM_LEARNING_CLUSTERING_TYPE = "clustering_type"
+CURRICULUM_LEARNING_SINGLE_CLUSTER = "single_cluster"
+CURRICULUM_LEARNING_CLUSTER_PREFIX = "cluster"
 CURRICULUM_LEARNING_DIFFICULTY_TYPE = "difficulty_type"
+CURRICULUM_LEARNING_VALUE_BASED = "value"
+CURRICULUM_LEARNING_PERCENTILE_BASED = "percentile"
 CURRICULUM_LEARNING_MIN_DIFFICULTY = "min_difficulty"
 CURRICULUM_LEARNING_MAX_DIFFICULTY = "max_difficulty"
 CURRICULUM_LEARNING_SCHEDULE_TYPE = "schedule_type"
@@ -42,6 +47,19 @@ CURRICULUM_LEARNING_SCHEDULE_MAX_STEP = "max_step"
 CURRICULUM_LEARNING_SCHEDULE_TOTAL_STEP = "total_curriculum_step"
 CURRICULUM_LEARNING_SCHEDULE_DIFFICULTY_STEP = "difficulty_step"
 CURRICULUM_LEARNING_SCHEDULE_ROOT_DEGREE = "root_degree"
+CURRICULUM_LEARNING_SCHEDULE_FIXED_DISCRETE = "fixed_discrete"
+CURRICULUM_LEARNING_SCHEDULE_FIXED_ROOT = "fixed_root"
+CURRICULUM_LEARNING_SCHEDULE_FIXED_LINEAR = "fixed_linear"
+CURRICULUM_LEARNING_SCHEDULE_CUSTOM = "custom"
+CURRICULUM_LEARNING_CURRENT_DIFFICULTY = "current_difficulty"
+
+CURRICULUM_LEARNING_BATCH = "batch"
+CURRICULUM_LEARNING_CONSUMED_SAMPLES = "consumed_samples"
+CURRICULUM_LEARNING_STEP = "curriculum_step"
+CURRICULUM_LEARNING_CURRENT_DIFFICULTIES = "current_difficulties"
+CURRICULUM_LEARNING_DATA_CLUSTER_PATHS = "data_cluster_paths"
+CURRICULUM_LEARNING_DATA_CLUSTER_CURRENT_POSITION = "data_cluster_current_position"
+CURRICULUM_LEARNING_NP_RNG_STATE = "np_rng_state"
 
 #########################################
 # Curriculum Learning legacy implementation

@@ -92,13 +92,14 @@ class DeepSpeedDataSampler(object):
                     CURRICULUM_LEARNING][CURRICULUM_LEARNING_METRICS][metric][
                         CURRICULUM_LEARNING_CLUSTERING_TYPE]
                 if self.global_rank == 0:
-                    if self.clustering_type[metric] != "single_cluster":
+                    if self.clustering_type[metric] != CURRICULUM_LEARNING_SINGLE_CLUSTER:
                         self.curriculum_index_to_sample[metric] = MMapIndexedDataset(
                             data_efficiency_config[DATA_SAMPLING][CURRICULUM_LEARNING]
                             [CURRICULUM_LEARNING_METRICS][metric]
                             [CURRICULUM_LEARNING_SAMPLE_PATH],
                             skip_warmup=True)
-                        if self.difficulty_type[metric] == "value":
+                        if self.difficulty_type[
+                                metric] == CURRICULUM_LEARNING_VALUE_BASED:
                             self.curriculum_index_to_metric[metric] = MMapIndexedDataset(
                                 data_efficiency_config[DATA_SAMPLING]
                                 [CURRICULUM_LEARNING][CURRICULUM_LEARNING_METRICS]
@@ -177,7 +178,7 @@ class DeepSpeedDataSampler(object):
         return new_samples
 
     def get_new_cluster(self, previous_difficulties):
-        cluster_fname = "cluster"
+        cluster_fname = CURRICULUM_LEARNING_CLUSTER_PREFIX
         for metric in self.curriculum_schedulers:
             cluster_fname = f"{cluster_fname}_{metric}{self.current_difficulties[metric]}"
         cluster_path = self.data_efficiency_config[DATA_SAMPLING][CURRICULUM_LEARNING][
@@ -187,22 +188,25 @@ class DeepSpeedDataSampler(object):
             new_cluster = None
             need_clustering = 0
             for metric in self.clustering_type:
-                if self.clustering_type[metric] != "single_cluster":
+                if self.clustering_type[metric] != CURRICULUM_LEARNING_SINGLE_CLUSTER:
                     need_clustering += 1
             if need_clustering > 1:
                 for metric in self.curriculum_schedulers:
-                    if self.clustering_type[metric] == "single_cluster":
+                    if self.clustering_type[
+                            metric] == CURRICULUM_LEARNING_SINGLE_CLUSTER:
                         metric_cluster = np.arange(start=0,
                                                    stop=self.one_epoch_total_samples,
                                                    step=1,
                                                    dtype=self.index_dtype)
                     else:
-                        if self.difficulty_type[metric] == "value":
+                        if self.difficulty_type[
+                                metric] == CURRICULUM_LEARNING_VALUE_BASED:
                             metric_cluster = self.get_sample_based_on_metric_value(
                                 metric,
                                 float('-inf'),
                                 self.current_difficulties[metric])
-                        elif self.difficulty_type[metric] == "percentile":
+                        elif self.difficulty_type[
+                                metric] == CURRICULUM_LEARNING_PERCENTILE_BASED:
                             metric_cluster = self.get_sample_based_on_metric_percentile(
                                 metric,
                                 0,
@@ -220,13 +224,15 @@ class DeepSpeedDataSampler(object):
                                             step=1,
                                             dtype=self.index_dtype)
                 for metric in self.curriculum_schedulers:
-                    if self.clustering_type[metric] != "single_cluster":
-                        if self.difficulty_type[metric] == "value":
+                    if self.clustering_type[metric] != CURRICULUM_LEARNING_SINGLE_CLUSTER:
+                        if self.difficulty_type[
+                                metric] == CURRICULUM_LEARNING_VALUE_BASED:
                             new_cluster = self.get_sample_based_on_metric_value(
                                 metric,
                                 previous_difficulties[metric],
                                 self.current_difficulties[metric])
-                        elif self.difficulty_type[metric] == "percentile":
+                        elif self.difficulty_type[
+                                metric] == CURRICULUM_LEARNING_PERCENTILE_BASED:
                             new_cluster = self.get_sample_based_on_metric_percentile(
                                 metric,
                                 previous_difficulties[metric],
@@ -304,9 +310,10 @@ class DeepSpeedDataSampler(object):
                 if metric in self.current_difficulties:
                     previous_difficulties[metric] = self.current_difficulties[metric]
                 else:
-                    if self.difficulty_type[metric] == "value":
+                    if self.difficulty_type[metric] == CURRICULUM_LEARNING_VALUE_BASED:
                         previous_difficulties[metric] = float('-inf')
-                    elif self.difficulty_type[metric] == "percentile":
+                    elif self.difficulty_type[
+                            metric] == CURRICULUM_LEARNING_PERCENTILE_BASED:
                         previous_difficulties[metric] = 0
                 self.current_difficulties[metric] = next_difficulty
             if new_cluster:
@@ -343,23 +350,25 @@ class DeepSpeedDataSampler(object):
 
     def state_dict(self):
         return {
-            'batch': self.batch,
-            'consumed_samples': self.consumed_samples,
-            'curriculum_step': self.curriculum_step,
-            'current_difficulties': self.current_difficulties,
-            'data_cluster_paths': self.data_cluster_paths,
-            'data_cluster_current_position': self.data_cluster_current_position,
-            'np_rng_state': np.random.get_state()
+            CURRICULUM_LEARNING_BATCH: self.batch,
+            CURRICULUM_LEARNING_CONSUMED_SAMPLES: self.consumed_samples,
+            CURRICULUM_LEARNING_STEP: self.curriculum_step,
+            CURRICULUM_LEARNING_CURRENT_DIFFICULTIES: self.current_difficulties,
+            CURRICULUM_LEARNING_DATA_CLUSTER_PATHS: self.data_cluster_paths,
+            CURRICULUM_LEARNING_DATA_CLUSTER_CURRENT_POSITION:
+            self.data_cluster_current_position,
+            CURRICULUM_LEARNING_NP_RNG_STATE: np.random.get_state()
         }
 
     def load_state_dict(self, state_dict):
-        self.batch = state_dict['batch']
-        self.consumed_samples = state_dict['consumed_samples']
-        self.curriculum_step = state_dict['curriculum_step']
-        self.current_difficulties = state_dict['current_difficulties']
-        self.data_cluster_paths = state_dict['data_cluster_paths']
-        self.data_cluster_current_position = state_dict['data_cluster_current_position']
-        np.random.set_state(state_dict['np_rng_state'])
+        self.batch = state_dict[CURRICULUM_LEARNING_BATCH]
+        self.consumed_samples = state_dict[CURRICULUM_LEARNING_CONSUMED_SAMPLES]
+        self.curriculum_step = state_dict[CURRICULUM_LEARNING_STEP]
+        self.current_difficulties = state_dict[CURRICULUM_LEARNING_CURRENT_DIFFICULTIES]
+        self.data_cluster_paths = state_dict[CURRICULUM_LEARNING_DATA_CLUSTER_PATHS]
+        self.data_cluster_current_position = state_dict[
+            CURRICULUM_LEARNING_DATA_CLUSTER_CURRENT_POSITION]
+        np.random.set_state(state_dict[CURRICULUM_LEARNING_NP_RNG_STATE])
         cluster_root_path = self.data_efficiency_config[DATA_SAMPLING][
             CURRICULUM_LEARNING][CURRICULUM_LEARNING_CLUSTER_PATH]
         # Backward compatibility: previously data_cluster_paths were stored as

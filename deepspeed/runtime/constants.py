@@ -411,3 +411,9 @@ DATALOADER_DROP_LAST_DEFAULT = False
 # PIPELINE PARALLELISM
 #########################################
 PIPE_REPLICATED = 'ds_pipe_replicated'
+
+#########################################
+# DATA PARALLELISM
+#########################################
+DATA_PARALLEL_GROUP = "data_parallel_group"
+GLOBAL_RANK = "global_rank"
