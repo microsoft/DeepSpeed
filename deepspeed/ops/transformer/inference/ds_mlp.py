@@ -61,8 +61,6 @@ class DeepSpeedMLPFunction(Function):
                                              config.epsilon,
                                              config.pre_layer_norm,
                                              config.mlp_after_attn,
-                                             #inter_w, #inter_w.scale,
-                                             #output_w, #output_w.scale,
                                              inter_w.scale,
                                              output_w.scale,
                                              config.q_int8,
