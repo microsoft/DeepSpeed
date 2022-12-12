@@ -50,9 +50,9 @@ class DS_BloomContainer(BaseTransformerContainer):
         if self.qkvw.is_meta or self.qkvw.numel() == 0 or self.qkvw.is_meta:
             if self.qkvw.is_meta or self.qkvw.ds_tensor.numel(
             ) < self.module.attention.attn_qkvw.numel():
-                if qkvb is None:
+                if self.qkvb is None:
                     self.attention.attn_qkvb = None
-                if dense_b is None:
+                if self.dense_b is None:
                     self.attention.attn_ob = None
                 pass
             else:
