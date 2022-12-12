@@ -2,11 +2,11 @@
 Copyright 2022 The Microsoft DeepSpeed Team
 */
 
+#include "ds_kernel_utils.h"
 #include "memory_access_utils.h"
 #include "quantization.h"
 #include "quantization_utils.h"
 #include "reduction_utils.h"
-#include "ds_kernel_utils.h"
 
 namespace cg = cooperative_groups;
 

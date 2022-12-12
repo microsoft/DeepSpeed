@@ -38,7 +38,6 @@ constexpr int hw_warp_size = 32;
 
 #endif  //__HIP_PLATFORM_HCC__
 
-
 inline int next_pow2(const int val)
 {
     int rounded_val = val - 1;
