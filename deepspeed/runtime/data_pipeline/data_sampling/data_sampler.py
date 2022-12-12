@@ -76,6 +76,10 @@ class DeepSpeedDataSampler(object):
             if self.global_rank == 0:
                 self.data_clusters = []
                 self.data_cluster_sizes = []
+                cluster_path = self.data_efficiency_config[DATA_SAMPLING][
+                    CURRICULUM_LEARNING][CURRICULUM_LEARNING_CLUSTER_PATH]
+                if not os.path.exists(cluster_path):
+                    os.makedirs(cluster_path)
             for metric in self.data_efficiency_config[DATA_SAMPLING][
                     CURRICULUM_LEARNING][CURRICULUM_LEARNING_METRICS]:
                 self.curriculum_schedulers[metric] = CurriculumScheduler(
