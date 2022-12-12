@@ -62,7 +62,7 @@ class DataAnalyzer(object):
         for m_idx in range(len(metric_names)):
             metric_name, metric_type, metric_dtype = metric_names[m_idx], \
                 metric_types[m_idx], metric_dtypes[m_idx]
-            assert metric_dtype not in [np.float, np.double], "Currently floating point metric values are not supported. Please change your metric into integer values (and potentially multiply a larger coefficient to keep the precision)."
+            assert metric_dtype not in [np.float64, np.double], "Currently floating point metric values are not supported. Please change your metric into integer values (and potentially multiply a larger coefficient to keep the precision)."
             metric_save_path = f"{save_path}/{metric_name}/worker{worker_id}_thread{thread_id}/"
             os.makedirs(metric_save_path, exist_ok=True)
             if metric_type == 'single_value_per_sample':
