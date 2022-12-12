@@ -21,7 +21,8 @@ class DS_MegatronGPTContainer(BaseTransformerContainer):
                                                heads=self.num_attention_heads,
                                                fp16=self.fp16,
                                                mp_size=self.mp_size,
-                                               window_size=self.window_size)
+                                               window_size=self.window_size,
+                                               q_int8=self.quantize)
         return self.config
 
     def create_module(self, config=None):

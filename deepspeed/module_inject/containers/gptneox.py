@@ -24,7 +24,8 @@ class DS_GPTNEOXContainer(BaseTransformerContainer):
                                                scale_attention=self.scale_attention,
                                                window_size=self.window_size,
                                                rotary_dim=self.rotary_dim,
-                                               mlp_after_attn=self.mlp_after_attn)
+                                               mlp_after_attn=self.mlp_after_attn,
+                                               q_int8=self.quantize)
         return self.config
 
     def create_module(self, config=None):

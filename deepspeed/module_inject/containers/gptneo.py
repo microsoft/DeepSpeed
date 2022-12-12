@@ -15,16 +15,15 @@ class DS_GPTNEOContainer(BaseTransformerContainer):
         self.local_attention = True
 
     def create_config(self):
-        self.config = DeepSpeedInferenceConfig(
-            hidden_size=self.hidden_size,
-            heads=self.num_attention_heads,
-            fp16=self.fp16,
-            pre_layer_norm=self.pre_layer_norm,
-            mp_size=self.mp_size,
-            layer_norm_eps=self.layer_norm_eps,
-            scale_attention=self.scale_attention,
-            local_attention=self.local_attention,
-        )
+        self.config = DeepSpeedInferenceConfig(hidden_size=self.hidden_size,
+                                               heads=self.num_attention_heads,
+                                               fp16=self.fp16,
+                                               pre_layer_norm=self.pre_layer_norm,
+                                               mp_size=self.mp_size,
+                                               layer_norm_eps=self.layer_norm_eps,
+                                               scale_attention=self.scale_attention,
+                                               local_attention=self.local_attention,
+                                               q_int8=self.quantize)
         return self.config
 
     def create_module(self, config=None):

@@ -26,7 +26,8 @@ class DS_GPTJContainer(BaseTransformerContainer):
                                                mlp_after_attn=self.mlp_after_attn,
                                                window_size=self.window_size,
                                                rotary_dim=self.rotary_dim,
-                                               scale_attention=self.scale_attention)
+                                               scale_attention=self.scale_attention,
+                                               q_int8=self.quantize)
         return self.config
 
     def create_module(self, config=None):

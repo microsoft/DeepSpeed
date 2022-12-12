@@ -1,10 +1,25 @@
 from torch import nn
 
-use_containers = False  # LEV: Use this for container based bloom-3b example
-if use_containers:
-    from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
-else:
-    import deepspeed.ops.transformer as transformer_inference
+#use_containers = True  # LEV: Use this for container based bloom-3b example
+#if use_containers:
+#    # BLOOM
+#    #from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
+#
+#    # GPT
+#    from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
+#else:
+#    import deepspeed.ops.transformer as transformer_inference
+
+# TODO (lekurile): W/ generic checkpoint loading, import all model implementations and
+#                   add them to layer_policies dict, this may change in the future
+from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
+from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
+from deepspeed.model_implementations.transformers.ds_bert import DeepSpeedBERTInference
+from deepspeed.model_implementations.transformers.ds_megatron_gpt import DeepSpeedMegatronGPTInference
+from deepspeed.model_implementations.transformers.ds_opt import DeepSpeedOPTInference
+
+import deepspeed.ops.transformer as transformer_inference
+
 from ..runtime.zero import GatheredParameters
 from .layers import LinearLayer, Normalize, EmbeddingLayer, OPTEmbedding
 import torch
@@ -288,24 +303,20 @@ def load_model_with_checkpoint(r_module,
     except:
         OPTLearnedPositionalEmbedding = None
     layer_policies = {
-        nn.Linear:
-        load,
-        nn.Embedding:
-        load,
-        nn.LayerNorm:
-        load,
-        EmbeddingLayer:
-        load,
-        LinearLayer:
-        load,
-        Normalize:
-        load,
-        DeepSpeedBloomInference if use_containers else transformer_inference.DeepSpeedTransformerInference:
-        load_transformer_layer,
-        OPTLearnedPositionalEmbedding:
-        load,
-        OPTEmbedding:
-        load
+        nn.Linear: load,
+        nn.Embedding: load,
+        nn.LayerNorm: load,
+        EmbeddingLayer: load,
+        LinearLayer: load,
+        Normalize: load,
+        transformer_inference.DeepSpeedTransformerInference: load_transformer_layer,
+        DeepSpeedBloomInference: load_transformer_layer,
+        DeepSpeedGPTInference: load_transformer_layer,
+        DeepSpeedBERTInference: load_transformer_layer,
+        DeepSpeedMegatronGPTInference: load_transformer_layer,
+        DeepSpeedOPTInference: load_transformer_layer,
+        OPTLearnedPositionalEmbedding: load,
+        OPTEmbedding: load
     }
 
     all_ds_ids = {}

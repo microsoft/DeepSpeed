@@ -58,11 +58,16 @@ class BaseTransformerContainer(ABC):
     def set_dtype(self, fp16=False):
         self.fp16 = fp16
 
+    # TODO (lekurile): Move this to MoE container later
+    def set_moe(self, moe=False):
+        self.moe = moe
+
     def set_tensor_parallel_config(self, mp_size, mp_group):
         self.mp_size = mp_size
         self.mp_group = mp_group
 
-    def set_quantization_config(self, quantizer):
+    def set_quantization_config(self, quantize, quantizer):
+        self.quantize = quantize
         self.quantizer = quantizer
 
     def set_hidden_heads(self, hidden_size, num_attention_heads):
@@ -100,42 +105,74 @@ class BaseTransformerContainer(ABC):
         #            mp_replace.copy(attn_block.attn_qkvw, qkvw) if bigscience_bloom else \
         #            mp_replace.qkv_copy(attn_block.attn_qkvw, qkvw))
 
-        self.module.attention.attn_qkvw = mp_replace.qkv_copy(
-            self.module.attention.attn_qkvw,
-            self.qkvw)
-        self.module.attention.attn_qkvb = mp_replace.qkv_copy(
-            self.module.attention.attn_qkvb,
-            self.qkvb)
-        self.module.attention.attn_ow = mp_replace.copy(self.module.attention.attn_ow,
-                                                        self.dense_w)
-        self.module.attention.attn_ob = mp_replace.copy(self.module.attention.attn_ob,
-                                                        self.dense_b)
+        if self.qkvw.is_meta:
+            if self.qkvb is None:
+                self.module.attention.attn_qkvb = None
+            if self.dense_b is None:
+                self.module.attention.attn_ob = None
+            pass
+        else:
+            self.module.attention.attn_qkvw = self.quantizer.quantize(
+                mp_replace.qkv_copy(self.module.attention.attn_qkvw,
+                                    self.qkvw))
+            self.module.attention.attn_qkvb = mp_replace.qkv_copy(
+                self.module.attention.attn_qkvb,
+                self.qkvb)
+            self.module.attention.attn_ow = self.quantizer.quantize(
+                mp_replace.copy(self.module.attention.attn_ow,
+                                self.dense_w))
+            self.module.attention.attn_ob = mp_replace.copy(
+                self.module.attention.attn_ob,
+                self.dense_b)
 
         # setup the new MLP module
-        self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w, self._h4h_w)
-        self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b, self._h4h_b)
-        self.module.mlp.output_w = mp_replace.copy(self.module.mlp.output_w, self._4hh_w)
-        self.module.mlp.output_b = mp_replace.copy(self.module.mlp.output_b, self._4hh_b)
+        if self._4hh_w.is_meta:
+            pass
+        else:
+            self.module.mlp.inter_w = self.quantizer.quantize(
+                mp_replace.copy(self.module.mlp.inter_w,
+                                self._h4h_w))
+            self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b,
+                                                      self._h4h_b)
+            self.module.mlp.output_w = self.quantizer.quantize(
+                mp_replace.copy(self.module.mlp.output_w,
+                                self._4hh_w))
+            self.module.mlp.output_b = mp_replace.copy(self.module.mlp.output_b,
+                                                       self._4hh_b)
 
     def copy_data_to_new_module(self):
         if self.attn_nw is None:
             self.module.mlp.attn_nw = self.attn_nw
             self.module.mlp.attn_nb = self.attn_nb
         else:
-            self.module.mlp.attn_nw.data.copy_(
-                self.attn_nw.to(torch.cuda.current_device()))
-            self.module.mlp.attn_nb.data.copy_(
-                self.attn_nb.to(torch.cuda.current_device()))
-        self.module.norm_w.data.copy_(self.input_nw.to(torch.cuda.current_device()))
-        self.module.norm_b.data.copy_(self.input_nb.to(torch.cuda.current_device()))
+            if self.attn_nw.is_meta:
+                pass
+            else:
+                self.module.mlp.attn_nw.data.copy_(
+                    self.attn_nw.to(torch.cuda.current_device()))
+                self.module.mlp.attn_nb.data.copy_(
+                    self.attn_nb.to(torch.cuda.current_device()))
+
+        if self.input_nw.is_meta:
+            pass
+        else:
+            self.module.norm_w.data.copy_(self.input_nw.to(torch.cuda.current_device()))
+            self.module.norm_b.data.copy_(self.input_nb.to(torch.cuda.current_device()))
 
     def transpose(self):
         if self.attn_linear_layer:
-            self.qkvw = self.transpose_impl(self.qkvw.data)
-            self.dense_w = self.transpose_impl(self.dense_w.data)
+            if self.qkvw.is_meta:
+                pass
+            else:
+                self.qkvw = self.transpose_impl(self.qkvw.data)
+                self.dense_w = self.transpose_impl(self.dense_w.data)
+
         if self.mlp_linear_layer:
-            self._h4h_w = self.transpose_impl(self._h4h_w.data)
-            self._4hh_w = self.transpose_impl(self._4hh_w.data)
+            if not self.moe and self._4hh_w.is_meta:
+                pass
+            else:
+                self._h4h_w = self.transpose_impl(self._h4h_w.data)
+                self._4hh_w = self.transpose_impl(self._4hh_w.data)
 
     def transpose_impl(self, data):
         data = data.contiguous()

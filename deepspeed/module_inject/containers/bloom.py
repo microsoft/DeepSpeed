@@ -1,10 +1,6 @@
 from .base import *
 
-use_containers = True
-if use_containers:
-    from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
-else:
-    import deepspeed.ops.transformer as transformer_inference
+from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
 
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 from ...runtime.zero import GatheredParameters
@@ -32,7 +28,8 @@ class DS_BloomContainer(BaseTransformerContainer):
                                                pre_layer_norm=self.pre_layer_norm,
                                                mp_size=self.mp_size,
                                                window_size=self.window_size,
-                                               bigscience_bloom=self.bigscience_bloom)
+                                               bigscience_bloom=self.bigscience_bloom,
+                                               q_int8=self.quantize)
         return self.config
 
     def apply_tensor_parallelism(self, mp_replace):
@@ -79,15 +76,15 @@ class DS_BloomContainer(BaseTransformerContainer):
                         self.dense_b)
         else:
             # note that we don't use qkv_copy here and this is bloom specific
-            self.module.attention.attn_qkvw = mp_replace.copy(
-                self.module.attention.attn_qkvw,
-                self.qkvw)
+            self.module.attention.attn_qkvw = self.quantizer.quantize(
+                mp_replace.copy(self.module.attention.attn_qkvw,
+                                self.qkvw))
             self.module.attention.attn_qkvb = mp_replace.copy(
                 self.module.attention.attn_qkvb,
                 self.qkvb)
-            self.module.attention.attn_ow = mp_replace.copy(
-                self.module.attention.attn_ow,
-                self.dense_w)
+            self.module.attention.attn_ow = self.quantizer.quantize(
+                mp_replace.copy(self.module.attention.attn_ow,
+                                self.dense_w))
             self.module.attention.attn_ob = mp_replace.copy(
                 self.module.attention.attn_ob,
                 self.dense_b)
@@ -117,12 +114,14 @@ class DS_BloomContainer(BaseTransformerContainer):
                         self.module.mlp.output_b,
                         self._4hh_b)
         else:
-            self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w,
-                                                      self._h4h_w)
+            self.module.mlp.inter_w = self.quantizer.quantize(
+                mp_replace.copy(self.module.mlp.inter_w,
+                                self._h4h_w))
             self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b,
                                                       self._h4h_b)
-            self.module.mlp.output_w = mp_replace.copy(self.module.mlp.output_w,
-                                                       self._4hh_w)
+            self.module.mlp.output_w = self.quantizer.quantize(
+                mp_replace.copy(self.module.mlp.output_w,
+                                self._4hh_w))
             self.module.mlp.output_b = mp_replace.copy(self.module.mlp.output_b,
                                                        self._4hh_b)
 
@@ -214,13 +213,6 @@ class DS_BloomContainer(BaseTransformerContainer):
         print(f"BLOOM create_module")
         _config = config if config is not None else self.config
 
-        if use_containers:
-            self.module = DeepSpeedBloomInference(
-                _config,
-                mp_group=self.mp_group)  # w/ containers
-        else:
-            self.module = transformer_inference.DeepSpeedTransformerInference(
-                _config,
-                mp_group=self.mp_group)  # w/o containers
+        self.module = DeepSpeedBloomInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
         return self.module

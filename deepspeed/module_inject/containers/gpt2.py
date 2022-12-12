@@ -19,7 +19,8 @@ class DS_GPT2Container(BaseTransformerContainer):
                                                layer_norm_eps=self.layer_norm_eps,
                                                fp16=self.fp16,
                                                pre_layer_norm=self.pre_layer_norm,
-                                               mp_size=self.mp_size)
+                                               mp_size=self.mp_size,
+                                               q_int8=self.quantize)
         return self.config
 
     def create_module(self, config=None):

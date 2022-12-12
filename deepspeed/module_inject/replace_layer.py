@@ -108,6 +108,7 @@ def replace_transformer_layer(orig_layer_impl,
     Returns:
         Updated nn.module with replaced transformer layers
     """
+    # TODO (lekurile): Get clarity on intention of these definitions
     # defining globals as internally defined functions inherit these everywhere
     fp16 = (config.dtype == torch.float16 or config.dtype == torch.int8)
     quantize = (config.dtype == torch.int8)
@@ -137,11 +138,18 @@ def replace_transformer_layer(orig_layer_impl,
             # policy says cuda graph is not supported raise an error if set
             assert not config.enable_cuda_graph, "cuda graph is not supported with this model, please disable"
 
+        from deepspeed.moe.layer import MoE
+        moe = False
+        if hasattr(child, 'mlp') and isinstance(child.mlp, MoE):
+            num_experts = child.mlp.num_experts
+            moe = True
+
         print(f">-- replace_with_policy(): {policy}")
 
         # 1. Create a model-specific container object using the policy object.
         _container = policy_to_ds_container(policy)
         _container.set_dtype(fp16)
+        _container.set_moe(moe)
 
         # 2. Set the tensor parallelism config
         _container.set_tensor_parallel_config(config.tensor_parallel.tp_size,
@@ -155,10 +163,9 @@ def replace_transformer_layer(orig_layer_impl,
             _container.convert_to_required_dtype(dtype=torch.half)
 
         # 5. Set the quantization config
-        quantizer = GroupQuantizer(q_int8=False)
-        quantize = True
-        if quantize:
-            _container.set_quantization_config(quantizer)
+        # TODO (lekurile): Move quantizer creation in to set_quantization_config?
+        quantizer = GroupQuantizer(q_int8=quantize)
+        _container.set_quantization_config(quantize, quantizer)
 
         # 6. create a DS Inference config object
         _container.create_config()

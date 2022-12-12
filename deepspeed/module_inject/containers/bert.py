@@ -24,7 +24,8 @@ class DS_BERTContainer(BaseTransformerContainer):
             fp16=self.fp16,
             pre_layer_norm=self.pre_layer_norm,
             mp_size=self.mp_size,
-            triangular_masking=self.triangular_masking)
+            triangular_masking=self.triangular_masking,
+            q_int8=self.quantize)
         return self.config
 
     def create_module(self, config=None):
