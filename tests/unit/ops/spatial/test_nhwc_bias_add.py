@@ -35,7 +35,7 @@ channels_list = [
 ]
 
 
-@pytest.mark.inference
+@pytest.mark.inference_ops
 @pytest.mark.parametrize("batch", [1, 2, 10])
 @pytest.mark.parametrize("image_size", [16, 32, 64])
 @pytest.mark.parametrize("channels", channels_list)
