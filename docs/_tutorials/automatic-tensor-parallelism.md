@@ -3,9 +3,9 @@ title: "Automatic Tensor Parallelism for HuggingFace Models"
 tags: inference
 ---
 
-This tutorial demonstrates the new automatic tensor parallelism feature for inference. Previously, the user needed to provide an injection policy to DeepSpeed in order to enable tensor parallelism. DeepSpeed now supports automatic tensor parallelism for over 100 HuggingFace models by simply setting the replace method to "dict".
+This tutorial demonstrates the new automatic tensor parallelism feature for inference. Previously, the user needed to provide an injection policy to DeepSpeed to enable tensor parallelism. DeepSpeed now supports automatic tensor parallelism for over 100 HuggingFace models by simply setting the replace method to "dict".
 
-To run inference with only tensor parallelism for the models that we don't support kernels, you can pass an injection policy that shows the two specific linear layers on a Transformer Encoder/Decoder layer: 1) the attention output GeMM and 2) layer output GeMM. We need these part of the layer to add the required all-reduce communication between GPUs to merge the partial results across model-parallel ranks. Below, we bring an example that shows how you can use deepspeed-inference with a T5 model:
+Previously, to run inference with only tensor parallelism for the models that we don't support kernels, you can pass an injection policy that shows the two specific linear layers on a Transformer Encoder/Decoder layer: 1) the attention output GeMM and 2) layer output GeMM. We need these part of the layer to add the required all-reduce communication between GPUs to merge the partial results across model-parallel ranks. Below, we bring an example that shows how you can use deepspeed-inference with a T5 model:
 
 ```python
 # create the model
@@ -25,7 +25,7 @@ pipe.model = deepspeed.init_inference(
 output = pipe('Input String')
 ```
 
-With automatic tenso-parallelism, we do not need to provide the injection policy and can use replace method "dict" instead. This will inject a policy for us from DeepSpeed's [policies list](https://github.com/microsoft/DeepSpeed/blob/818d143a669d510d4ff61c964cecba720e36e940/deepspeed/module_inject/parser_policies.py) of currently supported HuggingFace models. 
+With automatic tensor parallelism, we do not need to provide the injection policy and can use replace method "dict" instead. This will inject a policy for us from DeepSpeed's [policies list](https://github.com/microsoft/DeepSpeed/blob/818d143a669d510d4ff61c964cecba720e36e940/deepspeed/module_inject/parser_policies.py) of currently supported HuggingFace models. 
 
 ```python
 # create the model
