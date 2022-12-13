@@ -70,6 +70,10 @@ class DS_BERTContainer(BaseTransformerContainer):
         self.module.mlp.output_w = mp_replace.copy(self.module.mlp.output_w, self._4hh_w)
         self.module.mlp.output_b = mp_replace.copy(self.module.mlp.output_b, self._4hh_b)
 
+        # Apply weight quantization
+        self.apply_weight_quantization()
+
+    # TODO (lekurile): Use this quantization function elsewhere?
     def apply_weight_quantization(self):
         # quantize attention weights
         self.module.attention.attn_qkvw = self.quantizer.quantize(
