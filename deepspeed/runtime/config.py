@@ -8,6 +8,7 @@ from typing import Union
 import torch
 import json
 import copy
+import base64
 
 from .constants import *
 from .fp16.loss_scaler import (
@@ -55,6 +56,9 @@ from ..compression.config import get_compression_config, get_quantize_enabled
 from ..compression.constants import *
 from .swap_tensor.aio_config import get_aio_config
 
+from .data_pipeline.config import get_data_efficiency_enabled, get_data_efficiency_config, get_curriculum_enabled_legacy, get_curriculum_params_legacy
+from .data_pipeline.constants import *
+
 TENSOR_CORE_ALIGN_SIZE = 8
 
 ADAGRAD_OPTIMIZER = 'adagrad'
@@ -84,24 +88,6 @@ ADAM_W_MODE_DEFAULT = True
 
 class DeepSpeedConfigError(Exception):
     pass
-
-
-def get_curriculum_enabled(param_dict):
-    if CURRICULUM_LEARNING in param_dict.keys():
-        return get_scalar_param(param_dict[CURRICULUM_LEARNING],
-                                CURRICULUM_ENABLED,
-                                CURRICULUM_ENABLED_DEFAULT)
-    else:
-        return False
-
-
-def get_curriculum_params(param_dict):
-    if CURRICULUM_LEARNING in param_dict.keys():
-        curriculum_params = copy.copy(param_dict[CURRICULUM_LEARNING])
-        curriculum_params.pop(CURRICULUM_ENABLED)
-        return curriculum_params
-    else:
-        return False
 
 
 def get_pld_enabled(param_dict):
@@ -656,6 +642,10 @@ def get_checkpoint_params(param_dict):
     return param_dict.get(CHECKPOINT, {})
 
 
+def get_data_types_params(param_dict):
+    return param_dict.get(DATA_TYPES, {})
+
+
 def get_checkpoint_tag_validation_mode(checkpoint_params):
     tag_validation_mode = checkpoint_params.get(CHECKPOINT_TAG_VALIDATION,
                                                 CHECKPOINT_TAG_VALIDATION_DEFAULT)
@@ -720,9 +710,13 @@ class DeepSpeedConfig(object):
                      "r"),
                 object_pairs_hook=dict_raise_error_on_duplicate_keys)
         else:
-            raise ValueError(
-                f"Expected a string path to an existing deepspeed config, or a dictionary. Received: {config}"
-            )
+            try:
+                config_decoded = base64.urlsafe_b64decode(config).decode('utf-8')
+                self._param_dict = json.loads(config_decoded)
+            except (UnicodeDecodeError, AttributeError):
+                raise ValueError(
+                    f"Expected a string path to an existing deepspeed config, or a dictionary or a valid base64. Received: {config}"
+                )
         try:
             self.global_rank = dist.get_rank()
             if mpu is None:
@@ -889,8 +883,11 @@ class DeepSpeedConfig(object):
         self.pld_enabled = get_pld_enabled(param_dict)
         self.pld_params = get_pld_params(param_dict)
 
-        self.curriculum_enabled = get_curriculum_enabled(param_dict)
-        self.curriculum_params = get_curriculum_params(param_dict)
+        self.curriculum_enabled_legacy = get_curriculum_enabled_legacy(param_dict)
+        self.curriculum_params_legacy = get_curriculum_params_legacy(param_dict)
+
+        self.data_efficiency_enabled = get_data_efficiency_enabled(param_dict)
+        self.data_efficiency_config = get_data_efficiency_config(param_dict)
 
         checkpoint_params = get_checkpoint_params(param_dict)
         validation_mode = get_checkpoint_tag_validation_mode(checkpoint_params)
@@ -904,6 +901,10 @@ class DeepSpeedConfig(object):
         self.use_node_local_storage = checkpoint_params.get(
             USE_NODE_LOCAL_STORAGE_CHECKPOINT,
             USE_NODE_LOCAL_STORAGE_CHECKPOINT_DEFAULT)
+
+        data_types_params = get_data_types_params(param_dict)
+        self.grad_accum_dtype = data_types_params.get(GRAD_ACCUM_DTYPE,
+                                                      GRAD_ACCUM_DTYPE_DEFAULT)
 
         par_write_pipe = get_checkpoint_parallel_write_pipeline(checkpoint_params)
         self.checkpoint_parallel_write_pipeline = par_write_pipe
