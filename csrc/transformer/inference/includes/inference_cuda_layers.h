@@ -124,13 +124,22 @@ void launch_dequantize(T* output,
                        cudaStream_t stream);
 
 template <typename T>
-void launch_dequantize(T* output,
-                       const int8_t* input,
-                       const float* qscale,
-                       unsigned output_size,
-                       unsigned hidden_dim,
-                       unsigned groups,
-                       cudaStream_t stream);
+void launch_dequantize_v2(T* output,
+                          const int8_t* input,
+                          const float* qscale,
+                          unsigned output_size,
+                          unsigned hidden_dim,
+                          unsigned groups,
+                          int q_bits,
+                          cudaStream_t stream);
+
+template <typename T>
+void launch_dequantize_v2(T* output,
+                          const int8_t* input,
+                          unsigned output_size,
+                          unsigned hidden_dim,
+                          int q_bits,
+                          cudaStream_t stream);
 template <typename T>
 void launch_gptj_residual_add(T* input,
                               T* output,

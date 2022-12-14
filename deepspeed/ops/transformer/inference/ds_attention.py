@@ -158,6 +158,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                 offset,
                 config.mp_size)
             # change view [batch_size x num_heads, q_length, k_length]
+
             attention_probs_reshaped = attention_probs.view(*matmul_result.shape)
 
             # matmul: [batch_size * num_heads, q_length, head_dim]
@@ -182,7 +183,7 @@ class DeepSpeedSelfAttentionFunction(Function):
             head_size = (qkv_out.shape[-1] // 3 // num_attention_heads_per_partition)
             if no_masking:
                 input_mask = torch.empty(1)
-            if merge_count > 0 and config.q_int8:
+            if merge_count > 0 and config.quantize:
                 split_dim = (qkv_out.dim() - 1)
                 qkv_split = torch.split(qkv_out,
                                         (qkv_out.shape[-1] // (2**merge_count)),
@@ -324,13 +325,17 @@ class DeepSpeedSelfAttentionFunction(Function):
                                    config.bigscience_bloom,
                                    config.mp_size,
                                    dist.get_rank() if dist.is_initialized() else 0,
-                                   config.q_int8)
+                                   config.quantize,
+                                   config.quantization_bits)
+
             context_layer, key_layer, value_layer = compute_attention(qkv_out[0] if isinstance(qkv_out, list) else qkv_out, input_mask)
             output = vector_matmul_func(context_layer,
                                         attn_ow,
                                         False,
                                         attn_ow.scale,
-                                        config.q_int8)
+                                        config.quantize,
+                                        config.quantization_bits)
+
             return output, key_layer, value_layer, context_layer, qkv_out[-1]
 
         def selfAttention_int8():
@@ -353,6 +358,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                     q_scales[0],
                     (q_groups * (3 if qkv_merging else 1) * (2**merge_count)),
                     (attn_qkvb is not None))
+
             context_layer, key_layer, value_layer = compute_attention(qkv_out)
             output = inference_cuda_module.vector_matmul_int8(context_layer,
                                                               attn_ow,
@@ -389,26 +395,30 @@ class DeepSpeedSelfAttention(nn.Module):
                  qkv_merging=False):
         super(DeepSpeedSelfAttention, self).__init__()
         self.config = config
-        data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.float
+        data_type = torch.int8 if config.quantize else torch.half if config.fp16 else torch.float
         data_type_fp = torch.half if config.fp16 else torch.float
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
         device = torch.cuda.current_device()  #if config.bigscience_bloom else 'cpu'
         qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
-        self.attn_qkvw = nn.Parameter(torch.empty(self.config.hidden_size,
-                                                  qkv_size_per_partition,
-                                                  dtype=data_type,
-                                                  device=device),
+        self.attn_qkvw = nn.Parameter(torch.empty(
+            self.config.hidden_size,
+            qkv_size_per_partition //
+            2 if self.config.quantization_bits == 4 else qkv_size_per_partition,
+            dtype=data_type,
+            device=device),
                                       requires_grad=False)
         self.attn_qkvb = nn.Parameter(torch.empty(qkv_size_per_partition,
                                                   dtype=data_type_fp,
                                                   device=device),
                                       requires_grad=False)
         out_size_per_partition = self.config.hidden_size // self.config.mp_size
-        self.attn_ow = nn.Parameter(torch.empty(out_size_per_partition,
-                                                self.config.hidden_size,
-                                                dtype=data_type,
-                                                device=device),
+        self.attn_ow = nn.Parameter(torch.empty(
+            out_size_per_partition,
+            self.config.hidden_size //
+            2 if self.config.quantization_bits == 4 else self.config.hidden_size,
+            dtype=data_type,
+            device=device),
                                     requires_grad=False)
 
         self.attn_ob = nn.Parameter(torch.empty(self.config.hidden_size,

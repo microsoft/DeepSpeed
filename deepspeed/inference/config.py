@@ -88,8 +88,8 @@ class QuantTypeEnum(str, Enum):
 class BaseQuantConfig(DeepSpeedConfigModel):
     enabled = True
     num_bits = 8
-    q_type: QuantTypeEnum = QuantTypeEnum.sym
-    q_groups: int = 1
+    type: QuantTypeEnum = QuantTypeEnum.sym
+    num_groups: int = 256
 
 
 class WeightQuantConfig(BaseQuantConfig):

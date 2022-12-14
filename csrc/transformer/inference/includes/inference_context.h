@@ -106,7 +106,7 @@ public:
         const int padded_head_size = head_size <= 32 ? 32 : (head_size <= 64 ? 64 : 128);
         const int effective_head_size = (head_size > 128) ? head_size : padded_head_size;
 
-        size_t activation_size = 16 * (num_heads * effective_head_size) * batch_size;
+        size_t activation_size = 64 * (num_heads * effective_head_size) * batch_size;
         // Other sequence length dimension is added when the final workSpaceSize is calculated
         size_t temp_size = batch_size * num_heads * max_out_tokens * 2;
         size_t cache_size =

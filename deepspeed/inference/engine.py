@@ -124,7 +124,7 @@ class InferenceEngine(Module):
             self._apply_injection_policy(config)
 
         device = torch.cuda.current_device()
-        self.module.to(device)
+        #self.module.to(device)
 
         if config.tensor_parallel.tp_size > 1:
             _rng_state = torch.cuda.get_rng_state().to(torch.cuda.current_device())

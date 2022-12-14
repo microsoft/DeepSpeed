@@ -50,13 +50,15 @@ def load_model_with_checkpoint(r_module,
                     if prefix + n in sd[0] and len(n.split('.')) == 1:
                         if type(sd[0][prefix + n]) is list:
                             tmp_data, scale = sd[0][prefix + n]
-                            tmp_data = tmp_data
+                            tmp_data = tmp_data.to(torch.cuda.current_device())
                             scale = scale.to(torch.cuda.current_device())
                         else:
                             tmp_data = sd[0][prefix + n].to(torch.cuda.current_device())
                             scale = None
                         src_shape = tmp_data.shape
                         dst_shape = p.shape
+                        if weight_quantizer.num_bits == 4 and len(dst_shape) > 1:
+                            dst_shape = torch.Size((dst_shape[0], dst_shape[1] * 2))
                         inner_dim = 1 if tmp_data.dtype == torch.int8 else 0
                         outer_dim = 0 if tmp_data.dtype == torch.int8 else 1
                         if (len(src_shape) == 2 and len(dst_shape) == 2):
@@ -67,9 +69,12 @@ def load_model_with_checkpoint(r_module,
                                         transpose(tmp_data) if weight_quantizer.
                                         q_int8 else tmp_data)
                                 else:
-                                    p = torch.nn.parameter.Parameter(tmp_data,
-                                                                     requires_grad=False)
-                                    p.scale = scale
+
+                                    p = weight_quantizer.quantize(
+                                        torch.nn.parameter.Parameter(
+                                            tmp_data,
+                                            requires_grad=False),
+                                        scale=scale)
                                 setattr(module, n, p)
                             else:
                                 dim = inner_dim if src_shape[inner_dim] != dst_shape[
@@ -89,9 +94,20 @@ def load_model_with_checkpoint(r_module,
                                                 weight_quantizer.num_groups,
                                                 -1).contiguous()
                                 else:
-                                    assert tmp_data.dtype != torch.int8, \
-                                        '''Merging of the checkpoints are not supported when using INT8 checkpoint! \
-                                          Please use a as many GPUs as TP-size for the checkpoint'''
+                                    #assert tmp_data.dtype != torch.int8, \
+                                    #    '''Merging of the checkpoints are not supported when using INT8 checkpoint! \
+                                    #       Please use a as many GPUs as TP-size for the checkpoint'''
+                                    if tmp_data.dtype == torch.int8:
+                                        for j in range(len(sd)):
+                                            inputs, scal = sd[j][prefix + n]
+                                            input_flat = inputs.to('cpu').reshape(
+                                                scal.shape[0],
+                                                -1).contiguous()
+                                            input_flat = input_flat * scal.view(
+                                                -1)[:scal.shape[0]].unsqueeze(1)
+                                            sd[j][prefix + n] = input_flat.reshape(
+                                                inputs.shape).to(
+                                                    torch.half).contiguous()
                                     all_data = [
                                         sd[j][prefix +
                                               n] if type(sd[j][prefix + n]) is list else
@@ -99,27 +115,24 @@ def load_model_with_checkpoint(r_module,
                                         for j in range(len(sd))
                                     ]
                                     weight_partition = torch.cat([
-                                        ad[0].to(torch.cuda.current_device())
-                                        if type(ad) is list else ad for ad in all_data
+                                        ad[0] if type(ad) is list else ad
+                                        for ad in all_data
                                     ],
                                                                  dim=dim)
-                                    if tmp_data.dtype == torch.int8:
-                                        scale = torch.cat([
-                                            ad[1].to(torch.cuda.current_device())
-                                            for ad in all_data
-                                        ],
-                                                          dim=dim)
+                                    scale = None
 
                                 if tmp_data.dtype != torch.int8:
+
                                     weight_partition = weight_quantizer.quantize(
                                         transpose(weight_partition), \
                                         parallel_dim=(0 if dim == 1 else 1)) if weight_quantizer.q_int8 else \
                                         weight_quantizer.quantize(weight_partition)
                                 else:
-                                    weight_partition = torch.nn.parameter.Parameter(
-                                        weight_partition,
-                                        requires_grad=False)
-                                    weight_partition.scale = scale
+                                    weight_partition = weight_quantizer.quantize(
+                                        torch.nn.parameter.Parameter(
+                                            weight_partition,
+                                            requires_grad=False),
+                                        scale=scale)
                                 setattr(module, n, weight_partition)
                         else:
                             if src_shape[0] == dst_shape[0]:
