@@ -3,9 +3,12 @@ import torch
 import tqdm
 import deepspeed
 import deepspeed.ops.transformer as transformer_inference
+from deepspeed.ops.transformer.inference.diffusers_attention import DeepSpeedDiffusersAttention
+from deepspeed.ops.transformer.inference.diffusers_transformer_block import DeepSpeedDiffusersTransformerBlock
+from deepspeed.ops.transformer.inference.diffusers_2d_transformer import Diffusers2DTransformerConfig
 from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, BLOOMLayerPolicy
 from .replace_policy import replace_policies, generic_policies
-#from ..runtime.weight_quantizer import WeightQuantization
+
 from deepspeed import comm as dist
 from torch import nn
 
@@ -36,13 +39,13 @@ class ReplaceWithTensorSlicing:
             return src
         src_shape = src.shape
         dst_shape = dst.shape
+
         if self.out_dim == 0:
             src_split = torch.split(src.data,
                                     src_shape[self.out_dim] // self.mp_size,
                                     dim=0)
         else:
             src_split = torch.split(src.data, src.shape[-1] // 3, dim=-1)
-
         if (len(src_shape) == 2 and len(dst_shape) == 2):
             if src_shape[self.out_dim] == dst_shape[self.out_dim]:
                 return torch.nn.parameter.Parameter(src)
@@ -54,7 +57,6 @@ class ReplaceWithTensorSlicing:
                                 qkv_size,
                                 dim=self.out_dim) for src_s in src_split
                 ]
-
                 weight_split = [
                     torch.cat([qkv_s[i] for qkv_s in qkv_split],
                               axis=self.out_dim) for i in range(len(qkv_split[0]))
@@ -137,8 +139,8 @@ def get_transformer_name(replaced_module):
 
 
 class GroupQuantizer:
-    def __init__(self, q_int8=True, num_bits=8, num_groups=32):
-        self.num_groups = num_groups
+    def __init__(self, q_int8=True, group_size=1, num_bits=8):
+        self.group_size = group_size
         self.num_bits = num_bits
         self.q_int8 = q_int8
 
@@ -156,8 +158,9 @@ class GroupQuantizer:
             inputs.scale = scale
             return inputs
         q_range = 2**self.num_bits
+        num_groups = inputs.shape[0] // self.group_size
         inputs = inputs.to(torch.cuda.current_device())
-        input_flat = inputs.reshape(self.num_groups, -1).contiguous()
+        input_flat = inputs.reshape(num_groups, -1).contiguous()
         input_min = torch.min(input_flat, dim=1, keepdim=True)[0].float()
         input_max = torch.max(input_flat, dim=1, keepdim=True)[0].float()
         scale = torch.max(input_min.abs(), input_max.abs()) * 2.0 / (q_range)
@@ -170,7 +173,7 @@ class GroupQuantizer:
             out = torch.nn.Parameter(inputs_q, requires_grad=False)
         inputs_split = inputs.split(inputs.shape[parallel_dim] // 2, dim=parallel_dim)
         input_flat = [
-            inputs_split[i].reshape(self.num_groups,
+            inputs_split[i].reshape(num_groups,
                                     -1).contiguous() for i in range(2)
         ]
         input_min = [
@@ -192,7 +195,7 @@ class GroupQuantizer:
         out.scale = torch.cat([scale.squeeze().unsqueeze(0),
                                scale1[0],
                                scale1[1]],
-                              dim=0).reshape(self.num_groups,
+                              dim=0).reshape(num_groups,
                                              -1).contiguous()
         return out
 
@@ -222,7 +225,7 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
             triangular_masking=False,
             max_out_tokens=4096,
         )
-        attn_module = transformer_inference.DeepSpeedDiffusersAttention(config)
+        attn_module = DeepSpeedDiffusersAttention(config)
 
         def transpose(data):
             data = data.contiguous()
@@ -245,8 +248,8 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
         return attn_module
 
     def replace_attn_block(child, policy):
-        config = transformer_inference.Diffusers2DTransformerConfig()
-        return transformer_inference.DeepSpeedDiffusersTransformerBlock(child, config)
+        config = Diffusers2DTransformerConfig()
+        return DeepSpeedDiffusersTransformerBlock(child, config)
 
     if isinstance(module, torch.nn.Module):
         pass
@@ -296,76 +299,43 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
                 setattr(module, name, new_module)
 
 
+selected_policy_g = None
+megatron_v2_g = False
+transformer_config_g = None
+
+
 def replace_transformer_layer(orig_layer_impl,
                               model,
-                              policy=None,
-                              micro_batch_size=-1,
-                              config=None,
-                              seed=-1,
-                              hidden_size=-1,
-                              num_attention_heads=-1,
-                              mp_size=1,
-                              training_mp_size=1,
-                              mp_group=None,
-                              ep_group=None,
-                              expert_mp_group=None,
-                              fp16=True,
-                              local_rank=-1,
-                              stochastic_mode=True,
-                              training=True,
-                              quantize=False,
-                              quantization_bits=8,
-                              num_groups=256,
-                              quantize_settings=None,
-                              triangular_masking=False,
-                              return_tuple=True,
-                              replace_with_kernel_inject=False,
-                              linear_layer_setting=None,
-                              moe=False,
-                              moe_experts=1,
-                              moe_type='standard',
-                              checkpoint_dict=None,
-                              save_mp_checkpoint_path=None,
-                              base_dir="",
-                              enable_cuda_graph=False,
-                              max_out_tokens=1024):
+                              checkpoint_dict,
+                              config,
+                              model_config):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
             e.g., transformers.modeling_bert.BertLayer.
         model (torch.nn.Module): user's nn.module representing their model
-        policy: shows the policy for mapping from the orig_layer_impl to transformer parameters when
-            replace_with_kernel_inject is set, otherwise, it provides the names of two linear layers as
-            a tuple: (attention_output projection, transformer output projection)
-        micro_batch_size (int): micro batch size per gpu used during training/eval
-        config (dict): model config containing hidden size, attention heads, etc.
-        seed (int): random seed value
-        max_seq_length (int): max sequence length for training
-        hidden_size (int): hidden dimension
-        num_attention_heads (int): number of attention heads
-        mp_size (int): model_parallelism degree
-        mp_group : model_parallel group initialized on the modeling side
-        preln (bool): does the original layer implementation do pre or post layer norm?
-        fp16 (bool): fp16 or fp32
-        local_rank (int): GPU rank (optional),
-        stochastic_mode (bool): whether to use stochastic mode
-        training (bool): specifying whether kernel-injection is done for training/inference (set to false for inference-mode injection)
-        quantize_settings (tuple): this setting shows how we can quantize a model for running it through the inference kernels.
-                It includes (quantization_scales, merge_count, mlp_extra_grouping, quantize_groups).
-        return_tuple (bool): if set, transformer layer returns a tuple as the output.
-            Note: this flag needs to be set for huggingface models.
-        replace_with_kernel_inject (bool): injection_mode, if true, kernels will be add along with configuring
-            Tensor-Parallelism
-        linear_layer_setting (tuple of modules) [Optional]: shows which two classes are used for linear layers
-            and embedding layers
-        attention_params: (list of strings) [Optional]: shows the parameters in the attention part that needs to
-            be adjusted based on the model-parallelism
+        checkpoint_dict: Dictionary for checkpoint passed from the Inference Engine
+        config: top-level DS Inference config defined in inference/config.py
+        model_config: HuggingFace model config passed from the inference/engine.py
     Returns:
         Updated nn.module with replaced transformer layers
     """
+    # defining globals as internally defined functions inherit these everywhere
+    fp16 = (config.dtype == torch.float16 or config.dtype == torch.int8)
+    quantize = (config.dtype == torch.int8)
+    # todo: Refactor later. In future, let's minimize the style used above and use config.** instead
 
-    mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group,
-                                          mp_size=mp_size)  #, out_dim=0, in_dim=1)
+    linear_layer_setting = None
+    '''
+        linear_layer_setting (tuple of modules) [Optional]: shows which two classes are used for linear layers and embedding layers
+    '''
+    micro_batch_size = -1
+    seed = -1
+    local_rank = -1
+
+    mp_replace = ReplaceWithTensorSlicing(
+        mp_group=config.tensor_parallel.tp_group,
+        mp_size=config.tensor_parallel.tp_size)  #, out_dim=0, in_dim=1)
 
     def replace_with_policy(child,
                             policy_cls,
@@ -373,12 +343,15 @@ def replace_transformer_layer(orig_layer_impl,
                             inference=False,
                             layer_id=0):
         policy = policy_cls(child, inference=inference)
+        global selected_policy_g
+        if selected_policy_g is None:
+            selected_policy_g = policy
         if not policy.cuda_graph_supported:
             # policy says cuda graph is not supported raise an error if set
-            assert not enable_cuda_graph, "cuda graph is not supported with this model, please disable"
+            assert not config.enable_cuda_graph, "cuda graph is not supported with this model, please disable"
         if inference:
             hidden_size, num_attention_heads = policy.get_hidden_heads()
-            assert num_attention_heads % mp_size == 0,\
+            assert num_attention_heads % config.tensor_parallel.tp_size == 0,\
                 "To run the model parallel across the GPUs, the attention_heads require to be divisible by the world_size!" +\
                 "This is because the attention computation is partitioned evenly among the parallel GPUs."
         from deepspeed.moe.layer import MoE
@@ -388,13 +361,16 @@ def replace_transformer_layer(orig_layer_impl,
             moe = True
 
         attn_linear_layer, qkvw, qkvb, dense_w, dense_b, scale_attention, megatron_v2 = policy.attention()
-        if not moe or moe_type == 'standard':
+        global megatron_v2_g
+        megatron_v2_g = megatron_v2
+        if not moe or config.moe.type == 'standard':
             mlp_linear_layer, _h4h_w, _h4h_b, _4hh_w, _4hh_b = policy.mlp()
         else:
             mlp_linear_layer, _h4h_w, _h4h_b, _4hh_w, _4hh_b, \
-                _res_h4h_w, _res_h4h_b, _res_4hh_w, _res_4hh_b, _res_coef = policy.mlp(moe_type)
+                _res_h4h_w, _res_h4h_b, _res_4hh_w, _res_4hh_b, _res_coef = policy.mlp(config.moe.type)
 
         attn_nw, attn_nb, input_nw, input_nb = policy.layerNorm()
+
         if False:
             if policy_cls is not HFBertLayerPolicy:
                 qkvw = qkvw.to(torch.int8)
@@ -418,7 +394,7 @@ def replace_transformer_layer(orig_layer_impl,
             input_nw = input_nw.half()
             input_nb = input_nb.half()
 
-        if moe and moe_type == 'residual' and fp16:
+        if config.moe.enabled and config.moe.type == 'residual' and fp16:
             _res_h4h_b = _res_h4h_b.half()
             _res_4hh_b = _res_4hh_b.half()
             _res_h4h_w = _res_h4h_w.half()
@@ -428,8 +404,7 @@ def replace_transformer_layer(orig_layer_impl,
         #expert_mp_replace = ReplaceWithTensorSlicing(mp_group=expert_mp_group)
 
         quantizer = GroupQuantizer(q_int8=quantize,
-                                   num_bits=quantization_bits,
-                                   num_groups=num_groups)
+                                   num_bits=config.quant.weight.num_bits,)
         if inference:
             scale_attn_by_inverse_layer_idx = config.scale_attn_by_inverse_layer_idx if hasattr(
                 config,
@@ -447,100 +422,66 @@ def replace_transformer_layer(orig_layer_impl,
                         'layer_norm_eps') else 1e-12,
                     fp16=fp16,
                     pre_layer_norm=policy.pre_attn_norm,
-                    mp_size=mp_size,
+                    mp_size=config.tensor_parallel.tp_size,
                     q_int8=quantize,
                     moe_experts=local_ep_size,
                     global_experts=num_experts,
-                    mlp_type=moe_type,
+                    mlp_type=config.moe.type,
                     scale_attn_by_inverse_layer_idx=scale_attn_by_inverse_layer_idx)
             else:
-                rotary_dim = config.rotary_dim if hasattr(config, 'rotary_dim') else child.attention.rotary_ndims \
+                rotary_dim = model_config.rotary_dim if hasattr(model_config, 'rotary_dim') else child.attention.rotary_ndims \
                                             if hasattr(child, 'attention') and hasattr(child.attention,'rotary_ndims') else -1
                 bigscience_bloom = policy_cls is BLOOMLayerPolicy
                 transformer_config = transformer_inference.DeepSpeedInferenceConfig(
                     hidden_size=hidden_size,
                     heads=num_attention_heads,
-                    layer_norm_eps=config.layer_norm_eps if hasattr(
-                        config,
+                    layer_norm_eps=model_config.layer_norm_eps if hasattr(
+                        model_config,
                         'layer_norm_eps') else
-                    (config.layer_norm_epsilon
-                     if hasattr(config,
-                                'layer_norm_epsilon') else config.layernorm_epsilon
-                     if hasattr(config,
+                    (model_config.layer_norm_epsilon if hasattr(
+                        model_config,
+                        'layer_norm_epsilon') else model_config.layernorm_epsilon
+                     if hasattr(model_config,
                                 'layernorm_epsilon') else 1.0e-12),
                     fp16=fp16,
                     pre_layer_norm=policy.pre_attn_norm,
-                    mp_size=mp_size,
-                    quantize=quantize,
-                    quantization_bits=quantization_bits,
-                    return_tuple=(return_tuple or (policy_cls is HFBertLayerPolicy)),
+                    mp_size=config.tensor_parallel.tp_size,
+                    q_int8=quantize,
+                    quantization_bits=config.quant.weight.num_bits,
+                    return_tuple=(config.return_tuple
+                                  or (policy_cls is HFBertLayerPolicy)),
                     triangular_masking=(policy_cls is not HFBertLayerPolicy),
-                    local_attention=((config.attention_layers[layer_id] == "local")
-                                     if hasattr(config,
+                    local_attention=((model_config.attention_layers[layer_id] == "local")
+                                     if hasattr(model_config,
                                                 'attention_layers') else False),
-                    window_size=(config.window_size if hasattr(config,
-                                                               'window_size') else 1),
+                    window_size=(model_config.window_size if hasattr(
+                        model_config,
+                        'window_size') else 1),
                     rotary_dim=rotary_dim,
                     mlp_after_attn=(rotary_dim is None or rotary_dim < 0),
                     mlp_act_func_type=policy.mlp_act_func_type,
-                    training_mp_size=training_mp_size,
+                    training_mp_size=config.training_mp_size,
                     bigscience_bloom=bigscience_bloom,
-                    max_out_tokens=max_out_tokens,
+                    max_out_tokens=config.max_out_tokens,
                     scale_attn_by_inverse_layer_idx=scale_attn_by_inverse_layer_idx)
+                global transformer_config_g
+                transformer_config_g = transformer_config
 
-            if quantize and quantize_settings is not None:
-                (quantization_scales,
-                 merge_count,
-                 mlp_extra_grouping,
-                 quantize_groups) = quantize_settings
-                if moe:
-                    new_module = transformer_inference.DeepSpeedMoEInference(
-                        transformer_config,
-                        mp_group=mp_group,
-                        ep_group=None if ep_group is None else ep_group[num_experts],
-                        expert_mp_group=None
-                        if expert_mp_group is None else expert_mp_group[num_experts],
-                        quantize_scales=quantization_scales[layer_id],
-                        quantize_groups=quantize_groups,
-                        merge_count=merge_count,
-                        mlp_extra_grouping=mlp_extra_grouping,
-                        qkv_merging=(policy_cls is HFBertLayerPolicy))
+            if moe:
+                new_module = transformer_inference.DeepSpeedMoEInference(
+                    transformer_config,
+                    mp_group=config.tensor_parallel.tp_group,
+                    ep_group=None
+                    if config.moe.ep_group is None else config.moe.ep_group[num_experts],
+                    expert_mp_group=None if config.moe.ep_mp_group is None else
+                    config.moe.ep_mp_group[num_experts],
+                )
 
-                else:
-                    new_module = transformer_inference.DeepSpeedTransformerInference(
-                        transformer_config,
-                        mp_group=mp_group,
-                        #quantize_scales=quantization_scales[layer_id],
-                        quantize_groups=quantize_groups,
-                        merge_count=merge_count,
-                        mlp_extra_grouping=mlp_extra_grouping,
-                        qkv_merging=(policy_cls is HFBertLayerPolicy))
-
-                #if quantize and qkvw.dtype != torch.int8:
-                #    quantize_bits = 8
-                #    quantizer = WeightQuantization()
-                #    if policy_cls is HFBertLayerPolicy:
-                #        data_quantized, _ = quantizer.quantize_data(qkvw.data, quantize_bits, quantize_groups * 3)
-                #    else:
-                #        data_quantized, _ = quantizer.quantize_data(qkvw.data, quantize_bits, quantize_groups)
-                #    qkvw.data.copy_(data_quantized)
-                #    qkvw.data = qkvw.data.to(torch.int8)
             else:
-
-                if moe:
-                    new_module = transformer_inference.DeepSpeedMoEInference(
-                        transformer_config,
-                        mp_group=mp_group,
-                        ep_group=None if ep_group is None else ep_group[num_experts],
-                        expert_mp_group=None
-                        if expert_mp_group is None else expert_mp_group[num_experts],
-                    )
-
-                else:
-                    new_module = transformer_inference.DeepSpeedTransformerInference(
-                        transformer_config,
-                        mp_group=mp_group,
-                    )
+                new_module = transformer_inference.DeepSpeedTransformerInference(
+                    transformer_config,
+                    mp_group=config.tensor_parallel.tp_group,
+                )
             new_module.config.scale_attention = scale_attention
 
             # we want the weights in [input, output] shape
@@ -632,13 +573,17 @@ def replace_transformer_layer(orig_layer_impl,
                     _4hh_w = [transpose(moe_w1.data)
                               for moe_w1 in _4hh_w] if moe else transpose(_4hh_w.data)
 
-            if moe and moe_type == 'residual':
+            if moe and config.moe.type == 'residual':
                 _res_h4h_w.data = transpose(_res_h4h_w.data)
                 _res_4hh_w.data = transpose(_res_4hh_w.data)
                 _res_coef.data = transpose(_res_coef.data)
 
             if qkvw.is_meta or qkvw.numel() == 0 or qkvw.is_meta:
                 if qkvw.is_meta or qkvw.ds_tensor.numel() < attn_block.attn_qkvw.numel():
+                    if qkvb is None:
+                        attn_block.attn_qkvb = None
+                    if dense_b is None:
+                        attn_block.attn_ob = None
                     pass
                 else:
                     with GatheredParameters([
@@ -689,7 +634,7 @@ def replace_transformer_layer(orig_layer_impl,
                             torch.cuda.current_device())
                 new_module.attn_nw.data = attn_nw.to(torch.cuda.current_device())
                 new_module.attn_nb.data = attn_nb.to(torch.cuda.current_device())
-                if moe_type == 'residual':
+                if config.moe.type == 'residual':
                     new_module.res_mlp.inter_w.data = _res_h4h_w.to(
                         torch.cuda.current_device())
                     new_module.res_mlp.inter_b.data = _res_h4h_b.to(
@@ -781,11 +726,11 @@ def replace_transformer_layer(orig_layer_impl,
                 seed=seed,
                 fp16=fp16,
                 pre_layer_norm=policy.pre_attn_norm,
-                return_tuple=return_tuple,
+                return_tuple=config.return_tuple,
                 local_rank=local_rank,
-                stochastic_mode=stochastic_mode,
+                stochastic_mode=True,
                 normalize_invertible=True,
-                training=training)
+                training=True)
             new_module = deepspeed.DeepSpeedTransformerLayer(transformer_config)
             new_module.attn_qkvw.data = qkvw
             new_module.attn_qkvb.data = qkvb
@@ -804,6 +749,9 @@ def replace_transformer_layer(orig_layer_impl,
         return new_module
 
     def replace_wo_policy(module, all_reduce_linears):
+        mp_size = config.tensor_parallel.tp_size
+        mp_group = config.tensor_parallel.tp_group
+
         def _replace(child, name, conv_linear_layer):
             mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
             z_inference = (len(list(child.parameters())) > 0) and (list(
@@ -943,16 +891,17 @@ def replace_transformer_layer(orig_layer_impl,
         return _replace_module(module)
 
     def replace_fn(child, _policy, layer_id=0):
+        training = False  # todo: refactor this part to go in the config
         if training:
             # copy relevant state from child -> new module
-            new_module = replace_with_policy(child, _policy, triangular_masking)
+            new_module = replace_with_policy(child, _policy, config.triangular_masking)
 
         else:
             # copy relevant state from child -> new module
-            if replace_with_kernel_inject:
+            if config.replace_with_kernel_inject:
                 new_module = replace_with_policy(child,
                                                  _policy,
-                                                 triangular_masking,
+                                                 config.triangular_masking,
                                                  inference=True,
                                                  layer_id=layer_id)
             else:
@@ -963,10 +912,10 @@ def replace_transformer_layer(orig_layer_impl,
     replaced_module = replace_module(model=model,
                                      orig_class=orig_layer_impl,
                                      replace_fn=replace_fn,
-                                     _replace_policy=policy)
+                                     _replace_policy=config.injection_policy_tuple)
 
     quantizer = GroupQuantizer(q_int8=quantize,
-                               num_bits=quantization_bits,
+                               num_bits=config.quant.weight.num_bits,
                                num_groups=num_groups)
     world_size = dist.get_world_size() if dist.is_initialized() else 1
     rank = dist.get_rank() if dist.is_initialized() else 0
@@ -977,7 +926,7 @@ def replace_transformer_layer(orig_layer_impl,
         ckpt_type = checkpoint_dict.get('parallelization', 'pp')
         ckpt_mp_size = checkpoint_dict.get('tp_size', len(ckpt_list))
         ckpt_mp_size = checkpoint_dict.get('mp_size', ckpt_mp_size)
-        base_dir1 = checkpoint_dict.get('base_dir', base_dir)
+        base_dir1 = checkpoint_dict.get('base_dir', config.base_dir)
 
         if ckpt_type == 'pp' and type(checkpoint) is list:
             pbar = tqdm.tqdm(total=len(checkpoint),
@@ -995,7 +944,9 @@ def replace_transformer_layer(orig_layer_impl,
                     mp_replace,
                     ckpt_type,
                     quantizer,
-                )
+                    param_names=selected_policy_g.get_param_names(),
+                    transformer_config=transformer_config_g,
+                    megatron_v2=megatron_v2_g)
                 pbar.update(1)
         else:
             import gc
@@ -1019,12 +970,16 @@ def replace_transformer_layer(orig_layer_impl,
                     torch.load(ckpt_file,
                                map_location='cpu') for ckpt_file in ckpt_files
                 ]
-                load_model_with_checkpoint(replaced_module,
-                                           sds,
-                                           mp_replace,
-                                           ckpt_type,
-                                           quantizer,
-                                           int(rank % tp_split_size))
+                load_model_with_checkpoint(
+                    replaced_module,
+                    sds,
+                    mp_replace,
+                    ckpt_type,
+                    quantizer,
+                    int(rank % tp_split_size),
+                    param_names=selected_policy_g.get_param_names(),
+                    transformer_config=transformer_config_g,
+                    megatron_v2=megatron_v2_g)
                 sds = [None for _ in sds]
                 gc.collect()
 
@@ -1039,17 +994,21 @@ def replace_transformer_layer(orig_layer_impl,
                                              checkpoint["non_tp"][i]
                                              ) if base_dir1 else checkpoint["non_tp"][i]
                     sds = [torch.load(ckpt_file, map_location='cpu')]
-                    load_model_with_checkpoint(replaced_module,
-                                               sds,
-                                               mp_replace,
-                                               ckpt_type,
-                                               quantizer,
-                                               int(rank % tp_split_size))
+                    load_model_with_checkpoint(
+                        replaced_module,
+                        sds,
+                        mp_replace,
+                        ckpt_type,
+                        quantizer,
+                        int(rank % tp_split_size),
+                        param_names=selected_policy_g.get_param_names(),
+                        transformer_config=transformer_config_g,
+                        megatron_v2=megatron_v2_g)
                     sds = [None for _ in sds]
                     gc.collect()
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
 
-    if save_mp_checkpoint_path is not None:
+    if config.save_mp_checkpoint_path is not None:
         from collections import OrderedDict
         import json
         num_partitions = 8
@@ -1069,7 +1028,8 @@ def replace_transformer_layer(orig_layer_impl,
         transformer_name = get_transformer_name(replaced_module)
         non_tp_ckpt_name = f'non-tp.pt'
         ckpt_files = [non_tp_ckpt_name]
-        os.makedirs(save_mp_checkpoint_path, exist_ok=True)
+        os.makedirs(config.save_mp_checkpoint_path, exist_ok=True)
+
         if not dist.is_initialized() or dist.get_rank() == 0:
             print("Saving tp-sharded checkpoints")
             torch.save(
@@ -1079,12 +1039,12 @@ def replace_transformer_layer(orig_layer_impl,
                     v in dict(replaced_module.state_dict()).items()
                     if transformer_name not in k
                 }),
-                f'{save_mp_checkpoint_path}/{non_tp_ckpt_name}')
-            config = json.dumps({
+                f'{config.save_mp_checkpoint_path}/{non_tp_ckpt_name}')
+            ckpt_config = json.dumps({
                 'type':
                 ckpt_name,
                 'base_dir':
-                f'{save_mp_checkpoint_path}',
+                f'{config.save_mp_checkpoint_path}',
                 'checkpoints': {
                     "non_tp":
                     ckpt_files,
@@ -1102,8 +1062,9 @@ def replace_transformer_layer(orig_layer_impl,
                 'dtype':
                 'int8' if quantize else ('float16' if fp16 else 'float32')
             })
-            with open(f"{save_mp_checkpoint_path}/ds-inference_config.json", "w") as cfg:
-                cfg.write(config)
+            with open(f"{config.save_mp_checkpoint_path}/ds_inference_config.json",
+                      "w") as cfg:
+                cfg.write(ckpt_config)
 
         rep_sd = replaced_module.state_dict()
         for n, p in replaced_module.named_parameters():
@@ -1120,7 +1081,7 @@ def replace_transformer_layer(orig_layer_impl,
                     for k in keys[m * partition_size:(m + 1) * partition_size]
                     if transformer_name in k
                 }),
-                f'{save_mp_checkpoint_path}/tp_{rank:0>2d}_{m:0>2d}.pt')
+                f'{config.save_mp_checkpoint_path}/tp_{rank:0>2d}_{m:0>2d}.pt')
 
     return replaced_module
 

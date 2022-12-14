@@ -87,6 +87,8 @@ class Autotuner:
             self.rm.nodes), "num_nodes in the autotuning configuration must not be less than the --num_nodes value in the train script if any"
 
         self.records = {}
+        self.optimal_cmd = None
+        self.optmal_ds_config = None
 
     def print_tuning_results(self):
         """Print the autotuning results in tabular format.
@@ -978,11 +980,10 @@ class Autotuner:
 
         low = min_micro_batch_size
         high = max_micro_batch_size
-        while low < high:
+        # binary search until low is the smallest micro batch size that OOMs.
+        while low <= high:
             mid = int((low + high) // 2)
             logger.debug(f"trying mbs = {mid}, low = {low}, high = {high}")
-            if mid == low:
-                break
             if mid not in used_micro_batch_sizes:
                 ds_config[TRAIN_MICRO_BATCH_SIZE_PER_GPU] = mid
                 ds_config[TRAIN_BATCH_SIZE] = mid * gas * \
@@ -990,7 +991,7 @@ class Autotuner:
                 exp_name = tuning_space_name + "_gas" + str(gas) + "_tmbspg" + str(mid)
                 exp, metric_val = self.run_ds_config(ds_config, exp_name)
                 if metric_val:
-                    low = mid
+                    low = mid + 1
                     self.update_records(tuning_space_name, exp, metric_val, 1)
                     used_micro_batch_sizes.append(mid)
                     if prev_metric_val and ((metric_val - prev_metric_val) /
@@ -1002,8 +1003,8 @@ class Autotuner:
                     self.update_records(tuning_space_name, exp, 0, 1)
                     high = mid - 1
             else:
-                low = mid
-        max_micro_batch_size = low
+                low = mid + 1
+        max_micro_batch_size = low - 1
 
         logger.info(
             f"min_micro_batch_size = {min_micro_batch_size}, max_micro_batch_size = {max_micro_batch_size}."
@@ -1125,9 +1126,6 @@ class Autotuner:
             ds_config_path = os.path.join(self.results_dir, "ds_config_optimal.json")
             json.dump(ds_config, open(ds_config_path, "w"))
 
-            idx = cmd.index(os.path.join(exp_dir, "ds_config.json"))
-            cmd[idx] = ds_config_path
-
             cmd_path = os.path.join(self.results_dir, "cmd_optimal.txt")
             with open(cmd_path, "w") as fd:
                 fd.write(" ".join(cmd))
@@ -1138,9 +1136,6 @@ class Autotuner:
             logger.info(
                 f"Wrote the optimal DeepSpeed configuration found by autotuning to {ds_config_path}, and the corresponding DeepSpeed command to {cmd_path}"
             )
-        else:
-            self.optimal_cmd = None
-            self.optmal_ds_config = None
 
     def run_after_tuning(self):
         """ Launches the training with the optimal DeepSpeed configuration found through the autotuning process.

@@ -399,7 +399,7 @@ class DeepSpeedSelfAttention(nn.Module):
         data_type_fp = torch.half if config.fp16 else torch.float
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
-        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
+        device = torch.cuda.current_device()  #if config.bigscience_bloom else 'cpu'
         qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
         self.attn_qkvw = nn.Parameter(torch.empty(
             self.config.hidden_size,
