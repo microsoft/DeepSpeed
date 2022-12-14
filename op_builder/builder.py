@@ -15,6 +15,7 @@ import distutils.log
 import distutils.sysconfig
 from distutils.errors import CompileError, LinkError
 from abc import ABC, abstractmethod
+from typing import List
 
 YELLOW = '\033[93m'
 END = '\033[0m'
@@ -79,7 +80,8 @@ cuda_minor_mismatch_ok = {
          "11.4",
          "11.5",
          "11.6",
-         "11.7"],
+         "11.7",
+         "11.8"],
 }
 
 
@@ -406,18 +408,6 @@ class OpBuilder(ABC):
                 return '-D__AVX256__'
         return '-D__SCALAR__'
 
-    def python_requirements(self):
-        '''
-        Override if op wants to define special dependencies, otherwise will
-        take self.name and load requirements-<op-name>.txt if it exists.
-        '''
-        path = f'requirements/requirements-{self.name}.txt'
-        requirements = []
-        if os.path.isfile(path):
-            with open(path, 'r') as fd:
-                requirements = [r.strip() for r in fd.readlines()]
-        return requirements
-
     def command_exists(self, cmd):
         if '|' in cmd:
             cmds = cmd.split("|")
@@ -535,7 +525,7 @@ class CUDAOpBuilder(OpBuilder):
         - `TORCH_CUDA_ARCH_LIST` may use ; or whitespace separators. Examples:
 
         TORCH_CUDA_ARCH_LIST="6.1;7.5;8.6" pip install ...
-        TORCH_CUDA_ARCH_LIST="5.2 6.0 6.1 7.0 7.5 8.0 8.6+PTX" pip install ...
+        TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0 7.5 8.0 8.6+PTX" pip install ...
 
         - `cross_compile_archs` uses ; separator.
 
@@ -565,6 +555,12 @@ class CUDAOpBuilder(OpBuilder):
                     cross_compile_archs = get_default_compute_capabilities()
             ccs = cross_compile_archs.split(';')
 
+        ccs = self.filter_ccs(ccs)
+        if len(ccs) == 0:
+            raise RuntimeError(
+                f"Unable to load {self.name} op due to no compute capabilities remaining after filtering"
+            )
+
         args = []
         for cc in ccs:
             num = cc[0] + cc[2]
@@ -573,6 +569,13 @@ class CUDAOpBuilder(OpBuilder):
                 args.append(f'-gencode=arch=compute_{num},code=compute_{num}')
 
         return args
+
+    def filter_ccs(self, ccs: List[str]):
+        """
+        Prune any compute capabilities that are not compatible with the builder. Should log
+        which CCs have been pruned.
+        """
+        return ccs
 
     def version_dependent_macros(self):
         # Fix from apex that might be relevant for us as well, related to https://github.com/NVIDIA/apex/issues/456
@@ -649,6 +652,7 @@ class CUDAOpBuilder(OpBuilder):
         else:
             cuda_major, _ = installed_cuda_version()
             args += [
+                '-allow-unsupported-compiler' if sys.platform == "win32" else '',
                 '--use_fast_math',
                 '-std=c++17'
                 if sys.platform == "win32" and cuda_major > 10 else '-std=c++14',
