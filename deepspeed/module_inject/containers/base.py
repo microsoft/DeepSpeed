@@ -93,7 +93,15 @@ class BaseTransformerContainer(ABC):
         self.input_nb = input_nb
 
     def apply_weight_quantization(self):
-        pass
+        # quantize attention weights
+        self.module.attention.attn_qkvw = self.quantizer.quantize(
+            self.module.attention.attn_qkvw)
+        self.module.attention.attn_ow = self.quantizer.quantize(
+            self.module.attention.attn_ow)
+
+        # quantize mlp weights
+        self.module.mlp.inter_w = self.quantizer.quantize(self.module.mlp.inter_w)
+        self.module.mlp.output_w = self.quantizer.quantize(self.module.mlp.output_w)
 
     def apply_tensor_parallelism(self, mp_replace):
         # todo: Ask Reza if there is a fixed strategy for this copying and if possible without mp_replace when mp_size=1
@@ -112,15 +120,15 @@ class BaseTransformerContainer(ABC):
                 self.module.attention.attn_ob = None
             pass
         else:
-            self.module.attention.attn_qkvw = self.quantizer.quantize(
-                mp_replace.qkv_copy(self.module.attention.attn_qkvw,
-                                    self.qkvw))
+            self.module.attention.attn_qkvw = mp_replace.qkv_copy(
+                self.module.attention.attn_qkvw,
+                self.qkvw)
             self.module.attention.attn_qkvb = mp_replace.qkv_copy(
                 self.module.attention.attn_qkvb,
                 self.qkvb)
-            self.module.attention.attn_ow = self.quantizer.quantize(
-                mp_replace.copy(self.module.attention.attn_ow,
-                                self.dense_w))
+            self.module.attention.attn_ow = mp_replace.copy(
+                self.module.attention.attn_ow,
+                self.dense_w)
             self.module.attention.attn_ob = mp_replace.copy(
                 self.module.attention.attn_ob,
                 self.dense_b)
@@ -129,16 +137,17 @@ class BaseTransformerContainer(ABC):
         if self._4hh_w.is_meta:
             pass
         else:
-            self.module.mlp.inter_w = self.quantizer.quantize(
-                mp_replace.copy(self.module.mlp.inter_w,
-                                self._h4h_w))
+            self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w,
+                                                      self._h4h_w)
             self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b,
                                                       self._h4h_b)
-            self.module.mlp.output_w = self.quantizer.quantize(
-                mp_replace.copy(self.module.mlp.output_w,
-                                self._4hh_w))
+            self.module.mlp.output_w = mp_replace.copy(self.module.mlp.output_w,
+                                                       self._4hh_w)
             self.module.mlp.output_b = mp_replace.copy(self.module.mlp.output_b,
                                                        self._4hh_b)
+
+        # Apply weight quantization
+        self.apply_weight_quantization()
 
     def copy_data_to_new_module(self):
         if self.attn_nw is None:

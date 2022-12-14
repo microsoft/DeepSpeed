@@ -59,15 +59,3 @@ class DS_BERTContainer(BaseTransformerContainer):
 
         # Apply weight quantization
         self.apply_weight_quantization()
-
-    # TODO (lekurile): move to base container
-    def apply_weight_quantization(self):
-        # quantize attention weights
-        self.module.attention.attn_qkvw = self.quantizer.quantize(
-            self.module.attention.attn_qkvw)
-        self.module.attention.attn_ow = self.quantizer.quantize(
-            self.module.attention.attn_ow)
-
-        # quantize mlp weights
-        self.module.mlp.inter_w = self.quantizer.quantize(self.module.mlp.inter_w)
-        self.module.mlp.output_w = self.quantizer.quantize(self.module.mlp.output_w)
