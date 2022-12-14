@@ -95,11 +95,13 @@ class TorchBackend(Backend):
     def reduce_scatter_base(self,
                             output_tensor,
                             input_tensor,
+                            op=ReduceOp.SUM,
                             group=None,
                             async_op=False):
         if self.has_reduce_scatter_base:
             return torch.distributed._reduce_scatter_base(output_tensor,
                                                           input_tensor,
+                                                          op=self._reduce_op(op),
                                                           group=group,
                                                           async_op=async_op)
         else:
@@ -149,8 +151,25 @@ class TorchBackend(Backend):
                                          group=group,
                                          async_op=async_op)
 
-    def barrier(self):
-        return torch.distributed.barrier()
+    def barrier(self,
+                group=torch.distributed.GroupMember.WORLD,
+                async_op=False,
+                device_ids=None):
+        if group is None:
+            group = torch.distributed.GroupMember.WORLD
+        return torch.distributed.barrier(group=group,
+                                         async_op=async_op,
+                                         device_ids=device_ids)
+
+    def monitored_barrier(self,
+                          group=torch.distributed.GroupMember.WORLD,
+                          timeout=None,
+                          wait_all_ranks=False):
+        if group is None:
+            group = torch.distributed.GroupMember.WORLD
+        return torch.distributed.monitored_barrier(group=group,
+                                                   timeout=timeout,
+                                                   wait_all_ranks=wait_all_ranks)
 
     def get_rank(self, group=None):
         return torch.distributed.get_rank(group=group)
@@ -168,7 +187,11 @@ class TorchBackend(Backend):
         return torch.distributed.new_group(ranks)
 
     def get_global_rank(self, group, group_rank):
-        return torch.distributed.distributed_c10d._get_global_rank(group, group_rank)
+        if hasattr(torch.distributed.distributed_c10d, "get_global_rank"):
+            from torch.distributed.distributed_c10d import get_global_rank as _get_global_rank
+        else:
+            from torch.distributed.distributed_c10d import _get_global_rank
+        return _get_global_rank(group, group_rank)
 
     def get_world_group(self):
         return torch.distributed.group.WORLD
