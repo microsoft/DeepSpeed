@@ -774,7 +774,7 @@ def replace_transformer_layer(orig_layer_impl,
                 elif child.bias is not None:
                     new_bias.data.copy_(child.bias.data)
                 return LinearAllreduce(data, child.bias if child.bias is None else \
-                            torch.nn.parameter.Parameter(new_bias.to(torch.cuda.current_device())), mp_group)
+                            torch.nn.parameter.Parameter(new_bias.to(torch.cuda.current_device())/mp_size), mp_group)
             else:
                 new_weight = torch.empty((
                     (weight_shape[1] if conv_linear_layer else weight_shape[0]) //
