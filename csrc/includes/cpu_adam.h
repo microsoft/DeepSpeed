@@ -14,6 +14,7 @@
 #include "custom_cuda_layers.h"
 typedef __half ds_half_precision_t;
 #else
+#include <cmath>
 typedef unsigned short ds_half_precision_t;
 #endif
 

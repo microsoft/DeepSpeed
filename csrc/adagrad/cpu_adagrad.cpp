@@ -57,8 +57,9 @@ void Adagrad_Optimizer::Step_1(float* _params,
                 grad += _eps;
                 grad = momentum / grad;
                 param = grad * step_size + param;
+#if defined(__ENABLE_CUDA__)
                 if (dev_params) _doubled_buffer[_buf_index][k - t] = param;
-
+#endif
                 if (half_precision)
                     params_cast_h[k] = (ds_half_precision_t)param;
                 else
@@ -174,7 +175,9 @@ int ds_adagrad_step(int optimizer_id,
     opt->update_state(lr, epsilon, weight_decay);
     opt->Step_8(params_ptr, grads_ptr, exp_avg_sq_ptr, params_c.size(0));
 
+#if defined(__ENABLE_CUDA__)
     opt->SynchronizeStreams();
+#endif
     return 0;
 }
 
