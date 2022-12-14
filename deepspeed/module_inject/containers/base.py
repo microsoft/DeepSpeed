@@ -167,6 +167,12 @@ class BaseTransformerContainer(ABC):
                 self.qkvw = self.transpose_impl(self.qkvw.data)
                 self.dense_w = self.transpose_impl(self.dense_w.data)
 
+        if self.megatron_v2:
+            self.qkvw = torch.nn.parameter.Parameter(
+                self.transpose_qkv_alignment(self.qkvw).contiguous())
+            self.qkvb = torch.nn.parameter.Parameter(
+                self.transpose_qkv_alignment(self.qkvb).contiguous())
+
         if self.mlp_linear_layer:
             if not self.moe and self._4hh_w.is_meta:
                 pass

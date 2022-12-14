@@ -40,19 +40,6 @@ class DS_BERTContainer(BaseTransformerContainer):
         # todo: Ask Reza if there is a fixed strategy for this copying and if possible without mp_replace when mp_size=1
 
         # setup the new Attention module
-        #print("bert model comes here ------------------")
-        #print(f"attn_block.attn_qkvw: {self.module.attention.attn_qkvw.shape}, {self.qkvw.shape}")
-        #attn_block.attn_qkvw = quantizer.quantize(
-        #            mp_replace.copy(attn_block.attn_qkvw, qkvw) if bigscience_bloom else \
-        #            mp_replace.qkv_copy(attn_block.attn_qkvw, qkvw))
-
-        # Quantizer quantize() is a no-op when q_int8 is False. Tested with bert and it gives correct outputs. See the apply_quant. todo. Test with q_int8=True
-        # self.module.attention.attn_qkvw = self.quantizer.quantize(mp_replace.qkv_copy(self.module.attention.attn_qkvw, self.qkvw))
-        # self.module.attention.attn_ow = self.quantizer.quantize(mp_replace.copy(self.module.attention.attn_ow, self.dense_w))
-        # self.module.mlp.inter_w = self.quantizer.quantize(mp_replace.copy(self.module.mlp.inter_w, self._h4h_w))
-        # self.module.mlp.output_w = self.quantizer.quantize(mp_replace.copy(self.module.mlp.output_w, self._4hh_w))
-
-        # setup the new Attention module
         self.module.attention.attn_qkvw = mp_replace.qkv_copy(
             self.module.attention.attn_qkvw,
             self.qkvw)
@@ -73,13 +60,14 @@ class DS_BERTContainer(BaseTransformerContainer):
         # Apply weight quantization
         self.apply_weight_quantization()
 
-    # TODO (lekurile): Use this quantization function elsewhere?
+    # TODO (lekurile): move to base container
     def apply_weight_quantization(self):
         # quantize attention weights
         self.module.attention.attn_qkvw = self.quantizer.quantize(
             self.module.attention.attn_qkvw)
         self.module.attention.attn_ow = self.quantizer.quantize(
             self.module.attention.attn_ow)
+
         # quantize mlp weights
         self.module.mlp.inter_w = self.quantizer.quantize(self.module.mlp.inter_w)
         self.module.mlp.output_w = self.quantizer.quantize(self.module.mlp.output_w)

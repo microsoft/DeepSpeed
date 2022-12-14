@@ -163,7 +163,7 @@ def replace_transformer_layer(orig_layer_impl,
             _container.convert_to_required_dtype(dtype=torch.half)
 
         # 5. Set the quantization config
-        # TODO (lekurile): Move quantizer creation in to set_quantization_config?
+        # TODO (lekurile): Move quantizer creation into set_quantization_config?
         quantizer = GroupQuantizer(q_int8=quantize)
         _container.set_quantization_config(quantize, quantizer)
 

@@ -3,7 +3,6 @@ from .base import *
 from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
 
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
-from ...runtime.zero import GatheredParameters
 
 
 class DS_BloomContainer(BaseTransformerContainer):
@@ -44,36 +43,12 @@ class DS_BloomContainer(BaseTransformerContainer):
     def apply_attn_tp(self, mp_replace):
         print(f"BLOOM apply_attn_tp")
         # setup the new Attention module
-        if self.qkvw.is_meta or self.qkvw.numel() == 0 or self.qkvw.is_meta:
-            if self.qkvw.is_meta or self.qkvw.ds_tensor.numel(
-            ) < self.module.attention.attn_qkvw.numel():
-                if self.qkvb is None:
-                    self.attention.attn_qkvb = None
-                if self.dense_b is None:
-                    self.attention.attn_ob = None
-                pass
-            else:
-                print(
-                    "bloom model comes into attn. GatheredParameters ------------------")
-                with GatheredParameters([
-                        self.module.attention.attn_qkvw,
-                        self.module.attention.attn_qkvb,
-                        self.module.attention.attn_ow,
-                        self.module.attention.attn_ob
-                ],
-                                        modifier_rank=0):
-                    self.module.attention.attn_qkvw = mp_replace.copy(
-                        self.module.attention.attn_qkvw,
-                        self.qkvw)
-                    self.module.attention.attn_qkvb = mp_replace.copy(
-                        self.module.attention.attn_qkvb,
-                        self.qkvb)
-                    self.module.attention.attn_ow = mp_replace.copy(
-                        self.module.attention.attn_ow,
-                        self.dense_w)
-                    self.module.attention.attn_ob = mp_replace.copy(
-                        self.module.attention.attn_ob,
-                        self.dense_b)
+        if self.qkvw.is_meta:
+            if self.qkvb is None:
+                self.attention.attn_qkvb = None
+            if self.dense_b is None:
+                self.attention.attn_ob = None
+            pass
         else:
             # note that we don't use qkv_copy here and this is bloom specific
             self.module.attention.attn_qkvw = self.quantizer.quantize(
@@ -92,27 +67,8 @@ class DS_BloomContainer(BaseTransformerContainer):
     def apply_mlp_tp(self, mp_replace):
         print(f"BLOOM apply_mlp_tp")
         # setup the new MLP module
-        if self._4hh_w.numel() == 0 or self._4hh_w.is_meta:
-            if self._4hh_w.is_meta or self._4hh_w.ds_tensor.numel(
-            ) < self.module.mlp.inter_w.numel():
-                pass
-            else:
-                with GatheredParameters(
-                    [self._h4h_w,
-                     self._4hh_w,
-                     self._4hh_w,
-                     self._4hh_b],
-                        modifier_rank=0):
-                    self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w,
-                                                              self._h4h_w)
-                    self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b,
-                                                              self._h4h_b)
-                    self.module.mlp.output_w = mp_replace.copy(
-                        self.module.mlp.output_w,
-                        self._4hh_w)
-                    self.module.mlp.output_b = mp_replace.copy(
-                        self.module.mlp.output_b,
-                        self._4hh_b)
+        if self._4hh_w.is_meta:
+            pass
         else:
             self.module.mlp.inter_w = self.quantizer.quantize(
                 mp_replace.copy(self.module.mlp.inter_w,
@@ -131,36 +87,16 @@ class DS_BloomContainer(BaseTransformerContainer):
             self.module.mlp.attn_nw = self.attn_nw
             self.module.mlp.attn_nb = self.attn_nb
         else:
-            if self.attn_nw.is_meta or self.attn_nw.numel() == 0:
-                if self.attn_nw.is_meta or self.attn_nw.ds_tensor.numel(
-                ) < self.module.mlp.attn_nw.numel():
-                    pass
-                else:
-                    with GatheredParameters([self.attn_nw,
-                                             self.attn_nb],
-                                            modifier_rank=0):
-                        self.module.mlp.attn_nw.data.copy_(
-                            self.attn_nw.to(torch.cuda.current_device()))
-                        self.module.mlp.attn_nb.data.copy_(
-                            self.attn_nb.to(torch.cuda.current_device()))
+            if self.attn_nw.is_meta:
+                pass
             else:
                 self.module.mlp.attn_nw.data.copy_(
                     self.attn_nw.to(torch.cuda.current_device()))
                 self.module.mlp.attn_nb.data.copy_(
                     self.attn_nb.to(torch.cuda.current_device()))
 
-            if self.input_nw.is_meta or self.input_nw.numel() == 0:
-                if self.input_nw.is_meta or self.input_nw.ds_tensor.numel(
-                ) < self.module.norm_w.numel():
-                    pass
-                else:
-                    with GatheredParameters([self.input_nw,
-                                             self.input_nb],
-                                            modifier_rank=0):
-                        self.module.norm_w.data.copy_(
-                            self.input_nw.to(torch.cuda.current_device()))
-                        self.module.norm_b.data.copy_(
-                            self.input_nb.to(torch.cuda.current_device()))
+            if self.input_nw.is_meta:
+                pass
             else:
                 self.module.norm_w.data.copy_(
                     self.input_nw.to(torch.cuda.current_device()))
@@ -170,41 +106,15 @@ class DS_BloomContainer(BaseTransformerContainer):
     def transpose(self):
         print(f"BLOOM transpose")
         if self.attn_linear_layer:
-            if self.qkvw.numel() == 0 or self.qkvw.is_meta:
-                if self.qkvw.is_meta or self.qkvw.ds_tensor.numel(
-                ) < self.module.attention.attn_qkvw.numel():
-                    pass
-                else:
-                    with GatheredParameters(
-                        [self.qkvw,
-                         self.dense_w,
-                         self.qkvb,
-                         self.dense_b],
-                            modifier_rank=0):
-                        self.qkvw = self.transpose_impl(self.qkvw.data)
-                        self.dense_w = self.transpose_impl(self.dense_w.data)
-                        self.qkvb = self.qkvb.data
-                        self.dense_b = self.dense_b.data
+            if self.qkvw.is_meta:
+                pass
             else:
                 self.qkvw = self.transpose_impl(self.qkvw.data)
                 self.dense_w = self.transpose_impl(self.dense_w.data)
 
         if self.mlp_linear_layer:
-            if self._4hh_w.numel() == 0 or self._4hh_w.is_meta:
-                if self._4hh_w.is_meta or self._4hh_w.ds_tensor.numel(
-                ) < self.module.mlp.inter_w.numel():
-                    pass
-                else:
-                    with GatheredParameters(
-                        [self._h4h_w,
-                         self._4hh_w,
-                         self._4hh_b,
-                         self._h4h_b],
-                            modifier_rank=0):
-                        self._h4h_w = self.transpose_impl(self._h4h_w.data)
-                        self._4hh_w = self.transpose_impl(self._4hh_w.data)
-                        self._h4h_b = self._h4h_b.data
-                        self._4hh_b = self._4hh_b.data
+            if self._4hh_w.is_meta:
+                pass
             else:
                 self._h4h_w = self.transpose_impl(self._h4h_w.data)
                 self._4hh_w = self.transpose_impl(self._4hh_w.data)

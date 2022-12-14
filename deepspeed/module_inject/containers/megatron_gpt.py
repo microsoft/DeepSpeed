@@ -35,18 +35,3 @@ class DS_MegatronGPTContainer(BaseTransformerContainer):
             self.module.config.rotate_every_two = False
 
         return self.module
-
-    def transpose(self):
-        if self.attn_linear_layer:
-            self.qkvw = self.transpose_impl(self.qkvw.data)
-            self.dense_w = self.transpose_impl(self.dense_w.data)
-
-        if self.megatron_v2:
-            self.qkvw = torch.nn.parameter.Parameter(
-                self.transpose_qkv_alignment(self.qkvw).contiguous())
-            self.qkvb = torch.nn.parameter.Parameter(
-                self.transpose_qkv_alignment(self.qkvb).contiguous())
-
-        if self.mlp_linear_layer:
-            self._h4h_w = self.transpose_impl(self._h4h_w.data)
-            self._4hh_w = self.transpose_impl(self._4hh_w.data)
