@@ -149,18 +149,21 @@ class BaseTransformerContainer(ABC):
             self.apply_weight_quantization()
 
     def copy_data_to_new_module(self):
-        if self.is_meta:
-            pass
+        if self.attn_nw is None:
+            self.module.mlp.attn_nw = self.attn_nw
+            self.module.mlp.attn_nb = self.attn_nb
         else:
-            if self.attn_nw is None:
-                self.module.mlp.attn_nw = self.attn_nw
-                self.module.mlp.attn_nb = self.attn_nb
+            if self.is_meta:
+                pass
             else:
                 self.module.mlp.attn_nw.data.copy_(
                     self.attn_nw.to(torch.cuda.current_device()))
                 self.module.mlp.attn_nb.data.copy_(
                     self.attn_nb.to(torch.cuda.current_device()))
 
+        if self.is_meta:
+            pass
+        else:
             self.module.norm_w.data.copy_(self.input_nw.to(torch.cuda.current_device()))
             self.module.norm_b.data.copy_(self.input_nb.to(torch.cuda.current_device()))
 

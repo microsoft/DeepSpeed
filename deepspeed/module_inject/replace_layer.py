@@ -174,7 +174,7 @@ def replace_transformer_layer(orig_layer_impl,
         #exit(0)
 
         # 7. use the config and create the module
-        new_module = _container.create_module()
+        _container.create_module()
 
         # 8. transpose the weights and bias if needed
         _container.transpose()
@@ -196,7 +196,7 @@ def replace_transformer_layer(orig_layer_impl,
         megatron_v2_g = _container.megatron_v2
         transformer_config_g = _container.config
 
-        return new_module
+        return _container.module
 
     def replace_wo_policy(module, all_reduce_linears):
         mp_size = config.tensor_parallel.tp_size
