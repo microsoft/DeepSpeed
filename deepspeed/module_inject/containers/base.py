@@ -20,6 +20,7 @@ class BaseTransformerContainer(ABC):
         self.num_attention_heads = None
         self.mp_size = 1
         self.fp16 = False
+        self.is_meta = False
 
         # Attention tensors
         self.qkvw = None
@@ -43,10 +44,18 @@ class BaseTransformerContainer(ABC):
         assert self.num_attention_heads % self.mp_size == 0,\
                 "To run the model parallel across the GPUs, the attention_heads require to be divisible by the world_size!" +\
                 "This is because the attention computation is partitioned evenly among the parallel GPUs."
+
         # Set the tensors from policy (user module) to container (DS module)
         self.set_attention(*self.policy.attention())
         self.set_mlp(*self.policy.mlp())
         self.set_layernorm(*self.policy.layernorm())
+
+        for k, v in self.__dict__.items():
+            if isinstance(v, torch.Tensor) or isinstance(v, torch.nn.Parameter):
+                print(f"{k}.is_meta = {self.__dict__[k].is_meta}")
+
+        # Set is_meta flag
+        self.is_meta = self.qkvw.is_meta
 
     def convert_to_required_dtype(self, dtype):
         # Note: converting tensors to fp16 requires that we do it in-place using self.__dict__ and not make a list/dict copy
@@ -105,21 +114,14 @@ class BaseTransformerContainer(ABC):
 
     def apply_tensor_parallelism(self, mp_replace):
         # todo: Ask Reza if there is a fixed strategy for this copying and if possible without mp_replace when mp_size=1
-
-        # setup the new Attention module
-        #print("bert model comes here ------------------")
-        #print(f"attn_block.attn_qkvw: {self.module.attention.attn_qkvw.shape}, {self.qkvw.shape}")
-        #attn_block.attn_qkvw = quantizer.quantize(
-        #            mp_replace.copy(attn_block.attn_qkvw, qkvw) if bigscience_bloom else \
-        #            mp_replace.qkv_copy(attn_block.attn_qkvw, qkvw))
-
-        if self.qkvw.is_meta:
+        if self.is_meta:
             if self.qkvb is None:
                 self.module.attention.attn_qkvb = None
             if self.dense_b is None:
                 self.module.attention.attn_ob = None
             pass
         else:
+            # setup the new Attention module
             self.module.attention.attn_qkvw = mp_replace.qkv_copy(
                 self.module.attention.attn_qkvw,
                 self.qkvw)
@@ -133,10 +135,7 @@ class BaseTransformerContainer(ABC):
                 self.module.attention.attn_ob,
                 self.dense_b)
 
-        # setup the new MLP module
-        if self._4hh_w.is_meta:
-            pass
-        else:
+            # setup the new MLP module
             self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w,
                                                       self._h4h_w)
             self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b,
@@ -146,48 +145,48 @@ class BaseTransformerContainer(ABC):
             self.module.mlp.output_b = mp_replace.copy(self.module.mlp.output_b,
                                                        self._4hh_b)
 
-        # Apply weight quantization
-        self.apply_weight_quantization()
+            # Apply weight quantization
+            self.apply_weight_quantization()
 
     def copy_data_to_new_module(self):
-        if self.attn_nw is None:
-            self.module.mlp.attn_nw = self.attn_nw
-            self.module.mlp.attn_nb = self.attn_nb
+        if self.is_meta:
+            pass
         else:
-            if self.attn_nw.is_meta:
-                pass
+            if self.attn_nw is None:
+                self.module.mlp.attn_nw = self.attn_nw
+                self.module.mlp.attn_nb = self.attn_nb
             else:
                 self.module.mlp.attn_nw.data.copy_(
                     self.attn_nw.to(torch.cuda.current_device()))
                 self.module.mlp.attn_nb.data.copy_(
                     self.attn_nb.to(torch.cuda.current_device()))
 
-        if self.input_nw.is_meta:
-            pass
-        else:
             self.module.norm_w.data.copy_(self.input_nw.to(torch.cuda.current_device()))
             self.module.norm_b.data.copy_(self.input_nb.to(torch.cuda.current_device()))
 
     def transpose(self):
-        if self.attn_linear_layer:
-            if self.qkvw.is_meta:
-                pass
-            else:
+        if self.is_meta:
+            pass
+        else:
+            if self.attn_linear_layer:
                 self.qkvw = self.transpose_impl(self.qkvw.data)
                 self.dense_w = self.transpose_impl(self.dense_w.data)
 
+            if self.mlp_linear_layer:
+                # TODO (lekurile): Figure out if not self.moe need to be here
+                #if not self.moe and self.is_meta:
+                self._h4h_w = self.transpose_impl(self._h4h_w.data)
+                self._4hh_w = self.transpose_impl(self._4hh_w.data)
+
+            self.megatron_transpose()
+
+    # TODO (lekurile): Implement function in megatron "feature" container
+    def megatron_transpose(self):
         if self.megatron_v2:
             self.qkvw = torch.nn.parameter.Parameter(
                 self.transpose_qkv_alignment(self.qkvw).contiguous())
             self.qkvb = torch.nn.parameter.Parameter(
                 self.transpose_qkv_alignment(self.qkvb).contiguous())
-
-        if self.mlp_linear_layer:
-            if not self.moe and self._4hh_w.is_meta:
-                pass
-            else:
-                self._h4h_w = self.transpose_impl(self._h4h_w.data)
-                self._4hh_w = self.transpose_impl(self._4hh_w.data)
 
     def transpose_impl(self, data):
         data = data.contiguous()
@@ -196,6 +195,7 @@ class BaseTransformerContainer(ABC):
         data.to(torch.cuda.current_device())
         return data
 
+    # TODO (lekurile): This function should be moved to megatron "feature" container
     def transpose_qkv_alignment(self, x):
         attention_head_size = x.shape[-1] // self.num_attention_heads
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, attention_head_size)
