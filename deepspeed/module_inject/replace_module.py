@@ -672,8 +672,7 @@ def replace_transformer_layer(orig_layer_impl,
                                          device=child.weight.device,
                                          dtype=child.weight.dtype)
                 if conv_linear_layer:
-                    child.weight.data = child.weight.data.transpose(-1,
-                                                                    -2).contiguous()
+                    child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
                 data = mp_replace.copy(new_weight, child.weight.data)
                 new_bias = torch.empty((weight_shape[0]),
                                        device=child.weight.device,
@@ -691,8 +690,7 @@ def replace_transformer_layer(orig_layer_impl,
                                          device=child.weight.device,
                                          dtype=child.weight.dtype)
                 if conv_linear_layer:
-                    child.weight.data = child.weight.data.transpose(-1,
-                                                                    -2).contiguous()
+                    child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
                 data = mp_replace.copy(new_weight, child.weight.data)
 
                 new_bias = torch.empty((weight_shape[0] // mp_size),

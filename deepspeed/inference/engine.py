@@ -278,18 +278,15 @@ class InferenceEngine(Module):
                         module.weight.data,
                         state_dict[prefix + 'weight'])
                 else:
-                    module.weight = self.mp_replace.copy(
-                        module.weight.data,
-                        state_dict[prefix + 'weight'])
+                    module.weight = self.mp_replace.copy(module.weight.data,
+                                                         state_dict[prefix + 'weight'])
             else:
-                module.norm.weight = self.mp_replace.copy(
-                    module.norm.weight.data,
-                    state_dict[prefix + 'weight'])
+                module.norm.weight = self.mp_replace.copy(module.norm.weight.data,
+                                                          state_dict[prefix + 'weight'])
             if prefix + 'bias' in self.key_list:
                 if hasattr(module, 'norm'):
-                    module.norm.bias = self.mp_replace.copy(
-                        module.norm.bias,
-                        state_dict[prefix + 'bias'])
+                    module.norm.bias = self.mp_replace.copy(module.norm.bias,
+                                                            state_dict[prefix + 'bias'])
                 else:
                     data = state_dict[prefix + 'bias']
                     data = data.to(torch.cuda.current_device())

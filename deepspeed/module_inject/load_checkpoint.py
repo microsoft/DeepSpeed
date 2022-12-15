@@ -28,8 +28,7 @@ def load_model_with_checkpoint(r_module,
         args = (sd[0], prefix, {}, True, [], [], error_msgs)
 
         if hasattr(module, 'weight'):
-            module.weight = mp_replace.copy(module.weight.data,
-                                            sd[0][prefix + 'weight'])
+            module.weight = mp_replace.copy(module.weight.data, sd[0][prefix + 'weight'])
         if prefix + 'bias' in sd[0].keys():
             module.bias = mp_replace.copy(module.bias.data, sd[0][prefix + 'bias'])
         args = None
