@@ -28,7 +28,3 @@ class DS_GPT2Container(BaseTransformerContainer):
         self.module = DeepSpeedGPTInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
         return self.module
-
-    def transpose(self):
-        # GPT2 does not need a transpose so override and pass
-        pass
