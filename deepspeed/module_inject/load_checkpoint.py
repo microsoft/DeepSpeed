@@ -19,8 +19,6 @@ from deepspeed.model_implementations.transformers.ds_megatron_gpt import DeepSpe
 from deepspeed.model_implementations.transformers.ds_opt import DeepSpeedOPTInference
 
 import deepspeed.ops.transformer as transformer_inference
-
-from ..runtime.zero import GatheredParameters
 from .layers import LinearLayer, Normalize, EmbeddingLayer, OPTEmbedding
 import torch
 import gc
@@ -48,17 +46,10 @@ def load_model_with_checkpoint(r_module,
     def load(module, prefix):
         args = (sd[0], prefix, {}, True, [], [], error_msgs)
 
-        if len(list(module.parameters())) > 0 and list(
-                module.parameters())[0].numel() == 0:
-            with GatheredParameters(list(module.parameters(recurse=False)),
-                                    modifier_rank=0):
-                module._load_from_sd(*args)
-        else:
-            if hasattr(module, 'weight'):
-                module.weight = mp_replace.copy(module.weight.data,
-                                                sd[0][prefix + 'weight'])
-            if prefix + 'bias' in sd[0].keys():
-                module.bias = mp_replace.copy(module.bias.data, sd[0][prefix + 'bias'])
+        if hasattr(module, 'weight'):
+            module.weight = mp_replace.copy(module.weight.data, sd[0][prefix + 'weight'])
+        if prefix + 'bias' in sd[0].keys():
+            module.bias = mp_replace.copy(module.bias.data, sd[0][prefix + 'bias'])
         args = None
         gc.collect()
 
