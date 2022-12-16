@@ -1,11 +1,12 @@
 from .base import *
+from .meta_tensor import MetaTensorContainer
 
 from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
 
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 
 
-class DS_BloomContainer(BaseTransformerContainer):
+class DS_BloomContainer(MetaTensorContainer, BaseTransformerContainer):
     def __init__(self, policy):
         super().__init__(policy)
 
