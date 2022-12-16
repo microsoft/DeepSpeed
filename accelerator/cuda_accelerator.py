@@ -2,7 +2,7 @@ import os
 import pkgutil
 import importlib
 
-from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
+from .abstract_accelerator import DeepSpeedAccelerator
 # During setup stage torch may not be installed, pass on no torch will
 # allow op builder related API to be executed.
 try:

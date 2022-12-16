@@ -6,156 +6,154 @@ import sys
 import types
 import json
 from typing import Optional, Union
-try:
-    import torch
-    from torch.optim import Optimizer
-    from torch.optim.lr_scheduler import _LRScheduler
-    from packaging import version as pkg_version
+import torch
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler
+from packaging import version as pkg_version
 
-    from . import ops
-    from . import module_inject
+from . import ops
+from . import module_inject
 
-    from .runtime.engine import DeepSpeedEngine, DeepSpeedOptimizerCallable, DeepSpeedSchedulerCallable
-    from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
-    from .runtime.pipe.engine import PipelineEngine
-    from .inference.engine import InferenceEngine
-    from .inference.config import DeepSpeedInferenceConfig
-    from .runtime.lr_schedules import add_tuning_arguments
-    from .runtime.config import DeepSpeedConfig, DeepSpeedConfigError
-    from .runtime.activation_checkpointing import checkpointing
-    from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
-    from .module_inject import replace_transformer_layer, revert_transformer_layer
+from .runtime.engine import DeepSpeedEngine, DeepSpeedOptimizerCallable, DeepSpeedSchedulerCallable
+from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
+from .runtime.pipe.engine import PipelineEngine
+from .inference.engine import InferenceEngine
+from .inference.config import DeepSpeedInferenceConfig
+from .runtime.lr_schedules import add_tuning_arguments
+from .runtime.config import DeepSpeedConfig, DeepSpeedConfigError
+from .runtime.activation_checkpointing import checkpointing
+from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
+from .module_inject import replace_transformer_layer, revert_transformer_layer
 
-    from .utils import log_dist, OnDevice
-    from .comm.comm import init_distributed
+from .utils import log_dist, OnDevice
+from .comm.comm import init_distributed
 
-    from .runtime import zero
-    from .runtime import DeepSpeedOptimizer, ZeROOptimizer
+from .runtime import zero
+from .runtime import DeepSpeedOptimizer, ZeROOptimizer
 
-    from .pipe import PipelineModule
+from .pipe import PipelineModule
 
-    from .git_version_info import version, git_hash, git_branch
+from .git_version_info import version, git_hash, git_branch
 
-    def _parse_version(version_str):
-        '''Parse a version string and extract the major, minor, and patch versions.'''
-        ver = pkg_version.parse(version_str)
-        return ver.major, ver.minor, ver.micro
 
-    # Export version information
-    __version__ = version
-    __version_major__, __version_minor__, __version_patch__ = _parse_version(__version__)
-    __git_hash__ = git_hash
-    __git_branch__ = git_branch
+def _parse_version(version_str):
+    '''Parse a version string and extract the major, minor, and patch versions.'''
+    ver = pkg_version.parse(version_str)
+    return ver.major, ver.minor, ver.micro
 
-    def initialize(args=None,
-                   model: torch.nn.Module = None,
-                   optimizer: Optional[Union[Optimizer,
-                                             DeepSpeedOptimizerCallable]] = None,
-                   model_parameters: Optional[torch.nn.Module] = None,
-                   training_data: Optional[torch.utils.data.Dataset] = None,
-                   lr_scheduler: Optional[Union[_LRScheduler,
-                                                DeepSpeedSchedulerCallable]] = None,
-                   mpu=None,
-                   dist_init_required: Optional[bool] = None,
-                   collate_fn=None,
-                   config=None,
-                   config_params=None):
-        """Initialize the DeepSpeed Engine.
 
-        Arguments:
-            args: an object containing local_rank and deepspeed_config fields.
-                This is optional if `config` is passed.
+# Export version information
+__version__ = version
+__version_major__, __version_minor__, __version_patch__ = _parse_version(__version__)
+__git_hash__ = git_hash
+__git_branch__ = git_branch
 
-            model: Required: nn.module class before apply any wrappers
 
-            optimizer: Optional: a user defined Optimizer or Callable that returns an Optimizer object.
-                This overrides any optimizer definition in the DeepSpeed json config.
+def initialize(args=None,
+               model: torch.nn.Module = None,
+               optimizer: Optional[Union[Optimizer,
+                                         DeepSpeedOptimizerCallable]] = None,
+               model_parameters: Optional[torch.nn.Module] = None,
+               training_data: Optional[torch.utils.data.Dataset] = None,
+               lr_scheduler: Optional[Union[_LRScheduler,
+                                            DeepSpeedSchedulerCallable]] = None,
+               mpu=None,
+               dist_init_required: Optional[bool] = None,
+               collate_fn=None,
+               config=None,
+               config_params=None):
+    """Initialize the DeepSpeed Engine.
 
-            model_parameters: Optional: An iterable of torch.Tensors or dicts.
-                Specifies what Tensors should be optimized.
+    Arguments:
+        args: an object containing local_rank and deepspeed_config fields.
+            This is optional if `config` is passed.
 
-            training_data: Optional: Dataset of type torch.utils.data.Dataset
+        model: Required: nn.module class before apply any wrappers
 
-            lr_scheduler: Optional: Learning Rate Scheduler Object or a Callable that takes an Optimizer and returns a Scheduler object.
-                The scheduler object should define a get_lr(), step(), state_dict(), and load_state_dict() methods
+        optimizer: Optional: a user defined Optimizer or Callable that returns an Optimizer object.
+            This overrides any optimizer definition in the DeepSpeed json config.
 
-            mpu: Optional: A model parallelism unit object that implements
-                get_{model,data}_parallel_{rank,group,world_size}()
+        model_parameters: Optional: An iterable of torch.Tensors or dicts.
+            Specifies what Tensors should be optimized.
 
-            dist_init_required: Optional: None will auto-initialize torch distributed if needed,
-                otherwise the user can force it to be initialized or not via boolean.
+        training_data: Optional: Dataset of type torch.utils.data.Dataset
 
-            collate_fn: Optional: Merges a list of samples to form a
-                mini-batch of Tensor(s).  Used when using batched loading from a
-                map-style dataset.
+        lr_scheduler: Optional: Learning Rate Scheduler Object or a Callable that takes an Optimizer and returns a Scheduler object.
+            The scheduler object should define a get_lr(), step(), state_dict(), and load_state_dict() methods
 
-            config: Optional: Instead of requiring args.deepspeed_config you can pass your deepspeed config
-                as an argument instead, as a path or a dictionary.
+        mpu: Optional: A model parallelism unit object that implements
+            get_{model,data}_parallel_{rank,group,world_size}()
 
-            config_params: Optional: Same as `config`, kept for backwards compatibility.
+        dist_init_required: Optional: None will auto-initialize torch distributed if needed,
+            otherwise the user can force it to be initialized or not via boolean.
 
-        Returns:
-            A tuple of ``engine``, ``optimizer``, ``training_dataloader``, ``lr_scheduler``
+        collate_fn: Optional: Merges a list of samples to form a
+            mini-batch of Tensor(s).  Used when using batched loading from a
+            map-style dataset.
 
-            * ``engine``: DeepSpeed runtime engine which wraps the client model for distributed training.
+        config: Optional: Instead of requiring args.deepspeed_config you can pass your deepspeed config
+            as an argument instead, as a path or a dictionary.
 
-            * ``optimizer``: Wrapped optimizer if a user defined ``optimizer`` is supplied, or if
-              optimizer is specified in json config else ``None``.
+        config_params: Optional: Same as `config`, kept for backwards compatibility.
 
-            * ``training_dataloader``: DeepSpeed dataloader if ``training_data`` was supplied,
-              otherwise ``None``.
+    Returns:
+        A tuple of ``engine``, ``optimizer``, ``training_dataloader``, ``lr_scheduler``
 
-            * ``lr_scheduler``: Wrapped lr scheduler if user ``lr_scheduler`` is passed, or
-              if ``lr_scheduler`` specified in JSON configuration. Otherwise ``None``.
-        """
-        log_dist("DeepSpeed info: version={}, git-hash={}, git-branch={}".format(
-            __version__,
-            __git_hash__,
-            __git_branch__),
-                 ranks=[0])
+        * ``engine``: DeepSpeed runtime engine which wraps the client model for distributed training.
 
-        # Disable zero.Init context if it's currently enabled
-        zero.partition_parameters.shutdown_init_context()
+        * ``optimizer``: Wrapped optimizer if a user defined ``optimizer`` is supplied, or if
+          optimizer is specified in json config else ``None``.
 
-        assert model is not None, "deepspeed.initialize requires a model"
+        * ``training_dataloader``: DeepSpeed dataloader if ``training_data`` was supplied,
+          otherwise ``None``.
 
-        if not isinstance(model, PipelineModule):
-            engine = DeepSpeedEngine(args=args,
-                                     model=model,
-                                     optimizer=optimizer,
-                                     model_parameters=model_parameters,
-                                     training_data=training_data,
-                                     lr_scheduler=lr_scheduler,
-                                     mpu=mpu,
-                                     dist_init_required=dist_init_required,
-                                     collate_fn=collate_fn,
-                                     config=config,
-                                     config_params=config_params)
-        else:
-            assert mpu is None, "mpu must be None with pipeline parallelism"
-            engine = PipelineEngine(args=args,
-                                    model=model,
-                                    optimizer=optimizer,
-                                    model_parameters=model_parameters,
-                                    training_data=training_data,
-                                    lr_scheduler=lr_scheduler,
-                                    mpu=model.mpu(),
-                                    dist_init_required=dist_init_required,
-                                    collate_fn=collate_fn,
-                                    config=config,
-                                    config_params=config_params)
+        * ``lr_scheduler``: Wrapped lr scheduler if user ``lr_scheduler`` is passed, or
+          if ``lr_scheduler`` specified in JSON configuration. Otherwise ``None``.
+    """
+    log_dist("DeepSpeed info: version={}, git-hash={}, git-branch={}".format(
+        __version__,
+        __git_hash__,
+        __git_branch__),
+             ranks=[0])
 
-        return_items = [
-            engine,
-            engine.optimizer,
-            engine.training_dataloader,
-            engine.lr_scheduler
-        ]
-        return tuple(return_items)
+    # Disable zero.Init context if it's currently enabled
+    zero.partition_parameters.shutdown_init_context()
 
-except ImportError:
-    print('[WARNING] Unable to import torch.  Pytorch is needed unless in deepspeed installation without pre-compiling ops. ' \
-        'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
+    assert model is not None, "deepspeed.initialize requires a model"
+
+    if not isinstance(model, PipelineModule):
+        engine = DeepSpeedEngine(args=args,
+                                 model=model,
+                                 optimizer=optimizer,
+                                 model_parameters=model_parameters,
+                                 training_data=training_data,
+                                 lr_scheduler=lr_scheduler,
+                                 mpu=mpu,
+                                 dist_init_required=dist_init_required,
+                                 collate_fn=collate_fn,
+                                 config=config,
+                                 config_params=config_params)
+    else:
+        assert mpu is None, "mpu must be None with pipeline parallelism"
+        engine = PipelineEngine(args=args,
+                                model=model,
+                                optimizer=optimizer,
+                                model_parameters=model_parameters,
+                                training_data=training_data,
+                                lr_scheduler=lr_scheduler,
+                                mpu=model.mpu(),
+                                dist_init_required=dist_init_required,
+                                collate_fn=collate_fn,
+                                config=config,
+                                config_params=config_params)
+
+    return_items = [
+        engine,
+        engine.optimizer,
+        engine.training_dataloader,
+        engine.lr_scheduler
+    ]
+    return tuple(return_items)
 
 
 def _add_core_arguments(parser):
