@@ -13,6 +13,8 @@ class BaseTransformerContainer(ABC):
     def __init__(self, policy):
         self.policy = policy
 
+        self.megatron_v2 = self.policy.is_megatron_v2
+
         # configuration for models. todo: can this be moved to a pydantic model config?
         self.hidden_size = None
         self.num_attention_heads = None
@@ -109,25 +111,38 @@ class BaseTransformerContainer(ABC):
     def apply_tensor_parallelism(self, mp_replace):
         # todo: Ask Reza if there is a fixed strategy for this copying and if possible without mp_replace when mp_size=1
         # setup the new Attention module
+        self.attention_qkv_mp(mp_replace)
+        self.attention_o_mp(mp_replace)
+
+        # setup the new MLP module
+        self.mlp_inter_mp(mp_replace)
+        self.mlp_output_mp(mp_replace)
+
+        # Apply weight quantization
+        self.apply_weight_quantization()
+
+    def attention_qkv_mp(self, mp_replace):
+        print("Entered BASE defined attention_qkv_mp!!")
         self.module.attention.attn_qkvw = mp_replace.qkv_copy(
             self.module.attention.attn_qkvw,
             self.qkvw)
         self.module.attention.attn_qkvb = mp_replace.qkv_copy(
             self.module.attention.attn_qkvb,
             self.qkvb)
+
+    def attention_o_mp(self, mp_replace):
         self.module.attention.attn_ow = mp_replace.copy(self.module.attention.attn_ow,
                                                         self.dense_w)
         self.module.attention.attn_ob = mp_replace.copy(self.module.attention.attn_ob,
                                                         self.dense_b)
 
-        # setup the new MLP module
+    def mlp_inter_mp(self, mp_replace):
         self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w, self._h4h_w)
         self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b, self._h4h_b)
+
+    def mlp_output_mp(self, mp_replace):
         self.module.mlp.output_w = mp_replace.copy(self.module.mlp.output_w, self._4hh_w)
         self.module.mlp.output_b = mp_replace.copy(self.module.mlp.output_b, self._4hh_b)
-
-        # Apply weight quantization
-        self.apply_weight_quantization()
 
     def copy_data_to_new_module(self):
         if self.attn_nw is None:
