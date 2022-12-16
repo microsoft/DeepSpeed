@@ -1,10 +1,13 @@
 from .base import *
-from .meta_tensor import MetaTensorContainer
+from .features.meta_tensor import MetaTensorContainer
+from .features.megatron import MegatronContainer
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 
 
-class DS_GPTNEOXContainer(MetaTensorContainer, BaseTransformerContainer):
+class DS_GPTNEOXContainer(MetaTensorContainer,
+                          MegatronContainer,
+                          BaseTransformerContainer):
     def __init__(self, policy):
         super().__init__(policy)
 
