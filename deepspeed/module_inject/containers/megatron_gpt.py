@@ -1,9 +1,10 @@
 from .base import *
+from .megatron import MegatronContainer
 from deepspeed.model_implementations.transformers.ds_megatron_gpt import DeepSpeedMegatronGPTInference
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 
 
-class DS_MegatronGPTContainer(BaseTransformerContainer):
+class DS_MegatronGPTContainer(MegatronContainer, BaseTransformerContainer):
     def __init__(self, policy):
         super().__init__(policy)
 
