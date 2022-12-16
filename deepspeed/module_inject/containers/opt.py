@@ -1,5 +1,5 @@
 from .base import *
-from .meta_tensor import MetaTensorContainer
+from .features.meta_tensor import MetaTensorContainer
 from deepspeed.model_implementations.transformers.ds_opt import DeepSpeedOPTInference
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 

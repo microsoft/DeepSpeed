@@ -1,5 +1,5 @@
 from .base import *
-from .megatron import MegatronContainer
+from .features.megatron import MegatronContainer
 from deepspeed.model_implementations.transformers.ds_megatron_gpt import DeepSpeedMegatronGPTInference
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 
