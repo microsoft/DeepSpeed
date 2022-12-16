@@ -63,6 +63,7 @@ def set_cuda_visibile():
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(dev_id_list)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="only supported in CUDA")
 class DistributedExec(ABC):
     """
     Base class for distributed execution of functions/methods. Contains common

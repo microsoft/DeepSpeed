@@ -8,6 +8,10 @@ from deepspeed.git_version_info import torch_info
 from unit.common import DistributedTest
 from packaging import version as pkg_version
 from deepspeed.ops.op_builder import OpBuilder
+
+if not torch.cuda.is_available():
+    pytest.skip("Only supported on CUDA environments", allow_module_level=True)
+
 from transformers import pipeline
 from transformers.models.t5.modeling_t5 import T5Block
 from transformers.models.roberta.modeling_roberta import RobertaLayer

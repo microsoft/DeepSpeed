@@ -9,6 +9,9 @@ from unit.modelingpreln import BertEncoder as BertEncoderPreln
 from deepspeed.compression.basic_layer import LinearLayer_Compress, ColumnParallelLinear_Compress, RowParallelLinear_Compress
 from deepspeed.compression.helper import convert_conv1d_to_linear
 
+if not torch.cuda.is_available():
+    pytest.skip("Only supported on CUDA environments", allow_module_level=True)
+
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])
 pytestmark = pytest.mark.skipif(

@@ -10,6 +10,9 @@ import deepspeed.comm as dist
 
 from unit.common import DistributedTest, get_master_port
 
+if not torch.cuda.is_available():
+    pytest.skip("Only supported on CUDA environments", allow_module_level=True)
+
 
 def setup_serial_env():
     # Setup for a serial run

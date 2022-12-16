@@ -2,6 +2,9 @@ import pytest
 import torch
 from deepspeed.runtime.zero.linear import LinearModuleForZeroStage3
 
+if not torch.cuda.is_available():
+    pytest.skip("Only supported on CUDA environments", allow_module_level=True)
+
 
 @pytest.mark.parametrize('half_op', [False, True])
 def test_missing_amp_autocast(tmpdir, half_op):

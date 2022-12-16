@@ -126,6 +126,8 @@ def test_cpu_adagrad_opt_sparse_embedding(model_size, vocabulary_size, dim):
 
 
 def test_cpu_adam_gpu_error():
+    if not torch.cuda.is_available():
+        pytest.skip("Only supported on CUDA environments.")
     model_size = 64
     device = 'cuda:0'
     param = torch.nn.Parameter(torch.randn(model_size, device=device))

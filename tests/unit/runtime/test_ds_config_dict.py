@@ -14,6 +14,9 @@ import deepspeed.comm as dist
 import deepspeed
 from deepspeed.runtime.config import DeepSpeedConfig, get_bfloat16_enabled
 
+if not torch.cuda.is_available():
+    pytest.skip("Only supported on CUDA environments", allow_module_level=True)
+
 
 @pytest.fixture
 def base_config():

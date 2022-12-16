@@ -4,6 +4,9 @@ from unit.simple_model import SimpleModel
 from deepspeed import OnDevice
 from packaging import version as pkg_version
 
+if not torch.cuda.is_available():
+    pytest.skip("Only supported on CUDA environments", allow_module_level=True)
+
 
 @pytest.mark.parametrize('device', ['meta', 'cuda:0'])
 def test_on_device(device):

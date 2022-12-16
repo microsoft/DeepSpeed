@@ -3,8 +3,12 @@ import pytest
 import torch
 import deepspeed
 from deepspeed.model_implementations import DeepSpeedTransformerInference
-from transformers import AutoConfig, AutoModelForCausalLM
 from unit.common import DistributedTest, DistributedFixture
+
+if not torch.cuda.is_available():
+    pytest.skip("Only supported on CUDA environments", allow_module_level=True)
+
+from transformers import AutoConfig, AutoModelForCausalLM
 
 
 def check_dtype(model, expected_dtype):
