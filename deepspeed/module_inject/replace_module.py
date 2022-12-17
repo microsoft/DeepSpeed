@@ -567,7 +567,6 @@ def replace_transformer_layer(orig_layer_impl,
 
             if moe:
                 gpu_index = dist.get_rank()
-                gpu_index = 0
                 for ep_index in range(local_ep_size):
                     mpl_block[ep_index].inter_w.data = _h4h_w[
                         gpu_index * local_ep_size + ep_index].to(

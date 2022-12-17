@@ -7,8 +7,8 @@ from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 
 
 class DS_BloomContainer(MetaTensorContainer, BaseTransformerContainer):
-    def __init__(self, policy):
-        super().__init__(policy)
+    def __init__(self, policy, config, model_config):
+        super().__init__(policy, config, model_config)
 
         # All model specific things should be defined here instead of the base class.
         self.scale_attention = self.policy.scale_attention

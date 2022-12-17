@@ -6,6 +6,7 @@ from .gptj import HFGPTJLayerPolicy
 from .gptneo import HFGPTNEOLayerPolicy
 from .gptneox import GPTNEOXLayerPolicy
 from .megatron import MegatronLayerPolicy
+from .megatron_moe import MegatronMoELayerPolicy
 from .opt import HFOPTLayerPolicy
 from .unet import UNetPolicy
 from .vae import VAEPolicy

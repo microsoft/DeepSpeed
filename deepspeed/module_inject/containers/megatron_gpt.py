@@ -5,17 +5,13 @@ from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 
 
 class DS_MegatronGPTContainer(MegatronContainer, BaseTransformerContainer):
-    def __init__(self, policy):
-        super().__init__(policy)
+    def __init__(self, policy, config, model_config):
+        super().__init__(policy, config, model_config)
 
         self.attn_linear_layer = True
         self.mlp_linear_layer = True
         self.scale_attention = self.policy.scale_attention
         self.window_size = 1
-
-        # Create DS_MegatronGPTMoE container
-        # Override MLP part
-        # new variables for tensors (list)
 
     def create_config(self):
         self.config = DeepSpeedInferenceConfig(hidden_size=self.hidden_size,

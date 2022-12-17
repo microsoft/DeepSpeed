@@ -4,8 +4,8 @@ from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 
 
 class DS_CLIPContainer(BaseTransformerContainer):
-    def __init__(self, policy):
-        super().__init__(policy)
+    def __init__(self, policy, config, model_config):
+        super().__init__(policy, config, model_config)
 
         self.attn_linear_layer = False
         self.mlp_linear_layer = False

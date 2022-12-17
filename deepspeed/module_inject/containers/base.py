@@ -10,10 +10,14 @@ class BaseConvolutionContainer(ABC):
 
 
 class BaseTransformerContainer(ABC):
-    def __init__(self, policy):
+    def __init__(self, policy, config, model_config):
         self.policy = policy
+        self.config = config
+        self.model_config = model_config
 
         self.megatron_v2 = self.policy.is_megatron_v2
+
+        # TODO (lekurile): Add generalized config!
 
         # configuration for models. todo: can this be moved to a pydantic model config?
         self.hidden_size = None
@@ -49,21 +53,21 @@ class BaseTransformerContainer(ABC):
         self.set_mlp(*self.policy.mlp())
         self.set_layernorm(*self.policy.layernorm())
 
-        for k, v in self.__dict__.items():
-            if isinstance(v, torch.Tensor) or isinstance(v, torch.nn.Parameter):
-                print(f"{k}.is_meta = {self.__dict__[k].is_meta}")
-
     def convert_to_required_dtype(self, dtype):
         # Note: converting tensors to fp16 requires that we do it in-place using self.__dict__ and not make a list/dict copy
         if dtype == torch.half:
             for k, v in self.__dict__.items():
+                # The list comprehension is used for MoE tensor lists
+                if isinstance(v, list) and all((isinstance(tensor, torch.Tensor) \
+                   or isinstance(tensor, torch.nn.Parameter)) for tensor in v):
+                    self.__dict__[k] = [moe_tensor.half() for moe_tensor in v]
+
                 if isinstance(v, torch.Tensor) or isinstance(v, torch.nn.Parameter):
                     self.__dict__[k] = v.half()
 
     def set_dtype(self, fp16=False):
         self.fp16 = fp16
 
-    # TODO (lekurile): Move this to MoE container later
     def set_moe(self, moe=False):
         self.moe = moe
 
@@ -99,12 +103,18 @@ class BaseTransformerContainer(ABC):
 
     def apply_weight_quantization(self):
         # quantize attention weights
+        self.attention_quantization()
+
+        # quantize mlp weights
+        self.mlp_quantization()
+
+    def attention_quantization(self):
         self.module.attention.attn_qkvw = self.quantizer.quantize(
             self.module.attention.attn_qkvw)
         self.module.attention.attn_ow = self.quantizer.quantize(
             self.module.attention.attn_ow)
 
-        # quantize mlp weights
+    def mlp_quantization(self):
         self.module.mlp.inter_w = self.quantizer.quantize(self.module.mlp.inter_w)
         self.module.mlp.output_w = self.quantizer.quantize(self.module.mlp.output_w)
 
@@ -122,7 +132,6 @@ class BaseTransformerContainer(ABC):
         self.apply_weight_quantization()
 
     def attention_qkv_mp(self, mp_replace):
-        print("Entered BASE defined attention_qkv_mp!!")
         self.module.attention.attn_qkvw = mp_replace.qkv_copy(
             self.module.attention.attn_qkvw,
             self.qkvw)
@@ -158,13 +167,16 @@ class BaseTransformerContainer(ABC):
         self.module.norm_b.data.copy_(self.input_nb.to(torch.cuda.current_device()))
 
     def transpose(self):
+        self.transpose_attention()
+        self.transpose_mlp()
+
+    def transpose_attention(self):
         if self.attn_linear_layer:
             self.qkvw = self.transpose_impl(self.qkvw.data)
             self.dense_w = self.transpose_impl(self.dense_w.data)
 
+    def transpose_mlp(self):
         if self.mlp_linear_layer:
-            # TODO (lekurile): Figure out if not self.moe need to be here
-            #if not self.moe and self.is_meta:
             self._h4h_w = self.transpose_impl(self._h4h_w.data)
             self._4hh_w = self.transpose_impl(self._4hh_w.data)
 

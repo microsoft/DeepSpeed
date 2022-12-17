@@ -147,7 +147,7 @@ def replace_transformer_layer(orig_layer_impl,
         print(f">-- replace_with_policy(): {policy}")
 
         # 1. Create a model-specific container object using the policy object.
-        _container = policy_to_ds_container(policy)
+        _container = policy_to_ds_container(policy, config, model_config)
         _container.set_dtype(fp16)
         _container.set_moe(moe)
 
