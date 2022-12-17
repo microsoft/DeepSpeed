@@ -10,7 +10,10 @@ class SoftmaxOp(BaseOp):
         if self.config.fp16:
             self.softmax_func = self.inference_cuda_module.softmax_fp16
         else:
-            raise NotImplementedError()
+            self.softmax_func = self._not_implemented
+
+    def _not_implemented(self, *args, **kwargs):
+        raise NotImplementedError
 
     def forward(self,
                 attn_scores: torch.Tensor,
@@ -22,8 +25,7 @@ class SoftmaxOp(BaseOp):
                 window_size: int,
                 async_op: bool,
                 layer_scale: float,
-                head_offset: int,
-                mp_size: int):
+                head_offset: int):
         output = self.softmax_func(attn_scores,
                                    attn_mask,
                                    alibi,
