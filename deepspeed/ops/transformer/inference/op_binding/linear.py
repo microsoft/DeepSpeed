@@ -1,5 +1,5 @@
 import torch
-from deepspeed.ops.transformer import DeepSpeedInferenceConfig
+from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
 from typing import Optional
 
