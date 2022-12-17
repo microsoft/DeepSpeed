@@ -300,7 +300,7 @@ class DeepSpeedSelfAttention(nn.Module):
         inp_norm = qkv_out[-1]
 
         if self.config.mlp_after_attn and self.mp_group is not None and dist.get_world_size(
-                group=self.p_group) > 1:
+                group=self.mp_group) > 1:
             dist.all_reduce(output, group=self.mp_group)
 
         return (output, key_layer, value_layer, context_layer, inp_norm)
