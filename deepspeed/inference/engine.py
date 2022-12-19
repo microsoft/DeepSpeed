@@ -49,6 +49,10 @@ class InferenceEngine(Module):
 
         self._get_model_config_generate(config)  # keep for weird backward compatibility
 
+        # patch model generate with ours if model uses it
+        if hasattr(self.module, "generate"):
+            self.generate = self._generate
+
         if hasattr(self.module, "config"):
             DSPolicy.hf_model_config = self.module.config
 
@@ -517,7 +521,7 @@ class InferenceEngine(Module):
 
         return outputs
 
-    def generate(self, *inputs, **kwargs):
+    def _generate(self, *inputs, **kwargs):
         if "num_beams" in kwargs:
             if kwargs["num_beams"] > 1:
                 raise NotImplementedError(
