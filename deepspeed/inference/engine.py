@@ -522,11 +522,17 @@ class InferenceEngine(Module):
         return outputs
 
     def _generate(self, *inputs, **kwargs):
+        num_beams = 1
+        if "generation_config" in kwargs:
+            gen_config = kwargs["generation_config"]
+            num_beams = getattr(gen_config, "num_beams", 1)
         if "num_beams" in kwargs:
-            if kwargs["num_beams"] > 1:
-                raise NotImplementedError(
-                    "DeepSpeed inference does not support `num_beams` > 1, please add your"
-                    "request to this open issue https://github.com/microsoft/DeepSpeed/issues/2506 "
-                    "if this is something important to you.")
+            num_beams = kwargs["num_beams"]
+
+        if num_beams > 1:
+            raise NotImplementedError(
+                "DeepSpeed does not support `num_beams` > 1, if this is important to you please "
+                "add your request to: https://github.com/microsoft/DeepSpeed/issues/2506"
+            )
 
         return self.module.generate(*inputs, **kwargs)
