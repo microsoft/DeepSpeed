@@ -1,0 +1,24 @@
+name: Create Virtual Environment
+
+outputs:
+  venv-name:
+    description: "virtual environment name"
+    value: ${{ steps.create-env.outputs.venv-name }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: update-env
+      run: |
+        sudo apt-get update && sudo apt-get -y upgrade
+        pip install --upgrade pip
+        python -m pip install -U virtualenv
+      shell: bash
+    - id: create-venv
+      run: |
+        sudo apt-get update && sudo apt-get -y upgrade
+        pip install --upgrade pip
+        python -m pip install -U virtualenv
+        python -m venv unit-test-venv
+        echo "venv-name=unit-test-venv" >> $GITHUB_OUTPUT
+      shell: bash
