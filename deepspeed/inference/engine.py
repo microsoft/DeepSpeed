@@ -148,8 +148,6 @@ class InferenceEngine(Module):
         self.config = getattr(self.module,
                               'config',
                               None) if config.config is None else config.config
-        # todo: clarify with Reza if this gets used anywhere
-        self.generate = getattr(self.module, 'generate', None)
 
     def remove_mask_prepare_for_bloom(self):
         if hasattr(self.module, 'transformer'):
@@ -518,3 +516,13 @@ class InferenceEngine(Module):
             self._model_times.append(duration)
 
         return outputs
+
+    def generate(self, *inputs, **kwargs):
+        if "num_beams" in kwargs:
+            if kwargs["num_beams"] > 1:
+                raise NotImplementedError(
+                    "DeepSpeed inference does not support `num_beams` > 1, please add your"
+                    "request to this open issue https://github.com/microsoft/DeepSpeed/issues/2506 "
+                    "if this is something important to you.")
+
+        return self.module.generate(*inputs, **kwargs)
