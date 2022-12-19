@@ -106,3 +106,53 @@ def test_num_plus_parser():
         dsrun.main(args="--num_nodes 1 --num_gpus 1 -e localhost foo.py".split())
     with pytest.raises(ValueError):
         dsrun.main(args="--num_gpus 1 -e localhost foo.py".split())
+
+
+def test_hostfile_good():
+    # good hostfile
+    hostfile = """
+    worker-1 slots=2
+    worker-2 slots=2
+    localhost slots=1
+    123.23.12.10 slots=2
+    """
+    r = dsrun._parse_hostfile(hostfile.splitlines())
+    assert "worker-1" in r
+    assert "worker-2" in r
+    assert "localhost" in r
+    assert "123.23.12.10" in r
+    assert r["worker-1"] == 2
+    assert r["worker-2"] == 2
+    assert r["localhost"] == 1
+    assert r["123.23.12.10"] == 2
+
+
+def test_hostfiles_bad():
+    # duplicate host
+    hostfile = """
+    worker-1 slots=2
+    worker-2 slots=1
+    worker-1 slots=1
+    """
+    with pytest.raises(ValueError):
+        dsrun._parse_hostfile(hostfile.splitlines())
+
+    # incorrect whitespace
+    hostfile = """
+    this is bad slots=1
+    """
+    with pytest.raises(ValueError):
+        dsrun._parse_hostfile(hostfile.splitlines())
+
+    # no whitespace
+    hostfile = """
+    missingslots
+    """
+    with pytest.raises(ValueError):
+        dsrun._parse_hostfile(hostfile.splitlines())
+
+    # empty
+    hostfile = """
+    """
+    with pytest.raises(ValueError):
+        dsrun._parse_hostfile(hostfile.splitlines())
