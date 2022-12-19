@@ -40,7 +40,7 @@ jobs:
         run: |
           pip uninstall --yes deepspeed
           pip install .[dev]
-          pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" git+https://github.com/NVIDIA/apex.git
+          pip install -v --disable-pip-version-check --no-cache-dir  git+https://github.com/NVIDIA/apex.git
 
       - name: Python environment
         run: |
