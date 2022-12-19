@@ -197,8 +197,12 @@ def _parse_hostfile(hostfile_lines):
     resource_pool = collections.OrderedDict()
 
     for line in hostfile_lines:
-        match = re.search(pattern, line.strip())
-        if match:
+        line = line.strip()
+        match = re.search(pattern, line)
+        if line.startswith("#") or line == "":
+            # hostfile comment or empty line, ignore
+            continue
+        elif match:
             host = match.group(1)
             num_slots = int(match.group(2))
             if host in resource_pool:
@@ -207,6 +211,11 @@ def _parse_hostfile(hostfile_lines):
                     f"Hostfile contains multiple entries for {host}, unable to proceed with launching"
                 )
             resource_pool[host] = num_slots
+        else:
+            logger.error(f"Bad hostfile text: {hostfile_lines}")
+            raise ValueError(
+                "Hostfile contains a bad entry: {line}, unable to proceed with launching"
+            )
 
     if len(resource_pool) == 0:
         logger.error(f"Bad hostfile text: {hostfile_lines}")

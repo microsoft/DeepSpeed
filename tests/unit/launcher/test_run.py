@@ -109,12 +109,17 @@ def test_num_plus_parser():
 
 
 def test_hostfile_good():
-    # good hostfile
+    # good hostfile w. empty lines and comment
     hostfile = """
     worker-1 slots=2
     worker-2 slots=2
+
     localhost slots=1
     123.23.12.10 slots=2
+
+    #worker-1 slots=3
+    # this is a comment
+
     """
     r = dsrun._parse_hostfile(hostfile.splitlines())
     assert "worker-1" in r
@@ -125,6 +130,7 @@ def test_hostfile_good():
     assert r["worker-2"] == 2
     assert r["localhost"] == 1
     assert r["123.23.12.10"] == 2
+    assert len(r) == 4
 
 
 def test_hostfiles_bad():
@@ -153,6 +159,17 @@ def test_hostfiles_bad():
 
     # empty
     hostfile = """
+    """
+    with pytest.raises(ValueError):
+        dsrun._parse_hostfile(hostfile.splitlines())
+
+    # mix of good/bad
+    hostfile = """
+    worker-1 slots=2
+    this is bad slots=1
+    worker-2 slots=4
+    missingslots
+
     """
     with pytest.raises(ValueError):
         dsrun._parse_hostfile(hostfile.splitlines())
