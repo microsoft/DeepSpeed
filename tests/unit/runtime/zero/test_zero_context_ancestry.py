@@ -1,9 +1,6 @@
-from types import SimpleNamespace
 import torch
-import pytest
 import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
-import deepspeed.comm as dist
 
 from utils import setup_serial_env
 from unit.common import DistributedTest

@@ -3,13 +3,9 @@ import torch
 import pytest
 import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
-import deepspeed.comm as dist
 
 from utils import setup_serial_env
 from unit.common import DistributedTest
-
-if not torch.cuda.is_available():
-    pytest.skip("Only supported on CUDA environments", allow_module_level=True)
 
 
 class DanglingBias(torch.nn.Linear):
