@@ -1,10 +1,5 @@
 name: Create Virtual Environment
 
-outputs:
-  venv-name:
-    description: "virtual environment name"
-    value: ${{ steps.create-env.outputs.venv-name }}
-
 runs:
   using: "composite"
   steps:
@@ -20,5 +15,21 @@ runs:
         pip install --upgrade pip
         python -m pip install -U virtualenv
         python -m venv unit-test-venv
-        echo "venv-name=unit-test-venv" >> $GITHUB_OUTPUT
+        source ./unit-test-venv/bin/activate
+        echo PATH=$PATH >> $GITHUB_ENV # Make it so venv is inherited for other steps
+      shell: bash
+    - id: print-env
+      run: |
+        echo "JobID: $AISC_NODE_INSTANCE_ID"
+        which python
+        python --version
+        if command -v nvidia-smi; then
+          nvidia-smi
+          which nvcc
+          nvcc --version
+        else
+          rocm-smi --showhw
+          which hipcc
+          hipcc --version
+        fi
       shell: bash

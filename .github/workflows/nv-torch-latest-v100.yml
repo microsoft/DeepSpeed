@@ -25,15 +25,8 @@ jobs:
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
 
-      - name: environment
+      - name: Install pytorch
         run: |
-          source ${{ steps.setup-venv.outputs.venv-name }}/bin/activate
-          echo "JobID: $AISC_NODE_INSTANCE_ID"
-          nvidia-smi
-          which python
-          python --version
-          which nvcc
-          nvcc --version
           pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu116
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
