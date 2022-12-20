@@ -3,10 +3,6 @@ import time
 import pytest
 import torch
 import deepspeed
-
-if not torch.cuda.is_available():
-    pytest.skip("Only supported on CUDA environments", allow_module_level=True)
-
 from transformers import pipeline
 from unit.common import DistributedTest
 

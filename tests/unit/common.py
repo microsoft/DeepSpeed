@@ -79,13 +79,9 @@ class DistributedExec(ABC):
         ...
 
     def __call__(self, request=None):
-        print(
-            f'inside __call__  {self.set_dist_env=} {self.init_distributed=} {self.backend=} {self.world_size=}'
-        )
         self._fixture_kwargs = self._get_fixture_kwargs(request, self.run)
         world_size = self.world_size
         if self.requires_cuda_env and not torch.cuda.is_available():
-            print(f'should skp because cuda not available {request.function.__name__=}')
             pytest.skip("only supported in CUDA environments.")
 
         if isinstance(world_size, int):
@@ -150,9 +146,6 @@ class DistributedExec(ABC):
 
     def _dist_init(self, local_rank, num_procs, skip_msg):
         """Initialize deepspeed.comm and execute the user function. """
-        print(
-            f'inside _dist_init_  {self.set_dist_env=} {self.init_distributed=} {self.backend=} {self.world_size=}'
-        )
         if self.set_dist_env:
             os.environ['MASTER_ADDR'] = '127.0.0.1'
             os.environ['MASTER_PORT'] = get_master_port()
@@ -307,22 +300,13 @@ class DistributedTest(DistributedExec):
         return fn
 
     def run(self, **fixture_kwargs):
-        print(
-            f'inside run2   {self.requires_cuda_env=}  {self.set_dist_env=} {self.init_distributed=} {self.backend=} {self.world_size=}'
-        )
         self._current_test(**fixture_kwargs)
 
     def __call__(self, request):
-        print(
-            f'inside __call__2  {self.requires_cuda_env=} {self.set_dist_env=} {self.init_distributed=} {self.backend=} {self.world_size=}'
-        )
         self._current_test = self._get_current_test_func(request)
         self._fixture_kwargs = self._get_fixture_kwargs(request, self._current_test)
 
         if self.requires_cuda_env and not torch.cuda.is_available():
-            print(
-                f'should skp because cuda not available {self._current_test=} {request.function.__name__=}'
-            )
             pytest.skip("only supported in CUDA environments.")
 
         # Catch world_size override pytest mark

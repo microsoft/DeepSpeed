@@ -11,9 +11,6 @@ pytestmark = pytest.mark.skipif(TORCH_MAJOR < 1
                                 or (TORCH_MAJOR == 1 and TORCH_MINOR < 3),
                                 reason='requires Pytorch version 1.3 or above')
 
-if not torch.cuda.is_available():
-    pytest.skip("Only supported on CUDA environments", allow_module_level=True)
-
 
 def within_range(val, target, tolerance):
     return abs(val - target) / target < tolerance

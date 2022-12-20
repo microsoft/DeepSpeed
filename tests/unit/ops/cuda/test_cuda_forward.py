@@ -10,9 +10,6 @@ from unit.modeling import BertLayerNorm, BertConfig, BertEncoder as BertEncoderP
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from unit.common import DistributedTest
 
-if not torch.cuda.is_available():
-    pytest.skip("Only supported on CUDA environments", allow_module_level=True)
-
 
 def check_equal(first, second, atol=1e-2, verbose=False):
     if verbose:
