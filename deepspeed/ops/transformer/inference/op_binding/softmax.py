@@ -5,8 +5,7 @@ from .base import BaseOp
 
 class SoftmaxOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig):
-        super(SoftmaxOp, self).__init__()
-        self.config = config
+        super(SoftmaxOp, self).__init__(config)
         if self.config.fp16:
             self.softmax_func = self.inference_cuda_module.softmax_fp16
         else:

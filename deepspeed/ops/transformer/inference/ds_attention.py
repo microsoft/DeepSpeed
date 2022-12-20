@@ -6,11 +6,7 @@ import math
 import torch
 import torch.nn as nn
 from deepspeed import comm as dist
-from .op_binding.linear import LinearOp
-from .op_binding.vector_matmul import VectorMatMulOp
-from .op_binding.softmax_context import SoftmaxContextOp
-from .op_binding.qkv_gemm import QKVGemmOp
-from .op_binding.softmax import SoftmaxOp
+from .op_binding import LinearOp, VectorMatMulOp, SoftmaxContextOp, QKVGemmOp, SoftmaxOp
 
 minus_inf = -10000.0
 
@@ -99,9 +95,11 @@ class DeepSpeedSelfAttention(nn.Module):
         return x.view(*new_x_layer_shape).contiguous()
 
     def _compute_attention(self, qkv_out, input_mask, layer_past, alibi):
+        if isinstance(qkv_out, list):
+            qkv_out = qkv_out[0]
+
         no_masking = input_mask is None
 
-        head_size = (qkv_out.shape[-1] // 3 // self.num_attention_heads_per_partition)
         if no_masking:
             input_mask = torch.empty(1)
 
@@ -276,26 +274,19 @@ class DeepSpeedSelfAttention(nn.Module):
             qkv_out = self.qkv_func(
                 input=input,
                 weight=self.attn_qkvw,
-                q_scale=self.attn_qkvw.scale,
                 bias=(self.attn_qkvb if self.attn_qkvb is not None else norm_b),
                 gamma=norm_w,
                 beta=norm_b,
                 add_bias=(self.attn_qkvb is not None),
-                num_layers=DeepSpeedSelfAttention.num_layers,
-                q_int8=self.config.q_int8)
+                num_layers=DeepSpeedSelfAttention.num_layers)
 
-        attn_out = self._compute_attention(
-            qkv_out[0] if isinstance(qkv_out,
-                                     list) else qkv_out,
-            input_mask,
-            layer_past,
-            alibi)
-        context_layer, key_layer, value_layer = attn_out
+        context_layer, key_layer, value_layer = self._compute_attention(
+            qkv_out=qkv_out,
+            input_mask=input_mask,
+            layer_past=layer_past,
+            alibi=alibi)
 
-        output = self.vector_matmul_func(input=context_layer,
-                                         weight=self.attn_ow,
-                                         q_scale=self.attn_ow.scale,
-                                         q_int8=self.config.q_int8)
+        output = self.vector_matmul_func(input=context_layer, weight=self.attn_ow)
 
         inp_norm = qkv_out[-1]
 

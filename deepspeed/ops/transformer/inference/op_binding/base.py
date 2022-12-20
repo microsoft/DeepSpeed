@@ -1,9 +1,11 @@
 import torch
 import deepspeed
+from ..config import DeepSpeedInferenceConfig
 
 
 class BaseOp(torch.nn.Module):
-    def __init__(self, builder="InferenceBuilder"):
+    def __init__(self, config: DeepSpeedInferenceConfig):
         super(BaseOp, self).__init__()
-        builder = getattr(deepspeed.ops.op_builder, builder)()
+        self.config = config
+        builder = deepspeed.ops.op_builder.InferenceBuilder()
         self.inference_cuda_module = builder.load()
