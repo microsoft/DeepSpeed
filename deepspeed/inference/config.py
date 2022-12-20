@@ -3,7 +3,7 @@ from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 from pydantic import Field
 from pydantic import validator
-from typing import Dict, Union, Iterable
+from typing import Dict, Union
 from enum import Enum
 
 
@@ -225,7 +225,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     """
 
     injection_policy: Dict[object,
-                           Union[Iterable,
+                           Union[tuple,
                                  str]] = Field(None,
                                                alias="injection_dict")
     """
