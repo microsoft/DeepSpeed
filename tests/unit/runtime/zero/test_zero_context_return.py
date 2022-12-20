@@ -5,12 +5,12 @@ import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 import deepspeed.comm as dist
 
-from utils import setup_serial_env 
+from utils import setup_serial_env
 from unit.common import DistributedTest
-
 
 if not torch.cuda.is_available():
     pytest.skip("Only supported on CUDA environments", allow_module_level=True)
+
 
 class DanglingBias(torch.nn.Linear):
     def forward(self, *inputs):
@@ -85,6 +85,7 @@ class DanglingExt(torch.nn.Module):
         assert len(self.container.dangler._external_params) == 0
         return out
 
+
 class ModelContainerVariableOutputType(ModelContainer):
     def __init__(self, dim=16, output_type=dict):
         super().__init__()
@@ -98,6 +99,7 @@ class ModelContainerVariableOutputType(ModelContainer):
             return {'loss': act1.sum()}
         if self.output_type is torch.tensor:
             return act1.sum()
+
 
 config = {
     "train_batch_size": 1,
@@ -118,8 +120,10 @@ config = {
     }
 }
 
+
 class TestReturnParam(DistributedTest):
-    world_size = 1 
+    world_size = 1
+
     def test_ext_param_return(self):
         setup_serial_env()
 
@@ -136,7 +140,6 @@ class TestReturnParam(DistributedTest):
             loss = engine(input)
             engine.backward(loss)
             engine.step()
-
 
     @pytest.mark.skip('WIP')
     def test_ext_param_returnobj(self):
@@ -159,9 +162,8 @@ class TestReturnParam(DistributedTest):
             engine.backward(loss)
             engine.step()
 
-
     @pytest.mark.parametrize('output_type', [torch.tensor, dict, None])
-    def test_stage_3_output_type(self,output_type):
+    def test_stage_3_output_type(self, output_type):
         setup_serial_env()
         print()
 

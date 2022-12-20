@@ -15,7 +15,6 @@ if not torch.cuda.is_available():
     pytest.skip("Only supported on CUDA environments", allow_module_level=True)
 
 
-
 # Test that no sub-class or super-class is missed
 class ConvX(torch.nn.Conv1d):
     def __init__(self, *args):
@@ -59,8 +58,8 @@ config = {
 
 class TestSerialContext(DistributedTest):
     world_size = 1
-    init_distributed = False 
-    set_dist_env = False 
+    init_distributed = False
+    set_dist_env = False
 
     def test_subclass_param(self):
         setup_serial_env()
@@ -85,8 +84,6 @@ class TestSerialContext(DistributedTest):
 
             y = torch.LongTensor([3, 3])
             assert y.dtype == torch.long
-
-
 
     def test_throughput_calculation(self):
         setup_serial_env()
@@ -155,7 +152,7 @@ class TestSerialContext(DistributedTest):
                                                     engine.tput_timer.start_step):
             engine.tput_timer.start()
             global_step = (engine.tput_timer.micro_step_count +
-                        1) % gradient_accumulation_steps == 0
+                           1) % gradient_accumulation_steps == 0
             engine.tput_timer.stop(global_step=global_step)
         assert engine.tput_timer.global_step_count == engine.tput_timer.start_step
         assert engine.tput_timer.total_elapsed_time == 0
@@ -167,15 +164,14 @@ class TestSerialContext(DistributedTest):
             total_duration = engine.tput_timer.total_elapsed_time
 
             global_step = (engine.tput_timer.micro_step_count +
-                        1) % gradient_accumulation_steps == 0
+                           1) % gradient_accumulation_steps == 0
             engine.tput_timer.stop(global_step=global_step)
             duration = engine.tput_timer.end_time - engine.tput_timer.start_time
             # step elapsed time is reset after gradient accumulation steps
             assert engine.tput_timer.step_elapsed_time == (
-                0 if engine.tput_timer.global_step_count != engine.tput_timer.start_step else
-                current_duration + duration)
+                0 if engine.tput_timer.global_step_count != engine.tput_timer.start_step
+                else current_duration + duration)
             assert engine.tput_timer.total_elapsed_time == total_duration + duration
-
 
     def test_ext_param_getattr(self):
         setup_serial_env()
@@ -212,7 +208,6 @@ class TestSerialContext(DistributedTest):
         engine.step()
 
 
-
 class TestScatterGather(DistributedTest):
     world_size = 2
 
@@ -230,7 +225,6 @@ class TestScatterGather(DistributedTest):
         with deepspeed.zero.GatheredParameters(l.weight):
             assert l.weight.ds_status == ZeroParamStatus.AVAILABLE
             assert l.weight.numel() == l.in_features * l.out_features
-
 
 
 class TestGatherUpdate(DistributedTest):
@@ -254,7 +248,3 @@ class TestGatherUpdate(DistributedTest):
         with deepspeed.zero.GatheredParameters(l.weight):
             # all ranks compare
             assert torch.equal(l.weight, torch.zeros_like(l.weight))
-
-
-
-

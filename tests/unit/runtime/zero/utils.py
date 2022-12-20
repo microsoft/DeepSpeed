@@ -1,6 +1,7 @@
 import os
 from unit.common import get_master_port
 
+
 def setup_serial_env():
     # Setup for a serial run
     os.environ['MASTER_ADDR'] = '127.0.0.1'

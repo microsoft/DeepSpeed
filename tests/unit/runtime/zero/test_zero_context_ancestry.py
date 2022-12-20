@@ -5,7 +5,7 @@ import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 import deepspeed.comm as dist
 
-from utils import setup_serial_env 
+from utils import setup_serial_env
 from unit.common import DistributedTest
 
 config = {
@@ -26,6 +26,7 @@ config = {
         "stage3_param_persistence_threshold": 1,
     }
 }
+
 
 # test that sub-classes get params that aren't prematurely partitioned and thus requiring gathering
 # fixed by https://github.com/microsoft/DeepSpeed/pull/1202
@@ -60,8 +61,8 @@ class Son(Pa):
 
 class TestSerialParamInit(DistributedTest):
     world_size = 1
-    init_distributed = False 
-    set_dist_env = False 
+    init_distributed = False
+    set_dist_env = False
 
     def test_subclass_param_init(self):
         setup_serial_env()

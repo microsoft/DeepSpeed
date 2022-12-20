@@ -21,6 +21,7 @@ def within_range(val, target, tolerance):
 
 TOLERANCE = 0.05
 
+
 class LeNet5(torch.nn.Module):
     def __init__(self, n_classes):
         super(LeNet5, self).__init__()
@@ -106,7 +107,6 @@ class TestFlopsProfiler(DistributedTest):
             if n == 3: break
         assert within_range(model.flops_profiler.flops, 200, tolerance=TOLERANCE)
         assert model.flops_profiler.params == 110
-
 
     def test_flops_profiler_in_inference(self):
         mod = LeNet5(10)
