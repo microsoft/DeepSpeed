@@ -48,7 +48,7 @@ jobs:
         run: |
           git clone --branch mrwyattii/add-unit-test https://github.com/microsoft/Megatron-DeepSpeed.git
           cd Megatron-DeepSpeed
-          pip uninstall megatron-lm
+          pip uninstall --yes megatron-lm
           pip install .
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
