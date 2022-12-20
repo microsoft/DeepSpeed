@@ -278,8 +278,8 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     def injection_policy_validator(cls, field_value, values):
         if field_value is not None:
             assert not values["replace_with_kernel_inject"], "Cannot set custom injection policy and replace_with_kernel_inject"
-        for key in field_value.keys():
-            assert issubclass(key, torch.nn.Module), "Injection policy dict keys must be torch.nn.Module types"
+            for key in field_value.keys():
+                assert issubclass(key, torch.nn.Module), "Injection policy dict keys must be torch.nn.Module types"
         return field_value
 
     class Config:
