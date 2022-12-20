@@ -16,6 +16,7 @@ runs:
         python -m pip install -U virtualenv
         python -m venv unit-test-venv
         source ./unit-test-venv/bin/activate
+        pip install --upgrade pip
         echo PATH=$PATH >> $GITHUB_ENV # Make it so venv is inherited for other steps
       shell: bash
     - id: print-env
