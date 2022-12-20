@@ -21,14 +21,16 @@ runs:
       shell: bash
     - id: print-env
       run: |
-        echo "JobID: $AISC_NODE_INSTANCE_ID"
         which python
         python --version
+        if [[ -z "${AISC_NODE_INSTANCE_ID}" ]]; then
+          echo "JobID: ${AISC_NODE_INSTANCE_ID}"
+        fi
         if command -v nvidia-smi; then
           nvidia-smi
           which nvcc
           nvcc --version
-        else
+        elif command -c rocm-smi; then
           rocm-smi --showhw
           which hipcc
           hipcc --version
