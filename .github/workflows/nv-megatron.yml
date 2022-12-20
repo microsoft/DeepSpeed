@@ -39,6 +39,7 @@ jobs:
       - name: Install apex
         run: |
           pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" git+https://github.com/NVIDIA/apex.git
+
       - name: Python environment
         run: |
           pip list
