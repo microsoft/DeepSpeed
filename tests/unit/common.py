@@ -63,7 +63,6 @@ def set_cuda_visibile():
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(dev_id_list)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="only supported in CUDA")
 class DistributedExec(ABC):
     """
     Base class for distributed execution of functions/methods. Contains common
@@ -73,14 +72,22 @@ class DistributedExec(ABC):
     backend = "nccl"
     init_distributed = True
     set_dist_env = True
+    requires_cuda_env = True
 
     @abstractmethod
     def run(self):
         ...
 
     def __call__(self, request=None):
+        print(
+            f'inside __call__  {self.set_dist_env=} {self.init_distributed=} {self.backend=} {self.world_size=}'
+        )
         self._fixture_kwargs = self._get_fixture_kwargs(request, self.run)
         world_size = self.world_size
+        if self.requires_cuda_env and not torch.cuda.is_available():
+            print(f'should skp because cuda not available {request.function.__name__=}')
+            pytest.skip("only supported in CUDA environments.")
+
         if isinstance(world_size, int):
             world_size = [world_size]
         for procs in world_size:
@@ -143,6 +150,9 @@ class DistributedExec(ABC):
 
     def _dist_init(self, local_rank, num_procs, skip_msg):
         """Initialize deepspeed.comm and execute the user function. """
+        print(
+            f'inside _dist_init_  {self.set_dist_env=} {self.init_distributed=} {self.backend=} {self.world_size=}'
+        )
         if self.set_dist_env:
             os.environ['MASTER_ADDR'] = '127.0.0.1'
             os.environ['MASTER_PORT'] = get_master_port()
@@ -154,7 +164,8 @@ class DistributedExec(ABC):
         # turn off NCCL logging if set
         os.environ.pop('NCCL_DEBUG', None)
 
-        set_cuda_visibile()
+        if torch.cuda.is_available():
+            set_cuda_visibile()
 
         if self.init_distributed:
             deepspeed.init_distributed(dist_backend=self.backend)
@@ -296,11 +307,23 @@ class DistributedTest(DistributedExec):
         return fn
 
     def run(self, **fixture_kwargs):
+        print(
+            f'inside run2   {self.requires_cuda_env=}  {self.set_dist_env=} {self.init_distributed=} {self.backend=} {self.world_size=}'
+        )
         self._current_test(**fixture_kwargs)
 
     def __call__(self, request):
+        print(
+            f'inside __call__2  {self.requires_cuda_env=} {self.set_dist_env=} {self.init_distributed=} {self.backend=} {self.world_size=}'
+        )
         self._current_test = self._get_current_test_func(request)
         self._fixture_kwargs = self._get_fixture_kwargs(request, self._current_test)
+
+        if self.requires_cuda_env and not torch.cuda.is_available():
+            print(
+                f'should skp because cuda not available {self._current_test=} {request.function.__name__=}'
+            )
+            pytest.skip("only supported in CUDA environments.")
 
         # Catch world_size override pytest mark
         for mark in getattr(request.function, "pytestmark", []):
