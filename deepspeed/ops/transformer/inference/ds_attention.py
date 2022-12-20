@@ -88,13 +88,7 @@ class DeepSpeedSelfAttention(nn.Module):
             return x_1.reshape(x.shape)
         return x_1.contiguous()
 
-    def _transpose_for_context(self, x):
-        x = x.permute(0, 2, 1, 3).contiguous()
-        new_x_layer_shape = x.size()[:-2] + \
-                                    (self.hidden_size_per_partition,)
-        return x.view(*new_x_layer_shape).contiguous()
-
-    def _compute_attention(self, qkv_out, input_mask, layer_past, alibi):
+    def compute_attention(self, qkv_out, input_mask, layer_past, alibi):
         if isinstance(qkv_out, list):
             qkv_out = qkv_out[0]
 
@@ -103,35 +97,84 @@ class DeepSpeedSelfAttention(nn.Module):
         if no_masking:
             input_mask = torch.empty(1)
 
-        # Note: This modification is added for the BLOOM-176B model and will be removed later!
-        if self.config.bigscience_bloom:
-            context_layer, presents = self._backup_attention(qkv_out, layer_past, alibi, input_mask, self.norm_factor)
-            return context_layer, presents[0], presents[1]  #key_layer, value_layer
+        if alibi is not None:
+            batch_heads = qkv_out.shape[0] * self.num_attention_heads_per_partition
+            offset = dist.get_rank() * batch_heads if dist.is_initialized() else 0
+            sliced_alibi = alibi[offset:batch_heads + offset, :, :]
         else:
-            if alibi is not None:
-                batch_heads = qkv_out.shape[0] * self.num_attention_heads_per_partition
-                offset = dist.get_rank() * batch_heads if dist.is_initialized() else 0
-                sliced_alibi = alibi[offset:batch_heads + offset, :, :]
-            else:
-                sliced_alibi = torch.empty(1)
+            sliced_alibi = torch.empty(1)
 
-            attn_key_value = self.score_context_func(
-                query_key_value=qkv_out,
-                attn_mask=((1 - input_mask).to(qkv_out.dype) *
-                           minus_inf) if input_mask.dtype == torch.int64 else input_mask,
-                heads=self.num_attention_heads_per_partition,
-                norm_factor=(1 /
-                             self.norm_factor if self.config.scale_attention else 1.0),
-                no_masking=no_masking,
-                layer_id=self.config.layer_id,
-                num_layers=DeepSpeedSelfAttention.num_layers,
-                alibi=sliced_alibi)
+        attn_key_value = self.score_context_func(
+            query_key_value=qkv_out,
+            attn_mask=((1 - input_mask).to(qkv_out.dype) *
+                       minus_inf) if input_mask.dtype == torch.int64 else input_mask,
+            heads=self.num_attention_heads_per_partition,
+            norm_factor=(1 / self.norm_factor if self.config.scale_attention else 1.0),
+            no_masking=no_masking,
+            layer_id=self.config.layer_id,
+            num_layers=DeepSpeedSelfAttention.num_layers,
+            alibi=sliced_alibi)
 
-            context_layer, key_layer, value_layer = attn_key_value
-            return context_layer, key_layer, value_layer
+        context_layer, key_layer, value_layer = attn_key_value
+        return context_layer, key_layer, value_layer
 
+    def forward(self,
+                input,
+                input_mask,
+                head_mask=None,
+                layer_past=None,
+                get_present=False,
+                encoder_hidden_states=None,
+                encoder_attention_mask=None,
+                output_attentions=False,
+                norm_w=None,
+                norm_b=None,
+                alibi=None):
+
+        if not self.config.pre_layer_norm:
+            qkv_out = self.linear_func(input=input,
+                                       weight=self.attn_qkvw,
+                                       bias=self.attn_qkvb,
+                                       add_bias=self.attn_qkvb is not None,
+                                       do_flash_attn=False,
+                                       num_heads=self.num_attention_heads_per_partition)
+        else:
+            qkv_out = self.qkv_func(
+                input=input,
+                weight=self.attn_qkvw,
+                bias=(self.attn_qkvb if self.attn_qkvb is not None else norm_b),
+                gamma=norm_w,
+                beta=norm_b,
+                add_bias=(self.attn_qkvb is not None),
+                num_layers=DeepSpeedSelfAttention.num_layers)
+
+        context_layer, key_layer, value_layer = self.compute_attention(
+            qkv_out=qkv_out,
+            input_mask=input_mask,
+            layer_past=layer_past,
+            alibi=alibi)
+
+        output = self.vector_matmul_func(input=context_layer, weight=self.attn_ow)
+
+        inp_norm = qkv_out[-1]
+
+        if self.config.mlp_after_attn and self.mp_group is not None and dist.get_world_size(
+                group=self.mp_group) > 1:
+            dist.all_reduce(output, group=self.mp_group)
+
+        return (output, key_layer, value_layer, context_layer, inp_norm)
+
+
+class BloomSelfAttention(DeepSpeedSelfAttention):
     ########### This part is taken/modified form the HF modeling_bloom.py ################
     # Reference: https://github.com/huggingface/transformers/blob/main/src/transformers/models/bloom/modeling_bloom.py
+
+    def _transpose_for_context(self, x):
+        x = x.permute(0, 2, 1, 3).contiguous()
+        new_x_layer_shape = x.size()[:-2] + \
+                                    (self.hidden_size_per_partition,)
+        return x.view(*new_x_layer_shape).contiguous()
+
     def _split_tensor_along_last_dim(self,
                                      tensor,
                                      num_partitions,
@@ -160,12 +203,16 @@ class DeepSpeedSelfAttention(nn.Module):
 
         return tensor_list
 
-    def _backup_attention(self,
-                          mixed_x_layer,
-                          layer_past,
-                          alibi,
-                          input_mask,
-                          norm_factor):
+    def compute_attention(self, qkv_out, input_mask, layer_past, alibi):
+        if isinstance(qkv_out, list):
+            qkv_out = qkv_out[0]
+
+        no_masking = input_mask is None
+
+        if no_masking:
+            input_mask = torch.empty(1)
+
+        mixed_x_layer = qkv_out
         alibi = alibi.to(torch.cuda.current_device())
         head_dim = self.hidden_size_per_partition // self.num_attention_heads_per_partition
         new_tensor_shape = mixed_x_layer.size()[:-1] + (
@@ -173,10 +220,7 @@ class DeepSpeedSelfAttention(nn.Module):
             3 * head_dim)
         mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
 
-        (query_layer,
-         key_layer,
-         value_layer) = self._split_tensor_along_last_dim(mixed_x_layer,
-                                                          3)
+        query_layer, key_layer, value_layer = self._split_tensor_along_last_dim(mixed_x_layer, 3)
 
         # [batch_size, head_dim, q_length, k_length]
         output_size = (query_layer.size(0),
@@ -228,7 +272,7 @@ class DeepSpeedSelfAttention(nn.Module):
             local_attention=False,
             window_size=1,
             async_op=False,
-            layer_scale=1 / (norm_factor * norm_factor),
+            layer_scale=1 / (self.norm_factor * self.norm_factor),
             head_offset=offset)
 
         # change view [batch_size x num_heads, q_length, k_length]
@@ -245,53 +289,9 @@ class DeepSpeedSelfAttention(nn.Module):
             context_layer.shape[-1])
 
         context_layer = self._transpose_for_context(context_layer)
+        key_layer = presents[0]
+        value_layer = presents[1]
 
-        return context_layer, presents
+        return context_layer, key_layer, value_layer
 
     ###################### End of HF modeling_bloom addition ########################
-
-    def forward(self,
-                input,
-                input_mask,
-                head_mask=None,
-                layer_past=None,
-                get_present=False,
-                encoder_hidden_states=None,
-                encoder_attention_mask=None,
-                output_attentions=False,
-                norm_w=None,
-                norm_b=None,
-                alibi=None):
-
-        if not self.config.pre_layer_norm:
-            qkv_out = self.linear_func(input=input,
-                                       weight=self.attn_qkvw,
-                                       bias=self.attn_qkvb,
-                                       add_bias=self.attn_qkvb is not None,
-                                       do_flash_attn=False,
-                                       num_heads=self.num_attention_heads_per_partition)
-        else:
-            qkv_out = self.qkv_func(
-                input=input,
-                weight=self.attn_qkvw,
-                bias=(self.attn_qkvb if self.attn_qkvb is not None else norm_b),
-                gamma=norm_w,
-                beta=norm_b,
-                add_bias=(self.attn_qkvb is not None),
-                num_layers=DeepSpeedSelfAttention.num_layers)
-
-        context_layer, key_layer, value_layer = self._compute_attention(
-            qkv_out=qkv_out,
-            input_mask=input_mask,
-            layer_past=layer_past,
-            alibi=alibi)
-
-        output = self.vector_matmul_func(input=context_layer, weight=self.attn_ow)
-
-        inp_norm = qkv_out[-1]
-
-        if self.config.mlp_after_attn and self.mp_group is not None and dist.get_world_size(
-                group=self.mp_group) > 1:
-            dist.all_reduce(output, group=self.mp_group)
-
-        return (output, key_layer, value_layer, context_layer, inp_norm)
