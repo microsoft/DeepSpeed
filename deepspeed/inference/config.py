@@ -3,7 +3,7 @@ from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 from pydantic import Field
 from pydantic import validator
-from typing import Dict, Union
+from typing import Dict, Union, Iterable
 from enum import Enum
 
 
@@ -224,7 +224,10 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     the automatic replacement behavior.
     """
 
-    injection_policy: Dict = Field(None, alias="injection_dict")
+    injection_policy: Dict[object,
+                           Union[Iterable,
+                                 str]] = Field(None,
+                                               alias="injection_dict")
     """
     Dictionary mapping a client nn.Module to its corresponding injection
     policy. e.g., `{BertLayer : deepspeed.inference.HFBertLayerPolicy}`
@@ -269,6 +272,14 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     def moe_backward_compat(cls, field_value, values):
         if isinstance(field_value, bool):
             return DeepSpeedMoEConfig(moe=field_value)
+        return field_value
+
+    @validator("injection_policy")
+    def injection_policy_validator(cls, field_value, values):
+        if field_value is not None:
+            assert not values["replace_with_kernel_inject"], "Cannot set custom injection policy and replace_with_kernel_inject"
+        for key in field_value.keys():
+            assert issubclass(key, torch.nn.Module), "Injection policy dict keys must be torch.nn.Module types"
         return field_value
 
     class Config:
