@@ -1,8 +1,6 @@
 from types import SimpleNamespace
 
 import torch
-import pytest
-
 import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus, partitioned_param_data_shape
 import deepspeed.comm as dist
@@ -10,9 +8,6 @@ import deepspeed.comm as dist
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel
 from utils import setup_serial_env
-
-if not torch.cuda.is_available():
-    pytest.skip("Only supported on CUDA environments", allow_module_level=True)
 
 
 # Test that no sub-class or super-class is missed

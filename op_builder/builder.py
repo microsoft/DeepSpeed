@@ -41,8 +41,6 @@ def installed_cuda_version(name=""):
         return 0, 0
     import torch.utils.cpp_extension
     cuda_home = torch.utils.cpp_extension.CUDA_HOME
-    if cuda_home is None and name == "DS_BUILD_CPU_ADAM":
-        return 0, 0
     assert cuda_home is not None, "CUDA_HOME does not exist, unable to compile CUDA op(s)"
     # Ensure there is not a cuda version mismatch between torch and nvcc compiler
     output = subprocess.check_output([cuda_home + "/bin/nvcc",
