@@ -295,7 +295,8 @@ class DanglingExt(torch.nn.Module):
         assert len(self._external_params) == 0
         assert len(self.container._external_params) == 1
         assert len(self.container.dangler._external_params) == 0
-        assert id(self.container.dangler.d_linear.bias) in self.container._external_params.keys()
+        assert id(self.container.dangler.d_linear.bias
+                  ) in self.container._external_params.keys()
         return out
 
 

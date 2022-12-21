@@ -366,15 +366,19 @@ class DeepSpeedZeRoOffload(object):
                             outputs.append(val)
                     output = outputs
 
-            
-            for item in filter(lambda item: is_zero_param(item) or hasattr(item, 'ds_param_alias'), output):
+            for item in filter(
+                    lambda item: is_zero_param(item) or hasattr(item,
+                                                                'ds_param_alias'),
+                    output):
                 key = id(item) if hasattr(item, 'ds_id') else id(item.ds_param_alias)
-                actual_external_param = item if hasattr(item, 'ds_id') else item.ds_param_alias
+                actual_external_param = item if hasattr(item,
+                                                        'ds_id') else item.ds_param_alias
 
                 if not any(key in m._external_params for m in FWD_MODULE_STACK):
                     actual_external_param.is_external_param = True
                     module_to_register = FWD_MODULE_STACK[-1]
-                    register_external_parameter(module_to_register, actual_external_param)
+                    register_external_parameter(module_to_register,
+                                                actual_external_param)
                     print_rank_0(
                         f'Registering dangling parameter for module {module_to_register.__class__.__name__}, ds_id = {actual_external_param.ds_id}.',
                         force=False)
