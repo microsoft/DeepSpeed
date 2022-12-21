@@ -75,19 +75,6 @@ class DeepSpeedSelfAttention(nn.Module):
         self.vector_matmul_func = VectorMatMulOp(config)
         self.softmax_func = SoftmaxOp(config)
 
-    def _transpose_for_scores(self, x, key=False, reshape=False):
-        attention_head_size = x.shape[-1] // self.num_attention_heads_per_partition
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads_per_partition,
-                                       attention_head_size)
-        x_1 = x.view(*new_x_shape)
-        if key:
-            x_1 = x_1.permute(0, 2, 3, 1)
-        else:
-            x_1 = x_1.permute(0, 2, 1, 3)
-        if reshape:
-            return x_1.reshape(x.shape)
-        return x_1.contiguous()
-
     def compute_attention(self, qkv_out, input_mask, layer_past, alibi):
         if isinstance(qkv_out, list):
             qkv_out = qkv_out[0]
