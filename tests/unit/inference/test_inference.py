@@ -402,14 +402,17 @@ class TestInjectionPolicy(DistributedTest):
 @pytest.mark.parametrize(
     "model_w_task, injection_policy",
     [
-        (("Salesforce/codegen-2B-mono",
+        ((#"Salesforce/codegen-2B-mono",
+          "EleutherAI/gpt-j-6B",
           "text-generation"),
-        ),
+         ),
     ],
-    ids=["codegen",
-        ],
+    ids=[
+        #"codegen",
+        "gptj",
+    ],
 )
-@pytest.mark.parametrize("dtype", [torch.float], ids=["fp32"])
+@pytest.mark.parametrize("dtype", [torch.float16], ids=["fp16"])
 @pytest.mark.parametrize("enable_cuda_graph", [False], ids=["noCG"])
 class TestAutoTensorParallelism(DistributedTest):
     world_size = [1, 2]

@@ -601,7 +601,7 @@ at::Tensor ds_bias_add(at::Tensor& input, at::Tensor& bias)
 {
     auto size = input.sizes().size();
     int bsz = size < 3 ? input.size(0) : input.size(0) * input.size(1);
-    int hidden_size = input.size(size-1);
+    int hidden_size = input.size(size - 1);
 
     launch_bias_add((T*)input.data_ptr(),
                     (T*)bias.data_ptr(),
@@ -1214,8 +1214,9 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
     int bsz = size < 3 ? input.size(0) : input.size(0) * input.size(1);
 
     T* workspace = (T*)Context::Instance().GetWorkSpace();
-    auto output = size < 3 ? at::from_blob(workspace, {input.size(0), out_size}, options) : 
-                             at::from_blob(workspace, {input.size(0), input.size(1), out_size}, options) ;
+    auto output = size < 3
+                      ? at::from_blob(workspace, {input.size(0), out_size}, options)
+                      : at::from_blob(workspace, {input.size(0), input.size(1), out_size}, options);
     if (q_int8) {
         quantized_gemm<T>(output.data_ptr(),
                           (T*)input.data_ptr(),
@@ -1234,7 +1235,7 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
                        CUBLAS_OP_N,
                        weight.size(1),
                        bsz,
-                       input.size(size-1),
+                       input.size(size - 1),
                        &alpha,
                        &gemm_beta,
                        (T*)weight.data_ptr(),
