@@ -64,12 +64,12 @@ class CommsLogger:
         self.enabled = COMMS_LOGGER_ENABLED_DEFAULT
 
     def configure(self, comms_config):
-        self.enabled = comms_config.comms_logger_enabled
+        self.enabled = comms_config.enabled
         if self.enabled:
-            self.verbose = comms_config.comms_logger.verbose
-            self.debug = comms_config.comms_logger.debug
-            self.prof_ops = comms_config.comms_logger.prof_ops
-            self.prof_all = comms_config.comms_logger.prof_all
+            self.verbose = comms_config.verbose
+            self.debug = comms_config.debug
+            self.prof_ops = comms_config.prof_ops
+            self.prof_all = comms_config.prof_all
 
     # There are three settings for the op profiler:
     # - Global profiling (profile all comms)

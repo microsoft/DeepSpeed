@@ -3,29 +3,16 @@ Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
 
-from pydantic import BaseModel
-from .constants import *
+from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 
-class CommsConfig(BaseModel):
-    class Config:
-        validate_all = True
-        validate_assignment = True
-        use_enum_values = True
-        extra = 'forbid'
+def get_comms_config(param_dict):
+    return DeepSpeedCommsConfig(**param_dict.get("comms_logger", {}))
 
 
-class CommsLoggerConfig(CommsConfig):
-    enabled: bool = COMMS_LOGGER_ENABLED_DEFAULT
-    prof_all: bool = COMMS_LOGGER_PROF_ALL_DEFAULT
-    prof_ops: list = COMMS_LOGGER_PROF_OPS_DEFAULT
-    verbose: bool = COMMS_LOGGER_VERBOSE_DEFAULT
-    debug: bool = COMMS_LOGGER_DEBUG_DEFAULT
-
-
-class DeepSpeedCommsConfig:
-    def __init__(self, ds_config):
-        self.comms_logger_enabled = 'comms_logger' in ds_config
-
-        if self.comms_logger_enabled:
-            self.comms_logger = CommsLoggerConfig(**ds_config['comms_logger'])
+class DeepSpeedCommsConfig(DeepSpeedConfigModel):
+    enabled: bool = False
+    prof_all: bool = True
+    prof_ops: list = []
+    verbose: bool = False
+    debug: bool = False
