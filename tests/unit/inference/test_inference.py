@@ -402,10 +402,11 @@ class TestInjectionPolicy(DistributedTest):
 @pytest.mark.parametrize(
     "model_w_task, injection_policy",
     [
-        ((#"Salesforce/codegen-2B-mono",
-          "EleutherAI/gpt-j-6B",
-          "text-generation"),
-         ),
+        (
+            (  #"Salesforce/codegen-2B-mono",
+                "EleutherAI/gpt-j-6B",
+                "text-generation"),
+        ),
     ],
     ids=[
         #"codegen",
