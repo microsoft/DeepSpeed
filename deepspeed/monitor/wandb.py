@@ -10,10 +10,10 @@ class WandbMonitor(Monitor):
         check_wandb_availability()
         import wandb
 
-        self.enabled = monitor_config.wandb_config.enabled
-        self.group = monitor_config.wandb_config.group
-        self.team = monitor_config.wandb_config.team
-        self.project = monitor_config.wandb_config.project
+        self.enabled = monitor_config.wandb.enabled
+        self.group = monitor_config.wandb.group
+        self.team = monitor_config.wandb.team
+        self.project = monitor_config.wandb.project
 
         if self.enabled and dist.get_rank() == 0:
             wandb.init(project=self.project, group=self.group, entity=self.team)
