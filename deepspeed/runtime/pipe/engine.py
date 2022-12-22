@@ -1372,6 +1372,9 @@ class PipelineEngine(DeepSpeedEngine):
                         f'{self.__class__.__name__} does not understand instruction {repr(cmd)}'
                     )
 
+                if type(cmd) not in [schedule.LoadMicroBatch, schedule.ForwardPass]:
+                    continue
+
                 # Equivalent to: self._exec_forward_pass(buffer_id=0)
                 self._exec_instr = MethodType(self._INSTRUCTION_MAP[type(cmd)], self)
                 self._exec_instr(**cmd.kwargs)
