@@ -48,14 +48,11 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
 
     elif isinstance(outputs, torch.Tensor):
         # this also applies to torch.Tensor's subclasses like torch.nn.parameter.Parameter
-        param = None
-        if is_zero_param(outputs):
-            param = outputs
         touched_outputs = functional.apply(module, backward_function, outputs)
 
-        #using the temp to pass though the id of the original zero param
-        if param is not None:
-            touched_outputs.ds_param_alias = param
+        # restore zero param attributes if those get stripped by `backward_function`
+        if not is_zero_param(touched_outputs) and is_zero_param(outputs):
+            touched_outputs.ds_param_alias = outputs
         return touched_outputs
     else:
         if not is_builtin_type(outputs):
