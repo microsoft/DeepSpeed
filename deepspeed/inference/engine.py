@@ -125,6 +125,35 @@ class InferenceEngine(Module):
                 self._apply_injection_policy(config, client_module)
         elif config.replace_method == 'auto':
             self._apply_injection_policy(config)
+        else:
+
+            def tp_parser(model):
+                policy_list = []
+                gem_list = []
+                for child in model.children():
+                    if isinstance(child, nn.ModuleList):
+                        
+                        for module in child.children():
+                            #print((module._modules.keys()))
+                            for key, submodule in module._modules.items():
+                                gem_list = gem_list + [key]
+                                if isinstance(submodule, nn.LayerNorm):
+                                    print("layernorm: ", key)
+                            policy_list = policy_list + [child, gem_list]
+                            print(policy_list)
+                            return module
+                    else:
+                        child = tp_parser(child)
+
+            #parse model for injection policy
+            parser_dict = tp_parser(model)
+            for client_module, injection_policy in parser_dict.items():
+                # construct the tuple and pass that instead of a string or dict.
+                if isinstance(injection_policy, str):
+                    config.injection_policy_tuple = (injection_policy, )
+                else:
+                    config.injection_policy_tuple = injection_policy
+                self._apply_injection_policy(config, client_module)
 
         device = torch.cuda.current_device()
         self.module.to(device)
