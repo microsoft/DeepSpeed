@@ -80,7 +80,6 @@ class TestCSVMonitor(DistributedTest):
         }
         ds_config = DeepSpeedConfig(config_dict)
         csv_monitor = csvMonitor(ds_config.monitor_config)
-        print("VAL", csv_monitor.enabled)
         assert csv_monitor.enabled == True
         assert csv_monitor.output_path == "test_output/ds_logs/"
         assert csv_monitor.job_name == "test"
