@@ -12,7 +12,7 @@ def get_monitor_config(param_dict):
                             {})
         for key in ("tensorboard",
                     "wandb",
-                    "csv")
+                    "csv_monitor")
     }
     return DeepSpeedMonitorConfig(**monitor_dict)
 
