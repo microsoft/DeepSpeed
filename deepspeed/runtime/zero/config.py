@@ -265,6 +265,10 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     between optimizer steps) or GPU count (increased parallelism).
     """
 
+    mics_shard_size: int = Field(-1, new_param="mics_shard_size")
+
+    mics_hierarchical_params_gather: bool = False
+
     # Validators
     @validator("overlap_comm")
     def overlap_comm_valid(cls, field_value, values):
