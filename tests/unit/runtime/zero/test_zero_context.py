@@ -265,6 +265,9 @@ class DanglingAttention(torch.nn.Linear):
         else:
 
             out, bias = self.d_linear(out)
+            assert hasattr(bias, 'ds_status') or hasattr(bias, 'ds_param_alias')
+            z3_bias = bias if hasattr(bias, 'ds_status') else bias.ds_param_alias
+            assert z3_bias.ds_status == ZeroParamStatus.AVAILABLE
             return out, bias
 
 
@@ -295,6 +298,7 @@ class DanglingExt(torch.nn.Module):
         assert len(self._external_params) == 0
         assert len(self.container._external_params) == 1
         assert len(self.container.dangler._external_params) == 0
+        # Ensure we have registered the original unmodified bias parameter as an ext param
         assert id(self.container.dangler.d_linear.bias
                   ) in self.container._external_params.keys()
         return out
@@ -326,7 +330,6 @@ def test_ext_param_returnobj():
     net = ModelContainer(return_obj=True)
 
     args = SimpleNamespace(local_rank=0)
-
     engine, optim, _, _ = deepspeed.initialize(args=args,
                                                model=net,
                                                model_parameters=net.parameters(),
