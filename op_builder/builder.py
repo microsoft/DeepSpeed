@@ -709,7 +709,7 @@ class CUDAOpBuilder(OpBuilder):
 class TorchCPUOpBuilder(CUDAOpBuilder):
     def extra_ldflags(self):
         if self.build_for_cpu:
-            return []
+            return ['-fopenmp']
 
         if not self.is_rocm_pytorch():
             return ['-lcurand']
