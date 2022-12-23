@@ -126,17 +126,16 @@ class InferenceEngine(Module):
         elif config.replace_method == 'auto':
             self._apply_injection_policy(config)
         else:
-
+            # Auto Tensor Parallelism
             def in_module_list(module, module_list):
                 if module_list is not None:
                     for item in module_list:
-                        if type(item).__name__ == type(module).__name__:                
-                            return True 
+                        if type(item).__name__ == type(module).__name__:
+                            return True
                 return False
 
-
             def get_module_list(model):
-                mlist = [] 
+                mlist = []
                 for child in model.children():
                     if isinstance(child, nn.ModuleList):
                         for module in child.children():
@@ -148,36 +147,36 @@ class InferenceEngine(Module):
                         mlist = mlist + get_module_list(child)
                 return mlist
 
-
             def tp_parser(model):
                 policy_list = []
                 module_list = []
                 child_layer_list = []
                 parent_layer_list = []
                 gem_list = []
-                
+
                 module_list = get_module_list(model)
-                for module in module_list:    
+                for module in module_list:
                     for key, submodule in module._modules.items():
                         if isinstance(submodule, nn.Linear):
-                            parent_layer_list = parent_layer_list + ["."+key]
+                            parent_layer_list = parent_layer_list + ["." + key]
                         else:
                             for name, layer in submodule._modules.items():
                                 if isinstance(layer, nn.Linear):
-                                    child_layer_list = child_layer_list + [key+"."+name]
+                                    child_layer_list = child_layer_list + [
+                                        key + "." + name
+                                    ]
                             if child_layer_list != []:
                                 gem_list = gem_list + [child_layer_list[-1]]
                                 child_layer_list = []
                     if parent_layer_list != []:
                         gem_list = gem_list + [parent_layer_list[-1]]
                         parent_layer_list = []
-                    #policy_list = policy_list + [type(module).__name__, gem_list]
-                    policy_list.append(tuple([module, gem_list]))
+                    policy_list.append(tuple([type(module), gem_list]))
                     return policy_list
 
             #parse model for injection policy
             parser_dict = tp_parser(model)
-            for client_module, injection_policy in parser_dict.items():
+            for client_module, injection_policy in parser_dict:
                 # construct the tuple and pass that instead of a string or dict.
                 if isinstance(injection_policy, str):
                     config.injection_policy_tuple = (injection_policy, )
