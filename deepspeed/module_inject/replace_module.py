@@ -451,7 +451,9 @@ def replace_transformer_layer(orig_layer_impl,
                     training_mp_size=config.training_mp_size,
                     bigscience_bloom=bigscience_bloom,
                     max_out_tokens=config.max_out_tokens,
-                    scale_attn_by_inverse_layer_idx=scale_attn_by_inverse_layer_idx)
+                    scale_attn_by_inverse_layer_idx=scale_attn_by_inverse_layer_idx,
+                    use_mup=policy_cls.use_mup if hasattr(policy_cls,
+                                                          'use_mup') else False)
                 global transformer_config_g
                 transformer_config_g = transformer_config
 

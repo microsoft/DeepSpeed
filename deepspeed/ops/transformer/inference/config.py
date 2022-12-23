@@ -65,6 +65,8 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  training_mp_size=1,
                  bigscience_bloom=False,
                  max_out_tokens=1024,
+                 enable_qkv_quantization=False,
+                 use_mup=False,
                  scale_attn_by_inverse_layer_idx=False):
         super(DeepSpeedInferenceConfig,
               self).__init__(
@@ -94,6 +96,8 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.bigscience_bloom = bigscience_bloom
         self.max_out_tokens = max_out_tokens
         self.scale_attn_by_inverse_layer_idx = scale_attn_by_inverse_layer_idx
+        self.enable_qkv_quantization = enable_qkv_quantization
+        self.use_mup = use_mup
 
     @classmethod
     def from_dict(cls, json_object):
