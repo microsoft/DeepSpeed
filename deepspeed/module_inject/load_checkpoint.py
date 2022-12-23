@@ -36,9 +36,9 @@ def load_model_with_checkpoint(r_module,
         else:
             if hasattr(module, 'weight'):
                 module.weight = mp_replace.copy(module.weight.data,
-                                                sd[0][prefix + 'weight'])
+                                                sd[0][prefix + 'weight'].half())
             if prefix + 'bias' in sd[0].keys():
-                module.bias = mp_replace.copy(module.bias.data, sd[0][prefix + 'bias'])
+                module.bias = mp_replace.copy(module.bias.data, sd[0][prefix + 'bias'].half())
         args = None
         gc.collect()
 
@@ -62,10 +62,14 @@ def load_model_with_checkpoint(r_module,
                         if (len(src_shape) == 2 and len(dst_shape) == 2):
                             if (src_shape[inner_dim] == dst_shape[0]
                                     and src_shape[outer_dim] == dst_shape[1]):
+                                mlp_gemm = (src_shape[0] > 6144 and src_shape[0] == 2 * src_shape[1]) #or (src_shape[1] > 6144 and src_shape[1] == 2 * src_shape[0])
                                 if tmp_data.dtype != torch.int8:
                                     p = weight_quantizer.quantize(
-                                        transpose(tmp_data) if weight_quantizer.
-                                        q_int8 else tmp_data)
+                                        transpose(tmp_data) if (weight_quantizer.
+                                        q_int8 and (not mlp_gemm)) else tmp_data, qkv=(not mlp_gemm))
+                                    #if mlp_gemm: 
+                                    #    print(p)
+                                    #    exit()
                                 else:
                                     p = torch.nn.parameter.Parameter(tmp_data,
                                                                      requires_grad=False)
@@ -143,20 +147,21 @@ def load_model_with_checkpoint(r_module,
                 load_parameters(child, prefix + n + '.')
         else:
 
-            def _transpose(x):
+            def _transpose(x, int8=False):
                 heads = transformer_config.heads // mp_replace.mp_size
-                attention_head_size = x.shape[-1] // heads
-                new_x_shape = x.size()[:-1] + (heads, attention_head_size)
+                outer_dim = 0 if int8 else -1
+                attention_head_size = x.shape[outer_dim] // heads
+                new_x_shape = (heads, attention_head_size) + x.shape[1:] if int8 else \
+                            x.size()[:outer_dim] + (heads, attention_head_size)
                 x_1 = x.view(*new_x_shape)
-                (q, k, v) = torch.split(x_1, (x_1.shape[-1] // 3), dim=(x_1.dim() - 1))
+                split_dim = 1 if int8 else -1
+                (q, k, v) = torch.split(x_1, (x_1.shape[split_dim] // 3), dim=split_dim)
                 if len(q.shape) > 2:
-                    return torch.cat((q.reshape(q.shape[0],
-                                                -1),
-                                      k.reshape(q.shape[0],
-                                                -1),
-                                      v.reshape(q.shape[0],
-                                                -1)),
-                                     dim=-1).reshape(x.shape)
+                    new_shape = (-1,) + (q.shape[-1],) if int8 else (q.shape[0],) + (-1,)
+                    return torch.cat((q.reshape(new_shape),
+                                      k.reshape(new_shape),
+                                      v.reshape(new_shape)),
+                                     dim=outer_dim).reshape(x.shape)
                 else:
                     return torch.cat((q.reshape(-1),
                                       k.reshape(-1),
@@ -173,7 +178,7 @@ def load_model_with_checkpoint(r_module,
                            split_qkv=False):
                 if src_name in sd[0]:
                     dst = getattr(module, dst_name)
-                    tmp = sd[0][src_name].cuda()
+                    tmp = sd[0][src_name]
                     if len(dst.shape) == 1:
                         if split_qkv:
                             dst = mp_replace.qkv_copy(dst, tmp)
@@ -184,15 +189,16 @@ def load_model_with_checkpoint(r_module,
                                 _transpose(dst).contiguous())
                     else:
                         if split_qkv:
-                            dst = weight_quantizer.quantize(mp_replace.qkv_copy(dst, tmp if weight_quantizer.q_int8 else \
-                                                            (transpose(tmp).contiguous())))
+                            dst = mp_replace.qkv_copy(dst, weight_quantizer.quantize(tmp if weight_quantizer.q_int8 else \
+                                                            (transpose(tmp).contiguous())), int8=weight_quantizer.q_int8)
                         else:
-                            dst = weight_quantizer.quantize(mp_replace.copy(dst, tmp if weight_quantizer.q_int8 else \
-                                                            transpose(tmp)))
+                            #import pdb;pdb.set_trace()
+                            dst = mp_replace.copy(dst, weight_quantizer.quantize(tmp if weight_quantizer.q_int8 else \
+                                                            transpose(tmp)), int8=weight_quantizer.q_int8)
                         if qkv and megatron_v2:
                             scale1 = dst.scale
                             dst = torch.nn.parameter.Parameter(
-                                _transpose(dst).contiguous())
+                                _transpose(dst, int8=weight_quantizer.q_int8).contiguous(), requires_grad=False)
                             dst.scale = scale1
                     setattr(module, dst_name, dst)
 
@@ -207,16 +213,16 @@ def load_model_with_checkpoint(r_module,
                     if len(dst.shape) == 1:
                         if split_qkv:
                             dst = mp_replace.qkv_copy(dst,
-                                                      (qkv_data.cuda()).contiguous())
+                                                      qkv_data.contiguous())
                         else:
-                            dst = mp_replace.copy(dst, qkv_data.cuda())
+                            dst = mp_replace.copy(dst, qkv_data)
                     else:
                         if split_qkv:
-                            dst = weight_quantizer.quantize(mp_replace.qkv_copy(dst, qkv_data.cuda() if weight_quantizer.q_int8 else \
-                                                            ((transpose(qkv_data.cuda())).contiguous())))
+                            dst = mp_replace.qkv_copy(dst, weight_quantizer.quantize(qkv_data.cuda() if weight_quantizer.q_int8 else \
+                                                            ((transpose(qkv_data.cuda())).contiguous())), int8=weight_quantizer.q_int8)
                         else:
-                            dst = weight_quantizer.quantize(mp_replace.copy(dst, qkv_data.cuda() if weight_quantizer.q_int8 else \
-                                                            transpose(qkv_data.cuda())))
+                            dst = mp_replace.copy(dst, weight_quantizer.quantize(qkv_data.cuda() if weight_quantizer.q_int8 else \
+                                                            transpose(qkv_data.cuda())), int8=weight_quantizer.q_int8)
                     setattr(module, dst_name, dst)
 
             if len(param_names) == 14:

@@ -312,6 +312,7 @@ class DeepSpeedSelfAttentionFunction(Function):
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32
+                #import pdb;pdb.set_trace()
                 qkv_out = qkv_func(input,
                                    attn_qkvw,
                                    attn_qkvw.scale,

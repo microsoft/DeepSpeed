@@ -34,35 +34,37 @@ class ReplaceWithTensorSlicing:
             for merging your checkpoints before replacing the transformer layer with\
             inference-kernels'
 
-    def qkv_copy(self, dst, src):
+    def qkv_copy(self, dst, src, int8=False):
         if src is None:
             return src
         src_shape = src.shape
         dst_shape = dst.shape
 
-        if self.out_dim == 0:
-            src_split = torch.split(src.data,
-                                    src_shape[self.out_dim] // self.mp_size,
-                                    dim=0)
-        else:
-            src_split = torch.split(src.data, src.shape[-1] // 3, dim=-1)
+        outer_dim = 0 if int8 else -1
+        inner_dim = -1 if int8 else 0
+
+        src_split = torch.split(src.data, src.shape[outer_dim] // 3, dim=outer_dim)
         if (len(src_shape) == 2 and len(dst_shape) == 2):
-            if src_shape[self.out_dim] == dst_shape[self.out_dim]:
-                return torch.nn.parameter.Parameter(src)
+            if src_shape[outer_dim] == dst_shape[self.out_dim]:
+                dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
+                dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
+                if hasattr(src, 'scale'):
+                    dst.scale = src.scale
+                return dst
             if self.out_dim == 1:
-                self.merge_assert(src_shape[self.out_dim], dst_shape[self.out_dim])
+                self.merge_assert(src_shape[outer_dim], dst_shape[self.out_dim])
                 qkv_size = dst_shape[self.out_dim] // 3
                 qkv_split = [
                     torch.split(src_s,
                                 qkv_size,
-                                dim=self.out_dim) for src_s in src_split
+                                dim=outer_dim) for src_s in src_split
                 ]
+                
                 weight_split = [
                     torch.cat([qkv_s[i] for qkv_s in qkv_split],
-                              axis=self.out_dim) for i in range(len(qkv_split[0]))
+                              axis=outer_dim) for i in range(len(qkv_split[0]))
                 ]
-                dst.data.copy_(weight_split[self.gpu_index].to(
-                    torch.cuda.current_device()).contiguous())
+                dst = dst.reshape(-1).data.copy_(weight_split[self.gpu_index].contiguous().reshape(-1)).reshape(weight_split[self.gpu_index].shape)
             else:
                 dst.data.copy_(src_split[self.gpu_index].to(
                     torch.cuda.current_device()).contiguous())
@@ -76,46 +78,46 @@ class ReplaceWithTensorSlicing:
                     torch.cat([qkv_s[i] for qkv_s in qkv_split],
                               axis=0) for i in range(len(qkv_split[0]))
                 ]
-                dst.data.copy_(bias_split[self.gpu_index].to(
-                    torch.cuda.current_device()).contiguous())
+                dst.data.copy_(bias_split[self.gpu_index].contiguous())
             else:
-                dst.data.copy_(src_split[self.gpu_index].to(
-                    torch.cuda.current_device()).contiguous())
+                dst.data.copy_(src_split[self.gpu_index].contiguous())
 
-        return torch.nn.parameter.Parameter(dst)
+        dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
+        if hasattr(src, 'scale'):
+            dst.scale = src.scale
+        return dst
 
-    def copy(self, dst, src):
+    def copy(self, dst, src, int8=False):
         if src is None:
             return src
+        outer_dim = 0 if int8 else 1
+        inner_dim = 1 if int8 else 0
         src_shape = src.shape
         dst_shape = dst.shape
         if (len(src_shape) == 2 and len(dst_shape) == 2):
 
-            if src_shape[0] == dst_shape[0] and src_shape[1] == dst_shape[1]:
-                dst.data.copy_(src)
+            if src_shape[inner_dim] == dst_shape[self.in_dim] and src_shape[outer_dim] == dst_shape[self.out_dim]:
+                dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
             else:
-                if src_shape[self.in_dim] != dst_shape[self.in_dim]:
-                    self.merge_assert(src_shape[self.in_dim], dst_shape[self.in_dim])
+                if src_shape[inner_dim] != dst_shape[self.in_dim]:
+                    self.merge_assert(src_shape[inner_dim], dst_shape[self.in_dim])
                     weight_split = torch.split(
                         src,
                         dst_shape[self.in_dim],
-                        dim=self.in_dim)[self.gpu_index].to(
-                            torch.cuda.current_device()).contiguous()
+                        dim=inner_dim)[self.gpu_index].contiguous()
                 else:
-                    self.merge_assert(src_shape[self.out_dim], dst_shape[self.out_dim])
+                    self.merge_assert(src_shape[outer_dim], dst_shape[self.out_dim])
                     weight_split = torch.split(
                         src.data,
                         dst_shape[self.out_dim],
-                        dim=self.out_dim)[self.gpu_index].to(
-                            torch.cuda.current_device()).contiguous()
-                dst.data.copy_(weight_split.contiguous())
+                        dim=outer_dim)[self.gpu_index].contiguous()
+                dst = dst.reshape(-1).data.copy_(weight_split.reshape(-1)).reshape(weight_split.shape)
         else:
             if src_shape[0] == dst_shape[0]:
                 dst.data.copy_(src)
             else:
                 bias_split = torch.split(src.data,
-                                         dst_shape[-1])[self.gpu_index].to(
-                                             torch.cuda.current_device()).contiguous()
+                                         dst_shape[-1])[self.gpu_index].contiguous()
                 dst.data.copy_(bias_split)
         dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
         if hasattr(src, 'scale'):

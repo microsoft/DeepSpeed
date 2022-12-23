@@ -1291,6 +1291,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
         (T*)Context::Instance().GetWorkSpace() + torch::numel(input) + torch::numel(output);
     T* intermediate = inp_norm + torch::numel(input);
 
+    q_int8 = true;
     if (mlp_after_attn) {
         launch_fused_residual_ln((T*)inp_norm,
                                  (const T*)input.data_ptr(),
@@ -1344,6 +1345,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                          Context::Instance().GetCurrentStream());
     }
 
+    q_int8 = false;
     if (q_int8) {
         quantized_gemm<T>(output.data_ptr(),
                           intermediate,
@@ -1401,6 +1403,7 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                        .device(at::kCUDA)
                        .requires_grad(false);
 
+    q_int8 = false;
     int out_size = q_int8 ? weight_out.size(0) : weight_out.size(1);
     auto output = at::from_blob((T*)Context::Instance().GetWorkSpace() + torch::numel(input),
                                 {input.size(0), input.size(1), out_size},
@@ -1489,7 +1492,7 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
     //                            options);
     // T* intermediate = (T*)input.data_ptr() + torch::numel(input);
     auto intermediate = at::empty({input.size(0), input.size(1), intm_dim}, options);
-
+    q_int8 = false;
     int bsz = input.size(0) * input.size(1);
 
     float alpha = (T)1.0;
