@@ -73,7 +73,6 @@ class DeepSpeedSelfAttention(nn.Module):
         self.score_context_func = SoftmaxContextOp(config)
         self.linear_func = LinearOp(config)
         self.vector_matmul_func = VectorMatMulOp(config)
-        self.softmax_func = SoftmaxOp(config)
 
     def compute_attention(self, qkv_out, input_mask, layer_past, alibi):
         if isinstance(qkv_out, list):
@@ -153,6 +152,10 @@ class DeepSpeedSelfAttention(nn.Module):
 
 
 class BloomSelfAttention(DeepSpeedSelfAttention):
+    def __init__(self, *args, **kwargs):
+        super(BloomSelfAttention, self).__init__(*args, **kwargs)
+        self.softmax_func = SoftmaxOp(self.config)
+
     ########### This part is taken/modified form the HF modeling_bloom.py ################
     # Reference: https://github.com/huggingface/transformers/blob/main/src/transformers/models/bloom/modeling_bloom.py
 
