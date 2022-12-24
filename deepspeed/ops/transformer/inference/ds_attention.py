@@ -86,7 +86,7 @@ class DeepSpeedSelfAttention(nn.Module):
 
         attn_key_value = self.score_context_func(
             query_key_value=qkv_out,
-            attn_mask=((1 - input_mask).to(qkv_out.dype) *
+            attn_mask=((1 - input_mask).to(qkv_out.dtype) *
                        minus_inf) if input_mask.dtype == torch.int64 else input_mask,
             heads=self.num_attention_heads_per_partition,
             norm_factor=(1 / self.norm_factor if self.config.scale_attention else 1.0),

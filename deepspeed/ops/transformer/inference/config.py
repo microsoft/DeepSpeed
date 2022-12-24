@@ -67,7 +67,8 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  max_out_tokens=1024,
                  enable_qkv_quantization=False,
                  use_mup=False,
-                 scale_attn_by_inverse_layer_idx=False):
+                 scale_attn_by_inverse_layer_idx=False,
+                 return_single_tuple=False):
         super(DeepSpeedInferenceConfig,
               self).__init__(
                   hidden_size,
@@ -98,6 +99,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.scale_attn_by_inverse_layer_idx = scale_attn_by_inverse_layer_idx
         self.enable_qkv_quantization = enable_qkv_quantization
         self.use_mup = use_mup
+        self.return_single_tuple = return_single_tuple
 
     @classmethod
     def from_dict(cls, json_object):
