@@ -92,7 +92,6 @@ class DeepSpeedTransformerInference(nn.Module):
     def forward(
             self,
             input=None,
-            x=None,
             input_mask=None,
             attention_mask=None,
             attn_mask=None,
@@ -102,6 +101,7 @@ class DeepSpeedTransformerInference(nn.Module):
             get_present=False,
             encoder_output=None,
             enc_dec_attn_mask=None,
+            x=None,
             encoder_hidden_states=None,
             encoder_attention_mask=None,
             use_cache=False,
