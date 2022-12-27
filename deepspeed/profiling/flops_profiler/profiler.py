@@ -346,6 +346,8 @@ class FlopsProfiler(object):
                 "{:.2%} Params".format(params / total_params if total_params else 0),
                 macs_to_string(macs),
                 "{:.2%} MACs".format(0.0 if total_macs == 0 else macs / total_macs),
+                flops_to_string(flops),
+                "{:.2%} FLOPs".format(0.0 if total_flops == 0 else flops / total_flops),
             ]
             duration = get_module_duration(module)
 
