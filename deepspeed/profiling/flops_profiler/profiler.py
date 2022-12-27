@@ -871,6 +871,9 @@ def _patch_tensor_methods():
     torch.addmm = wrapFunc(torch.addmm, _addmm_flops_compute)
     torch.Tensor.addmm = wrapFunc(torch.Tensor.addmm, _tensor_addmm_flops_compute)
 
+    torch.baddbmm = wrapFunc(torch.baddbmm, _addmm_flops_compute)
+    torch.Tensor.baddbmm = wrapFunc(torch.Tensor.baddbmm, _tensor_addmm_flops_compute)
+
     torch.mul = wrapFunc(torch.mul, _mul_flops_compute)
     torch.Tensor.mul = wrapFunc(torch.Tensor.mul, _mul_flops_compute)
 
