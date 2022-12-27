@@ -1,7 +1,7 @@
 from unit.common import DistributedTest
 from unit.checkpoint.common import checkpoint_correctness_verification
 from unit.simple_model import *
-
+import pytest
 class TestNebulaCheckpoint(DistributedTest):
     world_size = 4
 
