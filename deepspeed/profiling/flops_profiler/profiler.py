@@ -721,7 +721,14 @@ def _addmm_flops_compute(input, mat1, mat2, *, beta=1, alpha=1, out=None):
     Count flops for the addmm operation.
     """
     macs = _prod(mat1.shape) * mat2.shape[-1]
-    return 2 * macs + _prod(input.shape), macs
+    return 2 * macs + _prod(input.shape), macs # TODO: 2 * macs +_elementwise_flops_compute(alpha,input) + 2*_elementwise_flops_compute(beta,input)
+
+# def _baddbmm_flops_compute(input, batch1, batch2, *, beta=1, alpha=1, out=None):
+#     """
+#     Count flops for the baddbmm operation.
+#     """
+#     macs = _prod(batch1.shape[1:]) * batch2.shape[-1]
+#     return 2 * macs + _prod(input.shape), macs
 
 
 def _einsum_flops_compute(equation, *operands):
@@ -865,7 +872,7 @@ def _patch_tensor_methods():
     torch.Tensor.matmul = wrapFunc(torch.Tensor.matmul, _matmul_flops_compute)
     torch.mm = wrapFunc(torch.mm, _matmul_flops_compute)
     torch.Tensor.mm = wrapFunc(torch.Tensor.mm, _matmul_flops_compute)
-    torch.bmm = wrapFunc(torch.bmm, _matmul_flops_compute)
+    torch.bmm = wrapFunc(torch.bmm, _matmul_flops_compute) #TODO:
     torch.Tensor.bmm = wrapFunc(torch.bmm, _matmul_flops_compute)
 
     torch.addmm = wrapFunc(torch.addmm, _addmm_flops_compute)
