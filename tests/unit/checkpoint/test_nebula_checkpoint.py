@@ -8,6 +8,7 @@ class TestNebulaCheckpoint(DistributedTest):
     def test_checkpoint_nebula_engine(self, tmpdir):
         config_dict = {
             "train_batch_size": 2,
+            "train_micro_batch_size_per_gpu": 1,
             "steps_per_print": 1,
             "optimizer": {
                 "type": "Adam",
