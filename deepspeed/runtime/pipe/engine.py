@@ -1187,6 +1187,14 @@ class PipelineEngine(DeepSpeedEngine):
                     'step_microstep'
                 ])
             if self.global_steps % self.steps_per_print() == 0:
+                
+                self.flops_profiler.print_model_profile(
+                    profile_step=self.global_steps,
+                    module_depth=self.flops_profiler_module_depth(),
+                    top_modules=self.flops_profiler_top_modules(),
+                    detailed=self.flops_profiler_detailed(),
+                    output_file=self.flops_profiler_output_file(),
+                )
                 self.timers.log([
                     'forward',
                     'backward',
@@ -1372,8 +1380,8 @@ class PipelineEngine(DeepSpeedEngine):
                         f'{self.__class__.__name__} does not understand instruction {repr(cmd)}'
                     )
 
-                if type(cmd) not in [schedule.LoadMicroBatch, schedule.ForwardPass]:
-                    continue
+                # if type(cmd) not in [schedule.LoadMicroBatch, schedule.ForwardPass]:
+                #     continue
 
                 # Equivalent to: self._exec_forward_pass(buffer_id=0)
                 self._exec_instr = MethodType(self._INSTRUCTION_MAP[type(cmd)], self)
