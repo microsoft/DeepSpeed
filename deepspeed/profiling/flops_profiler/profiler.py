@@ -997,8 +997,8 @@ MODULE_HOOK_MAPPING = {
     nn.GRUCell: _rnn_cell_forward_hook,
 }
 
-
-def num_to_string(num, precision=2):
+PRECISION_PRINT = 5
+def num_to_string(num, precision=PRECISION_PRINT):
     if num // 10**9 > 0:
         return str(round(num / 10.0**9, precision)) + " G"
     elif num // 10**6 > 0:
@@ -1009,7 +1009,7 @@ def num_to_string(num, precision=2):
         return str(num)
 
 
-def macs_to_string(macs, units=None, precision=2):
+def macs_to_string(macs, units=None, precision=PRECISION_PRINT):
     if units is None:
         if macs // 10**9 > 0:
             return str(round(macs / 10.0**9, precision)) + " GMACs"
@@ -1030,7 +1030,7 @@ def macs_to_string(macs, units=None, precision=2):
             return str(macs) + " MACs"
 
 
-def number_to_string(num, units=None, precision=2):
+def number_to_string(num, units=None, precision=PRECISION_PRINT):
     if units is None:
         if num // 10**9 > 0:
             return str(round(num / 10.0**9, precision)) + " G"
@@ -1051,7 +1051,7 @@ def number_to_string(num, units=None, precision=2):
             return str(num) + " "
 
 
-def flops_to_string(flops, units=None, precision=2):
+def flops_to_string(flops, units=None, precision=PRECISION_PRINT):
     if units is None:
         if flops // 10**12 > 0:
             return str(round(flops / 10.0**12, precision)) + " TFLOPS"
@@ -1076,12 +1076,12 @@ def flops_to_string(flops, units=None, precision=2):
             return str(flops) + " FLOPS"
 
 
-def params_to_string(params_num, units=None, precision=2):
+def params_to_string(params_num, units=None, precision=PRECISION_PRINT):
     if units is None:
         if params_num // 10**6 > 0:
-            return str(round(params_num / 10**6, 2)) + " M"
+            return str(round(params_num / 10**6, precision)) + " M"
         elif params_num // 10**3:
-            return str(round(params_num / 10**3, 2)) + " k"
+            return str(round(params_num / 10**3, precision)) + " k"
         else:
             return str(params_num)
     else:
@@ -1093,7 +1093,7 @@ def params_to_string(params_num, units=None, precision=2):
             return str(params_num)
 
 
-def duration_to_string(duration, units=None, precision=2):
+def duration_to_string(duration, units=None, precision=PRECISION_PRINT):
     if units is None:
         if duration > 1:
             return str(round(duration, precision)) + " s"
