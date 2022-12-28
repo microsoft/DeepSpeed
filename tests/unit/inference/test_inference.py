@@ -421,7 +421,6 @@ class TestAutoTensorParallelism(DistributedTest):
     def test(
         self,
         model_w_task,
-        injection_policy,
         query,
         inf_kwargs,
         assert_fn,
