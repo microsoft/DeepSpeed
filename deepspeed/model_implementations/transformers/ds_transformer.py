@@ -9,7 +9,7 @@ from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
 
 from deepspeed.ops.transformer.inference.ds_mlp import DeepSpeedMLP
-from deepspeed.ops.transformer.inference.ds_attention import DeepSpeedSelfAttention
+from deepspeed.ops.transformer.inference.ds_attention import DeepSpeedSelfAttention, BloomSelfAttention
 
 inference_cuda_module = None
 
@@ -55,12 +55,20 @@ class DeepSpeedTransformerInference(nn.Module):
         if DeepSpeedTransformerInference.layer_id == 1:
             log_dist(f"DeepSpeed-Inference config: {self.config.__dict__}", [0])
 
-        self.attention = DeepSpeedSelfAttention(self.config,
+        if self.config.bigscience_bloom:
+            self.attention = BloomSelfAttention(self.config,
                                                 mp_group,
                                                 quantize_scales,
                                                 quantize_groups,
                                                 merge_count,
                                                 qkv_merging)
+        else:
+            self.attention = DeepSpeedSelfAttention(self.config,
+                                                    mp_group,
+                                                    quantize_scales,
+                                                    quantize_groups,
+                                                    merge_count,
+                                                    qkv_merging)
         self.mlp = DeepSpeedMLP(self.config,
                                 mp_group,
                                 quantize_scales,
@@ -68,7 +76,7 @@ class DeepSpeedTransformerInference(nn.Module):
                                 merge_count,
                                 mlp_extra_grouping)
 
-        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
+        device = torch.cuda.current_device()  #if config.bigscience_bloom else 'cpu'
         self.norm_w = nn.Parameter(torch.empty(self.config.hidden_size,
                                                dtype=data_type,
                                                device=device),
@@ -131,7 +139,6 @@ class DeepSpeedTransformerInference(nn.Module):
         if (self.config.fp16 or self.config.q_int8) \
             and input.dtype == torch.float:
             input = input.half()
-
         with torch.no_grad():
             attention_output, key, value, context_outputtn_ctx, inp_norm = \
                                      self.attention(input,

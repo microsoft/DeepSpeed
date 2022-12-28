@@ -19,7 +19,6 @@ from ..module_inject.replace_module import replace_transformer_layer, generic_in
 from ..comm.comm import init_distributed
 from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
-from ..runtime.zero import GatheredParameters
 from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
 from ..module_inject.replace_policy import DSPolicy
 
@@ -49,6 +48,10 @@ class InferenceEngine(Module):
         self._config = config
 
         self._get_model_config_generate(config)  # keep for weird backward compatibility
+
+        # patch model generate with ours if model uses it
+        if hasattr(self.module, "generate"):
+            self.generate = self._generate
 
         if hasattr(self.module, "config"):
             DSPolicy.hf_model_config = self.module.config
@@ -149,8 +152,6 @@ class InferenceEngine(Module):
         self.config = getattr(self.module,
                               'config',
                               None) if config.config is None else config.config
-        # todo: clarify with Reza if this gets used anywhere
-        self.generate = getattr(self.module, 'generate', None)
 
     def remove_mask_prepare_for_bloom(self):
         if hasattr(self.module, 'transformer'):
@@ -273,35 +274,25 @@ class InferenceEngine(Module):
 
         def load(module, state_dict, prefix):
             args = (state_dict, prefix, {}, True, [], [], error_msgs)
-            if len(list(module.parameters())) > 0 and list(
-                    module.parameters())[0].numel() == 0:
-                with GatheredParameters(list(module.parameters(recurse=False)),
-                                        modifier_rank=0):
-                    if dist.get_rank() == 0:
-                        module._load_from_state_dict(*args)
-            else:
-                if hasattr(module, 'weight'):
-                    if 'query_key_value' in prefix:
-                        module.weight = self.mp_replace.qkv_copy(
-                            module.weight.data,
-                            state_dict[prefix + 'weight'])
-                    else:
-                        module.weight = self.mp_replace.copy(
-                            module.weight.data,
-                            state_dict[prefix + 'weight'])
-                else:
-                    module.norm.weight = self.mp_replace.copy(
-                        module.norm.weight.data,
+            if hasattr(module, 'weight'):
+                if 'query_key_value' in prefix:
+                    module.weight = self.mp_replace.qkv_copy(
+                        module.weight.data,
                         state_dict[prefix + 'weight'])
-                if prefix + 'bias' in self.key_list:
-                    if hasattr(module, 'norm'):
-                        module.norm.bias = self.mp_replace.copy(
-                            module.norm.bias,
-                            state_dict[prefix + 'bias'])
-                    else:
-                        data = state_dict[prefix + 'bias']
-                        data = data.to(torch.cuda.current_device())
-                        module.bias = self.mp_replace.copy(module.bias, data)
+                else:
+                    module.weight = self.mp_replace.copy(module.weight.data,
+                                                         state_dict[prefix + 'weight'])
+            else:
+                module.norm.weight = self.mp_replace.copy(module.norm.weight.data,
+                                                          state_dict[prefix + 'weight'])
+            if prefix + 'bias' in self.key_list:
+                if hasattr(module, 'norm'):
+                    module.norm.bias = self.mp_replace.copy(module.norm.bias,
+                                                            state_dict[prefix + 'bias'])
+                else:
+                    data = state_dict[prefix + 'bias']
+                    data = data.to(torch.cuda.current_device())
+                    module.bias = self.mp_replace.copy(module.bias, data)
 
         layer_policies = {
             nn.Linear: load,
@@ -529,3 +520,19 @@ class InferenceEngine(Module):
             self._model_times.append(duration)
 
         return outputs
+
+    def _generate(self, *inputs, **kwargs):
+        num_beams = 1
+        if "generation_config" in kwargs:
+            gen_config = kwargs["generation_config"]
+            num_beams = getattr(gen_config, "num_beams", 1)
+        if "num_beams" in kwargs:
+            num_beams = kwargs["num_beams"]
+
+        if num_beams > 1:
+            raise NotImplementedError(
+                "DeepSpeed does not support `num_beams` > 1, if this is important to you please "
+                "add your request to: https://github.com/microsoft/DeepSpeed/issues/2506"
+            )
+
+        return self.module.generate(*inputs, **kwargs)
