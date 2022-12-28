@@ -400,7 +400,7 @@ class TestInjectionPolicy(DistributedTest):
 
 @pytest.mark.seq_inference
 @pytest.mark.parametrize(
-    "model_w_task, injection_policy",
+    "model_w_task",
     [
         (
             (  #"Salesforce/codegen-2B-mono",
