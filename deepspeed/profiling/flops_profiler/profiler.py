@@ -795,6 +795,9 @@ def _elementwise_flops_compute(input, other):
 
 
 def wrapFunc(func, funcFlopCompute):
+    if getattr(func, "__is_flop_count_wrapped", False):
+        print("Warning: function {} is already wrapped.".format(func.__name__))
+        return func
     oldFunc = func
     name = func.__name__
     old_functions[name] = oldFunc
@@ -808,6 +811,7 @@ def wrapFunc(func, funcFlopCompute):
         return oldFunc(*args, **kwds)
 
     newFunc.__name__ = func.__name__
+    newFunc.__is_flop_count_wrapped = True
 
     return newFunc
 
@@ -925,6 +929,21 @@ def _reload_functionals():
 
 def _reload_tensor_methods():
     torch.matmul = old_functions[torch.matmul.__name__]
+    # torch.Tensor.matmul = old_functions[torch.Tensor.matmul.__name__] #TODO: we're reusing same name here
+    # torch.mm = old_functions[torch.mm.__name__]
+    # torch.Tensor.mm = old_functions[torch.Tensor.mm.__name__]
+    # torch.bmm = old_functions[torch.bmm.__name__]
+    # torch.Tensor.bmm = old_functions[torch.Tensor.bmm.__name__]
+    # torch.addmm = old_functions[torch.addmm.__name__]
+    # torch.Tensor.addmm = old_functions[torch.Tensor.addmm.__name__]
+    # torch.baddbmm = old_functions[torch.baddbmm.__name__]
+    # torch.Tensor.baddbmm = old_functions[torch.Tensor.baddbmm.__name__]
+    # torch.mul = old_functions[torch.mul.__name__]
+    # torch.Tensor.mul = old_functions[torch.Tensor.mul.__name__]
+    # torch.add = old_functions[torch.add.__name__]
+    # torch.Tensor.add = old_functions[torch.Tensor.add.__name__]
+    # torch.einsum = old_functions[torch.einsum.__name__]
+    # TODO: make sure tensors methods are correctly reloaded
 
 
 def _rnn_flops(flops, rnn_module, w_ih, w_hh, input_size):
