@@ -441,7 +441,7 @@ class TestAutoTensorParallelism(DistributedTest):
         pipe.model = deepspeed.init_inference(pipe.model,
                                               mp_size=world_size,
                                               dtype=dtype,
-                                              replace_policy="dict")
+                                              replace_method="dict")
         # Switch device to GPU so that input tensors are not on CPU
         pipe.device = torch.device(f"cuda:{local_rank}")
         ds_output = pipe(query, **inf_kwargs)
