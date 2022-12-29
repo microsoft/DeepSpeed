@@ -796,7 +796,7 @@ def _elementwise_flops_compute(input, other):
 
 def wrapFunc(func, funcFlopCompute):
     if getattr(func, "__is_flop_count_wrapped", False):
-        print("Warning: function {} is already wrapped.".format(func.__name__))
+        # print("Warning: function {} is already wrapped.".format(func.__name__))
         return func
     oldFunc = func
     name = func.__name__
