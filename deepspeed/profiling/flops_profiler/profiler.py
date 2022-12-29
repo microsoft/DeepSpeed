@@ -13,6 +13,7 @@ module_flop_count = []
 module_mac_count = []
 old_functions = {}
 
+PRECISION_PRINT = 2
 
 class FlopsProfiler(object):
     """Measures the latency, number of estimated floating-point operations and parameters of each module in a PyTorch model.
@@ -723,14 +724,6 @@ def _addmm_flops_compute(input, mat1, mat2, *, beta=1, alpha=1, out=None):
     macs = _prod(mat1.shape) * mat2.shape[-1]
     return 2 * macs + _prod(input.shape), macs # TODO: 2 * macs +_elementwise_flops_compute(alpha,input) + 2*_elementwise_flops_compute(beta,input)
 
-# def _baddbmm_flops_compute(input, batch1, batch2, *, beta=1, alpha=1, out=None):
-#     """
-#     Count flops for the baddbmm operation.
-#     """
-#     macs = _prod(batch1.shape[1:]) * batch2.shape[-1]
-#     return 2 * macs + _prod(input.shape), macs
-
-
 def _einsum_flops_compute(equation, *operands):
     """
     Count flops for the einsum operation.
@@ -876,7 +869,7 @@ def _patch_tensor_methods():
     torch.Tensor.matmul = wrapFunc(torch.Tensor.matmul, _matmul_flops_compute)
     torch.mm = wrapFunc(torch.mm, _matmul_flops_compute)
     torch.Tensor.mm = wrapFunc(torch.Tensor.mm, _matmul_flops_compute)
-    torch.bmm = wrapFunc(torch.bmm, _matmul_flops_compute) #TODO:
+    torch.bmm = wrapFunc(torch.bmm, _matmul_flops_compute)
     torch.Tensor.bmm = wrapFunc(torch.bmm, _matmul_flops_compute)
 
     torch.addmm = wrapFunc(torch.addmm, _addmm_flops_compute)
@@ -1026,7 +1019,7 @@ MODULE_HOOK_MAPPING = {
     nn.GRUCell: _rnn_cell_forward_hook,
 }
 
-PRECISION_PRINT = 5
+
 def num_to_string(num, precision=PRECISION_PRINT):
     if num // 10**9 > 0:
         return str(round(num / 10.0**9, precision)) + " G"
