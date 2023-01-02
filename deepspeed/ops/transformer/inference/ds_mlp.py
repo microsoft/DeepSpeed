@@ -37,8 +37,7 @@ class DeepSpeedMLPFunction(Function):
                 bias_residual_func,
                 residual_add_func,
                 activation_func_type=ActivationFuncType.GELU):
-        #print(inter_w, output_w)
-        #exit()
+
         if attn_nw is None:
             output = fused_gemm_gelu(residual_norm,
                                      inter_w,
@@ -121,7 +120,7 @@ class DeepSpeedMLP(nn.Module):
                                     requires_grad=False)
         self.output_w = nn.Parameter(torch.empty(intm_size_per_partition,
                                                  self.config.hidden_size,
-                                                 dtype=data_type_fp,
+                                                 dtype=data_type,
                                                  device=device),
                                      requires_grad=False)
         self.output_b = nn.Parameter(torch.empty(self.config.hidden_size,

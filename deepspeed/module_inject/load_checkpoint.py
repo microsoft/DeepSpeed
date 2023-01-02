@@ -62,14 +62,10 @@ def load_model_with_checkpoint(r_module,
                         if (len(src_shape) == 2 and len(dst_shape) == 2):
                             if (src_shape[inner_dim] == dst_shape[0]
                                     and src_shape[outer_dim] == dst_shape[1]):
-                                mlp_gemm = (src_shape[0] > 6144 and src_shape[0] == 2 * src_shape[1]) #or (src_shape[1] > 6144 and src_shape[1] == 2 * src_shape[0])
                                 if tmp_data.dtype != torch.int8:
                                     p = weight_quantizer.quantize(
-                                        transpose(tmp_data) if (weight_quantizer.
-                                        q_int8 and (not mlp_gemm)) else tmp_data, qkv=(not mlp_gemm))
-                                    #if mlp_gemm: 
-                                    #    print(p)
-                                    #    exit()
+                                        transpose(tmp_data) if weight_quantizer.
+                                        q_int8  else tmp_data)
                                 else:
                                     p = torch.nn.parameter.Parameter(tmp_data,
                                                                      requires_grad=False)
