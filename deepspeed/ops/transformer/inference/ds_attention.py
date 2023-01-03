@@ -10,6 +10,7 @@ from .op_binding import LinearOp, VectorMatMulOp, SoftmaxContextOp, QKVGemmOp, S
 
 minus_inf = -10000.0
 
+
 class DeepSpeedSelfAttention(nn.Module):
     num_layers = 0
 

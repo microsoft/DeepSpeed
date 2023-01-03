@@ -144,12 +144,12 @@ def get_transformer_name(replaced_module):
 
 
 class GroupQuantizer:
-    def __init__(self, q_int8=True, group_size=1, num_bits=8):
+    def __init__(self, q_int8=True, group_size=1, num_bits=8, num_groups=0):
         self.group_size = group_size
         self.num_bits = num_bits
         self.q_int8 = q_int8
-        # TODO(jeff): need to check w. Reza on why this is needed when changing tp size w. bloom
-        self.num_groups = 32
+
+        self.num_groups = num_groups
 
     def quantize(self, inputs, qkv=True, count=1, parallel_dim=0):
         if not self.q_int8 or not qkv:
@@ -157,7 +157,8 @@ class GroupQuantizer:
             inputs.scale = torch.empty(1)
             return inputs
         q_range = 2**self.num_bits
-        num_groups = inputs.shape[0] // self.group_size
+        num_groups = self.num_groups if self.num_groups > 0 else inputs.shape[
+            0] // self.group_size
         inputs = inputs.to(torch.cuda.current_device())
         input_flat = inputs.reshape(num_groups, -1).contiguous()
         input_min = torch.min(input_flat, dim=1, keepdim=True)[0].float()
@@ -166,7 +167,6 @@ class GroupQuantizer:
         input_flat = (input_flat / scale).round().clamp(-q_range // 2, q_range // 2 - 1)
         inputs_q = input_flat.reshape(inputs.shape).to(torch.int8).contiguous()
         out = torch.nn.Parameter(inputs_q, requires_grad=False)
-        #print(inputs.shape)
         inputs_split = inputs.split(inputs.shape[parallel_dim] // 2, dim=parallel_dim)
         input_flat = [
             inputs_split[i].reshape(num_groups,
@@ -296,8 +296,6 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
 
 
 selected_policy_g = None
-megatron_v2_g = False
-transformer_config_g = None
 
 
 def replace_transformer_layer(orig_layer_impl,
@@ -357,8 +355,7 @@ def replace_transformer_layer(orig_layer_impl,
             moe = True
 
         attn_linear_layer, qkvw, qkvb, dense_w, dense_b, scale_attention, megatron_v2 = policy.attention()
-        global megatron_v2_g
-        megatron_v2_g = megatron_v2
+
         if not moe or config.moe.type == 'standard':
             mlp_linear_layer, _h4h_w, _h4h_b, _4hh_w, _4hh_b = policy.mlp()
         else:
@@ -462,8 +459,6 @@ def replace_transformer_layer(orig_layer_impl,
                     use_mup=policy_cls.use_mup if hasattr(policy_cls,
                                                           'use_mup') else False,
                     return_single_tuple=(policy_cls is HFDistilBertLayerPolicy))
-                global transformer_config_g
-                transformer_config_g = transformer_config
 
             if moe:
                 new_module = transformer_inference.DeepSpeedMoEInference(
@@ -822,15 +817,13 @@ def replace_transformer_layer(orig_layer_impl,
                                             checkpoint[i]),
                                map_location='cpu')
                 ]
-                load_model_with_checkpoint(
-                    replaced_module,
-                    sd,
-                    mp_replace,
-                    ckpt_type,
-                    quantizer,
-                    param_names=selected_policy_g.get_param_names(),
-                    transformer_config=transformer_config_g,
-                    megatron_v2=megatron_v2_g)
+                load_model_with_checkpoint(replaced_module,
+                                           sd,
+                                           mp_replace,
+                                           ckpt_type,
+                                           ckpt_mp_size,
+                                           quantizer,
+                                           replace_policy=selected_policy_g)
                 pbar.update(1)
         else:
             import gc
@@ -854,16 +847,14 @@ def replace_transformer_layer(orig_layer_impl,
                     torch.load(ckpt_file,
                                map_location='cpu') for ckpt_file in ckpt_files
                 ]
-                load_model_with_checkpoint(
-                    replaced_module,
-                    sds,
-                    mp_replace,
-                    ckpt_type,
-                    quantizer,
-                    int(rank % tp_split_size),
-                    param_names=selected_policy_g.get_param_names(),
-                    transformer_config=transformer_config_g,
-                    megatron_v2=megatron_v2_g)
+                load_model_with_checkpoint(replaced_module,
+                                           sds,
+                                           mp_replace,
+                                           ckpt_type,
+                                           ckpt_mp_size,
+                                           quantizer,
+                                           int(rank % tp_split_size),
+                                           replace_policy=selected_policy_g)
                 sds = [None for _ in sds]
                 gc.collect()
 
@@ -878,16 +869,14 @@ def replace_transformer_layer(orig_layer_impl,
                                              checkpoint["non_tp"][i]
                                              ) if base_dir1 else checkpoint["non_tp"][i]
                     sds = [torch.load(ckpt_file, map_location='cpu')]
-                    load_model_with_checkpoint(
-                        replaced_module,
-                        sds,
-                        mp_replace,
-                        ckpt_type,
-                        quantizer,
-                        int(rank % tp_split_size),
-                        param_names=selected_policy_g.get_param_names(),
-                        transformer_config=transformer_config_g,
-                        megatron_v2=megatron_v2_g)
+                    load_model_with_checkpoint(replaced_module,
+                                               sds,
+                                               mp_replace,
+                                               ckpt_type,
+                                               ckpt_mp_size,
+                                               quantizer,
+                                               int(rank % tp_split_size),
+                                               replace_policy=selected_policy_g)
                     sds = [None for _ in sds]
                     gc.collect()
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
