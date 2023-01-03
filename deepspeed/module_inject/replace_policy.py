@@ -12,6 +12,21 @@ from deepspeed.utils.types import ActivationFuncType
 supported_models = {None}
 
 
+transformer_param_names = (
+        'attn_qkvw', \
+        'attn_qkvb', \
+        'attn_ow' , \
+        'attn_ob', \
+        'inter_w', \
+        'inter_b', \
+        'output_w', \
+        'output_b', \
+        'attn_nw', \
+        'attn_nb', \
+        'norm_w', \
+        'norm_b')
+
+
 class DSPolicy(ABC):
     _orig_layer_class = None
 
@@ -422,10 +437,6 @@ class HFGPTNEOLayerPolicy(TransformerPolicy):
 
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
-            'ln_1.weight', \
-            'ln_1.bias', \
-            'ln_2.weight', \
-            'ln_2.bias', \
             'attn.attention.q_proj.weight', \
             'attn.attention.k_proj.weight', \
             'attn.attention.v_proj.weight', \
@@ -434,79 +445,43 @@ class HFGPTNEOLayerPolicy(TransformerPolicy):
             'mlp.c_fc.weight', \
             'mlp.c_fc.bias', \
             'mlp.c_proj.weight', \
-            'mlp.c_proj.bias'
+            'mlp.c_proj.bias', \
+            'ln_2.weight', \
+            'ln_2.bias', \
+            'ln_1.weight', \
+            'ln_1.bias'
         )
-
-        maybe_copy(module,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'norm_w',
-                   prefix + param_names[0])
-        maybe_copy(module,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'norm_b',
-                   prefix + param_names[1])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_nw',
-                   prefix + param_names[2])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_nb',
-                   prefix + param_names[3])
         maybe_copy_qkv(
             module.attention,
             sd,
             weight_quantizer,
             mp_replace,
             'attn_qkvw',
-            [prefix + param_names[4],
-             prefix + param_names[5],
-             prefix + param_names[6]],
+            [prefix + param_names[0],
+             prefix + param_names[1],
+             prefix + param_names[2]],
             split_qkv=self.split_qkv)
-        maybe_copy(module.attention,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_ow',
-                   prefix + param_names[7])
-        maybe_copy(module.attention,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_ob',
-                   prefix + param_names[8])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'inter_w',
-                   prefix + param_names[9])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'inter_b',
-                   prefix + param_names[10])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'output_w',
-                   prefix + param_names[11])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'output_b',
-                   prefix + param_names[12])
+        for i in range(3, 5):
+            maybe_copy(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i - 1],
+                       prefix + param_names[i])
+        for i in range(5, 11):
+            maybe_copy(module.mlp,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i - 1],
+                       prefix + param_names[i])
+        for i in range(11, 13):
+            maybe_copy(module,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i - 1],
+                       prefix + param_names[i])
 
 
 class HFGPTJLayerPolicy(TransformerPolicy):
@@ -555,8 +530,6 @@ class HFGPTJLayerPolicy(TransformerPolicy):
 
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
-            'ln_1.weight', \
-            'ln_1.bias', \
             'attn.q_proj.weight', \
             'attn.k_proj.weight', \
             'attn.v_proj.weight', \
@@ -564,61 +537,41 @@ class HFGPTJLayerPolicy(TransformerPolicy):
             'mlp.fc_in.weight', \
             'mlp.fc_in.bias', \
             'mlp.fc_out.weight', \
-            'mlp.fc_out.bias'
+            'mlp.fc_out.bias', \
+            'ln_1.weight', \
+            'ln_1.bias'
         )
-
-        maybe_copy(module,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'norm_w',
-                   prefix + param_names[0])
-        maybe_copy(module,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'norm_b',
-                   prefix + param_names[1])
         maybe_copy_qkv(
             module.attention,
             sd,
             weight_quantizer,
             mp_replace,
             'attn_qkvw',
-            [prefix + param_names[2],
-             prefix + param_names[3],
-             prefix + param_names[4]],
+            [prefix + param_names[0],
+             prefix + param_names[1],
+             prefix + param_names[2]],
             split_qkv=self.split_qkv)
-        maybe_copy(module.attention,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_ow',
-                   prefix + param_names[5])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'inter_w',
-                   prefix + param_names[6])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'inter_b',
-                   prefix + param_names[7])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'output_w',
-                   prefix + param_names[8])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'output_b',
-                   prefix + param_names[9])
+        for i in range(3, 4):
+            maybe_copy(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i - 1],
+                       prefix + param_names[i])
+        for i in range(4, 8):
+            maybe_copy(module.mlp,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i - 1],
+                       prefix + param_names[i])
+        for i in range(8, 10):
+            maybe_copy(module,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i + 1],
+                       prefix + param_names[i])
 
 
 class MegatronLayerPolicy(TransformerPolicy):
@@ -793,10 +746,6 @@ class BLOOMLayerPolicy(TransformerPolicy):
 
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
-            'input_layernorm.weight', \
-            'input_layernorm.bias', \
-            'post_attention_layernorm.weight', \
-            'post_attention_layernorm.bias', \
             'self_attention.query_key_value.weight', \
             'self_attention.query_key_value.bias', \
             'self_attention.dense.weight', \
@@ -804,87 +753,43 @@ class BLOOMLayerPolicy(TransformerPolicy):
             'mlp.dense_h_to_4h.weight', \
             'mlp.dense_h_to_4h.bias', \
             'mlp.dense_4h_to_h.weight', \
-            'mlp.dense_4h_to_h.bias'
+            'mlp.dense_4h_to_h.bias', \
+            'post_attention_layernorm.weight', \
+            'post_attention_layernorm.bias', \
+            'input_layernorm.weight', \
+            'input_layernorm.bias'
         )
-
-        maybe_copy(module,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'norm_w',
-                   prefix + param_names[0])
-        maybe_copy(module,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'norm_b',
-                   prefix + param_names[1])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_nw',
-                   prefix + param_names[2])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_nb',
-                   prefix + param_names[3])
-        maybe_copy(module.attention,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_qkvw',
-                   prefix + param_names[4],
-                   qkv=True,
-                   megatron_v2=self.is_megatron_v2,
-                   split_qkv=self.split_qkv)
-        maybe_copy(module.attention,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_qkvb',
-                   prefix + param_names[5],
-                   qkv=True,
-                   megatron_v2=self.is_megatron_v2,
-                   split_qkv=self.split_qkv)
-        maybe_copy(module.attention,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_ow',
-                   prefix + param_names[6])
-        maybe_copy(module.attention,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_ob',
-                   prefix + param_names[7])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'inter_w',
-                   prefix + param_names[8])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'inter_b',
-                   prefix + param_names[9])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'output_w',
-                   prefix + param_names[10])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'output_b',
-                   prefix + param_names[11])
+        for i in range(0, 2):
+            maybe_copy(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i],
+                       qkv=True,
+                       megatron_v2=self.is_megatron_v2,
+                       split_qkv=self.split_qkv)
+        for i in range(2, 4):
+            maybe_copy(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
+        for i in range(4, 10):
+            maybe_copy(module.mlp,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
+        for i in range(10, 12):
+            maybe_copy(module,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
 
 
 class GPTNEOXLayerPolicy(TransformerPolicy):
@@ -942,10 +847,6 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
 
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
-            'input_layernorm.weight', \
-            'input_layernorm.bias', \
-            'post_attention_layernorm.weight', \
-            'post_attention_layernorm.bias', \
             'attention.query_key_value.weight', \
             'attention.query_key_value.bias', \
             'attention.dense.weight', \
@@ -953,89 +854,44 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
             'mlp.dense_h_to_4h.weight', \
             'mlp.dense_h_to_4h.bias', \
             'mlp.dense_4h_to_h.weight', \
-            'mlp.dense_4h_to_h.bias'
+            'mlp.dense_4h_to_h.bias', \
+            'post_attention_layernorm.weight', \
+            'post_attention_layernorm.bias', \
+            'input_layernorm.weight', \
+            'input_layernorm.bias'
         )
-
-        maybe_copy(module,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'norm_w',
-                   prefix + param_names[0])
-        maybe_copy(module,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'norm_b',
-                   prefix + param_names[1])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_nw',
-                   prefix + param_names[2])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_nb',
-                   prefix + param_names[3])
-        maybe_copy(module.attention,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_qkvw',
-                   prefix + param_names[4],
-                   qkv=True,
-                   megatron_v2=self.is_megatron_v2,
-                   split_qkv=self.split_qkv,
-                   heads=self.client_module.attention.num_attention_heads)
-        maybe_copy(module.attention,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_qkvb',
-                   prefix + param_names[5],
-                   qkv=True,
-                   megatron_v2=self.is_megatron_v2,
-                   split_qkv=self.split_qkv,
-                   heads=self.client_module.attention.num_attention_heads)
-        maybe_copy(module.attention,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_ow',
-                   prefix + param_names[6])
-        maybe_copy(module.attention,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_ob',
-                   prefix + param_names[7])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'inter_w',
-                   prefix + param_names[8])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'inter_b',
-                   prefix + param_names[9])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'output_w',
-                   prefix + param_names[10])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'output_b',
-                   prefix + param_names[11])
+        for i in range(0, 2):
+            maybe_copy(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i],
+                       qkv=True,
+                       megatron_v2=self.is_megatron_v2,
+                       split_qkv=self.split_qkv,
+                       heads=self.client_module.attention.num_attention_heads)
+        for i in range(2, 4):
+            maybe_copy(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
+        for i in range(4, 10):
+            maybe_copy(module.mlp,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
+        for i in range(10, 12):
+            maybe_copy(module,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
 
 
 class HFOPTLayerPolicy(TransformerPolicy):
@@ -1097,104 +953,57 @@ class HFOPTLayerPolicy(TransformerPolicy):
 
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
-            'self_attn_layer_norm.weight', \
-            'self_attn_layer_norm.bias', \
-            'final_layer_norm.weight', \
-            'final_layer_norm.bias', \
             'self_attn.q_proj.weight', \
-            'self_attn.q_proj.bias', \
             'self_attn.k_proj.weight', \
-            'self_attn.k_proj.bias', \
             'self_attn.v_proj.weight', \
+            'self_attn.q_proj.bias', \
+            'self_attn.k_proj.bias', \
             'self_attn.v_proj.bias', \
             'self_attn.out_proj.weight', \
             'self_attn.out_proj.bias', \
             'fc1.weight', \
             'fc1.bias', \
             'fc2.weight', \
-            'fc2.bias'
+            'fc2.bias', \
+            'final_layer_norm.weight', \
+            'final_layer_norm.bias', \
+            'self_attn_layer_norm.weight', \
+            'self_attn_layer_norm.bias'
         )
 
-        maybe_copy(module,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'norm_w',
-                   prefix + param_names[0])
-        maybe_copy(module,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'norm_b',
-                   prefix + param_names[1])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_nw',
-                   prefix + param_names[2])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_nb',
-                   prefix + param_names[3])
-        maybe_copy_qkv(
-            module.attention,
-            sd,
-            weight_quantizer,
-            mp_replace,
-            'attn_qkvw',
-            [prefix + param_names[4],
-             prefix + param_names[6],
-             prefix + param_names[8]],
-            split_qkv=self.split_qkv)
-        maybe_copy_qkv(
-            module.attention,
-            sd,
-            weight_quantizer,
-            mp_replace,
-            'attn_qkvw',
-            [prefix + param_names[5],
-             prefix + param_names[7],
-             prefix + param_names[9]],
-            split_qkv=self.split_qkv)
-        maybe_copy(module.attention,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_ow',
-                   prefix + param_names[10])
-        maybe_copy(module.attention,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'attn_ob',
-                   prefix + param_names[11])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'inter_w',
-                   prefix + param_names[12])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'inter_b',
-                   prefix + param_names[13])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'output_w',
-                   prefix + param_names[14])
-        maybe_copy(module.mlp,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   'output_b',
-                   prefix + param_names[15])
+        for i in range(0, 6, 3):
+            maybe_copy_qkv(module.attention,
+                           sd,
+                           weight_quantizer,
+                           mp_replace,
+                           transformer_param_names[i // 3],
+                           [
+                               prefix + param_names[i],
+                               prefix + param_names[i + 1],
+                               prefix + param_names[i + 2]
+                           ],
+                           split_qkv=self.split_qkv)
+        for i in range(6, 8):
+            maybe_copy(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i - 4],
+                       prefix + param_names[i])
+        for i in range(8, 14):
+            maybe_copy(module.mlp,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i - 4],
+                       prefix + param_names[i])
+        for i in range(14, 16):
+            maybe_copy(module,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
 
 
 class HFDistilBertLayerPolicy(TransformerPolicy):
