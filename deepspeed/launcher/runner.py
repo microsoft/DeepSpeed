@@ -155,6 +155,12 @@ def parse_args(args=None):
         "Useful when launching deepspeed processes programmatically.")
 
     parser.add_argument(
+        "--enable_each_rank_log",
+        default="None",
+        type=str,
+        help="redirect the stdout and stderr from each rank into different log files")
+
+    parser.add_argument(
         "--autotuning",
         default="",
         choices=["tune",
@@ -433,8 +439,18 @@ def main(args=None):
         assert multi_node_exec
         first_host = list(active_resources.keys())[0]
         hostname_cmd = [f"ssh {first_host} hostname -I"]
-        result = subprocess.check_output(hostname_cmd, shell=True)
+        try:
+            result = subprocess.check_output(hostname_cmd, shell=True)
+        except subprocess.CalledProcessError as err:
+            logger.error(
+                "Unable to detect suitable master address via `hostname -I`, please manually specify one via --master_addr"
+            )
+            raise err
         args.master_addr = result.decode('utf-8').split()[0]
+        if not args.master_addr:
+            raise RuntimeError(
+                f"Unable to detect suitable master address via `hostname -I`, please manually specify one via --master_addr"
+            )
         logger.info(f"Using IP address of {args.master_addr} for node {first_host}")
 
     if args.autotuning != "":
@@ -481,6 +497,9 @@ def main(args=None):
             deepspeed_launch.append("--no_local_rank")
         if args.save_pid:
             deepspeed_launch += ["--save_pid", f"{os.getpid()}"]
+        if args.enable_each_rank_log:
+            deepspeed_launch.append(
+                f"--enable_each_rank_log={args.enable_each_rank_log}")
         if args.elastic_training:
             deepspeed_launch.append("--enable_elastic_training")
             deepspeed_launch.append(f"--max_elastic_nodes={args.max_elastic_nodes}")
