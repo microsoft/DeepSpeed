@@ -176,17 +176,15 @@ def transpose(data):
     return data.reshape(data.shape[-1], data.shape[-2])
 
 
-def _transpose(x, int8=False, heads=1, mp_replace=None):
+def _transpose(x, heads=1, mp_replace=None):
     heads = heads // mp_replace.mp_size
-    outer_dim = 0 if int8 else -1
+    outer_dim = -1
     attention_head_size = x.shape[outer_dim] // heads
-    new_x_shape = (heads, attention_head_size) + x.shape[1:] if int8 else \
-                x.size()[:outer_dim] + (heads, attention_head_size)
+    new_x_shape = x.size()[:outer_dim] + (heads, attention_head_size)
     x_1 = x.view(*new_x_shape)
-    split_dim = 1 if int8 else -1
-    (q, k, v) = torch.split(x_1, (x_1.shape[split_dim] // 3), dim=split_dim)
+    (q, k, v) = torch.split(x_1, (x_1.shape[-1] // 3), dim=-1)
     if len(q.shape) > 2:
-        new_shape = (-1, ) + (q.shape[-1], ) if int8 else (q.shape[0], ) + (-1, )
+        new_shape = (q.shape[0], ) + (-1, )
         return torch.cat((q.reshape(new_shape),
                           k.reshape(new_shape),
                           v.reshape(new_shape)),
@@ -228,17 +226,14 @@ def maybe_copy(module,
                 dst = mp_replace.qkv_copy(dst, weight_quantizer.quantize(tmp if weight_quantizer.q_int8 else \
                                                 (transpose(tmp).contiguous())), int8=weight_quantizer.q_int8)
             else:
+                if qkv and megatron_v2:
+                    tmp = _transpose(transpose(tmp),
+                                     heads=heads,
+                                     mp_replace=mp_replace).contiguous()
+                    if weight_quantizer.q_int8:
+                        tmp = transpose(tmp)
                 dst = mp_replace.copy(dst, weight_quantizer.quantize(tmp if weight_quantizer.q_int8 else \
                                                 transpose(tmp)), int8=weight_quantizer.q_int8)
-            if qkv and megatron_v2:
-                scale1 = dst.scale
-                dst = torch.nn.parameter.Parameter(_transpose(
-                    dst,
-                    int8=weight_quantizer.q_int8,
-                    heads=heads,
-                    mp_replace=mp_replace).contiguous(),
-                                                   requires_grad=False)
-                dst.scale = scale1
         setattr(module, dst_name, dst)
 
 
