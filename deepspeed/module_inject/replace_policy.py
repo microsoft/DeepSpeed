@@ -92,22 +92,29 @@ class TransformerPolicy(DSPolicy):
     hf_model_config = None
 
     def __init__(
-        self,
-        inference=True,
-        linear_layer=True,
-        scale_attention=True,
-        megatron_v2=False,
-        # the type of activation function used in MLP
-        mlp_act_func_type=ActivationFuncType.GELU,
-        # applies layer norm before attention if `pre_attn_norm` is set to True
-        pre_attn_norm=True):
+            self,
+            inference=True,
+            linear_layer=True,
+            scale_attention=True,
+            megatron_v2=False,
+            # the type of activation function used in MLP
+            mlp_act_func_type=ActivationFuncType.GELU,
+            # applies layer norm before attention if `pre_attn_norm` is set to True
+            pre_attn_norm=True,
+            # this flag shows whether or not using prefix in loading the checkpoint
+            use_load_prefix=False,
+            # whether or not the qkv is stored in the split-format
+            split_qkv=True):
         super().__init__()
+        self.cuda_graph_supported = False
         self.inference = inference
         self.linear_layer = linear_layer
         self.scale_attention = scale_attention
         self.is_megatron_v2 = megatron_v2
         self.mlp_act_func_type = mlp_act_func_type
         self.pre_attn_norm = pre_attn_norm
+        self.use_load_prefix = use_load_prefix
+        self.split_qkv = split_qkv
 
     def attention(self):
         """
@@ -136,6 +143,31 @@ class TransformerPolicy(DSPolicy):
         Returns LayerNorms used in transformer layer
         Post-Attention and pre/post layer norm
         gamma and beta with shape: (hidden)
+        """
+        raise NotImplementedError
+
+    def get_param_names(self):
+        """
+        Returns all the transformer parameter names to
+        be loaded from checkpoint files. The order of
+        the names is as follows:
+            1. Attention weights and biases;
+            2. MLP weights and biases;
+            3. LayerNorm weights and biases;
+        In addition to the parameter names, we require two
+        more parameters to help read the the data correctly
+        from the checkpoint and split the qkv heads in the
+        right order:
+            1. `use_load_prefix` (Default: False): this specifies
+                whether we need to use the name of first abstraction
+                layer of the model for searching the parameter's name
+                in a checkpoint file. For more information of how this
+                is used please see
+                https://github.com/microsoft/DeepSpeed/blob/fix-ckpt-loading/deepspeed/module_inject/load_checkpoint.py#L341
+            2. `split_qkv` (Default: True): we use this flag when splitting
+                the qkv parameter into heads. If it is False, it means the heads
+                of q, k, and v are stored together and needs to split in the
+                DeepSpeed-Inference API.
         """
         raise NotImplementedError
 
@@ -294,6 +326,22 @@ class HFGPTNEOLayerPolicy(TransformerPolicy):
                self.client_module.ln_1.weight, \
                self.client_module.ln_1.bias
 
+    def get_param_names(self):
+        return 'attention.query_key_value.weight', \
+               'attention.query_key_value.bias', \
+               'attention.dense.weight', \
+               'attention.dense.bias', \
+               'mlp.dense_h_to_4h.weight', \
+               'mlp.dense_h_to_4h.bias', \
+               'mlp.dense_4h_to_h.weight', \
+               'mlp.dense_4h_to_h.bias', \
+               'input_layernorm.weight', \
+               'input_layernorm.bias', \
+               'post_attention_layernorm.weight', \
+               'post_attention_layernorm.bias', \
+               self.use_load_prefix, \
+               self.split_qkv
+
 
 class HFGPTJLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
@@ -339,14 +387,30 @@ class HFGPTJLayerPolicy(TransformerPolicy):
                self.client_module.ln_1.weight, \
                self.client_module.ln_1.bias
 
+    def get_param_names(self):
+        return 'attn.q_proj.weight', \
+               'attn.k_proj.weight', \
+               'attn.v_proj.weight', \
+               'attn.out_proj.weight', \
+               'mlp.fc_in.weight', \
+               'mlp.fc_in.bias', \
+               'mlp.fc_out.weight', \
+               'mlp.fc_out.bias', \
+               'ln_1.weight', \
+               'ln_1.bias', \
+               self.use_load_prefix, \
+               self.split_qkv
+
 
 class MegatronLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
     version = 0
     moe_type = 'standard'
+    megatron_v2 = True
+    use_mup = False
 
     def __init__(self, client_module, inference=True):
-        super().__init__(inference)
+        super().__init__(inference, megatron_v2=MegatronLayerPolicy.megatron_v2)
         self.client_module = client_module
         # we use megatron version to differentiate between the old and new
         # megatron-lm source code
@@ -463,7 +527,11 @@ class HFGPT2LayerPolicy(TransformerPolicy):
 class BLOOMLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
 
-    def __init__(self, client_module, inference=True):
+    def __init__(self,
+                 client_module,
+                 inference=True,
+                 use_load_prefix=True,
+                 split_qkv=False):
         super().__init__(inference, linear_layer=True)
         self.client_module = client_module
         try:
@@ -501,12 +569,28 @@ class BLOOMLayerPolicy(TransformerPolicy):
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
 
+    def get_param_names(self):
+        return 'self_attention.query_key_value.weight', \
+               'self_attention.query_key_value.bias', \
+               'self_attention.dense.weight', \
+               'self_attention.dense.bias', \
+               'mlp.dense_h_to_4h.weight', \
+               'mlp.dense_h_to_4h.bias', \
+               'mlp.dense_4h_to_h.weight', \
+               'mlp.dense_4h_to_h.bias', \
+               'input_layernorm.weight', \
+               'input_layernorm.bias', \
+               'post_attention_layernorm.weight', \
+               'post_attention_layernorm.bias', \
+               self.use_load_prefix, \
+               self.split_qkv
+
 
 class GPTNEOXLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
     version = 0
 
-    def __init__(self, client_module, inference=True, megatron_v2=True):
+    def __init__(self, client_module, inference=True, megatron_v2=True, split_qkv=False):
         super().__init__(inference, megatron_v2=megatron_v2)
         self.client_module = client_module
         if GPTNEOXLayerPolicy._orig_layer_class is None:
@@ -555,11 +639,27 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
 
+    def get_param_names(self):
+        return 'attention.query_key_value.weight', \
+               'attention.query_key_value.bias', \
+               'attention.dense.weight', \
+               'attention.dense.bias', \
+               'mlp.dense_h_to_4h.weight', \
+               'mlp.dense_h_to_4h.bias', \
+               'mlp.dense_4h_to_h.weight', \
+               'mlp.dense_4h_to_h.bias', \
+               'input_layernorm.weight', \
+               'input_layernorm.bias', \
+               'post_attention_layernorm.weight', \
+               'post_attention_layernorm.bias', \
+               self.use_load_prefix, \
+               self.split_qkv
+
 
 class HFOPTLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
 
-    def __init__(self, client_module, inference=True):
+    def __init__(self, client_module, inference=True, use_load_prefix=True):
         super().__init__(inference,
                          linear_layer=True,
                          mlp_act_func_type=ActivationFuncType.ReLU,
@@ -571,7 +671,7 @@ class HFOPTLayerPolicy(TransformerPolicy):
             HFOPTLayerPolicy._orig_layer_class = transformers.models.opt.modeling_opt.OPTDecoderLayer
             if isinstance(TransformerPolicy.hf_model_config,
                           transformers.models.opt.configuration_opt.OPTConfig):
-                self.pre_attn_norm = self.hf_model_config.do_layer_norm_before
+                self.pre_attn_norm = TransformerPolicy.hf_model_config.do_layer_norm_before
         except:
             HFOPTLayerPolicy._orig_layer_class = None
 
@@ -613,6 +713,82 @@ class HFOPTLayerPolicy(TransformerPolicy):
             self.client_module.self_attn_layer_norm.weight, \
             self.client_module.self_attn_layer_norm.bias
 
+    def get_param_names(self):
+        return 'self_attn.q_proj.weight', \
+               'self_attn.q_proj.bias', \
+               'self_attn.k_proj.weight', \
+               'self_attn.k_proj.bias', \
+               'self_attn.v_proj.weight', \
+               'self_attn.v_proj.bias', \
+               'self_attn.out_proj.weight', \
+               'self_attn.out_proj.bias', \
+               'fc1.weight', \
+               'fc1.bias', \
+               'fc2.weight', \
+               'fc2.bias', \
+               'self_attn_layer_norm.weight', \
+               'self_attn_layer_norm.bias', \
+               'final_layer_norm.weight', \
+               'final_layer_norm.bias', \
+               self.use_load_prefix, \
+               self.split_qkv
+
+
+class HFDistilBertLayerPolicy(TransformerPolicy):
+    _orig_layer_class = None
+
+    def __init__(self, client_module, inference=False, preln=False):
+        super().__init__(inference)
+        self.client_module = client_module
+        self.preln = preln
+        self.cuda_graph_supported = True
+        if HFDistilBertLayerPolicy._orig_layer_class is None:
+            try:
+                import transformers
+                HFDistilBertLayerPolicy._orig_layer_class = [
+                    transformers.models.distilbert.modeling_distilbert.TransformerBlock,
+                ]
+            except:
+                HFDistilBertLayerPolicy._orig_layer_class = None
+
+    def get_hidden_heads(self):
+        return self.client_module.attention.q_lin.weight.shape[1], \
+                self.client_module.attention.n_heads
+
+    def attention(self):
+        qw = self.client_module.attention.q_lin.weight
+        qb = self.client_module.attention.q_lin.bias
+        kw = self.client_module.attention.k_lin.weight
+        kb = self.client_module.attention.k_lin.bias
+        vw = self.client_module.attention.v_lin.weight
+        vb = self.client_module.attention.v_lin.bias
+
+        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0))
+        qkvb = Parameter(torch.cat((qb, kb, vb), dim=0))
+
+        return self.linear_layer, \
+               qkvw, \
+               qkvb, \
+               self.client_module.attention.out_lin.weight, \
+               self.client_module.attention.out_lin.bias, \
+               self.scale_attention, \
+               False
+
+    def mlp(self):
+        intermediate_ff = self.client_module.ffn.lin1
+
+        return self.linear_layer, intermediate_ff.weight, intermediate_ff.bias, \
+            self.client_module.ffn.lin2.weight, \
+            self.client_module.ffn.lin2.bias
+
+    def layerNorm(self):
+        attention_layernorm = self.client_module.sa_layer_norm
+        transformer_layernorm = self.client_module.output_layer_norm
+        return attention_layernorm.weight, \
+               attention_layernorm.bias, \
+               transformer_layernorm.weight, \
+               transformer_layernorm.bias
+
 
 # transformer-based policies
 replace_policies = [
@@ -625,6 +801,7 @@ replace_policies = [
     BLOOMLayerPolicy,
     HFOPTLayerPolicy,
     HFCLIPLayerPolicy,
+    HFDistilBertLayerPolicy
 ]
 
 # non-transformer-based policies
