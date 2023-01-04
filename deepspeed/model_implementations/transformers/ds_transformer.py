@@ -89,6 +89,10 @@ class DeepSpeedTransformerInference(nn.Module):
         self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if (not config.fp16) else \
                                 inference_cuda_module.allocate_workspace_fp16
 
+    @classmethod
+    def reset_cache(cls):
+        inference_cuda_module.reset_cache()
+
     def forward(
             self,
             input=None,
