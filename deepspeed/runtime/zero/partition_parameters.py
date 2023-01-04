@@ -1630,6 +1630,7 @@ class GatheredParameters:
         if not self.enabled:
             return
         if self.src_rank is None:
+            self.params[0].partition(param_list=self.params, has_been_updated=False)
             return
 
         handles = [
