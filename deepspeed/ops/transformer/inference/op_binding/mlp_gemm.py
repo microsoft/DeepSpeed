@@ -7,9 +7,9 @@ class MLPGemmOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(MLPGemmOp, self).__init__(config)
         if self.config.fp16:
-            self.qkv_gemm_func = self.inference_cuda_module.mlp_gemm_fp16
+            self.mlp_gemm_func = self.inference_cuda_module.mlp_gemm_fp16
         else:
-            self.qkv_gemm_func = self.inference_cuda_module.mlp_gemm_fp32
+            self.mlp_gemm_func = self.inference_cuda_module.mlp_gemm_fp32
 
     def forward(self,
                 input: torch.Tensor,
@@ -20,7 +20,7 @@ class MLPGemmOp(BaseOp):
                 bias: torch.Tensor,
                 gamma: torch.Tensor,
                 beta: torch.Tensor):
-        output, residual_add = self.qkv_gemm_func(
+        output, residual_add = self.mlp_gemm_func(
                                     input,
                                     residual,
                                     input_bias,
