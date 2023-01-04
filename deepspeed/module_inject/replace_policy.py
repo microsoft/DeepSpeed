@@ -274,10 +274,10 @@ def maybe_copy_qkv(module,
         else:
             if split_qkv:
                 dst = mp_replace.qkv_copy(dst, weight_quantizer.quantize(qkv_data.cuda() if weight_quantizer.q_int8 else \
-                                                ((transpose(qkv_data.cuda())).contiguous())), int8=weight_quantizer.q_int8)
+                                                ((transpose(qkv_data)).contiguous())), int8=weight_quantizer.q_int8)
             else:
                 dst = mp_replace.copy(dst, weight_quantizer.quantize(qkv_data.cuda() if weight_quantizer.q_int8 else \
-                                                transpose(qkv_data.cuda())), int8=weight_quantizer.q_int8)
+                                                transpose(qkv_data)), int8=weight_quantizer.q_int8)
         setattr(module, dst_name, dst)
 
 
@@ -563,14 +563,14 @@ class HFGPTJLayerPolicy(TransformerPolicy):
                        sd,
                        weight_quantizer,
                        mp_replace,
-                       transformer_param_names[i - 1],
+                       transformer_param_names[i],
                        prefix + param_names[i])
         for i in range(8, 10):
             maybe_copy(module,
                        sd,
                        weight_quantizer,
                        mp_replace,
-                       transformer_param_names[i + 1],
+                       transformer_param_names[i + 2],
                        prefix + param_names[i])
 
 
@@ -1002,7 +1002,7 @@ class HFOPTLayerPolicy(TransformerPolicy):
                        sd,
                        weight_quantizer,
                        mp_replace,
-                       transformer_param_names[i],
+                       transformer_param_names[i - 4],
                        prefix + param_names[i])
 
 
