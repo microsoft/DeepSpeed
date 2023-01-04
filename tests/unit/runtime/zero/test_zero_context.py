@@ -494,22 +494,6 @@ class TestZeroGatheredParametersFree(DistributedTest):
     world_size = 1
 
     def test(self):
-        config_dict = {
-            "train_batch_size": 4,
-            "steps_per_print": 1,
-            "optimizer": {
-                "type": "Adam",
-                "params": {
-                    "lr": 1e-4
-                }
-            },
-            "fp16": {
-                "enabled": True
-            },
-            "zero_optimization": {
-                "stage": 3
-            }
-        }
         hidden_dim = 10
 
         class MyModel(torch.nn.Module):
