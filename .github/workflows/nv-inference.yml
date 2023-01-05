@@ -51,8 +51,7 @@ jobs:
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
-          if [[ -d /blob ]]; then BLOB=/blob; else BLOB=/tmp; fi
           cd tests
-          TRANSFORMERS_CACHE=${BLOB}/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose -m 'seq_inference' unit/ --torch_ver="1.13" --cuda_ver="11.6"
-          TRANSFORMERS_CACHE=${BLOB}/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose -m 'inference_ops' unit/ --torch_ver="1.13" --cuda_ver="11.6"
-          TRANSFORMERS_CACHE=${BLOB}/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --forked -n 4 --verbose -m 'inference' unit/ --torch_ver="1.13" --cuda_ver="11.6"
+          TRANSFORMERS_CACHE=/blob/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose -m 'seq_inference' unit/ --torch_ver="1.13" --cuda_ver="11.6"
+          TRANSFORMERS_CACHE=/blob/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose -m 'inference_ops' unit/ --torch_ver="1.13" --cuda_ver="11.6"
+          TRANSFORMERS_CACHE=/blob/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --forked -n 4 --verbose -m 'inference' unit/ --torch_ver="1.13" --cuda_ver="11.6"
