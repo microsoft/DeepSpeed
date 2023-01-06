@@ -5,6 +5,7 @@ from .gptj import DS_GPTJContainer
 from .gptneo import DS_GPTNEOContainer
 from .gptneox import DS_GPTNEOXContainer
 from .megatron_gpt import DS_MegatronGPTContainer
+from .megatron_gpt_moe import DS_MegatronGPTMoEContainer
 from .opt import DS_OPTContainer
 
 # use transformers
