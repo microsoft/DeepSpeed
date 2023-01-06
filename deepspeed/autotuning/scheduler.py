@@ -430,14 +430,14 @@ def clean_up(exp: dict, reservations):
     cmd = pdsh_cmd + kill_cmd
     logger.debug("cmd = {}".format(' '.join(cmd)))
 
-    result = subprocess.Popen(cmd, env=env)
-    result.wait()
+    # result = subprocess.Popen(cmd, env=env)
+    # result.wait()
 
-    # In case of failure must propagate the error-condition back to the caller (usually shell). The
-    # actual error and traceback should have been printed in the subprocess, so in order to avoid
-    # unnecessary noise we just quietly exit here with the same code as the subprocess
-    if result.returncode > 0:
-        sys.exit(result.returncode)
+    # # In case of failure must propagate the error-condition back to the caller (usually shell). The
+    # # actual error and traceback should have been printed in the subprocess, so in order to avoid
+    # # unnecessary noise we just quietly exit here with the same code as the subprocess
+    # if result.returncode > 0:
+    #     sys.exit(result.returncode)
 
     logger.info(
         f"Done cleaning up exp_id = {exp['exp_id']} on the following workers: {nodes_str}"
