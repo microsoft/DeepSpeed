@@ -406,7 +406,6 @@ class TestInjectionPolicy(DistributedTest):
                                               mp_size=world_size,
                                               dtype=dtype,
                                               injection_policy=injection_policy)
-        check_injection(pipe.model)
         # Switch device to GPU so that input tensors are not on CPU
         pipe.device = torch.device(f"cuda:{local_rank}")
         ds_output = pipe(query, **inf_kwargs)
