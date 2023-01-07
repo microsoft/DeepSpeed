@@ -421,6 +421,7 @@ class Autotuner:
     def tune(self):
         """ Tunes Zero stages, micro batch size per GPU, and other Zero configurations. Performance metrics of different tuning spaces are recorded in self.records.
         """
+        print(os.environ)
         with mlflow.start_run() if has_mlflow else nullcontext():
             self.start_time = time.time()
             if self.fast_enabled():
