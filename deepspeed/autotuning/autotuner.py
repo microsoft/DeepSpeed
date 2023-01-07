@@ -421,119 +421,120 @@ class Autotuner:
     def tune(self):
         """ Tunes Zero stages, micro batch size per GPU, and other Zero configurations. Performance metrics of different tuning spaces are recorded in self.records.
         """
-        print(os.environ)
-        self.start_time = time.time()
-        if self.fast_enabled():
-            logger.info(f"Fast mode is enabled. Tuning micro batch size only.")
+        with mlflow.start_run(run_id=os.environ['MLFLOW_RUN_ID']) if has_mlflow else nullcontext():
+            print(os.environ)
+            self.start_time = time.time()
+            if self.fast_enabled():
+                logger.info(f"Fast mode is enabled. Tuning micro batch size only.")
 
-        # model info profile run with DEFAULT_MIN_MEM_CONFIG
-        model_info = self.model_info_profile_run()
-        if model_info:
-            self.model_info = model_info
-        else:
-            return
+            # model info profile run with DEFAULT_MIN_MEM_CONFIG
+            model_info = self.model_info_profile_run()
+            if model_info:
+                self.model_info = model_info
+            else:
+                return
 
-        logger.info(
-            f"The model has {number_to_string(self.get_model_num_params())} parameters.")
-
-        self.gpu_mem = self.get_gpu_memory_info()
-        logger.info(
-            f"Memory per GPU in the system is {memory_to_string(self.gpu_mem, postfix='B')}."
-        )
-
-        self.activation_mem = self.get_activation_memory_per_gpu()
-        logger.info(
-            f"The model requires at least {memory_to_string(self.activation_mem, postfix='B')} activation memory for micro batch size 1."
-        )
-
-        #TODO: FIX THIS
-        stage = self.user_config.get(ZERO_OPTIMIZATION,
-                                    {}).get(ZERO_OPTIMIZATION_STAGE,
-                                            "all")
-        stage = "all"
-        user_zero_stages = [stage] if not isinstance(stage, list) else stage
-        logger.info(f"User-defined zero stages are {stage}.")
-
-        mbs = 0
-        max_mbs = 0
-        metric_val = 0
-
-        required_gpu_mem = self.get_instantiation_memory_required_per_gpu(
-            ZeroStageEnum.disabled) + self.activation_mem
-        if self.gpu_mem > required_gpu_mem:
-            if "all" in user_zero_stages or ZeroStageEnum.disabled in user_zero_stages:
-                logger.info(
-                    f"The model might be runable with ZERO 0 (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1), adding DEFAULT_TUNING_SPACE_ZERO_0 to the global tuning space"
-                )
-                next_max_mbs, next_mbs, next_metric_val = self.tune_space(
-                    DEFAULT_TUNING_SPACE_ZERO_0)
-                if next_mbs > mbs:
-                    mbs = next_mbs
-                    max_mbs = next_max_mbs
-                    metric_val = next_metric_val
-                if has_mlflow:
-                    mlflow.log_metric(f"z0{self.metric()}", next_metric_val)
-        else:
             logger.info(
-                f"The model is not runable with ZERO stage {ZeroStageEnum.disabled} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
+                f"The model has {number_to_string(self.get_model_num_params())} parameters.")
+
+            self.gpu_mem = self.get_gpu_memory_info()
+            logger.info(
+                f"Memory per GPU in the system is {memory_to_string(self.gpu_mem, postfix='B')}."
             )
 
-        required_gpu_mem = self.get_instantiation_memory_required_per_gpu(
-            ZeroStageEnum.optimizer_states) + self.activation_mem
-        if self.gpu_mem > required_gpu_mem:
-            if "all" in user_zero_stages or ZeroStageEnum.optimizer_states in user_zero_stages:
-                logger.info(
-                    f"The model might be runable with ZERO 1 (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory), adding DEFAULT_TUNING_SPACE_ZERO_1 to the global tuning space"
-                )
-                next_max_mbs, next_mbs, next_metric_val = self.tune_space(
-                    DEFAULT_TUNING_SPACE_ZERO_1, prev_max_mbs = max_mbs, prev_best_mbs=mbs, prev_best_metric_val=metric_val)
-                if next_mbs > mbs:
-                    mbs = next_mbs
-                    max_mbs = next_max_mbs
-                    metric_val = next_metric_val
-                if has_mlflow:
-                    mlflow.log_metric(f"z1{self.metric()}", next_metric_val)
-        else:
+            self.activation_mem = self.get_activation_memory_per_gpu()
             logger.info(
-                f"The model is not runable with ZERO stage {ZeroStageEnum.optimizer_states} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
+                f"The model requires at least {memory_to_string(self.activation_mem, postfix='B')} activation memory for micro batch size 1."
             )
 
-        required_gpu_mem = self.get_instantiation_memory_required_per_gpu(
-            ZeroStageEnum.gradients) + self.activation_mem
-        if self.gpu_mem > required_gpu_mem:
-            if "all" in user_zero_stages or ZeroStageEnum.gradients in user_zero_stages:
-                logger.info(
-                    f"The model might be runable with ZERO 2 (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory), adding DEFAULT_TUNING_SPACE_ZERO_2 to the global tuning space"
-                )
-                next_max_mbs, next_mbs, next_metric_val = self.tune_space(
-                    DEFAULT_TUNING_SPACE_ZERO_2, prev_max_mbs = max_mbs, prev_best_mbs=mbs, prev_best_metric_val=metric_val)
-                if next_mbs > mbs:
-                    mbs = next_mbs
-                    max_mbs = next_max_mbs
-                    metric_val = next_metric_val
-                if has_mlflow:
-                    mlflow.log_metric(f"z2{self.metric()}", next_metric_val)
-        else:
-            logger.info(
-                f"The model is not runable with ZERO stage {ZeroStageEnum.gradients} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
-            )
+            #TODO: FIX THIS
+            stage = self.user_config.get(ZERO_OPTIMIZATION,
+                                        {}).get(ZERO_OPTIMIZATION_STAGE,
+                                                "all")
+            stage = "all"
+            user_zero_stages = [stage] if not isinstance(stage, list) else stage
+            logger.info(f"User-defined zero stages are {stage}.")
 
-        required_gpu_mem = self.get_instantiation_memory_required_per_gpu(
-            ZeroStageEnum.weights) + self.activation_mem
-        if self.gpu_mem > required_gpu_mem:
-            if "all" in user_zero_stages or ZeroStageEnum.weights in user_zero_stages:
+            mbs = 0
+            max_mbs = 0
+            metric_val = 0
+
+            required_gpu_mem = self.get_instantiation_memory_required_per_gpu(
+                ZeroStageEnum.disabled) + self.activation_mem
+            if self.gpu_mem > required_gpu_mem:
+                if "all" in user_zero_stages or ZeroStageEnum.disabled in user_zero_stages:
+                    logger.info(
+                        f"The model might be runable with ZERO 0 (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1), adding DEFAULT_TUNING_SPACE_ZERO_0 to the global tuning space"
+                    )
+                    next_max_mbs, next_mbs, next_metric_val = self.tune_space(
+                        DEFAULT_TUNING_SPACE_ZERO_0)
+                    if next_mbs > mbs:
+                        mbs = next_mbs
+                        max_mbs = next_max_mbs
+                        metric_val = next_metric_val
+                    if has_mlflow:
+                        mlflow.log_metric(f"z0{self.metric()}", next_metric_val)
+            else:
                 logger.info(
-                    f"The model might be runable with ZERO 3 (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory), adding DEFAULT_TUNING_SPACE_ZERO_3 to the global tuning space"
+                    f"The model is not runable with ZERO stage {ZeroStageEnum.disabled} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
                 )
-                _, _, next_metric_val = self.tune_space(
-                    DEFAULT_TUNING_SPACE_ZERO_3, prev_max_mbs = max_mbs, prev_best_mbs=mbs, prev_best_metric_val=metric_val)
-                if has_mlflow:
-                    mlflow.log_metric(f"z3{self.metric()}", next_metric_val)
-        else:
-            logger.info(
-                f"The model has {self.get_model_num_params()} parameters and requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory per GPU with DeepSpeed Zero stage {ZeroStageEnum.weights} optimization. Memory per GPU in system is {memory_to_string(self.gpu_mem)}. No tuning is performed."
-            )
-            return
+
+            required_gpu_mem = self.get_instantiation_memory_required_per_gpu(
+                ZeroStageEnum.optimizer_states) + self.activation_mem
+            if self.gpu_mem > required_gpu_mem:
+                if "all" in user_zero_stages or ZeroStageEnum.optimizer_states in user_zero_stages:
+                    logger.info(
+                        f"The model might be runable with ZERO 1 (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory), adding DEFAULT_TUNING_SPACE_ZERO_1 to the global tuning space"
+                    )
+                    next_max_mbs, next_mbs, next_metric_val = self.tune_space(
+                        DEFAULT_TUNING_SPACE_ZERO_1, prev_max_mbs = max_mbs, prev_best_mbs=mbs, prev_best_metric_val=metric_val)
+                    if next_mbs > mbs:
+                        mbs = next_mbs
+                        max_mbs = next_max_mbs
+                        metric_val = next_metric_val
+                    if has_mlflow:
+                        mlflow.log_metric(f"z1{self.metric()}", next_metric_val)
+            else:
+                logger.info(
+                    f"The model is not runable with ZERO stage {ZeroStageEnum.optimizer_states} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
+                )
+
+            required_gpu_mem = self.get_instantiation_memory_required_per_gpu(
+                ZeroStageEnum.gradients) + self.activation_mem
+            if self.gpu_mem > required_gpu_mem:
+                if "all" in user_zero_stages or ZeroStageEnum.gradients in user_zero_stages:
+                    logger.info(
+                        f"The model might be runable with ZERO 2 (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory), adding DEFAULT_TUNING_SPACE_ZERO_2 to the global tuning space"
+                    )
+                    next_max_mbs, next_mbs, next_metric_val = self.tune_space(
+                        DEFAULT_TUNING_SPACE_ZERO_2, prev_max_mbs = max_mbs, prev_best_mbs=mbs, prev_best_metric_val=metric_val)
+                    if next_mbs > mbs:
+                        mbs = next_mbs
+                        max_mbs = next_max_mbs
+                        metric_val = next_metric_val
+                    if has_mlflow:
+                        mlflow.log_metric(f"z2{self.metric()}", next_metric_val)
+            else:
+                logger.info(
+                    f"The model is not runable with ZERO stage {ZeroStageEnum.gradients} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
+                )
+
+            required_gpu_mem = self.get_instantiation_memory_required_per_gpu(
+                ZeroStageEnum.weights) + self.activation_mem
+            if self.gpu_mem > required_gpu_mem:
+                if "all" in user_zero_stages or ZeroStageEnum.weights in user_zero_stages:
+                    logger.info(
+                        f"The model might be runable with ZERO 3 (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory), adding DEFAULT_TUNING_SPACE_ZERO_3 to the global tuning space"
+                    )
+                    _, _, next_metric_val = self.tune_space(
+                        DEFAULT_TUNING_SPACE_ZERO_3, prev_max_mbs = max_mbs, prev_best_mbs=mbs, prev_best_metric_val=metric_val)
+                    if has_mlflow:
+                        mlflow.log_metric(f"z3{self.metric()}", next_metric_val)
+            else:
+                logger.info(
+                    f"The model has {self.get_model_num_params()} parameters and requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory per GPU with DeepSpeed Zero stage {ZeroStageEnum.weights} optimization. Memory per GPU in system is {memory_to_string(self.gpu_mem)}. No tuning is performed."
+                )
+                return
 
     def tune_space(self,
                    tuning_space,
