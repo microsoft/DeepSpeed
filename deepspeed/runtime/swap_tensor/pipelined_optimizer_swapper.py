@@ -5,7 +5,8 @@ Licensed under the MIT license.
 Functionality of swapping optimizer tensors to/from (NVMe) storage devices.
 """
 
-from deepspeed.ops.aio import AsyncIOBuilder
+from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import AsyncIOBuilder
 from deepspeed import comm as dist
 
 from deepspeed.runtime.swap_tensor.constants import *
@@ -72,7 +73,7 @@ class PipelinedOptimizerSwapper(OptimizerSwapper):
                              dtype,
                              timers)
 
-        aio_op = AsyncIOBuilder().load()
+        aio_op = get_accelerator().create_op_builder(AsyncIOBuilder).load()
         self.write_aio_handle = aio_op.aio_handle(aio_config[AIO_BLOCK_SIZE],
                                                   aio_config[AIO_QUEUE_DEPTH],
                                                   aio_config[AIO_SINGLE_SUBMIT],

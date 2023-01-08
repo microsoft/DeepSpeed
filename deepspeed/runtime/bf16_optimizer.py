@@ -8,7 +8,8 @@ import sys
 import os
 from deepspeed import comm as dist
 from deepspeed.runtime.constants import PIPE_REPLICATED
-from deepspeed.ops.op_builder import UtilsBuilder
+from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import UtilsBuilder
 from deepspeed.runtime import ZeROOptimizer
 from packaging import version as pkg_version
 
@@ -63,7 +64,7 @@ class BF16_Optimizer(ZeROOptimizer):
         ]
 
         # Load pre-built or JIT compile (un)flatten ops
-        util_ops = UtilsBuilder().load()
+        util_ops = get_accelerator().create_op_builder(UtilsBuilder).load()
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 
