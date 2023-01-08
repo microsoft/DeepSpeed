@@ -7,6 +7,7 @@ from .fused_adam import FusedAdamBuilder
 from .fused_lamb import FusedLambBuilder
 from .sparse_attn import SparseAttnBuilder
 from .transformer import TransformerBuilder
+from .random_ltd import RandomLTDBuilder
 from .stochastic_transformer import StochasticTransformerBuilder
 from .utils import UtilsBuilder
 from .async_io import AsyncIOBuilder

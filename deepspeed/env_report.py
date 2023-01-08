@@ -92,9 +92,7 @@ def debug_report():
          )
     ]
     if get_accelerator().device_name() == 'cuda':
-        hip_version = None
-        if hasattr(torch.version, 'hip'):
-            hip_version = torch.version.hip
+        hip_version = getattr(torch.version, "hip", None)
         report.extend([("torch cuda version",
                         torch.version.cuda),
                        ("torch hip version",

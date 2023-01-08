@@ -1,15 +1,39 @@
-from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
+import os
+import pkgutil
+import importlib
+
+from .abstract_accelerator import DeepSpeedAccelerator
+# During setup stage torch may not be installed, pass on no torch will
+# allow op builder related API to be executed.
 try:
     import torch.cuda
-    torch_installed = True
 except ImportError:
-    torch_installed = False
+    pass
 
 
 class CUDA_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
         self._name = 'cuda'
         self._communication_backend_name = 'nccl'
+
+        # begin initialize for create_op_builder()
+        # put all valid class name <--> class type mapping into class_dict
+        op_builder_dir = self.op_builder_dir()
+        op_builder_module = importlib.import_module(op_builder_dir)
+
+        for _, module_name, _ in pkgutil.iter_modules([os.path.dirname(op_builder_module.__file__)]):
+            # avoid self references
+            if module_name != 'all_ops' and module_name != 'builder' and module_name != 'builder_names':
+                module = importlib.import_module("{}.{}".format(
+                    op_builder_dir,
+                    module_name))
+                for member_name in module.__dir__():
+                    if member_name.endswith(
+                            'Builder'
+                    ) and member_name != "OpBuilder" and member_name != "CUDAOpBuilder" and member_name != "TorchCPUOpBuilder":  # avoid abstract classes
+                        if not member_name in self.class_dict:
+                            self.class_dict[member_name] = getattr(module, member_name)
+        # end initialize for create_op_builder()
 
     # Device APIs
     def device_name(self, device_index=None):
@@ -198,39 +222,21 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
             return False
 
     def op_builder_dir(self):
-        if torch_installed:
-            return "deepspeed.ops.op_builder"
-        else:
+        try:
+            # during installation time op_builder is visible, otherwise return deepspeed.ops.op_builder
+            import op_builder  # noqa: F401
             return "op_builder"
+        except ImportError:
+            return "deepspeed.ops.op_builder"
+
+    # dict that holds class name <--> class type mapping i.e.
+    # 'AsyncIOBuilder': <class 'op_builder.async_io.AsyncIOBuilder'>
+    # this dict will be filled at init stage
+    class_dict = {}
 
     def create_op_builder(self, class_name):
-        if torch_installed:
-            from deepspeed.ops.op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
-        else:
-            from op_builder import AsyncIOBuilder, CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, FusedLambBuilder, QuantizerBuilder, SparseAttnBuilder, StochasticTransformerBuilder, TransformerBuilder, InferenceBuilder, UtilsBuilder
-
-        if class_name == "AsyncIOBuilder":
-            return AsyncIOBuilder()
-        elif class_name == "CPUAdagradBuilder":
-            return CPUAdagradBuilder()
-        elif class_name == "CPUAdamBuilder":
-            return CPUAdamBuilder()
-        elif class_name == "FusedAdamBuilder":
-            return FusedAdamBuilder()
-        elif class_name == "FusedLambBuilder":
-            return FusedLambBuilder()
-        elif class_name == "QuantizerBuilder":
-            return QuantizerBuilder()
-        elif class_name == "SparseAttnBuilder":
-            return SparseAttnBuilder()
-        elif class_name == "StochasticTransformerBuilder":
-            return StochasticTransformerBuilder()
-        elif class_name == "TransformerBuilder":
-            return TransformerBuilder()
-        elif class_name == "InferenceBuilder":
-            return InferenceBuilder()
-        elif class_name == "UtilsBuilder":
-            return UtilsBuilder()
+        if class_name in self.class_dict:
+            return self.class_dict[class_name]()
         else:
             return None
 

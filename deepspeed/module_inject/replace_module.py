@@ -3,14 +3,16 @@ import torch
 import tqdm
 import deepspeed
 import deepspeed.ops.transformer as transformer_inference
+from deepspeed.ops.transformer.inference.diffusers_attention import DeepSpeedDiffusersAttention
+from deepspeed.ops.transformer.inference.diffusers_transformer_block import DeepSpeedDiffusersTransformerBlock
+from deepspeed.ops.transformer.inference.diffusers_2d_transformer import Diffusers2DTransformerConfig
 from deepspeed.accelerator import get_accelerator
-from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, BLOOMLayerPolicy
+from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, BLOOMLayerPolicy, HFDistilBertLayerPolicy
 from .replace_policy import replace_policies, generic_policies
-#from ..runtime.weight_quantizer import WeightQuantization
+
 from deepspeed import comm as dist
 from torch import nn
 
-from ..runtime.zero import GatheredParameters
 from .layers import LinearAllreduce, LinearLayer
 from .load_checkpoint import load_model_with_checkpoint
 import time
@@ -37,13 +39,13 @@ class ReplaceWithTensorSlicing:
             return src
         src_shape = src.shape
         dst_shape = dst.shape
+
         if self.out_dim == 0:
             src_split = torch.split(src.data,
                                     src_shape[self.out_dim] // self.mp_size,
                                     dim=0)
         else:
             src_split = torch.split(src.data, src.shape[-1] // 3, dim=-1)
-
         if (len(src_shape) == 2 and len(dst_shape) == 2):
             if src_shape[self.out_dim] == dst_shape[self.out_dim]:
                 return torch.nn.parameter.Parameter(src)
@@ -55,7 +57,6 @@ class ReplaceWithTensorSlicing:
                                 qkv_size,
                                 dim=self.out_dim) for src_s in src_split
                 ]
-
                 weight_split = [
                     torch.cat([qkv_s[i] for qkv_s in qkv_split],
                               axis=self.out_dim) for i in range(len(qkv_split[0]))
@@ -139,11 +140,12 @@ def get_transformer_name(replaced_module):
 
 
 class GroupQuantizer:
-    def __init__(self, q_int8=True, num_groups=32, group_size=32, num_bits=8):
-        self.num_groups = num_groups
+    def __init__(self, q_int8=True, group_size=1, num_bits=8):
         self.group_size = group_size
         self.num_bits = num_bits
         self.q_int8 = q_int8
+        # TODO(jeff): need to check w. Reza on why this is needed when changing tp size w. bloom
+        self.num_groups = 32
 
     def quantize(self, inputs, qkv=True, count=1, parallel_dim=0):
         if not self.q_int8 or not qkv:
@@ -151,8 +153,9 @@ class GroupQuantizer:
             inputs.scale = torch.empty(1)
             return inputs
         q_range = 2**self.num_bits
+        num_groups = inputs.shape[0] // self.group_size
         inputs = inputs.to(get_accelerator().current_device_name())
-        input_flat = inputs.reshape(self.num_groups, -1).contiguous()
+        input_flat = inputs.reshape(num_groups, -1).contiguous()
         input_min = torch.min(input_flat, dim=1, keepdim=True)[0].float()
         input_max = torch.max(input_flat, dim=1, keepdim=True)[0].float()
         scale = torch.max(input_min.abs(), input_max.abs()) * 2.0 / (q_range)
@@ -162,7 +165,7 @@ class GroupQuantizer:
         #print(inputs.shape)
         inputs_split = inputs.split(inputs.shape[parallel_dim] // 2, dim=parallel_dim)
         input_flat = [
-            inputs_split[i].reshape(self.num_groups,
+            inputs_split[i].reshape(num_groups,
                                     -1).contiguous() for i in range(2)
         ]
         input_min = [
@@ -184,7 +187,7 @@ class GroupQuantizer:
         out.scale = torch.cat([scale.squeeze().unsqueeze(0),
                                scale1[0],
                                scale1[1]],
-                              dim=0).reshape(self.num_groups,
+                              dim=0).reshape(num_groups,
                                              -1).contiguous()
         return out
 
@@ -214,7 +217,7 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
             triangular_masking=False,
             max_out_tokens=4096,
         )
-        attn_module = transformer_inference.DeepSpeedDiffusersAttention(config)
+        attn_module = DeepSpeedDiffusersAttention(config)
 
         def transpose(data):
             data = data.contiguous()
@@ -238,8 +241,8 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
         return attn_module
 
     def replace_attn_block(child, policy):
-        config = transformer_inference.Diffusers2DTransformerConfig()
-        return transformer_inference.DeepSpeedDiffusersTransformerBlock(child, config)
+        config = Diffusers2DTransformerConfig()
+        return DeepSpeedDiffusersTransformerBlock(child, config)
 
     if isinstance(module, torch.nn.Module):
         pass
@@ -289,6 +292,11 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
                 setattr(module, name, new_module)
 
 
+selected_policy_g = None
+megatron_v2_g = False
+transformer_config_g = None
+
+
 def replace_transformer_layer(orig_layer_impl,
                               model,
                               checkpoint_dict,
@@ -328,6 +336,9 @@ def replace_transformer_layer(orig_layer_impl,
                             inference=False,
                             layer_id=0):
         policy = policy_cls(child, inference=inference)
+        global selected_policy_g
+        if selected_policy_g is None:
+            selected_policy_g = policy
         if not policy.cuda_graph_supported:
             # policy says cuda graph is not supported raise an error if set
             assert not config.enable_cuda_graph, "cuda graph is not supported with this model, please disable"
@@ -343,6 +354,8 @@ def replace_transformer_layer(orig_layer_impl,
             moe = True
 
         attn_linear_layer, qkvw, qkvb, dense_w, dense_b, scale_attention, megatron_v2 = policy.attention()
+        global megatron_v2_g
+        megatron_v2_g = megatron_v2
         if not moe or config.moe.type == 'standard':
             mlp_linear_layer, _h4h_w, _h4h_b, _4hh_w, _4hh_b = policy.mlp()
         else:
@@ -428,7 +441,8 @@ def replace_transformer_layer(orig_layer_impl,
                     q_int8=quantize,
                     return_tuple=(config.return_tuple
                                   or (policy_cls is HFBertLayerPolicy)),
-                    triangular_masking=(policy_cls is not HFBertLayerPolicy),
+                    triangular_masking=(policy_cls is not HFBertLayerPolicy
+                                        and policy_cls is not HFDistilBertLayerPolicy),
                     local_attention=((model_config.attention_layers[layer_id] == "local")
                                      if hasattr(model_config,
                                                 'attention_layers') else False),
@@ -441,7 +455,12 @@ def replace_transformer_layer(orig_layer_impl,
                     training_mp_size=config.training_mp_size,
                     bigscience_bloom=bigscience_bloom,
                     max_out_tokens=config.max_out_tokens,
-                    scale_attn_by_inverse_layer_idx=scale_attn_by_inverse_layer_idx)
+                    scale_attn_by_inverse_layer_idx=scale_attn_by_inverse_layer_idx,
+                    use_mup=policy_cls.use_mup if hasattr(policy_cls,
+                                                          'use_mup') else False,
+                    return_single_tuple=(policy_cls is HFDistilBertLayerPolicy))
+                global transformer_config_g
+                transformer_config_g = transformer_config
 
             if moe:
                 new_module = transformer_inference.DeepSpeedMoEInference(
@@ -475,20 +494,8 @@ def replace_transformer_layer(orig_layer_impl,
             mpl_block = new_module.mlp
 
             if attn_linear_layer:
-                if qkvw.numel() == 0 or qkvw.is_meta:
-                    if qkvw.is_meta or qkvw.ds_tensor.numel(
-                    ) < attn_block.attn_qkvw.numel():
-                        pass
-                    else:
-                        with GatheredParameters([qkvw,
-                                                 dense_w,
-                                                 qkvb,
-                                                 dense_b],
-                                                modifier_rank=0):
-                            qkvw = transpose(qkvw.data)
-                            dense_w = transpose(dense_w.data)
-                            qkvb = qkvb.data
-                            dense_b = dense_b.data
+                if qkvw.is_meta:
+                    pass
                 else:
                     qkvw.data = transpose(qkvw.data)
                     dense_w.data = transpose(dense_w.data)
@@ -529,20 +536,8 @@ def replace_transformer_layer(orig_layer_impl,
             #                   transformer_config.mp_size)
 
             if mlp_linear_layer:
-                if not moe and (_4hh_w.numel() == 0 or _4hh_w.is_meta):
-                    if _4hh_w.is_meta or _4hh_w.ds_tensor.numel(
-                    ) < mpl_block.inter_w.numel():
-                        pass
-                    else:
-                        with GatheredParameters([_h4h_w,
-                                                 _4hh_w,
-                                                 _4hh_b,
-                                                 _h4h_b],
-                                                modifier_rank=0):
-                            _h4h_w = transpose(_h4h_w.data)
-                            _4hh_w = transpose(_4hh_w.data)
-                            _h4h_b = _h4h_b.data
-                            _4hh_b = _4hh_b.data
+                if not moe and _4hh_w.is_meta:
+                    pass
                 else:
                     _h4h_w = [transpose(moe_w1.data)
                               for moe_w1 in _h4h_w] if moe else transpose(_h4h_w.data)
@@ -554,26 +549,12 @@ def replace_transformer_layer(orig_layer_impl,
                 _res_4hh_w.data = transpose(_res_4hh_w.data)
                 _res_coef.data = transpose(_res_coef.data)
 
-            if qkvw.is_meta or qkvw.numel() == 0 or qkvw.is_meta:
-                if qkvw.is_meta or qkvw.ds_tensor.numel() < attn_block.attn_qkvw.numel():
-                    pass
-                else:
-                    with GatheredParameters([
-                            attn_block.attn_qkvw,
-                            attn_block.attn_qkvb,
-                            attn_block.attn_ow,
-                            attn_block.attn_ob
-                    ],
-                                            modifier_rank=0):
-                        attn_block.attn_qkvw = mp_replace.copy(
-                            attn_block.attn_qkvw,
-                            qkvw)
-                        attn_block.attn_qkvb = mp_replace.copy(
-                            attn_block.attn_qkvb,
-                            qkvb)
-
-                        attn_block.attn_ow = mp_replace.copy(attn_block.attn_ow, dense_w)
-                        attn_block.attn_ob = mp_replace.copy(attn_block.attn_ob, dense_b)
+            if qkvw.is_meta:
+                if qkvb is None:
+                    attn_block.attn_qkvb = None
+                if dense_b is None:
+                    attn_block.attn_ob = None
+                pass
             else:
                 attn_block.attn_qkvw = quantizer.quantize(
                     mp_replace.copy(attn_block.attn_qkvw, qkvw) if bigscience_bloom else \
@@ -621,28 +602,8 @@ def replace_transformer_layer(orig_layer_impl,
                         get_accelerator().current_device_name())
             else:
 
-                if _4hh_w.numel() == 0 or _4hh_w.is_meta:
-                    if _4hh_w.is_meta or _4hh_w.ds_tensor.numel(
-                    ) < mpl_block.inter_w.numel():
-                        pass
-                    else:
-                        with GatheredParameters([_h4h_w,
-                                                 _4hh_w,
-                                                 _4hh_w,
-                                                 _4hh_b],
-                                                modifier_rank=0):
-                            mpl_block.inter_w = mp_replace.copy(
-                                mpl_block.inter_w,
-                                _h4h_w)
-                            mpl_block.inter_b = mp_replace.copy(
-                                mpl_block.inter_b,
-                                _h4h_b)
-                            mpl_block.output_w = mp_replace.copy(
-                                mpl_block.output_w,
-                                _4hh_w)
-                            mpl_block.output_b = mp_replace.copy(
-                                mpl_block.output_b,
-                                _4hh_b)
+                if _4hh_w.is_meta:
+                    pass
                 else:
                     mpl_block.inter_w = quantizer.quantize(
                         mp_replace.copy(mpl_block.inter_w,
@@ -657,32 +618,16 @@ def replace_transformer_layer(orig_layer_impl,
                     new_module.mlp.attn_nw = attn_nw
                     new_module.mlp.attn_nb = attn_nb
                 else:
-                    if attn_nw.is_meta or attn_nw.numel() == 0:
-                        if attn_nw.is_meta or attn_nw.ds_tensor.numel(
-                        ) < new_module.mlp.attn_nw.numel():
-                            pass
-                        else:
-                            with GatheredParameters([attn_nw, attn_nb], modifier_rank=0):
-                                new_module.mlp.attn_nw.data.copy_(
-                                    attn_nw.to(get_accelerator().current_device_name()))
-                                new_module.mlp.attn_nb.data.copy_(
-                                    attn_nb.to(get_accelerator().current_device_name()))
+                    if attn_nw.is_meta:
+                        pass
                     else:
                         new_module.mlp.attn_nw.data.copy_(
                             attn_nw.to(get_accelerator().current_device_name()))
                         new_module.mlp.attn_nb.data.copy_(
                             attn_nb.to(get_accelerator().current_device_name()))
 
-            if input_nw.is_meta or input_nw.numel() == 0:
-                if input_nw.is_meta or input_nw.ds_tensor.numel(
-                ) < new_module.norm_w.numel():
-                    pass
-                else:
-                    with GatheredParameters([input_nw, input_nb], modifier_rank=0):
-                        new_module.norm_w.data.copy_(
-                            input_nw.to(get_accelerator().current_device_name()))
-                        new_module.norm_b.data.copy_(
-                            input_nb.to(get_accelerator().current_device_name()))
+            if input_nw.is_meta:
+                pass
             else:
                 new_module.norm_w.data.copy_(
                     input_nw.to(get_accelerator().current_device_name()))
@@ -731,12 +676,7 @@ def replace_transformer_layer(orig_layer_impl,
 
         def _replace(child, name, conv_linear_layer):
             mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
-            z_inference = (len(list(child.parameters())) > 0) and (list(
-                child.parameters())[0].numel() == 0)
-            if z_inference:
-                weight_shape = child.weight.ds_shape
-            else:
-                weight_shape = child.weight.shape
+            weight_shape = child.weight.shape
             if name in all_reduce_linears:
                 new_weight = torch.empty((
                     weight_shape[1] if conv_linear_layer else weight_shape[0],
@@ -745,26 +685,13 @@ def replace_transformer_layer(orig_layer_impl,
                 ),
                                          device=child.weight.device,
                                          dtype=child.weight.dtype)
-                if z_inference:
-                    with deepspeed.zero.GatheredParameters(child.weight,
-                                                           modifier_rank=0):
-                        data = child.weight.data.to(new_weight.device)
-                        if conv_linear_layer:
-                            data = data.transpose(-1, -2).contiguous()
-                        data = mp_replace.copy(new_weight, data)
-                    child.weight.ds_tensor = torch.empty(1)
-                else:
-                    if conv_linear_layer:
-                        child.weight.data = child.weight.data.transpose(-1,
-                                                                        -2).contiguous()
-                    data = mp_replace.copy(new_weight, child.weight.data)
+                if conv_linear_layer:
+                    child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
+                data = mp_replace.copy(new_weight, child.weight.data)
                 new_bias = torch.empty((weight_shape[0]),
                                        device=child.weight.device,
                                        dtype=child.weight.dtype)
-                if z_inference:
-                    with deepspeed.zero.GatheredParameters(child.bias, modifier_rank=0):
-                        new_bias.data.copy_(child.bias.data)
-                elif child.bias is not None:
+                if child.bias is not None:
                     new_bias.data.copy_(child.bias.data)
                 return LinearAllreduce(data, child.bias if child.bias is None else \
                             torch.nn.parameter.Parameter(new_bias.to(get_accelerator().current_device_name())), mp_group)
@@ -776,32 +703,16 @@ def replace_transformer_layer(orig_layer_impl,
                 ),
                                          device=child.weight.device,
                                          dtype=child.weight.dtype)
-                if z_inference:
-                    with deepspeed.zero.GatheredParameters(child.weight,
-                                                           modifier_rank=0):
-                        data = child.weight.data.to(new_weight.device)
-                        if conv_linear_layer:
-                            data = data.transpose(-1, -2).contiguous()
-                        data = mp_replace.copy(new_weight, data)
-                    child.weight.ds_tensor = torch.empty(1)
-                else:
-                    if conv_linear_layer:
-                        child.weight.data = child.weight.data.transpose(-1,
-                                                                        -2).contiguous()
-                    data = mp_replace.copy(new_weight, child.weight.data)
+                if conv_linear_layer:
+                    child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
+                data = mp_replace.copy(new_weight, child.weight.data)
 
                 new_bias = torch.empty((weight_shape[0] // mp_size),
                                        device=child.weight.device,
                                        dtype=child.weight.dtype)
-                if z_inference:
-                    with deepspeed.zero.GatheredParameters(child.bias, modifier_rank=0):
-                        bias_data = None if child.bias is None else mp_replace.copy(
-                            new_bias,
-                            child.bias.data).to(get_accelerator().current_device_name())
-                else:
-                    bias_data = None if child.bias is None else mp_replace.copy(
-                        new_bias,
-                        child.bias.data).to(get_accelerator().current_device_name())
+                bias_data = None if child.bias is None else mp_replace.copy(
+                    new_bias,
+                    child.bias.data).to(get_accelerator().current_device_name())
                 return LinearLayer(weight=data.to(
                     get_accelerator().current_device_name()),
                                    bias=bias_data)
@@ -920,7 +831,9 @@ def replace_transformer_layer(orig_layer_impl,
                     mp_replace,
                     ckpt_type,
                     quantizer,
-                )
+                    param_names=selected_policy_g.get_param_names(),
+                    transformer_config=transformer_config_g,
+                    megatron_v2=megatron_v2_g)
                 pbar.update(1)
         else:
             import gc
@@ -944,12 +857,16 @@ def replace_transformer_layer(orig_layer_impl,
                     torch.load(ckpt_file,
                                map_location='cpu') for ckpt_file in ckpt_files
                 ]
-                load_model_with_checkpoint(replaced_module,
-                                           sds,
-                                           mp_replace,
-                                           ckpt_type,
-                                           quantizer,
-                                           int(rank % tp_split_size))
+                load_model_with_checkpoint(
+                    replaced_module,
+                    sds,
+                    mp_replace,
+                    ckpt_type,
+                    quantizer,
+                    int(rank % tp_split_size),
+                    param_names=selected_policy_g.get_param_names(),
+                    transformer_config=transformer_config_g,
+                    megatron_v2=megatron_v2_g)
                 sds = [None for _ in sds]
                 gc.collect()
 
@@ -964,12 +881,16 @@ def replace_transformer_layer(orig_layer_impl,
                                              checkpoint["non_tp"][i]
                                              ) if base_dir1 else checkpoint["non_tp"][i]
                     sds = [torch.load(ckpt_file, map_location='cpu')]
-                    load_model_with_checkpoint(replaced_module,
-                                               sds,
-                                               mp_replace,
-                                               ckpt_type,
-                                               quantizer,
-                                               int(rank % tp_split_size))
+                    load_model_with_checkpoint(
+                        replaced_module,
+                        sds,
+                        mp_replace,
+                        ckpt_type,
+                        quantizer,
+                        int(rank % tp_split_size),
+                        param_names=selected_policy_g.get_param_names(),
+                        transformer_config=transformer_config_g,
+                        megatron_v2=megatron_v2_g)
                     sds = [None for _ in sds]
                     gc.collect()
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
@@ -995,6 +916,7 @@ def replace_transformer_layer(orig_layer_impl,
         non_tp_ckpt_name = f'non-tp.pt'
         ckpt_files = [non_tp_ckpt_name]
         os.makedirs(config.save_mp_checkpoint_path, exist_ok=True)
+
         if not dist.is_initialized() or dist.get_rank() == 0:
             print("Saving tp-sharded checkpoints")
             torch.save(
@@ -1005,7 +927,7 @@ def replace_transformer_layer(orig_layer_impl,
                     if transformer_name not in k
                 }),
                 f'{config.save_mp_checkpoint_path}/{non_tp_ckpt_name}')
-            config = json.dumps({
+            ckpt_config = json.dumps({
                 'type':
                 ckpt_name,
                 'base_dir':
@@ -1027,9 +949,9 @@ def replace_transformer_layer(orig_layer_impl,
                 'dtype':
                 'int8' if quantize else ('float16' if fp16 else 'float32')
             })
-            with open(f"{config.save_mp_checkpoint_path}/ds-inference_config.json",
+            with open(f"{config.save_mp_checkpoint_path}/ds_inference_config.json",
                       "w") as cfg:
-                cfg.write(config)
+                cfg.write(ckpt_config)
 
         rep_sd = replaced_module.state_dict()
         for n, p in replaced_module.named_parameters():

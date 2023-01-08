@@ -59,7 +59,9 @@ pipe = pipeline("fill-mask", model=args.model, framework="pt", device=args.local
 if dtype == torch.half:
     pipe.model.half()
 
-br = pipe("Hello I'm a [MASK] model")
+mask = pipe.tokenizer.mask_token
+
+br = pipe(f"Hello I'm a {mask} model")
 if args.deepspeed:
     pipe.model = deepspeed.init_inference(pipe.model,
                                           dtype=dtype,
@@ -75,7 +77,7 @@ mtimes = []
 for i in range(args.trials):
     get_accelerator().synchronize()
     start = time.time()
-    r = pipe("Hello I'm a [MASK] model")
+    r = pipe(f"Hello I'm a {mask} model")
     get_accelerator().synchronize()
     end = time.time()
     responses.append(r)

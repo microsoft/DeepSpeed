@@ -91,7 +91,7 @@ cmdclass = {}
 
 # For any pre-installed ops force disable ninja
 if torch_available:
-    from deepspeed.accelerator import get_accelerator
+    from accelerator import get_accelerator
     cmdclass['build_ext'] = get_accelerator().build_extension().with_options(
         use_ninja=False)
 
@@ -197,6 +197,7 @@ if sys.platform == "win32":
     # It needs Administrator privilege to create symlinks on Windows.
     create_dir_symlink('..\\..\\csrc', '.\\deepspeed\\ops\\csrc')
     create_dir_symlink('..\\..\\op_builder', '.\\deepspeed\\ops\\op_builder')
+    create_dir_symlink('..\\accelerator', '.\\deepspeed\\accelerator')
     egg_info.manifest_maker.template = 'MANIFEST_win.in'
 
 # Parse the DeepSpeed version string from version.txt
@@ -307,7 +308,8 @@ setup(name='deepspeed',
           'Programming Language :: Python :: 3.6',
           'Programming Language :: Python :: 3.7',
           'Programming Language :: Python :: 3.8',
-          'Programming Language :: Python :: 3.9'
+          'Programming Language :: Python :: 3.9',
+          'Programming Language :: Python :: 3.10'
       ],
       license='MIT',
       ext_modules=ext_modules,
