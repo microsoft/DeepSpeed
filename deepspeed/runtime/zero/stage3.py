@@ -385,7 +385,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                                           dtype=self.dtype,
                                                           device=self.device)
         if self.offload_optimizer_pin_memory:
-            get_accelerator().pin_memory(grad_partitions_flat_buffer)
+            grad_partitions_flat_buffer = get_accelerator().pin_memory(
+                grad_partitions_flat_buffer)
 
         offset = 0
         for param in all_params:
