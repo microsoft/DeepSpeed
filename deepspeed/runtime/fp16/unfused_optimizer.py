@@ -42,7 +42,7 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
             logger.info(f'Fused Lamb Legacy : {self.fused_lamb_legacy} ')
 
         if not get_accelerator().is_available():
-            raise SystemError("No accelerator or accelerator does not support FP16.")
+            raise SystemError("Cannot use FP16 without accelerator.")
         self.optimizer = init_optimizer
 
         # param groups
