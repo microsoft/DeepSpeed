@@ -809,7 +809,7 @@ def get_ma_status():
 
 
 def empty_cache():
-    torch.cuda.empty_cache()
+    get_accelerator().empty_cache()
 
 
 def see_memory_usage(message, force=False):

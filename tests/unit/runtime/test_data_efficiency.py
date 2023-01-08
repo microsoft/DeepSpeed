@@ -1,6 +1,7 @@
 import torch
 import os
 import deepspeed
+from deepspeed.accelerator import get_accelerator
 from unit.common import DistributedTest
 from unit.simple_model import Curriculum_SimpleModel, SimpleModel, random_dataloader, random_dataset
 
@@ -109,8 +110,8 @@ class TestDataEfficiency(DistributedTest):
             os.makedirs('data_clusters')
         model.set_data_post_process_func(data_post_process)
         for n, batch in enumerate(data_loader):
-            x = batch[0].to(torch.cuda.current_device())
-            y = batch[1].to(torch.cuda.current_device())
+            x = batch[0].to(get_accelerator().current_device_name())
+            y = batch[1].to(get_accelerator().current_device_name())
             loss = model(x, y)
             model.backward(loss)
             model.step()
