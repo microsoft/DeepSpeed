@@ -904,6 +904,7 @@ class HFOPTLayerPolicy(TransformerPolicy):
                          pre_attn_norm=True,
                          use_load_prefix=use_load_prefix)
         self.client_module = client_module
+
         try:
             import transformers
             HFOPTLayerPolicy._orig_layer_class = transformers.models.opt.modeling_opt.OPTDecoderLayer
