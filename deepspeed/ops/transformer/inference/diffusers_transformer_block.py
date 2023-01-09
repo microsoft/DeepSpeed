@@ -4,12 +4,13 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 import torch
 import torch.nn as nn
-from ... import op_builder
-from ....module_inject import GroupQuantizer
 
+from deepspeed import module_inject
 from .diffusers_attention import DeepSpeedDiffusersAttention
 from .bias_add import nhwc_bias_add
 from .diffusers_2d_transformer import Diffusers2DTransformerConfig
+from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder.builder_names import InferenceBuilder, SpatialInferenceBuilder
 
 # Ops will be loaded on demand
 transformer_cuda_module = None
@@ -19,14 +20,16 @@ spatial_cuda_module = None
 def load_transformer_module():
     global transformer_cuda_module
     if transformer_cuda_module is None:
-        transformer_cuda_module = op_builder.InferenceBuilder().load()
+        transformer_cuda_module = get_accelerator().create_op_builder(
+            InferenceBuilder).load()
     return transformer_cuda_module
 
 
 def load_spatial_module():
     global spatial_cuda_module
     if spatial_cuda_module is None:
-        spatial_cuda_module = op_builder.SpatialInferenceBuilder().load()
+        spatial_cuda_module = get_accelerator().create_op_builder(
+            SpatialInferenceBuilder).load()
     return spatial_cuda_module
 
 
@@ -35,7 +38,7 @@ class DeepSpeedDiffusersTransformerBlock(nn.Module):
                  equivalent_module: nn.Module,
                  config: Diffusers2DTransformerConfig):
         super(DeepSpeedDiffusersTransformerBlock, self).__init__()
-        self.quantizer = GroupQuantizer(q_int8=config.int8_quantization)
+        self.quantizer = module_inject.GroupQuantizer(q_int8=config.int8_quantization)
         # Ensure ops are built by the time we start running
         self.config = config
 
@@ -98,14 +101,14 @@ class DeepSpeedDiffusersTransformerBlock(nn.Module):
                                                              self.norm1_eps)
         out_attn_1 = self.attn_1(out_norm_1)
 
-        out_norm_2, out_attn_1 = self.transformer_cuda_module.layer_norm_residual_store(out_attn_1,
+        out_norm_2, out_attn_1 = self.transformer_cuda_module.layer_norm_residual_store_pre_ln_res(out_attn_1,
                                                                  self.attn_1_bias,
                                                                  hidden_states,
                                                                  self.norm2_g,
                                                                  self.norm2_b,
                                                                  self.norm2_eps)
         out_attn_2 = self.attn_2(out_norm_2, context=context)
-        out_norm_3, out_attn_2 = self.transformer_cuda_module.layer_norm_residual_store(out_attn_2,
+        out_norm_3, out_attn_2 = self.transformer_cuda_module.layer_norm_residual_store_pre_ln_res(out_attn_2,
                                                                  self.attn_2_bias,
                                                                  out_attn_1,
                                                                  self.norm3_g,
