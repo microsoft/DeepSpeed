@@ -98,6 +98,8 @@ class Autotuner:
         self.optimal_cmd = None
         self.optmal_ds_config = None
 
+        self.mlflow_parent_id = None
+
     def print_tuning_results(self):
         """Print the autotuning results in tabular format.
         """
@@ -422,7 +424,8 @@ class Autotuner:
         """ Tunes Zero stages, micro batch size per GPU, and other Zero configurations. Performance metrics of different tuning spaces are recorded in self.records.
         """
         if has_mlflow:
-            mlflow.start_run(run_id=os.environ['MLFLOW_RUN_ID'])
+            self.mlflow_parent_id=os.environ['MLFLOW_RUN_ID']
+            mlflow.start_run(run_id=self.mlflow_parent_id)
         print(os.environ)
         self.start_time = time.time()
         if self.fast_enabled():
@@ -845,6 +848,7 @@ class Autotuner:
                             for metric in results:
                                 mlflow.log_metric(metric, results[metric])
                             mlflow.end_run()
+                            os.environ['MLFLOW_RUN_ID'] = self.mlflow_parent_id
                 else:
                     self.update_records(tuning_space_name, exp, 0, 1)
             else:
@@ -898,6 +902,7 @@ class Autotuner:
                         for metric in results:
                             mlflow.log_metric(metric, results[metric])
                         mlflow.end_run()
+                        os.environ['MLFLOW_RUN_ID'] = self.mlflow_parent_id
                 self.update_records(tuning_space_name, exp, metric_val, 1)
                 if metric_val > prev_best_metric_val * (1 + METRIC_PERCENT_DIFF_CONST):
                     prev_best_metric_val = metric_val
