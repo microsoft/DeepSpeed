@@ -43,7 +43,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         self.has_moe_layers = has_moe_layers
         self.using_pipeline = self.deepspeed.pipeline_parallelism
         if not get_accelerator().is_available():
-            raise SystemError("Cannot use FP16 without accelerator.")
+            raise SystemError("Cannot use fp16 without accelerator.")
         self.optimizer = init_optimizer
 
         # param flattened by groups
