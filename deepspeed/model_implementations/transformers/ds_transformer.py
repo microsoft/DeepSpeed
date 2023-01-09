@@ -9,7 +9,7 @@ from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
 
 from deepspeed.ops.transformer.inference.ds_mlp import DeepSpeedMLP
-from deepspeed.ops.transformer.inference.ds_attention import DeepSpeedSelfAttention
+from deepspeed.ops.transformer.inference.ds_attention import DeepSpeedSelfAttention, BloomSelfAttention
 
 inference_cuda_module = None
 
@@ -55,12 +55,20 @@ class DeepSpeedTransformerInference(nn.Module):
         if DeepSpeedTransformerInference.layer_id == 1:
             log_dist(f"DeepSpeed-Inference config: {self.config.__dict__}", [0])
 
-        self.attention = DeepSpeedSelfAttention(self.config,
+        if self.config.bigscience_bloom:
+            self.attention = BloomSelfAttention(self.config,
                                                 mp_group,
                                                 quantize_scales,
                                                 quantize_groups,
                                                 merge_count,
                                                 qkv_merging)
+        else:
+            self.attention = DeepSpeedSelfAttention(self.config,
+                                                    mp_group,
+                                                    quantize_scales,
+                                                    quantize_groups,
+                                                    merge_count,
+                                                    qkv_merging)
         self.mlp = DeepSpeedMLP(self.config,
                                 mp_group,
                                 quantize_scales,
@@ -83,15 +91,17 @@ class DeepSpeedTransformerInference(nn.Module):
 
     def forward(
             self,
-            input,
+            input=None,
             input_mask=None,
             attention_mask=None,
+            attn_mask=None,
             head_mask=None,
             layer_past=None,
             get_key_value=False,
             get_present=False,
             encoder_output=None,
             enc_dec_attn_mask=None,
+            x=None,
             encoder_hidden_states=None,
             encoder_attention_mask=None,
             use_cache=False,
@@ -101,6 +111,13 @@ class DeepSpeedTransformerInference(nn.Module):
             # This needs to be redesigned later!
             layer_head_mask=None,
             past_key_value=None):
+
+        if x is not None:
+            input = x
+
+        input_mask = (input_mask if attn_mask is None else
+                      attn_mask) if attention_mask is None else attention_mask
+
         # Allocate memory only on first layer forward
         if self.config.layer_id == 0:
             self.allocate_workspace(self.config.hidden_size,
@@ -159,7 +176,9 @@ class DeepSpeedTransformerInference(nn.Module):
         if get_present:
             output = (output, presents)
 
-        if self.config.return_tuple:
+        if self.config.return_single_tuple:
+            return (output, )
+        elif self.config.return_tuple:
             return output if type(output) is tuple else (output, attn_mask)
         else:
             return output

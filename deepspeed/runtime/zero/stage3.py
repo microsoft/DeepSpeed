@@ -122,7 +122,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # - assume all params requires grad
         # - flat by groups, not keeping state. TODO: remove state explicitly?
         # - master grad and unflat master weight never exist. TODO: a way to save out unflat master?
-        if not torch.cuda.is_available:
+        if not torch.cuda.is_available():
             raise SystemError("Cannot use fp16 without CUDA.")
 
         self.optimizer = init_optimizer
@@ -214,8 +214,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         if self.reduce_scatter:
             assert self.communication_data_type in (torch.float16, torch.bfloat16), f"ZeRO-3 supports only float16 or bfloat16 communication_data_type with reduce scatter enabled. Got: '{self.communication_data_type}'"
-            assert self.gradient_predivide_factor == 1.0, "gradient_predivide_factor != 1.0 is not yet supported with ZeRO-2 with reduce scatter enabled"
-            assert self.postscale_gradients, "pre-scale gradients is not yet supported with ZeRO-2 with reduce scatter enabled"
+            assert self.gradient_predivide_factor == 1.0, "gradient_predivide_factor != 1.0 is not yet supported with ZeRO-3 with reduce scatter enabled"
+            assert self.postscale_gradients, "pre-scale gradients is not yet supported with ZeRO-3 with reduce scatter enabled"
 
         # Holds the mode parameter
         # The param.data may not hold any meaningful data
