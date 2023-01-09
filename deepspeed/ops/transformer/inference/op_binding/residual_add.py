@@ -24,13 +24,13 @@ class ResidualAddOp(BaseOp):
             # only use residual add if its set and we are not pre layer norm
             residual = residual_add
 
-        output = self.residual_add_func(hidden_state,
-                                        residual,
-                                        attention_output,
-                                        attention_bias,
-                                        final_bias,
-                                        self.config.mp_size,
-                                        self.config.mlp_after_attn,
-                                        add_bias,
-                                        self.config.pre_layer_norm)
-        return output
+        self.residual_add_func(hidden_state,
+                               residual,
+                               attention_output,
+                               attention_bias,
+                               final_bias,
+                               self.config.mp_size,
+                               self.config.mlp_after_attn,
+                               add_bias,
+                               self.config.pre_layer_norm)
+        return residual

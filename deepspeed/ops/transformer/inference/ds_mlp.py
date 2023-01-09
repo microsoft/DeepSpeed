@@ -78,7 +78,7 @@ class DeepSpeedMLP(nn.Module):
                                                       bias=self.inter_b,
                                                       gamma=self.attn_nw,
                                                       beta=self.attn_nb)
-        self.residual_add_func(
+        residual = self.residual_add_func(
             hidden_state=output,
             residual=residual,
             attention_output=input,
