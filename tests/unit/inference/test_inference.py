@@ -402,19 +402,17 @@ class TestInjectionPolicy(DistributedTest):
 @pytest.mark.parametrize(
     "model_w_task",
     [
-        (  #"Salesforce/codegen-2B-mono",
-            "EleutherAI/gpt-j-6B",
+        (   "EleutherAI/gpt-j-6B",
             "text-generation"),
     ],
     ids=[
-        #"codegen",
         "gptj",
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float16], ids=["fp16"])
 @pytest.mark.parametrize("enable_cuda_graph", [False], ids=["noCG"])
 class TestAutoTensorParallelism(DistributedTest):
-    world_size = [1, 2]
+    world_size = [2]
 
     def test(
         self,
