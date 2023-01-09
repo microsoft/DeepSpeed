@@ -821,7 +821,7 @@ class Autotuner:
                 fd.flush()
                 os.fsync(fd)
             exp_paths.append(exp_path)
-
+        logger.info(os.environ)
         self.rm.schedule_experiments(exp_paths)
         self.rm.run()
 
@@ -839,7 +839,7 @@ class Autotuner:
                                 TRAIN_MICRO_BATCH_SIZE_PER_GPU]:
                             max_micro_batch_size_metric_val = metric_val
                         if has_mlflow:
-                            mlflow.start_run(nested=True, run_name=exp['name'])
+                            mlflow.start_run(nested=True, run_name=exp_name)
                             my_run = mlflow.active_run()
                             logger.info("Current run_id: {}".format(my_run.info.run_name))
                             for metric in results:
@@ -869,7 +869,7 @@ class Autotuner:
 
         prev_best_metric_val = max_micro_batch_size_metric_val
         prev_best_mbs = max_micro_batch_size
-
+        logger.info(os.environ)
         stride = (max_micro_batch_size - min_micro_batch_size_with_same_gas) // 3
         if stride == 0:
             stride = 1
