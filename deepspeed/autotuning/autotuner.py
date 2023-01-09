@@ -883,12 +883,12 @@ class Autotuner:
                                 for metric in results:
                                     mlflow.log_metric(metric, results[metric])
                 self.update_records(tuning_space_name, exp, metric_val, 1)
+                mlflow.end_run()
                 if metric_val > prev_best_metric_val * (1 + METRIC_PERCENT_DIFF_CONST):
                     prev_best_metric_val = metric_val
                     prev_best_mbs = mbs
                 else:
                     break
-                mlflow.end_run()
             else:
                 self.update_records(tuning_space_name, exp, 0, 1)
                 break
