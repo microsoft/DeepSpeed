@@ -830,7 +830,7 @@ class Autotuner:
                 metric_file = exp[DS_CONFIG][AUTOTUNING][AUTOTUNING_METRIC_PATH]
 
                 if os.path.exists(metric_file):
-                    with mlflow.start_run(nested=True, run_id=exp['name']) if has_mlflow else nullcontext:
+                    with mlflow.start_run(nested=True, run_name=exp['name']) if has_mlflow else nullcontext:
                         with open(metric_file, 'r') as f:
                             results = hjson.load(f)
                             metric_val = results[self.metric()]
@@ -1133,7 +1133,7 @@ class Autotuner:
         self.rm.schedule_experiments([exp_path])
         self.rm.run()
         exp, metric_val = self.rm.parse_results(self.metric())
-        with mlflow.start_run(nested=True, run_id=exp['name']) if has_mlflow else nullcontext:
+        with mlflow.start_run(nested=True, run_name=exp['name']) if has_mlflow else nullcontext:
             for metric in exp['results']:
                 mlflow.log_metric(metric, exp['results'][metric])
         self.rm.clear()
