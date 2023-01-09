@@ -842,6 +842,7 @@ class Autotuner:
                                 TRAIN_MICRO_BATCH_SIZE_PER_GPU]:
                             max_micro_batch_size_metric_val = metric_val
                         if has_mlflow:
+                            os.environ.pop('MLFLOW_RUN_ID')
                             mlflow.start_run(nested=True, run_name=exp_name)
                             my_run = mlflow.active_run()
                             logger.info("Current run_id: {}".format(my_run.info.run_name))
@@ -896,6 +897,7 @@ class Autotuner:
                     results = hjson.load(f)
                     metric_val = results[self.metric()]
                     if has_mlflow:
+                        os.environ.pop('MLFLOW_RUN_ID')
                         mlflow.start_run(nested=True, run_name=exp_name)
                         my_run = mlflow.active_run()
                         logger.info("Current run_id: {}".format(my_run.info.run_name))
