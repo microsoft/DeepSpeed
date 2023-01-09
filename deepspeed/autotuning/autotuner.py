@@ -828,9 +828,12 @@ class Autotuner:
         for exp_id, (exp, err) in self.rm.finished_experiments.items():
             if exp:
                 metric_file = exp[DS_CONFIG][AUTOTUNING][AUTOTUNING_METRIC_PATH]
-
                 if os.path.exists(metric_file):
+                    my_run = mlflow.active_run()
+                    logger.info("Current run_id: {}".format(my_run.info.run_id))
                     with mlflow.start_run(nested=True, run_name=exp['name']) if has_mlflow else nullcontext:
+                        my_run = mlflow.active_run()
+                        logger.info("Current run_id: {}".format(my_run.info.run_id))
                         with open(metric_file, 'r') as f:
                             results = hjson.load(f)
                             metric_val = results[self.metric()]
@@ -846,6 +849,11 @@ class Autotuner:
             else:
                 mbs = exp[DS_CONFIG][TRAIN_MICRO_BATCH_SIZE_PER_GPU]
                 logger.info(f"micro batch size = {mbs} was not run successfully")
+            my_run = mlflow.active_run()
+            logger.info("Current run_id: {}".format(my_run.info.run_id))
+        my_run = mlflow.active_run()
+        logger.info("Current run_id: {}".format(my_run.info.run_id))
+        
         self.rm.clear()
 
         if tuning_micro_batch_sizes_overwritten:
@@ -877,6 +885,17 @@ class Autotuner:
             exp, metric_val = self.run_ds_config(ds_config, exp_name)
 
             if metric_val:
+                my_run = mlflow.active_run()
+                logger.info("Current run_id: {}".format(my_run.info.run_id))
+                with mlflow.start_run(nested=True, run_name=exp['name']) if has_mlflow else nullcontext:
+                    my_run = mlflow.active_run()
+                    logger.info("Current run_id: {}".format(my_run.info.run_id))
+                    with open(metric_file, 'r') as f:
+                        results = hjson.load(f)
+                        metric_val = results[self.metric()]
+                        if has_mlflow:
+                            for metric in results:
+                                mlflow.log_metric(metric, results[metric])
                 self.update_records(tuning_space_name, exp, metric_val, 1)
                 if metric_val > prev_best_metric_val * (1 + METRIC_PERCENT_DIFF_CONST):
                     prev_best_metric_val = metric_val
@@ -888,7 +907,8 @@ class Autotuner:
                 break
         if prev_best_mbs != max_micro_batch_size:
             tuning_micro_batch_sizes[-1] = prev_best_mbs
-
+        my_run = mlflow.active_run()
+        logger.info("Current run_id: {}".format(my_run.info.run_id))
         return tuning_micro_batch_sizes
 
     def get_min_max_micro_batch_size(self,
@@ -1129,13 +1149,9 @@ class Autotuner:
             json.dump(exp_config, fd)
             fd.flush()
             os.fsync(fd)
-
         self.rm.schedule_experiments([exp_path])
         self.rm.run()
         exp, metric_val = self.rm.parse_results(self.metric())
-        with mlflow.start_run(nested=True, run_name=exp['name']) if has_mlflow else nullcontext:
-            for metric in exp['results']:
-                mlflow.log_metric(metric, exp['results'][metric])
         self.rm.clear()
         return exp, metric_val
 
