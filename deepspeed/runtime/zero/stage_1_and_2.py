@@ -154,7 +154,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # - assume all params requires grad
         # - flat by groups, not keeping state. TODO: remove state explicitly?
         # - master grad and unflat master weight never exist. TODO: a way to save out unflat master?
-        if not torch.cuda.is_available:
+        if not torch.cuda.is_available():
             raise SystemError("Cannot use fp16 without CUDA.")
         self.optimizer = init_optimizer
 
@@ -941,8 +941,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def average_tensor(self, tensor):
         if self.overlap_comm:
-            torch.cuda.synchronize()
             stream = self.reduction_stream
+            stream.wait_stream(torch.cuda.current_stream())
         else:
             stream = torch.cuda.current_stream()
 
