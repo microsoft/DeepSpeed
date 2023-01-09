@@ -822,7 +822,9 @@ class Autotuner:
 
         self.rm.schedule_experiments(exp_paths)
         self.rm.run()
-        mlflow.start_run(run_id=os.environ['MLFLOW_RUN_ID'])
+        # mlflow.start_run(run_id=os.environ['MLFLOW_RUN_ID'])
+        this_run = mlflow.active_run()
+        logger.info("Active run_id: {}".format(this_run.info.run_id))
         for exp_id, (exp, err) in self.rm.finished_experiments.items():
             if exp:
                 mlflow.start_run(nested=True, run_name=exp['name'])
@@ -874,7 +876,10 @@ class Autotuner:
                 self.exp_num_gpus * self.exp_num_nodes // self.mp_size()
             exp_name = tuning_space_name + "_gas" + str(gas) + "_tmbspg" + str(mbs)
             exp, metric_val = self.run_ds_config(ds_config, exp_name)
-            mlflow.start_run(run_id=os.environ['MLFLOW_RUN_ID'])
+            # mlflow.start_run(run_id=os.environ['MLFLOW_RUN_ID'])
+            this_run = mlflow.active_run()
+            logger.info("Active run_id: {}".format(this_run.info.run_id))
+            mlflow.active_run()
             if metric_val:
                 mlflow.start_run(nested=True, run_name=exp['name'])
                 metric_file = exp[DS_CONFIG][AUTOTUNING][AUTOTUNING_METRIC_PATH]
