@@ -423,7 +423,7 @@ class Autotuner:
         """ Tunes Zero stages, micro batch size per GPU, and other Zero configurations. Performance metrics of different tuning spaces are recorded in self.records.
         """
         if has_mlflow:
-            self.mlflow_parent_id=os.environ['MLFLOW_RUN_ID']
+            self.mlflow_parent_id = os.environ['MLFLOW_RUN_ID']
             mlflow.start_run(run_id=self.mlflow_parent_id)
 
         self.start_time = time.time()
@@ -452,8 +452,8 @@ class Autotuner:
 
         #TODO: FIX THIS
         stage = self.user_config.get(ZERO_OPTIMIZATION,
-                                    {}).get(ZERO_OPTIMIZATION_STAGE,
-                                            "all")
+                                     {}).get(ZERO_OPTIMIZATION_STAGE,
+                                             "all")
         stage = "all"
         user_zero_stages = [stage] if not isinstance(stage, list) else stage
         logger.info(f"User-defined zero stages are {stage}.")
@@ -852,7 +852,7 @@ class Autotuner:
             else:
                 mbs = exp[DS_CONFIG][TRAIN_MICRO_BATCH_SIZE_PER_GPU]
                 logger.info(f"micro batch size = {mbs} was not run successfully")
-        
+
         self.rm.clear()
 
         if tuning_micro_batch_sizes_overwritten:
