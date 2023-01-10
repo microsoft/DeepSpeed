@@ -2,6 +2,7 @@
 from .base import *
 import torch
 from deepspeed import comm as dist
+import deepspeed.ops.transformer as transformer_inference
 
 
 class BaseTransformerMoEContainer(BaseTransformerContainer):
@@ -12,6 +13,10 @@ class BaseTransformerMoEContainer(BaseTransformerContainer):
         self.num_experts = self.policy.get_num_experts()
         self.ep_world_size = dist.get_world_size()
         self.local_ep_size = 1 if self.num_experts < self.ep_world_size else self.num_experts // self.ep_world_size
+
+        self.layer_norm_eps = self.config.layer_norm_eps if hasattr(
+            self.config,
+            'layer_norm_eps') else 1e-12,
 
         # MoE models will have a list of mlp related tensors
         self._h4h_w = []
@@ -28,20 +33,20 @@ class BaseTransformerMoEContainer(BaseTransformerContainer):
 
     # TODO (lekurile): properly source args for DeepSpeedMoEInferenceConfig
     def create_config(self):
-        #transformer_config = transformer_inference.DeepSpeedMoEInferenceConfig(
-        #    hidden_size=hidden_size,
-        #    heads=num_attention_heads,
-        #    layer_norm_eps=config.layer_norm_eps if hasattr(
-        #        config,
-        #        'layer_norm_eps') else 1e-12,
-        #    fp16=fp16,
-        #    pre_layer_norm=policy.pre_attn_norm,
-        #    mp_size=config.tensor_parallel.tp_size,
-        #    q_int8=quantize,
-        #    moe_experts=local_ep_size,
-        #    global_experts=num_experts,
-        #    mlp_type=config.moe.type,
-        #    scale_attn_by_inverse_layer_idx=scale_attn_by_inverse_layer_idx)
+        self.config = transformer_inference.DeepSpeedMoEInferenceConfig(
+            hidden_size=self.hidden_size,
+            heads=self.num_attention_heads,
+            layer_norm_eps=self.layer_norm_eps,
+            fp16=self.fp16,
+            pre_layer_norm=self.pre_layer_norm,
+            mp_size=self.mp_size,
+            q_int8=self.quantize,
+            moe_experts=self.local_ep_size,
+            global_experts=self.num_experts,
+            mlp_type=self.config.moe.type,
+            scale_attn_by_inverse_layer_idx=self.scale_attn_by_inverse_layer_idx,
+        )
+
         return self.config
 
     def initialize_tensors(self):
