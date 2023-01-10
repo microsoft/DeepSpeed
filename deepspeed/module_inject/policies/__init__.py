@@ -1,6 +1,7 @@
 from .bert import HFBertLayerPolicy
 from .bloom import BLOOMLayerPolicy
 from .clip import HFCLIPLayerPolicy
+from .distil_bert import HFDistilBertLayerPolicy
 from .gpt2 import HFGPT2LayerPolicy
 from .gptj import HFGPTJLayerPolicy
 from .gptneo import HFGPTNEOLayerPolicy

@@ -48,7 +48,7 @@
 
 
 # helper function to map between DS policies and DS containers
-def policy_to_ds_container(policy, config, model_config):
+def policy_to_ds_container(policy, config, model_config, layer_id):
     container = None
 
     if policy is None:
@@ -66,35 +66,35 @@ def policy_to_ds_container(policy, config, model_config):
         if isinstance(policy, HFGPT2LayerPolicy):
             print(f"policy is HFGPT2LayerPolicy")
             from .containers import DS_GPT2Container
-            container = DS_GPT2Container(policy, config, model_config)
+            container = DS_GPT2Container(policy, config, model_config, layer_id)
         elif isinstance(policy, HFBertLayerPolicy):
             print("policy is HFBertLayerPolicy")
             from .containers import DS_BERTContainer
-            container = DS_BERTContainer(policy, config, model_config)
+            container = DS_BERTContainer(policy, config, model_config, layer_id)
         elif isinstance(policy, BLOOMLayerPolicy):
             print("policy is BLOOMLayerPolicy")
             from .containers import DS_BloomContainer
-            container = DS_BloomContainer(policy, config, model_config)
+            container = DS_BloomContainer(policy, config, model_config, layer_id)
         elif isinstance(policy, HFGPTJLayerPolicy):
             print(f"policy is HFGPTJLayerPolicy")
             from .containers import DS_GPTJContainer
-            container = DS_GPTJContainer(policy, config, model_config)
+            container = DS_GPTJContainer(policy, config, model_config, layer_id)
         elif isinstance(policy, HFGPTNEOLayerPolicy):
             print(f"policy is HFGPTNEOLayerPolicy")
             from .containers import DS_GPTNEOContainer
-            container = DS_GPTNEOContainer(policy, config, model_config)
+            container = DS_GPTNEOContainer(policy, config, model_config, layer_id)
         elif isinstance(policy, GPTNEOXLayerPolicy):
             print(f"policy is GPTNEOXLayerPolicy")
             from .containers import DS_GPTNEOXContainer
-            container = DS_GPTNEOXContainer(policy, config, model_config)
+            container = DS_GPTNEOXContainer(policy, config, model_config, layer_id)
         elif isinstance(policy, HFOPTLayerPolicy):
             print(f"policy is HFOPTLayerPolicy")
             from .containers import DS_OPTContainer
-            container = DS_OPTContainer(policy, config, model_config)
+            container = DS_OPTContainer(policy, config, model_config, layer_id)
         elif isinstance(policy, MegatronLayerPolicy):
             print(f"policy is MegatronLayerPolicy")
             from .containers import DS_MegatronGPTContainer
-            container = DS_MegatronGPTContainer(policy, config, model_config)
+            container = DS_MegatronGPTContainer(policy, config, model_config, layer_id)
         else:
             print("policy file is not recognized")
 

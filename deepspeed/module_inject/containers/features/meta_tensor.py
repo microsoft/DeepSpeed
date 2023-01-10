@@ -2,8 +2,8 @@ from abc import ABC
 
 
 class MetaTensorContainer(ABC):
-    def __init__(self, policy, config, model_config):
-        super().__init__(policy, config, model_config)
+    def __init__(self, policy, config, model_config, layer_id):
+        super().__init__(policy, config, model_config, layer_id)
         self.is_meta = False
 
     def initialize_tensors(self):

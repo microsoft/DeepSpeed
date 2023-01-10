@@ -2,7 +2,7 @@ from .base import *
 from deepspeed.model_implementations.transformers.ds_bert import DeepSpeedBERTInference
 
 
-class DS_BERTContainer(BaseTransformerContainer):
+class DS_DistilBERTContainer(BaseTransformerContainer):
     def __init__(self, policy, config, model_config, layer_id):
         super().__init__(policy, config, model_config, layer_id)
 
@@ -15,8 +15,8 @@ class DS_BERTContainer(BaseTransformerContainer):
         #self.pre_attn_norm = False
         #self.triangular_masking = False
 
-        self.return_tuple = True
         self.triangular_masking = False
+        self.return_single_tuple = True
 
     def create_module(self, config=None):
         _config = config if config is not None else self.config

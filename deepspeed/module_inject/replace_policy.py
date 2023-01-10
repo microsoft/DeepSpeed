@@ -97,6 +97,7 @@ class TransformerPolicy(DSPolicy):
             linear_layer=True,
             scale_attention=True,
             megatron_v2=False,
+            use_mup=False,
             # the type of activation function used in MLP
             mlp_act_func_type=ActivationFuncType.GELU,
             # applies layer norm before attention if `pre_attn_norm` is set to True
@@ -111,6 +112,7 @@ class TransformerPolicy(DSPolicy):
         self.linear_layer = linear_layer
         self.scale_attention = scale_attention
         self.is_megatron_v2 = megatron_v2
+        self.use_mup = use_mup
         self.mlp_act_func_type = mlp_act_func_type
         self.pre_attn_norm = pre_attn_norm
         self.use_load_prefix = use_load_prefix
@@ -410,7 +412,9 @@ class MegatronLayerPolicy(TransformerPolicy):
     use_mup = False
 
     def __init__(self, client_module, inference=True):
-        super().__init__(inference, megatron_v2=MegatronLayerPolicy.megatron_v2)
+        super().__init__(inference,
+                         megatron_v2=MegatronLayerPolicy.megatron_v2,
+                         use_mup=MegatronLayerPolicy.use_mup)
         self.client_module = client_module
         # we use megatron version to differentiate between the old and new
         # megatron-lm source code

@@ -21,6 +21,7 @@ from .policies import HFGPTNEOLayerPolicy
 from .policies import GPTNEOXLayerPolicy
 from .policies import HFOPTLayerPolicy
 from .policies import MegatronLayerPolicy
+from .policies import HFDistilBertLayerPolicy
 
 import time
 import tqdm
@@ -37,6 +38,7 @@ replace_policies = [
     GPTNEOXLayerPolicy,
     HFOPTLayerPolicy,
     MegatronLayerPolicy,
+    HFDistilBertLayerPolicy,
 ]
 
 # TODO (lekurile): Need to test the generic_policies
@@ -147,7 +149,7 @@ def replace_transformer_layer(orig_layer_impl,
         print(f">-- replace_with_policy(): {policy}")
 
         # 1. Create a model-specific container object using the policy object.
-        _container = policy_to_ds_container(policy, config, model_config)
+        _container = policy_to_ds_container(policy, config, model_config, layer_id)
         _container.set_dtype(fp16)
         _container.set_moe(moe)
 
@@ -168,7 +170,11 @@ def replace_transformer_layer(orig_layer_impl,
         _container.set_quantization_config(quantize, quantizer)
 
         # 6. create a DS Inference config object
-        _container.create_config()
+        rotary_dim = model_config.rotary_dim if hasattr(model_config, 'rotary_dim') \
+                          else child.attention.rotary_ndims if \
+                          hasattr(child, 'attention') and hasattr(child.attention,'rotary_ndims') else -1
+
+        _container.create_config(rotary_dim)
         #from rich.pretty import pprint
         #pprint(_container.config.__dict__)
         #exit(0)

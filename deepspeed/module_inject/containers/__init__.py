@@ -1,5 +1,6 @@
 from .bert import DS_BERTContainer
 from .bloom import DS_BloomContainer
+from .distil_bert import DS_DistilBERTContainer
 from .gpt2 import DS_GPT2Container
 from .gptj import DS_GPTJContainer
 from .gptneo import DS_GPTNEOContainer
