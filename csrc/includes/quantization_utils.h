@@ -37,7 +37,8 @@ public:
     */
     DS_D_INLINE int8_t quantize(__half val);
 
-    DS_D_INLINE __half dequantize(int8_t val);
+    template <typename T>
+    DS_D_INLINE T dequantize(int8_t val);
 
     DS_D_INLINE void store(float* params, int group_index);
 
@@ -70,10 +71,11 @@ public:
         return (int8_t)data_i32;
     }
 
-    DS_D_INLINE __half dequantize(int8_t val)
+    template <typename T>
+    DS_D_INLINE T dequantize(int8_t val)
     {
         const float val_deq_f = conversion::to<float>(val) * scale;
-        return conversion::to<__half>(val_deq_f);
+        return conversion::to<T>(val_deq_f);
     }
 
     DS_D_INLINE void store(float* params, int group_index)
@@ -104,7 +106,11 @@ public:
         return (int8_t)data_i32;
     }
 
-    DS_D_INLINE __half dequantize(int8_t val) { assert(false); }
+    template <typename T>
+    DS_D_INLINE T dequantize(int8_t val)
+    {
+        assert(false);
+    }
 
     DS_D_INLINE void store(float* params, int group_index)
     {
@@ -141,7 +147,8 @@ public:
         return (int8_t)data_i32;
     }
 
-    DS_D_INLINE __half dequantize(int8_t val)
+    template <typename T>
+    DS_D_INLINE T dequantize(int8_t val)
     {
         const float val_deq_f = conversion::to<float>(val) * scale + offset;
         return conversion::to<__half>(val_deq_f);
@@ -486,6 +493,22 @@ DS_D_INLINE void local_array(cg::thread_block& tb,
     }
 }
 
+template <Type qType, int numBits, int numChunks, int threads_per_group, int max_threads>
+DS_D_INLINE void local_array(cg::thread_block& tb,
+                             cg::thread_block_tile<hw_warp_size>& warp,
+                             __half* local_buffer,
+                             float* __restrict__ global_params,
+                             int8_t* __restrict__ output_data,
+                             const int& elems_per_group,
+                             const int& groups,
+                             Params<qType, numBits> q_params)
+{
+    __half2* local_buffer_h2 = reinterpret_cast<__half2*>(local_buffer);
+
+    quantize::local_array<qType, numBits, numChunks, threads_per_group, max_threads>(
+        tb, warp, local_buffer, global_params, output_data, elems_per_group, groups, q_params);
+}
+
 template <Type qType,
           int numBits,
           int numChunks,
@@ -505,6 +528,18 @@ __device__ void local_array(__half2* local_buffer,
 
     quantize::local_array<qType, numBits, numChunks, threads_per_group, max_threads>(
         tb, warp, local_buffer, global_params, output_data, elems_per_group, groups, params);
+}
+
+template <Type qType, int numBits, int numChunks, int threads_per_group, int max_threads>
+__device__ void local_array(__half* local_buffer,
+                            float* __restrict__ global_params,
+                            int8_t* __restrict__ output_data,
+                            const int& elems_per_group,
+                            const int& groups)
+{
+    __half2* local_buffer_h2 = reinterpret_cast<__half2*>(local_buffer);
+    quantize::local_array<qType, numBits, numChunks, threads_per_group, max_threads>(
+        local_buffer_h2, global_params, output_data, elems_per_group, groups);
 }
 
 }  // namespace quantize

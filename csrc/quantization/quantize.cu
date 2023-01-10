@@ -60,7 +60,7 @@ __global__ void cached_quantization(int8_t* __restrict__ output_data,
 }
 
 /********* Launcher methods ***********/
-#define LAUNCH_CACHED_QUANT(                                                            \
+#define LAUNCH_CACHED_QUANT_CALL(                                                       \
     q_bits, quant_type, unroll_factor, internal_unroll, threads_per_group, max_threads) \
     cached_quantization<q_bits,                                                         \
                         quant_type,                                                     \
@@ -70,12 +70,63 @@ __global__ void cached_quantization(int8_t* __restrict__ output_data,
                         max_threads>                                                    \
         <<<grid, block, 0, stream>>>(output_data, params, input_data, groups, elems_per_group);
 
-template <int numBits, quantize::Type qType>
+#define LAUNCH_CACHED_QUANT(                                                            \
+    q_bits, quant_type, unroll_factor, internal_unroll, threads_per_group, max_threads) \
+    if (q_bits == 4) {                                                                  \
+        if (quant_type == quantize::Type::Asymmetric) {                                 \
+            LAUNCH_CACHED_QUANT_CALL(4,                                                 \
+                                     quantize::Type::Asymmetric,                        \
+                                     unroll_factor,                                     \
+                                     internal_unroll,                                   \
+                                     threads_per_group,                                 \
+                                     max_threads)                                       \
+        } else if (quant_type == quantize::Type::Symmetric) {                           \
+            LAUNCH_CACHED_QUANT_CALL(4,                                                 \
+                                     quantize::Type::Symmetric,                         \
+                                     unroll_factor,                                     \
+                                     internal_unroll,                                   \
+                                     threads_per_group,                                 \
+                                     max_threads)                                       \
+        } else {                                                                        \
+            LAUNCH_CACHED_QUANT_CALL(4,                                                 \
+                                     quantize::Type::IntegerSymmetric,                  \
+                                     unroll_factor,                                     \
+                                     internal_unroll,                                   \
+                                     threads_per_group,                                 \
+                                     max_threads)                                       \
+        }                                                                               \
+    } else {                                                                            \
+        if (quant_type == quantize::Type::Asymmetric) {                                 \
+            LAUNCH_CACHED_QUANT_CALL(8,                                                 \
+                                     quantize::Type::Asymmetric,                        \
+                                     unroll_factor,                                     \
+                                     internal_unroll,                                   \
+                                     threads_per_group,                                 \
+                                     max_threads)                                       \
+        } else if (quant_type == quantize::Type::Symmetric) {                           \
+            LAUNCH_CACHED_QUANT_CALL(8,                                                 \
+                                     quantize::Type::Symmetric,                         \
+                                     unroll_factor,                                     \
+                                     internal_unroll,                                   \
+                                     threads_per_group,                                 \
+                                     max_threads)                                       \
+        } else {                                                                        \
+            LAUNCH_CACHED_QUANT_CALL(8,                                                 \
+                                     quantize::Type::IntegerSymmetric,                  \
+                                     unroll_factor,                                     \
+                                     internal_unroll,                                   \
+                                     threads_per_group,                                 \
+                                     max_threads)                                       \
+        }                                                                               \
+    }
+
 void launch_quant(int8_t* output_data,
                   float* params,
                   const __half* input_data,
                   const int groups,
                   const int elems_per_group,
+                  const int num_bits,
+                  const quantize::Type quant_type,
                   cudaStream_t stream)
 {
     constexpr int max_threads = 256;
@@ -104,70 +155,28 @@ void launch_quant(int8_t* output_data,
     if (is_subblock_schedule) {
         // <=128
         if (threads_per_group == 1) {
-            LAUNCH_CACHED_QUANT(numBits, qType, 1, 1, 1, max_threads);
+            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 1, max_threads);
         } else if (threads_per_group == 2) {
-            LAUNCH_CACHED_QUANT(numBits, qType, 1, 1, 2, max_threads);
+            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 2, max_threads);
         } else if (threads_per_group == 4) {
-            LAUNCH_CACHED_QUANT(numBits, qType, 1, 1, 4, max_threads);
+            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 4, max_threads);
         } else if (threads_per_group == 8) {
-            LAUNCH_CACHED_QUANT(numBits, qType, 1, 1, 8, max_threads);
+            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 8, max_threads);
         } else if (threads_per_group == 16) {
-            LAUNCH_CACHED_QUANT(numBits, qType, 1, 1, 16, max_threads);
+            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 16, max_threads);
         }
     } else if (external_unroll == 1) {
         // 129 - 4096 elems
         // (this can launch with 1-7 warps as well)
-        LAUNCH_CACHED_QUANT(numBits, qType, 1, internal_unroll, max_threads, max_threads);
+        LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, internal_unroll, max_threads, max_threads);
     } else if (external_unroll == 2) {
         // 4097 - 8192 elems
-        LAUNCH_CACHED_QUANT(numBits, qType, 2, internal_unroll, max_threads, max_threads);
+        LAUNCH_CACHED_QUANT(num_bits, quant_type, 2, internal_unroll, max_threads, max_threads);
     } else if (external_unroll == 3) {
         // 8193 - 12288 elems
-        LAUNCH_CACHED_QUANT(numBits, qType, 3, internal_unroll, max_threads, max_threads);
+        LAUNCH_CACHED_QUANT(num_bits, quant_type, 3, internal_unroll, max_threads, max_threads);
     } else if (external_unroll == 4) {
         // 12289 - 16384 elems
-        LAUNCH_CACHED_QUANT(numBits, qType, 4, internal_unroll, max_threads, max_threads);
+        LAUNCH_CACHED_QUANT(num_bits, quant_type, 4, internal_unroll, max_threads, max_threads);
     }
 }
-
-template void launch_quant<8, quantize::Type::Symmetric>(int8_t*,
-                                                         float*,
-                                                         const __half*,
-                                                         int,
-                                                         int,
-                                                         cudaStream_t);
-
-template void launch_quant<8, quantize::Type::Asymmetric>(int8_t*,
-                                                          float*,
-                                                          const __half*,
-                                                          int,
-                                                          int,
-                                                          cudaStream_t);
-
-template void launch_quant<8, quantize::Type::IntegerSymmetric>(int8_t*,
-                                                                float*,
-                                                                const __half*,
-                                                                int,
-                                                                int,
-                                                                cudaStream_t);
-
-template void launch_quant<4, quantize::Type::Symmetric>(int8_t*,
-                                                         float*,
-                                                         const __half*,
-                                                         int,
-                                                         int,
-                                                         cudaStream_t);
-
-template void launch_quant<4, quantize::Type::Asymmetric>(int8_t*,
-                                                          float*,
-                                                          const __half*,
-                                                          int,
-                                                          int,
-                                                          cudaStream_t);
-
-template void launch_quant<4, quantize::Type::IntegerSymmetric>(int8_t*,
-                                                                float*,
-                                                                const __half*,
-                                                                int,
-                                                                int,
-                                                                cudaStream_t);
