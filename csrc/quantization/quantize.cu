@@ -60,64 +60,32 @@ __global__ void cached_quantization(int8_t* __restrict__ output_data,
 }
 
 /********* Launcher methods ***********/
-#define LAUNCH_CACHED_QUANT_CALL(                                                       \
-    q_bits, quant_type, unroll_factor, internal_unroll, threads_per_group, max_threads) \
-    cached_quantization<q_bits,                                                         \
-                        quant_type,                                                     \
-                        unroll_factor,                                                  \
-                        internal_unroll,                                                \
-                        threads_per_group,                                              \
-                        max_threads>                                                    \
+#define LAUNCH_CACHED_QUANT_CALL(q_bits, quant_type) \
+    cached_quantization<q_bits,                      \
+                        quant_type,                  \
+                        unroll_factor,               \
+                        internal_unroll_l,           \
+                        threads_per_group,           \
+                        max_threads>                 \
         <<<grid, block, 0, stream>>>(output_data, params, input_data, groups, elems_per_group);
 
-#define LAUNCH_CACHED_QUANT(                                                            \
-    q_bits, quant_type, unroll_factor, internal_unroll, threads_per_group, max_threads) \
-    if (q_bits == 4) {                                                                  \
-        if (quant_type == quantize::Type::Asymmetric) {                                 \
-            LAUNCH_CACHED_QUANT_CALL(4,                                                 \
-                                     quantize::Type::Asymmetric,                        \
-                                     unroll_factor,                                     \
-                                     internal_unroll,                                   \
-                                     threads_per_group,                                 \
-                                     max_threads)                                       \
-        } else if (quant_type == quantize::Type::Symmetric) {                           \
-            LAUNCH_CACHED_QUANT_CALL(4,                                                 \
-                                     quantize::Type::Symmetric,                         \
-                                     unroll_factor,                                     \
-                                     internal_unroll,                                   \
-                                     threads_per_group,                                 \
-                                     max_threads)                                       \
-        } else {                                                                        \
-            LAUNCH_CACHED_QUANT_CALL(4,                                                 \
-                                     quantize::Type::IntegerSymmetric,                  \
-                                     unroll_factor,                                     \
-                                     internal_unroll,                                   \
-                                     threads_per_group,                                 \
-                                     max_threads)                                       \
-        }                                                                               \
-    } else {                                                                            \
-        if (quant_type == quantize::Type::Asymmetric) {                                 \
-            LAUNCH_CACHED_QUANT_CALL(8,                                                 \
-                                     quantize::Type::Asymmetric,                        \
-                                     unroll_factor,                                     \
-                                     internal_unroll,                                   \
-                                     threads_per_group,                                 \
-                                     max_threads)                                       \
-        } else if (quant_type == quantize::Type::Symmetric) {                           \
-            LAUNCH_CACHED_QUANT_CALL(8,                                                 \
-                                     quantize::Type::Symmetric,                         \
-                                     unroll_factor,                                     \
-                                     internal_unroll,                                   \
-                                     threads_per_group,                                 \
-                                     max_threads)                                       \
-        } else {                                                                        \
-            LAUNCH_CACHED_QUANT_CALL(8,                                                 \
-                                     quantize::Type::IntegerSymmetric,                  \
-                                     unroll_factor,                                     \
-                                     internal_unroll,                                   \
-                                     threads_per_group,                                 \
-                                     max_threads)                                       \
-        }                                                                               \
+#define LAUNCH_CACHED_QUANT(                                                        \
+    q_bits, quant_type, unroll_factor_in, internal_unroll_in, threads_per_group_in) \
+    const int unroll_factor = unroll_factor_in;                                     \
+    const int internal_unroll_l = internal_unroll_in;                               \
+    const int threads_per_group = threads_per_group_in;                             \
+    if (q_bits == 4) {                                                              \
+        if (quant_type == quantize::Type::Asymmetric) {                             \
+            LAUNCH_CACHED_QUANT_CALL(4, quantize::Type::Asymmetric)                 \
+        } else {                                                                    \
+            LAUNCH_CACHED_QUANT_CALL(4, quantize::Type::Symmetric)                  \
+        }                                                                           \
+    } else {                                                                        \
+        if (quant_type == quantize::Type::Asymmetric) {                             \
+            LAUNCH_CACHED_QUANT_CALL(8, quantize::Type::Asymmetric)                 \
+        } else {                                                                    \
+            LAUNCH_CACHED_QUANT_CALL(8, quantize::Type::Symmetric)                  \
+        }                                                                           \
     }
 
 void launch_quant(int8_t* output_data,
@@ -155,28 +123,28 @@ void launch_quant(int8_t* output_data,
     if (is_subblock_schedule) {
         // <=128
         if (threads_per_group == 1) {
-            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 1, max_threads);
+            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 1);
         } else if (threads_per_group == 2) {
-            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 2, max_threads);
+            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 2);
         } else if (threads_per_group == 4) {
-            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 4, max_threads);
+            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 4);
         } else if (threads_per_group == 8) {
-            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 8, max_threads);
+            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 8);
         } else if (threads_per_group == 16) {
-            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 16, max_threads);
+            LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, 1, 16);
         }
     } else if (external_unroll == 1) {
         // 129 - 4096 elems
         // (this can launch with 1-7 warps as well)
-        LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, internal_unroll, max_threads, max_threads);
+        LAUNCH_CACHED_QUANT(num_bits, quant_type, 1, internal_unroll, max_threads);
     } else if (external_unroll == 2) {
         // 4097 - 8192 elems
-        LAUNCH_CACHED_QUANT(num_bits, quant_type, 2, internal_unroll, max_threads, max_threads);
+        LAUNCH_CACHED_QUANT(num_bits, quant_type, 2, internal_unroll, max_threads);
     } else if (external_unroll == 3) {
         // 8193 - 12288 elems
-        LAUNCH_CACHED_QUANT(num_bits, quant_type, 3, internal_unroll, max_threads, max_threads);
+        LAUNCH_CACHED_QUANT(num_bits, quant_type, 3, internal_unroll, max_threads);
     } else if (external_unroll == 4) {
         // 12289 - 16384 elems
-        LAUNCH_CACHED_QUANT(num_bits, quant_type, 4, internal_unroll, max_threads, max_threads);
+        LAUNCH_CACHED_QUANT(num_bits, quant_type, 4, internal_unroll, max_threads);
     }
 }

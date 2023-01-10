@@ -65,7 +65,7 @@ std::vector<at::Tensor> quantize_kernel(at::Tensor& input_vals,
                                         int numBits,
                                         quantize::Type quantType)
 {
-    auto dtype = (quantType == quantize::Type::IntegerSymmetric) ? torch::kInt32 : at::kFloat;
+    auto dtype = at::kFloat;
     auto params_options = at::TensorOptions()
                               .dtype(dtype)
                               .layout(at::kStrided)
@@ -149,7 +149,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     pybind11::enum_<quantize::Type>(m, "QuantizationType")
         .value("Symmetric", quantize::Type::Symmetric)
         .value("Asymmetric", quantize::Type::Asymmetric)
-        .value("IntegerSymmetric", quantize::Type::IntegerSymmetric)
         .export_values();
     m.def("quantize", &quantize_kernel);
     m.def("dequantize", &dequantize<__half>);

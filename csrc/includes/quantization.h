@@ -6,7 +6,7 @@
 
 namespace quantize {
 
-enum class Type { Symmetric, Asymmetric, IntegerSymmetric };
+enum class Type { Symmetric, Asymmetric };
 
 struct PackedInt4 {
     int8_t high : 4;
