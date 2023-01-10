@@ -62,6 +62,7 @@ def policy_to_ds_container(policy, config, model_config, layer_id):
         from .policies import GPTNEOXLayerPolicy
         from .policies import HFOPTLayerPolicy
         from .policies import MegatronLayerPolicy
+        from .policies import HFDistilBertLayerPolicy
 
         if isinstance(policy, HFGPT2LayerPolicy):
             print(f"policy is HFGPT2LayerPolicy")
@@ -95,6 +96,10 @@ def policy_to_ds_container(policy, config, model_config, layer_id):
             print(f"policy is MegatronLayerPolicy")
             from .containers import DS_MegatronGPTContainer
             container = DS_MegatronGPTContainer(policy, config, model_config, layer_id)
+        elif isinstance(policy, HFDistilBertLayerPolicy):
+            print(f"policy is HFDistilBertLayerPolicy")
+            from .containers import DS_DistilBERTContainer
+            container = DS_DistilBERTContainer(policy, config, model_config, layer_id)
         else:
             print("policy file is not recognized")
 
