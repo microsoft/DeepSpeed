@@ -3477,7 +3477,8 @@ class DeepSpeedEngine(Module):
 
     def save_16bit_model(self, save_dir, save_filename="pytorch_model.bin"):
         """
-        Save 16bit model weights 
+        Save 16bit model weights
+         
         This method saves the 16bit model weights at the desired destination.
 
         Arguments:
