@@ -223,10 +223,6 @@ def add_config_arguments(parser):
     return parser
 
 
-def init_inference_v2(model):
-    pass
-
-
 def default_inference_config():
     """
         Return a default DeepSpeed inference configuration dictionary.

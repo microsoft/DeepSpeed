@@ -30,39 +30,26 @@ class BaseTransformerContainer(ABC):
         self.fp16 = False
         self.attn_linear_layer = self.policy.linear_layer
         self.mlp_linear_layer = self.policy.linear_layer
-
         self.layer_norm_eps = self.model_config.layer_norm_eps if \
             hasattr(self.model_config, 'layer_norm_eps') else (self.model_config.layer_norm_epsilon if \
             hasattr(self.model_config, 'layer_norm_epsilon') else self.model_config.layernorm_epsilon if \
             hasattr(self.model_config, 'layernorm_epsilon') else 1.0e-12)
-
         self.return_tuple = self.config.return_tuple
-        #or (policy_cls is HFBertLayerPolicy))
-
         self.triangular_masking = True
-        #(policy_cls is not HFBertLayerPolicy
-        #and policy_cls is not HFDistilBertLayerPolicy)
-
         self.local_attention = ((self.model_config.attention_layers[self.layer_id]
                                  == "local") if hasattr(self.model_config,
                                                         'attention_layers') else False)
-
-        self.window_size = (self.model_config.window_size if hasattr(
-            self.model_config,
-            'window_size') else 1)
-
+        self.window_size = getattr(self.model_config, "window_size", 1)
         self.mlp_act_func_type = self.policy.mlp_act_func_type
         self.training_mp_size = self.config.training_mp_size
         self.bigscience_bloom = False
         self.max_out_tokens = self.config.max_out_tokens
-        self.scale_attn_by_inverse_layer_idx = self.config.scale_attn_by_inverse_layer_idx if hasattr(
+        self.scale_attn_by_inverse_layer_idx = getattr(
             self.config,
-            'scale_attn_by_inverse_layer_idx') else False
-
-        self.use_mup = self.policy.use_mup  # if hasattr(policy_cls,
-        #    'use_mup') else False,
-
-        self.return_single_tuple = False  #(policy_cls is HFDistilBertLayerPolicy))
+            "scale_attn_by_inverse_layer_idx",
+            False)
+        self.use_mup = self.policy.use_mup
+        self.return_single_tuple = False
         self.rotary_dim = self.model_config.rotary_dim if hasattr(self.model_config, 'rotary_dim') \
                           else self.child.attention.rotary_ndims if \
                           hasattr(self.child, 'attention') and hasattr(self.child.attention,'rotary_ndims') else -1
