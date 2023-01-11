@@ -3063,17 +3063,17 @@ class DeepSpeedEngine(Module):
         Save training checkpoint
 
         Arguments:
-            - save_dir: Required. Directory for saving the checkpoint
-            - tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is
+            save_dir: Required. Directory for saving the checkpoint
+            tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is
             used if not provided. Tag name must be the same across all ranks.
-            - client_state: Optional. State dictionary used for saving required training states in the client code.
-            - save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
+            client_state: Optional. State dictionary used for saving required training states in the client code.
+            save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
 
         Important: all processes must call this method and not just the process with rank 0. It is
         because each process needs to save its master weights and scheduler+optimizer states. This
         method will hang waiting to synchronize with other processes if it's called just for the
         process with rank 0.
-        
+
         """
         if self.zero_optimization_partition_weights():
             # Prepare for checkpoint save by ensuring all parameters are partitioned
