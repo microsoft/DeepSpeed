@@ -25,13 +25,14 @@ import time
 torch_available = True
 try:
     import torch
-    from accelerator import get_accelerator
-    # tell abstract accelerator currently in build time
-    get_accelerator(from_setup=True)
 except ImportError:
     torch_available = False
     print('[WARNING] Unable to import torch, pre-compiling ops will be disabled. ' \
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
+
+from accelerator import get_accelerator
+# tell abstract accelerator currently in build time
+get_accelerator(from_setup=True)
 
 from op_builder import get_default_compute_capabilities, OpBuilder
 from op_builder.all_ops import ALL_OPS
