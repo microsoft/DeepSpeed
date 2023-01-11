@@ -2711,7 +2711,7 @@ class DeepSpeedEngine(Module):
                         load_lr_scheduler_states=True,
                         load_module_only=False,
                         custom_load_fn=None):
-        """Load training checkpoint
+        """Load training checkpoint 
         Arguments:
             load_dir: Required. Directory to load the checkpoint from
             tag: Checkpoint tag used as a unique identifier for checkpoint, if not provided will attempt to load tag in 'latest' file
@@ -3059,17 +3059,21 @@ class DeepSpeedEngine(Module):
                 logger.warning(msg)
 
     def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
-        r"""Save training checkpoint
+        """
+        Save training checkpoint
+
         Arguments:
-            save_dir: Required. Directory for saving the checkpoint
-            tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is
-                used if not provided. Tag name must be the same across all ranks.
-            client_state: Optional. State dictionary used for saving required training states in the client code.
-            save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
+            - save_dir: Required. Directory for saving the checkpoint
+            - tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is
+            used if not provided. Tag name must be the same across all ranks.
+            - client_state: Optional. State dictionary used for saving required training states in the client code.
+            - save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
+
         Important: all processes must call this method and not just the process with rank 0. It is
         because each process needs to save its master weights and scheduler+optimizer states. This
         method will hang waiting to synchronize with other processes if it's called just for the
         process with rank 0.
+        
         """
         if self.zero_optimization_partition_weights():
             # Prepare for checkpoint save by ensuring all parameters are partitioned
@@ -3464,7 +3468,7 @@ class DeepSpeedEngine(Module):
         return self.save_16bit_model(save_dir, save_filename)
 
     def save_16bit_model(self, save_dir, save_filename="pytorch_model.bin"):
-        r"""Save 16bit model weights bing bing bing
+        r"""Save 16bit model weights 
         This method saves the 16bit model weights at the desired destination.
         Arguments:
             save_dir: Required. Directory for saving the model
