@@ -2711,7 +2711,9 @@ class DeepSpeedEngine(Module):
                         load_lr_scheduler_states=True,
                         load_module_only=False,
                         custom_load_fn=None):
-        """Load training checkpoint 
+        """
+        Load training checkpoint
+
         Arguments:
             load_dir: Required. Directory to load the checkpoint from
             tag: Checkpoint tag used as a unique identifier for checkpoint, if not provided will attempt to load tag in 'latest' file
@@ -2720,14 +2722,17 @@ class DeepSpeedEngine(Module):
             load_lr_scheduler_states: Optional. Boolean to add the learning rate scheduler states from Checkpoint.
             load_module_only: Optional. Boolean to load only the model weights from the checkpoint. Ex. warmstarting.
             custom_load_fn: Optional. Custom model load function.
+
         Returns:
             A tuple of ``load_path`` and ``client_state``.
             *``load_path``: Path of the loaded checkpoint. ``None`` if loading the checkpoint failed.
             *``client_state``: State dictionary used for loading required training states in the client code.
+
         Important: under ZeRO3, one cannot load checkpoint with ``engine.load_checkpoint()`` right
         after ``engine.save_checkpoint()``. It is because ``engine.module`` is partitioned, and
         ``load_checkpoint()`` wants a pristine model. If insisting to do so, please reinitialize engine
         before ``load_checkpoint()``.
+        
         """
 
         if tag is None:
