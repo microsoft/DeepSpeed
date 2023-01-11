@@ -25,6 +25,9 @@ import time
 torch_available = True
 try:
     import torch
+    from accelerator import get_accelerator
+    # tell abstract accelerator currently in build time
+    get_accelerator(from_setup=True)
 except ImportError:
     torch_available = False
     print('[WARNING] Unable to import torch, pre-compiling ops will be disabled. ' \

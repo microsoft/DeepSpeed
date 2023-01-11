@@ -12,9 +12,10 @@ except ImportError:
 
 
 class CUDA_Accelerator(DeepSpeedAccelerator):
-    def __init__(self):
+    def __init__(self, from_setup=False):
         self._name = 'cuda'
         self._communication_backend_name = 'nccl'
+        self._from_setup = from_setup
 
         # begin initialize for create_op_builder()
         # put all valid class name <--> class type mapping into class_dict
@@ -222,11 +223,10 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
             return False
 
     def op_builder_dir(self):
-        try:
+        if self._from_setup:
             # during installation time op_builder is visible, otherwise return deepspeed.ops.op_builder
-            import op_builder  # noqa: F401
             return "op_builder"
-        except ImportError:
+        else:
             return "deepspeed.ops.op_builder"
 
     # dict that holds class name <--> class type mapping i.e.

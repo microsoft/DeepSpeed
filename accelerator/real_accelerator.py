@@ -34,7 +34,10 @@ def _validate_accelerator(accel_obj):
     #    f'{accel_obj.__class__.__name__} accelerator fails is_available() test'
 
 
-def get_accelerator():
+# the optional argument 'from_setup' indicates this call is from setup process
+# this argument only take effect from first call when the concrete accelerator
+# class object is initialized
+def get_accelerator(from_setup=False):
     global ds_accelerator
     if ds_accelerator is None:
         try:
@@ -47,7 +50,7 @@ def get_accelerator():
             return ds_accelerator
 
         from .cuda_accelerator import CUDA_Accelerator
-        ds_accelerator = CUDA_Accelerator()
+        ds_accelerator = CUDA_Accelerator(from_setup=from_setup)
         _validate_accelerator(ds_accelerator)
     return ds_accelerator
 
