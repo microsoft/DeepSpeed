@@ -4,18 +4,10 @@ from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloom
 
 
 class DS_BloomContainer(MetaTensorContainer, BaseTransformerContainer):
-    def __init__(self, policy, config, model_config, layer_id):
-        super().__init__(policy, config, model_config, layer_id)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
         # All model specific things should be defined here instead of the base class.
-        #self.scale_attention = self.policy.scale_attention
-        #self.pre_attn_norm = False
-        #self.attn_linear_layer = True
-        #self.mlp_linear_layer = True
-        #self.layer_norm_eps = 1e-05  # hardcode for now, todo: take it from the top config or user args
-        #self.pre_layer_norm = True
-        #self.window_size = 1  # hardcode for 3b, todo: take it from the config or user args
-
         self.bigscience_bloom = True
 
     def create_module(self, config=None):

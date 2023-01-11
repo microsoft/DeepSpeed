@@ -149,7 +149,11 @@ def replace_transformer_layer(orig_layer_impl,
         print(f">-- replace_with_policy(): {policy}")
 
         # 1. Create a model-specific container object using the policy object.
-        _container = policy_to_ds_container(policy, config, model_config, layer_id)
+        _container = policy_to_ds_container(policy=policy,
+                                            config=config,
+                                            model_config=model_config,
+                                            layer_id=layer_id,
+                                            child=child)
         _container.set_dtype(fp16)
         _container.set_moe(moe)
 
@@ -170,11 +174,7 @@ def replace_transformer_layer(orig_layer_impl,
         _container.set_quantization_config(quantize, quantizer)
 
         # 6. create a DS Inference config object
-        rotary_dim = model_config.rotary_dim if hasattr(model_config, 'rotary_dim') \
-                          else child.attention.rotary_ndims if \
-                          hasattr(child, 'attention') and hasattr(child.attention,'rotary_ndims') else -1
-
-        _container.create_config(rotary_dim)
+        _container.create_config()
         #from rich.pretty import pprint
         #pprint(_container.config.__dict__)
         #exit(0)

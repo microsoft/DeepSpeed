@@ -3,8 +3,8 @@ from abc import ABC
 
 
 class MegatronContainer(ABC):
-    def __init__(self, policy, config, model_config, layer_id):
-        super().__init__(policy, config, model_config, layer_id)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.megatron_v2 = self.policy.is_megatron_v2
 
     def transpose_qkv_alignment(self, x):

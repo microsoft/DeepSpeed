@@ -7,16 +7,10 @@ from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInfe
 class DS_GPTNEOXContainer(MetaTensorContainer,
                           MegatronContainer,
                           BaseTransformerContainer):
-    def __init__(self, policy, config, model_config, layer_id):
-        super().__init__(policy, config, model_config, layer_id)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
-        #self.attn_linear_layer = True
-        #self.mlp_linear_layer = True
-        #self.layer_norm_eps = 1e-05
-        #self.scale_attention = self.policy.scale_attention
-        #self.window_size = 1
-        #self.rotary_dim = 24
-        #self.mlp_after_attn = False
+        # All model specific things should be defined here instead of the base class.
 
     def create_module(self, config=None):
         _config = config if config is not None else self.config

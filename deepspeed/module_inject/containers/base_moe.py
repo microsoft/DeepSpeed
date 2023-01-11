@@ -6,9 +6,9 @@ import deepspeed.ops.transformer as transformer_inference
 
 
 class BaseTransformerMoEContainer(BaseTransformerContainer):
-    def __init__(self, policy, config, model_config):
+    def __init__(self, **kwargs):
         # Call the init function of the parent class to initialize the tensors and configs from parent class
-        super().__init__(policy, config, model_config)
+        super().__init__(**kwargs)
 
         self.num_experts = self.policy.get_num_experts()
         self.ep_world_size = dist.get_world_size()

@@ -12,11 +12,12 @@ class BaseConvolutionContainer(ABC):
 
 
 class BaseTransformerContainer(ABC):
-    def __init__(self, policy, config, model_config, layer_id):
+    def __init__(self, policy, config, model_config, layer_id, child):
         self.policy = policy
         self.config = config
         self.model_config = model_config
         self.layer_id = layer_id
+        self.child = child
 
         self.megatron_v2 = self.policy.is_megatron_v2
         self.scale_attention = self.policy.scale_attention
@@ -62,6 +63,10 @@ class BaseTransformerContainer(ABC):
         #    'use_mup') else False,
 
         self.return_single_tuple = False  #(policy_cls is HFDistilBertLayerPolicy))
+        self.rotary_dim = self.model_config.rotary_dim if hasattr(self.model_config, 'rotary_dim') \
+                          else self.child.attention.rotary_ndims if \
+                          hasattr(self.child, 'attention') and hasattr(self.child.attention,'rotary_ndims') else -1
+        self.mlp_after_attn = (self.rotary_dim is None or self.rotary_dim < 0)
 
         # Attention tensors
         self.qkvw = None
@@ -79,13 +84,7 @@ class BaseTransformerContainer(ABC):
         self.input_nw = None
         self.input_nb = None
 
-    def create_config(self, rotary_dim):
-        # TODO (lekurile): Figure out where to create this
-        #rotary_dim = rotary_dim,
-
-        # TODO (lekurile): Figure out where to create this
-        # self.mlp_after_attn = (rotary_dim is None or rotary_dim < 0),
-
+    def create_config(self):
         self.config = DeepSpeedInferenceConfig(
             hidden_size=self.hidden_size,
             heads=self.num_attention_heads,
@@ -98,8 +97,8 @@ class BaseTransformerContainer(ABC):
             triangular_masking=self.triangular_masking,
             local_attention=self.local_attention,
             window_size=self.window_size,
-            rotary_dim=rotary_dim,
-            mlp_after_attn=(rotary_dim is None or rotary_dim < 0),
+            rotary_dim=self.rotary_dim,
+            mlp_after_attn=self.mlp_after_attn,
             mlp_act_func_type=self.mlp_act_func_type,
             training_mp_size=self.training_mp_size,
             bigscience_bloom=self.bigscience_bloom,
