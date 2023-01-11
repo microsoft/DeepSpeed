@@ -3408,12 +3408,14 @@ class DeepSpeedEngine(Module):
     def _zero3_consolidated_16bit_state_dict(self):
         """
         Get a full non-partitioned state_dict with fp16 weights on cpu.
+
         Important: this function must be called on all ranks and not just rank 0.
         This is similar to nn.Module.state_dict (modelled after _save_to_state_dict), but:
         1. consolidates the weights from different partitions on gpu0
         2. works on one layer at a time to require as little gpu0 memory as possible, by
         moving the already consolidated weights to cpu
         3. takes care to keep the shared params shared when gradually copying the params to cpu
+        
         Returns:
             a consolidated fp16 ``state_dict`` on cpu on rank 0, ``None`` on other ranks
         """
@@ -3478,7 +3480,7 @@ class DeepSpeedEngine(Module):
     def save_16bit_model(self, save_dir, save_filename="pytorch_model.bin"):
         """
         Save 16bit model weights
-         
+
         This method saves the 16bit model weights at the desired destination.
 
         Arguments:
@@ -3489,7 +3491,8 @@ class DeepSpeedEngine(Module):
             ``True`` when a model has been saved, ``False`` otherwise. It will not be saved if
             stage3_gather_16bit_weights_on_model_save is ``False``.
 
-        Important: all processes must call this method and not just the process with rank 0. It is
+        Important: 
+        all processes must call this method and not just the process with rank 0. It is
         because the processes need to work in sync to gather the weights. This method will hang
         waiting to synchronize with other processes if it's called just for the process with rank 0.
        
