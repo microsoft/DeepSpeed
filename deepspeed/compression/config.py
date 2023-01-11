@@ -1,7 +1,49 @@
 from .constants import *
 import copy
-from ..runtime.config_utils import get_scalar_param
+from ..runtime.config_utils import DeepSpeedConfigModel, get_scalar_param
 
+
+class DeepSpeedCompressionConfig(DeepSpeedConfigModel):
+    weight_quantization: WeightQuantizationConfig = {}
+    activation_quantization: ActivationQuantizationConfig = {}
+    sparse_pruning: SparsePruningConfig = {}
+    row_pruning: RowPruningConfig = {}
+    head_pruning: HeadPruningConfig = {}
+    channel_pruning: ChannelPruningConfig = {}
+    layer_reduction: LayerReductionConfig = {}
+
+class DifferentGroupsParamsConfig(DeepSpeedConfigModel):
+    start_bits: int
+    target_bits: int
+    quantization_period: int = 1
+
+class WeightQuantizationDifferentGroupsConfig(DeepSpeedConfigModel):
+    params: DifferentGroupsParamsConfig = {}
+    modules: str = "*"
+    related_modules: str = None
+
+class WeightQuantizationSharedParamsConfig(DeepSpeedConfigModel):
+    enabled: bool = False
+    quantizer_kernel: bool = False
+    schedule_offset: int = 0
+    quantize_groups: int = 1
+    quantize_verbose: bool = False
+    quantization_type: QuantizationTypeEnum = QuantizationTypeEnum.symmetric
+    rounding: QuantizationRoundingEnum = QuantizationRoundingEnum.nearest
+    fp16_mixed_quantize: FP16MixedQuantizeConfig = {}
+
+class FP16MixedQuantizeConfig(DeepSpeedConfigModel):
+    enabled: bool = False
+    quantize_change_ratio: float = 0.001
+
+class WeightQuantizationConfig(DeepSpeedConfigModel):
+    different_groups: Dict[str, WeightQuantizationDifferentGroupsConfig] = {}
+    shared_parameters: WeightQuantizationSharedParamsConfig = {}
+
+    @validator("shared_parameters")
+    def assert_different_groups(cls, field_value, values):
+        if field_value.enabled:
+            assert
 
 def get_compression_config(param_dict):
     #
