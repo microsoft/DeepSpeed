@@ -291,7 +291,8 @@ setup(name='deepspeed',
           "release",
           "requirements",
           "scripts",
-          "tests"
+          "tests",
+          "benchmarks"
       ]),
       include_package_data=True,
       scripts=[
