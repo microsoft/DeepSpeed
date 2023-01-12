@@ -6,9 +6,8 @@ import deepspeed.ops.transformer as transformer_inference
 from deepspeed.ops.transformer.inference.diffusers_attention import DeepSpeedDiffusersAttention
 from deepspeed.ops.transformer.inference.diffusers_transformer_block import DeepSpeedDiffusersTransformerBlock
 from deepspeed.ops.transformer.inference.diffusers_2d_transformer import Diffusers2DTransformerConfig
-
-# TODO (lekurile): figure out where to import this from
-# from .replace_policy import replace_policies, generic_policies
+from .replace_policy import HFGPT2LayerPolicy
+from .replace_policy import replace_policies, generic_policies
 
 from deepspeed import comm as dist
 from torch import nn
@@ -18,37 +17,6 @@ from .load_checkpoint import load_model_with_checkpoint
 import time
 
 from .utils import policy_to_ds_container
-
-# import new policy files
-from .containers import HFGPT2LayerPolicy
-from .containers import HFBertLayerPolicy
-from .containers import BLOOMLayerPolicy
-from .containers import HFGPTJLayerPolicy
-from .containers import HFGPTNEOLayerPolicy
-from .containers import GPTNEOXLayerPolicy
-from .containers import HFOPTLayerPolicy
-from .containers import MegatronLayerPolicy
-from .containers import HFDistilBertLayerPolicy
-from .containers import UNetPolicy
-from .containers import VAEPolicy
-
-# Local list of replacement policies to use instead of the original list imported from replace_policy.py
-# TODO (lekurile): Is this the correct place for this to live?
-replace_policies = [
-    HFGPT2LayerPolicy,
-    HFBertLayerPolicy,
-    BLOOMLayerPolicy,
-    HFGPTJLayerPolicy,
-    HFGPTNEOLayerPolicy,
-    GPTNEOXLayerPolicy,
-    HFOPTLayerPolicy,
-    MegatronLayerPolicy,
-    HFDistilBertLayerPolicy,
-]
-
-# TODO (lekurile): Need to test the generic_policies
-# non-transformer-based policies
-generic_policies = [UNetPolicy, VAEPolicy]
 
 
 class ReplaceWithTensorSlicing:
@@ -157,7 +125,7 @@ class ReplaceWithTensorSlicing:
 
 
 def get_transformer_name(replaced_module):
-    from .replace_policy import supported_models
+    from .containers import supported_models
     from torch.nn import ModuleList
     transformer_name = ''
     for n, c in replaced_module.named_children():
