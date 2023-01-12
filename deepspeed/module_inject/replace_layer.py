@@ -1,14 +1,21 @@
+import os
 import torch
-from torch import nn
-
+import tqdm
 import deepspeed
-from .layers import LinearAllreduce, LinearLayer
+import deepspeed.ops.transformer as transformer_inference
+from deepspeed.ops.transformer.inference.diffusers_attention import DeepSpeedDiffusersAttention
+from deepspeed.ops.transformer.inference.diffusers_transformer_block import DeepSpeedDiffusersTransformerBlock
+from deepspeed.ops.transformer.inference.diffusers_2d_transformer import Diffusers2DTransformerConfig
+
+# TODO (lekurile): figure out where to import this from
+# from .replace_policy import replace_policies, generic_policies
 
 from deepspeed import comm as dist
-from .replace_module import ReplaceWithTensorSlicing, GroupQuantizer, _replace_module, get_transformer_name
-# Do not import replace_module from .replace_module as it uses the old policies from replace_policy.py
+from torch import nn
 
+from .layers import LinearAllreduce, LinearLayer
 from .load_checkpoint import load_model_with_checkpoint
+import time
 
 from .utils import policy_to_ds_container
 
@@ -22,10 +29,8 @@ from .policies import GPTNEOXLayerPolicy
 from .policies import HFOPTLayerPolicy
 from .policies import MegatronLayerPolicy
 from .policies import HFDistilBertLayerPolicy
-
-import time
-import tqdm
-import os
+from .policies import UNetPolicy
+from .policies import VAEPolicy
 
 # Local list of replacement policies to use instead of the original list imported from replace_policy.py
 # TODO (lekurile): Is this the correct place for this to live?
@@ -43,49 +48,279 @@ replace_policies = [
 
 # TODO (lekurile): Need to test the generic_policies
 # non-transformer-based policies
-#generic_policies = [UNetPolicy, VAEPolicy]
+generic_policies = [UNetPolicy, VAEPolicy]
 
 
-# This function is called by replace_transormer_layer() in replace_layer.py and used _replace_module() helper from the replace_module.py file
-def replace_module(model, orig_class, replace_fn, _replace_policy):
-    """ Scan the model for instances of ``orig_clas:`` to replace using ``replace_fn``.
-    Arguments:
-        model (torch.nn.Module): the model to augment
-        orig_class (torch.nn.Module): the module to search for
-        replace_fn (method): a method to convert instances of ``orig_class`` to the
-                             desired type and return a new instance.
-    Returns:
-        A modified ``model``.
-    """
-    # policy is a mapping dictionary of the form: {user supplied module_name: replacement_fn, replacement_policy}
-    policy = {}
-    if orig_class is not None:
-        print('>> replace_module: orig_class is not None')
-        policy.update({orig_class: (replace_fn, _replace_policy)})
+class ReplaceWithTensorSlicing:
+    def __init__(self, mp_group=None, mp_size=1, out_dim=1, in_dim=0):
+        if mp_group is not None:
+            self.gpu_index = dist.get_rank(group=mp_group)
+        else:
+            self.gpu_index = 0
+        self.out_dim = out_dim
+        self.in_dim = in_dim
+        self.mp_size = mp_size
+
+    def merge_assert(self, dim1, dim2):
+        assert dim1 > dim2, \
+            'Merging tensors is not allowed here! Please use deepspeed load_checkpoint\
+            for merging your checkpoints before replacing the transformer layer with\
+            inference-kernels'
+
+    def qkv_copy(self, dst, src):
+        if src is None:
+            return src
+        src_shape = src.shape
+        dst_shape = dst.shape
+
+        if self.out_dim == 0:
+            src_split = torch.split(src.data,
+                                    src_shape[self.out_dim] // self.mp_size,
+                                    dim=0)
+        else:
+            src_split = torch.split(src.data, src.shape[-1] // 3, dim=-1)
+        if (len(src_shape) == 2 and len(dst_shape) == 2):
+            if src_shape[self.out_dim] == dst_shape[self.out_dim]:
+                return torch.nn.parameter.Parameter(src)
+            if self.out_dim == 1:
+                self.merge_assert(src_shape[self.out_dim], dst_shape[self.out_dim])
+                qkv_size = dst_shape[self.out_dim] // 3
+                qkv_split = [
+                    torch.split(src_s,
+                                qkv_size,
+                                dim=self.out_dim) for src_s in src_split
+                ]
+                weight_split = [
+                    torch.cat([qkv_s[i] for qkv_s in qkv_split],
+                              axis=self.out_dim) for i in range(len(qkv_split[0]))
+                ]
+                dst.data.copy_(weight_split[self.gpu_index].to(
+                    torch.cuda.current_device()).contiguous())
+            else:
+                dst.data.copy_(src_split[self.gpu_index].to(
+                    torch.cuda.current_device()).contiguous())
+        else:
+            if src_shape[0] == dst_shape[0]:
+                return torch.nn.parameter.Parameter(src)
+            if self.out_dim == 1:
+                qkv_size = dst_shape[0] // 3
+                qkv_split = [torch.split(src_s, qkv_size, dim=0) for src_s in src_split]
+                bias_split = [
+                    torch.cat([qkv_s[i] for qkv_s in qkv_split],
+                              axis=0) for i in range(len(qkv_split[0]))
+                ]
+                dst.data.copy_(bias_split[self.gpu_index].to(
+                    torch.cuda.current_device()).contiguous())
+            else:
+                dst.data.copy_(src_split[self.gpu_index].to(
+                    torch.cuda.current_device()).contiguous())
+
+        return torch.nn.parameter.Parameter(dst)
+
+    def copy(self, dst, src):
+        if src is None:
+            return src
+        src_shape = src.shape
+        dst_shape = dst.shape
+        if (len(src_shape) == 2 and len(dst_shape) == 2):
+
+            if src_shape[0] == dst_shape[0] and src_shape[1] == dst_shape[1]:
+                dst.data.copy_(src)
+            else:
+                if src_shape[self.in_dim] != dst_shape[self.in_dim]:
+                    self.merge_assert(src_shape[self.in_dim], dst_shape[self.in_dim])
+                    weight_split = torch.split(
+                        src,
+                        dst_shape[self.in_dim],
+                        dim=self.in_dim)[self.gpu_index].to(
+                            torch.cuda.current_device()).contiguous()
+                else:
+                    self.merge_assert(src_shape[self.out_dim], dst_shape[self.out_dim])
+                    weight_split = torch.split(
+                        src.data,
+                        dst_shape[self.out_dim],
+                        dim=self.out_dim)[self.gpu_index].to(
+                            torch.cuda.current_device()).contiguous()
+                dst.data.copy_(weight_split.contiguous())
+        else:
+            if src_shape[0] == dst_shape[0]:
+                dst.data.copy_(src)
+            else:
+                bias_split = torch.split(src.data,
+                                         dst_shape[-1])[self.gpu_index].to(
+                                             torch.cuda.current_device()).contiguous()
+                dst.data.copy_(bias_split)
+        dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
+        if hasattr(src, 'scale'):
+            dst.scale = src.scale
+        return dst
+
+
+def get_transformer_name(replaced_module):
+    from .replace_policy import supported_models
+    from torch.nn import ModuleList
+    transformer_name = ''
+    for n, c in replaced_module.named_children():
+        if c.__class__ in supported_models:
+            transformer_name += n + '.'
+            for name, child in c.named_children():
+                if child.__class__ is ModuleList:
+                    transformer_name += name
+                    break
+            break
+    return transformer_name
+
+
+class GroupQuantizer:
+    def __init__(self, q_int8=True, group_size=1, num_bits=8):
+        self.group_size = group_size
+        self.num_bits = num_bits
+        self.q_int8 = q_int8
+        # TODO(jeff): need to check w. Reza on why this is needed when changing tp size w. bloom
+        self.num_groups = 32
+
+    def quantize(self, inputs, qkv=True, count=1, parallel_dim=0):
+        if not self.q_int8 or not qkv:
+            inputs = torch.nn.Parameter(inputs, requires_grad=False)
+            inputs.scale = torch.empty(1)
+            return inputs
+        q_range = 2**self.num_bits
+        num_groups = inputs.shape[0] // self.group_size
+        inputs = inputs.to(torch.cuda.current_device())
+        input_flat = inputs.reshape(num_groups, -1).contiguous()
+        input_min = torch.min(input_flat, dim=1, keepdim=True)[0].float()
+        input_max = torch.max(input_flat, dim=1, keepdim=True)[0].float()
+        scale = torch.max(input_min.abs(), input_max.abs()) * 2.0 / (q_range)
+        input_flat = (input_flat / scale).round().clamp(-q_range // 2, q_range // 2 - 1)
+        inputs_q = input_flat.reshape(inputs.shape).to(torch.int8).contiguous()
+        out = torch.nn.Parameter(inputs_q, requires_grad=False)
+        #print(inputs.shape)
+        inputs_split = inputs.split(inputs.shape[parallel_dim] // 2, dim=parallel_dim)
+        input_flat = [
+            inputs_split[i].reshape(num_groups,
+                                    -1).contiguous() for i in range(2)
+        ]
+        input_min = [
+            torch.min(input_flat[i],
+                      dim=1,
+                      keepdim=True)[0].float() for i in range(2)
+        ]
+        input_max = [
+            torch.max(input_flat[i],
+                      dim=1,
+                      keepdim=True)[0].float() for i in range(2)
+        ]
+        scale1 = [
+            (torch.max(input_min[i].abs(),
+                       input_max[i].abs()) * 2.0 / (q_range)).squeeze().unsqueeze(0)
+            for i in range(2)
+        ]
+
+        out.scale = torch.cat([scale.squeeze().unsqueeze(0),
+                               scale1[0],
+                               scale1[1]],
+                              dim=0).reshape(num_groups,
+                                             -1).contiguous()
+        return out
+
+
+def _module_match(module):
+    for policy in generic_policies:
+        policy = policy()
+        if policy.match(module):
+            return policy
+    return None
+
+
+def generic_injection(module, fp16=False, enable_cuda_graph=True):
+    def replace_attn(child, policy):
+        policy_attn = policy.attention(child)
+        if policy_attn is None:
+            return child
+        if len(policy_attn) == 5:
+            qkvw, attn_ow, attn_ob, hidden_size, heads = policy_attn
+        else:
+            qw, kw, vw, attn_ow, attn_ob, hidden_size, heads = policy_attn
+
+        config = transformer_inference.DeepSpeedInferenceConfig(
+            hidden_size=hidden_size,
+            heads=heads,
+            fp16=fp16,
+            triangular_masking=False,
+            max_out_tokens=4096,
+        )
+        attn_module = DeepSpeedDiffusersAttention(config)
+
+        def transpose(data):
+            data = data.contiguous()
+            data.reshape(-1).copy_(data.transpose(-1, -2).contiguous().reshape(-1))
+            data = data.reshape(data.shape[-1], data.shape[-2])
+            data.to(torch.cuda.current_device())
+            return data
+
+        if len(policy_attn) == 5:
+            attn_module.attn_qkvw.data = transpose(qkvw.data)
+        else:
+            attn_module.attn_qkvw = None
+            attn_module.attn_qw.data = transpose(qw.data)
+            attn_module.attn_kw.data = transpose(kw.data)
+            attn_module.attn_vw.data = transpose(vw.data)
+
+        attn_module.attn_qkvb = None
+        attn_module.attn_ow.data = transpose(attn_ow.data)
+        attn_module.attn_ob.data.copy_(attn_ob.data.to(torch.cuda.current_device()))
+        return attn_module
+
+    def replace_attn_block(child, policy):
+        config = Diffusers2DTransformerConfig()
+        return DeepSpeedDiffusersTransformerBlock(child, config)
+
+    if isinstance(module, torch.nn.Module):
+        pass
     else:
-        print(f'>> replace_module: orig_class is {orig_class}')
-        for plcy in replace_policies:
-            # instantiate a throw-away policy in order to populate the _orig_layer_class
-            _ = plcy(None)
-            if isinstance(plcy._orig_layer_class, list):
-                for orig_layer_class in plcy._orig_layer_class:
-                    policy.update({orig_layer_class: (replace_fn, plcy)})
-            elif plcy._orig_layer_class is not None:
-                policy.update({plcy._orig_layer_class: (replace_fn, plcy)})
-    assert len(policy.items()) > 0,\
-        "No default policy found! Please specify your policy injection_policy (like {BertLayer:HFBEertLayerPolicy})." +\
-        "You can find some samples here: https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/module_inject/replace_policy.py"
+        if fp16 is False:
+            raise ValueError("Generic injection only supported with FP16")
 
-    print(
-        f"> ---- calling _replace_module in replace_layer.py with model = {model.__class__}"
-    )
-    for k, v in policy.items():
-        print(f"> ---- policy: {k} -> {v}")
-    #exit(0)
+        try:
+            import diffusers
+            cross_attention = diffusers.models.attention.CrossAttention
+            attention_block = diffusers.models.attention.BasicTransformerBlock
+            new_policies = {
+                cross_attention: replace_attn,
+                attention_block: replace_attn_block,
+            }
+        except ImportError:
+            new_policies = {}
 
-    # call the recursive function with model and the policy-to-replacement mapping
-    replaced_module, _ = _replace_module(model, policy)
-    return replaced_module
+        #replace_transformer_layer(None,
+        #                          module.text_encoder,
+        #                          training=False,
+        #                          replace_with_kernel_inject=True,
+        #                          triangular_masking=True,
+        #                          max_out_tokens=8192)
+        from ..model_implementations.transformers.clip_encoder import DSClipEncoder
+        cg_encoder = DSClipEncoder(module.text_encoder,
+                                   enable_cuda_graph=enable_cuda_graph)
+        setattr(module, 'text_encoder', cg_encoder)
+        for name in module.__dict__.keys():
+            sub_module = getattr(module, name)
+            policy = _module_match(sub_module)
+
+            if policy is not None:
+
+                def _replace_module(module, policy):
+                    for name, child in module.named_children():
+                        _replace_module(child, policy)
+                        if child.__class__ in new_policies:
+                            replaced_module = new_policies[child.__class__](child,
+                                                                            policy)
+                            setattr(module, name, replaced_module)
+
+                _replace_module(sub_module, policy)
+                new_module = policy.apply(sub_module,
+                                          enable_cuda_graph=enable_cuda_graph)
+                print(f"**** found and replaced {name} w. {type(new_module)}")
+                setattr(module, name, new_module)
 
 
 # TODO (lekurile): Do these need to be defined here, if they're defined as globals in replace_with_policy()?
@@ -542,3 +777,73 @@ def replace_transformer_layer(orig_layer_impl,
                 f'{config.save_mp_checkpoint_path}/tp_{rank:0>2d}_{m:0>2d}.pt')
 
     return replaced_module
+
+
+# This function is called by replace_transormer_layer() in replace_layer.py and used _replace_module() helper from the replace_module.py file
+def replace_module(model, orig_class, replace_fn, _replace_policy):
+    """ Scan the model for instances of ``orig_clas:`` to replace using ``replace_fn``.
+    Arguments:
+        model (torch.nn.Module): the model to augment
+        orig_class (torch.nn.Module): the module to search for
+        replace_fn (method): a method to convert instances of ``orig_class`` to the
+                             desired type and return a new instance.
+    Returns:
+        A modified ``model``.
+    """
+    # policy is a mapping dictionary of the form: {user supplied module_name: replacement_fn, replacement_policy}
+    policy = {}
+    if orig_class is not None:
+        print('>> replace_module: orig_class is not None')
+        policy.update({orig_class: (replace_fn, _replace_policy)})
+    else:
+        print(f'>> replace_module: orig_class is {orig_class}')
+        for plcy in replace_policies:
+            # instantiate a throw-away policy in order to populate the _orig_layer_class
+            _ = plcy(None)
+            if isinstance(plcy._orig_layer_class, list):
+                for orig_layer_class in plcy._orig_layer_class:
+                    policy.update({orig_layer_class: (replace_fn, plcy)})
+            elif plcy._orig_layer_class is not None:
+                policy.update({plcy._orig_layer_class: (replace_fn, plcy)})
+    assert len(policy.items()) > 0,\
+        "No default policy found! Please specify your policy injection_policy (like {BertLayer:HFBEertLayerPolicy})." +\
+        "You can find some samples here: https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/module_inject/replace_policy.py"
+
+    print(
+        f"> ---- calling _replace_module in replace_layer.py with model = {model.__class__}"
+    )
+    for k, v in policy.items():
+        print(f"> ---- policy: {k} -> {v}")
+    #exit(0)
+
+    # call the recursive function with model and the policy-to-replacement mapping
+    replaced_module, _ = _replace_module(model, policy)
+    return replaced_module
+
+
+from ..pipe import PipelineModule
+
+
+def _replace_module(model, policies, layer_id=0):
+    """ Traverse model's children recursively and apply any transformations in ``policies``.
+    Arguments:
+        model (torch.nn.Module): model to augment
+        policies (dict): Mapping of source class to replacement function.
+    Returns:
+        Modified ``model``.
+    """
+    for name, child in model.named_children():
+        if child.__class__ in policies:
+            replaced_module = policies[child.__class__][0](child,
+                                                           policies[child.__class__][-1],
+                                                           layer_id)
+            setattr(model, name, replaced_module)
+            if isinstance(model, PipelineModule):
+                assert hasattr(model, 'forward_funcs'),\
+                    "we require pipe-module to have the list of fwd_functions"
+                model.forward_funcs[model.fwd_map[name]] = replaced_module
+            layer_id += 1
+        else:
+            _, layer_id = _replace_module(child, policies, layer_id=layer_id)
+
+    return model, layer_id
