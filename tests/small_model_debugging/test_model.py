@@ -79,8 +79,10 @@ config_dict = {
         "initial_scale_power": 15
     },
     "zero_optimization": {
-        "stage": 0,
-        "reduce_bucket_size": 20
+        "stage": 3,
+        "reduce_bucket_size": 20,
+        "mics_shard_size":2,
+        "mics_hierarchical_params_gather": True
     }
 }
 #        "initial_scale_power": 15
