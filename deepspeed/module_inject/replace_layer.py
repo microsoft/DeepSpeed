@@ -291,7 +291,6 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
                 setattr(module, name, new_module)
 
 
-# TODO (lekurile): Do these need to be defined here, if they're defined as globals in replace_with_policy()?
 selected_policy_g = None
 megatron_v2_g = False
 transformer_config_g = None
@@ -313,7 +312,6 @@ def replace_transformer_layer(orig_layer_impl,
     Returns:
         Updated nn.module with replaced transformer layers
     """
-    # TODO (lekurile): Get clarity on intention of these definitions
     # defining globals as internally defined functions inherit these everywhere
     fp16 = (config.dtype == torch.float16 or config.dtype == torch.int8)
     quantize = (config.dtype == torch.int8)
@@ -336,8 +334,6 @@ def replace_transformer_layer(orig_layer_impl,
                             triangular_masking,
                             inference=False,
                             layer_id=0):
-        print(f">-- replace_with_policy(): {policy_cls.__name__}")
-
         policy = policy_cls(child, inference=inference)
         if not policy.cuda_graph_supported:
             # policy says cuda graph is not supported raise an error if set
@@ -348,8 +344,6 @@ def replace_transformer_layer(orig_layer_impl,
         if hasattr(child, 'mlp') and isinstance(child.mlp, MoE):
             num_experts = child.mlp.num_experts
             moe = True
-
-        print(f">-- replace_with_policy(): {policy}")
 
         # 1. Create a model-specific container object using the policy object.
         _container = policy_to_ds_container(policy=policy,
@@ -372,15 +366,11 @@ def replace_transformer_layer(orig_layer_impl,
             _container.convert_to_required_dtype(dtype=torch.half)
 
         # 5. Set the quantization config
-        # TODO (lekurile): Move quantizer creation into set_quantization_config?
         quantizer = GroupQuantizer(q_int8=quantize)
         _container.set_quantization_config(quantize, quantizer)
 
         # 6. create a DS Inference config object
         _container.create_config()
-        #from rich.pretty import pprint
-        #pprint(_container.config.__dict__)
-        #exit(0)
 
         # 7. use the config and create the module
         _container.create_module()
@@ -413,12 +403,7 @@ def replace_transformer_layer(orig_layer_impl,
 
         def _replace(child, name, conv_linear_layer):
             mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
-            z_inference = (len(list(child.parameters())) > 0) and (list(
-                child.parameters())[0].numel() == 0)
-            if z_inference:
-                weight_shape = child.weight.ds_shape
-            else:
-                weight_shape = child.weight.shape
+            weight_shape = child.weight.shape
             if name in all_reduce_linears:
                 new_weight = torch.empty((
                     weight_shape[1] if conv_linear_layer else weight_shape[0],
@@ -427,26 +412,13 @@ def replace_transformer_layer(orig_layer_impl,
                 ),
                                          device=child.weight.device,
                                          dtype=child.weight.dtype)
-                if z_inference:
-                    with deepspeed.zero.GatheredParameters(child.weight,
-                                                           modifier_rank=0):
-                        data = child.weight.data.to(new_weight.device)
-                        if conv_linear_layer:
-                            data = data.transpose(-1, -2).contiguous()
-                        data = mp_replace.copy(new_weight, data)
-                    child.weight.ds_tensor = torch.empty(1)
-                else:
-                    if conv_linear_layer:
-                        child.weight.data = child.weight.data.transpose(-1,
-                                                                        -2).contiguous()
-                    data = mp_replace.copy(new_weight, child.weight.data)
+                if conv_linear_layer:
+                    child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
+                data = mp_replace.copy(new_weight, child.weight.data)
                 new_bias = torch.empty((weight_shape[0]),
                                        device=child.weight.device,
                                        dtype=child.weight.dtype)
-                if z_inference:
-                    with deepspeed.zero.GatheredParameters(child.bias, modifier_rank=0):
-                        new_bias.data.copy_(child.bias.data)
-                elif child.bias is not None:
+                if child.bias is not None:
                     new_bias.data.copy_(child.bias.data)
                 return LinearAllreduce(data, child.bias if child.bias is None else \
                             torch.nn.parameter.Parameter(new_bias.to(torch.cuda.current_device())), mp_group)
@@ -458,32 +430,16 @@ def replace_transformer_layer(orig_layer_impl,
                 ),
                                          device=child.weight.device,
                                          dtype=child.weight.dtype)
-                if z_inference:
-                    with deepspeed.zero.GatheredParameters(child.weight,
-                                                           modifier_rank=0):
-                        data = child.weight.data.to(new_weight.device)
-                        if conv_linear_layer:
-                            data = data.transpose(-1, -2).contiguous()
-                        data = mp_replace.copy(new_weight, data)
-                    child.weight.ds_tensor = torch.empty(1)
-                else:
-                    if conv_linear_layer:
-                        child.weight.data = child.weight.data.transpose(-1,
-                                                                        -2).contiguous()
-                    data = mp_replace.copy(new_weight, child.weight.data)
+                if conv_linear_layer:
+                    child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
+                data = mp_replace.copy(new_weight, child.weight.data)
 
                 new_bias = torch.empty((weight_shape[0] // mp_size),
                                        device=child.weight.device,
                                        dtype=child.weight.dtype)
-                if z_inference:
-                    with deepspeed.zero.GatheredParameters(child.bias, modifier_rank=0):
-                        bias_data = None if child.bias is None else mp_replace.copy(
-                            new_bias,
-                            child.bias.data).to(torch.cuda.current_device())
-                else:
-                    bias_data = None if child.bias is None else mp_replace.copy(
-                        new_bias,
-                        child.bias.data).to(torch.cuda.current_device())
+                bias_data = None if child.bias is None else mp_replace.copy(
+                    new_bias,
+                    child.bias.data).to(torch.cuda.current_device())
                 return LinearLayer(weight=data.to(torch.cuda.current_device()),
                                    bias=bias_data)
 
@@ -564,19 +520,15 @@ def replace_transformer_layer(orig_layer_impl,
                                                  inference=True,
                                                  layer_id=layer_id)
             else:
-                print("  >--- Step 2a (replace_module.py) replace_wo_policy")
                 new_module = replace_wo_policy(child, _policy)
 
         return new_module
 
-    print(">-- calling replace_module with _replace_policy = {policy}")
     replaced_module = replace_module(model=model,
                                      orig_class=orig_layer_impl,
                                      replace_fn=replace_fn,
                                      _replace_policy=config.injection_policy_tuple)
 
-    #print(f">-- replace_module done, replaced_module = {replaced_module}")
-    #exit(0)
     quantizer = GroupQuantizer(q_int8=quantize)
     world_size = dist.get_world_size() if dist.is_initialized() else 1
     rank = dist.get_rank() if dist.is_initialized() else 0
@@ -747,7 +699,74 @@ def replace_transformer_layer(orig_layer_impl,
     return replaced_module
 
 
-# This function is called by replace_transormer_layer() in replace_layer.py and used _replace_module() helper from the replace_module.py file
+def revert_transformer_layer(orig_layer_impl, model, config, preln=False):
+    """ Revert DeepSpeed's transformer layer back to original bert-style transformer layer
+    Arguments:
+        orig_layer_impl (torch.nn.Module): the original transformer layer implementation that was replaced,
+            e.g., transformers.modeling_bert.BertLayer.
+        model (torch.nn.Module): user's nn.module representing their model
+        config (dict): model config containing hidden size, attention heads, etc.
+    Returns:
+        Updated nn.module with original bert-style transformer layers
+    """
+    def replace_fn(child, _replace_policy, layer_id):
+        #from turing.nvidia_modelingpreln import BertLayer
+        orig_module = orig_layer_impl(config)
+
+        # copy relevant state from child -> original module
+        qkvw = child.attn_qkvw.data
+        qkvb = child.attn_qkvb.data
+
+        qw, kw, vw = torch.chunk(qkvw, 3, axis=0)
+        qb, kb, vb = torch.chunk(qkvb, 3, axis=0)
+
+        orig_module.attention.self.query.weight.data = qw
+        orig_module.attention.self.query.bias.data = qb
+        orig_module.attention.self.key.weight.data = kw
+        orig_module.attention.self.key.bias.data = kb
+        orig_module.attention.self.value.weight.data = vw
+        orig_module.attention.self.value.bias.data = vb
+
+        orig_module.attention.output.dense.weight.data = child.attn_ow.data
+        orig_module.attention.output.dense.bias.data = child.attn_ob.data
+
+        attn_ln_w = child.attn_nw.data
+        attn_ln_b = child.attn_nb.data
+        if preln:
+            orig_module.PostAttentionLayerNorm.weight.data = attn_ln_w
+            orig_module.PostAttentionLayerNorm.bias.data = attn_ln_b
+        else:
+            orig_module.attention.output.LayerNorm.weight.data = attn_ln_w
+            orig_module.attention.output.LayerNorm.bias.data = attn_ln_b
+
+        inter_ff_w = child.inter_w.data
+        inter_ff_b = child.inter_b.data
+        if preln:
+            orig_module.intermediate.dense_act.weight.data = inter_ff_w
+            orig_module.intermediate.dense_act.bias.data = inter_ff_b
+        else:
+            orig_module.intermediate.dense.weight.data = inter_ff_w
+            orig_module.intermediate.dense.bias.data = inter_ff_b
+
+        orig_module.output.dense.weight.data = child.output_w.data
+        orig_module.output.dense.bias.data = child.output_b.data
+
+        transformer_ln_w = child.norm_w.data
+        transformer_ln_b = child.norm_b.data
+        if preln:
+            orig_module.PreAttentionLayerNorm.weight.data = transformer_ln_w
+            orig_module.PreAttentionLayerNorm.bias.data = transformer_ln_b
+        else:
+            orig_module.output.LayerNorm.weight.data = transformer_ln_w
+            orig_module.output.LayerNorm.bias.data = transformer_ln_b
+        return orig_module
+
+    return replace_module(model=model,
+                          orig_class=deepspeed.DeepSpeedTransformerLayer,
+                          replace_fn=replace_fn,
+                          _replace_policy=None)
+
+
 def replace_module(model, orig_class, replace_fn, _replace_policy):
     """ Scan the model for instances of ``orig_clas:`` to replace using ``replace_fn``.
     Arguments:
@@ -758,13 +777,10 @@ def replace_module(model, orig_class, replace_fn, _replace_policy):
     Returns:
         A modified ``model``.
     """
-    # policy is a mapping dictionary of the form: {user supplied module_name: replacement_fn, replacement_policy}
     policy = {}
     if orig_class is not None:
-        print('>> replace_module: orig_class is not None')
         policy.update({orig_class: (replace_fn, _replace_policy)})
     else:
-        print(f'>> replace_module: orig_class is {orig_class}')
         for plcy in replace_policies:
             # instantiate a throw-away policy in order to populate the _orig_layer_class
             _ = plcy(None)
@@ -777,14 +793,6 @@ def replace_module(model, orig_class, replace_fn, _replace_policy):
         "No default policy found! Please specify your policy injection_policy (like {BertLayer:HFBEertLayerPolicy})." +\
         "You can find some samples here: https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/module_inject/replace_policy.py"
 
-    print(
-        f"> ---- calling _replace_module in replace_layer.py with model = {model.__class__}"
-    )
-    for k, v in policy.items():
-        print(f"> ---- policy: {k} -> {v}")
-    #exit(0)
-
-    # call the recursive function with model and the policy-to-replacement mapping
     replaced_module, _ = _replace_module(model, policy)
     return replaced_module
 
