@@ -6,15 +6,15 @@ def policy_to_ds_container(**kwargs):
     if policy is None:
         print("Policy is None")
     else:
-        from .policies import HFGPT2LayerPolicy
-        from .policies import HFBertLayerPolicy
-        from .policies import BLOOMLayerPolicy
-        from .policies import HFGPTJLayerPolicy
-        from .policies import HFGPTNEOLayerPolicy
-        from .policies import GPTNEOXLayerPolicy
-        from .policies import HFOPTLayerPolicy
-        from .policies import MegatronLayerPolicy
-        from .policies import HFDistilBertLayerPolicy
+        from .containers import HFGPT2LayerPolicy
+        from .containers import HFBertLayerPolicy
+        from .containers import BLOOMLayerPolicy
+        from .containers import HFGPTJLayerPolicy
+        from .containers import HFGPTNEOLayerPolicy
+        from .containers import GPTNEOXLayerPolicy
+        from .containers import HFOPTLayerPolicy
+        from .containers import MegatronLayerPolicy
+        from .containers import HFDistilBertLayerPolicy
 
         if isinstance(policy, HFGPT2LayerPolicy):
             print(f"policy is HFGPT2LayerPolicy")

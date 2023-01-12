@@ -20,17 +20,17 @@ import time
 from .utils import policy_to_ds_container
 
 # import new policy files
-from .policies import HFGPT2LayerPolicy
-from .policies import HFBertLayerPolicy
-from .policies import BLOOMLayerPolicy
-from .policies import HFGPTJLayerPolicy
-from .policies import HFGPTNEOLayerPolicy
-from .policies import GPTNEOXLayerPolicy
-from .policies import HFOPTLayerPolicy
-from .policies import MegatronLayerPolicy
-from .policies import HFDistilBertLayerPolicy
-from .policies import UNetPolicy
-from .policies import VAEPolicy
+from .containers import HFGPT2LayerPolicy
+from .containers import HFBertLayerPolicy
+from .containers import BLOOMLayerPolicy
+from .containers import HFGPTJLayerPolicy
+from .containers import HFGPTNEOLayerPolicy
+from .containers import GPTNEOXLayerPolicy
+from .containers import HFOPTLayerPolicy
+from .containers import MegatronLayerPolicy
+from .containers import HFDistilBertLayerPolicy
+from .containers import UNetPolicy
+from .containers import VAEPolicy
 
 # Local list of replacement policies to use instead of the original list imported from replace_policy.py
 # TODO (lekurile): Is this the correct place for this to live?
