@@ -564,7 +564,7 @@ __device__ __forceinline__ void load_global<2, LoadPolicy::CacheStreaming>(void*
         "\t.reg .pred p;\n"
         "\tsetp.ne.b32 p, %2, 0;\n"
         "\tmov.u16 %0, 0;\n"
-        "\t@p ld.global.cg.u16 {%0}, [%1];\n"
+        "\t@p ld.global.cs.u16 {%0}, [%1];\n"
         "}\n"
         : "=h"(*data)
         : "l"(src), "r"((int)do_access));
