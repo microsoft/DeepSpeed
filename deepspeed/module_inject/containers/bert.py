@@ -23,8 +23,6 @@ class DS_BERTContainer(BaseTransformerContainer):
 
 
 class HFBertLayerPolicy(TransformerPolicy):
-    _orig_layer_class = None
-
     def __init__(self, client_module, inference=False):
         super().__init__(inference, pre_attn_norm=False)
         self.client_module = client_module
