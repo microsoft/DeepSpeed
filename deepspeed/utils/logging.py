@@ -45,12 +45,10 @@ logger = LoggerFactory.create_logger(name="DeepSpeed", level=logging.INFO)
 
 
 def print_configuration(args, name):
-    print("----------------------------------------")
-    print("{}:".format(name))
+    logger.info("{}:".format(name))
     for arg in sorted(vars(args)):
         dots = "." * (29 - len(arg))
-        print("  {} {} {}".format(arg, dots, getattr(args, arg)))
-    print("----------------------------------------")
+        logger.info("  {} {} {}".format(arg, dots, getattr(args, arg)))
 
 
 def log_dist(message, ranks=None, level=logging.INFO):
