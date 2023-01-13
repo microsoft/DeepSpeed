@@ -4,6 +4,7 @@ Copyright 2021 The Microsoft DeepSpeed Team
 import torch
 import time
 import os
+import re
 
 from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
@@ -147,32 +148,133 @@ class InferenceEngine(Module):
                         mlist = mlist + get_module_list(child)
                 return mlist
 
+            def get_gem_list(key, module):
+                layer_list = []
+                gem_list = []
+                #fwd_ln = False
+                
+                if key == 'mlp':
+                    for name, item in module._modules.items():
+                        if isinstance(item, nn.Linear):
+                            layer_list = layer_list + [key + "." + name]
+                    gem_list = gem_list + [layer_list[-1]]
+                    layer_list = []
+                elif key == 'attention' or key == 'attn':
+                    for name, item in module._modules.items():
+                        if isinstance(item, nn.Linear):
+                            layer_list = layer_list + [key + "." + name]
+                        else:
+                            for name2, item2 in item._modules.items():
+                                if isinstance(item2, nn.Linear):
+                                    layer_list = layer_list + [name + "." + name2]
+                    gem_list = gem_list + [layer_list[-1]]
+                    layer_list = []
+                else:
+                    for name, item in module._modules.items():
+                        print(key + "." + name)
+                        if isinstance(item, nn.Linear):
+                            if name == "out_proj":
+                                gem_list = gem_list + [key + "." + name]
+                                layer_list = []
+                            else:
+                                layer_list = layer_list + [key + "." + name]
+                        elif isinstance(item, nn.LayerNorm):
+                            #if layer_list == []:
+                                #layernorm in forward function
+                            #    fwd_ln = True
+                            #else:
+                            if layer_list != []:
+                                gem_list = gem_list + [layer_list[-1]]
+                                layer_list = []
+                        else:
+                            g_list, l_list = get_gem_list(name, item)
+                            gem_list = gem_list + g_list
+                            layer_list = layer_list + l_list
+                    #if fwd_ln:
+                    #    gem_list = gem_list + [layer_list[-1]]
+                    #    fwd_ln = False
+                print(gem_list)
+                return gem_list, layer_list
+
+            def supported(model):
+                unsupported = ['bloom','codegen','flaubert']
+                model = str(model)
+                key = re.search(r": (.*?)Model", model)
+                if key is None:
+                    key = re.search(r": (.*?)Stack", model)
+                if key.group(1).lower() in unsupported:
+                    return False
+                return True
+
+            def get_layers(parent, module):
+                layer_list = []
+                for key, submodule in module._modules.items():
+                    if isinstance(submodule, nn.Linear):
+                        layer_list = layer_list + [parent + "." + key]
+                    elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm':
+                        layer_list = layer_list + ["ln"]
+                    else:
+                        layer_list = layer_list + get_layers(key, submodule)
+                return layer_list
+
             def tp_parser(model):
                 policy_list = []
                 module_list = []
-                child_layer_list = []
+                layer_list = []
+                # child_layer_list = []
                 parent_layer_list = []
                 gem_list = []
+                fwd_ln = False
+                
+                assert supported(model), "Automatic policy not supported for model. Please provide policy."
 
                 module_list = get_module_list(model)
+                print(module_list)
+
                 for module in module_list:
                     for key, submodule in module._modules.items():
                         if isinstance(submodule, nn.Linear):
-                            parent_layer_list = parent_layer_list + ["." + key]
+                            layer_list = layer_list + ["." + key]
+                        elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm':
+                            layer_list = layer_list + ["ln"]
                         else:
-                            for name, layer in submodule._modules.items():
-                                if isinstance(layer, nn.Linear):
-                                    child_layer_list = child_layer_list + [
-                                        key + "." + name
-                                    ]
-                            if child_layer_list != []:
-                                gem_list = gem_list + [child_layer_list[-1]]
-                                child_layer_list = []
-                    if parent_layer_list != []:
-                        gem_list = gem_list + [parent_layer_list[-1]]
-                        parent_layer_list = []
-                    policy_list.append(tuple([type(module), gem_list]))
-                    return policy_list
+                            layer_list = layer_list + get_layers(key, submodule)
+
+                    print(layer_list)
+                    for i, layer in enumerate(layer_list):
+                        if layer == 'ln':
+                            if layer_list[i-1] != 'ln':
+                                gem_list = gem_list + [layer_list[i-1]]
+                        elif 'out_proj' in layer:
+                            gem_list = gem_list + [layer]
+
+                    print(gem_list)
+                # for module in module_list:
+                #     for key, submodule in module._modules.items():
+                #         if isinstance(submodule, nn.Linear):
+                #             parent_layer_list = parent_layer_list + ["." + key]
+                #         elif isinstance(submodule, nn.LayerNorm):
+                #             if parent_layer_list == []:
+                #                 #layernorm in forward function
+                #                 fwd_ln = True
+                #             else:
+                #                 gem_list = gem_list + [parent_layer_list[-1]]
+                #                 parent_layer_list = []
+                #         else:
+                #             #gem_list = gem_list + get_gem_list(key, submodule)
+                #             g_list, l_list = get_gem_list(key, submodule)
+                #             gem_list = gem_list + g_list
+                #             parent_layer_list = parent_layer_list + l_list
+
+                #     if fwd_ln and parent_layer_list != []:
+                #         gem_list = gem_list + [parent_layer_list[-1]]
+                #         fwd_ln = False
+                    if gem_list != []:
+                        policy_list.append(tuple([type(module), gem_list]))
+                        gem_list = []
+
+                print(policy_list)
+                return policy_list
 
             #parse model for injection policy
             parser_dict = tp_parser(model)
