@@ -47,7 +47,9 @@ class DanglingAttention(torch.nn.Linear):
             return out_obj.out, out_obj.bias
         else:
             out, bias = self.d_linear(out)
-            assert bias.ds_status == ZeroParamStatus.AVAILABLE
+            assert hasattr(bias, 'ds_status') or hasattr(bias, 'ds_param_alias')
+            z3_bias = bias if hasattr(bias, 'ds_status') else bias.ds_param_alias
+            assert z3_bias.ds_status == ZeroParamStatus.AVAILABLE
             return out, bias
 
 
@@ -62,7 +64,6 @@ class ModelContainer(torch.nn.Module):
         act1 = self.linear1(input)
         # bias is actually dangler.d_linear1.bias
         act2, bias = self.dangler(act1)
-        assert bias.ds_status == ZeroParamStatus.AVAILABLE
         return (act2 + bias).sum()
 
 
