@@ -1,17 +1,4 @@
 from torch import nn
-
-#use_containers = True  # LEV: Use this for container based bloom-3b example
-#if use_containers:
-#    # BLOOM
-#    #from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
-#
-#    # GPT
-#    from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
-#else:
-#    import deepspeed.ops.transformer as transformer_inference
-
-# TODO (lekurile): W/ generic checkpoint loading, import all model implementations and
-#                   add them to layer_policies dict, this may change in the future
 from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
 from deepspeed.model_implementations.transformers.ds_bert import DeepSpeedBERTInference

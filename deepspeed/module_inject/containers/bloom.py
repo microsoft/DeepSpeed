@@ -14,7 +14,6 @@ class DS_BloomContainer(MetaTensorContainer, BaseTransformerContainer):
         self.bigscience_bloom = True
 
     def create_module(self, config=None):
-        print(f"BLOOM create_module")
         _config = config if config is not None else self.config
 
         self.module = DeepSpeedBloomInference(_config, mp_group=self.mp_group)
@@ -22,7 +21,6 @@ class DS_BloomContainer(MetaTensorContainer, BaseTransformerContainer):
         return self.module
 
     def attention_qkv_mp(self, mp_replace):
-        print("Entered BLOOM defined attention_qkv_mp!!")
         self.module.attention.attn_qkvw = mp_replace.copy(
             self.module.attention.attn_qkvw,
             self.qkvw)

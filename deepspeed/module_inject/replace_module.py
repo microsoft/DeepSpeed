@@ -378,7 +378,7 @@ def replace_transformer_layer(orig_layer_impl,
         # 8. transpose the weights and bias if needed
         _container.transpose()
 
-        # 9. deal with tensor parallelism. todo: when bloom and other models are ready, we can move this into step 10.
+        # 9. deal with tensor parallelism.
         _container.apply_tensor_parallelism(mp_replace)
 
         # 10. copy the tensors from the model-specific container to the new module

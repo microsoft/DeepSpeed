@@ -6,14 +6,10 @@ from ..policy import TransformerPolicy
 
 
 class DS_CLIPContainer(BaseTransformerContainer):
-    def __init__(self, policy, config, model_config, layer_id):
-        super().__init__(policy, config, model_config, layer_id)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
-        #self.attn_linear_layer = False
-        #self.mlp_linear_layer = False
-        #self.scale_attention = self.policy.scale_attention
-        #self.layer_norm_eps = 1e-5
-        #self.pre_layer_norm = True
+        # All model specific things should be defined here instead of the base class.
 
     def create_module(self, config=None):
         _config = config if config is not None else self.config

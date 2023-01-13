@@ -11,7 +11,6 @@ class MetaTensorContainer(ABC):
         self.is_meta = self.qkvw.is_meta
 
     def apply_tensor_parallelism(self, mp_replace):
-        # todo: Ask Reza if there is a fixed strategy for this copying and if possible without mp_replace when mp_size=1
         if self.is_meta:
             if self.qkvb is None:
                 self.module.attention.attn_qkvb = None

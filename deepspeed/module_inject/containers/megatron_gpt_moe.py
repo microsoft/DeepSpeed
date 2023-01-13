@@ -11,10 +11,7 @@ class DS_MegatronGPTMoEContainer(MegatronContainer, BaseTransformerMoEContainer)
     def __init__(self, policy, config, model_config, layer_id):
         super().__init__(policy, config, model_config, layer_id)
 
-        #self.attn_linear_layer = True
-        #self.mlp_linear_layer = True
-        #self.scale_attention = self.policy.scale_attention
-        #self.window_size = 1
+        # All model specific things should be defined here instead of the base class.
 
     def create_module(self, config=None):
         _config = config if config is not None else self.config

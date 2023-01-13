@@ -72,6 +72,11 @@ class BaseTransformerContainer(ABC):
         self.input_nb = None
 
     def create_config(self):
+        self.set_hidden_heads(*self.policy.get_hidden_heads())
+        assert self.num_attention_heads % self.mp_size == 0,\
+                "To run the model parallel across the GPUs, the attention_heads require to be divisible by the world_size!" +\
+                "This is because the attention computation is partitioned evenly among the parallel GPUs."
+
         self.config = DeepSpeedInferenceConfig(
             hidden_size=self.hidden_size,
             heads=self.num_attention_heads,
@@ -98,12 +103,6 @@ class BaseTransformerContainer(ABC):
         return self.config
 
     def initialize_tensors(self):
-        # todo: refactor this to become part of config instead of tensor list
-        self.set_hidden_heads(*self.policy.get_hidden_heads())
-        assert self.num_attention_heads % self.mp_size == 0,\
-                "To run the model parallel across the GPUs, the attention_heads require to be divisible by the world_size!" +\
-                "This is because the attention computation is partitioned evenly among the parallel GPUs."
-
         # Set the tensors from policy (user module) to container (DS module)
         self.set_attention(*self.policy.attention())
         self.set_mlp(*self.policy.mlp())
@@ -175,7 +174,6 @@ class BaseTransformerContainer(ABC):
         self.module.mlp.output_w = self.quantizer.quantize(self.module.mlp.output_w)
 
     def apply_tensor_parallelism(self, mp_replace):
-        # todo: Ask Reza if there is a fixed strategy for this copying and if possible without mp_replace when mp_size=1
         # setup the new Attention module
         self.attention_qkv_mp(mp_replace)
         self.attention_o_mp(mp_replace)
