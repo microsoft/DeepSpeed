@@ -1223,6 +1223,12 @@ class DeepSpeedEngine(Module):
                     logger.warning(
                         "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
                     )
+            if model_dtype == torch.bfloat16:
+                if self.zero_optimization_stage() == 1:
+                    return BFLOAT16
+                else:
+                    raise NotImplementedError(
+                        "ZeRO stages 2 and 3 are not supported with the BF16 optimizer")
             return ZERO_OPTIMIZATION
         elif amp_enabled:
             if model_dtype != grad_accum_dtype:
