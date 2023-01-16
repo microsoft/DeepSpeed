@@ -976,7 +976,14 @@ def revert_transformer_layer(orig_layer_impl, model, config, preln=False):
     """
     def replace_fn(child, _replace_policy, layer_id):
         #from turing.nvidia_modelingpreln import BertLayer
-        orig_module = orig_layer_impl(config)
+        config.chunk_size_feed_forward = 2**16
+        config.is_decoder = False
+        config.add_cross_attention = False
+        config.num_attention_heads = config.heads
+        config.hidden_dropout_prob = config.hidden_dropout_ratio
+        config.attention_probs_dropout_prob = config.attn_dropout_ratio
+        config.hidden_act = "gelu"
+        orig_module = orig_layer_impl(config).half()
 
         # copy relevant state from child -> original module
         qkvw = child.attn_qkvw.data
