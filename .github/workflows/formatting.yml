@@ -21,8 +21,10 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - id: setup-venv
-        uses: ./.github/workflows/setup-venv
+      - name: environment
+        run: |
+          which python
+          python --version
 
       - name: Install deepspeed
         run: |
@@ -31,4 +33,5 @@ jobs:
 
       - name: Formatting checks
         run: |
+           pip show pre-commit clang-format
            pre-commit run --all-files
