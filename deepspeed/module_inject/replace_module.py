@@ -789,10 +789,14 @@ def replace_transformer_layer(orig_layer_impl,
 
         return new_module
 
+    effective_replace_policy = config.injection_policy_tuple
+    if config.replace_with_kernel_inject:
+        effective_replace_policy = config.replace_policy
+
     replaced_module = replace_module(model=model,
                                      orig_class=orig_layer_impl,
                                      replace_fn=replace_fn,
-                                     _replace_policy=config.injection_policy_tuple)
+                                     _replace_policy=effective_replace_policy)
 
     quantizer = GroupQuantizer(q_int8=quantize)
     world_size = dist.get_world_size() if dist.is_initialized() else 1

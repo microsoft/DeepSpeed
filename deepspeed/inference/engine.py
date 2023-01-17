@@ -116,11 +116,10 @@ class InferenceEngine(Module):
             config.checkpoint = None
         if self.injection_dict:
             for client_module, injection_policy in self.injection_dict.items():
-                # construct the tuple and pass that instead of a string or dict.
-                if isinstance(injection_policy, str):
-                    config.injection_policy_tuple = (injection_policy, )
-                else:
+                if isinstance(injection_policy, tuple):
                     config.injection_policy_tuple = injection_policy
+                else:
+                    config.replace_policy = injection_policy
                 self._apply_injection_policy(config, client_module)
         elif config.replace_method == 'auto':
             self._apply_injection_policy(config)

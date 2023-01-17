@@ -5,6 +5,7 @@ from pydantic import Field
 from pydantic import validator
 from typing import Dict, Union
 from enum import Enum
+from abc import ABCMeta
 
 
 class DtypeEnum(Enum):
@@ -228,9 +229,15 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     """
     Dictionary mapping a client nn.Module to its corresponding injection
     policy. e.g., `{BertLayer : deepspeed.inference.HFBertLayerPolicy}`
+
+    injection_policy=(deepspeed.inference.HFBertLayerPolicy,)
+
     """
 
     injection_policy_tuple: tuple = None
+    """ TODO: Add docs """
+
+    replace_policy: DSPolicy = None
     """ TODO: Add docs """
 
     config: Dict = Field(
