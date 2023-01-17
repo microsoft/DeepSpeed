@@ -2263,7 +2263,7 @@ class DeepSpeedEngine(Module):
             msg["latency"] = titer
             msg["FLOPS_per_gpu"] = self.flops * 1_000_000 * self.gradient_accumulation_steps(
             ) / titer
-            msg["throughput"] = self.train_batch_size() * 1000 / \
+            msg["throughput"] = self.train_batch_size() * 1_000_000 / \
                 msg["latency"]
             print_json_dist(msg, [0], path=self.autotuning_metric_path())
             log_dist(
