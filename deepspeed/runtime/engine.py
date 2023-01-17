@@ -888,7 +888,7 @@ class DeepSpeedEngine(Module):
             model_dtype = torch.bfloat16
 
         if self._config.grad_accum_dtype == None:
-            if model_dtype == torch.bfloat16 and not self.zero_optimization():
+            if model_dtype == torch.bfloat16:
                 grad_accum_dtype = torch.float32
             else:
                 grad_accum_dtype = model_dtype
@@ -1223,7 +1223,11 @@ class DeepSpeedEngine(Module):
                     logger.warning(
                         "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
                     )
+            # BF16 optimizer supports stage 1 optimizations
             if model_dtype == torch.bfloat16:
+                if grad_accum_dtype != torch.float32:
+                    raise NotImplementedError(
+                        "BF16 optimizer for ZeRO requires fp32 gradient accumulation")
                 if self.zero_optimization_stage() == 1:
                     return BFLOAT16
                 else:
