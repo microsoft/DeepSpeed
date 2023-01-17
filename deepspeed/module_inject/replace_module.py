@@ -976,14 +976,7 @@ def revert_transformer_layer(orig_layer_impl, model, config, preln=False):
     """
     def replace_fn(child, _replace_policy, layer_id):
         #from turing.nvidia_modelingpreln import BertLayer
-        config.chunk_size_feed_forward = 2**16
-        config.is_decoder = False
-        config.add_cross_attention = False
-        config.num_attention_heads = config.heads
-        config.hidden_dropout_prob = config.hidden_dropout_ratio
-        config.attention_probs_dropout_prob = config.attn_dropout_ratio
-        config.hidden_act = "gelu"
-        orig_module = orig_layer_impl(config).half()
+        orig_module = orig_layer_impl(config)
 
         # copy relevant state from child -> original module
         qkvw = child.attn_qkvw.data
@@ -1094,6 +1087,4 @@ def _replace_module(model, policies, layer_id=0):
         else:
             _, layer_id = _replace_module(child, policies, layer_id=layer_id)
 
-    # Add the reset_cache func to the model, so that it can be called in the beginning of text-generation.
-    model.reset_cache = transformer_inference.DeepSpeedTransformerInference.reset_cache
     return model, layer_id
