@@ -154,7 +154,8 @@ class InferenceEngine(Module):
                 key = re.search(r": (.*?)Model", model)
                 if key is None:
                     key = re.search(r": (.*?)Stack", model)
-                print(key.group(1).lower())
+                if key is None:
+                    key = re.match(r"(.*?)Model", model)
                 if key.group(1).lower() in unsupported:
                     return False
                 return True

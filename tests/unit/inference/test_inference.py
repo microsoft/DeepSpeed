@@ -8,7 +8,7 @@ from deepspeed.git_version_info import torch_info
 from unit.common import DistributedTest
 from packaging import version as pkg_version
 from deepspeed.ops.op_builder import OpBuilder
-from transformers import pipeline
+from transformers import pipeline, Conversation
 from transformers.models.t5.modeling_t5 import T5Block
 from transformers.models.roberta.modeling_roberta import RobertaLayer
 from huggingface_hub import HfApi
@@ -58,6 +58,10 @@ test_tasks = [
     "token-classification",
     "text-generation",
     "text2text-generation",
+    "feature-extraction",
+    "summarization",
+    "translation",
+    "conversational"
 ]
 pytest.all_models = {
     task: [m.modelId for m in _all_models if m.pipeline_tag == task]
@@ -163,6 +167,14 @@ def query(model_w_task):
         return "DeepSpeed is the greatest"
     elif task == "text2text-generation":
         return "Is this review positive or negative? Review: this is the best cast iron skillet you will ever buy"
+    elif task == "feature-extraction" or task == "translation" or task == "summarization":
+        return "Hello, my dog is cute"
+    elif task == "conversational":
+        return {
+        "past_user_inputs": ["Which movie is the best ?"],
+        "generated_responses": ["It's Die Hard for sure."],
+        "text": "Can you explain why ?",
+    }
     else:
         NotImplementedError(f'query for task "{task}" is not implemented')
 
@@ -205,6 +217,25 @@ def text2text_generation_assert(x, y):
                                                           for res in y)
 
 
+def feature_extraction_assert(x, y):
+    return set(res["generated_text"] for res in x) == set(res["generated_text"]
+                                                          for res in y)
+
+
+def translation_assert(x, y):
+    return set(res["translation_text"] for res in x) == set(res["translation_text"]
+                                                          for res in y)
+
+
+def summarization_assert(x, y):
+    return set(res["summary_text"] for res in x) == set(res["summary_text"]
+                                                          for res in y)
+
+
+def conversational_assert(x, y):
+    return set(res["conversation_text"] for res in x) == set(res["conversation_text"]
+                                                          for res in y)
+
 @pytest.fixture
 def assert_fn(model_w_task):
     model, task = model_w_task
@@ -215,6 +246,10 @@ def assert_fn(model_w_task):
         "token-classification": token_classification_assert,
         "text-generation": text_generation_assert,
         "text2text-generation": text2text_generation_assert,
+        "feature-extraction": feature_extraction_assert,
+        "translation": translation_assert,
+        "summarization": summarization_assert,
+        "conversational": conversational_assert
     }
     assert_fn = assert_fn_dict.get(task, None)
     if assert_fn is None:
@@ -472,71 +507,130 @@ class TestInjectionPolicy(DistributedTest):
 #                               "prophetnet",
 #                               "xlm_prophetnet"
 #                               ])
+# @pytest.mark.parametrize("model_w_task",
+#                          [("albert-base-v1",
+#                          "fill-mask"),
+#                          ("bert-base-uncased",
+#                          "fill-mask"),
+#                          ("google/bigbird-roberta-large",
+#                          "fill-mask"),
+#                          ("camembert-base",
+#                          "fill-mask"),
+#                          ("microsoft/deberta-base",
+#                          "fill-mask"),
+#                          ("microsoft/deberta-v2-xlarge",
+#                          "fill-mask"),
+#                          ("google/electra-small-generator",
+#                          "fill-mask"),
+#                          ("nghuyong/ernie-1.0-base-zh",
+#                          "fill-mask"),
+#                          ("facebook/esm2_t6_8M_UR50D",
+#                          "fill-mask"),
+#                          ("flaubert/flaubert_small_cased",
+#                          "fill-mask"),
+#                          ("kssteven/ibert-roberta-base",
+#                          "fill-mask"),
+#                          ("studio-ousia/luke-base",
+#                          "fill-mask"),
+#                          ("microsoft/mpnet-base",
+#                          "fill-mask"),
+#                          ("sijunhe/nezha-cn-base",
+#                          "fill-mask"),
+#                          ("deepmind/language-perceiver",
+#                          "fill-mask"),
+#                          ("roberta-base",
+#                          "fill-mask"),
+#                          ("junnyu/roformer_chinese_small",
+#                          "fill-mask"),
+#                          ("dandelin/vilt-b32-mlm",
+#                          "fill-mask"),
+#                          ("xlm-mlm-en-2048",
+#                          "fill-mask"),
+#                          ("xlm-roberta-base",
+#                          "fill-mask"),
+#                          ("uw-madison/yoso-4096",
+#                         "fill-mask"),
+#                          ],
+#                          ids=["albert",
+#                               "bert",
+#                               "big_bird",
+#                               "camembert",
+#                               "deberta",
+#                               "deberta_v2",
+#                               "electra",
+#                               "ernie",
+#                               "esm",
+#                               "flaubert",
+#                               "ibert",
+#                               "luke",
+#                               "mpnet",
+#                               "nezha",
+#                               "perceiver",
+#                               "roberta",
+#                               "roformer",
+#                               "vilt",
+#                               "xlm",
+#                               "xlm_roberta",
+#                               "yoso"
+#                               ])
+# @pytest.mark.parametrize("model_w_task",
+#                          [
+#                          ("allenai/longformer-large-4096-finetuned-triviaqa",
+#                          "question-answering"),
+#                          ("tau/splinter-base",
+#                          "question-answering"),
+#                          ("uclanlp/visualbert-vqa",
+#                          "question-answering")
+#                          ],
+#                          ids=["longformer",
+#                               "splinter",
+#                               "tapas",
+#                               "visual_bert"
+#                               ])
+# @pytest.mark.parametrize("model_w_task",
+#                          [
+#                          ("facebook/bart-large",
+#                          "feature-extraction"),
+#                          ("google/canine-s",
+#                          "feature-extraction"),
+#                          ("YituTech/conv-bert-base",
+#                          "feature-extraction"),
+#                          ("facebook/data2vec-text-base",
+#                          "feature-extraction"),
+#                          ("funnel-transformer/small",
+#                          "feature-extraction"),
+#                          ],
+#                          ids=["bart",
+#                               "canine",
+#                               "convbert",
+#                               "data2vec_text",
+#                               "funnel"
+#                               ])
 @pytest.mark.parametrize("model_w_task",
-                         [("albert-base-v1",
-                         "fill-mask"),
-                         ("bert-base-uncased",
-                         "fill-mask"),
-                         ("google/bigbird-roberta-large",
-                         "fill-mask"),
-                         ("camembert-base",
-                         "fill-mask"),
-                         ("microsoft/deberta-base",
-                         "fill-mask"),
-                         ("microsoft/deberta-v2-xlarge",
-                         "fill-mask"),
-                         ("google/electra-small-generator",
-                         "fill-mask"),
-                         ("nghuyong/ernie-1.0-base-zh",
-                         "fill-mask"),
-                         ("facebook/esm2_t6_8M_UR50D",
-                         "fill-mask"),
-                         ("flaubert/flaubert_small_cased",
-                         "fill-mask"),
-                         ("kssteven/ibert-roberta-base",
-                         "fill-mask"),
-                         ("studio-ousia/luke-base",
-                         "fill-mask"),
-                         ("microsoft/mpnet-base",
-                         "fill-mask"),
-                         ("sijunhe/nezha-cn-base",
-                         "fill-mask"),
-                         ("deepmind/language-perceiver",
-                         "fill-mask"),
-                         ("roberta-base",
-                         "fill-mask"),
-                         ("junnyu/roformer_chinese_small",
-                         "fill-mask"),
-                         ("dandelin/vilt-b32-mlm",
-                         "fill-mask"),
-                         ("xlm-mlm-en-2048",
-                         "fill-mask"),
-                         ("xlm-roberta-base",
-                         "fill-mask"),
-                         ("uw-madison/yoso-4096",
-                        "fill-mask"),
+                         [
+                        #  ("google/bigbird-pegasus-large-arxiv",
+                        #  "summarization"),
+                         ("facebook/blenderbot_small-90M",
+                         "conversational"),
+                         ("facebook/wmt19-ru-en",
+                         "translation"),
+                        #  ("Helsinki-NLP/opus-mt-en-de",
+                        #  "translation"),
+                        #  ("facebook/mbart-large-cc25",
+                        #  "translation"),
+                        #  ("google/pegasus-large",
+                        #  "summarization"),
+                        #  ("t5-small",
+                        #  "translation"),
                          ],
-                         ids=["albert",
-                              "bert",
-                              "big_bird",
-                              "camembert",
-                              "deberta",
-                              "deberta_v2",
-                              "electra",
-                              "ernie",
-                              "esm",
-                              "flaubert",
-                              "ibert",
-                              "luke",
-                              "mpnet",
-                              "nezha",
-                              "perceiver",
-                              "roberta",
-                              "roformer",
-                              "vilt",
-                              "xlm",
-                              "xlm_roberta",
-                              "yoso"
+                         ids=[
+                            #   "bigbird_pegasus",
+                              "blenderbot",
+                              "fsmt",
+                            #   "marian",
+                            #   "mbart",
+                            #   "pegasus",
+                            #   "t5"
                               ])
 @pytest.mark.parametrize("dtype", [torch.float16], ids=["fp16"])
 @pytest.mark.parametrize("enable_cuda_graph", [False], ids=["noCG"])
