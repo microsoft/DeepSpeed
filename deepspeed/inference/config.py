@@ -1,11 +1,11 @@
 import torch
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
+from deepspeed.module_inject.replace_policy import DSPolicy
 from pydantic import Field
 from pydantic import validator
 from typing import Dict, Union
 from enum import Enum
-from abc import ABCMeta
 
 
 class DtypeEnum(Enum):
@@ -230,12 +230,13 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     Dictionary mapping a client nn.Module to its corresponding injection
     policy. e.g., `{BertLayer : deepspeed.inference.HFBertLayerPolicy}`
 
-    injection_policy=(deepspeed.inference.HFBertLayerPolicy,)
-
+    XXX: Does this work here or does the user need to move it to injection_policy_tuple now?
+    injection_policy={T5Block: ('SelfAttention.o', 'EncDecAttention.o', 'DenseReluDense.wo')}
+    https://github.com/microsoft/DeepSpeedExamples/blob/master/inference/huggingface/translation/test-t5-base.py#L17
     """
 
     injection_policy_tuple: tuple = None
-    """ TODO: Add docs """
+    """ TODO: Add docs to this, it's not clear how this should be used wrt the previous injection_policy?"""
 
     replace_policy: DSPolicy = None
     """ TODO: Add docs """
