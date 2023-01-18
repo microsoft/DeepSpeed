@@ -46,22 +46,18 @@ class HFCLIPLayerPolicy(TransformerPolicy):
         qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
         qkvb = Parameter(torch.cat((qb, kb, vb), dim=0), requires_grad=False)
 
-        return self.linear_layer, \
-               qkvw, \
+        return qkvw, \
                qkvb, \
                self.client_module.self_attn.out_proj.weight, \
-               self.client_module.self_attn.out_proj.bias, \
-               self.scale_attention, \
-               self.is_megatron_v2
+               self.client_module.self_attn.out_proj.bias
 
     def mlp(self):
-        return self.linear_layer, \
-            self.client_module.mlp.fc1.weight, \
-            self.client_module.mlp.fc1.bias, \
-            self.client_module.mlp.fc2.weight, \
-            self.client_module.mlp.fc2.bias
+        return self.client_module.mlp.fc1.weight, \
+               self.client_module.mlp.fc1.bias, \
+               self.client_module.mlp.fc2.weight, \
+               self.client_module.mlp.fc2.bias
 
-    def layerNorm(self):
+    def layernorm(self):
         return self.client_module.layer_norm2.weight, \
                self.client_module.layer_norm2.bias, \
                self.client_module.layer_norm1.weight, \
