@@ -20,3 +20,7 @@ class VAEPolicy(DSPolicy):
         # TODO(cmikeh2): Enable cuda graph should be an inference configuration
         from ...model_implementations.diffusers.vae import DSVAE
         return DSVAE(module, enable_cuda_graph=enable_cuda_graph)
+
+    # NOTE (lekurile): Should we have a diffusers policy class?
+    def attention(self):
+        pass

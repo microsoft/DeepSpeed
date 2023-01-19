@@ -1,7 +1,7 @@
 '''
 Copyright 2022 The Microsoft DeepSpeed Team
 '''
-from abc import ABC
+from abc import ABC, abstractmethod
 from deepspeed.utils.types import ActivationFuncType
 
 
@@ -11,6 +11,7 @@ class DSPolicy(ABC):
     def __init__(self):
         self.cuda_graph_supported = False
 
+    @abstractmethod
     def attention(self):
         """
         Returns attention qkv and dense parameters
@@ -52,6 +53,7 @@ class TransformerPolicy(DSPolicy):
         self.use_load_prefix = use_load_prefix
         self.split_qkv = split_qkv
 
+    @abstractmethod
     def attention(self):
         """
         Returns attention qkv and dense parameters
@@ -60,12 +62,14 @@ class TransformerPolicy(DSPolicy):
         """
         raise NotImplementedError
 
+    @abstractmethod
     def get_hidden_heads(self):
         """
         return hidden_size and number of heads
         """
         raise NotImplementedError
 
+    @abstractmethod
     def mlp(self):
         """
         Returns mlp intermediate and output
@@ -74,7 +78,8 @@ class TransformerPolicy(DSPolicy):
         """
         raise NotImplementedError
 
-    def layerNorm(self):
+    @abstractmethod
+    def layernorm(self):
         """
         Returns LayerNorms used in transformer layer
         Post-Attention and pre/post layer norm
@@ -82,6 +87,7 @@ class TransformerPolicy(DSPolicy):
         """
         raise NotImplementedError
 
+    @abstractmethod
     def get_param_names(self):
         """
         Returns all the transformer parameter names to
