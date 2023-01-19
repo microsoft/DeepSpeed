@@ -390,14 +390,9 @@ def replace_transformer_layer(orig_layer_impl,
 
         # 11. set globals for generic checkpoint loading
         global selected_policy_g
-        global megatron_v2_g
-        global transformer_config_g
 
         if selected_policy_g is None:
             selected_policy_g = _container.policy
-
-        megatron_v2_g = _container.megatron_v2
-        transformer_config_g = _container.config
 
         return _container.module
 
