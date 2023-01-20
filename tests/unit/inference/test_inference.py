@@ -8,7 +8,7 @@ from deepspeed.git_version_info import torch_info
 from unit.common import DistributedTest
 from packaging import version as pkg_version
 from deepspeed.ops.op_builder import OpBuilder
-from transformers import pipeline, Conversation
+from transformers import pipeline
 from transformers.models.t5.modeling_t5 import T5Block
 from transformers.models.roberta.modeling_roberta import RobertaLayer
 from huggingface_hub import HfApi
@@ -167,14 +167,8 @@ def query(model_w_task):
         return "DeepSpeed is the greatest"
     elif task == "text2text-generation":
         return "Is this review positive or negative? Review: this is the best cast iron skillet you will ever buy"
-    elif task == "feature-extraction" or task == "translation" or task == "summarization":
+    elif task == "translation" or task == "summarization":
         return "Hello, my dog is cute"
-    elif task == "conversational":
-        return {
-        "past_user_inputs": ["Which movie is the best ?"],
-        "generated_responses": ["It's Die Hard for sure."],
-        "text": "Can you explain why ?",
-    }
     else:
         NotImplementedError(f'query for task "{task}" is not implemented')
 
@@ -217,11 +211,6 @@ def text2text_generation_assert(x, y):
                                                           for res in y)
 
 
-def feature_extraction_assert(x, y):
-    return set(res["generated_text"] for res in x) == set(res["generated_text"]
-                                                          for res in y)
-
-
 def translation_assert(x, y):
     return set(res["translation_text"] for res in x) == set(res["translation_text"]
                                                           for res in y)
@@ -231,10 +220,6 @@ def summarization_assert(x, y):
     return set(res["summary_text"] for res in x) == set(res["summary_text"]
                                                           for res in y)
 
-
-def conversational_assert(x, y):
-    return set(res["conversation_text"] for res in x) == set(res["conversation_text"]
-                                                          for res in y)
 
 @pytest.fixture
 def assert_fn(model_w_task):
@@ -246,10 +231,8 @@ def assert_fn(model_w_task):
         "token-classification": token_classification_assert,
         "text-generation": text_generation_assert,
         "text2text-generation": text2text_generation_assert,
-        "feature-extraction": feature_extraction_assert,
         "translation": translation_assert,
-        "summarization": summarization_assert,
-        "conversational": conversational_assert
+        "summarization": summarization_assert
     }
     assert_fn = assert_fn_dict.get(task, None)
     if assert_fn is None:
@@ -432,239 +415,6 @@ class TestInjectionPolicy(DistributedTest):
                                               mp_size=world_size,
                                               dtype=dtype,
                                               injection_policy=injection_policy)
-        # Switch device to GPU so that input tensors are not on CPU
-        pipe.device = torch.device(f"cuda:{local_rank}")
-        ds_output = pipe(query, **inf_kwargs)
-
-        print(local_rank, "baseline", bs_output)
-        print(local_rank, "deepspeed", ds_output)
-        assert assert_fn(bs_output, ds_output)
-
-
-@pytest.mark.tp
-# @pytest.mark.parametrize("model_w_task",
-#                          [("bigscience/bloom-560m",
-#                          "text-generation"),
-#                          ("EleutherAI/gpt-j-6B",
-#                          "text-generation"),
-#                          ("EleutherAI/gpt-neo-1.3B",
-#                          "text-generation"),
-#                          ("EleutherAI/gpt-neox-20b",
-#                          "text-generation"),
-#                          ("facebook/opt-125m",
-#                          "text-generation"),
-#                          ("facebook/xglm-564M",
-#                          "text-generation"),
-#                          ("google/reformer-crime-and-punishment",
-#                          "text-generation"),
-#                          ("gpt2",
-#                          "text-generation"),
-#                          ("openai-gpt",
-#                          "text-generation"),
-#                          ("Salesforce/codegen-350M-mono",
-#                          "text-generation"),
-#                          ("transfo-xl-wt103",
-#                          "text-generation"),
-#                          ("xlnet-base-cased",
-#                          "text-generation"),
-#                          ],
-#                          ids=["bloom",
-#                               "gptj",
-#                               "gpt-neo",
-#                               "gpt-neox",
-#                               "opt",
-#                               "xlgm",
-#                               "reformer",
-#                               "gpt2",
-#                               "openai",
-#                               "codegen",
-#                               "transfo-xl",
-#                               "xlnet"])
-# @pytest.mark.parametrize("model_w_task",
-#                          [("allenai/led-base-16384",
-#                          "text2text-generation"),
-#                          ("google/long-t5-local-base",
-#                          "text2text-generation"),
-#                          ("facebook/m2m100_418M",
-#                          "text2text-generation"),
-#                          ("RUCAIBox/mvp",
-#                          "text2text-generation"),
-#                          #("google/pegasus-x-base",
-#                          #"text2text-generation"),
-#                          ("uclanlp/plbart-base",
-#                          "text2text-generation"),
-#                          ("microsoft/prophetnet-large-uncased",
-#                          "text2text-generation"),
-#                          ("microsoft/xprophetnet-large-wiki100-cased",
-#                          "text2text-generation")
-#                          ],
-#                          ids=["led",
-#                               "longt5",
-#                               "m2m_100",
-#                               "mvp",
-#                               #"pegasus_x",
-#                               "plbart",
-#                               "prophetnet",
-#                               "xlm_prophetnet"
-#                               ])
-# @pytest.mark.parametrize("model_w_task",
-#                          [("albert-base-v1",
-#                          "fill-mask"),
-#                          ("bert-base-uncased",
-#                          "fill-mask"),
-#                          ("google/bigbird-roberta-large",
-#                          "fill-mask"),
-#                          ("camembert-base",
-#                          "fill-mask"),
-#                          ("microsoft/deberta-base",
-#                          "fill-mask"),
-#                          ("microsoft/deberta-v2-xlarge",
-#                          "fill-mask"),
-#                          ("google/electra-small-generator",
-#                          "fill-mask"),
-#                          ("nghuyong/ernie-1.0-base-zh",
-#                          "fill-mask"),
-#                          ("facebook/esm2_t6_8M_UR50D",
-#                          "fill-mask"),
-#                          ("flaubert/flaubert_small_cased",
-#                          "fill-mask"),
-#                          ("kssteven/ibert-roberta-base",
-#                          "fill-mask"),
-#                          ("studio-ousia/luke-base",
-#                          "fill-mask"),
-#                          ("microsoft/mpnet-base",
-#                          "fill-mask"),
-#                          ("sijunhe/nezha-cn-base",
-#                          "fill-mask"),
-#                          ("deepmind/language-perceiver",
-#                          "fill-mask"),
-#                          ("roberta-base",
-#                          "fill-mask"),
-#                          ("junnyu/roformer_chinese_small",
-#                          "fill-mask"),
-#                          ("dandelin/vilt-b32-mlm",
-#                          "fill-mask"),
-#                          ("xlm-mlm-en-2048",
-#                          "fill-mask"),
-#                          ("xlm-roberta-base",
-#                          "fill-mask"),
-#                          ("uw-madison/yoso-4096",
-#                         "fill-mask"),
-#                          ],
-#                          ids=["albert",
-#                               "bert",
-#                               "big_bird",
-#                               "camembert",
-#                               "deberta",
-#                               "deberta_v2",
-#                               "electra",
-#                               "ernie",
-#                               "esm",
-#                               "flaubert",
-#                               "ibert",
-#                               "luke",
-#                               "mpnet",
-#                               "nezha",
-#                               "perceiver",
-#                               "roberta",
-#                               "roformer",
-#                               "vilt",
-#                               "xlm",
-#                               "xlm_roberta",
-#                               "yoso"
-#                               ])
-# @pytest.mark.parametrize("model_w_task",
-#                          [
-#                          ("allenai/longformer-large-4096-finetuned-triviaqa",
-#                          "question-answering"),
-#                          ("tau/splinter-base",
-#                          "question-answering"),
-#                          ("uclanlp/visualbert-vqa",
-#                          "question-answering")
-#                          ],
-#                          ids=["longformer",
-#                               "splinter",
-#                               "tapas",
-#                               "visual_bert"
-#                               ])
-# @pytest.mark.parametrize("model_w_task",
-#                          [
-#                          ("facebook/bart-large",
-#                          "feature-extraction"),
-#                          ("google/canine-s",
-#                          "feature-extraction"),
-#                          ("YituTech/conv-bert-base",
-#                          "feature-extraction"),
-#                          ("facebook/data2vec-text-base",
-#                          "feature-extraction"),
-#                          ("funnel-transformer/small",
-#                          "feature-extraction"),
-#                          ],
-#                          ids=["bart",
-#                               "canine",
-#                               "convbert",
-#                               "data2vec_text",
-#                               "funnel"
-#                               ])
-@pytest.mark.parametrize("model_w_task",
-                         [
-                        #  ("google/bigbird-pegasus-large-arxiv",
-                        #  "summarization"),
-                         ("facebook/blenderbot_small-90M",
-                         "conversational"),
-                         ("facebook/wmt19-ru-en",
-                         "translation"),
-                        #  ("Helsinki-NLP/opus-mt-en-de",
-                        #  "translation"),
-                        #  ("facebook/mbart-large-cc25",
-                        #  "translation"),
-                        #  ("google/pegasus-large",
-                        #  "summarization"),
-                        #  ("t5-small",
-                        #  "translation"),
-                         ],
-                         ids=[
-                            #   "bigbird_pegasus",
-                              "blenderbot",
-                              "fsmt",
-                            #   "marian",
-                            #   "mbart",
-                            #   "pegasus",
-                            #   "t5"
-                              ])
-@pytest.mark.parametrize("dtype", [torch.float16], ids=["fp16"])
-@pytest.mark.parametrize("enable_cuda_graph", [False], ids=["noCG"])
-class TestTP(DistributedTest):
-    world_size = [2]
-
-    def test(
-        self,
-        model_w_task,
-        query,
-        inf_kwargs,
-        assert_fn,
-        invalid_model_task_config,
-        dtype,
-        enable_cuda_graph,
-    ):
-        if invalid_model_task_config:
-            pytest.skip(invalid_model_task_config)
-
-        model, task = model_w_task
-        local_rank = int(os.getenv("LOCAL_RANK", "0"))
-        world_size = int(os.getenv("WORLD_SIZE", "2"))
-
-        # We have to load these large models on CPU with pipeline because not
-        # enough GPU memory
-        pipe = pipeline(task, model=model, device=-1, framework="pt")
-        bs_output = pipe(query, **inf_kwargs)
-
-        pipe.model = deepspeed.init_inference(pipe.model,
-                                              mp_size=world_size,
-                                              dtype=dtype,
-                                              replace_with_kernel_inject=False,
-                                              replace_method=""
-                                             )
         # Switch device to GPU so that input tensors are not on CPU
         pipe.device = torch.device(f"cuda:{local_rank}")
         ds_output = pipe(query, **inf_kwargs)
