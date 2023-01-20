@@ -21,9 +21,20 @@ this_module = sys.modules[__name__]
 
 
 def builder_closure(member_name):
-    from deepspeed.accelerator import get_accelerator
-    builder = get_accelerator().get_op_builder(member_name)
-    return builder
+    if op_builder_dir == "op_builder":
+        # during installation time cannot get builder due to torch not installed,
+        # return closure instead
+        def _builder():
+            from deepspeed.accelerator import get_accelerator
+            builder = get_accelerator().create_op_builder(member_name)
+            return builder
+
+        return _builder
+    else:
+        # during runtime, return op builder class directly
+        from deepspeed.accelerator import get_accelerator
+        builder = get_accelerator().get_op_builder(member_name)
+        return builder
 
 
 # reflect builder names and add builder closure, such as 'TransformerBuilder()' creates op builder wrt current accelerator
