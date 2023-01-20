@@ -239,6 +239,12 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         else:
             return None
 
+    def get_op_builder(self, class_name):
+        if class_name in self.class_dict:
+            return self.class_dict[class_name]
+        else:
+            return None
+
     def build_extension(self):
         from torch.utils.cpp_extension import BuildExtension
         return BuildExtension

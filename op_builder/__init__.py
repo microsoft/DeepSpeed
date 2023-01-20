@@ -21,12 +21,9 @@ this_module = sys.modules[__name__]
 
 
 def builder_closure(member_name):
-    def _builder():
-        from deepspeed.accelerator import get_accelerator
-        builder = get_accelerator().create_op_builder(member_name)
-        return builder
-
-    return _builder
+    from deepspeed.accelerator import get_accelerator
+    builder = get_accelerator().get_op_builder(member_name)
+    return builder
 
 
 # reflect builder names and add builder closure, such as 'TransformerBuilder()' creates op builder wrt current accelerator

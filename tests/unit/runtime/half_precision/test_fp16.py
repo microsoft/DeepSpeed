@@ -345,8 +345,7 @@ class TestAdamFP16ZeroOneCycleCompatibility(DistributedTest):
     world_size = 1
 
     def test(self, zero_stage, use_cpu_offload):
-        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[
-                CPUAdamBuilder().NAME]:
+        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
@@ -403,8 +402,7 @@ class TestZeroStaticScale(DistributedTest):
     world_size = 1
 
     def test(self, zero_stage, use_cpu_offload, hidden_dim):
-        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[
-                CPUAdamBuilder().NAME]:
+        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
@@ -452,8 +450,7 @@ class TestZeroAllowUntestedOptimizer(DistributedTest):
     world_size = 1
 
     def test(self, zero_stage, use_cpu_offload):
-        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[
-                CPUAdamBuilder().NAME]:
+        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
@@ -485,8 +482,7 @@ class TestZeroEmptyPartition(DistributedTest):
     world_size = 3
 
     def test(self, zero_stage, use_cpu_offload):
-        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[
-                CPUAdamBuilder().NAME]:
+        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
         if zero_stage == 3:

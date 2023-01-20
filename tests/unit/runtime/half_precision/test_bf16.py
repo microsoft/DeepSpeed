@@ -18,8 +18,7 @@ class TestAdamBF16ZeroOneCycleCompatibility(DistributedTest):
                 " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
             )
 
-        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[
-                CPUAdamBuilder().NAME]:
+        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
@@ -81,8 +80,7 @@ class TestZeroAllowUntestedOptimizer(DistributedTest):
                 " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
             )
 
-        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[
-                CPUAdamBuilder().NAME]:
+        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
@@ -120,8 +118,7 @@ class TestZeroEmptyPartition(DistributedTest):
                 " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
             )
 
-        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[
-                CPUAdamBuilder().NAME]:
+        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
         if zero_stage == 3:
