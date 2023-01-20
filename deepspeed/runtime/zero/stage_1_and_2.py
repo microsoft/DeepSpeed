@@ -555,6 +555,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             link_hp_params(
                 lp_param_list=self.bit16_groups[i],
                 flat_hp_partition=flat_hp_partition,
+                gradient_dict=self.averaged_gradients,
+                param_group_index=i,
                 partition_start=partition_id * partition_size,
                 partition_size=partition_size,
                 partition_optimizer_state=self.optimizer.state[flat_hp_partition],

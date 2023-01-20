@@ -2,11 +2,13 @@
 Copyright 2022 The Microsoft DeepSpeed Team
 """
 import types
-from deepspeed.utils import get_full_hp_param, get_hp_fragment_mapping
+from deepspeed.utils import get_full_hp_param, get_full_hp_grad, get_hp_fragment_mapping
 
 
 def link_hp_params(lp_param_list,
                    flat_hp_partition,
+                   gradient_dict,
+                   param_group_index,
                    partition_start,
                    partition_size,
                    partition_optimizer_state,
@@ -20,6 +22,8 @@ def link_hp_params(lp_param_list,
         lp_param._hp_mapping = get_hp_fragment_mapping(lp_param,
                                                        lp_start,
                                                        flat_hp_partition,
+                                                       gradient_dict,
+                                                       param_group_index,
                                                        partition_start,
                                                        partition_size,
                                                        partition_optimizer_state)
@@ -29,10 +33,12 @@ def _init_lp_to_hp_mapping(lp_param_list, partition_start, partition_size, dp_gr
     current_offset = 0
     param_and_offset_list = []
     partition_end = partition_start + partition_size
-    for lp_param in lp_param_list:
+    for i, lp_param in enumerate(lp_param_list):
         lp_param._hp_mapping = None
         lp_param._dp_group = dp_group
         lp_param.get_full_hp_param = types.MethodType(get_full_hp_param, lp_param)
+        lp_param.get_full_hp_grad = types.MethodType(get_full_hp_grad, lp_param)
+        lp_param._index_in_param_group = i
 
         # lp_param overlaps with partition if both are true
         # 1) current_offset < partition_end,

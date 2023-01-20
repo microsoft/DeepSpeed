@@ -16,10 +16,13 @@ class fragment_address:
 @dataclass
 class tensor_fragment:
     lp_fragment: torch.Tensor
+    # lp_grad_fragment: torch.Tensor
     lp_fragment_address: fragment_address
     hp_fragment: torch.Tensor
     hp_fragment_address: fragment_address
     optim_fragment: {}
+    gradient_dict: {}
+    param_group_index: int
 
     def update_hp(self):
         self.hp_fragment.data.copy_(self.lp_fragment.data)
@@ -58,9 +61,56 @@ def get_full_hp_param(self, optim_state_key=None):
     return reduce_buffer.reshape_as(self)
 
 
+def safe_get_full_fp32_param(param):
+    if hasattr(param, '_hp_mapping'):
+        return param.get_full_hp_param()
+    return None
+
+
+def safe_get_full_optimizer_state(param, optim_state_key):
+    if hasattr(param, '_hp_mapping'):
+        return param.get_full_hp_param(optim_state_key)
+    return None
+
+
+def get_full_hp_grad(self):
+    reduce_buffer = torch.zeros_like(self, dtype=torch.float32).flatten()
+    if self._hp_mapping is not None:
+        lp_frag_address = self._hp_mapping.lp_fragment_address
+        reduce_fragment = torch.narrow(reduce_buffer,
+                                       0,
+                                       lp_frag_address.start,
+                                       lp_frag_address.numel)
+
+        hp_frag_address = self._hp_mapping.hp_fragment_address
+        hp_mapping = self._hp_mapping
+        # lp_grad_fragment = torch.narrow(hp_mapping.gradient_dict[hp_mapping.param_group_index],
+        #                                 0,
+        #                                hp_frag_address.start,
+        #                                hp_frag_address.numel)
+
+        lp_grad_fragment = hp_mapping.gradient_dict[hp_mapping.param_group_index][
+            self._index_in_param_group]
+        hp_grad_fragment = lp_grad_fragment.to(torch.float32).flatten()
+        reduce_fragment.data.copy_(hp_grad_fragment.data)
+    dist.all_reduce(reduce_buffer, group=self._dp_group)
+    return reduce_buffer.reshape_as(self)
+
+
+# TODO: Figure out the correct return dtype
+def safe_get_full_grad(param):
+    if param.grad is not None:
+        return param.grad
+    if hasattr(param, '_hp_mapping'):
+        return param.get_full_hp_grad()
+    return None
+
+
 def get_hp_fragment_mapping(lp_param,
                             lp_start,
                             flat_hp_partition,
+                            gradient_dict,
+                            param_group_index,
                             partition_start,
                             partition_size,
                             optimizer_state_dict):
@@ -101,7 +151,9 @@ def get_hp_fragment_mapping(lp_param,
                            lp_fragment_address=lp_frag_address,
                            hp_fragment=hp_fragment_tensor,
                            hp_fragment_address=hp_frag_address,
-                           optim_fragment=optim_fragment)
+                           optim_fragment=optim_fragment,
+                           gradient_dict=gradient_dict,
+                           param_group_index=param_group_index)
 
 
 '''
