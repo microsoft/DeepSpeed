@@ -5,6 +5,8 @@ import torch
 from torch.nn.parameter import Parameter
 from ..policy import TransformerPolicy
 from ..policy import transformer_param_names
+from ..policy import maybe_copy
+from ..policy import maybe_copy_qkv
 
 
 class DS_GPTNEOContainer(MetaTensorContainer, BaseTransformerContainer):

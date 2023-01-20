@@ -3,6 +3,7 @@ from .features.meta_tensor import MetaTensorContainer
 from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
 from ..policy import TransformerPolicy
 from ..policy import transformer_param_names
+from ..policy import maybe_copy
 
 supported_models = {None}
 

@@ -74,5 +74,5 @@ class HFDistilBertLayerPolicy(TransformerPolicy):
                transformer_layernorm.weight, \
                transformer_layernorm.bias
 
-    def get_param_names(self):
+    def load_params(self):
         pass

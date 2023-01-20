@@ -5,6 +5,7 @@ from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInfe
 import torch
 from ..policy import TransformerPolicy
 from ..policy import transformer_param_names
+from ..policy import maybe_copy
 from packaging import version as pkg_version
 
 

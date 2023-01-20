@@ -124,6 +124,7 @@ class TransformerPolicy(DSPolicy):
         raise NotImplementedError
 
 
+# TODO (lekurile): This function exists in base container as well, consolidate as some point
 def transpose(data):
     with torch.no_grad():
         data = data.contiguous()
@@ -133,6 +134,7 @@ def transpose(data):
     return data.reshape(data.shape[-1], data.shape[-2])
 
 
+# TODO (lekurile): This function exists in megatron feature container as well, consolidate as some point
 def _transpose(x, heads=1, mp_replace=None):
     heads = heads // mp_replace.mp_size
     outer_dim = -1
