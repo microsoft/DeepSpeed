@@ -233,12 +233,14 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     # this dict will be filled at init stage
     class_dict = {}
 
+    # create an instance of op builder and return, name specified by class_name
     def create_op_builder(self, class_name):
         if class_name in self.class_dict:
             return self.class_dict[class_name]()
         else:
             return None
 
+    # return an op builder class, name specified by class_name
     def get_op_builder(self, class_name):
         if class_name in self.class_dict:
             return self.class_dict[class_name]

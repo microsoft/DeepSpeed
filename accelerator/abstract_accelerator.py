@@ -219,10 +219,12 @@ class DeepSpeedAccelerator(ABC):
     def op_builder_dir(self):
         ...
 
+    # create an instance of op builder, specified by class_name
     @abc.abstractmethod
     def create_op_builder(self, class_name):
         ...
 
+    # return an op builder class, specified by class_name
     @abc.abstractmethod
     def get_op_builder(self, class_name):
         ...
