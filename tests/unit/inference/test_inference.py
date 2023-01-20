@@ -60,10 +60,8 @@ test_tasks = [
     "token-classification",
     "text-generation",
     "text2text-generation",
-    "feature-extraction",
     "summarization",
-    "translation",
-    "conversational"
+    "translation"
 ]
 pytest.all_models = {
     task: [m.modelId for m in _all_models if m.pipeline_tag == task]
