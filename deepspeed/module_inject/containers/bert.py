@@ -14,7 +14,7 @@ class DS_BERTContainer(BaseTransformerContainer):
         self.triangular_masking = False
 
     def create_module(self, config=None):
-        _config = config if config is not None else self.config
+        _config = config if config is not None else self.ds_inf_config
         self.module = DeepSpeedBERTInference(_config,
                                              mp_group=self.mp_group,
                                              qkv_merging=True)

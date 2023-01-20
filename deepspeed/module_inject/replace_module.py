@@ -374,7 +374,7 @@ def replace_transformer_layer(orig_layer_impl,
         _container.set_quantization_config(quantize, quantizer)
 
         # 6. create a DS Inference config object
-        _container.create_config()
+        _container.create_ds_inf_config()
 
         # 7. use the config and create the module
         _container.create_module()

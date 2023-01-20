@@ -14,7 +14,7 @@ class DS_DistilBERTContainer(BaseTransformerContainer):
         self.return_single_tuple = True
 
     def create_module(self, config=None):
-        _config = config if config is not None else self.config
+        _config = config if config is not None else self.ds_inf_config
         self.module = DeepSpeedBERTInference(_config,
                                              mp_group=self.mp_group,
                                              qkv_merging=True)
