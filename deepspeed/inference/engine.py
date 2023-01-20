@@ -16,12 +16,12 @@ from deepspeed.utils.timer import SynchronizedWallClockTimer
 
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
-from ..module_inject.replace_module import replace_transformer_layer, generic_injection
+from ..module_inject import replace_transformer_layer, generic_injection
 from ..comm.comm import init_distributed
 from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
 from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
-from ..module_inject.replace_policy import DSPolicy
+from ..module_inject.policy import TransformerPolicy
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -55,7 +55,7 @@ class InferenceEngine(Module):
             self.generate = self._generate
 
         if hasattr(self.module, "config"):
-            DSPolicy.hf_model_config = self.module.config
+            TransformerPolicy.hf_model_config = self.module.config
 
         # todo: keep this self.injection_dict because we don't use to change config.injection_policy API
         # todo: this will get changed when Molly's PR on auto injection dict is merged
@@ -115,7 +115,6 @@ class InferenceEngine(Module):
         # retain this from the old conditional argument being passed to apply_injection_policy()
         if not config.replace_with_kernel_inject:
             config.checkpoint = None
-
         if self.injection_dict:
             for client_module, injection_policy in self.injection_dict.items():
                 # construct the tuple and pass that instead of a string or dict.

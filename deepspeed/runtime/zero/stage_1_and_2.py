@@ -154,7 +154,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # - assume all params requires grad
         # - flat by groups, not keeping state. TODO: remove state explicitly?
         # - master grad and unflat master weight never exist. TODO: a way to save out unflat master?
-        if not torch.cuda.is_available:
+        if not torch.cuda.is_available():
             raise SystemError("Cannot use fp16 without CUDA.")
         self.optimizer = init_optimizer
 
@@ -265,7 +265,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # number of elements per partition in each group
         self.partition_size = []
 
-        #align nccl all-gather send buffers to 4-bye boundary
+        # align nccl all-gather send buffers to 4-byte boundary
         self.nccl_start_alignment_factor = 2  # 4-byte alignment/sizeof(fp16) = 2
 
         assert (allgather_bucket_size % self.nccl_start_alignment_factor == 0), f"allgather_bucket_size must be a multiple of nccl_start_alignment_factor, {self.nccl_start_alignment_factor} "
@@ -354,11 +354,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 assert (partitioned_data.data_ptr() %
                         (2 * self.nccl_start_alignment_factor) == 0)
 
-            # verify that data partition start locations are 4-byte aligned
-            for partitioned_data in data_parallel_partitions:
-                assert (partitioned_data.data_ptr() %
-                        (2 * self.nccl_start_alignment_factor) == 0)
-
             # A partition of the fp32 master weights that will be updated by this process.
             # Note that the params in single_partition_of_fp32_groups is cloned and detached
             # from the origin params of the model.
@@ -396,7 +391,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     f"Rank: {rank} partition count {self.partition_count} and sizes{[(p.numel(), self.is_moe_param_group[i] if hasattr(self, 'is_moe_param_group') else False) for i,p in enumerate(self.single_partition_of_fp32_groups)]} "
                 )
                 dist.barrier()
-        #exit(0)
+
         self.reduce_bucket_size = int(reduce_bucket_size)
         self.allgather_bucket_size = int(allgather_bucket_size)
 
@@ -941,8 +936,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def average_tensor(self, tensor):
         if self.overlap_comm:
-            torch.cuda.synchronize()
             stream = self.reduction_stream
+            stream.wait_stream(torch.cuda.current_stream())
         else:
             stream = torch.cuda.current_stream()
 
@@ -1786,7 +1781,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # Step 1:- Calculate gradient norm using fp-16 grads
         see_memory_usage('Before norm calculation')
         scaled_global_grad_norm = self.scaled_global_norm()
-        self._global_grad_norm = scaled_global_grad_norm / self.loss_scale
+        self._global_grad_norm = scaled_global_grad_norm / prev_scale
 
         see_memory_usage('After norm before optimizer')
         # Step 2:- run optimizer and upscaling simultaneously
