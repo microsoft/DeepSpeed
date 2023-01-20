@@ -269,8 +269,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.__params_in_ipg_bucket: List[Parameter] = []
         self.is_gradient_accumulation_boundary: bool = True
 
-        self.__param_reduce_events: Deque[
-            get_accelerator().Event()] = collections.deque()
+        self.__param_reduce_events: Deque[get_accelerator().Event] = collections.deque()
         # TODO. make this configurable via JSON
         self.__max_param_reduce_events: int = 2
 

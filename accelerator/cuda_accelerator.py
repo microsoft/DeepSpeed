@@ -88,11 +88,9 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         return torch.cuda.default_generators[device_index]
 
     # Streams/Events
-    def Stream(self, device=None, priority=0, **kwargs):
-        return torch.cuda.Stream(device, priority, **kwargs)
-
-    def StreamContext(self, stream):
-        return torch.cuda.StreamContext(stream)
+    @property
+    def Stream(self):
+        return torch.cuda.Stream
 
     def stream(self, stream):
         return torch.cuda.stream(stream)
@@ -103,8 +101,9 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def default_stream(self, device_index=None):
         return torch.cuda.default_stream(device_index)
 
-    def Event(self, **kwargs):
-        return torch.cuda.Event(**kwargs)
+    @property
+    def Event(self):
+        return torch.cuda.Event
 
     # Memory management
     def empty_cache(self):

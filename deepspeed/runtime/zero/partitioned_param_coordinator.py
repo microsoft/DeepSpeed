@@ -66,7 +66,7 @@ class PartitionedParameterCoordinator:
         prefetch_bucket_sz: int,
         max_reuse_distance_in_numel: int,
         max_available_parameters_in_numel: int,
-        allgather_stream: get_accelerator().Stream(),
+        allgather_stream: get_accelerator().Stream,
         prefetch_nvme: bool = False,
     ) -> None:
         # mapping of param -> handle for each param that is currently in flight
@@ -95,7 +95,7 @@ class PartitionedParameterCoordinator:
         self.hierarchy: int = 0
 
         # stream that will be used for allgather operations
-        self.__allgather_stream: get_accelerator().Stream() = allgather_stream
+        self.__allgather_stream: get_accelerator().Stream = allgather_stream
 
         # limit the number of fetch events that can be queued at once
         # otherwise, what happens is memory is allocated by the host thread at the
@@ -106,8 +106,7 @@ class PartitionedParameterCoordinator:
         # cudaMallocAsync/cudaFreeAsync. Choosing to not expose this to the user now
         # because ideally in the future its replaced by an async allocation
         # mechanism which doesn't require any configuration by the user.
-        self.__ongoing_fetch_events: Deque[
-            get_accelerator().Event()] = collections.deque()
+        self.__ongoing_fetch_events: Deque[get_accelerator().Event] = collections.deque()
         # TODO. make this configurable via JSON
         self.__max_ongoing_fetch_events: int = 2
 

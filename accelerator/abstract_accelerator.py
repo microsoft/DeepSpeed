@@ -66,12 +66,9 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     # Streams/Events
+    @property
     @abc.abstractmethod
-    def Stream(self, device=None, priority=0, **kwargs):
-        ...
-
-    @abc.abstractmethod
-    def StreamContext(self, stream):
+    def Stream(self):
         ...
 
     @abc.abstractmethod
@@ -86,8 +83,9 @@ class DeepSpeedAccelerator(ABC):
     def default_stream(self, device_index=None):
         ...
 
+    @property
     @abc.abstractmethod
-    def Event(self, **kwargs):
+    def Event(self):
         ...
 
     # Memory management
