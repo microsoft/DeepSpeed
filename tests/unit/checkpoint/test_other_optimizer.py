@@ -12,7 +12,7 @@ import pytest
 class TestOtherOptimizerCheckpoint(DistributedTest):
     world_size = 2
 
-    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder().NAME],
                         reason="lamb is not compatible")
     def test_checkpoint_unfused_optimizer(self, tmpdir):
         config_dict = {

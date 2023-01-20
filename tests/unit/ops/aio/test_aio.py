@@ -13,7 +13,7 @@ QUEUE_DEPTH = 2
 IO_SIZE = 16 * MEGA_BYTE
 IO_PARALLEL = 2
 
-if not deepspeed.ops.__compatible_ops__[AsyncIOBuilder.NAME]:
+if not deepspeed.ops.__compatible_ops__[AsyncIOBuilder().NAME]:
     pytest.skip('Skip tests since async-io is not compatible', allow_module_level=True)
 
 
