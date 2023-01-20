@@ -148,7 +148,7 @@ class InferenceEngine(Module):
                 return mlist
 
             def supported(model):
-                unsupported = ['bloom','codegen','flaubert','xlm']
+                unsupported = ['bloom', 'codegen', 'flaubert', 'xlm']
                 model = str(model)
                 key = re.search(r": (.*?)Model", model)
                 if key is None:
@@ -189,8 +189,8 @@ class InferenceEngine(Module):
                             layer_list = layer_list + get_layers(key, submodule)
                     for i, layer in enumerate(layer_list):
                         if layer == 'ln':
-                            if layer_list[i-1] != 'ln':
-                                gem_list = gem_list + [layer_list[i-1]]
+                            if layer_list[i - 1] != 'ln':
+                                gem_list = gem_list + [layer_list[i - 1]]
                         elif 'out_proj' in layer:
                             gem_list = gem_list + [layer]
                     if gem_list != []:

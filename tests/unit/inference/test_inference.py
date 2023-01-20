@@ -141,7 +141,16 @@ statement for each combination of model /task
 @pytest.fixture
 def query(model_w_task):
     model, task = model_w_task
-    angle_bracket_mask_models = ["roberta","camembert","esm","ibert","luke","mpnet","yoso","mpnet"]
+    angle_bracket_mask_models = [
+        "roberta",
+        "camembert",
+        "esm",
+        "ibert",
+        "luke",
+        "mpnet",
+        "yoso",
+        "mpnet"
+    ]
 
     def check_angle_bracket_mask(model):
         for name in angle_bracket_mask_models:
@@ -213,12 +222,11 @@ def text2text_generation_assert(x, y):
 
 def translation_assert(x, y):
     return set(res["translation_text"] for res in x) == set(res["translation_text"]
-                                                          for res in y)
+                                                            for res in y)
 
 
 def summarization_assert(x, y):
-    return set(res["summary_text"] for res in x) == set(res["summary_text"]
-                                                          for res in y)
+    return set(res["summary_text"] for res in x) == set(res["summary_text"] for res in y)
 
 
 @pytest.fixture
@@ -443,8 +451,8 @@ class TestInjectionPolicy(DistributedTest):
 @pytest.mark.parametrize(
     "model_w_task",
     [
-        (   "google/pegasus-large",
-            "summarization"),
+        ("google/pegasus-large",
+         "summarization"),
     ],
     ids=[
         "gptj",
