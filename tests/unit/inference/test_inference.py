@@ -447,7 +447,7 @@ class TestInjectionPolicy(DistributedTest):
         assert assert_fn(bs_output, ds_output)
 
 
-@pytest.mark.seq_inference_
+@pytest.mark.seq_inference
 @pytest.mark.parametrize(
     "model_w_task",
     [
@@ -455,7 +455,7 @@ class TestInjectionPolicy(DistributedTest):
          "summarization"),
     ],
     ids=[
-        "gptj",
+        "pegasus",
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float16], ids=["fp16"])
