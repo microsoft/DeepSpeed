@@ -28,7 +28,7 @@ from deepspeed.git_version_info import version
 
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder.builder_names import UtilsBuilder
+from deepspeed.ops.op_builder import UtilsBuilder
 
 from deepspeed.checkpoint.constants import (DS_VERSION,
                                             GROUP_PADDINGS,
@@ -162,7 +162,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.optimizer = init_optimizer
 
         # Load pre-built or JIT compile (un)flatten ops
-        util_ops = get_accelerator().create_op_builder(UtilsBuilder).load()
+        util_ops = UtilsBuilder().load()
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 

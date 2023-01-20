@@ -11,7 +11,7 @@ from enum import Enum
 import torch
 from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder.builder_names import AsyncIOBuilder
+from deepspeed.ops.op_builder import AsyncIOBuilder
 from .constants import *
 from .utils import swap_in_tensors, swap_out_tensors, MIN_AIO_BYTES, AIO_ALIGNED_BYTES, print_object, SwapBufferPool
 
@@ -35,7 +35,7 @@ class PartitionedParamStatus(Enum):
 class AsyncPartitionedParameterSwapper(object):
     def __init__(self, ds_config, model_dtype):
 
-        aio_op = get_accelerator().create_op_builder(AsyncIOBuilder).load(verbose=False)
+        aio_op = AsyncIOBuilder().load(verbose=False)
         self.aio_handle = aio_op.aio_handle
         self.dtype = model_dtype
 
