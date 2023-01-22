@@ -10,10 +10,10 @@ from .builder import get_default_compute_capabilities, OpBuilder
 
 # List of all available op builders from deepspeed op_builder
 try:
-    import op_builder  # noqa: F401
-    op_builder_dir = "op_builder"
-except ImportError:
+    import deepspeed.ops.op_builder  # noqa: F401
     op_builder_dir = "deepspeed.ops.op_builder"
+except ImportError:
+    op_builder_dir = "op_builder"
 
 __op_builders__ = []
 
