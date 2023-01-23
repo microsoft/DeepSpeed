@@ -452,7 +452,7 @@ class TestInjectionPolicy(DistributedTest):
     "model_w_task",
     [
         ("Helsinki-NLP/opus-mt-en-de",
-        "translation"),
+         "translation"),
     ],
     ids=[
         "marian",
