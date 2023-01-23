@@ -18,8 +18,8 @@ from copy import deepcopy
 import signal
 import time
 
-from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner, SlurmRunner
-from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER, SLURM_LAUNCHER
+from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner, SlurmRunner,MPICHRunner
+from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER, SLURM_LAUNCHER,MPICH_LAUNCHER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..nebula.constants import NEBULA_EXPORT_ENVS
 from ..utils import logger
@@ -114,7 +114,7 @@ def parse_args(args=None):
         default=PDSH_LAUNCHER,
         type=str,
         help="(optional) choose launcher backend for multi-node "
-        "training. Options currently include PDSH, OpenMPI, MVAPICH, SLURM.")
+        "training. Options currently include PDSH, OpenMPI, MVAPICH, SLURM, MPICH.")
 
     parser.add_argument("--launcher_args",
                         default="",
@@ -476,7 +476,7 @@ def main(args=None):
 
     # encode world info as base64 to make it easier to pass via command line
     world_info_base64 = encode_world_info(active_resources)
-
+    
     multi_node_exec = args.force_multi or len(active_resources) > 1
 
     if not multi_node_exec:
@@ -511,6 +511,8 @@ def main(args=None):
             runner = PDSHRunner(args, world_info_base64)
         elif args.launcher == OPENMPI_LAUNCHER:
             runner = OpenMPIRunner(args, world_info_base64, resource_pool)
+        elif args.launcher == MPICH_LAUNCHER:
+            runner = MPICHRunner(args, world_info_base64, resource_pool)
         elif args.launcher == MVAPICH_LAUNCHER:
             runner = MVAPICHRunner(args, world_info_base64, resource_pool)
         elif args.launcher == SLURM_LAUNCHER:
