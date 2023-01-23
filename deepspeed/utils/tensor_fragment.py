@@ -88,7 +88,10 @@ def get_full_hp_grad(self):
         #                                 0,
         #                                hp_frag_address.start,
         #                                hp_frag_address.numel)
-
+        from deepspeed.utils import logger
+        if hp_mapping.param_group_index not in hp_mapping.gradient_dict or hp_mapping.gradient_dict[hp_mapping.param_group_index] is None:
+            logger.warning("Gradients are only available immediately after backward and before egine step")
+            return None
         lp_grad_fragment = hp_mapping.gradient_dict[hp_mapping.param_group_index][
             self._index_in_param_group]
         hp_grad_fragment = lp_grad_fragment.to(torch.float32).flatten()
