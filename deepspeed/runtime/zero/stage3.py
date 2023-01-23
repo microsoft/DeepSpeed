@@ -1509,7 +1509,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         return params_in_partition, params_not_in_partition, first_offset
 
     @instrument_w_nvtx
-    def zero_grad(self, set_grads_to_None=True):
+    def zero_grad(self, set_to_none=False):
         """
         Zero FP16 parameter grads.
         """
@@ -1519,7 +1519,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # For speed, set model fp16 grad to None by default
         for group in self.fp16_groups:
             for p in group:
-                if set_grads_to_None:
+                if set_to_none:
                     if p.grad is not None and p.grad.is_cuda:
                         p.grad.record_stream(torch.cuda.current_stream())
                     p.grad = None

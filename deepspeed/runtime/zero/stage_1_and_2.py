@@ -1526,7 +1526,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         return params_in_partition, params_not_in_partition, first_offset
 
-    def zero_grad(self, set_grads_to_None=True):
+    def zero_grad(self, set_to_none=False):
         """
         Zero FP16 parameter grads.
         """
@@ -1534,7 +1534,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # For speed, set model fp16 grad to None by default
         for group in self.bit16_groups:
             for p in group:
-                if set_grads_to_None:
+                if set_to_none:
                     p.grad = None  # epilogue and in step
                 else:
                     if p.grad is not None:
