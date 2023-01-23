@@ -451,11 +451,11 @@ class TestInjectionPolicy(DistributedTest):
 @pytest.mark.parametrize(
     "model_w_task",
     [
-        ("google/pegasus-large",
-         "summarization"),
+        ("Helsinki-NLP/opus-mt-en-de",
+        "translation"),
     ],
     ids=[
-        "pegasus",
+        "marian",
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float16], ids=["fp16"])
