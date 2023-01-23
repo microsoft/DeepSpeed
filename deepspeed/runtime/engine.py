@@ -88,7 +88,7 @@ from ..moe.utils import is_moe_param
 from ..git_version_info import version
 
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
-from deepspeed.utils.logging import print_json_dist
+from deepspeed.utils.logging import print_json_dist, print_configuration
 
 from deepspeed.inference.config import DtypeEnum
 
@@ -129,13 +129,6 @@ def split_half_float_double_sparse(tensors):
         if bucket:
             buckets.append((dtype, bucket))
     return buckets
-
-
-def print_configuration(args, name):
-    logger.info("{}:".format(name))
-    for arg in sorted(vars(args)):
-        dots = "." * (29 - len(arg))
-        logger.info("  {} {} {}".format(arg, dots, getattr(args, arg)))
 
 
 FORWARD_MICRO_TIMER = 'forward_microstep'
@@ -888,7 +881,7 @@ class DeepSpeedEngine(Module):
             model_dtype = torch.bfloat16
 
         if self._config.grad_accum_dtype == None:
-            if model_dtype == torch.bfloat16 and not self.zero_optimization():
+            if model_dtype == torch.bfloat16:
                 grad_accum_dtype = torch.float32
             else:
                 grad_accum_dtype = model_dtype
@@ -1223,6 +1216,16 @@ class DeepSpeedEngine(Module):
                     logger.warning(
                         "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
                     )
+            # BF16 optimizer supports stage 1 optimizations
+            if model_dtype == torch.bfloat16:
+                if grad_accum_dtype != torch.float32:
+                    raise NotImplementedError(
+                        "BF16 optimizer for ZeRO requires fp32 gradient accumulation")
+                if self.zero_optimization_stage() == 1:
+                    return BFLOAT16
+                else:
+                    raise NotImplementedError(
+                        "ZeRO stages 2 and 3 are not supported with the BF16 optimizer")
             return ZERO_OPTIMIZATION
         elif amp_enabled:
             if model_dtype != grad_accum_dtype:
@@ -1529,6 +1532,9 @@ class DeepSpeedEngine(Module):
             if zero_stage == ZeroStageEnum.optimizer_states:
                 overlap_comm = False
                 round_robin_gradients = False
+                # Non-MoE requires contiguous grads to be disabled w. stage 1
+                if not self.has_moe_layers:
+                    contiguous_gradients = False
 
             if isinstance(self.module, PipelineModule):
                 if overlap_comm:
