@@ -12,6 +12,18 @@ used throughout the codebase.
 #define DS_HD_INLINE __host__ __device__ __forceinline__
 #define DS_D_INLINE __device__ __forceinline__
 
+/*
+Inference Data Type will be defined with INFERENCE_DATA_TYPE by the
+op builder. If it is not defined, compilation will crash. This is by
+design to ensure that the inference data type is always explicitly and
+intentionally defined.
+*/
+#ifndef INFERENCE_DATA_TYPE
+static_assert(false, "INFERENCE_DATA_TYPE must be defined");
+#endif
+
+typedef INFERENCE_DATA_TYPE inference_data_t;
+
 #ifdef __HIP_PLATFORM_HCC__
 
 // constexpr variant of warpSize for templating
@@ -33,6 +45,12 @@ constexpr int hw_warp_size = 32;
 #define ASYNC_COPY_AVAILABLE
 #define BF16_AVAILABLE
 #include <cuda_bf16.h>
+#elif
+
+#if INFERENCE_DATA_TYPE == __nv_bfloat16
+#define DISABLE_KERNEL_BUILD
+#endif
+
 #endif  // __CUDA_ARCH__ >= 800
 
 #include <cooperative_groups.h>
@@ -75,15 +93,3 @@ public:
 
 template <typename T>
 using Packed = typename Pack<T>::type;
-
-/*
-Inference Data Type will be defined with INFERENCE_DATA_TYPE by the
-op builder. If it is not defined, compilation will crash. This is by
-design to ensure that the inference data type is always explicitly and
-intentionally defined.
-*/
-#ifndef INFERENCE_DATA_TYPE
-static_assert(false, "INFERENCE_DATA_TYPE must be defined");
-#endif
-
-typedef INFERENCE_DATA_TYPE inference_data_t;

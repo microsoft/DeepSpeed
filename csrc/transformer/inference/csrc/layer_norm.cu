@@ -35,6 +35,7 @@ __global__ void fused_ln(T* output,
                          float epsilon,
                          int elems_per_row)
 {
+#ifndef DISABLE_KERNEL_BUILD
     constexpr int T_per_load = ln::granularity / sizeof(T);
 
     cg::thread_block tb = cg::this_thread_block();
@@ -116,6 +117,7 @@ __global__ void fused_ln(T* output,
             mem_access::store_global<ln::granularity>(block_output + iter_idx, iteration_buffer);
         }
     }
+#endif
 }
 
 #define LAUNCH_FUSED_LN(unRollFactor, threadsPerGroup, maxThreads) \
@@ -229,6 +231,7 @@ __global__ void fused_residual_ln(T* output,
                                   float epsilon,
                                   int elems_per_row)
 {
+#ifndef DISABLE_KERNEL_BUILD
     constexpr int T_per_load = ln::granularity / sizeof(T);
 
     cg::thread_block tb = cg::this_thread_block();
@@ -328,9 +331,9 @@ __global__ void fused_residual_ln(T* output,
             mem_access::store_global<ln::granularity>(block_output + iter_idx, iteration_buffer);
         }
     }
+#endif
 }
 
-// TODO(cmikeh2): There's a bunch of redundancy here that needs to be removed/simplified.
 #define LAUNCH_FUSED_RES_LN(unRollFactor, threadsPerGroup, maxThreads)     \
     fused_residual_ln<T, unRollFactor, threadsPerGroup, maxThreads, false> \
         <<<grid, block, 0, stream>>>(                                      \

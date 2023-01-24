@@ -23,6 +23,7 @@ In-place activation(biasAdd(x)) for channels last
 template <typename T, activation::Type ActFn>
 __global__ void fused_bias_act(T* input, const T* bias, int total_count, int intermediate_size)
 {
+#ifndef DISABLE_KERNEL_BUILD
     // Input restriction: intermediate_size % vals_per_access == 0
     constexpr int granularity = 16;
     constexpr int values_per_access = granularity / sizeof(T);
@@ -41,6 +42,7 @@ __global__ void fused_bias_act(T* input, const T* bias, int total_count, int int
 
         mem_access::store_global<granularity>(input + offset, data);
     }
+#endif
 }
 
 template <typename T>
@@ -125,6 +127,7 @@ __global__ void fused_bias_residual_postln(T* residual,
                                            const int total_count,
                                            const int intermediate_size)
 {
+#ifndef DISABLE_KERNEL_BUILD
     constexpr int granularity = 16;
     constexpr int T_per_access = granularity / sizeof(T);
     const int offset = (blockIdx.x * blockDim.x + threadIdx.x) * T_per_access;
@@ -147,6 +150,7 @@ __global__ void fused_bias_residual_postln(T* residual,
 
         mem_access::store_global<granularity>(residual + offset, res_data);
     }
+#endif
 }
 
 template <typename T>
@@ -159,6 +163,7 @@ __global__ void fused_bias_residual_preln(T* residual,
                                           const int intermediate_size,
                                           const float mp_scale)
 {
+#ifndef DISABLE_KERNEL_BUILD
     constexpr int granularity = 16;
     constexpr int T_per_access = granularity / sizeof(T);
     const int offset = (blockIdx.x * blockDim.x + threadIdx.x) * T_per_access;
@@ -188,6 +193,7 @@ __global__ void fused_bias_residual_preln(T* residual,
 
         mem_access::store_global<granularity>(residual + offset, res_data);
     }
+#endif
 }
 
 template <typename T>
@@ -233,6 +239,7 @@ template void launch_bias_residual<inference_data_t>(inference_data_t*,
 template <typename T>
 __global__ void moe_res_matmul(T* residual, T* coef, T* mlp_out, int seq_len, int hidden_dim)
 {
+#ifndef DISABLE_KERNEL_BUILD
     constexpr int granularity = 16;
     constexpr int vals_per_access = granularity / sizeof(T);
 
@@ -258,6 +265,7 @@ __global__ void moe_res_matmul(T* residual, T* coef, T* mlp_out, int seq_len, in
 
         mem_access::store_global<granularity>(mlp_out_seq + tid, mlp);
     }
+#endif
 }
 
 template <typename T>
@@ -399,14 +407,6 @@ template void pad_head_seq(float* padded_output,
                            int padded_head_size,
                            cudaStream_t stream);
 
-// TODO(cmikeh2): evaluate different GeLU performance
-__device__ __forceinline__ float old_gelu(float val)
-{
-    // 1 / sqrt(2)
-    constexpr float rsqrt_2 = 0.707106769084930419922;
-    return val * 0.5f * (1.0f + erff(val * rsqrt_2));
-}
-
 namespace fused_geglu {
 constexpr int threads = 256;
 constexpr int steps = 2;
@@ -420,6 +420,7 @@ __global__ void fused_bias_geglu(T* output,
                                  int base_channels,
                                  int total_elems)
 {
+#ifndef DISABLE_KERNEL_BUILD
     constexpr int T_per_access = fused_geglu::granularity / sizeof(T);
     constexpr int T_per_step = T_per_access * fused_geglu::threads;
     constexpr int T_per_block = T_per_step * fused_geglu::steps;
@@ -463,6 +464,7 @@ __global__ void fused_bias_geglu(T* output,
                                                                activation_buffer_1);
         }
     }
+#endif
 }
 
 template <typename T>
