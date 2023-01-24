@@ -152,12 +152,6 @@ def query(model_w_task):
         "mpnet"
     ]
 
-    def check_angle_bracket_mask(model):
-        for name in angle_bracket_mask_models:
-            if name in model:
-                return True
-        return False
-
     if task == "fill-mask":
         if any(map(lambda x: x in model, angle_bracket_mask_models)):
             return "Hello I'm a <mask> model."
