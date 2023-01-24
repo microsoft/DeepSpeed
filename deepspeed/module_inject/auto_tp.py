@@ -6,10 +6,9 @@ from torch import nn
 
 class AutoTP():
     def in_module_list(module, module_list):
-        if module_list is not None:
-            for item in module_list:
-                if type(item).__name__ == type(module).__name__:
-                    return True
+        for item in module_list:
+            if type(item).__name__ == type(module).__name__:
+                return True
         return False
 
     def get_module_list(model):
