@@ -4,7 +4,6 @@ Copyright 2021 The Microsoft DeepSpeed Team
 import torch
 import time
 import os
-import re
 
 from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
@@ -22,6 +21,7 @@ from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
 from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
 from ..module_inject.policy import TransformerPolicy
+from ..module_inject.auto_tp import AutoTP
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -126,80 +126,8 @@ class InferenceEngine(Module):
         elif config.replace_method == 'auto':
             self._apply_injection_policy(config)
         else:
-            # Auto Tensor Parallelism
-            def in_module_list(module, module_list):
-                if module_list is not None:
-                    for item in module_list:
-                        if type(item).__name__ == type(module).__name__:
-                            return True
-                return False
-
-            def get_module_list(model):
-                mlist = []
-                for child in model.children():
-                    if isinstance(child, nn.ModuleList):
-                        for module in child.children():
-                            if mlist is None:
-                                mlist = [module]
-                            elif not in_module_list(module, mlist):
-                                mlist = mlist + [module]
-                    else:
-                        mlist = mlist + get_module_list(child)
-                return mlist
-
-            def supported(model):
-                unsupported = ['bloom', 'codegen', 'flaubert', 'xlm']
-                model = str(model)
-                key = re.search(r": (.*?)Model", model)
-                if key is None:
-                    key = re.search(r": (.*?)Stack", model)
-                if key is None:
-                    key = re.match(r"(.*?)Model", model)
-                if key.group(1).lower() in unsupported:
-                    return False
-                return True
-
-            def get_layers(parent, module):
-                layer_list = []
-                for key, submodule in module._modules.items():
-                    if isinstance(submodule, nn.Linear):
-                        layer_list = layer_list + [parent + "." + key]
-                    elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm':
-                        layer_list = layer_list + ["ln"]
-                    else:
-                        layer_list = layer_list + get_layers(key, submodule)
-                return layer_list
-
-            def tp_parser(model):
-                policy_list = []
-                module_list = []
-                layer_list = []
-                gem_list = []
-
-                assert supported(model), "Automatic policy not supported for model. Please provide policy."
-
-                module_list = get_module_list(model)
-                for module in module_list:
-                    for key, submodule in module._modules.items():
-                        if isinstance(submodule, nn.Linear):
-                            layer_list = layer_list + ["." + key]
-                        elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm':
-                            layer_list = layer_list + ["ln"]
-                        else:
-                            layer_list = layer_list + get_layers(key, submodule)
-                    for i, layer in enumerate(layer_list):
-                        if layer == 'ln':
-                            if layer_list[i - 1] != 'ln':
-                                gem_list = gem_list + [layer_list[i - 1]]
-                        elif 'out_proj' in layer:
-                            gem_list = gem_list + [layer]
-                    if gem_list != []:
-                        policy_list.append(tuple([type(module), gem_list]))
-                        gem_list = []
-                return policy_list
-
-            #parse model for injection policy
-            parser_dict = tp_parser(model)
+            # Automatic Tensor Parallelism
+            parser_dict = AutoTP.tp_parser(model)
             for client_module, injection_policy in parser_dict:
                 if isinstance(injection_policy, str):
                     config.injection_policy_tuple = (injection_policy, )
