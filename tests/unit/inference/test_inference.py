@@ -159,7 +159,7 @@ def query(model_w_task):
         return False
 
     if task == "fill-mask":
-        if check_angle_bracket_mask(model):
+        if any(map(lambda x: x in model, angle_bracket_mask_models)):
             return "Hello I'm a <mask> model."
         else:
             return "Hell I'm a [MASK] model."
