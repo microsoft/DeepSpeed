@@ -1,5 +1,5 @@
 clang-format>=14.0.6
-docutils<0.19
+docutils<0.18
 future
 importlib-metadata>=4
 megatron-lm==1.1.5
