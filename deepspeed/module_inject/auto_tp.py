@@ -16,7 +16,7 @@ class AutoTP():
         for child in model.children():
             if isinstance(child, nn.ModuleList):
                 for module in child.children():
-                    if mlist is None:
+                    if not mlist:
                         mlist = [module]
                     elif not AutoTP.in_module_list(module, mlist):
                         mlist = mlist + [module]
