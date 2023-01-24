@@ -164,7 +164,7 @@ DS_D_INLINE float element<ROpType::Min>(const float lhs, const float rhs)
 }
 
 /* __half element reduce implementation */
-template <>
+template <typename T>
 DS_D_INLINE __half element<ROpType::Add>(const __half lhs, const __half rhs)
 {
     return lhs + rhs;
@@ -192,20 +192,47 @@ DS_D_INLINE __half element<ROpType::Min>(const __half lhs, const __half rhs)
 #endif
 }
 
-/* __half2 element reduce implementation */
-template <>
-DS_D_INLINE __half2 element<ROpType::Add>(const __half2 lhs, const __half2 rhs)
+/* __nv_bfloat16 element reduce implementation */
+#ifdef BF16_AVAILABLE
+template <typename T>
+DS_D_INLINE __nv_bfloat16 element<ROpType::Add>(const __nv_bfloat16 lhs, const __nv_bfloat16 rhs)
 {
     return lhs + rhs;
 }
 
 template <>
-DS_D_INLINE __half2 element<ROpType::Max>(const __half2 lhs, const __half2 rhs)
+DS_D_INLINE __nv_bfloat16 element<ROpType::Max>(const __nv_bfloat16 lhs, const __nv_bfloat16 rhs)
+{
+#if __CUDA_ARCH__ >= 800
+    // Intrinsic limited to Ampere + newer
+    return __hmax(lhs, rhs);
+#else
+    return (lhs > rhs) ? lhs : rhs;
+#endif
+}
+
+template <>
+DS_D_INLINE __nv_bfloat16 element<ROpType::Min>(const __nv_bfloat16 lhs, const __nv_bfloat16 rhs)
+{
+    // Intrinsic limited to Ampere + newer, but we're already gated for that for bfloat16
+    return __hmin(lhs, rhs);
+}
+#endif
+
+/* Packed<__half> element reduce implementation */
+template <>
+DS_D_INLINE Packed<__half> element<ROpType::Add>(const Packed<__half> lhs, const Packed<__half> rhs)
+{
+    return lhs + rhs;
+}
+
+template <>
+DS_D_INLINE Packed<__half> element<ROpType::Max>(const Packed<__half> lhs, const Packed<__half> rhs)
 {
 #if __CUDA_ARCH__ >= 800
     return __hmax2(lhs, rhs);
 #else
-    __half2 ret_val;
+    Packed<__half> ret_val;
     ret_val.x = (lhs.x > rhs.x) ? lhs.x : rhs.x;
     ret_val.y = (lhs.y > rhs.y) ? lhs.y : rhs.y;
     return ret_val;
@@ -213,17 +240,41 @@ DS_D_INLINE __half2 element<ROpType::Max>(const __half2 lhs, const __half2 rhs)
 }
 
 template <>
-DS_D_INLINE __half2 element<ROpType::Min>(const __half2 lhs, const __half2 rhs)
+DS_D_INLINE Packed<__half> element<ROpType::Min>(const Packed<__half> lhs, const Packed<__half> rhs)
 {
 #if __CUDA_ARCH__ >= 800
     return __hmin2(lhs, rhs);
 #else
-    __half2 ret_val;
+    Packed<__half> ret_val;
     ret_val.x = (lhs.x < rhs.x) ? lhs.x : rhs.x;
     ret_val.y = (lhs.y < rhs.y) ? lhs.y : rhs.y;
     return ret_val;
 #endif
 }
+
+/* Packed<__nv_bfloat16> element reduce implementation */
+#ifdef BF16_AVAILABLE
+template <>
+DS_D_INLINE Packed<__nv_bfloat16> element<ROpType::Add>(const Packed<__nv_bfloat16> lhs,
+                                                        const Packed<__nv_bfloat16> rhs)
+{
+    return lhs + rhs;
+}
+
+template <>
+DS_D_INLINE Packed<__nv_bfloat16> element<ROpType::Max>(const Packed<__nv_bfloat16> lhs,
+                                                        const Packed<__nv_bfloat16> rhs)
+{
+    return __hmax2(lhs, rhs);  // Only available on Ampere and newer
+}
+
+template <>
+DS_D_INLINE Packed<__nv_bfloat16> element<ROpType::Min>(const Packed<__nv_bfloat16> lhs,
+                                                        const Packed<__nv_bfloat16> rhs)
+{
+    return __hmin2(lhs, rhs);  // Only available on Ampere and newer
+}
+#endif
 
 /*
 Reduction initialization primitives
@@ -269,26 +320,72 @@ DS_D_INLINE __half init<ROpType::Max>()
     return __half(neg_inf);
 }
 
+#ifdef BF16_AVAILABLE
 template <>
-DS_D_INLINE __half2 init<ROpType::Add>()
+DS_D_INLINE __nv_bfloat16 init<ROpType::Add>()
+{
+    constexpr __nv_bfloat16_raw zero = {0x0000};
+    return __nv_bfloat16(zero);
+}
+
+template <>
+DS_D_INLINE __nv_bfloat16 init<ROpType::Min>()
+{
+    constexpr __nv_bfloat16_raw inf = {0x7F80};
+    return __nv_bfloat16(inf);
+}
+
+template <>
+DS_D_INLINE __nv_bfloat16 init<ROpType::Max>()
+{
+    constexpr __nv_bfloat16_raw neg_inf = {0xFF80};
+    return __nv_bfloat16(neg_inf);
+}
+#endif
+
+template <>
+DS_D_INLINE Packed<__half> init<ROpType::Add>()
 {
     constexpr __half2_raw zero = {0x0000, 0x0000};
-    return __half2(zero);
+    return Packed<__half>(zero);
 }
 
 template <>
-DS_D_INLINE __half2 init<ROpType::Min>()
+DS_D_INLINE Packed<__half> init<ROpType::Min>()
 {
     constexpr __half2_raw inf = {0x7C00, 0x7C00};
-    return __half2(inf);
+    return Packed<__half>(inf);
 }
 
 template <>
-DS_D_INLINE __half2 init<ROpType::Max>()
+DS_D_INLINE Packed<__half> init<ROpType::Max>()
 {
     constexpr __half2_raw neg_inf = {0xFC00, 0xFC00};
-    return __half2(neg_inf);
+    return Packed<__half>(neg_inf);
 }
+
+#ifdef BF16_AVAILABLE
+template <>
+DS_D_INLINE Packed<__nv_bfloat16> init<ROpType::Add>()
+{
+    constexpr __nv_bfloat162_raw zero = {0x0000, 0x0000};
+    return Packed<__nv_bfloat16>(zero);
+}
+
+template <>
+DS_D_INLINE Packed<__nv_bfloat16> init<ROpType::Min>()
+{
+    constexpr __nv_bfloat162_raw inf = {0x7F80, 0x7F80};
+    return Packed<__nv_bfloat16>(inf);
+}
+
+template <>
+DS_D_INLINE Packed<__nv_bfloat16> init<ROpType::Max>()
+{
+    constexpr __nv_bfloat162_raw neg_inf = {0xFF80, 0xFF80};
+    return Packed<__nv_bfloat16>(neg_inf);
+}
+#endif
 
 template <ROpType Op, typename T>
 DS_D_INLINE void init(T* data)

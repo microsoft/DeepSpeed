@@ -188,16 +188,14 @@ void launch_fused_ln(T* output,
     }
 }
 
-template void launch_fused_ln(__half*,
-                              const __half*,
-                              const __half*,
-                              const __half*,
+template void launch_fused_ln(inference_data_t*,
+                              const inference_data_t*,
+                              const inference_data_t*,
+                              const inference_data_t*,
                               float,
                               int,
                               int,
                               cudaStream_t);
-template void
-launch_fused_ln(float*, const float*, const float*, const float*, float, int, int, cudaStream_t);
 
 /*
 Fused resiual + bias + layer norm implementation. Assumes elems_per_row % 8
@@ -481,48 +479,25 @@ void launch_fused_residual_ln_store_pre_ln_res(T* norm_output,
 }
 
 // No-store specializations
-template void launch_fused_residual_ln(__half*,
-                                       const __half*,
-                                       const __half*,
-                                       const __half*,
-                                       const __half*,
-                                       const __half*,
-                                       float,
-                                       int,
-                                       int,
-                                       cudaStream_t);
-
-template void launch_fused_residual_ln(float*,
-                                       const float*,
-                                       const float*,
-                                       const float*,
-                                       const float*,
-                                       const float*,
+template void launch_fused_residual_ln(inference_data_t*,
+                                       const inference_data_t*,
+                                       const inference_data_t*,
+                                       const inference_data_t*,
+                                       const inference_data_t*,
+                                       const inference_data_t*,
                                        float,
                                        int,
                                        int,
                                        cudaStream_t);
 
 // Store specializations
-template void launch_fused_residual_ln_store_pre_ln_res(__half*,
-                                                        __half*,
-                                                        const __half*,
-                                                        const __half*,
-                                                        const __half*,
-                                                        const __half*,
-                                                        const __half*,
-                                                        float,
-                                                        int,
-                                                        int,
-                                                        cudaStream_t);
-
-template void launch_fused_residual_ln_store_pre_ln_res(float*,
-                                                        float*,
-                                                        const float*,
-                                                        const float*,
-                                                        const float*,
-                                                        const float*,
-                                                        const float*,
+template void launch_fused_residual_ln_store_pre_ln_res(inference_data_t*,
+                                                        inference_data_t*,
+                                                        const inference_data_t*,
+                                                        const inference_data_t*,
+                                                        const inference_data_t*,
+                                                        const inference_data_t*,
+                                                        const inference_data_t*,
                                                         float,
                                                         int,
                                                         int,

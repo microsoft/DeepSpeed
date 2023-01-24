@@ -248,14 +248,14 @@ DS_D_INLINE float to(__nv_bfloat16 val)
 
 /*********************  To Float2 Conversions *********************/
 template <>
-DS_D_INLINE float2 to(__half2 val)
+DS_D_INLINE Packed<float> to(Packed<__half> val)
 {
     return __half22float2(val);
 }
 
 #ifdef BF16_AVAILABLE
 template <>
-DS_D_INLINE float2 to(__nv_bfloat162 val)
+DS_D_INLINE Packed<float> to(Packed<__nv_bfloat16> val)
 {
     return __bfloat1622float2(val);
 }
@@ -324,7 +324,7 @@ DS_D_INLINE __half to(__nv_bfloat16 val)
 
 /*********************  To Half2 Conversions *********************/
 template <>
-DS_D_INLINE __half2 to(float2 val)
+DS_D_INLINE Packed<__half> to(Packed<float> val)
 {
     return __float22half2_rn(val);
 }
@@ -332,9 +332,9 @@ DS_D_INLINE __half2 to(float2 val)
 #ifdef BF16_AVAILABLE
 // No direct conversion
 template <>
-DS_D_INLINE __half2 to(__nv_bfloat162 val)
+DS_D_INLINE Packed<__half> to(Packed<__nv_bfloat16> val)
 {
-    return to<__half2>(to<float2>(val));
+    return to<Packed<__half>>(to<Packed<float>>(val));
 }
 #endif
 
@@ -395,14 +395,14 @@ DS_D_INLINE __nv_bfloat16 to(uint8_t val)
 /*********************  To BF162 Conversions *********************/
 #ifdef BF16_AVAILABLE
 template <>
-DS_D_INLINE __nv_bfloat162 to(float2 val)
+DS_D_INLINE Packed<__nv_bfloat16> to(Packed<float> val)
 {
     return __float22bfloat162_rn(val);
 }
 template <>
-DS_D_INLINE __nv_bfloat162 to(__half2 val)
+DS_D_INLINE Packed<__nv_bfloat16> to(__half2 val)
 {
-    return to<__nv_bfloat162>(to<float2>(val));
+    return to<Packed<__nv_bfloat16>>(to<Packed<float>>(val));
 }
 #endif
 
