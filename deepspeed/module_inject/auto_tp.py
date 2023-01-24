@@ -1,8 +1,8 @@
 # Automatic Tensor Parallelism
-import torch
 import re
 
 from torch import nn
+
 
 class AutoTP():
     def in_module_list(module, module_list):
