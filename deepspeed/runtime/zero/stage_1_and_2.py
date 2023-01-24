@@ -753,7 +753,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # No need to keep the gradients anymore.
         # All gradients required by the step
         # are in self.averaged_gradients
-        self.zero_grad()
+        self.zero_grad(set_to_none=True)
         see_memory_usage(f"End ipg_epilogue")
 
     # resets all partition to no reduced
@@ -1766,7 +1766,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                                             self.loss_scale))
 
             see_memory_usage('After overflow before clearing gradients')
-            self.zero_grad()
+            self.zero_grad(set_to_none=True)
             if self.cpu_offload:
                 self.reset_cpu_buffers()
             else:
