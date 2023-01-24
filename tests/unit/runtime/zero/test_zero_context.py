@@ -72,6 +72,7 @@ class TestZeroGatheredParametersFree(DistributedTest):
         # on exit from `GatheredParameters` the gathered params should be freed and not leak memory
         assert model.l1.weight.numel() == 0, "outside of GatheredParameters the param should go back to be 0-sized"
 
+
 class TestSerialContext(DistributedTest):
     world_size = 1
     init_distributed = False
