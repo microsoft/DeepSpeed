@@ -22,6 +22,7 @@ from ..moe.utils import has_moe_layers
 from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
 from deepspeed.accelerator import get_accelerator
 from ..module_inject.policy import TransformerPolicy
+from ..module_inject.auto_tp import AutoTP
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -125,6 +126,15 @@ class InferenceEngine(Module):
                 self._apply_injection_policy(config, client_module)
         elif config.replace_method == 'auto':
             self._apply_injection_policy(config)
+        else:
+            # Automatic Tensor Parallelism
+            parser_dict = AutoTP.tp_parser(model)
+            for client_module, injection_policy in parser_dict:
+                if isinstance(injection_policy, str):
+                    config.injection_policy_tuple = (injection_policy, )
+                else:
+                    config.injection_policy_tuple = injection_policy
+                self._apply_injection_policy(config, client_module)
 
         device = get_accelerator().current_device_name()
         self.module.to(device)
