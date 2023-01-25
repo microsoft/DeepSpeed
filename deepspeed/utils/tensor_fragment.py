@@ -22,6 +22,8 @@ class tensor_fragment:
     hp_fragment_address: fragment_address
     optim_fragment: {}
     gradient_dict: {}
+    offload_gradient_dict: {}
+    use_offload: bool
     param_group_index: int
 
     def update_hp(self):
@@ -89,7 +91,12 @@ def get_full_hp_grad(self):
         #                                hp_frag_address.start,
         #                                hp_frag_address.numel)
 
-        lp_grad_fragment = hp_mapping.gradient_dict[hp_mapping.param_group_index][
+        if hp_mapping.use_offload:
+            gradient_dict = hp_mapping.offload_gradient_dict
+        else:
+            gradient_dict = hp_mapping.gradient_dict
+
+        lp_grad_fragment = gradient_dict[hp_mapping.param_group_index][
             self._index_in_param_group]
         hp_grad_fragment = lp_grad_fragment.to(torch.float32).flatten()
         reduce_fragment.data.copy_(hp_grad_fragment.data)
@@ -110,6 +117,8 @@ def get_hp_fragment_mapping(lp_param,
                             lp_start,
                             flat_hp_partition,
                             gradient_dict,
+                            offload_gradient_dict,
+                            use_offload,
                             param_group_index,
                             partition_start,
                             partition_size,
@@ -153,6 +162,8 @@ def get_hp_fragment_mapping(lp_param,
                            hp_fragment_address=hp_frag_address,
                            optim_fragment=optim_fragment,
                            gradient_dict=gradient_dict,
+                           offload_gradient_dict=offload_gradient_dict,
+                           use_offload=use_offload,
                            param_group_index=param_group_index)
 
 
