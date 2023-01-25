@@ -96,8 +96,10 @@ def get_full_hp_grad(self):
         else:
             gradient_dict = hp_mapping.gradient_dict
 
-        lp_grad_fragment = gradient_dict[hp_mapping.param_group_index][
-            self._index_in_param_group]
+        if hp_mapping.param_group_index not in gradient_dict or gradient_dict[hp_mapping.param_group_index] is None:
+           raise ValueError("Gradients are only available immediately after backward and before engine step")
+           
+        lp_grad_fragment = gradient_dict[hp_mapping.param_group_index][self._index_in_param_group]       
         hp_grad_fragment = lp_grad_fragment.to(torch.float32).flatten()
         reduce_fragment.data.copy_(hp_grad_fragment.data)
     dist.all_reduce(reduce_buffer, group=self._dp_group)
