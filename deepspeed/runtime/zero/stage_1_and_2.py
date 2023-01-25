@@ -1079,7 +1079,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def _get_offload_gradient_dict(self):
         for param_group_index, _ in enumerate(self.optimizer.param_groups):
             self.offload_gradient_dict[param_group_index] = []
-            for lp_param in self.bit16_groups[param_group_index]:
+            for lp_param in self.params_in_partition[param_group_index]:
                 param_id = self.get_param_id(lp_param)
                 [_, _, dest_offset, num_elements] = self.grad_position[param_id]
                 dest_tensor = self.single_partition_of_fp32_groups[
