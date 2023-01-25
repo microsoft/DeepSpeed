@@ -84,12 +84,7 @@ def get_full_hp_grad(self):
                                        lp_frag_address.start,
                                        lp_frag_address.numel)
 
-        hp_frag_address = self._hp_mapping.hp_fragment_address
         hp_mapping = self._hp_mapping
-        # lp_grad_fragment = torch.narrow(hp_mapping.gradient_dict[hp_mapping.param_group_index],
-        #                                 0,
-        #                                hp_frag_address.start,
-        #                                hp_frag_address.numel)
 
         if hp_mapping.use_offload:
             gradient_dict = hp_mapping.offload_gradient_dict
