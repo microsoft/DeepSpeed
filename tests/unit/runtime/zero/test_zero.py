@@ -3,7 +3,6 @@ from typing import Dict, List, Set
 import pytest
 import deepspeed.comm as dist
 import torch
-from copy import deepcopy
 from torch import Tensor
 from torch.nn import Linear, Module
 from torch.nn.modules.container import ModuleList
