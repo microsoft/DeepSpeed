@@ -2154,6 +2154,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         return grad_dict
 
     def get_fp32_grad_for_param(self, param) -> Tensor:
+
+        if not param.requires_grad:
+            return None
+
         self.__reduce_and_partition_stream.synchronize()
 
         if self.offload_optimizer:
