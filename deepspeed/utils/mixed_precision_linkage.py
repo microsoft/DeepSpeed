@@ -2,7 +2,7 @@
 Copyright 2022 The Microsoft DeepSpeed Team
 """
 import types
-from deepspeed.utils import get_full_hp_param, get_full_hp_grad, get_hp_fragment_mapping
+from deepspeed.utils import get_full_hp_param, get_full_hp_grad, get_hp_fragment_mapping, tensor_fragment
 
 
 def link_hp_params(lp_param_list,
@@ -49,10 +49,12 @@ def _init_lp_to_hp_mapping(lp_param_list, partition_start, partition_size, dp_gr
         # 2) current_offset + lp_param.numel() >= partition_start
         lp_param_end = current_offset + lp_param.numel()
         if current_offset < partition_end and lp_param_end > partition_start:
-            param_and_offset_list.append((lp_param, current_offset))
+            param_and_offset_list.append((lp_param, current_offset))                    
             lp_param._index_in_param_group = index_in_param_group
             # Indices for params in this partition/GPU
             index_in_param_group += 1
         current_offset += lp_param.numel()
 
     return param_and_offset_list
+
+
