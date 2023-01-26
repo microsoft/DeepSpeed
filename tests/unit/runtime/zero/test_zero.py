@@ -3,6 +3,7 @@ from typing import Dict, List, Set
 import pytest
 import deepspeed.comm as dist
 import torch
+from copy import deepcopy
 from torch import Tensor
 from torch.nn import Linear, Module
 from torch.nn.modules.container import ModuleList
@@ -209,17 +210,13 @@ class TestZeroToFP32(DistributedTest):
         # make sure all sides saved it
         dist.barrier()
 
-        if zero_stage == 3:
-            with deepspeed.zero.GatheredParameters(list(
-                    model.module.parameters(recurse=True)),
-                                                   modifier_rank=None):
-                pass  # this forces gathering the model
-
-        #dump_state_dict(model)
-
         orig_state_dict = {}
         for name, param in model.module.named_parameters():
-            orig_state_dict[name] = param.detach().cpu()
+            if zero_stage == 3:
+                with deepspeed.zero.GatheredParameters(param, modifier_rank=None):
+                    orig_state_dict[name] = param.detach().cpu()
+            else:
+                orig_state_dict[name] = param.detach().cpu()
 
         if dist.get_rank() == 0:
             fp32_model = load_state_dict_from_zero_checkpoint(model.module, tmpdir)
