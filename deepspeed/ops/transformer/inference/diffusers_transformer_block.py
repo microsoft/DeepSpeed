@@ -90,12 +90,7 @@ class DeepSpeedDiffusersTransformerBlock(nn.Module):
         self.transformer_cuda_module = load_transformer_module()
         load_spatial_module()
 
-    def forward(self,
-                hidden_states,
-                context=None,
-                encoder_hidden_states=None,
-                timestep=None,
-                **kwargs):
+    def forward(self, hidden_states, context=None, timestep=None, **kwargs):
         # In v0.12.0 of diffuser, several new kwargs were added. Capturing
         # those with kwargs to maintain backward compatibility
 
