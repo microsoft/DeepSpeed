@@ -2157,7 +2157,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             fp32_grad = self.fp32_partitioned_groups_flat[group_idx].grad.narrow(
                 0,
                 dest_offset,
-                num_elements)            
+                num_elements).to(device=param.device)
         else:
             fp32_grad = self.__param_id_to_grad_partition[param.ds_id].float()
 
