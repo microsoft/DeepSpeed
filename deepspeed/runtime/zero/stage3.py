@@ -2155,7 +2155,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def get_fp32_grad_for_param(self, param) -> Tensor:
         self.__reduce_and_partition_stream.synchronize()
-        reduce_buffer = torch.zeros(param.ds_shape, dtype=torch.float32, device=param.device).flatten()
 
         if self.offload_optimizer:
             group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
@@ -2166,12 +2165,13 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         else:
             fp32_grad = self.__param_id_to_grad_partition[param.ds_id].float()
 
+        reduce_buffer = torch.zeros(self.partition_count * fp32_grad.numel(), dtype=torch.float32, device=param.device).flatten()
         torch.distributed.all_gather_into_tensor(reduce_buffer,
                         fp32_grad,
                         group=self.dp_process_group,
                         async_op=False)
-
-        return reduce_buffer.view(param.ds_shape)
+       
+        return reduce_buffer.narrow(0, 0, param.ds_numel).view(param.ds_shape)
 
     @instrument_w_nvtx
     def _partition_all_parameters(self):
