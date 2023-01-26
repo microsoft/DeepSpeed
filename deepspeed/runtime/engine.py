@@ -80,7 +80,6 @@ from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchChe
 
 from .pipe.module import PipelineModule
 from .utils import ensure_directory_exists, get_ma_status
-from ..ops.op_builder import UtilsBuilder
 from ..ops.adam import FusedAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE
@@ -89,6 +88,9 @@ from ..git_version_info import version
 
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist, print_configuration
+
+from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder import UtilsBuilder
 
 from deepspeed.inference.config import DtypeEnum
 
@@ -112,11 +114,12 @@ except ImportError:
 
 
 def split_half_float_double_sparse(tensors):
+    device_type = get_accelerator().device_name()
     supported_types = [
-        "torch.cuda.HalfTensor",
-        "torch.cuda.FloatTensor",
-        "torch.cuda.DoubleTensor",
-        "torch.cuda.BFloat16Tensor",
+        "torch.{}.HalfTensor".format(device_type),
+        "torch.{}.FloatTensor".format(device_type),
+        "torch.{}.DoubleTensor".format(device_type),
+        "torch.{}.BFloat16Tensor".format(device_type),
         SparseTensor.type()
     ]
 
@@ -222,7 +225,7 @@ class DeepSpeedEngine(Module):
         self.eigenvalue = None
         self.block_eigenvalue = None
         self.gas_boundary_ctr = 0
-        self.dist_backend = "nccl"
+        self.dist_backend = get_accelerator().communication_backend_name()
         self.has_moe_layers = False
         self.num_experts = []
         self.gate_modules = []
@@ -881,7 +884,7 @@ class DeepSpeedEngine(Module):
             model_dtype = torch.bfloat16
 
         if self._config.grad_accum_dtype == None:
-            if model_dtype == torch.bfloat16:
+            if model_dtype == torch.bfloat16 and not self.zero_optimization():
                 grad_accum_dtype = torch.float32
             else:
                 grad_accum_dtype = model_dtype
@@ -966,14 +969,14 @@ class DeepSpeedEngine(Module):
             args,
             'device_rank') else self.local_rank
         if device_rank >= 0:
-            torch.cuda.set_device(device_rank)
-            self.device = torch.device("cuda", device_rank)
+            get_accelerator().set_device(device_rank)
+            self.device = torch.device(get_accelerator().device_name(), device_rank)
             self.world_size = dist.get_world_size()
             self.global_rank = dist.get_rank()
         else:
             self.world_size = 1
             self.global_rank = 0
-            self.device = torch.device("cuda")
+            self.device = torch.device(get_accelerator().device_name())
 
     # Configure based on command line arguments
     def _configure_with_arguments(self, args, mpu):
@@ -1203,10 +1206,6 @@ class DeepSpeedEngine(Module):
             not (amp_enabled and zero_enabled)
         ), "Amp and ZeRO are not currently compatible, please use (legacy) fp16 mode which performs similar to amp opt_mode=O2"
         if zero_enabled:
-            if model_dtype != grad_accum_dtype:
-                raise NotImplementedError(
-                    "Model data type and gradient accumulation data type must be equal to use ZeRO"
-                )
             if not is_zero_supported_optimizer(basic_optimizer):
                 assert (
                     self.zero_allow_untested_optimizer()
@@ -1216,16 +1215,15 @@ class DeepSpeedEngine(Module):
                     logger.warning(
                         "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
                     )
-            # BF16 optimizer supports stage 1 optimizations
-            if model_dtype == torch.bfloat16:
-                if grad_accum_dtype != torch.float32:
-                    raise NotImplementedError(
-                        "BF16 optimizer for ZeRO requires fp32 gradient accumulation")
-                if self.zero_optimization_stage() == 1:
-                    return BFLOAT16
-                else:
-                    raise NotImplementedError(
-                        "ZeRO stages 2 and 3 are not supported with the BF16 optimizer")
+
+            if model_dtype == torch.bfloat16 and grad_accum_dtype == torch.float32 and self.zero_optimization_stage(
+            ) == 1:
+                return BFLOAT16
+
+            if model_dtype != grad_accum_dtype:
+                raise NotImplementedError(
+                    "Model data type and gradient accumulation data type must be equal to use ZeRO"
+                )
             return ZERO_OPTIMIZATION
         elif amp_enabled:
             if model_dtype != grad_accum_dtype:
