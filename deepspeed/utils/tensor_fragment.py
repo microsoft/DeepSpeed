@@ -63,18 +63,6 @@ def get_full_hp_param(self, optim_state_key=None):
     return reduce_buffer.reshape_as(self)
 
 
-def safe_get_full_fp32_param(param):
-    if hasattr(param, '_hp_mapping'):
-        return param.get_full_hp_param()
-    return None
-
-
-def safe_get_full_optimizer_state(param, optim_state_key):
-    if hasattr(param, '_hp_mapping'):
-        return param.get_full_hp_param(optim_state_key)
-    return None
-
-
 def get_full_hp_grad(self):
     reduce_buffer = torch.zeros_like(self, dtype=torch.float32).flatten()
     if self._hp_mapping is not None:
@@ -105,10 +93,39 @@ def get_full_hp_grad(self):
     return reduce_buffer.reshape_as(self)
 
 
+
+def safe_get_full_fp32_param(param):
+    # ZeRO stage 3 param        
+    if hasattr(param, 'ds_id'):
+        return param._z3_optimizer.get_full_hp_param(param)
+
+    # ZeRO stage 1, 2, and bf16_optimizer params
+    if hasattr(param, '_hp_mapping'):
+        return param.get_full_hp_param()
+    return None
+
+
+def safe_get_full_optimizer_state(param, optim_state_key):
+    # ZeRO stage 3 param 
+    if hasattr(param, 'ds_id'):
+        return param._z3_optimizer.get_full_hp_param(param, optim_state_key)
+
+    # ZeRO stage 1, 2, and bf16_optimizer params
+    if hasattr(param, '_hp_mapping'):
+        return param.get_full_hp_param(optim_state_key)
+    return None
+
+
 # TODO: Figure out the correct return dtype
 def safe_get_full_grad(param):
     if param.grad is not None:
         return param.grad
+
+    # ZeRO stage 3 param 
+    if hasattr(param, 'ds_id'):
+        return param._z3_optimizer.get_fp32_grad_for_param(param)
+
+    # ZeRO stage 1, 2, and bf16_optimizer params
     if hasattr(param, '_hp_mapping'):
         return param.get_full_hp_grad()
     return None

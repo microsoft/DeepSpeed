@@ -348,7 +348,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self.debug_fp16_grads = [{} for _ in self.fp16_groups]
 
-        # self._link_all_hp_params()
+        self._link_all_hp_params()
 
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=True)
@@ -416,37 +416,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
 
 
-    # def _link_all_hp_params(self):
-    #     dp_world_size = dist.get_world_size(group=self.dp_process_group)
-    #     if self.self.offload_optimizer:
-    #         self._get_offload_gradient_dict()
-
-    #     for i, sub_group in enumerate(self.fp16_groups):
-    #         for param in sub_group:
-
-    #         self.averaged_gradients[i] = [
-    #             self.__param_id_to_grad_partition[param.ds_id]
-    #             if param.requires_grad else torch.zeros_like(param.ds_tensor)
-    #             for param in sub_group
-    #         ]
-
-
-    #     for i, _ in enumerate(self.optimizer.param_groups):
-    #         # Link bit16 and fp32 params in partition
-    #         partition_id = dist.get_rank(group=self.real_dp_process_group[i])
-    #         partition_size = self.bit16_groups_flat[i].numel() // dp_world_size
-    #         flat_hp_partition = self.single_partition_of_fp32_groups[i]
-    #         link_hp_params(
-    #             lp_param_list=self.bit16_groups[i],
-    #             flat_hp_partition=flat_hp_partition,
-    #             gradient_dict=self.averaged_gradients,
-    #             offload_gradient_dict=self.offload_gradient_dict,
-    #             use_offload=self.self.offload_optimizer,
-    #             param_group_index=i,
-    #             partition_start=partition_id * partition_size,
-    #             partition_size=partition_size,
-    #             partition_optimizer_state=self.optimizer.state[flat_hp_partition],
-    #             dp_group=self.real_dp_process_group[i])
+    def _link_all_hp_params(self):
+        for p in self.module.parameters():
+            if p.requires_grad:
+                p._z3_optimizer = self 
 
     def set_lr(self, lr):
         """Set the learning rate."""
@@ -2176,6 +2149,42 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                         async_op=False)
        
         return reduce_buffer.narrow(0, 0, param.ds_numel).view(param.ds_shape)
+
+
+    def get_full_hp_param(self, param, optim_state_key=None) -> Tensor:
+
+        if not param.requires_grad:
+            return None
+
+        self.__reduce_and_partition_stream.synchronize()        
+        group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
+
+        if self._swappable_optimizer_subgroup(group_idx):
+            self._optimizer_states_and_gradient_swap_in(group_idx)
+
+        fp32_param = self.fp32_partitioned_groups_flat[group_idx]
+        if optim_state_key is None:
+            fp32_opt_state = fp32_param.narrow(
+                0,
+                dest_offset,
+                num_elements).to(device=param.device)
+        else:
+            fp32_opt_state = self.optimizer.state[fp32_param][optim_state_key].narrow(
+                0,
+                dest_offset,
+                num_elements).to(device=param.device)
+
+        reduce_buffer = torch.zeros(self.partition_count * fp32_opt_state.numel(), dtype=torch.float32, device=param.device).flatten()
+        torch.distributed.all_gather_into_tensor(reduce_buffer,
+                        fp32_opt_state,
+                        group=self.dp_process_group,
+                        async_op=False)
+        if self._swappable_optimizer_subgroup(group_idx):
+            self._optimizer_states_and_gradient_swap_out(group_idx)
+
+        return reduce_buffer.narrow(0, 0, param.ds_numel).view(param.ds_shape)
+
+
 
     @instrument_w_nvtx
     def _partition_all_parameters(self):
