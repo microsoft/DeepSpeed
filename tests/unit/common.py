@@ -95,8 +95,8 @@ class DistributedExec(ABC):
     def __call__(self, request=None):
         self._fixture_kwargs = self._get_fixture_kwargs(request, self.run)
         world_size = self.world_size
-        if self.requires_cuda_env and not torch.cuda.is_available():
-            pytest.skip("only supported in CUDA environments.")
+        if self.requires_cuda_env and not get_accelerator().is_available():
+            pytest.skip("only supported in accelerator environments.")
 
         if isinstance(world_size, int):
             world_size = [world_size]
@@ -320,8 +320,8 @@ class DistributedTest(DistributedExec):
         self._current_test = self._get_current_test_func(request)
         self._fixture_kwargs = self._get_fixture_kwargs(request, self._current_test)
 
-        if self.requires_cuda_env and not torch.cuda.is_available():
-            pytest.skip("only supported in CUDA environments.")
+        if self.requires_cuda_env and not get_accelerator().is_available():
+            pytest.skip("only supported in accelerator environments.")
 
         # Catch world_size override pytest mark
         for mark in getattr(request.function, "pytestmark", []):

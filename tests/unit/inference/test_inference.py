@@ -485,7 +485,7 @@ class TestAutoTensorParallelism(DistributedTest):
                                               dtype=dtype,
                                               replace_method="")
         # Switch device to GPU so that input tensors are not on CPU
-        pipe.device = torch.device(f"cuda:{local_rank}")
+        pipe.device = torch.device(get_accelerator().device_name(local_rank))
         ds_output = pipe(query, **inf_kwargs)
 
         print(local_rank, "baseline", bs_output)

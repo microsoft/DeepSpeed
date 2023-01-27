@@ -25,7 +25,7 @@ def check_equal(first, second, atol=1e-2, verbose=False):
 class TestCPUAdagrad(DistributedTest):
     world_size = 1
     requires_cuda_env = False
-    if not torch.cuda.is_available():
+    if not get_accelerator().is_available():
         init_distributed = False
         set_dist_env = False
 
