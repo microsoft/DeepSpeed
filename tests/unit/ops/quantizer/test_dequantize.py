@@ -4,7 +4,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 import pytest
 import torch
-from deepspeed.ops.op_builder import QuantizerBuilder
+from deepspeed.ops import op_builder
 
 quantize_module = None
 
@@ -18,7 +18,7 @@ def int4x2to2xint4(int4X2tensor):
 def run_quantize(data, num_groups, q_bits, is_symmetric_quant):
     global quantize_module
     if quantize_module is None:
-        quantize_module = QuantizerBuilder().load()
+        quantize_module = op_builder.QuantizerBuilder().load()
 
     return quantize_module.quantize(
         data,
@@ -30,7 +30,7 @@ def run_quantize(data, num_groups, q_bits, is_symmetric_quant):
 def run_dequantize(quantized_data, params, num_groups, q_bits, is_symmetric_quant):
     global quantize_module
     if quantize_module is None:
-        quantize_module = QuantizerBuilder().load()
+        quantize_module = op_builder.QuantizerBuilder().load()
 
     return quantize_module.dequantize(
         quantized_data,

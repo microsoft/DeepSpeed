@@ -4,7 +4,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 import pytest
 import torch
-from deepspeed.ops.op_builder import QuantizerBuilder
+from deepspeed.ops import op_builder
 
 inference_module = None
 
@@ -12,7 +12,7 @@ inference_module = None
 def run_quantize_ds(activations, num_groups, q_bits, is_symmetric_quant):
     global inference_module
     if inference_module is None:
-        inference_module = QuantizerBuilder().load()
+        inference_module = op_builder.QuantizerBuilder().load()
 
     return inference_module.quantize(
         activations,
