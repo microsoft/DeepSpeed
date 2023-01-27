@@ -29,15 +29,15 @@ def print_rank_0(message, debug=False, force=False):
         print(message)
 
 
-try:
-    device = get_accelerator().device_name()
-    if device == 'cuda':
+device = get_accelerator().device_name()
+if device == 'cuda':
+    try:
         autocast_custom_fwd = torch.cuda.amp.custom_fwd
         autocast_custom_bwd = torch.cuda.amp.custom_bwd
-    else:
+    except (ImportError, AttributeError) as exp:
         autocast_custom_fwd = noop_decorator
         autocast_custom_bwd = noop_decorator
-except (ImportError, AttributeError) as exp:
+else:
     autocast_custom_fwd = noop_decorator
     autocast_custom_bwd = noop_decorator
 

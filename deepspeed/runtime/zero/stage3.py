@@ -24,7 +24,7 @@ from deepspeed.runtime.swap_tensor.partitioned_optimizer_swapper import Partitio
 from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedOptimizerSwapper
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUPS, PARTITION_COUNT, ZERO_STAGE
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder.builder_names import UtilsBuilder
+from deepspeed.ops.op_builder import UtilsBuilder
 
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
@@ -252,11 +252,15 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.sub_group_size = sub_group_size
 
         self.sub_group_to_group_id = {}
-        see_memory_usage("Before creating fp16 partitions", force=False)
-        self._create_fp16_partitions_with_defragmentation()
+
+        # Trainable parameters
+        self.trainable_param_groups = self._get_trainable_parameter_groups()
+
+        see_memory_usage("Before creating fp16 partitions", force=True)
+        self._create_fp16_partitions_with_defragmentation(self.trainable_param_groups)
         num_fp16_subgroups = len(self.fp16_partitioned_groups_flat)
         see_memory_usage(f"After creating fp16 partitions: {num_fp16_subgroups}",
-                         force=False)
+                         force=True)
 
         # Optimizer tensor swapping
         if self.swap_optimizer:
@@ -350,19 +354,28 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     def destroy(self):
         self.parameter_offload.destroy()
 
+    def _get_trainable_parameter_groups(self):
+        param_groups = []
+        for param_group in self.optimizer.param_groups:
+            trainable_params = {
+                "params": [p for p in param_group["params"] if p.requires_grad]
+            }
+            param_groups.append(trainable_params)
+        return param_groups
+
     def _setup_for_real_optimizer(self):
-        see_memory_usage("Before creating fp32 partitions", force=False)
+        see_memory_usage("Before creating fp32 partitions", force=True)
         self._create_fp32_partitions()
-        see_memory_usage("After creating fp32 partitions", force=False)
+        see_memory_usage("After creating fp32 partitions", force=True)
         dist.barrier()
 
         # To support pipelined optimizer swapping
         self._create_next_swappable_fp32_groups()
 
-        see_memory_usage("Before initializing optimizer states", force=False)
+        see_memory_usage("Before initializing optimizer states", force=True)
 
         self.initialize_optimizer_states()
-        see_memory_usage("After initializing optimizer states", force=False)
+        see_memory_usage("After initializing optimizer states", force=True)
         dist.barrier()
 
         if dist.get_rank() == 0:
@@ -385,7 +398,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                                           dtype=self.dtype,
                                                           device=self.device)
         if self.offload_optimizer_pin_memory:
-            get_accelerator().pin_memory(grad_partitions_flat_buffer)
+            grad_partitions_flat_buffer = get_accelerator().pin_memory(
+                grad_partitions_flat_buffer)
 
         offset = 0
         for param in all_params:
@@ -524,7 +538,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         aggregate_params_count = 0
 
-        for j, param_group in enumerate(self.optimizer.param_groups):
+        for j, param_group in enumerate(self.trainable_param_groups):
             params_in_group = sum([p.partition_numel() for p in param_group['params']])
 
             flat_buffer_size = params_in_group
@@ -553,11 +567,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     torch.empty(1,
                                 dtype=self.dtype))
 
-    def _create_fp16_partitions_with_defragmentation(self):
+    def _create_fp16_partitions_with_defragmentation(self, fp16_param_groups):
         dist.barrier()
+
         param_groups: List[List[Parameter]] = tuple(
             self._create_fp16_sub_groups(param_group["params"])
-            for param_group in self.optimizer.param_groups)
+            for param_group in fp16_param_groups)
 
         # bookkeeping related to param groups
         for param_group_idx, param_group in enumerate(param_groups):
@@ -885,7 +900,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                       dtype=gradient_dtype,
                                       device=self.device)
 
-        timers = self.timers
         timer_names = set()
 
         if self.swap_optimizer:
@@ -1499,7 +1513,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         return params_in_partition, params_not_in_partition, first_offset
 
     @instrument_w_nvtx
-    def zero_grad(self, set_grads_to_None=True):
+    def zero_grad(self, set_to_none=False):
         """
         Zero FP16 parameter grads.
         """
@@ -1509,7 +1523,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # For speed, set model fp16 grad to None by default
         for group in self.fp16_groups:
             for p in group:
-                if set_grads_to_None:
+                if set_to_none:
                     if p.grad is not None and get_accelerator().on_accelerator(p.grad):
                         p.grad.record_stream(get_accelerator().current_stream())
                     p.grad = None
@@ -1700,7 +1714,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.fp32_partitioned_groups_flat[sub_group_id].grad = single_grad_partition
 
         # release all the gradient since we have already created a necessary copy in dp_grad_partition
-        self.zero_grad()
+        self.zero_grad(set_to_none=True)
 
         for grad in filter(lambda g: get_accelerator().on_accelerator(g),
                            self.averaged_gradients[sub_group_id]):
@@ -1809,7 +1823,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _overflow_clean_up(self, prev_scale):
         see_memory_usage('After overflow before clearing gradients', force=False)
-        self.zero_grad()
+        self.zero_grad(set_to_none=True)
 
         if self.offload_optimizer:
             self.reset_cpu_buffers()
@@ -2127,6 +2141,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _set_param_groups(self, value):
         self.optimizer.param_groups = value
+        self.trainable_param_groups = self._get_trainable_parameter_groups()
 
     param_groups = property(_get_param_groups, _set_param_groups)
 

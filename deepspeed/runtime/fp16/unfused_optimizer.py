@@ -42,7 +42,7 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
             logger.info(f'Fused Lamb Legacy : {self.fused_lamb_legacy} ')
 
         if not get_accelerator().is_available():
-            raise SystemError("No accelerator or accelerator does not support FP16.")
+            raise SystemError("Cannot use fp16 without accelerator.")
         self.optimizer = init_optimizer
 
         # param groups
@@ -111,7 +111,7 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
 
         self.initialize_optimizer_states()
 
-    def zero_grad(self, set_grads_to_None=True):
+    def zero_grad(self, set_to_none=False):
         """
         Zero FP16 parameter grads.
         """
@@ -119,7 +119,7 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
         # For speed, set model fp16 grad to None by default
         for group in self.fp16_groups:
             for p in group:
-                if set_grads_to_None:
+                if set_to_none:
                     p.grad = None
                 else:
                     if p.grad is not None:

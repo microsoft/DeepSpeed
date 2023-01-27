@@ -8,8 +8,7 @@ Functionality of swapping optimizer tensors to/from (NVMe) storage devices.
 import torch
 
 from deepspeed.utils.logging import logger
-from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder.builder_names import AsyncIOBuilder
+from deepspeed.ops.op_builder import AsyncIOBuilder
 from deepspeed import comm as dist
 
 from deepspeed.runtime.swap_tensor.constants import *

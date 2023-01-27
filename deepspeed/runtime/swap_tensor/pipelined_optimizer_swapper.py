@@ -5,8 +5,7 @@ Licensed under the MIT license.
 Functionality of swapping optimizer tensors to/from (NVMe) storage devices.
 """
 
-from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder.builder_names import AsyncIOBuilder
+from deepspeed.ops.op_builder import AsyncIOBuilder
 from deepspeed import comm as dist
 
 from deepspeed.runtime.swap_tensor.constants import *

@@ -43,7 +43,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         self.has_moe_layers = has_moe_layers
         self.using_pipeline = self.deepspeed.pipeline_parallelism
         if not get_accelerator().is_available():
-            raise SystemError("No accelerator or accelerator does not support FP16.")
+            raise SystemError("Cannot use fp16 without accelerator.")
         self.optimizer = init_optimizer
 
         # param flattened by groups
@@ -131,14 +131,14 @@ class FP16_Optimizer(DeepSpeedOptimizer):
 
         return
 
-    def zero_grad(self, set_grads_to_None=True):
+    def zero_grad(self, set_to_none=False):
         """
         Zero FP16 parameter grads.
         """
         # For speed, set model fp16 grad to None by default
         for group in self.fp16_groups:
             for p in group:
-                if set_grads_to_None:
+                if set_to_none:
                     p.grad = None
                 else:
                     if p.grad is not None:

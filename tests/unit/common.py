@@ -36,6 +36,10 @@ def get_master_port():
 
 
 def set_accelerator_visible():
+    # bypass non-cuda device
+    if get_accelerator().device_name() != 'cuda':
+        return
+
     cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
     xdist_worker_id = get_xdist_worker_id()
     if xdist_worker_id is None:
@@ -86,6 +90,7 @@ class DistributedExec(ABC):
     backend = get_accelerator().communication_backend_name()
     init_distributed = True
     set_dist_env = True
+    requires_cuda_env = True
 
     @abstractmethod
     def run(self):
@@ -94,6 +99,9 @@ class DistributedExec(ABC):
     def __call__(self, request=None):
         self._fixture_kwargs = self._get_fixture_kwargs(request, self.run)
         world_size = self.world_size
+        if self.requires_cuda_env and not torch.cuda.is_available():
+            pytest.skip("only supported in CUDA environments.")
+
         if isinstance(world_size, int):
             world_size = [world_size]
         for procs in world_size:
@@ -167,7 +175,8 @@ class DistributedExec(ABC):
         # turn off NCCL logging if set
         os.environ.pop('NCCL_DEBUG', None)
 
-        set_accelerator_visible()
+        if get_accelerator().is_available():
+            set_accelerator_visible()
 
         if self.init_distributed:
             deepspeed.init_distributed(dist_backend=self.backend)
@@ -314,6 +323,9 @@ class DistributedTest(DistributedExec):
     def __call__(self, request):
         self._current_test = self._get_current_test_func(request)
         self._fixture_kwargs = self._get_fixture_kwargs(request, self._current_test)
+
+        if self.requires_cuda_env and not torch.cuda.is_available():
+            pytest.skip("only supported in CUDA environments.")
 
         # Catch world_size override pytest mark
         for mark in getattr(request.function, "pytestmark", []):

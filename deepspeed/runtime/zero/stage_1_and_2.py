@@ -28,7 +28,7 @@ from deepspeed.git_version_info import version
 
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder.builder_names import UtilsBuilder
+from deepspeed.ops.op_builder import UtilsBuilder
 
 from deepspeed.checkpoint.constants import (DS_VERSION,
                                             GROUP_PADDINGS,
@@ -158,7 +158,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # - flat by groups, not keeping state. TODO: remove state explicitly?
         # - master grad and unflat master weight never exist. TODO: a way to save out unflat master?
         if not get_accelerator().is_available():
-            raise SystemError("Cannot use fp16 without CUDA.")
+            raise SystemError("Cannot use fp16 without accelerator.")
         self.optimizer = init_optimizer
 
         # Load pre-built or JIT compile (un)flatten ops
@@ -269,7 +269,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # number of elements per partition in each group
         self.partition_size = []
 
-        #align nccl all-gather send buffers to 4-bye boundary
+        # align nccl all-gather send buffers to 4-byte boundary
         self.nccl_start_alignment_factor = 2  # 4-byte alignment/sizeof(fp16) = 2
 
         assert (allgather_bucket_size % self.nccl_start_alignment_factor == 0), f"allgather_bucket_size must be a multiple of nccl_start_alignment_factor, {self.nccl_start_alignment_factor} "
@@ -358,11 +358,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 assert (partitioned_data.data_ptr() %
                         (2 * self.nccl_start_alignment_factor) == 0)
 
-            # verify that data partition start locations are 4-byte aligned
-            for partitioned_data in data_parallel_partitions:
-                assert (partitioned_data.data_ptr() %
-                        (2 * self.nccl_start_alignment_factor) == 0)
-
             # A partition of the fp32 master weights that will be updated by this process.
             # Note that the params in single_partition_of_fp32_groups is cloned and detached
             # from the origin params of the model.
@@ -400,7 +395,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     f"Rank: {rank} partition count {self.partition_count} and sizes{[(p.numel(), self.is_moe_param_group[i] if hasattr(self, 'is_moe_param_group') else False) for i,p in enumerate(self.single_partition_of_fp32_groups)]} "
                 )
                 dist.barrier()
-        #exit(0)
+
         self.reduce_bucket_size = int(reduce_bucket_size)
         self.allgather_bucket_size = int(allgather_bucket_size)
 
@@ -763,7 +758,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # No need to keep the gradients anymore.
         # All gradients required by the step
         # are in self.averaged_gradients
-        self.zero_grad()
+        self.zero_grad(set_to_none=True)
         see_memory_usage(f"End ipg_epilogue")
 
     # resets all partition to no reduced
@@ -946,8 +941,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def average_tensor(self, tensor):
         if self.overlap_comm:
-            get_accelerator().synchronize()
             stream = self.reduction_stream
+            stream.wait_stream(get_accelerator().current_stream())
         else:
             stream = get_accelerator().current_stream()
 
@@ -1538,7 +1533,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         return params_in_partition, params_not_in_partition, first_offset
 
-    def zero_grad(self, set_grads_to_None=True):
+    def zero_grad(self, set_to_none=False):
         """
         Zero FP16 parameter grads.
         """
@@ -1546,7 +1541,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # For speed, set model fp16 grad to None by default
         for group in self.bit16_groups:
             for p in group:
-                if set_grads_to_None:
+                if set_to_none:
                     p.grad = None  # epilogue and in step
                 else:
                     if p.grad is not None:
@@ -1778,7 +1773,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                                             self.loss_scale))
 
             see_memory_usage('After overflow before clearing gradients')
-            self.zero_grad()
+            self.zero_grad(set_to_none=True)
             if self.cpu_offload:
                 self.reset_cpu_buffers()
             else:
@@ -1793,7 +1788,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # Step 1:- Calculate gradient norm using fp-16 grads
         see_memory_usage('Before norm calculation')
         scaled_global_grad_norm = self.scaled_global_norm()
-        self._global_grad_norm = scaled_global_grad_norm / self.loss_scale
+        self._global_grad_norm = scaled_global_grad_norm / prev_scale
 
         see_memory_usage('After norm before optimizer')
         # Step 2:- run optimizer and upscaling simultaneously
