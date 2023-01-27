@@ -6,10 +6,9 @@ import pytest
 import torch
 import deepspeed
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder.builder_names import InferenceBuilder
+from deepspeed.ops.op_builder import InferenceBuilder
 
-if not deepspeed.ops.__compatible_ops__[get_accelerator().create_op_builder(
-        InferenceBuilder).name]:
+if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system",
                 allow_module_level=True)
 
@@ -29,7 +28,7 @@ def run_moe_res_matmul_reference(residual, coef1, coef2, output):
 def run_moe_res_matmul_ds(residual, coef, output):
     global inference_module
     if inference_module is None:
-        inference_module = get_accelerator().create_op_builder(InferenceBuilder).load()
+        inference_module = InferenceBuilder().load()
     coef_t = coef.transpose(-1, -2).contiguous()
     return inference_module.moe_res_matmul(residual, coef_t, output)
 

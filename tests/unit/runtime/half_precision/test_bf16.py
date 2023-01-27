@@ -3,8 +3,7 @@ import deepspeed
 import pytest
 from deepspeed.ops.adam import FusedAdam
 from unit.common import DistributedTest
-from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder.builder_names import CPUAdamBuilder
+from deepspeed.ops.op_builder import CPUAdamBuilder
 from unit.simple_model import SimpleModel, SimpleOptimizer, random_dataloader
 from unit.util import bf16_required_version_check
 from deepspeed import comm as dist
@@ -19,8 +18,7 @@ class TestAdamBF16ZeroOneCycleCompatibility(DistributedTest):
                 " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
             )
 
-        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[
-                get_accelerator().create_op_builder(CPUAdamBuilder).name]:
+        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
@@ -82,8 +80,7 @@ class TestZeroAllowUntestedOptimizer(DistributedTest):
                 " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
             )
 
-        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[
-                get_accelerator().create_op_builder(CPUAdamBuilder).name]:
+        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
@@ -121,8 +118,7 @@ class TestZeroEmptyPartition(DistributedTest):
                 " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
             )
 
-        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[
-                get_accelerator().create_op_builder(CPUAdamBuilder).name]:
+        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
         if zero_stage == 3:

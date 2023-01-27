@@ -389,7 +389,7 @@ class DeepSpeedEngine(Module):
                 print_configuration(self, "DeepSpeedEngine")
 
         # Load pre-installed or JIT compile (un)flatten ops
-        util_ops = get_accelerator().create_op_builder(UtilsBuilder).load()
+        util_ops = UtilsBuilder().load()
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 

@@ -8,8 +8,7 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import CPUAdagradBuilder
 from unit.common import DistributedTest
 
-if not deepspeed.ops.__compatible_ops__[get_accelerator().create_op_builder(
-        CPUAdagradBuilder).name]:
+if not deepspeed.ops.__compatible_ops__[CPUAdagradBuilder.NAME]:
     pytest.skip("cpu-adagrad is not compatible", allow_module_level=True)
 
 

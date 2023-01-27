@@ -1,8 +1,7 @@
 import pytest
 from unit.common import DistributedTest
 from unit.simple_model import UnusedParametersModel, random_dataloader
-from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder.builder_names import CPUAdamBuilder
+from deepspeed.ops.op_builder import CPUAdamBuilder
 
 import deepspeed
 
@@ -14,8 +13,7 @@ class TestStage2IgnoreUnusedParameters(DistributedTest):
     def test(self, ignore_unused_parameters):
         use_cpu_offload = True
 
-        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[
-                get_accelerator().create_op_builder(CPUAdamBuilder).name]:
+        if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {

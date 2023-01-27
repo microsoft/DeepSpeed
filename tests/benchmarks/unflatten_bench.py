@@ -12,12 +12,12 @@ import gc
 import torch
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder.builder_names import UtilsBuilder
+from deepspeed.ops.op_builder import UtilsBuilder
 
 from apex_C import flatten as flatten_apex
 from apex_C import unflatten as unflatten_apex
 
-util_ops = get_accelerator().create_op_builder(UtilsBuilder).load()
+util_ops = UtilsBuilder().load()
 flatten = util_ops.flatten
 unflatten = util_ops.unflatten
 

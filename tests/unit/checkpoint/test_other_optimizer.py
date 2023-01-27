@@ -1,6 +1,5 @@
 import deepspeed
-from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder.builder_names import FusedLambBuilder
+from deepspeed.ops.op_builder import FusedLambBuilder
 
 from unit.common import DistributedTest
 from unit.simple_model import *
@@ -13,8 +12,7 @@ import pytest
 class TestOtherOptimizerCheckpoint(DistributedTest):
     world_size = 2
 
-    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[
-        get_accelerator().create_op_builder(FusedLambBuilder).name],
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
                         reason="lamb is not compatible")
     def test_checkpoint_unfused_optimizer(self, tmpdir):
         config_dict = {

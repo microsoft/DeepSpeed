@@ -128,7 +128,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.optimizer = init_optimizer
 
         # Load pre-built or JIT compile (un)flatten ops
-        util_ops = get_accelerator().create_op_builder(UtilsBuilder).load()
+        util_ops = UtilsBuilder().load()
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype

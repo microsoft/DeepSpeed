@@ -6,10 +6,9 @@ import pytest
 import torch
 import deepspeed
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder.builder_names import InferenceBuilder
+from deepspeed.ops.op_builder import InferenceBuilder
 
-if not deepspeed.ops.__compatible_ops__[get_accelerator().create_op_builder(
-        InferenceBuilder).name]:
+if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system",
                 allow_module_level=True)
 
@@ -22,7 +21,7 @@ def allclose(x, y):
 
 @pytest.fixture(scope="module")
 def inference_module():
-    return get_accelerator().create_op_builder(InferenceBuilder).load()
+    return InferenceBuilder().load()
 
 
 def res_add_bias_ref(hidden_state,

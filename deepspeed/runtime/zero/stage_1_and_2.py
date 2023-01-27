@@ -162,7 +162,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.optimizer = init_optimizer
 
         # Load pre-built or JIT compile (un)flatten ops
-        util_ops = get_accelerator().create_op_builder(UtilsBuilder).load()
+        util_ops = UtilsBuilder().load()
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 

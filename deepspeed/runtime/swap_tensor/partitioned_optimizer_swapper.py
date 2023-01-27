@@ -44,7 +44,7 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
                              dtype,
                              timers)
 
-        aio_op = get_accelerator().create_op_builder(AsyncIOBuilder).load()
+        aio_op = AsyncIOBuilder().load()
         self.aio_handle = aio_op.aio_handle(aio_config[AIO_BLOCK_SIZE],
                                             aio_config[AIO_QUEUE_DEPTH],
                                             aio_config[AIO_SINGLE_SUBMIT],
