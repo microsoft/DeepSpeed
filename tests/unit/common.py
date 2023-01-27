@@ -36,10 +36,6 @@ def get_master_port():
 
 
 def set_accelerator_visible():
-    # bypass non-cuda device
-    if get_accelerator().device_name() != 'cuda':
-        return
-
     cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
     xdist_worker_id = get_xdist_worker_id()
     if xdist_worker_id is None:
