@@ -418,8 +418,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _link_all_hp_params(self):
         for p in self.module.parameters():
-            if p.requires_grad:
-                p._z3_optimizer = self 
+            p._z3_optimizer = self 
 
     def set_lr(self, lr):
         """Set the learning rate."""
