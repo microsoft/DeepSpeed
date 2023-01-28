@@ -16,7 +16,6 @@ class fragment_address:
 @dataclass
 class tensor_fragment:
     lp_fragment: torch.Tensor
-    # lp_grad_fragment: torch.Tensor
     lp_fragment_address: fragment_address
     hp_fragment: torch.Tensor
     hp_fragment_address: fragment_address
@@ -93,9 +92,8 @@ def get_full_hp_grad(self):
     return reduce_buffer.reshape_as(self)
 
 
-
 def safe_get_full_fp32_param(param):
-    # ZeRO stage 3 param        
+    # ZeRO stage 3 param
     if hasattr(param, 'ds_id'):
         return param._z3_optimizer.get_full_hp_param(param)
 
@@ -106,7 +104,7 @@ def safe_get_full_fp32_param(param):
 
 
 def safe_get_full_optimizer_state(param, optim_state_key):
-    # ZeRO stage 3 param 
+    # ZeRO stage 3 param
     if hasattr(param, 'ds_id'):
         return param._z3_optimizer.get_full_hp_param(param, optim_state_key)
 
@@ -121,7 +119,7 @@ def safe_get_full_grad(param):
     if param.grad is not None:
         return param.grad
 
-    # ZeRO stage 3 param 
+    # ZeRO stage 3 param
     if hasattr(param, 'ds_id'):
         return param._z3_optimizer.get_fp32_grad_for_param(param)
 
