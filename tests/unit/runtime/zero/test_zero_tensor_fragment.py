@@ -9,7 +9,7 @@ from unit.util import bf16_required_version_check
 import deepspeed
 from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_grad, safe_get_full_optimizer_state
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
-
+from deepspeed.ops.aio import AsyncIOBuilder
 
 def validate_full_tensors(model):
     for _, lp in model.named_parameters():
@@ -79,8 +79,11 @@ class TestTensorFragment(DistributedTest):
          OffloadDeviceEnum.cpu,
          OffloadDeviceEnum.nvme])
     def test_zero_fragments(self, tmpdir, zero_stage, offload_device, frozen_weights):
-        if offload_device == OffloadDeviceEnum.nvme and zero_stage != 3:
-            pytest.skip(f"Nvme offload not supported for zero stage {zero_stage}")
+        if offload_device == OffloadDeviceEnum.nvme: 
+            if zero_stage != 3:
+                pytest.skip(f"Nvme offload not supported for zero stage {zero_stage}")
+            if not deepspeed.ops.__compatible_ops__[AsyncIOBuilder.NAME]:
+                pytest.skip('Skip tests since async-io is not compatible')
 
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
