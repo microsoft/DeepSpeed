@@ -1457,8 +1457,9 @@ class DeepSpeedEngine(Module):
                     has_moe_layers=self.has_moe_layers,
                 )
             else:
-                log_dist(f'Creating {model_dtype} optimizer with static loss scale: {self.loss_scale()}',
-                         ranks=[0])
+                log_dist(
+                    f'Creating {model_dtype} optimizer with static loss scale: {self.loss_scale()}',
+                    ranks=[0])
                 optimizer = FP16_Optimizer(
                     optimizer,
                     deepspeed=self,
