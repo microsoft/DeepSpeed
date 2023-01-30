@@ -2016,7 +2016,7 @@ class DeepSpeedEngine(Module):
 
         Returns:
             bool: if the current step is a gradient accumulation boundary.
-        
+
         """
         if self._is_gradient_accumulation_boundary is None:
             return (self.micro_steps + 1) % \
@@ -2734,7 +2734,7 @@ class DeepSpeedEngine(Module):
             A tuple of ``load_path`` and ``client_state``.
             *``load_path``: Path of the loaded checkpoint. ``None`` if loading the checkpoint failed.
             *``client_state``: State dictionary used for loading required training states in the client code.
-        
+
         Important: under ZeRO3, one cannot load checkpoint with ``engine.load_checkpoint()`` right
         after ``engine.save_checkpoint()``. It is because ``engine.module`` is partitioned, and
         ``load_checkpoint()`` wants a pristine model. If insisting to do so, please reinitialize engine
@@ -3083,7 +3083,7 @@ class DeepSpeedEngine(Module):
         because each process needs to save its master weights and scheduler+optimizer states. This
         method will hang waiting to synchronize with other processes if it's called just for the
         process with rank 0.
-        
+
         """
         if self.zero_optimization_partition_weights():
             # Prepare for checkpoint save by ensuring all parameters are partitioned
@@ -3482,19 +3482,19 @@ class DeepSpeedEngine(Module):
         Save 16bit model weights
 
         This method saves the 16bit model weights at the desired destination.
-        
+
         Arguments:
             save_dir: Required. Directory for saving the model
             save_filename: Optional. Filename to save to. Defaults to ``pytorch_model.bin``
-       
+
         Returns:
             ``True`` when a model has been saved, ``False`` otherwise. It will not be saved if
             stage3_gather_16bit_weights_on_model_save is ``False``.
-        
+
         Important: all processes must call this method and not just the process with rank 0. It is
         because the processes need to work in sync to gather the weights. This method will hang
         waiting to synchronize with other processes if it's called just for the process with rank 0.
-        
+
         """
 
         path = os.path.join(save_dir, save_filename)
