@@ -150,6 +150,7 @@ class DeepSpeedConfig(DeepSpeedConfigModel):
     sparse_attention: bool = False
     wall_clock_breakdown: bool = False
     dataloader_drop_last: bool = False
+    vocabulary_size: int = 1024  # TODO: verify if this value is even used
 
     # Theses are here for backward compatibility with any downstream
     # applications that use the ds_config directly, but should be removed
@@ -188,45 +189,45 @@ class DeepSpeedConfig(DeepSpeedConfigModel):
 
     @property
     def zero_enabled(self):
-        return bool(self.zero_config.stage > 0)
+        return bool(self.zero.stage > 0)
 
     @property
     def fp16_enabled(self):
-        return self.fp16_config.enabled
+        return self.fp16.enabled
 
     @property
     def fp16_auto_cast(self):
-        return self.fp16_config.autocast
+        return self.fp16.autocast
 
     @property
     def fp16_master_weights_and_gradients(self):
-        return self.fp16_config.master_weights_and_grads
+        return self.fp16.master_weights_and_grads
 
     @property
     def loss_scale(self):
-        return self.fp16_config.loss_scale
+        return self.fp16.loss_scale
 
     @property
     def initial_dynamic_scale(self):
         if self.bf16_enabled:
             return 0
-        return 2**self.fp16_config.initial_scale_power
+        return 2**self.fp16.initial_scale_power
 
     @property
     def dynamic_loss_scale_args(self):
         if not self.fp16_enabled:
             return None
         loss_scale_args = {
-            INITIAL_LOSS_SCALE: 2**self.fp16_config.initial_scale_power,
-            SCALE_WINDOW: self.fp16_config.loss_scale_window,
-            DELAYED_SHIFT: self.fp16_config.hysteresis,
-            MIN_LOSS_SCALE: self.fp16_config.min_loss_scale,
+            INITIAL_LOSS_SCALE: 2**self.fp16.initial_scale_power,
+            SCALE_WINDOW: self.fp16.loss_scale_window,
+            DELAYED_SHIFT: self.fp16.hysteresis,
+            MIN_LOSS_SCALE: self.fp16.min_loss_scale,
         }
         return loss_scale_args
 
     @property
     def optimizer_name(self):
-        opt_type = self.optimizer_config.type
+        opt_type = self.optimizer.type
         if opt_type is None:
             return opt_type
         elif opt_type.lower() in DEEPSPEED_OPTIMIZER:
@@ -236,23 +237,23 @@ class DeepSpeedConfig(DeepSpeedConfigModel):
 
     @property
     def optimizer_params(self):
-        return self.optimizer_config.params
+        return self.optimizer.params
 
     @property
     def optimizer_legacy_fusion(self):
-        return self.optimizer_config.legacy_fusion
+        return self.optimizer.legacy_fusion
 
     @property
     def scheduler_name(self):
-        return self.scheduler_config.type
+        return self.scheduler.type
 
     @property
     def scheduler_params(self):
-        return self.scheduler_config.params
+        return self.scheduler.params
 
     @property
     def wall_clock_breakdown(self):
-        return self.wall_clock_breakdown | self.flops_profiler_config.enabled
+        return self.wall_clock_breakdown | self.flops_profiler.enabled
 
     @property
     def bfloat16_enabled(self):
@@ -370,6 +371,33 @@ class DeepSpeedConfig(DeepSpeedConfigModel):
             pass
         return field_value
 
+    @validator("vocabulary_size")
+    def check_vocabulary_size(cls, field_value, values):
+        # TODO: verify this is still used
+        if field_value % TENSOR_CORE_ALIGN_SIZE != 0:
+            logger.warning(
+                f"Vocabulary size {field_value} is not aligned to {TENSOR_CORE_ALIGN_SIZE}, may import tensor core utilization."
+            )
+        return field_value
+
+    @root_validator
+    def check_optimizer_params(cls, values):
+        opt_params = values.get("optimizer").params
+        if opt_params.get("max_grad_norm", 0) > 0:
+            if values.get("global_rank") == 0:
+                if values.get("fp16").enabled:
+                    logger.warning(
+                        f"In FP16 mode, DeepSpeed will pass {MAX_GRAD_NORM}:{opt_params.get('max_grad_norm')} to FP16 wrapper"
+                    )
+                else:
+                    logger.warning(
+                        f"In FP32 mode, DeepSpeed does not permit max_grad_norm ({opt_params.get('max_grad_norm')}) > 0, setting to zero"
+                    )
+                    values["optimizer"].params["max_grad_norm"] = 0
+        return values
+
+    """ Root Validators """
+    # Note that these are executed in order of definition
     @root_validator
     def _exclusive_fp16_bf16(cls, values):
         assert not (
@@ -377,30 +405,13 @@ class DeepSpeedConfig(DeepSpeedConfigModel):
         ), "bf16 and fp16 modes cannot be simultaneously enabled"
         return values
 
-    # TODO: Make root_validator
-    def _batch_assertion(self, values):
-        train_batch = values.get("train_batch_size")
-        micro_batch = values.get("train_micro_batch_size_per_gpu")
-        grad_acc = values.get("gradient_accumulation_steps")
-        world_size = values.get("world_size")
-
-        assert (
-            train_batch > 0
-        ), f"Train batch size: {train_batch} has to be greater than 0"
-
-        assert (
-            micro_batch > 0
-        ), f"Micro batch size per gpu: {micro_batch} has to be greater than 0"
-
-        assert (
-            grad_acc > 0
-        ), f"Gradient accumulation steps: {grad_acc} has to be greater than 0"
-
-        assert train_batch == micro_batch * grad_acc * world_size, (
-            f"Check batch related parameters. train_batch_size is not equal "
-            "to micro_batch_per_gpu * gradient_acc_step * world_size "
-            f"{train_batch} != {micro_batch} * {grad_acc} * {world_size}"
-        )
+    @root_validator
+    def _check_fp16_and_zero_configs(cls, values):
+        if values.get("fp16").master_weights_and_grads:
+            assert (
+                self.zero.enabled and self.zero.stage == ZeroStageEnum.gradients
+            ), "fp16.master_weights_and_grads is only supported with ZeRO Stage 2 for now."
+        return values
 
     @root_validator
     def _set_batch_related_parameters(cls, values):
@@ -447,7 +458,31 @@ class DeepSpeedConfig(DeepSpeedConfigModel):
                 False
             ), "Either train_batch_size or train_micro_batch_size_per_gpu needs to be provided"
 
-        # TODO: Make this another root validator, figure out how to order root_validator
-        self._batch_assertion(values)
+        return values
 
+    # This validator must go after _set_batch_related_parameters
+    @root_validator
+    def _batch_assertion(cls, values):
+        train_batch = values.get("train_batch_size")
+        micro_batch = values.get("train_micro_batch_size_per_gpu")
+        grad_acc = values.get("gradient_accumulation_steps")
+        world_size = values.get("world_size")
+
+        assert (
+            train_batch > 0
+        ), f"Train batch size: {train_batch} has to be greater than 0"
+
+        assert (
+            micro_batch > 0
+        ), f"Micro batch size per gpu: {micro_batch} has to be greater than 0"
+
+        assert (
+            grad_acc > 0
+        ), f"Gradient accumulation steps: {grad_acc} has to be greater than 0"
+
+        assert train_batch == micro_batch * grad_acc * world_size, (
+            f"Check batch related parameters. train_batch_size is not equal "
+            "to micro_batch_per_gpu * gradient_acc_step * world_size "
+            f"{train_batch} != {micro_batch} * {grad_acc} * {world_size}"
+        )
         return values

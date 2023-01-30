@@ -90,21 +90,6 @@ class DeepSpeedConfigError(Exception):
     pass
 
 
-def get_amp_params(param_dict):
-    if AMP in param_dict.keys():
-        amp_params = copy.copy(param_dict[AMP])
-        amp_params.pop(AMP_ENABLED)
-        return amp_params
-    else:
-        return False
-
-
-
-def get_gradient_accumulation_steps(param_dict):
-    return get_scalar_param(param_dict,
-                            GRADIENT_ACCUMULATION_STEPS,
-                            GRADIENT_ACCUMULATION_STEPS_DEFAULT)
-
 
 def get_sparse_gradients_enabled(param_dict):
     return get_scalar_param(param_dict, SPARSE_GRADIENTS, SPARSE_GRADIENTS_DEFAULT)
@@ -469,16 +454,6 @@ class DeepSpeedConfig(object):
             self._param_dict[TRAIN_MICRO_BATCH_SIZE_PER_GPU] = micro_batch_size
             self._param_dict[GRADIENT_ACCUMULATION_STEPS] = gradient_accu_steps
 
-        # Pass a copy so that user json is unmodified, e.g. for logging
-        self._initialize_params(copy.copy(self._param_dict))
-        self._configure_train_batch_size()
-        self._do_sanity_check()
-
-
-    def _do_sanity_check(self):
-        self._do_error_check()
-
-        self._do_warning_check()
 
     def print_user_config(self):
         logger.info("  json = {}".format(
@@ -499,48 +474,3 @@ class DeepSpeedConfig(object):
                 logger.info("  {} {} {}".format(arg, dots, getattr(self, arg)))
 
         self.print_user_config()
-
-    def _do_error_check(self):
-        assert (
-            self.train_micro_batch_size_per_gpu
-        ), "DeepSpeedConfig: {} is not defined".format(TRAIN_MICRO_BATCH_SIZE_PER_GPU)
-
-        assert (
-            self.gradient_accumulation_steps
-        ), "DeepSpeedConfig: {} is not defined".format(GRADIENT_ACCUMULATION_STEPS)
-
-        if self.zero_enabled:
-            assert (
-                self.zero_optimization_stage <= ZeroStageEnum.max_stage
-            ), "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(
-                ZeroStageEnum.max_stage
-            )
-
-        if self.fp16_master_weights_and_gradients:
-            assert self.zero_enabled and self.zero_optimization_stage == ZeroStageEnum.gradients, "Fp16_master_weights_and_grads is only supported with ZeRO Stage 2 for now."
-
-    def _do_warning_check(self):
-        fp16_enabled = self.fp16_enabled
-
-        vocabulary_size = self._param_dict.get(VOCABULARY_SIZE, VOCABULARY_SIZE_DEFAULT)
-        if vocabulary_size and vocabulary_size % TENSOR_CORE_ALIGN_SIZE != 0:
-            logger.warning(
-                "DeepSpeedConfig: vocabulary size {} is not aligned to {}, may import tensor core utilization."
-                .format(vocabulary_size,
-                        TENSOR_CORE_ALIGN_SIZE))
-
-        if (self.optimizer_params is not None
-                and MAX_GRAD_NORM in self.optimizer_params.keys()
-                and self.optimizer_params[MAX_GRAD_NORM] > 0):
-            if fp16_enabled:
-                if self.global_rank == 0:
-                    logger.warning(
-                        "DeepSpeedConfig: In FP16 mode, DeepSpeed will pass {}:{} to FP16 wrapper"
-                        .format(MAX_GRAD_NORM,
-                                self.optimizer_params[MAX_GRAD_NORM]))
-            else:
-                if self.global_rank == 0:
-                    logger.warning(
-                        "DeepSpeedConfig: In FP32 mode, DeepSpeed does not permit MAX_GRAD_NORM ({}) > 0, setting to zero"
-                        .format(self.optimizer_params[MAX_GRAD_NORM]))
-                self.optimizer_params[MAX_GRAD_NORM] = 0.0
