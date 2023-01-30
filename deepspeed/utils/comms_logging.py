@@ -54,6 +54,9 @@ def calc_bw_log(comm_op, size, duration):
 
 
 class CommsLogger:
+    def __init__(self):
+        self.enabled = False
+
     def configure(self, comms_config):
         self.enabled = comms_config.enabled
         if self.enabled:
