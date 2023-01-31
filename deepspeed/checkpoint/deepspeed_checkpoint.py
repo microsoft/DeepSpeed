@@ -313,3 +313,18 @@ class DeepSpeedCheckpoint(object):
         ]:
             ckpt_files = get_files_with_prefix(file_list, file_prefix)
             assert len(ckpt_files) > 0, f'{dir} seems a bogus DeepSpeed checkpoint folder: Cannot find {file_prefix}* files in there.'
+
+
+class NeoxCheckpoint(DeepSpeedCheckpoint):
+
+    def _validate_folder(self, dir):
+        basic_folder_validation(dir)
+
+        file_list = get_files(dir)
+
+        for file_prefix in [
+                MODEL_FILE_PREFIX,
+                LAYER_FILE_PREFIX
+        ]:
+            ckpt_files = get_files_with_prefix(file_list, file_prefix)
+            assert len(ckpt_files) > 0, f'{dir} seems a bogus DeepSpeed checkpoint folder: Cannot find {file_prefix}* files in there.'
