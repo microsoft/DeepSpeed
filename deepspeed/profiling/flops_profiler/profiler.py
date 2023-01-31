@@ -511,7 +511,7 @@ def _silu_flops_compute(input: Tensor, inplace: bool = False):
     return input.numel(), 0
 
 
-def _gelu_flops_compute(input):
+def _gelu_flops_compute(input, **kwargs):
     return input.numel(), 0
 
 
@@ -669,15 +669,14 @@ def _instance_norm_flops_compute(
 
 
 def _upsample_flops_compute(input,
-                            size=None,
-                            scale_factor=None,
-                            mode="nearest",
-                            align_corners=None):
+                            **kwargs):
+    size = kwargs.get('size', None)
     if size is not None:
-        if isinstance(size, tuple):
+        if isinstance(size, tuple) or isinstance(size, list):
             return int(_prod(size)), 0
         else:
             return int(size), 0
+    scale_factor = kwargs.get('scale_factor', None)
     assert scale_factor is not None, "either size or scale_factor should be defined"
     flops = input.numel()
     if isinstance(scale_factor, tuple) and len(scale_factor) == len(input):
