@@ -1,9 +1,15 @@
 from torch import nn
+from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
+from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
+from deepspeed.model_implementations.transformers.ds_bert import DeepSpeedBERTInference
+from deepspeed.model_implementations.transformers.ds_megatron_gpt import DeepSpeedMegatronGPTInference
+from deepspeed.model_implementations.transformers.ds_opt import DeepSpeedOPTInference
+
 import deepspeed.ops.transformer as transformer_inference
-from ..runtime.zero import GatheredParameters
 from .layers import LinearLayer, Normalize, EmbeddingLayer, OPTEmbedding
 import torch
 import gc
+from deepspeed.accelerator import get_accelerator
 
 
 def load_model_with_checkpoint(r_module,
@@ -28,17 +34,10 @@ def load_model_with_checkpoint(r_module,
     def load(module, prefix):
         args = (sd[0], prefix, {}, True, [], [], error_msgs)
 
-        if len(list(module.parameters())) > 0 and list(
-                module.parameters())[0].numel() == 0:
-            with GatheredParameters(list(module.parameters(recurse=False)),
-                                    modifier_rank=0):
-                module._load_from_sd(*args)
-        else:
-            if hasattr(module, 'weight'):
-                module.weight = mp_replace.copy(module.weight.data,
-                                                sd[0][prefix + 'weight'])
-            if prefix + 'bias' in sd[0].keys():
-                module.bias = mp_replace.copy(module.bias.data, sd[0][prefix + 'bias'])
+        if hasattr(module, 'weight'):
+            module.weight = mp_replace.copy(module.weight.data, sd[0][prefix + 'weight'])
+        if prefix + 'bias' in sd[0].keys():
+            module.bias = mp_replace.copy(module.bias.data, sd[0][prefix + 'bias'])
         args = None
         gc.collect()
 
@@ -51,9 +50,10 @@ def load_model_with_checkpoint(r_module,
                         if type(sd[0][prefix + n]) is list:
                             tmp_data, scale = sd[0][prefix + n]
                             tmp_data = tmp_data
-                            scale = scale.to(torch.cuda.current_device())
+                            scale = scale.to(get_accelerator().current_device_name())
                         else:
-                            tmp_data = sd[0][prefix + n].to(torch.cuda.current_device())
+                            tmp_data = sd[0][prefix + n].to(
+                                get_accelerator().current_device_name())
                             scale = None
                         src_shape = tmp_data.shape
                         dst_shape = p.shape
@@ -79,7 +79,8 @@ def load_model_with_checkpoint(r_module,
                                     weight_partition = torch.split(
                                         tmp_data,
                                         dst_shape[dim1],
-                                        dim=dim)[rank].to(torch.cuda.current_device())
+                                        dim=dim)[rank].to(
+                                            get_accelerator().current_device_name())
                                     assert tmp_data.dtype != torch.int8 or scale.numel() > weight_quantizer.num_groups * (rank+1), \
                                         '''ERROR: We require the quantization scales for larger TP-size when loading INT8 checkpoint!\
                                            Please use the FP16 checkpoint to generate INT8 checkpoint with the sharding parameters!'''
@@ -95,17 +96,19 @@ def load_model_with_checkpoint(r_module,
                                     all_data = [
                                         sd[j][prefix +
                                               n] if type(sd[j][prefix + n]) is list else
-                                        sd[j][prefix + n].to(torch.cuda.current_device())
+                                        sd[j][prefix + n].to(
+                                            get_accelerator().current_device_name())
                                         for j in range(len(sd))
                                     ]
                                     weight_partition = torch.cat([
-                                        ad[0].to(torch.cuda.current_device())
+                                        ad[0].to(get_accelerator().current_device_name())
                                         if type(ad) is list else ad for ad in all_data
                                     ],
                                                                  dim=dim)
                                     if tmp_data.dtype == torch.int8:
                                         scale = torch.cat([
-                                            ad[1].to(torch.cuda.current_device())
+                                            ad[1].to(
+                                                get_accelerator().current_device_name())
                                             for ad in all_data
                                         ],
                                                           dim=dim)
@@ -128,15 +131,15 @@ def load_model_with_checkpoint(r_module,
                                 if src_shape[0] > dst_shape[0]:
                                     bias_split = torch.split(
                                         tmp_data,
-                                        dst_shape[-1])[rank].to(
-                                            torch.cuda.current_device()).contiguous()
+                                        dst_shape[-1])[rank].to(get_accelerator(
+                                        ).current_device_name()).contiguous()
                                     p.data.copy_(bias_split)
                                 else:
                                     p.data.copy_(
                                         torch.cat(
                                             [sd[j][prefix + n] for j in range(len(sd))],
-                                            dim=0).to(torch.cuda.current_device()).
-                                        contiguous())
+                                            dim=0).to(get_accelerator(
+                                            ).current_device_name()).contiguous())
 
             load_parameters(module, prefix)
             for n, child in module.named_children():
@@ -290,6 +293,11 @@ def load_model_with_checkpoint(r_module,
         LinearLayer: load,
         Normalize: load,
         transformer_inference.DeepSpeedTransformerInference: load_transformer_layer,
+        DeepSpeedBloomInference: load_transformer_layer,
+        DeepSpeedGPTInference: load_transformer_layer,
+        DeepSpeedBERTInference: load_transformer_layer,
+        DeepSpeedMegatronGPTInference: load_transformer_layer,
+        DeepSpeedOPTInference: load_transformer_layer,
         OPTLearnedPositionalEmbedding: load,
         OPTEmbedding: load
     }
