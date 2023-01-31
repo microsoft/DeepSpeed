@@ -1433,7 +1433,6 @@ class DeepSpeedEngine(Module):
         initial_dynamic_scale = self.initial_dynamic_scale()
         dynamic_loss_args = self.dynamic_loss_scale_args()
         clip_grad = self.gradient_clipping()
-        model_dtype, grad_accum_dtype = self.get_data_types()
         if APEX_INSTALLED:
             fused_opts = (apex.optimizers.FusedAdam, FusedAdam)
         else:
@@ -1441,8 +1440,7 @@ class DeepSpeedEngine(Module):
         if isinstance(optimizer, fused_opts) \
                 or self.optimizer_name() in [ONEBIT_ADAM_OPTIMIZER, ZERO_ONE_ADAM_OPTIMIZER]:
             if self.dynamic_loss_scale():
-                log_dist(f'Creating {model_dtype} optimizer with dynamic loss scale',
-                         ranks=[0])
+                log_dist(f'Creating fp16 optimizer with dynamic loss scale', ranks=[0])
                 timers = self.timers if self.wall_clock_breakdown() else None
                 optimizer = FP16_Optimizer(
                     optimizer,
@@ -1458,7 +1456,7 @@ class DeepSpeedEngine(Module):
                 )
             else:
                 log_dist(
-                    f'Creating {model_dtype} optimizer with static loss scale: {self.loss_scale()}',
+                    f'Creating fp16 optimizer with static loss scale: {self.loss_scale()}',
                     ranks=[0])
                 optimizer = FP16_Optimizer(
                     optimizer,
@@ -1470,7 +1468,7 @@ class DeepSpeedEngine(Module):
                     has_moe_layers=self.has_moe_layers,
                 )
         else:
-            log_dist(f'Creating {model_dtype} unfused optimizer with dynamic loss scale',
+            log_dist(f'Creating fp16 unfused optimizer with dynamic loss scale',
                      ranks=[0])
             optimizer = FP16_UnfusedOptimizer(
                 optimizer,
