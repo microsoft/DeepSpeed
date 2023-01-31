@@ -668,8 +668,7 @@ def _instance_norm_flops_compute(
     return input.numel() * (5 if has_affine else 4), 0
 
 
-def _upsample_flops_compute(input,
-                            **kwargs):
+def _upsample_flops_compute(input, **kwargs):
     size = kwargs.get('size', None)
     if size is not None:
         if isinstance(size, tuple) or isinstance(size, list):
