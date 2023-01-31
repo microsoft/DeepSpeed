@@ -27,6 +27,13 @@ DS_CONFIG = "ds_config"
 BUFSIZE = 1  # line buffer size for writing files
 
 #########################################
+# autotuner configuration constants
+#########################################
+
+AUTOTUNING = "autotuning"
+AUTOTUNING_METRIC_PATH = "metric_path"
+
+#########################################
 # autotunner search space constants
 #########################################
 
