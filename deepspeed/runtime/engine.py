@@ -662,9 +662,7 @@ class DeepSpeedEngine(Module):
 
     def autotuning_profile_model_info(self):
         return self.autotuning_enabled(
-        ) and self._config.autotuning_config.model_info and self._config.autotuning_config.model_info.get(
-            "profile",
-            False)
+        ) and self._config.autotuning_config.model_info and self._config.autotuning_config.model_info.profile
 
     def sparse_gradients_enabled(self):
         return self._config.sparse_gradients_enabled
