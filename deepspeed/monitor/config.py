@@ -3,6 +3,7 @@ Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
 
+from pydantic import root_validator
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 
@@ -18,7 +19,7 @@ def get_monitor_config(param_dict):
 
 
 class TensorBoardConfig(DeepSpeedConfigModel):
-    """ Sets parameters for TensorBoard monitor. """
+    """Sets parameters for TensorBoard monitor."""
 
     enabled: bool = False
     """ Whether logging to Tensorboard is enabled. Requires `tensorboard` package is installed. """
@@ -34,7 +35,7 @@ class TensorBoardConfig(DeepSpeedConfigModel):
 
 
 class WandbConfig(DeepSpeedConfigModel):
-    """ Sets parameters for WandB monitor. """
+    """Sets parameters for WandB monitor."""
 
     enabled: bool = False
     """ Whether logging to WandB is enabled. Requires `wandb` package is installed. """
@@ -50,7 +51,7 @@ class WandbConfig(DeepSpeedConfigModel):
 
 
 class CSVConfig(DeepSpeedConfigModel):
-    """ Sets parameters for CSV monitor. """
+    """Sets parameters for CSV monitor."""
 
     enabled: bool = False
     """ Whether logging to local CSV files is enabled. """
@@ -66,7 +67,7 @@ class CSVConfig(DeepSpeedConfigModel):
 
 
 class DeepSpeedMonitorConfig(DeepSpeedConfigModel):
-    """ Sets parameters for various monitoring methods. """
+    """Sets parameters for various monitoring methods."""
 
     tensorboard: TensorBoardConfig = {}
     """ TensorBoard monitor, requires `tensorboard` package is installed. """
@@ -76,3 +77,10 @@ class DeepSpeedMonitorConfig(DeepSpeedConfigModel):
 
     csv_monitor: CSVConfig = {}
     """ Local CSV output of monitoring data. """
+    @root_validator
+    def check_enabled(cls, values):
+        values["enabled"] = False
+        if (values.get("tensorboard").enabled or values.get("wandb").enabled
+                or values.get("csv_monitor").enabled):
+            values["enabled"] = True
+        return values
