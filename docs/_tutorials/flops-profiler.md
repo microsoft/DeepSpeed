@@ -310,7 +310,7 @@ Refer to [installation of DeepSpeed](https://www.deepspeed.ai/getting-started/#i
 
 #### In Model Inference
 
-To profile a trained model in inference, we use the `get_model_profile` function. If the inference is involed in more than just a `forward` function of the model, for exmaple, `model.generate()`, we can use the `start_profile`, `stop_profile`, and `end_profile` to catpure the higher-level function (similar to the training use case).
+To profile a trained model in inference, we use the `get_model_profile` function. If the inference is involed in more than just a `forward` function of the model, for example, `model.generate()`, we can use the `start_profile`, `stop_profile`, and `end_profile` to capture the higher-level function (similar to the training use case).
 
 Examples are given below.
 
