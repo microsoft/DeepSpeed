@@ -1,6 +1,7 @@
 import torch
 from .basic_layer import Embedding_Compress, LinearLayer_Compress, Conv2dLayer_Compress, BNLayer_Compress, ColumnParallelLinear_Compress, RowParallelLinear_Compress
 
+
 def recursive_getattr(model, module_name):
     """
     Recursively get the attribute of a module.
@@ -150,8 +151,7 @@ def module_replacement(model, module_name, compression_technique=None, mpu=None)
                                                      v.get("method"))
             elif k == "row_pruning":
                 if v.get("enabled"):
-                    new_module.enable_row_pruning(v.get("dense_ratio"),
-                                                  v.get("method"))
+                    new_module.enable_row_pruning(v.get("dense_ratio"), v.get("method"))
             elif k == "head_pruning":
                 if v.get("enabled"):
                     new_module.enable_head_pruning(v.get("dense_ratio"),
@@ -159,10 +159,9 @@ def module_replacement(model, module_name, compression_technique=None, mpu=None)
                                                    v.get("num_heads"))
             elif k == "activation_quantization":
                 if v.get("enabled"):
-                    new_module.enable_activation_quantization(
-                        v.get("bits"),
-                        v.get("quantization_type"),
-                        v.get("range_calibration"))
+                    new_module.enable_activation_quantization(v.get("bits"),
+                                                              v.get("quantization_type"),
+                                                              v.get("range_calibration"))
             elif k == "weight_quantization":
                 if v.get("enabled"):
                     new_module.enable_weight_quantization(

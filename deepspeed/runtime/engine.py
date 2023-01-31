@@ -686,15 +686,24 @@ class DeepSpeedEngine(Module):
 
     def quantize_training(self):
         return (
-            self._config.compression_config.weight_quantization.shared_parameters.quantize_weight_in_forward_enabled,
-            self._config.compression_config.weight_quantization.shared_parameters.enabled,
-            self._config.compression_config.weight_quantization.shared_parameters.quantize_groups,
-            self._config.compression_config.weight_quantization.shared_parameters.fp16_mixed_quantize.enabled,
-            self._config.compression_config.weight_quantization.shared_parameters.fp16_mixed_quantize.quantize_change_ratio,
-            self._config.compression_config.weight_quantization.shared_parameters.quantization_type,
-            self._config.compression_config.weight_quantization.shared_parameters.rounding,
-            self._config.compression_config.weight_quantization.shared_parameters.quantize_verbose,
-            self._config.compression_config.weight_quantization.shared_parameters.quantizer_kernel,
+            self._config.compression_config.weight_quantization.shared_parameters.
+            quantize_weight_in_forward,
+            self._config.compression_config.weight_quantization.shared_parameters.
+            enabled,
+            self._config.compression_config.weight_quantization.shared_parameters.
+            quantize_groups,
+            self._config.compression_config.weight_quantization.shared_parameters.
+            fp16_mixed_quantize.enabled,
+            self._config.compression_config.weight_quantization.shared_parameters.
+            fp16_mixed_quantize.quantize_change_ratio,
+            self._config.compression_config.weight_quantization.shared_parameters.
+            quantization_type,
+            self._config.compression_config.weight_quantization.shared_parameters.
+            rounding,
+            self._config.compression_config.weight_quantization.shared_parameters.
+            quantize_verbose,
+            self._config.compression_config.weight_quantization.shared_parameters.
+            quantizer_kernel,
         )
 
     def zero_optimization(self):

@@ -32,7 +32,7 @@ class compression_scheduler():
             for group_name, method_parameters in method_content.different_groups.items():
                 module_name_list = []
                 for key_word in method_parameters.modules:
-                    module_name, exist_module_name = get_module_name(group_name, self.model, key_word, exist_module_name, verbose=False)
+                    module_name, exist_module_name = get_module_name(group_name, self.model, key_word, set(), verbose=False)
                     module_name_list.extend(module_name)
                 method_parameters.modules = module_name_list
 
@@ -70,8 +70,7 @@ class compression_scheduler():
                     module.activation_quantization_enabled = True
             if not self.verbose["activation_quantization"]:
                 logger.info(
-                    f'Activation quantization is enabled at step {self.training_steps}'
-                )
+                    f'Activation quantization is enabled at step {self.training_steps}')
                 self.verbose["activation_quantization"] = True
 
     def check_sparse_pruning(self):
@@ -88,8 +87,7 @@ class compression_scheduler():
                     module = recursive_getattr(self.model, module_name)
                     module.sparse_pruning_enabled = True
             if not self.verbose["sparse_pruning"]:
-                logger.info(
-                    f'Sparse pruning is enabled at step {self.training_steps}')
+                logger.info(f'Sparse pruning is enabled at step {self.training_steps}')
                 self.verbose["sparse_pruning"] = True
 
     def check_head_pruning(self):
@@ -140,8 +138,7 @@ class compression_scheduler():
                     module = recursive_getattr(self.model, module_name)
                     module.channel_pruning_enabled = True
             if not self.verbose["channel_pruning"]:
-                logger.info(
-                    f'Channel pruning is enabled at step {self.training_steps}')
+                logger.info(f'Channel pruning is enabled at step {self.training_steps}')
                 self.verbose["channel_pruning"] = True
 
     def check_all_modules(self):

@@ -874,7 +874,9 @@ class DeepSpeedConfig(object):
             self.eigenvalue_gas_boundary_resolution,
             self.eigenvalue_layer_name,
             self.eigenvalue_layer_num,
-        ) = get_eigenvalue_config(param_dict, quantize_enabled=self.compression_config.weight_quantization.enabled)
+        ) = get_eigenvalue_config(
+            param_dict,
+            quantize_enabled=self.compression_config.weight_quantization.enabled)
 
         self.sparse_attention = get_sparse_attention(param_dict)
         self.pipeline = get_pipeline_config(param_dict)

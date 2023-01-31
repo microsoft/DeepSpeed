@@ -144,12 +144,12 @@ def redundancy_clean(model, deepspeed_config, mpu=None):
                                                             mpu=mpu)
     # sort methods
     order_list = [
-        WEIGHT_QUANTIZATION,
-        SPARSE_PRUNING,
-        ROW_PRUNING,
-        HEAD_PRUNING,
-        CHANNEL_PRUNING,
-        ACTIVATION_QUANTIZATION
+        "weight_quantization",
+        "sparse_pruning",
+        "row_pruning",
+        "head_pruning",
+        "channel_pruning",
+        "activation_quantization"
     ]
     layer_added_compress_methods = sorted(
         layer_added_compress_methods_tmp,
@@ -189,12 +189,12 @@ def student_initialization(student_model, teacher_model, deepspeed_config):
             The path of ds_config
     '''
     config = get_compression_config(check_deepspeed_config(deepspeed_config))
-    compress_methods = config[LAYER_REDUCTION]
+    compress_methods = config.layer_reduction
 
-    module_name_prefix = compress_methods[MODULE_NAME_PREFIX]
-    teacher_layer = compress_methods[TEACHER_LAYER]
+    module_name_prefix = compress_methods.module_name_prefix
+    teacher_layer = compress_methods.teacher_layer
     student_layer = [i for i in range(len(teacher_layer))]
-    other_module_name = compress_methods[OTHER_MODULE_NAME]
+    other_module_name = compress_methods.other_module_name
     '''
         name_prefix (`str`)
             The prefix name before the layer #.
