@@ -74,10 +74,20 @@ class model_3d_desc(object):
         return len(err_msg) == 0, err_msg
 
 
+def get_num_pp0_files(file_list):
+    num_layer1_files = len(get_files_with_prefix(file_list, f'{LAYER_FILE_PREFIX}01'))
+    num_layer2_files = len(get_files_with_prefix(file_list, f'{LAYER_FILE_PREFIX}02'))
+    if (num_layer1_files > 0) or (num_layer2_files == 0):
+        return num_layer1_files
+    else:
+        return num_layer2_files
+
+
+
 def get_model_3d_descriptor(dir):
     file_list = get_files(dir)
     zero_file_list = get_zero_files(dir)
-    num_pp0_files = len(get_files_with_prefix(file_list, f'{LAYER_FILE_PREFIX}01'))
+    num_pp0_files = get_num_pp0_files(file_list)
     if num_pp0_files > 0:
         tp_degree = num_pp0_files
         pp_degree = len(get_files_with_prefix(file_list, MODEL_FILE_PREFIX)) // tp_degree
