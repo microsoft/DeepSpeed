@@ -150,14 +150,20 @@ For models running on multi-GPU or multi-node, only change of the model parallel
 
 The DeepSpeed Flops Profiler can be used with the DeepSpeed runtime or as a standalone package. When using DeepSpeed for model training, the profiler can be configured in the deepspeed configuration file without user code change. To use the flops profiler outside of the DeepSpeed runtime, one can simply install DeepSpeed and import the flops_profiler package to use the APIs directly. Examples of each usage are given below.
 
-  - [Usage With the DeepSpeed Runtime](#usage-with-the-deepspeed-runtime)
-    - [Example: Megatron-LM](#example-megatron-lm)
-  - [Usage Outside the DeepSpeed Runtime](#usage-outside-the-deepspeed-runtime)
-    - [In Model Inference](#in-model-inference)
-      - [Example: AlexNet](#example-alexnet)
-      - [Example: Bert](#example-bert)
-    - [In Model Training Workflow](#in-model-training-workflow)
-      - [Example Training Workflow](#example-training-workflow)
+- [DeepSpeed Flops Profiler](#deepspeed-flops-profiler)
+  - [Overview](#overview)
+  - [Flops Measurement](#flops-measurement)
+  - [Multi-GPU, Multi-node, Data Parallelism, and Model Parallelism](#multi-gpu-multi-node-data-parallelism-and-model-parallelism)
+  - [Usage](#usage)
+    - [Usage With the DeepSpeed Runtime](#usage-with-the-deepspeed-runtime)
+      - [Example: Megatron-LM](#example-megatron-lm)
+    - [Usage Outside the DeepSpeed Runtime](#usage-outside-the-deepspeed-runtime)
+      - [In Model Inference](#in-model-inference)
+        - [Example: AlexNet](#example-alexnet)
+        - [Example: Bert](#example-bert)
+        - [Example: T5](#example-t5)
+      - [In Model Training Workflow](#in-model-training-workflow)
+        - [Example Training Workflow](#example-training-workflow)
 ### Usage With the DeepSpeed Runtime
 
 When using DeepSpeed for model training, the profiler can be configured in the deepspeed configuration file. No explicit API calls are needed to use the profiler. The profiler can be enabled by adding the following field to the `deepspeed_config` json file. Refer to [flops profiler](https://www.deepspeed.ai/docs/config-json/#flops-profiler) for details.
@@ -298,7 +304,8 @@ Refer to [installation of DeepSpeed](https://www.deepspeed.ai/getting-started/#i
 
 #### In Model Inference
 
-To profile a trained model in inference, use the `get_model_profile` function.
+To profile a trained model in inference, we use the `get_model_profile` function. If the inference is involed in more than just a `forward` function of the model, for exmaple, `model.generate()`, we can use the `start_profile`, `stop_profile`, and `end_profile` to catpure the higher-level function (similar to the training use case).
+
 Examples are given below.
 
 ##### Example: AlexNet
@@ -366,6 +373,35 @@ with torch.cuda.device(0):
     else:
       inputs = bert_input_constructor((batch_size, seq_len), tokenizer)
       outputs = model(inputs)
+```
+
+##### Example: T5
+
+
+```python
+from transformers import T5Tokenizer, T5ForConditionalGeneration
+
+tokenizer = T5Tokenizer.from_pretrained("t5-small")
+model = T5ForConditionalGeneration.from_pretrained("t5-small")
+input_ids = tokenizer("translate English to German: The house is wonderful.", return_tensors="pt").input_ids
+
+prof = FlopsProfiler(model)
+
+# start proifle
+prof.start_profile()
+
+outputs = model.generate(input_ids)
+
+# stop proifle and collect the profiled results
+prof.stop_profile()
+
+flops = prof.get_total_flops()
+macs = prof.get_total_macs()
+params = prof.get_total_params()
+prof.print_model_profile()
+prof.end_profile()
+
+print(tokenizer.decode(outputs[0], skip_special_tokens=True))
 ```
 
 #### In Model Training Workflow
