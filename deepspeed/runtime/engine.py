@@ -748,7 +748,7 @@ class DeepSpeedEngine(Module):
         return self._config.zero_config.sub_group_size
 
     def zero_optimization_stage(self):
-        return self._config.zero_optimization_stage
+        return self._config.zero_config.stage
 
     def zero_reduce_bucket_size(self):
         return self._config.zero_config.reduce_bucket_size

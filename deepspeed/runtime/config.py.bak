@@ -1,0 +1,476 @@
+"""
+Copyright (c) Microsoft Corporation
+Licensed under the MIT license.
+"""
+import os
+from typing import Union
+
+import torch
+import json
+import copy
+import base64
+
+from .constants import *
+from .fp16.loss_scaler import (
+    INITIAL_LOSS_SCALE,
+    SCALE_WINDOW,
+    DELAYED_SHIFT,
+    MIN_LOSS_SCALE,
+)
+from .config_utils import (
+    get_scalar_param,
+    dict_raise_error_on_duplicate_keys,
+    ScientificNotationEncoder,
+)
+from .zero.config import get_zero_config, ZeroStageEnum
+from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
+from ..comm.config import DeepSpeedCommsConfig
+from ..monitor.config import DeepSpeedMonitorConfig
+
+from deepspeed import comm as dist
+
+from ..git_version_info import version as __version__
+from ..utils import logger
+
+from ..elasticity import (
+    elasticity_enabled,
+    compute_elastic_config,
+    ensure_immutable_elastic_config,
+)
+from ..elasticity.config import ElasticityConfigError
+from ..elasticity.constants import (
+    ELASTICITY,
+    IGNORE_NON_ELASTIC_BATCH_INFO,
+    IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT,
+    MODEL_PARLLEL_SIZE,
+    MODEL_PARLLEL_SIZE_DEFAULT,
+    NUM_GPUS_PER_NODE,
+    NUM_GPUS_PER_NODE_DEFAULT,
+)
+
+from ..profiling.config import DeepSpeedFlopsProfilerConfig
+from ..autotuning.config import DeepSpeedAutotuningConfig
+from ..nebula.config import DeepSpeedNebulaConfig
+
+from ..compression.config import get_compression_config, get_quantize_enabled
+from ..compression.constants import *
+from .swap_tensor.aio_config import get_aio_config
+
+from .data_pipeline.config import get_data_efficiency_enabled, get_data_efficiency_config, get_curriculum_enabled_legacy, get_curriculum_params_legacy
+from .data_pipeline.constants import *
+
+TENSOR_CORE_ALIGN_SIZE = 8
+
+ADAGRAD_OPTIMIZER = 'adagrad'
+ADAM_OPTIMIZER = 'adam'
+ADAMW_OPTIMIZER = 'adamw'
+LAMB_OPTIMIZER = 'lamb'
+ONEBIT_ADAM_OPTIMIZER = 'onebitadam'
+ZERO_ONE_ADAM_OPTIMIZER = 'zerooneadam'
+ONEBIT_LAMB_OPTIMIZER = 'onebitlamb'
+DEEPSPEED_OPTIMIZERS = [
+    ADAGRAD_OPTIMIZER,
+    ADAM_OPTIMIZER,
+    ADAMW_OPTIMIZER,
+    LAMB_OPTIMIZER,
+    ONEBIT_ADAM_OPTIMIZER,
+    ONEBIT_LAMB_OPTIMIZER,
+    ZERO_ONE_ADAM_OPTIMIZER
+]
+
+# extra optimizer parameters for adam/adamw
+TORCH_ADAM_PARAM = "torch_adam"
+
+# default to adamw logic for adam/adamw optimizers unless user explicitly opts out
+ADAM_W_MODE = "adam_w_mode"
+ADAM_W_MODE_DEFAULT = True
+
+
+class DeepSpeedConfigError(Exception):
+    pass
+
+
+
+def get_sparse_gradients_enabled(param_dict):
+    return get_scalar_param(param_dict, SPARSE_GRADIENTS, SPARSE_GRADIENTS_DEFAULT)
+
+
+def get_communication_data_type(param_dict):
+    val = get_scalar_param(param_dict,
+                           COMMUNICATION_DATA_TYPE,
+                           COMMUNICATION_DATA_TYPE_DEFAULT)
+    val = val.lower() if val is not None else val
+    if val is None:
+        return val  # we must determine it by other parameters
+    elif val == "fp32":
+        return torch.float32
+    elif val == "fp16":
+        return torch.float16
+    elif val == "bfp16":
+        return torch.bfloat16
+
+    raise ValueError(
+        f"Invalid communication_data_type. Supported data types: ['fp16', 'bfp16', 'fp32']. Got: {val}"
+    )
+
+
+def get_prescale_gradients(param_dict):
+    return get_scalar_param(param_dict, PRESCALE_GRADIENTS, PRESCALE_GRADIENTS_DEFAULT)
+
+
+def get_gradient_predivide_factor(param_dict):
+    return get_scalar_param(param_dict,
+                            GRADIENT_PREDIVIDE_FACTOR,
+                            GRADIENT_PREDIVIDE_FACTOR_DEFAULT)
+
+
+def get_steps_per_print(param_dict):
+    return get_scalar_param(param_dict, STEPS_PER_PRINT, STEPS_PER_PRINT_DEFAULT)
+
+
+def get_disable_allgather(param_dict):
+    return get_scalar_param(param_dict, DISABLE_ALLGATHER, DISABLE_ALLGATHER_DEFAULT)
+
+
+def get_dump_state(param_dict):
+    return get_scalar_param(param_dict, DUMP_STATE, DUMP_STATE_DEFAULT)
+
+
+def get_gradient_clipping(param_dict):
+    return get_scalar_param(param_dict, GRADIENT_CLIPPING, GRADIENT_CLIPPING_DEFAULT)
+
+
+def get_sparse_attention(param_dict):
+    if SPARSE_ATTENTION in param_dict.keys():
+        sparsity = param_dict[SPARSE_ATTENTION]
+        mode = get_sparse_attention_mode(sparsity)
+
+        if mode == SPARSE_DENSE_MODE:
+            return get_sparse_dense_config(sparsity)
+        elif mode == SPARSE_FIXED_MODE:
+            return get_sparse_fixed_config(sparsity)
+        elif mode == SPARSE_VARIABLE_MODE:
+            return get_sparse_variable_config(sparsity)
+        elif mode == SPARSE_BIGBIRD_MODE:
+            return get_sparse_bigbird_config(sparsity)
+        elif mode == SPARSE_BSLONGFORMER_MODE:
+            return get_sparse_bslongformer_config(sparsity)
+        else:
+            raise NotImplementedError(
+                f"Given sparsity mode, {mode}, has not been implemented yet!")
+
+    else:
+        return None
+
+
+def get_sparse_dense_config(sparsity):
+    block = get_scalar_param(sparsity, SPARSE_BLOCK, SPARSE_BLOCK_DEFAULT)
+    return {SPARSE_MODE: SPARSE_DENSE_MODE, SPARSE_BLOCK: block}
+
+
+def get_sparse_fixed_config(sparsity):
+    block = get_scalar_param(sparsity, SPARSE_BLOCK, SPARSE_BLOCK_DEFAULT)
+    different_layout_per_head = get_scalar_param(
+        sparsity,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD_DEFAULT,
+    )
+    num_local_blocks = get_scalar_param(sparsity,
+                                        SPARSE_NUM_LOCAL_BLOCKS,
+                                        SPARSE_NUM_LOCAL_BLOCKS_DEFAULT)
+    num_global_blocks = get_scalar_param(sparsity,
+                                         SPARSE_NUM_GLOBAL_BLOCKS,
+                                         SPARSE_NUM_GLOBAL_BLOCKS_DEFAULT)
+    attention = get_scalar_param(sparsity,
+                                 SPARSE_ATTENTION_TYPE,
+                                 SPARSE_ATTENTION_TYPE_DEFAULT)
+    horizontal_global_attention = get_scalar_param(
+        sparsity,
+        SPARSE_HORIZONTAL_GLOBAL_ATTENTION,
+        SPARSE_HORIZONTAL_GLOBAL_ATTENTION_DEFAULT,
+    )
+    num_different_global_patterns = get_scalar_param(
+        sparsity,
+        SPARSE_NUM_DIFFERENT_GLOBAL_PATTERNS,
+        SPARSE_NUM_DIFFERENT_GLOBAL_PATTERNS_DEFAULT,
+    )
+
+    return {
+        SPARSE_MODE: SPARSE_FIXED_MODE,
+        SPARSE_BLOCK: block,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD: different_layout_per_head,
+        SPARSE_NUM_LOCAL_BLOCKS: num_local_blocks,
+        SPARSE_NUM_GLOBAL_BLOCKS: num_global_blocks,
+        SPARSE_ATTENTION_TYPE: attention,
+        SPARSE_HORIZONTAL_GLOBAL_ATTENTION: horizontal_global_attention,
+        SPARSE_NUM_DIFFERENT_GLOBAL_PATTERNS: num_different_global_patterns,
+    }
+
+
+def get_sparse_variable_config(sparsity):
+    block = get_scalar_param(sparsity, SPARSE_BLOCK, SPARSE_BLOCK_DEFAULT)
+    different_layout_per_head = get_scalar_param(
+        sparsity,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD_DEFAULT,
+    )
+    num_random_blocks = get_scalar_param(sparsity,
+                                         SPARSE_NUM_RANDOM_BLOCKS,
+                                         SPARSE_NUM_RANDOM_BLOCKS_DEFAULT)
+    local_window_blocks = get_scalar_param(sparsity,
+                                           SPARSE_LOCAL_WINDOW_BLOCKS,
+                                           SPARSE_LOCAL_WINDOW_BLOCKS_DEFAULT)
+    global_block_indices = get_scalar_param(sparsity,
+                                            SPARSE_GLOBAL_BLOCK_INDICES,
+                                            SPARSE_GLOBAL_BLOCK_INDICES_DEFAULT)
+    global_block_end_indices = get_scalar_param(
+        sparsity,
+        SPARSE_GLOBAL_BLOCK_END_INDICES,
+        SPARSE_GLOBAL_BLOCK_END_INDICES_DEFAULT,
+    )
+    attention = get_scalar_param(sparsity,
+                                 SPARSE_ATTENTION_TYPE,
+                                 SPARSE_ATTENTION_TYPE_DEFAULT)
+    horizontal_global_attention = get_scalar_param(
+        sparsity,
+        SPARSE_HORIZONTAL_GLOBAL_ATTENTION,
+        SPARSE_HORIZONTAL_GLOBAL_ATTENTION_DEFAULT,
+    )
+
+    return {
+        SPARSE_MODE: SPARSE_VARIABLE_MODE,
+        SPARSE_BLOCK: block,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD: different_layout_per_head,
+        SPARSE_NUM_RANDOM_BLOCKS: num_random_blocks,
+        SPARSE_LOCAL_WINDOW_BLOCKS: local_window_blocks,
+        SPARSE_GLOBAL_BLOCK_INDICES: global_block_indices,
+        SPARSE_GLOBAL_BLOCK_END_INDICES: global_block_end_indices,
+        SPARSE_ATTENTION_TYPE: attention,
+        SPARSE_HORIZONTAL_GLOBAL_ATTENTION: horizontal_global_attention,
+    }
+
+
+def get_sparse_bigbird_config(sparsity):
+    block = get_scalar_param(sparsity, SPARSE_BLOCK, SPARSE_BLOCK_DEFAULT)
+    different_layout_per_head = get_scalar_param(
+        sparsity,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD_DEFAULT,
+    )
+    num_random_blocks = get_scalar_param(sparsity,
+                                         SPARSE_NUM_RANDOM_BLOCKS,
+                                         SPARSE_NUM_RANDOM_BLOCKS_DEFAULT)
+    num_sliding_window_blocks = get_scalar_param(
+        sparsity,
+        SPARSE_NUM_SLIDING_WINDOW_BLOCKS,
+        SPARSE_NUM_SLIDING_WINDOW_BLOCKS_DEFAULT,
+    )
+    num_global_blocks = get_scalar_param(sparsity,
+                                         SPARSE_NUM_GLOBAL_BLOCKS,
+                                         SPARSE_NUM_GLOBAL_BLOCKS_DEFAULT)
+
+    return {
+        SPARSE_MODE: SPARSE_BIGBIRD_MODE,
+        SPARSE_BLOCK: block,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD: different_layout_per_head,
+        SPARSE_NUM_RANDOM_BLOCKS: num_random_blocks,
+        SPARSE_NUM_SLIDING_WINDOW_BLOCKS: num_sliding_window_blocks,
+        SPARSE_NUM_GLOBAL_BLOCKS: num_global_blocks,
+    }
+
+
+def get_sparse_bslongformer_config(sparsity):
+    block = get_scalar_param(sparsity, SPARSE_BLOCK, SPARSE_BLOCK_DEFAULT)
+    different_layout_per_head = get_scalar_param(
+        sparsity,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD_DEFAULT,
+    )
+    num_sliding_window_blocks = get_scalar_param(
+        sparsity,
+        SPARSE_NUM_SLIDING_WINDOW_BLOCKS,
+        SPARSE_NUM_SLIDING_WINDOW_BLOCKS_DEFAULT,
+    )
+    global_block_indices = get_scalar_param(sparsity,
+                                            SPARSE_GLOBAL_BLOCK_INDICES,
+                                            SPARSE_GLOBAL_BLOCK_INDICES_DEFAULT)
+    global_block_end_indices = get_scalar_param(
+        sparsity,
+        SPARSE_GLOBAL_BLOCK_END_INDICES,
+        SPARSE_GLOBAL_BLOCK_END_INDICES_DEFAULT,
+    )
+
+    return {
+        SPARSE_MODE: SPARSE_BSLONGFORMER_MODE,
+        SPARSE_BLOCK: block,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD: different_layout_per_head,
+        SPARSE_NUM_SLIDING_WINDOW_BLOCKS: num_sliding_window_blocks,
+        SPARSE_GLOBAL_BLOCK_INDICES: global_block_indices,
+        SPARSE_GLOBAL_BLOCK_END_INDICES: global_block_end_indices,
+    }
+
+
+def get_sparse_attention_mode(param_dict):
+    if SPARSE_MODE in param_dict.keys():
+        return param_dict[SPARSE_MODE]
+    else:
+        return SPARSE_MODE_DEFAULT
+
+
+def get_sparse_attention_type(param_dict):
+    if SPARSE_ATTENTION_TYPE in param_dict.keys():
+        return param_dict[SPARSE_ATTENTION_TYPE]
+    else:
+        return SPARSE_ATTENTION_TYPE_DEFAULT
+
+
+def get_optimizer_gradient_clipping(param_dict):
+    optimizer_params = get_optimizer_params(param_dict)
+    if optimizer_params is not None and MAX_GRAD_NORM in optimizer_params.keys():
+        return optimizer_params[MAX_GRAD_NORM]
+    else:
+        return None
+
+
+def get_zero_allow_untested_optimizer(param_dict):
+    return get_scalar_param(param_dict,
+                            ZERO_ALLOW_UNTESTED_OPTIMIZER,
+                            ZERO_ALLOW_UNTESTED_OPTIMIZER_DEFAULT)
+
+
+
+
+def get_train_batch_size(param_dict):
+    return get_scalar_param(param_dict, TRAIN_BATCH_SIZE, TRAIN_BATCH_SIZE_DEFAULT)
+
+
+def get_train_micro_batch_size_per_gpu(param_dict):
+    return get_scalar_param(
+        param_dict,
+        TRAIN_MICRO_BATCH_SIZE_PER_GPU,
+        TRAIN_MICRO_BATCH_SIZE_PER_GPU_DEFAULT,
+    )
+
+
+def get_memory_breakdown(param_dict):
+    return get_scalar_param(param_dict, MEMORY_BREAKDOWN, MEMORY_BREAKDOWN_DEFAULT)
+
+
+
+'''Write deepspeed config files by modifying basic templates.
+Can be used for quickly changing parameters via command line parameters.'''
+
+
+class DeepSpeedConfigWriter:
+    def __init__(self, data=None):
+        self.data = data if data is not None else {}
+
+    def add_config(self, key, value):
+        self.data[key] = value
+
+    def load_config(self, filename):
+        self.data = json.load(open(filename,
+                                   "r"),
+                              object_pairs_hook=dict_raise_error_on_duplicate_keys)
+
+    def write_config(self, filename):
+        with open(filename, "w") as outfile:
+            json.dump(self.data, outfile)
+
+
+class DeepSpeedConfig(object):
+    def __init__(self, config: Union[str, dict], mpu=None):
+
+        # If elastic-mode enabled, update compute + update _param_dict
+        if self.elasticity_enabled:
+            logger.info("DeepSpeed elasticity support enabled")
+            final_batch_size, valid_gpus, micro_batch_size = compute_elastic_config(
+                ds_config=self._param_dict,
+                target_deepspeed_version=__version__,
+                world_size=self.world_size,
+            )
+
+            elastic_dict = self._param_dict[ELASTICITY]
+
+            # Ensure the resource scheduler saw the same elastic config we are using at runtime
+            ensure_immutable_elastic_config(runtime_elastic_config_dict=elastic_dict)
+
+            self.elastic_model_parallel_size = elastic_dict.get(
+                MODEL_PARLLEL_SIZE,
+                MODEL_PARLLEL_SIZE_DEFAULT)
+            if self.elastic_model_parallel_size < 1:
+                raise ElasticityConfigError(
+                    "Model-Parallel size cannot be less than 1, "
+                    f"given model-parallel size: {self.elastic_model_parallel_size}")
+
+            self.num_gpus_per_node = elastic_dict.get(NUM_GPUS_PER_NODE,
+                                                      NUM_GPUS_PER_NODE_DEFAULT)
+            if self.num_gpus_per_node < 1:
+                raise ElasticityConfigError(
+                    "NUmber of GPUs per node cannot be less than 1, "
+                    f"given number of GPUs per node: {self.num_gpus_per_node}")
+
+            ignore_non_elastic_batch_info = elastic_dict.get(
+                IGNORE_NON_ELASTIC_BATCH_INFO,
+                IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT)
+
+            if not ignore_non_elastic_batch_info:
+                batch_params = [
+                    TRAIN_BATCH_SIZE,
+                    TRAIN_MICRO_BATCH_SIZE_PER_GPU,
+                    GRADIENT_ACCUMULATION_STEPS,
+                ]
+                if any(map(lambda t: t in self._param_dict, batch_params)):
+                    raise ElasticityConfigError("One or more batch related parameters were found in your " \
+                        f"ds_config ({TRAIN_BATCH_SIZE}, {TRAIN_MICRO_BATCH_SIZE_PER_GPU}, and/or " \
+                        f"{GRADIENT_ACCUMULATION_STEPS}). These parameters *will not be used* since " \
+                        "elastic training is enabled, which takes control of these parameters. " \
+                        "If you want to suppress this error (the parameters will be silently ignored) " \
+                        f"please set {IGNORE_NON_ELASTIC_BATCH_INFO}':true in your elasticity config.")
+
+            # micro_bsz * world_size * gas = total_batch_size
+            # gas = total_batch_size // (micro_bsz * world_size)
+            gradient_accu_steps = final_batch_size // (micro_batch_size *
+                                                       self.world_size)
+
+            if TRAIN_BATCH_SIZE in self._param_dict:
+                logger.warning(
+                    "[Elasticity] overriding training_batch_size: "
+                    f"{self._param_dict[TRAIN_BATCH_SIZE]} -> {final_batch_size}")
+            if TRAIN_MICRO_BATCH_SIZE_PER_GPU in self._param_dict:
+                logger.warning(
+                    "[Elasticity] overriding train_micro_batch_size_per_gpu: "
+                    f"{self._param_dict[TRAIN_MICRO_BATCH_SIZE_PER_GPU]} -> {micro_batch_size}"
+                )
+            if GRADIENT_ACCUMULATION_STEPS in self._param_dict:
+                logger.warning(
+                    "[Elasticity] overriding gradient_accumulation_steps: "
+                    f"{self._param_dict[GRADIENT_ACCUMULATION_STEPS]} -> {gradient_accu_steps}"
+                )
+
+            logger.info(f"[Elasticity] valid GPU counts: {valid_gpus}")
+
+            self._param_dict[TRAIN_BATCH_SIZE] = final_batch_size
+            self._param_dict[TRAIN_MICRO_BATCH_SIZE_PER_GPU] = micro_batch_size
+            self._param_dict[GRADIENT_ACCUMULATION_STEPS] = gradient_accu_steps
+
+
+    def print_user_config(self):
+        logger.info("  json = {}".format(
+            json.dumps(
+                self._param_dict,
+                sort_keys=True,
+                indent=4,
+                cls=ScientificNotationEncoder,
+                separators=(",",
+                            ":"),
+            )))
+
+    def print(self, name):
+        logger.info("{}:".format(name))
+        for arg in sorted(vars(self)):
+            if arg != "_param_dict":
+                dots = "." * (29 - len(arg))
+                logger.info("  {} {} {}".format(arg, dots, getattr(self, arg)))
+
+        self.print_user_config()
