@@ -86,6 +86,14 @@ class DeepSpeedCheckpoint(object):
             FINAL_LAYER_NORM_INDEX)
         self._build_global_state()
 
+    @property
+    def original_tp_degree(self):
+        return self.zero_checkpoint.get_src_tp_degree()
+    
+    @property
+    def original_pp_degree(self):
+        return self.zero_checkpoint.get_src_pp_degree()
+
     def is_change_tp_degree(self):
         return self.tp_degree != self.zero_checkpoint.get_src_tp_degree()
 
