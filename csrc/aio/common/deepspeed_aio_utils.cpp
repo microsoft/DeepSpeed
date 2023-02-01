@@ -113,7 +113,10 @@ void* ds_page_aligned_alloc(const size_t size, const bool lock)
     auto mlock_ret = mlock(ptr, size);
     if (mlock_ret != 0) {
         auto mlock_error = errno;
-        printf("mlock failed with %d %s\n", mlock_error, strerror(mlock_error));
+        printf("mlock failed to allocate %lu bytes with error no %d, msg %s\n",
+               size,
+               mlock_error,
+               strerror(mlock_error));
 
         free(ptr);
         return nullptr;
