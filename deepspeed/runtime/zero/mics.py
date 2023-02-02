@@ -24,6 +24,7 @@ import collections
 from deepspeed import comm as dist
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.runtime.fp16.loss_scaler import DynamicLossScaler, LossScaler
+from deepspeed.accelerator import get_accelerator
 
 class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
     """
@@ -80,8 +81,8 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
         # - assume all params requires grad
         # - flat by groups, not keeping state. TODO: remove state explicitly?
         # - master grad and unflat master weight never exist. TODO: a way to save out unflat master?
-        if not torch.cuda.is_available:
-            raise SystemError("Cannot use fp16 without CUDA.")
+        if not get_accelerator().is_available():
+            raise SystemError("Cannot use fp16 without accelerator.")
 
         self.optimizer = init_optimizer
 
@@ -128,17 +129,17 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
         self.inf_or_nan_tracker: Tensor = torch.zeros(
             1,
             dtype=torch.bool,
-            device=torch.cuda.current_device(),
+            device=get_accelerator().current_device_name(),
             requires_grad=False)
 
         self.deepspeed_adam_offload = (self.offload_optimizer
                                        and type(init_optimizer) == DeepSpeedCPUAdam)
 
-        self.device = torch.cuda.current_device(
+        self.device = get_accelerator().current_device_name(
         ) if not self.offload_optimizer else OffloadDeviceEnum.cpu
         ### streams used for overlapping computation with communication
-        self.reduce_and_partition_stream = Stream(
-        ) if overlap_comm else torch.cuda.default_stream()
+        self.reduce_and_partition_stream = get_accelerator().Stream(
+        ) if overlap_comm else get_accelerator().default_stream()
 
         ############################################################################
 
@@ -210,11 +211,15 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
         self.sub_group_size = sub_group_size
 
         self.sub_group_to_group_id = {}
-        see_memory_usage("Before creating fp16 partitions", force=False)
-        self._create_fp16_partitions_with_defragmentation()
+
+        # Trainable parameters
+        self.trainable_param_groups = self._get_trainable_parameter_groups()
+
+        see_memory_usage("Before creating fp16 partitions", force=True)
+        self._create_fp16_partitions_with_defragmentation(self.trainable_param_groups)
         num_fp16_subgroups = len(self.fp16_partitioned_groups_flat)
         see_memory_usage(f"After creating fp16 partitions: {num_fp16_subgroups}",
-                         force=False)
+                         force=True)
 
         # Optimizer tensor swapping
         if self.swap_optimizer:
@@ -223,7 +228,7 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
         self.params_in_ipg_bucket = []
         self.is_gradient_accumulation_boundary: bool = True
 
-        self.param_reduce_events: Deque[Event] = collections.deque()
+        self.param_reduce_events: Deque[get_accelerator().Event] = collections.deque()
         # TODO. make this configurable via JSON
         self.max_param_reduce_events: int = 2
 
