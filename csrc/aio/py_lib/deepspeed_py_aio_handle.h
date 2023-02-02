@@ -58,6 +58,7 @@ struct deepspeed_aio_handle_t {
 
     int async_pwrite(const torch::Tensor& buffer, const char* filename);
 
+    // TODO: Make API's args to be shape and dtype.
     torch::Tensor new_cpu_locked_tensor(const size_t num_elem, const torch::Tensor& example_tensor);
 
     bool free_cpu_locked_tensor(torch::Tensor&);
