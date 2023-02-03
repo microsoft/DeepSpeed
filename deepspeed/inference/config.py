@@ -7,6 +7,7 @@ from typing import Dict, Union
 from enum import Enum
 from abc import ABCMeta
 
+
 class DtypeEnum(Enum):
     # The torch dtype must always be the first value (so we return torch.dtype)
     fp16 = torch.float16, "torch.float16", "fp16", "float16", "half"
