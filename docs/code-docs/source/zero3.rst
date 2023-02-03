@@ -309,9 +309,10 @@ in their full form (i.e., un-partitioned).
 .. autofunction:: deepspeed.utils.safe_get_full_optimizer_state
 
 
-These routines can be used to access full parameters in the training as shown in the following snippet.
+These routines can be used in a training loop as shown in the following snippet.
 
 .. code-block:: python
+
     backward(loss)
     [...]
     from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_grad, safe_get_full_optimizer_state
