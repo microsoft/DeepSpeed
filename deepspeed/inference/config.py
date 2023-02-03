@@ -5,7 +5,7 @@ from pydantic import Field
 from pydantic import validator
 from typing import Dict, Union
 from enum import Enum
-
+from abc import ABCMeta
 
 class DtypeEnum(Enum):
     # The torch dtype must always be the first value (so we return torch.dtype)
@@ -230,7 +230,8 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     policy. e.g., `{BertLayer : deepspeed.inference.HFBertLayerPolicy}`
     """
 
-    injection_policy_tuple: tuple = None
+    #injection_policy_tuple: tuple = None
+    injection_policy_tuple: Union[tuple, ABCMeta] = None
     """ TODO: Add docs """
 
     config: Dict = Field(
