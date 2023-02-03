@@ -133,7 +133,7 @@ class ZeROCheckpoint(object):
             return None
 
         base_optimizer_state = optimizer_state.get(BASE_OPTIMIZER_STATE, None)
-        if base_optimizer_state is None:
+        if base_optimizer_state is None or isinstance(base_optimizer_state, list):
             return None
 
         return base_optimizer_state.get(GROUP_STATE_KEY, None)
