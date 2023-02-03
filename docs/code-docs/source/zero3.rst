@@ -311,18 +311,18 @@ in their full form (i.e., un-partitioned).
 
 These routines can be used to access full parameters in the training as shown in the following snippet.
 
-   .. code-block:: python
-        backward(loss)
-        [...]
-        from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_grad, safe_get_full_optimizer_state
-        for n, lp in model.named_parameters():
-           # 1. grad lookup must be called after `backward` and before `step` for z2
-            hp_grad = safe_get_full_grad(lp)
+.. code-block:: python
+    backward(loss)
+    [...]
+    from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_grad, safe_get_full_optimizer_state
+    for n, lp in model.named_parameters():
+        # 1. grad lookup must be called after `backward` and before `step` for z2
+        hp_grad = safe_get_full_grad(lp)
 
-            # 2. fp32 and optim states can probably be called anywhere in the training loop, but will be updated after `step`
-            hp = safe_get_full_fp32_param(lp)
-            exp_avg = safe_get_full_optimizer_state(lp, "exp_avg")
-            exp_avg_sq = safe_get_full_optimizer_state(lp, "exp_avg_sq")
+        # 2. fp32 and optim states can probably be called anywhere in the training loop, but will be updated after `step`
+        hp = safe_get_full_fp32_param(lp)
+        exp_avg = safe_get_full_optimizer_state(lp, "exp_avg")
+        exp_avg_sq = safe_get_full_optimizer_state(lp, "exp_avg_sq")
 
-        [...]
-       optimizer.step()
+    [...]
+    optimizer.step()

@@ -93,6 +93,11 @@ def get_full_hp_grad(self):
 
 
 def safe_get_full_fp32_param(param):
+    """Assemble and return the fp32 parameter of a low-precision (e.g., fp16) parameter.
+
+        Args:
+            param (``torch.nn.Parameter``): The low-precision parameter
+    """
     # ZeRO stage 3 param
     if hasattr(param, 'ds_id'):
         return param._z3_optimizer.get_full_hp_param(param)
@@ -104,6 +109,11 @@ def safe_get_full_fp32_param(param):
 
 
 def safe_get_full_optimizer_state(param, optim_state_key):
+    """Assemble and return the fp32 optimizer state of a low-precision (e.g., fp16) parameter.
+
+        Args:
+            param (``torch.nn.Parameter``): The low-precision parameter
+    """
     # ZeRO stage 3 param
     if hasattr(param, 'ds_id'):
         return param._z3_optimizer.get_full_hp_param(param, optim_state_key)
@@ -116,6 +126,11 @@ def safe_get_full_optimizer_state(param, optim_state_key):
 
 # TODO: Figure out the correct return dtype
 def safe_get_full_grad(param):
+    """Assemble and return the fp32 gradient of a low-precision (e.g., fp16) parameter.
+
+        Args:
+            param (``torch.nn.Parameter``): The low-precision parameter
+    """
     if param.grad is not None:
         return param.grad
 
