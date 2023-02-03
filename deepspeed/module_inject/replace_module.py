@@ -531,7 +531,7 @@ def replace_transformer_layer(orig_layer_impl,
     rank = dist.get_rank() if dist.is_initialized() else 0
     if checkpoint_dict is not None:
         assert container_g.ckpt_load_enabled, \
-               f"Checkpoint loading not supported in {container_g.__class__.__name__} container"
+               f"Meta Tensor checkpoint loading not supported in {container_g.__class__.__name__} container"
         start_time = time.time()
         checkpoint = checkpoint_dict['checkpoints']
         ckpt_list = checkpoint["tp"] if type(checkpoint) is dict else checkpoint
