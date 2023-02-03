@@ -51,8 +51,9 @@ class AutoTP():
     def update_policy_list(policy_list, new_module, new_gems):
         if len(policy_list):
             for i, policy in enumerate(policy_list):
-                # if module already exists in policy, update gems to longer list
-                if policy[0] == type(new_module) and len(new_gems) > len(policy[1]):
+                # if module already exists in policy, combine gems and remove duplicates
+                if policy[0] == type(new_module):
+                    new_gems = set(new_gems + policy[1])
                     policy_list[i] = tuple([type(new_module), new_gems])
                     return policy_list
         policy_list.append(tuple([type(new_module), new_gems]))
