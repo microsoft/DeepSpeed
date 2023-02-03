@@ -293,3 +293,36 @@ parallelism to fit them in limited GPU memory.
 
 .. autoclass:: deepspeed.zero.TiledLinear
     :members:
+
+
+Debugging
+---------
+
+Debugging ZeRO training is complicated by the partitioning of parameters, gradients, and optimizer states.
+To simplify debugging, DeepSpeed provides the following routines for accessing individual model states
+in their full form (i.e., un-partitioned).
+
+.. autofunction:: deepspeed.utils.safe_get_full_fp32_param
+
+.. autofunction:: deepspeed.utils.safe_get_full_grad
+
+.. autofunction:: deepspeed.utils.safe_get_full_optimizer_state
+
+
+These routines can be used to access full parameters in the training as shown in the following snippet.
+
+   .. code-block:: python
+        backward(loss)
+        [...]
+        from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_grad, safe_get_full_optimizer_state
+        for n, lp in model.named_parameters():
+           # 1. grad lookup must be called after `backward` and before `step` for z2
+            hp_grad = safe_get_full_grad(lp)
+
+            # 2. fp32 and optim states can probably be called anywhere in the training loop, but will be updated after `step`
+            hp = safe_get_full_fp32_param(lp)
+            exp_avg = safe_get_full_optimizer_state(lp, "exp_avg")
+            exp_avg_sq = safe_get_full_optimizer_state(lp, "exp_avg_sq")
+
+        [...]
+       optimizer.step()
