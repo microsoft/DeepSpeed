@@ -318,7 +318,7 @@ These routines can be used in a training loop as shown in the following snippet.
     [...]
     from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_grad, safe_get_full_optimizer_state
     for n, lp in model.named_parameters():
-        # 1. grad lookup must be called after `backward` and before `step` for z2
+        # 1. grad lookup must be called after `backward` and before `step` for zero2
         hp_grad = safe_get_full_grad(lp)
 
         # 2. fp32 and optim states can probably be called anywhere in the training loop, but will be updated after `step`
