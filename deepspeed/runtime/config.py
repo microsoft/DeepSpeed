@@ -25,7 +25,7 @@ from .config_utils import (
 from .zero.config import get_zero_config, ZeroStageEnum
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
 from ..comm.config import DeepSpeedCommsConfig
-from ..monitor.config import DeepSpeedMonitorConfig
+from ..monitor.config import get_monitor_config
 
 from deepspeed import comm as dist
 
@@ -56,6 +56,9 @@ from ..compression.config import get_compression_config, get_quantize_enabled
 from ..compression.constants import *
 from .swap_tensor.aio_config import get_aio_config
 
+from .data_pipeline.config import get_data_efficiency_enabled, get_data_efficiency_config, get_curriculum_enabled_legacy, get_curriculum_params_legacy
+from .data_pipeline.constants import *
+
 TENSOR_CORE_ALIGN_SIZE = 8
 
 ADAGRAD_OPTIMIZER = 'adagrad'
@@ -85,24 +88,6 @@ ADAM_W_MODE_DEFAULT = True
 
 class DeepSpeedConfigError(Exception):
     pass
-
-
-def get_curriculum_enabled(param_dict):
-    if CURRICULUM_LEARNING in param_dict.keys():
-        return get_scalar_param(param_dict[CURRICULUM_LEARNING],
-                                CURRICULUM_ENABLED,
-                                CURRICULUM_ENABLED_DEFAULT)
-    else:
-        return False
-
-
-def get_curriculum_params(param_dict):
-    if CURRICULUM_LEARNING in param_dict.keys():
-        curriculum_params = copy.copy(param_dict[CURRICULUM_LEARNING])
-        curriculum_params.pop(CURRICULUM_ENABLED)
-        return curriculum_params
-    else:
-        return False
 
 
 def get_pld_enabled(param_dict):
@@ -844,7 +829,7 @@ class DeepSpeedConfig(object):
             param_dict)
 
         self.comms_config = DeepSpeedCommsConfig(param_dict)
-        self.monitor_config = DeepSpeedMonitorConfig(param_dict)
+        self.monitor_config = get_monitor_config(param_dict)
 
         self.gradient_clipping = get_gradient_clipping(param_dict)
         self.fp16_enabled = get_fp16_enabled(param_dict)
@@ -898,8 +883,11 @@ class DeepSpeedConfig(object):
         self.pld_enabled = get_pld_enabled(param_dict)
         self.pld_params = get_pld_params(param_dict)
 
-        self.curriculum_enabled = get_curriculum_enabled(param_dict)
-        self.curriculum_params = get_curriculum_params(param_dict)
+        self.curriculum_enabled_legacy = get_curriculum_enabled_legacy(param_dict)
+        self.curriculum_params_legacy = get_curriculum_params_legacy(param_dict)
+
+        self.data_efficiency_enabled = get_data_efficiency_enabled(param_dict)
+        self.data_efficiency_config = get_data_efficiency_config(param_dict)
 
         checkpoint_params = get_checkpoint_params(param_dict)
         validation_mode = get_checkpoint_tag_validation_mode(checkpoint_params)
