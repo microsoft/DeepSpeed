@@ -299,8 +299,9 @@ Debugging
 ---------
 
 Debugging ZeRO training is complicated by the partitioning of parameters, gradients, and optimizer states.
-To simplify debugging, DeepSpeed provides the following routines for accessing individual model states
-in their full form (i.e., un-partitioned).
+None of these 3 groups of parameters can be normally accessed because of that. To overcome that DeepSpeed provides the following utilities for accessing individual model states in their unpartitioned form.
+
+Please note that these utilities must be called by all processes, even if you decide to do something with the result only in the main process. If all processes don't participate these utilities will hang waiting for all processes to send their contribution.
 
 .. autofunction:: deepspeed.utils.safe_get_full_fp32_param
 
