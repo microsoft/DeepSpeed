@@ -12,10 +12,6 @@ runs:
       shell: bash
     - id: create-venv
       run: |
-        sudo apt-get update && sudo apt-get -y upgrade
-        sudo apt-get install -y libaio-dev
-        pip install --upgrade pip
-        python -m pip install -U virtualenv
         python -m venv unit-test-venv
         source ./unit-test-venv/bin/activate
         pip install --upgrade pip
