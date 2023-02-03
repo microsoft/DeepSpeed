@@ -11,6 +11,7 @@ from deepspeed.ops.transformer.inference.ds_mlp import DeepSpeedMLP
 from deepspeed.ops.transformer.inference.ds_attention import DeepSpeedSelfAttention, BloomSelfAttention
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
+
 inference_cuda_module = None
 
 
@@ -89,7 +90,6 @@ class DeepSpeedTransformerInference(nn.Module):
         self.layer_past = None
         self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if (not config.fp16) else \
                                 inference_cuda_module.allocate_workspace_fp16
-
 
     def forward(
             self,
