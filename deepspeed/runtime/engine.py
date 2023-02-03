@@ -1904,7 +1904,6 @@ class DeepSpeedEngine(Module):
         self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary(
         )
 
-        # ZeRO stage 2 communicates during non gradient accumulation boundaries as well
         if self.zero_optimization_partition_gradients():
             self.optimizer.overlapping_partition_gradients_reduce_epilogue()
 
