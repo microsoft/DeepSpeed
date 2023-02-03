@@ -319,7 +319,7 @@ These routines can be used in a training loop as shown in the following snippet.
     from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_grad, safe_get_full_optimizer_state
     for n, lp in model.named_parameters():
         # 1. gradient lookup
-        # For zero2, gradient lookup must be called after `backward` and before `step`
+        # For zero1 and zero2, gradient lookup must be called after `backward` and before `step`
         # For zero3, gradient lookup must be called after `backward`
         hp_grad = safe_get_full_grad(lp)
 
