@@ -41,7 +41,8 @@ class AutoTP():
         for key, submodule in module._modules.items():
             if isinstance(submodule, nn.Linear):
                 layer_list = layer_list + [parent + "." + key]
-            elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm':
+            elif isinstance(submodule,
+                            nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm':
                 layer_list = layer_list + ["ln"]
             else:
                 layer_list = layer_list + AutoTP.get_layers(key, submodule)
@@ -69,7 +70,9 @@ class AutoTP():
             for key, submodule in module._modules.items():
                 if isinstance(submodule, nn.Linear):
                     layer_list = layer_list + ["." + key]
-                elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm':
+                elif isinstance(
+                        submodule,
+                        nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm':
                     layer_list = layer_list + ["ln"]
                 else:
                     layer_list = layer_list + AutoTP.get_layers(key, submodule)
@@ -82,7 +85,5 @@ class AutoTP():
             layer_list = []
             if gem_list != []:
                 policy_list = AutoTP.update_policy_list(policy_list, module, gem_list)
-                #policy_list.append(tuple([type(module), gem_list]))
                 gem_list = []
-        #policy_list = AutoTP.consolidate_policy(policy_list)
         return policy_list
