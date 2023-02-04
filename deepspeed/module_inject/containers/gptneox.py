@@ -16,7 +16,7 @@ class DS_GPTNEOXContainer(MetaTensorContainer,
         # All model specific things should be defined here instead of the base class.
 
     def create_module(self, config=None):
-        _config = config if config is not None else self.config
+        _config = config if config is not None else self.ds_model_config
         self.module = DeepSpeedGPTInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
 
@@ -32,7 +32,7 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
     version = 0
 
     def __init__(self, client_module, inference=True, megatron_v2=True, split_qkv=False):
-        super().__init__(inference, megatron_v2=megatron_v2)
+        super().__init__(inference, megatron_v2=megatron_v2, split_qkv=split_qkv)
         self.client_module = client_module
         if GPTNEOXLayerPolicy._orig_layer_class is None:
             if pkg_version.parse(torch.__version__) <= pkg_version.parse("1.2"):
