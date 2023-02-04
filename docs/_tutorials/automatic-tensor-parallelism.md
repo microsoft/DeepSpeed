@@ -23,7 +23,7 @@ pipe.model = deepspeed.init_inference(
 output = pipe('Input String')
 ```
 
-With automatic tensor parallelism, we do not need to provide the injection policy and can use replace method set to empty string "" instead. This will inject a policy for us from DeepSpeed's [policies list](https://github.com/microsoft/DeepSpeed/blob/818d143a669d510d4ff61c964cecba720e36e940/deepspeed/module_inject/parser_policies.py) of currently supported HuggingFace models. 
+With automatic tensor parallelism, we do not need to provide the injection policy and can use replace method set to empty string "" instead. This will inject a policy for us from DeepSpeed's [policies list](https://github.com/microsoft/DeepSpeed/blob/818d143a669d510d4ff61c964cecba720e36e940/deepspeed/module_inject/parser_policies.py) of currently supported HuggingFace models.
 
 ```python
 # create the model
@@ -43,7 +43,7 @@ output = pipe('Input String')
 
 ## Example Script
 
-We can observe performance improvement using automatic tensor parallism using the [inference test suite](https://github.com/microsoft/DeepSpeedExamples/blob/master/inference/huggingface/text-generation/inference-test.py). The script includes per token latency, bandwidth, throughput and memory checks for comparison. 
+We can observe performance improvement using automatic tensor parallism using the [inference test suite](https://github.com/microsoft/DeepSpeedExamples/blob/master/inference/huggingface/text-generation/inference-test.py). The script includes per token latency, bandwidth, throughput and memory checks for comparison.
 
 
 ## Launching
@@ -63,11 +63,18 @@ deepspeed --num_gpus <num_gpus> DeepSpeedExamples/inference/huggingface/text-gen
 
 ## OPT 13B Inference Performance Comparison
 
-The following results were collected using V100 SXM2 GPUs.
+The following results were collected using V100 SXM2 32GB GPUs.
 
-```
-            Memory Allocated per GPU    Max Batch Size    Max Throughput per GPU
-No TP       23.94 GB                    64                18.84 TFlops          
-2 GPU TP    12.23 GB                    320               27.17 TFlops          
-4 GPU TP    6.36 GB                     664               27.63 TFlops          
-```
+### Max New Tokens = 50
+| | Memory Allocated per GPU | Max Batch Size | Max Throughput per GPU |
+|---|---|---|---|
+| No TP    | 23.94 GB | 64  | 18.84 TFlops |
+| 2 GPU TP | 12.23 GB | 320 | 27.17 TFlops |
+| 4 GPU TP | 6.36 GB  | 664 | 27.63 TFlops |
+
+### Max New Tokens = 1024
+| | Memory Allocated per GPU | Max Batch Size | Max Throughput per GPU |
+|---|---|---|---|
+| No TP    | 23.94 GB | 2  | 1.65 TFlops |
+| 2 GPU TP | 12.23 GB | 20 | 4.61 TFlops |
+| 4 GPU TP | 6.36 GB  | 56 | 4.90 TFlops |
