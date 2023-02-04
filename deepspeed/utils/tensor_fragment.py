@@ -131,9 +131,6 @@ def safe_get_full_grad(param):
         Args:
             param (``torch.nn.Parameter``): The low-precision parameter
     """
-    if param.grad is not None:
-        return param.grad
-
     # ZeRO stage 3 param
     if hasattr(param, 'ds_id'):
         return param._z3_optimizer.get_fp32_grad_for_param(param)
@@ -141,6 +138,10 @@ def safe_get_full_grad(param):
     # ZeRO stage 1, 2, and bf16_optimizer params
     if hasattr(param, '_hp_mapping'):
         return param.get_full_hp_grad()
+
+    if param.grad is not None:
+        return param.grad
+
     return None
 
 
