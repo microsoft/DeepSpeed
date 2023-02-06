@@ -14,7 +14,7 @@ class DS_OPTContainer(MetaTensorContainer, BaseTransformerContainer):
         # All model specific things should be defined here instead of the base class.
 
     def create_module(self, config=None):
-        _config = config if config is not None else self.config
+        _config = config if config is not None else self.ds_model_config
         self.module = DeepSpeedOPTInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
         return self.module
@@ -27,7 +27,8 @@ class HFOPTLayerPolicy(TransformerPolicy):
         super().__init__(inference,
                          linear_layer=True,
                          mlp_act_func_type=ActivationFuncType.ReLU,
-                         pre_attn_norm=True)
+                         pre_attn_norm=True,
+                         use_load_prefix=use_load_prefix)
         self.client_module = client_module
 
         try:

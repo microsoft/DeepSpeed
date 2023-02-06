@@ -14,7 +14,7 @@ class DS_BloomContainer(MetaTensorContainer, BaseTransformerContainer):
         self.bigscience_bloom = True
 
     def create_module(self, config=None):
-        _config = config if config is not None else self.config
+        _config = config if config is not None else self.ds_model_config
 
         self.module = DeepSpeedBloomInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
@@ -37,7 +37,10 @@ class BLOOMLayerPolicy(TransformerPolicy):
                  inference=True,
                  use_load_prefix=True,
                  split_qkv=False):
-        super().__init__(inference, linear_layer=True)
+        super().__init__(inference,
+                         linear_layer=True,
+                         use_load_prefix=use_load_prefix,
+                         split_qkv=split_qkv)
         self.client_module = client_module
         try:
             import transformers
