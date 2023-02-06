@@ -9,6 +9,7 @@ import deepspeed.ops.transformer as transformer_inference
 from .layers import LinearLayer, Normalize, EmbeddingLayer, OPTEmbedding
 import torch
 import gc
+from deepspeed.accelerator import get_accelerator
 
 
 def load_model_with_checkpoint(r_module,
@@ -48,11 +49,12 @@ def load_model_with_checkpoint(r_module,
                         if type(sd[0][prefix + n]) is list:
                             tmp_data, scale = sd[0][prefix + n]
                             tmp_data = tmp_data
-                            scale = scale.to(torch.cuda.current_device())
+                            scale = scale.to(get_accelerator().current_device_name())
                             # set the quantizer number of groups using the checkpoint scale shape
                             weight_quantizer.num_groups = scale.shape[0]
                         else:
-                            tmp_data = sd[0][prefix + n].to(torch.cuda.current_device())
+                            tmp_data = sd[0][prefix + n].to(
+                                get_accelerator().current_device_name())
                             scale = None
                         src_shape = tmp_data.shape
                         dst_shape = p.shape
@@ -78,7 +80,8 @@ def load_model_with_checkpoint(r_module,
                                     weight_partition = torch.split(
                                         tmp_data,
                                         dst_shape[dim1],
-                                        dim=dim)[rank].to(torch.cuda.current_device())
+                                        dim=dim)[rank].to(
+                                            get_accelerator().current_device_name())
                                     assert tmp_data.dtype != torch.int8 or scale.numel() > weight_quantizer.num_groups * (rank+1), \
                                         '''ERROR: We require the quantization scales for larger TP-size when loading INT8 checkpoint!\
                                            Please use the FP16 checkpoint to generate INT8 checkpoint with the sharding parameters!'''
@@ -94,7 +97,8 @@ def load_model_with_checkpoint(r_module,
                                     all_data = [
                                         sd[j][prefix +
                                               n] if type(sd[j][prefix + n]) is list else
-                                        sd[j][prefix + n].to(torch.cuda.current_device())
+                                        sd[j][prefix + n].to(
+                                            get_accelerator().current_device_name())
                                         for j in range(len(sd))
                                     ]
                                     # Check if the weight tensor is for the QKV parameter
@@ -116,14 +120,16 @@ def load_model_with_checkpoint(r_module,
                                                                      dim=dim)
                                     else:
                                         weight_partition = torch.cat([
-                                            ad[0].to(torch.cuda.current_device())
+                                            ad[0].to(
+                                                get_accelerator().current_device_name())
                                             if type(ad) is list else ad
                                             for ad in all_data
                                         ],
                                                                      dim=dim)
                                     if tmp_data.dtype == torch.int8:
                                         scale = torch.cat([
-                                            ad[1].to(torch.cuda.current_device())
+                                            ad[1].to(
+                                                get_accelerator().current_device_name())
                                             for ad in all_data
                                         ],
                                                           dim=dim)
@@ -146,8 +152,8 @@ def load_model_with_checkpoint(r_module,
                                 if src_shape[0] > dst_shape[0]:
                                     bias_split = torch.split(
                                         tmp_data,
-                                        dst_shape[-1])[rank].to(
-                                            torch.cuda.current_device()).contiguous()
+                                        dst_shape[-1])[rank].to(get_accelerator(
+                                        ).current_device_name()).contiguous()
                                     p.data.copy_(bias_split)
                                 else:
                                     # Check if the weight tensor is for the QKV parameter
@@ -161,21 +167,25 @@ def load_model_with_checkpoint(r_module,
                                         ]
 
                                         p.data.copy_(
-                                            torch.cat([
-                                                torch.cat(
-                                                    [qkv_s[i] for qkv_s in src_split],
-                                                    axis=0)
-                                                for i in range(len(src_split[0]))
-                                            ],
-                                                      dim=0).
-                                            to(torch.cuda.current_device()).contiguous())
+                                            torch.cat(
+                                                [
+                                                    torch.cat([
+                                                        qkv_s[i] for qkv_s in src_split
+                                                    ],
+                                                              axis=0)
+                                                    for i in range(len(src_split[0]))
+                                                ],
+                                                dim=0).to(get_accelerator(
+                                                ).current_device_name()).contiguous())
                                     else:
                                         p.data.copy_(
-                                            torch.cat([
-                                                sd[j][prefix + n] for j in range(len(sd))
-                                            ],
-                                                      dim=0).
-                                            to(torch.cuda.current_device()).contiguous())
+                                            torch.cat(
+                                                [
+                                                    sd[j][prefix + n]
+                                                    for j in range(len(sd))
+                                                ],
+                                                dim=0).to(get_accelerator(
+                                                ).current_device_name()).contiguous())
 
             load_parameters(module, prefix)
             for n, child in module.named_children():
