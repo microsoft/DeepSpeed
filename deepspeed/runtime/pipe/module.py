@@ -14,6 +14,7 @@ from .. import utils as ds_utils
 from ..activation_checkpointing import checkpointing
 from .topology import PipeDataParallelTopology, PipelineParallelGrid
 from deepspeed.runtime.state_dict_factory import SDLoaderFactory
+from deepspeed.accelerator import get_accelerator
 
 
 class PipelineError(Exception):
@@ -83,6 +84,40 @@ class TiedLayerSpec(LayerSpec):
 
 
 class PipelineModule(nn.Module):
+    """Modules to be parallelized with pipeline parallelism.
+
+    The key constraint that enables pipeline parallelism is the
+    representation of the forward pass as a sequence of layers
+    and the enforcement of a simple interface between them. The
+    forward pass is implicitly defined by the module ``layers``. The key
+    assumption is that the output of each layer can be directly fed as
+    input to the next, like a ``torch.nn.Sequence``. The forward pass is
+    implicitly:
+
+    .. code-block:: python
+
+        def forward(self, inputs):
+            x = inputs
+            for layer in self.layers:
+                x = layer(x)
+            return x
+
+    .. note::
+        Pipeline parallelism is not compatible with ZeRO-2 and ZeRO-3.
+
+    Args:
+        layers (Iterable): A sequence of layers defining pipeline structure. Can be a ``torch.nn.Sequential`` module.
+        num_stages (int, optional): The degree of pipeline parallelism. If not specified, ``topology`` must be provided.
+        topology (``deepspeed.runtime.pipe.ProcessTopology``, optional): Defines the axes of parallelism axes for training. Must be provided if ``num_stages`` is ``None``.
+        loss_fn (callable, optional): Loss is computed ``loss = loss_fn(outputs, label)``
+        seed_layers(bool, optional): Use a different seed for each layer. Defaults to False.
+        seed_fn(type, optional): The custom seed generating function. Defaults to random seed generator.
+        base_seed (int, optional): The starting seed. Defaults to 1234.
+        partition_method (str, optional): The method upon which the layers are partitioned. Defaults to 'parameters'.
+        activation_checkpoint_interval (int, optional): The granularity activation checkpointing in terms of number of layers. 0 disables activation checkpointing.
+        activation_checkpoint_func (callable, optional): The function to use for activation checkpointing. Defaults to ``deepspeed.checkpointing.checkpoint``.
+        checkpointable_layers(list, optional): Checkpointable layers may not be checkpointed. Defaults to None which does not additional filtering.
+    """
     def __init__(self,
                  layers,
                  num_stages=None,
@@ -95,37 +130,6 @@ class PipelineModule(nn.Module):
                  activation_checkpoint_interval=0,
                  activation_checkpoint_func=checkpointing.checkpoint,
                  checkpointable_layers=None):
-        """Modules to be parallelized with pipeline parallelism.
-
-        The key constraint that enables pipeline parallelism is the
-        representation of the forward pass as a sequence of layers
-        and the enforcement of a simple interface between them. The
-        forward pass is implicitly defined by the module ``layers``. The key
-        assumption is that the output of each layer can be directly fed as
-        input to the next, like a ``torch.nn.Sequence``. The forward pass is
-        implicitly:
-
-        .. code-block:: python
-
-            def forward(self, inputs):
-                x = inputs
-                for layer in self.layers:
-                    x = layer(x)
-                return x
-
-        .. note::
-            Pipeline parallelism is not compatible with ZeRO-2 and ZeRO-3.
-
-        Args:
-            layers (Iterable): A sequence of layers defining pipeline structure. Can be a ``torch.nn.Sequential`` module.
-            num_stages (int, optional): The degree of pipeline parallelism. If not specified, ``topology`` must be provided.
-            topology (``deepspeed.runtime.pipe.ProcessTopology``, optional): Defines the axes of parallelism axes for training. Must be provided if ``num_stages`` is ``None``.
-            loss_fn (callable, optional): Loss is computed ``loss = loss_fn(outputs, label)``
-            base_seed (int, optional): [description]. Defaults to 1234.
-            partition_method (str, optional): [description]. Defaults to 'parameters'.
-            activation_checkpoint_interval (int, optional): The granularity activation checkpointing in terms of number of layers. 0 disables activation checkpointing.
-            activation_checkpoint_func (callable, optional): The function to use for activation checkpointing. Defaults to ``deepspeed.checkpointing.checkpoint``.
-        """
 
         super().__init__()
 
@@ -192,12 +196,12 @@ class PipelineModule(nn.Module):
         self.tied_weight_attrs = {}
 
         # Offset the random seed by the stage ID.
-        #newseed = torch.cuda.initial_seed() + self._grid.get_stage_id()
+        #newseed = get_accelerator().initial_seed() + self._grid.get_stage_id()
         #ds_utils.set_random_seed(newseed)
 
-        #with torch.random.fork_rng(devices=[torch.cuda.current_device()]):
+        #with torch.random.fork_rng(devices=[get_accelerator().current_device_name()]):
         self._build()
-        self.to(f'cuda:{self.local_rank}')
+        self.to(get_accelerator().device_name(self.local_rank))
 
         self.tied_comms = self._index_tied_modules()
         self._synchronize_tied_weights()

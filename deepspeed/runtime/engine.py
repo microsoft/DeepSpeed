@@ -7,7 +7,7 @@ import re
 import stat
 import torch
 import hashlib
-from collections import defaultdict, OrderedDict
+from collections import defaultdict, OrderedDict, deque
 from shutil import copyfile
 
 from torch.nn.modules import Module
@@ -38,7 +38,8 @@ from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    PLD_THETA, PLD_GAMMA, BFLOAT16, FP16, AMP
+    PLD_THETA, PLD_GAMMA, BFLOAT16, FP16, AMP, GRADIENT_ACCUMULATION_STEPS, \
+    DATA_PARALLEL_GROUP, GLOBAL_RANK
 from deepspeed.runtime.zero.config import ZeroStageEnum
 from deepspeed.compression import compression_scheduler
 from deepspeed.compression.constants import \
@@ -64,12 +65,21 @@ from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.utils import clip_grad_norm_
 from deepspeed.runtime.eigenvalue import Eigenvalue
+from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING, \
+    DATA_ROUTING, DATA_SAMPLING_ENABLED, CURRICULUM_LEARNING, \
+    CURRICULUM_LEARNING_ENABLED, DATA_SAMPLING_NUM_WORKERS, RANDOM_LTD, \
+    RANDOM_LTD_ENABLED, RANDOM_LTD_LAYER_ID, RANDOM_LTD_LAYER_NUM, \
+    RANDOM_LTD_LAYER_TOKEN_LR_SCHEDULE, RANDOM_LTD_LAYER_TOKEN_LR_ENABLED, \
+    RANDOM_LTD_GLOBAL_BATCH_SIZE, RANDOM_LTD_MICRO_BATCH_SIZE, DATA_EFFICIENCY
 from deepspeed.runtime.data_pipeline.curriculum_scheduler import CurriculumScheduler
+from deepspeed.runtime.data_pipeline.data_routing.scheduler import RandomLTDScheduler
+from deepspeed.runtime.data_pipeline.data_routing.helper import remove_random_ltd_state_dict
+from deepspeed.runtime.data_pipeline.data_routing.basic_layer import RandomLayerTokenDrop
+
 from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 
 from .pipe.module import PipelineModule
 from .utils import ensure_directory_exists, get_ma_status
-from ..ops.op_builder import UtilsBuilder
 from ..ops.adam import FusedAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE
@@ -77,7 +87,10 @@ from ..moe.utils import is_moe_param
 from ..git_version_info import version
 
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
-from deepspeed.utils.logging import print_json_dist
+from deepspeed.utils.logging import print_json_dist, print_configuration
+
+from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder import UtilsBuilder
 
 from deepspeed.inference.config import DtypeEnum
 
@@ -101,11 +114,12 @@ except ImportError:
 
 
 def split_half_float_double_sparse(tensors):
+    device_type = get_accelerator().device_name()
     supported_types = [
-        "torch.cuda.HalfTensor",
-        "torch.cuda.FloatTensor",
-        "torch.cuda.DoubleTensor",
-        "torch.cuda.BFloat16Tensor",
+        "torch.{}.HalfTensor".format(device_type),
+        "torch.{}.FloatTensor".format(device_type),
+        "torch.{}.DoubleTensor".format(device_type),
+        "torch.{}.BFloat16Tensor".format(device_type),
         SparseTensor.type()
     ]
 
@@ -118,13 +132,6 @@ def split_half_float_double_sparse(tensors):
         if bucket:
             buckets.append((dtype, bucket))
     return buckets
-
-
-def print_configuration(args, name):
-    logger.info("{}:".format(name))
-    for arg in sorted(vars(args)):
-        dots = "." * (29 - len(arg))
-        logger.info("  {} {} {}".format(arg, dots, getattr(args, arg)))
 
 
 FORWARD_MICRO_TIMER = 'forward_microstep'
@@ -218,7 +225,7 @@ class DeepSpeedEngine(Module):
         self.eigenvalue = None
         self.block_eigenvalue = None
         self.gas_boundary_ctr = 0
-        self.dist_backend = "nccl"
+        self.dist_backend = get_accelerator().communication_backend_name()
         self.has_moe_layers = False
         self.num_experts = []
         self.gate_modules = []
@@ -297,8 +304,7 @@ class DeepSpeedEngine(Module):
         self.timers = SynchronizedWallClockTimer()
         # Throughput timer
         self.tput_timer = ThroughputTimer(
-            batch_size=self.train_micro_batch_size_per_gpu(),
-            num_workers=self.dp_world_size,
+            batch_size=self.train_batch_size(),
             steps_per_output=self.steps_per_print(),
             monitor_memory=False,
         )
@@ -358,8 +364,17 @@ class DeepSpeedEngine(Module):
         if self.pld_enabled():
             self.progressive_layer_drop = self._configure_progressive_layer_drop()
 
-        if self.curriculum_enabled():
-            self.curriculum_scheduler = self._configure_curriculum_scheduler()
+        if self.curriculum_enabled_legacy():
+            self.curriculum_scheduler_legacy = self._configure_curriculum_scheduler_legacy(
+            )
+
+        if self.random_ltd_enabled():
+            random_ltd_config = self.random_ltd_config()
+            random_ltd_config[RANDOM_LTD_GLOBAL_BATCH_SIZE] = self.train_batch_size()
+            random_ltd_config[
+                RANDOM_LTD_MICRO_BATCH_SIZE] = self.train_micro_batch_size_per_gpu()
+            self.random_ltd_scheduler = self._configure_random_ltd_scheduler(
+                random_ltd_config)
 
         # Engine timers
 
@@ -443,6 +458,15 @@ class DeepSpeedEngine(Module):
         self._config.train_batch_size = train_batch_size
         self._config.gradient_accumulation_steps = new_gas
 
+    def set_data_post_process_func(self, post_process_func):
+        if self.training_dataloader is not None:
+            self.training_dataloader.post_process_func = post_process_func
+
+    def set_custom_curriculum_learning_schedule(self, schedule_func_dict):
+        if self.training_dataloader is not None and self.curriculum_learning_enabled():
+            self.training_dataloader.data_sampler.set_custom_curriculum_learning_schedule(
+                schedule_func_dict)
+
     def get_global_grad_norm(self) -> float:
         """Return the 2-norm of all gradients. If there is model parallelism,
         the norm will be global.
@@ -524,11 +548,64 @@ class DeepSpeedEngine(Module):
     def eigenvalue_layer_num(self):
         return self._config.eigenvalue_layer_num
 
-    def curriculum_enabled(self):
-        return self._config.curriculum_enabled
+    def curriculum_enabled_legacy(self):
+        return self._config.curriculum_enabled_legacy
 
-    def curriculum_params(self):
-        return self._config.curriculum_params
+    def curriculum_params_legacy(self):
+        return self._config.curriculum_params_legacy
+
+    def data_efficiency_enabled(self):
+        return self._config.data_efficiency_enabled
+
+    def data_efficiency_config(self):
+        return self._config.data_efficiency_config
+
+    def data_sampling_enabled(self):
+        return self._config.data_efficiency_config[DATA_SAMPLING][DATA_SAMPLING_ENABLED]
+
+    def data_sampling_config(self):
+        return self._config.data_efficiency_config[DATA_SAMPLING]
+
+    def curriculum_learning_enabled(self):
+        return self._config.data_efficiency_config[DATA_SAMPLING][CURRICULUM_LEARNING][
+            CURRICULUM_LEARNING_ENABLED]
+
+    def curriculum_learning_config(self):
+        return self._config.data_efficiency_config[DATA_SAMPLING][CURRICULUM_LEARNING]
+
+    def random_ltd_enabled(self):
+        return self._config.data_efficiency_config[DATA_ROUTING][RANDOM_LTD][
+            RANDOM_LTD_ENABLED]
+
+    def random_ltd_config(self):
+        return self._config.data_efficiency_config[DATA_ROUTING][RANDOM_LTD]
+
+    def random_ltd_initialize(self):
+        assert self.random_ltd_enabled()
+        random_ltd_config = self.random_ltd_config()
+        random_ltd_queue = deque(
+            [x for x in sorted(random_ltd_config[RANDOM_LTD_LAYER_ID])])
+        count = 0
+        for name, layer in self.module.named_modules():
+            if isinstance(layer, RandomLayerTokenDrop):
+                if len(random_ltd_queue) != 0 and str(
+                        random_ltd_queue[0]) in name:  ###[1,2,3]
+                    layer.init_config(random_ltd_config,
+                                      self.random_ltd_scheduler,
+                                      count)
+                    random_ltd_queue.popleft()
+                    count += 1
+
+        if random_ltd_config[RANDOM_LTD_LAYER_NUM] != count:
+            raise ValueError(
+                f'random_ltd_layer_num {random_ltd_config[RANDOM_LTD_LAYER_NUM]} must be \
+                equivalent to the len of random_ltd_layer_id {count}')
+
+        if random_ltd_config[RANDOM_LTD_LAYER_TOKEN_LR_SCHEDULE][
+                RANDOM_LTD_LAYER_TOKEN_LR_ENABLED]:
+            assert self.client_lr_scheduler is None
+            raise ValueError(f'not yet support')
+            #self.lr_scheduler = lr_schedules.WarmupLayerTokenDecayLR(self.optimizer, self.random_ltd_scheduler)
 
     def wall_clock_breakdown(self):
         return self._config.wall_clock_breakdown
@@ -807,7 +884,7 @@ class DeepSpeedEngine(Module):
             model_dtype = torch.bfloat16
 
         if self._config.grad_accum_dtype == None:
-            if model_dtype == torch.bfloat16:
+            if model_dtype == torch.bfloat16 and not self.zero_optimization():
                 grad_accum_dtype = torch.float32
             else:
                 grad_accum_dtype = model_dtype
@@ -892,14 +969,14 @@ class DeepSpeedEngine(Module):
             args,
             'device_rank') else self.local_rank
         if device_rank >= 0:
-            torch.cuda.set_device(device_rank)
-            self.device = torch.device("cuda", device_rank)
+            get_accelerator().set_device(device_rank)
+            self.device = torch.device(get_accelerator().device_name(), device_rank)
             self.world_size = dist.get_world_size()
             self.global_rank = dist.get_rank()
         else:
             self.world_size = 1
             self.global_rank = 0
-            self.device = torch.device("cuda")
+            self.device = torch.device(get_accelerator().device_name())
 
     # Configure based on command line arguments
     def _configure_with_arguments(self, args, mpu):
@@ -955,12 +1032,6 @@ class DeepSpeedEngine(Module):
                 hasattr(
                     args, "deepspeed_config") and args.deepspeed_config is not None
             ), "DeepSpeed requires --deepspeed_config to specify configuration file"
-
-            assert os.path.isfile(
-                args.deepspeed_config
-            ), "DeepSpeed configuration file: {} is not an existing file".format(
-                args.deepspeed_config
-            )
 
     def _is_supported_optimizer(self, optimizer_name):
         return (optimizer_name in DEEPSPEED_OPTIMIZERS
@@ -1135,10 +1206,6 @@ class DeepSpeedEngine(Module):
             not (amp_enabled and zero_enabled)
         ), "Amp and ZeRO are not currently compatible, please use (legacy) fp16 mode which performs similar to amp opt_mode=O2"
         if zero_enabled:
-            if model_dtype != grad_accum_dtype:
-                raise NotImplementedError(
-                    "Model data type and gradient accumulation data type must be equal to use ZeRO"
-                )
             if not is_zero_supported_optimizer(basic_optimizer):
                 assert (
                     self.zero_allow_untested_optimizer()
@@ -1148,6 +1215,15 @@ class DeepSpeedEngine(Module):
                     logger.warning(
                         "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
                     )
+
+            if model_dtype == torch.bfloat16 and grad_accum_dtype == torch.float32 and self.zero_optimization_stage(
+            ) == 1:
+                return BFLOAT16
+
+            if model_dtype != grad_accum_dtype:
+                raise NotImplementedError(
+                    "Model data type and gradient accumulation data type must be equal to use ZeRO"
+                )
             return ZERO_OPTIMIZATION
         elif amp_enabled:
             if model_dtype != grad_accum_dtype:
@@ -1319,6 +1395,9 @@ class DeepSpeedEngine(Module):
     def _configure_compression_scheduler(self):
         return compression_scheduler(self.module, self._config.compression_config)
 
+    def _configure_random_ltd_scheduler(self, configs):
+        return RandomLTDScheduler(configs)
+
     def _configure_quantization(self):
         (
             quantize_weight_in_forward,
@@ -1361,7 +1440,7 @@ class DeepSpeedEngine(Module):
         if isinstance(optimizer, fused_opts) \
                 or self.optimizer_name() in [ONEBIT_ADAM_OPTIMIZER, ZERO_ONE_ADAM_OPTIMIZER]:
             if self.dynamic_loss_scale():
-                log_dist("Creating fp16 optimizer with dynamic loss scale", ranks=[0])
+                log_dist(f'Creating fp16 optimizer with dynamic loss scale', ranks=[0])
                 timers = self.timers if self.wall_clock_breakdown() else None
                 optimizer = FP16_Optimizer(
                     optimizer,
@@ -1377,10 +1456,8 @@ class DeepSpeedEngine(Module):
                 )
             else:
                 log_dist(
-                    "Creating fp16 optimizer with static loss scale: {}".format(
-                        self.loss_scale()),
-                    ranks=[0],
-                )
+                    f'Creating fp16 optimizer with static loss scale: {self.loss_scale()}',
+                    ranks=[0])
                 optimizer = FP16_Optimizer(
                     optimizer,
                     deepspeed=self,
@@ -1391,7 +1468,7 @@ class DeepSpeedEngine(Module):
                     has_moe_layers=self.has_moe_layers,
                 )
         else:
-            log_dist("Creating fp16 unfused optimizer with dynamic loss scale",
+            log_dist(f'Creating fp16 unfused optimizer with dynamic loss scale',
                      ranks=[0])
             optimizer = FP16_UnfusedOptimizer(
                 optimizer,
@@ -1428,6 +1505,7 @@ class DeepSpeedEngine(Module):
 
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
+        model_dtype, grad_accum_dtype = self.get_data_types()
         assert self.communication_data_type in (torch.float16, torch.bfloat16), "ZeRO supports only 'communication_data_type': ['fp16', 'bfp16']"
         timers = self.timers if self.wall_clock_breakdown() else None
 
@@ -1445,12 +1523,15 @@ class DeepSpeedEngine(Module):
             round_robin_gradients = self.zero_round_robin_gradients()
             assert not isinstance(optimizer, DummyOptim), "zero stage {} requires an optimizer".format(zero_stage)
 
-            log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage),
+            log_dist(f'Creating {model_dtype} ZeRO stage {zero_stage} optimizer',
                      ranks=[0])
             # Overlap and contiguous grads are meaningless in stage 1 and are ignored
             if zero_stage == ZeroStageEnum.optimizer_states:
                 overlap_comm = False
                 round_robin_gradients = False
+                # Non-MoE requires contiguous grads to be disabled w. stage 1
+                if not self.has_moe_layers:
+                    contiguous_gradients = False
 
             if isinstance(self.module, PipelineModule):
                 if overlap_comm:
@@ -1507,7 +1588,7 @@ class DeepSpeedEngine(Module):
                     offload_param_config=self.zero_offload_param(),
                     mpu=self.mpu)
             else:
-                log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage),
+                log_dist(f'Creating {model_dtype} ZeRO stage {zero_stage} optimizer',
                          ranks=[0])
                 from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
                 optimizer = DeepSpeedZeroOptimizer_Stage3(
@@ -1562,8 +1643,8 @@ class DeepSpeedEngine(Module):
 
         return pld
 
-    def _configure_curriculum_scheduler(self):
-        scheduler = CurriculumScheduler(self.curriculum_params())
+    def _configure_curriculum_scheduler_legacy(self):
+        scheduler = CurriculumScheduler(self.curriculum_params_legacy())
         return scheduler
 
     @staticmethod
@@ -1622,17 +1703,36 @@ class DeepSpeedEngine(Module):
             data_parallel_world_size = self.mpu.get_data_parallel_world_size()
             data_parallel_rank = self.mpu.get_data_parallel_rank()
 
-        return DeepSpeedDataLoader(dataset=dataset,
-                                   batch_size=batch_size,
-                                   pin_memory=pin_memory,
-                                   collate_fn=collate_fn,
-                                   local_rank=self.local_rank,
-                                   tput_timer=deepspeed_io_timer,
-                                   num_local_io_workers=num_local_io_workers,
-                                   data_sampler=data_sampler,
-                                   data_parallel_world_size=data_parallel_world_size,
-                                   data_parallel_rank=data_parallel_rank,
-                                   dataloader_drop_last=self.dataloader_drop_last())
+        deepspeed_dataloader_config = {}
+        if self.curriculum_learning_enabled():
+            deepspeed_dataloader_config = {
+                CURRICULUM_LEARNING:
+                self.curriculum_learning_enabled(),
+                DATA_EFFICIENCY:
+                self.data_efficiency_config(),
+                DATA_PARALLEL_GROUP:
+                self.data_parallel_group,
+                GRADIENT_ACCUMULATION_STEPS:
+                self.gradient_accumulation_steps(),
+                GLOBAL_RANK:
+                self.global_rank,
+                DATA_SAMPLING_NUM_WORKERS:
+                self.data_sampling_config()[DATA_SAMPLING_NUM_WORKERS]
+            }
+
+        return DeepSpeedDataLoader(
+            dataset=dataset,
+            batch_size=batch_size,
+            pin_memory=pin_memory,
+            collate_fn=collate_fn,
+            local_rank=self.local_rank,
+            tput_timer=deepspeed_io_timer,
+            num_local_io_workers=num_local_io_workers,
+            data_sampler=data_sampler,
+            data_parallel_world_size=data_parallel_world_size,
+            data_parallel_rank=data_parallel_rank,
+            dataloader_drop_last=self.dataloader_drop_last(),
+            deepspeed_dataloader_config=deepspeed_dataloader_config)
 
     def train(self, mode=True):
         r""""""
@@ -1707,13 +1807,16 @@ class DeepSpeedEngine(Module):
         if self.__class__.__name__ != "PipelineEngine":
             # TODO: The above if condition is a HACK since for PipelineEngine
             # it's difficult to inject argument in forward pass.
-            if self.module.training and self.curriculum_enabled():
-                self.curriculum_scheduler.update_difficulty(self.global_steps + 1)
-                if self.curriculum_params()["curriculum_type"] == "seqlen":
+            if self.module.training and self.curriculum_enabled_legacy():
+                self.curriculum_scheduler_legacy.update_difficulty(self.global_steps + 1)
+                if self.curriculum_params_legacy()["curriculum_type"] == "seqlen":
                     kwargs.update({
                         "curriculum_seqlen":
-                        self.curriculum_scheduler.get_current_difficulty()
+                        self.curriculum_scheduler_legacy.get_current_difficulty()
                     })
+
+        if self.module.training and self.random_ltd_enabled():
+            self.random_ltd_scheduler.update_seq(self.global_steps)
 
         if self.zero_optimization_partition_weights():
             # Enable automated discovery of external parameters by indicating that
@@ -1800,8 +1903,7 @@ class DeepSpeedEngine(Module):
         # Pass (PP) gas boundary flag to optimizer (required for zero)
         self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary(
         )
-
-        # ZeRO stage 2 communicates during non gradient accumulation boundaries as well
+        # ZeRO stage >= 2 communicates during non gradient accumulation boundaries as well
         if self.zero_optimization_partition_gradients():
             self.optimizer.overlapping_partition_gradients_reduce_epilogue()
 
@@ -1906,11 +2008,14 @@ class DeepSpeedEngine(Module):
         return loss
 
     def is_gradient_accumulation_boundary(self):
-        """Query whether the current micro-batch is at the boundary of
+        """
+        Query whether the current micro-batch is at the boundary of
         gradient accumulation, and thus will trigger gradient reductions and
         an optimizer step.
+
         Returns:
             bool: if the current step is a gradient accumulation boundary.
+
         """
         if self._is_gradient_accumulation_boundary is None:
             return (self.micro_steps + 1) % \
@@ -1919,7 +2024,8 @@ class DeepSpeedEngine(Module):
             return self._is_gradient_accumulation_boundary
 
     def set_gradient_accumulation_boundary(self, is_boundary):
-        """Manually overrides the DeepSpeed engine's gradient accumulation boundary state, this is an optional
+        """
+        Manually overrides the DeepSpeed engine's gradient accumulation boundary state, this is an optional
         feature and should be used with care. The state should be set before to the intended
         value before each forward/backward. The final fordward/backward should have the
         boundary state set to True. This style allows client code to only call engine.step() once after all
@@ -2038,7 +2144,7 @@ class DeepSpeedEngine(Module):
         assert self.optimizer is not None and not isinstance(self.optimizer, DummyOptim), \
             "must provide optimizer during init in order to use step"
 
-        report_progress = self.global_rank == 0 if self.global_rank else True
+        report_progress = False
 
         self._step_applied = False  # assume False, will flip to True
 
@@ -2065,7 +2171,10 @@ class DeepSpeedEngine(Module):
             else:
                 self._take_model_step(lr_kwargs)
 
-        self.tput_timer.stop(report_progress)
+            report_progress = self.global_rank == 0 if self.global_rank else True
+
+        self.tput_timer.stop(global_step=self.is_gradient_accumulation_boundary(),
+                             report_speed=report_progress)
 
         self._stop_timers(self.engine_timers.step_timers)
 
@@ -2155,11 +2264,14 @@ class DeepSpeedEngine(Module):
             titer = msg[FORWARD_GLOBAL_TIMER] + msg[BACKWARD_GLOBAL_TIMER] + msg[
                 STEP_GLOBAL_TIMER]
             msg["latency"] = titer
-            msg["FLOPS_per_gpu"] = self.flops * self.gradient_accumulation_steps(
+            msg["FLOPS_per_gpu"] = self.flops * 1_000_000 * self.gradient_accumulation_steps(
             ) / titer
-            msg["throughput"] = self.train_batch_size() * 1000 / \
+            msg["throughput"] = self.train_batch_size() * 1_000_000 / \
                 msg["latency"]
             print_json_dist(msg, [0], path=self.autotuning_metric_path())
+            log_dist(
+                f"Wrote metrics to {self.autotuning_metric_path()}, {os.path.abspath(self.autotuning_metric_path())}",
+                ranks=[0])
             import atexit
             atexit.register(print, "Autotuning: done with running current ds config.")
         exit()
@@ -2436,6 +2548,8 @@ class DeepSpeedEngine(Module):
 
     def module_state_dict(self, destination=None, prefix="", keep_vars=False):
         sd = self.module.state_dict(destination, prefix, keep_vars)
+        if self.random_ltd_enabled():
+            sd = remove_random_ltd_state_dict(sd)
         return sd
 
     @staticmethod
@@ -2603,7 +2717,9 @@ class DeepSpeedEngine(Module):
                         load_lr_scheduler_states=True,
                         load_module_only=False,
                         custom_load_fn=None):
-        """Load training checkpoint
+        """
+        Load training checkpoint
+
         Arguments:
             load_dir: Required. Directory to load the checkpoint from
             tag: Checkpoint tag used as a unique identifier for checkpoint, if not provided will attempt to load tag in 'latest' file
@@ -2612,14 +2728,17 @@ class DeepSpeedEngine(Module):
             load_lr_scheduler_states: Optional. Boolean to add the learning rate scheduler states from Checkpoint.
             load_module_only: Optional. Boolean to load only the model weights from the checkpoint. Ex. warmstarting.
             custom_load_fn: Optional. Custom model load function.
+
         Returns:
             A tuple of ``load_path`` and ``client_state``.
             *``load_path``: Path of the loaded checkpoint. ``None`` if loading the checkpoint failed.
             *``client_state``: State dictionary used for loading required training states in the client code.
+
         Important: under ZeRO3, one cannot load checkpoint with ``engine.load_checkpoint()`` right
         after ``engine.save_checkpoint()``. It is because ``engine.module`` is partitioned, and
         ``load_checkpoint()`` wants a pristine model. If insisting to do so, please reinitialize engine
         before ``load_checkpoint()``.
+
         """
 
         if tag is None:
@@ -2745,6 +2864,15 @@ class DeepSpeedEngine(Module):
             if load_lr_scheduler_states and self.lr_scheduler is not None:
                 self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
 
+            if self.random_ltd_enabled(
+            ) and self.random_ltd_scheduler is not None and 'random_ltd' in checkpoint:
+                self.random_ltd_scheduler.load_state_dict(checkpoint['random_ltd'])
+
+            if self.training_dataloader is not None and self.curriculum_learning_enabled(
+            ) and 'data_sampler' in checkpoint:
+                self.training_dataloader.data_sampler.load_state_dict(
+                    checkpoint['data_sampler'])
+
             def get_sparse_tensor_module_names(original_set,
                                                loaded_set,
                                                original_parameters,
@@ -2791,7 +2919,9 @@ class DeepSpeedEngine(Module):
                 'skipped_steps',
                 'global_steps',
                 'dp_world_size',
-                'mp_world_size'
+                'mp_world_size',
+                'data_sampler',
+                'random_ltd'
             ]
         client_state = {}
 
@@ -2940,7 +3070,8 @@ class DeepSpeedEngine(Module):
                 logger.warning(msg)
 
     def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
-        r"""Save training checkpoint
+        """Save training checkpoint
+
         Arguments:
             save_dir: Required. Directory for saving the checkpoint
             tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is
@@ -2951,6 +3082,7 @@ class DeepSpeedEngine(Module):
         because each process needs to save its master weights and scheduler+optimizer states. This
         method will hang waiting to synchronize with other processes if it's called just for the
         process with rank 0.
+
         """
         if self.zero_optimization_partition_weights():
             # Prepare for checkpoint save by ensuring all parameters are partitioned
@@ -3170,6 +3302,11 @@ class DeepSpeedEngine(Module):
                      if self.optimizer and zero_optimizer_state else None,
                      lr_scheduler=self.lr_scheduler.state_dict()
                      if self.lr_scheduler is not None else None,
+                     data_sampler=self.training_dataloader.data_sampler.state_dict() if
+                     (self.training_dataloader is not None
+                      and self.curriculum_learning_enabled()) else None,
+                     random_ltd=self.random_ltd_scheduler.state_dict()
+                     if self.random_ltd_enabled() else None,
                      sparse_tensor_module_names=self.sparse_tensor_module_names,
                      skipped_steps=self.skipped_steps,
                      global_steps=self.global_steps,
@@ -3340,17 +3477,23 @@ class DeepSpeedEngine(Module):
         return self.save_16bit_model(save_dir, save_filename)
 
     def save_16bit_model(self, save_dir, save_filename="pytorch_model.bin"):
-        r"""Save 16bit model weights
+        """
+        Save 16bit model weights
+
         This method saves the 16bit model weights at the desired destination.
+
         Arguments:
             save_dir: Required. Directory for saving the model
             save_filename: Optional. Filename to save to. Defaults to ``pytorch_model.bin``
+
         Returns:
             ``True`` when a model has been saved, ``False`` otherwise. It will not be saved if
             stage3_gather_16bit_weights_on_model_save is ``False``.
+
         Important: all processes must call this method and not just the process with rank 0. It is
         because the processes need to work in sync to gather the weights. This method will hang
         waiting to synchronize with other processes if it's called just for the process with rank 0.
+
         """
 
         path = os.path.join(save_dir, save_filename)
