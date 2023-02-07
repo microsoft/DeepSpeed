@@ -126,7 +126,7 @@ class InferenceEngine(Module):
                 self._apply_injection_policy(config, client_module)
         elif config.replace_method == 'auto':
             self._apply_injection_policy(config)
-        else:
+        elif not config.replace_with_kernel_inject:
             # Automatic Tensor Parallelism
             parser_dict = AutoTP.tp_parser(model)
             for client_module, injection_policy in parser_dict:
@@ -535,6 +535,9 @@ class InferenceEngine(Module):
         return outputs
 
     def _generate(self, *inputs, **kwargs):
+        # Reset KV-cache at the beginning of generate
+        if hasattr(self.module, 'reset_cache'):
+            self.module.reset_cache()
         num_beams = 1
         if "generation_config" in kwargs:
             gen_config = kwargs["generation_config"]
