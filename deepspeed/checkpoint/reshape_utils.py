@@ -1,7 +1,7 @@
 import os
 import torch
 from collections import OrderedDict
-from .constants import (ZERO_FILE_PREFIX, FP16_ZERO_FILE_PREFIX, BF16_ZERO_FILE_PREFIX)
+from .constants import (ZERO_FILE_PREFIX, FP16_ZERO_FILE_PREFIX, BF16_ZERO_FILE_PREFIX, PARTITION_COUNT)
 
 
 def basic_folder_validation(dir):
@@ -59,12 +59,25 @@ def _key_list_to_string(key_list):
     return '.'.join(key_list)
 
 
+def _to_list_if_int(list_or_int):
+    if isinstance(list_or_int, int):
+        return [list_or_int]
+    else:
+        return list_or_int
+
+
 def merge_state_dict(dict_a, dict_b, key_list):
     merged_dict = type(dict_a)({})
 
     for key, value in dict_b.items():
         if key in dict_a.keys():
-            merged_dict[key] = merge_state(dict_a[key], dict_b[key], [str(key)])
+            # TODO: Fix ugliest hack ever
+            if key == PARTITION_COUNT:
+                count_a = _to_list_if_int(dict_a[key])
+                count_b = _to_list_if_int(dict_b[key])
+                merged_dict[key] = merge_state(count_a, count_b, [str(key)])
+            else:
+                merged_dict[key] = merge_state(dict_a[key], dict_b[key], [str(key)])
         else:
             merged_dict[key] = value
 
