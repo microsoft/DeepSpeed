@@ -318,7 +318,9 @@ class DistributedTest(DistributedExec):
             world_size = self.world_size
 
         if torch.cuda.device_count() < world_size:
-            pytest.skip(f"Skipping test because not enough GPUs are available: {world_size} required, {torch.cuda.device_count()} available")
+            pytest.skip(
+                f"Skipping test because not enough GPUs are available: {world_size} required, {torch.cuda.device_count()} available"
+            )
 
         if isinstance(world_size, int):
             world_size = [world_size]
