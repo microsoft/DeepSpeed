@@ -85,7 +85,7 @@ config_dict = {
 }
 #        "initial_scale_power": 15
 args = get_args('/tmp/', config_dict)
-hidden_dim = 4
+hidden_dim = 32
 
 model = SimpleModel(hidden_dim, empty_grad=False)
 

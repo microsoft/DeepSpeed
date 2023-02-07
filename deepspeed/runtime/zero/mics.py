@@ -3,28 +3,130 @@
 Licensed under the MIT license.
 """
 
-import sys
-import torch
-
-from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
-from deepspeed.utils import log_dist
-from deepspeed.runtime.utils import see_memory_usage
-from deepspeed.ops.op_builder import UtilsBuilder
-
-from torch import Tensor
-from torch.nn import Parameter
-from typing import Deque, Dict, Tuple
-from torch.cuda import Stream, Event
-from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
-from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
-from deepspeed.runtime.zero.stage3 import print_rank_0
-from typing import List
 import collections
+import sys
+from typing import Deque
+
+import torch
+from torch import Tensor
 
 from deepspeed import comm as dist
-from deepspeed.ops.adam import DeepSpeedCPUAdam
-from deepspeed.runtime.fp16.loss_scaler import DynamicLossScaler, LossScaler
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.adam import DeepSpeedCPUAdam
+from deepspeed.ops.op_builder import UtilsBuilder
+from deepspeed.runtime.config import DeepSpeedConfig
+from deepspeed.runtime.fp16.loss_scaler import DynamicLossScaler, LossScaler
+from deepspeed.runtime.utils import see_memory_usage
+from deepspeed.runtime.zero.mics_utils import create_mics_comm_groups
+from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
+from deepspeed.runtime.zero.parameter_offload import (DeepSpeedZeRoOffload,
+                                                      is_zero_param)
+from deepspeed.runtime.zero.partition_parameters import Init
+from deepspeed.runtime.zero.stage3 import (DeepSpeedZeroOptimizer_Stage3, print_rank_0)
+from deepspeed.utils import log_dist
+
+
+class MiCS_Init(Init):
+    """"""
+    def __init__(self,
+                 module=None,
+                 data_parallel_group=None,
+                 mem_efficient_linear=True,
+                 remote_device=None,
+                 pin_memory=False,
+                 config_dict_or_path=None,
+                 config=None,
+                 enabled=True,
+                 dtype=None,
+                 mpu=None):
+        assert config_dict_or_path is not None, "Must provide configuration for MiCS Initialization"
+        _ds_config = DeepSpeedConfig(config_dict_or_path, mpu)
+        if not dist.is_initialized():
+            dist.init_distributed()
+            assert dist.is_initialized(), "Parameters cannot be scattered without initializing deepspeed.comm"
+        self.mics_comm_groups = create_mics_comm_groups(
+            _ds_config.mics_shard_size,
+            data_parallel_group,
+            hierarchical_allgather=_ds_config.mics_hierarchial_params_gather,
+            mpu=mpu)
+
+        super().__init__(module,
+                         data_parallel_group,
+                         mem_efficient_linear,
+                         remote_device,
+                         pin_memory,
+                         _ds_config,
+                         config,
+                         enabled,
+                         dtype,
+                         mpu)
+
+    def _convert_to_deepspeed_param(self, param):
+        super()._convert_to_deepspeed_param(param)
+        param.comm = self.mics_comm_groups
+
+    def get_partition_dp_group(self, param):
+        return param.comm.param_shard_group
+
+    def get_partition_rank(self):
+        return self.mics_comm_groups.param_shard_rank
+
+    @property
+    def num_partitions(self):
+        return self.mics_comm_groups.param_shard_size
+
+
+class MiCS_Offload(DeepSpeedZeRoOffload):
+    """ Wrapper to change the behavior for parameter sharding
+    """
+    def __init__(self,
+                 module,
+                 timers,
+                 ds_config,
+                 overlap_comm=True,
+                 prefetch_bucket_size=50000000,
+                 max_reuse_distance=1000000000,
+                 max_live_parameters=1000000000,
+                 param_persistence_threshold=100000,
+                 model_persistence_threshold=sys.maxsize,
+                 offload_param_config=None,
+                 mpu=None):
+        super().__init__(module,
+                         timers,
+                         ds_config,
+                         overlap_comm,
+                         prefetch_bucket_size,
+                         max_reuse_distance,
+                         max_live_parameters,
+                         param_persistence_threshold,
+                         model_persistence_threshold,
+                         offload_param_config,
+                         mpu)
+
+    def _convert_to_zero_parameters(self, ds_config, module, mpu):
+        """ overload the parent class function for convert the parameters
+
+        """
+        print('------- wrap the _convert_to_zero_parameters')
+        log_dist(f'Convert to zero parameters from MiCS Offload manager', ranks=[0])
+        non_zero_params = [p for p in module.parameters() if not is_zero_param(p)]
+        if non_zero_params:
+            zero_params = [p for p in module.parameters() if is_zero_param(p)]
+            if zero_params:
+                zero_params[0].convert_to_zero_parameters(param_list=non_zero_params)
+            else:
+                group = None
+                if mpu:
+                    group = mpu.get_data_parallel_group()
+
+                MiCS_Init(module=module,
+                          data_parallel_group=group,
+                          dtype=self.dtype,
+                          config_dict_or_path=ds_config,
+                          remote_device=self.offload_device,
+                          pin_memory=self.offload_param_pin_memory,
+                          mpu=mpu)
+
 
 class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
     """
@@ -64,7 +166,7 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
         log_dist(f'Initialize MiCS Optimizer', ranks=[0])
 
         # adopt from stage3 but calls wrapped MiCSOffload
-        # which uses MiCS_Init context manager, which is derived from 
+        # which uses MiCS_Init context manager, which is derived from
         # partition_parameters.py:Init
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
@@ -107,7 +209,7 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
         self.params_in_nvme_and_cpu = False
         self.max_params_in_cpu = 0
 
-        self.parameter_offload = DeepSpeedZeRoOffload(
+        self.parameter_offload = MiCS_Offload(
             module=module,
             timers=timers,
             ds_config=ds_config,
@@ -310,7 +412,6 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=True)
 
-
     # TODO: Support different/changing load/save DP degree.
     def load_state_dict(self,
                         state_dict_list,
@@ -322,4 +423,3 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
         TODO: move the implementation from zhen/merged_ds_master branch
         """
         raise NotImplementedError("Not implemented for loading MiCS checkpoints")
-    

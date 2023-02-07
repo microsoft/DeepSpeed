@@ -49,7 +49,7 @@ def get_args(tmpdir, config_dict):
     args = parser.parse_args()  #args=''
 
     config_dict["zero_optimization"]["stage"] = args.zero
-    print('config_dict["zero_optimization"]', config_dict["zero_optimization"])
+    # print('config_dict["zero_optimization"]', config_dict["zero_optimization"])
     config_path = create_config_from_dict(tmpdir, config_dict)
 
     args.deepspeed_config = config_path
@@ -87,9 +87,11 @@ config_dict = {
 }
 #        "initial_scale_power": 15
 args = get_args('/tmp/', config_dict)
-hidden_dim = 4
+hidden_dim = 32
 
+# with deepspeed.zero.Init():
 model = SimpleModel(hidden_dim, empty_grad=False)
+# print('------> init model with deepspeed.zero.Init()')
 
 model, _, _,_ = deepspeed.initialize(args=args,
                                      model=model,
