@@ -81,18 +81,18 @@ def get_full_hp_grad(self):
         lp_grad_fragment = gradient_dict[hp_mapping.param_group_index][
             self._index_in_param_group]
         hp_grad_fragment = lp_grad_fragment.to(torch.float32).flatten()
-        print(
-            f'{dist.get_rank()=} {self.shape=}  {hp_grad_fragment.shape=}  {hp_grad_fragment=}'
-        )
+        # print(
+        #     f'{dist.get_rank()=} {self.shape=}  {hp_grad_fragment.shape=}  {hp_grad_fragment=}'
+        # )
 
         lp_frag_address = self._hp_mapping.lp_fragment_address
         reduce_fragment = torch.narrow(reduce_buffer,
                                        0,
                                        lp_frag_address.start,
                                        lp_frag_address.numel)
-        print(
-            f'{dist.get_rank()=} {lp_frag_address=} {reduce_fragment.shape=} {reduce_fragment=}'
-        )
+        # print(
+        #     f'{dist.get_rank()=} {lp_frag_address=} {reduce_fragment.shape=} {reduce_fragment=}'
+        # )
 
         if self.view(-1).shape == hp_grad_fragment.shape:
             reduce_buffer.data.copy_(hp_grad_fragment.data)
@@ -172,9 +172,9 @@ def get_hp_fragment_mapping(lp_param,
 
     fragment_start = max(lp_start, hp_start)
     fragment_end = min(lp_end, hp_end)
-    print(
-        f'{dist.get_rank()=} {lp_start=} {lp_end-lp_start=} {hp_start=} {hp_end-hp_start=} {fragment_start=} {fragment_end-fragment_start=}'
-    )
+    # print(
+    #     f'{dist.get_rank()=} {lp_start=} {lp_end-lp_start=} {hp_start=} {hp_end-hp_start=} {fragment_start=} {fragment_end-fragment_start=}'
+    # )
     assert fragment_start < fragment_end, \
         f'fragment start {fragment_start} should be < fragment_end {fragment_end}'
 
