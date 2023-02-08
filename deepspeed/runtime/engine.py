@@ -1124,15 +1124,16 @@ class DeepSpeedEngine(Module):
             if self.zero_optimization_partition_weights() and any(
                 [hasattr(param,
                          "ds_id") for param in self.module.parameters()]):
-                if not all(
-                    [param.dtype == torch.half for param in self.module.parameters()]):
-                    names = [
-                        n for n,
-                        p in self.module.named_parameters() if p.dtype != torch.half
-                    ]
-                    raise ValueError(
-                        f"fp16 is enabled but the following parameters have dtype that is not fp16: {', '.join(names)}"
-                    )
+                self.__check_params(self.module, torch.half)
+                # if not all(
+                #     [param.dtype == torch.half for param in self.module.parameters()]):
+                #     names = [
+                #         n for n,
+                #         p in self.module.named_parameters() if p.dtype != torch.half
+                #     ]
+                #     raise ValueError(
+                #         f"fp16 is enabled but the following parameters have dtype that is not fp16: {', '.join(names)}"
+                #     )
             self.module.half()
         elif self.bfloat16_enabled():
             if self.zero_optimization_partition_weights() and any(

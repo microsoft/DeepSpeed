@@ -1162,11 +1162,13 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     @instrument_w_nvtx
     def __avg_scatter_grads(self, params_to_reduce: List[Parameter]) -> List[Tensor]:
         """average gradients and scatter partitions across ranks"""
-        dtype = get_only_unique_item(p.grad.dtype for p in params_to_reduce)
+        # model_dtype = get_only_unique_item(p.grad.dtype for p in params_to_reduce)
 
         full_grads_for_rank = [p.grad for p in params_to_reduce]
-        if self.communication_data_type == torch.float32:
-            full_grads_for_rank = [g.float() for g in full_grads_for_rank]
+        if self.communication_data_type != self.dtype:
+            full_grads_for_rank = [
+                g.to(self.communication_data_type) for g in full_grads_for_rank
+            ]
 
         if self.postscale_gradients and self.gradient_predivide_factor != 1.0:
             full_grads_for_rank = [
@@ -1182,8 +1184,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 g.mul(self.gradient_predivide_factor) for g in grad_partitions_for_rank
             ]
 
-        if self.communication_data_type == torch.float32:
-            grad_partitions_for_rank = [g.to(dtype) for g in grad_partitions_for_rank]
+        if self.communication_data_type != self.dtype:
+            grad_partitions_for_rank = [
+                g.to(self.dtype) for g in grad_partitions_for_rank
+            ]
 
         return grad_partitions_for_rank
 
