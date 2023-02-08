@@ -1267,9 +1267,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         offload_fp32_gradients = {}
         offload_fp32_offsets = {}
         for param, grad_partition in zip(params_to_release, grad_partitions):
-            if param.partition_numel() * dist.get_rank(
-                    self.dp_process_group) > param.ds_numel:
+            if param.partition_numel() * (
+                    1 + dist.get_rank(self.dp_process_group)) > param.ds_numel:
                 # this grad partition is empty - don't need to do anything
+                param.grad = None
                 continue
 
             # move or accumulate gradient partition to target buffer

@@ -71,6 +71,7 @@ def run_fragmented_model(model, config_dict, hidden_dim, dtype):
 
 @pytest.mark.parametrize('frozen_weights', [True, False])
 class TestTensorFragment(DistributedTest):
+    # Need multiple gpus to test possible hanging
     world_size = 2
 
     @pytest.mark.parametrize('zero_stage', [1, 2, 3])
