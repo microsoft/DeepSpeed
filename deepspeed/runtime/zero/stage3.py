@@ -148,7 +148,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.params_in_nvme_and_cpu = False
         self.max_params_in_cpu = 0
 
-        self.parameter_offload = DeepSpeedZeRoOffload(
+        self.parameter_offload = self.initialize_ds_offload(
             module=module,
             timers=timers,
             ds_config=ds_config,
@@ -158,7 +158,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             max_live_parameters=max_live_parameters,
             param_persistence_threshold=param_persistence_threshold,
             model_persistence_threshold=model_persistence_threshold,
-            offload_param_config=offload_optimizer_config,
+            offload_optimizer_config=offload_optimizer_config,
             mpu=mpu)
 
         self.persistent_parameters = self.parameter_offload.persistent_parameters
@@ -353,6 +353,33 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def destroy(self):
         self.parameter_offload.destroy()
+
+    def initialize_ds_offload(
+        self,
+        module,
+        timers,
+        ds_config,
+        overlap_comm,
+        prefetch_bucket_size,
+        max_reuse_distance,
+        max_live_parameters,
+        param_persistence_threshold,
+        model_persistence_threshold,
+        offload_optimizer_config,
+        mpu,
+    ):
+        return DeepSpeedZeRoOffload(
+            module=module,
+            timers=timers,
+            ds_config=ds_config,
+            overlap_comm=overlap_comm,
+            prefetch_bucket_size=prefetch_bucket_size,
+            max_reuse_distance=max_reuse_distance,
+            max_live_parameters=max_live_parameters,
+            param_persistence_threshold=param_persistence_threshold,
+            model_persistence_threshold=model_persistence_threshold,
+            offload_param_config=offload_optimizer_config,
+            mpu=mpu)
 
     def _get_trainable_parameter_groups(self):
         param_groups = []
@@ -1105,8 +1132,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     @instrument_w_nvtx
     @torch.no_grad()
     def __add_grad_to_ipg_bucket(self, param: Parameter) -> None:
-        self.reduce_and_partition_stream.wait_stream(
-            get_accelerator().default_stream())
+        self.reduce_and_partition_stream.wait_stream(get_accelerator().default_stream())
 
         if self.contiguous_gradients and self.elements_in_ipg_bucket + param.grad.numel(
         ) < self.reduce_bucket_size:
@@ -1151,7 +1177,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     [p.ds_id for p in self.params_in_ipg_bucket])
 
             grad_partitions = self.__avg_scatter_grads(self.params_in_ipg_bucket)
-            self.__partition_grads(self.params_in_ipg_bucket, grad_partitions)
+            self.partition_grads(self.params_in_ipg_bucket, grad_partitions)
 
             self.params_in_ipg_bucket.clear()
 
@@ -1254,11 +1280,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         return total_norm
 
     @instrument_w_nvtx
-    def __partition_grads(self,
-                          params_to_release: List[Parameter],
-                          grad_partitions: List[Tensor]) -> None:
+    def partition_grads(self,
+                        params_to_release: List[Parameter],
+                        grad_partitions: List[Tensor]) -> None:
         offload_fp32_gradients = {}
         offload_fp32_offsets = {}
+        buffers = []
         for param, grad_partition in zip(params_to_release, grad_partitions):
             if param.partition_numel() * dist.get_rank(
                     self.dp_process_group) > param.ds_numel:
@@ -1270,6 +1297,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 0,
                 0,
                 grad_partition.numel())
+            buffers.append(grad_buffer)
             if self.micro_step_id == 0:  # don't accumulate
                 grad_buffer.copy_(grad_partition, non_blocking=True)
                 # ensure grad buffer is a CUDA buffer to speed up the next few
@@ -1329,6 +1357,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     parameter=self.fp32_partitioned_groups_flat[i],
                     gradient_offsets=offload_fp32_offsets[i],
                     gradient_tensors=offload_fp32_gradients[i])
+        return buffers
 
     def reduce_ready_partitions_and_remove_grads(self, param, i):
         #print_rank_0(f"Backward {debug_param2name_id_shape(param)}", force=True)

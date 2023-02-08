@@ -81,8 +81,9 @@ config_dict = {
     "zero_optimization": {
         "stage": 3,
         "reduce_bucket_size": 20,
-        "mics_shard_size": 2,
-        "mics_hierarchical_params_gather": True
+        "mics_shard_size": 4,
+        "mics_hierarchical_params_gather": True,
+        "stage3_model_persistence_threshold": 10
     }
 }
 #        "initial_scale_power": 15

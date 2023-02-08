@@ -945,6 +945,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 "grad_shape": tuple(slf.grad.shape) if slf.grad is not None else None,
                 "persist": slf.ds_persist,
                 "active_sub_modules": slf.ds_active_sub_modules,
+                "ds_tensor.shape":
+                slf.ds_tensor.shape if slf.ds_tensor is not None else None
             }
 
         def convert_to_zero_parameters(param_list):

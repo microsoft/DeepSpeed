@@ -1,9 +1,25 @@
-from deepspeed import comm as dist
-from deepspeed.utils import logger
-from deepspeed.accelerator import get_accelerator
-import numpy as np
 import os
 from dataclasses import dataclass
+from typing import List
+
+import numpy as np
+import torch
+from torch import Tensor
+
+from deepspeed import comm as dist
+from deepspeed.accelerator import get_accelerator
+from deepspeed.utils import logger
+
+
+def _log_rank0(msg):
+    if dist.get_rank() == 0:
+        logger.info(msg)
+
+
+@torch.jit.script
+def scale_tensors(tensors: List[Tensor], scale: int):
+    for t in tensors:
+        t.div_(scale)
 
 
 @dataclass
@@ -38,7 +54,7 @@ def create_mics_comm_groups(
     ndevices_per_node = int(
         os.environ.get("NDEV_PER_NODE",
                        get_accelerator().device_count()))
-    logger.info(
+    _log_rank0(
         f'creating MiCS communication groups with per node device size {ndevices_per_node}'
     )
     groups = MiCS_CommGroups()
@@ -123,10 +139,10 @@ def create_mics_comm_groups(
             intra_node_ranks_group.append(_intra_node_ranks)
             inter_node_ranks_group.append(_inter_node_ranks)
 
-        logger.info(
+        _log_rank0(
             f"create for hierarchy all-gather groups: intra nodes {intra_node_ranks_group}"
         )
-        logger.info(
+        _log_rank0(
             f"create for hierarchy all-gather groups: inter nodes {inter_node_ranks_group}"
         )
 
@@ -136,14 +152,14 @@ def create_mics_comm_groups(
                 _group = dist.new_group(intra_node_ranks)
                 if global_rank in intra_node_ranks:
                     groups.param_intra_node_group = _group
-                logger.info(f'create group for intra node ranks {intra_node_ranks}')
+                _log_rank0(f'create group for intra node ranks {intra_node_ranks}')
 
         for shard_group in inter_node_ranks_group:
             for inter_node_ranks in shard_group:
                 _group = dist.new_group(inter_node_ranks)
                 if global_rank in inter_node_ranks:
                     groups.param_inter_node_shard_group = _group
-                logger.info(f'create group for inter node ranks {inter_node_ranks}')
+                _log_rank0(f'create group for inter node ranks {inter_node_ranks}')
     return groups
 
 

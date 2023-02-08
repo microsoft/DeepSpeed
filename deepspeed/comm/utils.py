@@ -25,6 +25,10 @@ def has_allgather_base():
     return hasattr(torch.distributed, "_all_gather_base")
 
 
+def has_all_reduce_coalesced():
+    return hasattr(torch.distributed, "all_reduce_coalesced")
+
+
 def has_reduce_scatter_base():
     '''
         Helper to check if torch.distributed has _reduce_scatter_base
