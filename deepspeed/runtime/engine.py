@@ -1568,6 +1568,7 @@ class DeepSpeedEngine(Module):
                 has_moe_layers=self.has_moe_layers,
                 fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(
                 ),
+                gradient_accumulation_dtype=grad_accum_dtype,
                 communication_data_type=self.communication_data_type,
                 elastic_checkpoint=self.zero_elastic_checkpoint())
 

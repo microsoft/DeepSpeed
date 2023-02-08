@@ -129,6 +129,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                  cpu_offload=False,
                  mpu=None,
                  clip_grad=0.0,
+                 gradient_accumulation_dtype=torch.float32,
                  communication_data_type=torch.float16,
                  postscale_gradients=True,
                  gradient_predivide_factor=1.0,
@@ -281,7 +282,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.round_robin_bit16_indices = []
 
         # the buffer in which gradient accumulation is performed
-        self.grad_accum_dtype = torch.float32 # TODO: the actual config value
+        self.grad_accum_dtype = gradient_accumulation_dtype
 
         # Use different parallel to do all_to_all_reduce related things
         # padding on each partition for alignment purposes
@@ -736,7 +737,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.accumulate_grads(after_reduction=True)
         see_memory_usage(f"End ipg_epilogue")
 
-    def accumulate_grads(self, after_reduction = False):
+    def accumulate_grads(self, after_reduction=False):
         if self.cpu_offload is False:
             for i, _ in enumerate(self.bit16_groups):
                 if not i in self.averaged_gradients or self.averaged_gradients[i] is None:
@@ -2020,7 +2021,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         else:
             self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
-        if not self.partition_gradients and not self.is_gradient_boundary:
+        if not self.partition_gradients and not self.is_gradient_accumulation_boundary:
             self.accumulate_grads(after_reduction=False)
 
     def check_overflow(self, partition_gradients=True):
