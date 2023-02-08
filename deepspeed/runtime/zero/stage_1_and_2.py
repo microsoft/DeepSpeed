@@ -281,7 +281,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.round_robin_bit16_groups = []
         self.round_robin_bit16_indices = []
 
-        # the buffer in which gradient accumulation is performed
         self.grad_accum_dtype = gradient_accumulation_dtype
 
         # Use different parallel to do all_to_all_reduce related things
@@ -1541,8 +1540,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def zero_grad(self, set_to_none=False):
         """
-        Zero parameter grads in accumulation buffer
+        Zero FP16 parameter grads
         """
+        # FP32 grads should never exist
+        # For speed, set model fp16 grad to None by default
         for group in self.bit16_groups:
             for p in group:
                 if set_to_none:
@@ -1817,7 +1818,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 self.stop_timers([OPTIMIZER_STEP])
             else:
                 # free gradients for all the parameters that are not updated by this process(ZeRO stage2)
-                # TODO: is this not redundant? This is done for all params when averaged gradients is created.
                 self.free_grad_in_param_list(self.params_not_in_partition[i])
 
                 # create a flat gradients for parameters updated by this process
@@ -2021,6 +2021,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         else:
             self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
+        # Do not accumulate for stage 2, only for stage 1 if not at boundary
+        # at boundary an accumulation follows the reduction
         if not self.partition_gradients and not self.is_gradient_accumulation_boundary:
             self.accumulate_grads(after_reduction=False)
 
