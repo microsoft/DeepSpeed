@@ -17,7 +17,6 @@ import collections
 from copy import deepcopy
 import signal
 import time
-import torch.cuda
 
 from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner, SlurmRunner
 from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER, SLURM_LAUNCHER
@@ -26,6 +25,7 @@ from ..nebula.constants import NEBULA_EXPORT_ENVS
 from ..utils import logger
 
 from ..autotuning import Autotuner
+from deepspeed.accelerator import get_accelerator
 
 DLTS_HOSTFILE = "/job/hostfile"
 EXPORT_ENVS = ['MLFLOW', 'NCCL', 'PYTHON', 'MV2', 'UCX']
@@ -406,7 +406,7 @@ def main(args=None):
     multi_node_exec = True
     if not resource_pool:
         resource_pool = {}
-        device_count = torch.cuda.device_count()
+        device_count = get_accelerator().device_count()
         if device_count == 0:
             raise RuntimeError("Unable to proceed, no GPU resources available")
         resource_pool['localhost'] = device_count
@@ -439,8 +439,18 @@ def main(args=None):
         assert multi_node_exec
         first_host = list(active_resources.keys())[0]
         hostname_cmd = [f"ssh {first_host} hostname -I"]
-        result = subprocess.check_output(hostname_cmd, shell=True)
+        try:
+            result = subprocess.check_output(hostname_cmd, shell=True)
+        except subprocess.CalledProcessError as err:
+            logger.error(
+                "Unable to detect suitable master address via `hostname -I`, please manually specify one via --master_addr"
+            )
+            raise err
         args.master_addr = result.decode('utf-8').split()[0]
+        if not args.master_addr:
+            raise RuntimeError(
+                f"Unable to detect suitable master address via `hostname -I`, please manually specify one via --master_addr"
+            )
         logger.info(f"Using IP address of {args.master_addr} for node {first_host}")
 
     if args.autotuning != "":
