@@ -280,6 +280,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.round_robin_bit16_groups = []
         self.round_robin_bit16_indices = []
 
+        # the buffer in which gradient accumulation is performed
+        self.grad_accum_dtype = torch.float32 # TODO: the actual config value
+
         # Use different parallel to do all_to_all_reduce related things
         # padding on each partition for alignment purposes
         self.groups_padding = []
@@ -730,15 +733,18 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             # It is safe to clear previously reduced grads of other partitions
             self._clear_previous_reduced_grads()
 
+        self.accumulate_grads(after_reduction=True)
+        see_memory_usage(f"End ipg_epilogue")
+
+    def accumulate_grads(self, after_reduction = False):
         if self.cpu_offload is False:
             for i, _ in enumerate(self.bit16_groups):
-
                 if not i in self.averaged_gradients or self.averaged_gradients[i] is None:
                     self.averaged_gradients[i] = self.get_flat_partition(
                         self.params_in_partition[i],
                         self.first_offset[i],
                         self.partition_size[i],
-                        dtype=self.dtype,
+                        dtype=self.grad_accum_dtype,
                         device=get_accelerator().current_device_name(),
                         return_tensor_list=True)
                 else:
@@ -746,20 +752,19 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                         self.params_in_partition[i],
                         self.first_offset[i],
                         self.partition_size[i],
-                        dtype=self.dtype,
+                        dtype=self.grad_accum_dtype,
                         device=get_accelerator().current_device_name(),
                         return_tensor_list=True)
 
                     for accumulated_grad, new_avg_grad in zip(self.averaged_gradients[i], avg_new):
                         accumulated_grad.add_(new_avg_grad)
 
-        self._release_ipg_buffers()
-
-        # No need to keep the gradients anymore.
-        # All gradients required by the step
-        # are in self.averaged_gradients
-        self.zero_grad(set_to_none=True)
-        see_memory_usage(f"End ipg_epilogue")
+        if after_reduction:
+            self._release_ipg_buffers()
+            # No need to keep the gradients anymore.
+            # All gradients required by the step
+            # are in self.averaged_gradients
+            self.zero_grad(set_to_none=True)
 
     # resets all partition to no reduced
     # sets remaining grads to the total number of grads in each partition
@@ -1535,10 +1540,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def zero_grad(self, set_to_none=False):
         """
-        Zero FP16 parameter grads.
+        Zero parameter grads in accumulation buffer
         """
-        # FP32 grad should never exist.
-        # For speed, set model fp16 grad to None by default
         for group in self.bit16_groups:
             for p in group:
                 if set_to_none:
@@ -1625,9 +1628,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         current_size = 0
         for i, tensor in enumerate(tensor_list):
             if tensor.grad is None:
-                tensor.grad = torch.zeros_like(tensor)
-
-            tensor = tensor.grad
+                tensor = torch.zeros_like(tensor, dtype=dtype)
+            else:
+                tensor = tensor.grad.to(dtype)
             num_elements = tensor.numel()
             tensor_offset = 0
 
@@ -1813,6 +1816,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 self.stop_timers([OPTIMIZER_STEP])
             else:
                 # free gradients for all the parameters that are not updated by this process(ZeRO stage2)
+                # TODO: is this not redundant? This is done for all params when averaged gradients is created.
                 self.free_grad_in_param_list(self.params_not_in_partition[i])
 
                 # create a flat gradients for parameters updated by this process
@@ -2015,6 +2019,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             scaled_loss.backward()
         else:
             self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
+
+        if not self.partition_gradients and not self.is_gradient_boundary:
+            self.accumulate_grads(after_reduction=False)
 
     def check_overflow(self, partition_gradients=True):
         self._check_overflow(partition_gradients)
