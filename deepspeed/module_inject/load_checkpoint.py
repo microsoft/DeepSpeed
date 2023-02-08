@@ -36,6 +36,12 @@ def load_model_with_checkpoint(r_module,
         if hasattr(module, 'weight'):
             module.weight = mp_replace.copy(module.weight.data, sd[0][prefix + 'weight'])
         if prefix + 'bias' in sd[0].keys():
+            if module.bias.data.is_meta:
+                # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                module.bias = torch.nn.parameter.Parameter(
+                    data=torch.empty_like(module.bias.data,
+                                          device="cpu"),
+                    requires_grad=module.bias.data.requires_grad)
             module.bias = mp_replace.copy(module.bias.data, sd[0][prefix + 'bias'])
         args = None
         gc.collect()
