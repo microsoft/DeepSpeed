@@ -1220,9 +1220,9 @@ class DeepSpeedEngine(Module):
             ) == 1:
                 return BFLOAT16
 
-            if model_dtype != grad_accum_dtype:
+            if model_dtype != grad_accum_dtype and self.zero_optimization_stage() == 3:
                 raise NotImplementedError(
-                    "Model data type and gradient accumulation data type must be equal to use ZeRO"
+                    "Model data type and gradient accumulation data type must be equal to use ZeRO stage 3"
                 )
             return ZERO_OPTIMIZATION
         elif amp_enabled:
