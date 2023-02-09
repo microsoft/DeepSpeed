@@ -162,10 +162,11 @@ class MiCS_Init(Init):
             _flat_input = p.ds_tensor.data.view(-1)
             input_tensors.append(_flat_input)
 
-        all_gather_handle = dist.all_gather_coalesced(output_tensors,
-                                                      input_tensors,
-                                                      group=self.ds_param_shard_group,
-                                                      async_op=True)
+        all_gather_handle = dist.all_gather_coalesced(
+            output_tensors,
+            input_tensors,
+            group=mics_comm_groups.param_shard_group,
+            async_op=True)
 
         for idx, param in enumerate(params):
             param.data = output_tensors[idx].narrow(0,
