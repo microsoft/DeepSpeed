@@ -86,6 +86,7 @@ class AutoTP():
                     gem_list = gem_list + [layer]
             layer_list = []
             if gem_list != []:
+                gem_list = list(set(gem_list))
                 policy_list = AutoTP.update_policy_list(policy_list, module, gem_list)
                 gem_list = []
         return policy_list
