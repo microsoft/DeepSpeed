@@ -81,9 +81,6 @@ def get_full_hp_grad(self):
         lp_grad_fragment = gradient_dict[hp_mapping.param_group_index][
             self._index_in_param_group]
         hp_grad_fragment = lp_grad_fragment.to(torch.float32).flatten()
-        # print(
-        #     f'{dist.get_rank()=} {self.shape=}  {hp_grad_fragment.shape=}  {hp_grad_fragment=}'
-        # )
 
         lp_frag_address = self._hp_mapping.lp_fragment_address
         reduce_fragment = torch.narrow(reduce_buffer,
