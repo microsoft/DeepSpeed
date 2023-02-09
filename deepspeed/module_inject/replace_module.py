@@ -94,6 +94,7 @@ class ReplaceWithTensorSlicing:
     def copy(self, dst, src, int8=False):
         if src is None:
             return src
+        assert not dst.data.is_meta  # the torch.Tensor.copy_ method used below will silently fail on meta tensors
         outer_dim = 0 if int8 else 1
         inner_dim = 1 if int8 else 0
         src_shape = src.shape
