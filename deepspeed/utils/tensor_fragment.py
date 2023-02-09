@@ -87,9 +87,6 @@ def get_full_hp_grad(self):
                                        0,
                                        lp_frag_address.start,
                                        lp_frag_address.numel)
-        # print(
-        #     f'{dist.get_rank()=} {lp_frag_address=} {reduce_fragment.shape=} {reduce_fragment=}'
-        # )
 
         if self.view(-1).shape == hp_grad_fragment.shape:
             reduce_buffer.data.copy_(hp_grad_fragment.data)
