@@ -410,7 +410,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     0,
                     offset,
                     param.partition_numel())
-            # self.param_offset[param.ds_id] = offset
             offset += param.partition_numel()
 
     def _link_all_hp_params(self):
