@@ -172,9 +172,6 @@ def get_hp_fragment_mapping(lp_param,
 
     fragment_start = max(lp_start, hp_start)
     fragment_end = min(lp_end, hp_end)
-    # print(
-    #     f'{dist.get_rank()=} {lp_start=} {lp_end-lp_start=} {hp_start=} {hp_end-hp_start=} {fragment_start=} {fragment_end-fragment_start=}'
-    # )
     assert fragment_start < fragment_end, \
         f'fragment start {fragment_start} should be < fragment_end {fragment_end}'
 
