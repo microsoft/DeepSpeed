@@ -105,6 +105,10 @@ class DistributedExec(ABC):
         return fixture_kwargs
 
     def _launch_procs(self, num_procs):
+        if torch.cuda.device_count() < num_procs:
+            pytest.skip(
+                f"Skipping test because not enough GPUs are available: {num_procs} required, {torch.cuda.device_count()} available"
+            )
         mp.set_start_method('forkserver', force=True)
         skip_msg = mp.Queue()  # Allows forked processes to share pytest.skip reason
         processes = []
@@ -316,15 +320,6 @@ class DistributedTest(DistributedExec):
                 break
         else:
             world_size = self.world_size
-
-        if isinstance(world_size, int):
-            max_world_size = world_size
-        else:
-            max_world_size = max(world_size)
-        if torch.cuda.device_count() < max_world_size:
-            pytest.skip(
-                f"Skipping test because not enough GPUs are available: {max_world_size} required, {torch.cuda.device_count()} available"
-            )
 
         if isinstance(world_size, int):
             world_size = [world_size]
