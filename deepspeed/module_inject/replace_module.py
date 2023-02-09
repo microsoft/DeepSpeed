@@ -300,7 +300,7 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
                 setattr(module, name, new_module)
 
 
-selected_policy_g = None
+container_g = None
 
 
 def replace_transformer_layer(orig_layer_impl,
@@ -391,11 +391,11 @@ def replace_transformer_layer(orig_layer_impl,
         # 10. copy the tensors from the model-specific container to the new module
         _container.copy_data_to_new_module()
 
-        # 11. set globals for generic checkpoint loading
-        global selected_policy_g
+        # 11. set global for generic checkpoint loading
+        global container_g
 
-        if selected_policy_g is None:
-            selected_policy_g = _container.policy
+        if container_g is None:
+            container_g = _container
 
         return _container.module
 
@@ -536,6 +536,8 @@ def replace_transformer_layer(orig_layer_impl,
     world_size = dist.get_world_size() if dist.is_initialized() else 1
     rank = dist.get_rank() if dist.is_initialized() else 0
     if checkpoint_dict is not None:
+        assert container_g.ckpt_load_enabled, \
+               f"Meta Tensor checkpoint loading not supported in {container_g.__class__.__name__} container"
         start_time = time.time()
         checkpoint = checkpoint_dict['checkpoints']
         ckpt_list = checkpoint["tp"] if type(checkpoint) is dict else checkpoint
@@ -560,7 +562,7 @@ def replace_transformer_layer(orig_layer_impl,
                                            ckpt_type,
                                            ckpt_mp_size,
                                            quantizer,
-                                           replace_policy=selected_policy_g)
+                                           replace_policy=container_g.policy)
                 pbar.update(1)
         else:
             import gc
@@ -591,7 +593,7 @@ def replace_transformer_layer(orig_layer_impl,
                                            ckpt_mp_size,
                                            quantizer,
                                            int(rank % tp_split_size),
-                                           replace_policy=selected_policy_g)
+                                           replace_policy=container_g.policy)
                 sds = [None for _ in sds]
                 gc.collect()
 
@@ -613,7 +615,7 @@ def replace_transformer_layer(orig_layer_impl,
                                                ckpt_mp_size,
                                                quantizer,
                                                int(rank % tp_split_size),
-                                               replace_policy=selected_policy_g)
+                                               replace_policy=container_g.policy)
                     sds = [None for _ in sds]
                     gc.collect()
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
