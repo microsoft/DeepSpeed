@@ -29,6 +29,12 @@ def has_all_reduce_coalesced():
     return hasattr(torch.distributed, "all_reduce_coalesced")
 
 
+def has_coalescing_manager():
+    has_c10d = hasattr(torch.distributed, 'distributed_c10d')
+    return has_c10d and hasattr(torch.distributed.distributed_c10d,
+                                '_coalescing_manager')
+
+
 def has_reduce_scatter_base():
     '''
         Helper to check if torch.distributed has _reduce_scatter_base

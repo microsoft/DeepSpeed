@@ -22,6 +22,10 @@ class TorchBackend(Backend):
         self.has_allgather_base = has_allgather_base()
         self.has_reduce_scatter_base = has_reduce_scatter_base()
         self.has_all_reduce_coalesced = has_all_reduce_coalesced()
+        self.has_coalescing_manager = has_coalescing_manager()
+        # assume if the coalescing_manager is available
+        # we can construct the coalesced API
+        self.has_all_gather_coalesced = has_coalescing_manager()
         self.initialized = True
         self.name = name
         # Future functionality to support ds.initialize() on a single GPU
@@ -107,9 +111,38 @@ class TorchBackend(Backend):
         else:
             utils.logger.warning(
                 "unable to find torch.distributed._all_gather_base. will fall back to "
-                "torch.distributed.reduce_scatter which will result in suboptimal performance. "
+                "torch.distributed.all_gather which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
             pass
+
+    def all_gather_coalesced(self,
+                             output_tensors,
+                             input_tensors,
+                             group=None,
+                             async_op=False):
+        """"""
+        assert len(output_tensors) == len(input_tensors), ""
+        if hasattr(torch.distributed.distributed_c10d, '_all_gather_base_coalesced'):
+            # customized PyTorch
+            return torch.distributed.distributed_c10d._all_gather_base_coalesced(
+                output_tensors,
+                input_tensors,
+                group=group,
+                async_op=async_op)
+        elif has_coalescing_manager():
+            reqs = []
+            with torch.distributed.distributed_c10d._coalescing_manager(group, reqs):
+                for output, input in zip(output_tensors, input_tensors):
+                    handle = torch.distributed.distributed_c10d._all_gather_base(
+                        output,
+                        input,
+                        group=group,
+                        async_op=True)
+                    reqs.append(handle)
+            if async_op:
+                return reqs[-1]
+            else:
+                reqs[-1].wait()
 
     def reduce_scatter_base(self,
                             output_tensor,

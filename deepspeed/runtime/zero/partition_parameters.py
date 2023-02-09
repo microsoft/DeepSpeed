@@ -475,12 +475,12 @@ class AllGatherHandle:
         if param.ds_status != ZeroParamStatus.INFLIGHT:
             raise RuntimeError(f"expected param {param.ds_summary()} to be available")
 
-        self.__handle = handle
-        self.__param = param
+        self.handle = handle
+        self.param = param
 
     def wait(self) -> None:
-        instrument_w_nvtx(self.__handle.wait)()
-        self.__param.ds_status = ZeroParamStatus.AVAILABLE
+        instrument_w_nvtx(self.handle.wait)()
+        self.param.ds_status = ZeroParamStatus.AVAILABLE
 
 
 class AllGatherCoalescedHandle:
@@ -491,33 +491,35 @@ class AllGatherCoalescedHandle:
         partitions: List[Tensor],
         world_size: int,
     ) -> None:
-        self.__allgather_handle = allgather_handle
-        self.__params = params
-        self.__partitions = partitions
-        self.__world_size = world_size
-        self.__complete = False
+        # renaming the fields without double underscore to ease
+        # the class inheritance
+        self.allgather_handle = allgather_handle
+        self.params = params
+        self.partitions = partitions
+        self.world_size = world_size
+        self.complete = False
 
-        for param in self.__params:
+        for param in self.params:
             if param.ds_status != ZeroParamStatus.INFLIGHT:
                 raise RuntimeError(
                     f"expected param {param.ds_summary()} to not be available")
 
     @instrument_w_nvtx
     def wait(self) -> None:
-        if self.__complete:
+        if self.complete:
             return
 
-        instrument_w_nvtx(self.__allgather_handle.wait)()
+        instrument_w_nvtx(self.allgather_handle.wait)()
 
         # split the single tensor out into individual tensors
         param_offset = 0
-        for param in self.__params:
+        for param in self.params:
             assert param.ds_status == ZeroParamStatus.INFLIGHT, f"expected param {param.ds_summary()} to be inflight"
             partitions: List[Tensor] = []
-            for rank in range(self.__world_size):
+            for rank in range(self.world_size):
                 param_start = rank * param.ds_tensor.ds_numel
                 if param_start < param.ds_numel:
-                    part_to_copy = self.__partitions[rank].narrow(
+                    part_to_copy = self.partitions[rank].narrow(
                         0,
                         param_offset,
                         min(param.ds_numel - param_start,
@@ -532,7 +534,7 @@ class AllGatherCoalescedHandle:
 
             param_offset += param.ds_tensor.ds_numel
 
-        self.__complete = True
+        self.complete = True
 
 
 # Replaces all parameters in module with Scattered Parameters
