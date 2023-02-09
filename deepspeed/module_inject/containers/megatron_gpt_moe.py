@@ -14,7 +14,7 @@ class DS_MegatronGPTMoEContainer(MegatronContainer, BaseTransformerMoEContainer)
         # All model specific things should be defined here instead of the base class.
 
     def create_module(self, config=None):
-        _config = config if config is not None else self.config
+        _config = config if config is not None else self.ds_model_config
         self.module = DeepSpeedMegatronGPTInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
 
@@ -78,6 +78,3 @@ class MegatronMoELayerPolicy(MegatronLayerPolicy):
                     self.client_module.mlp.mlp.dense_4h_to_h.weight, \
                     self.client_module.mlp.mlp.dense_4h_to_h.bias, \
                     self.client_module.mlp.coefficient.weight
-
-    def get_param_names(self):
-        pass
