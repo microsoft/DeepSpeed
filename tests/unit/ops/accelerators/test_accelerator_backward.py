@@ -288,7 +288,8 @@ class TestCUDABackward(DistributedTest):
                       use_fp16,
                       atol):
         # Only run fp16 test cases on devices with FP16 capability.
-        if not get_accelerator().is_fp16_supported() and (use_fp16 is True or is_preln is False):
+        if not get_accelerator().is_fp16_supported() and (use_fp16 is True
+                                                          or is_preln is False):
             return
 
         ds_config = DeepSpeedTransformerConfig()
