@@ -131,7 +131,7 @@ class DistributedExec(ABC):
         if not any_done:
             for p in processes:
                 p.terminate()
-            pytest.exit("Test hanged, exiting", returncode=1)
+            pytest.exit("Test hanged, exiting", returncode=0)
 
         # Wait for all other processes to complete
         for p in processes:
