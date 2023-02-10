@@ -1507,7 +1507,6 @@ class DeepSpeedEngine(Module):
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
         model_dtype, grad_accum_dtype = self.get_data_types()
-        assert self.communication_data_type in (torch.float16, torch.bfloat16), "ZeRO supports only 'communication_data_type': ['fp16', 'bfp16']"
         timers = self.timers if self.wall_clock_breakdown() else None
 
         if optimizer is None:
