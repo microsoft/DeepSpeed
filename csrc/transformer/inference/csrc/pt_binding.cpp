@@ -9,6 +9,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #include "inference_context.h"
 #include "inference_cublas_wrappers.h"
 #include "inference_cuda_layers.h"
+#include "quantization.h"
 
 std::array<int, 3> gemm_algos = std::array<int, 3>({99, 99, 99});
 
@@ -777,13 +778,17 @@ void quantized_gemm(void* output,
     //                    .requires_grad(false);
     // auto tmp = torch::empty(weight.sizes(), options);
     // T* weight16 = (T*)tmp.data_ptr();
-    launch_dequantize(weight16,
-                      (int8_t*)weight.data_ptr(),
-                      (float*)qscale.data_ptr(),
-                      weight.size(0),
-                      weight.size(1),
-                      groups,
-                      Context::Instance().GetCurrentStream());
+
+    // Coerce to __half precision, only do quantized GEMM with __half
+    const int elems_per_group = at::numel(weight) / groups;
+    launch_dequantize_kernel(reinterpret_cast<__half*>(weight16),
+                             (int8_t*)weight.data_ptr(),
+                             (float*)qscale.data_ptr(),
+                             quantize::Type::Symmetric,
+                             8,  // num_bits
+                             elems_per_group,
+                             at::numel(weight),
+                             Context::Instance().GetCurrentStream());
 
     float alpha = (T)1.0;
     float gemm_beta = (T)0.0;
@@ -905,14 +910,16 @@ void quantized_gemm(at::Tensor& output,
                        .requires_grad(false);
     auto weight16 = at::empty({weight.size(0), weight.size(1)}, options);
 
-    launch_dequantize((T*)weight16.data_ptr(),
-                      (int8_t*)weight.data_ptr(),
-                      (float*)qscale.data_ptr(),
-                      weight.size(0),
-                      weight.size(1),
-                      groups,
-                      merge_count,
-                      Context::Instance().GetCurrentStream());
+    // Coerce to __half precision, only do quantized GEMM with __half
+    const int elems_per_group = at::numel(weight) / groups;
+    launch_dequantize_kernel((__half*)weight16.data_ptr(),
+                             (int8_t*)weight.data_ptr(),
+                             (float*)qscale.data_ptr(),
+                             quantize::Type::Symmetric,
+                             8,  // num_bits
+                             elems_per_group,
+                             at::numel(weight),
+                             Context::Instance().GetCurrentStream());
 
     float alpha = (T)1.0;
     float gemm_beta = (T)0.0;

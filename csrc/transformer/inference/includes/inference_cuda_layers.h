@@ -114,24 +114,6 @@ void launch_fused_residual_ln_store_pre_ln_res(T* norm_output,
                                                cudaStream_t stream);
 
 template <typename T>
-void launch_dequantize(T* output,
-                       const int8_t* input,
-                       const float* qscale,
-                       unsigned output_size,
-                       unsigned hidden_dim,
-                       unsigned groups,
-                       unsigned merge_count,
-                       cudaStream_t stream);
-
-template <typename T>
-void launch_dequantize(T* output,
-                       const int8_t* input,
-                       const float* qscale,
-                       unsigned output_size,
-                       unsigned hidden_dim,
-                       unsigned groups,
-                       cudaStream_t stream);
-template <typename T>
 void launch_gptj_residual_add(T* input,
                               T* output,
                               T* attn,
