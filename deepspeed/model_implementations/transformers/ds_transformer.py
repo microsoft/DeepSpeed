@@ -39,8 +39,7 @@ class DeepSpeedTransformerInference(nn.Module):
                  quantize_scales=None,
                  quantize_groups=1,
                  merge_count=1,
-                 mlp_extra_grouping=False,
-                 qkv_merging=False):
+                 mlp_extra_grouping=False):
         super(DeepSpeedTransformerInference, self).__init__()
 
         self.config = config
@@ -61,15 +60,13 @@ class DeepSpeedTransformerInference(nn.Module):
                                                 mp_group,
                                                 quantize_scales,
                                                 quantize_groups,
-                                                merge_count,
-                                                qkv_merging)
+                                                merge_count)
         else:
             self.attention = DeepSpeedSelfAttention(self.config,
                                                     mp_group,
                                                     quantize_scales,
                                                     quantize_groups,
-                                                    merge_count,
-                                                    qkv_merging)
+                                                    merge_count)
         self.mlp = DeepSpeedMLP(self.config,
                                 mp_group,
                                 quantize_scales,
@@ -90,6 +87,11 @@ class DeepSpeedTransformerInference(nn.Module):
         self.layer_past = None
         self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if (not config.fp16) else \
                                 inference_cuda_module.allocate_workspace_fp16
+
+    @classmethod
+    def reset_cache(cls):
+        if inference_cuda_module is not None:
+            inference_cuda_module.reset_cache()
 
     def forward(
             self,
