@@ -7,8 +7,8 @@ runs:
       run: |
         sudo apt-get update && sudo apt-get -y upgrade
         sudo apt-get install -y libaio-dev
-        sudo pip install --upgrade pip
-        sudo python -m pip install --upgrade virtualenv
+        pip install --user --upgrade pip
+        python -m pip install --user --upgrade virtualenv
       shell: bash
     - id: create-venv
       run: |
