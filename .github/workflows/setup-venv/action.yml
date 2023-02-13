@@ -13,8 +13,8 @@ runs:
     - id: create-venv
       run: |
         python -m venv unit-test-venv
-        python -m pip install --upgrade pip
         source ./unit-test-venv/bin/activate
+        python -m pip install --upgrade pip
         echo PATH=$PATH >> $GITHUB_ENV # Make it so venv is inherited for other steps
       shell: bash
     - id: print-env
