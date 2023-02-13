@@ -1,4 +1,4 @@
-name: AutoPR
+name: AutoSync
 
 on:
   push:
@@ -14,9 +14,9 @@ jobs:
       - uses: actions/checkout@v2
         with:
           token: ${{ secrets.GHP_TOKEN }}
-          repository: ${{ secrets.OTHER_REPO }}
-          ref: ${{ secretes.OTHER_REPO_BRANCH }}
-          path: other-repo
+          repository: ${{ secrets.DST_REPO }}
+          ref: ${{ secretes.DST_REPO_BRANCH }}
+          path: dst-repo
 
       - name: Get PR data
         run: |
@@ -30,7 +30,7 @@ jobs:
       - name: Cherry pick commit
         continue-on-error: true
         run: |
-          cd other-repo
+          cd dst-repo
           git config --global user.name ${{ env.USERNAME }}
           git config --global user.email ${{ env.USER_EMAIL }}
           git fetch https://github.com/${{ env.REPO }}.git master
@@ -38,13 +38,13 @@ jobs:
 
       - name: Add modified files
         run: |
-          cd other-repo
+          cd dst-repo
           git add .
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4
         with:
-          path: other-repo
+          path: dst-repo
           token: ${{ secrets.GHP_TOKEN }}
           body: |
             **Auto-generated PR**
