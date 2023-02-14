@@ -110,7 +110,7 @@ generator = pipeline('text-generation', model='EleutherAI/gpt-neo-2.7B',
 generator.model = deepspeed.init_inference(generator.model,
                                            mp_size=world_size,
                                            dtype=torch.float,
-					            replace_with_kernel_inject=True)
+                                           replace_with_kernel_inject=True)
 
 string = generator("DeepSpeed is", do_sample=True, min_length=50)
 if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
