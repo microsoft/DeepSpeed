@@ -217,6 +217,13 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     inference.
     """
 
+    replace_method: str = Field(
+        "auto",
+        deprecated=True,
+        deprecated_msg=
+        "This parameter is no longer needed, please remove from your call to DeepSpeed-inference"
+    )
+
     injection_policy: Dict = Field(None, alias="injection_dict")
     """
     Dictionary mapping a client nn.Module to its corresponding injection
