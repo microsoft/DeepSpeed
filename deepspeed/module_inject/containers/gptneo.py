@@ -13,10 +13,26 @@ class DS_GPTNEOContainer(MetaTensorContainer, BaseTransformerContainer):
         # All model specific things should be defined here instead of the base class.
 
     def create_module(self, config=None):
-        _config = config if config is not None else self.config
+        _config = config if config is not None else self.ds_model_config
         self.module = DeepSpeedGPTInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
         return self.module
+
+    def get_param_names(self):
+        return 'attention.query_key_value.weight', \
+               'attention.query_key_value.bias', \
+               'attention.dense.weight', \
+               'attention.dense.bias', \
+               'mlp.dense_h_to_4h.weight', \
+               'mlp.dense_h_to_4h.bias', \
+               'mlp.dense_4h_to_h.weight', \
+               'mlp.dense_4h_to_h.bias', \
+               'input_layernorm.weight', \
+               'input_layernorm.bias', \
+               'post_attention_layernorm.weight', \
+               'post_attention_layernorm.bias', \
+               self.policy.use_load_prefix, \
+               self.policy.split_qkv
 
 
 class HFGPTNEOLayerPolicy(TransformerPolicy):
@@ -56,19 +72,3 @@ class HFGPTNEOLayerPolicy(TransformerPolicy):
                self.client_module.ln_2.bias, \
                self.client_module.ln_1.weight, \
                self.client_module.ln_1.bias
-
-    def get_param_names(self):
-        return 'attention.query_key_value.weight', \
-               'attention.query_key_value.bias', \
-               'attention.dense.weight', \
-               'attention.dense.bias', \
-               'mlp.dense_h_to_4h.weight', \
-               'mlp.dense_h_to_4h.bias', \
-               'mlp.dense_4h_to_h.weight', \
-               'mlp.dense_4h_to_h.bias', \
-               'input_layernorm.weight', \
-               'input_layernorm.bias', \
-               'post_attention_layernorm.weight', \
-               'post_attention_layernorm.bias', \
-               self.use_load_prefix, \
-               self.split_qkv
