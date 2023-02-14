@@ -217,13 +217,6 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     inference.
     """
 
-    replace_method: str = "auto"
-    """
-    If 'auto' DeepSpeed will automatically try and replace model modules with
-    its optimized versions. If an injection_policy is set this will override
-    the automatic replacement behavior.
-    """
-
     injection_policy: Dict = Field(None, alias="injection_dict")
     """
     Dictionary mapping a client nn.Module to its corresponding injection
