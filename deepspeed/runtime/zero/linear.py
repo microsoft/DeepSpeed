@@ -20,6 +20,7 @@ from torch.nn.modules.module import Module
 from deepspeed.runtime.utils import noop_decorator
 from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
+from .utils import user_friendly_assert
 
 tensor_map = {}
 
@@ -50,7 +51,8 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
     # bias is an optional argument
     def forward(ctx, input, weight, bias=None):
         #print("In ZeRO Linear Function")
-
+        user_friendly_assert(input, weight, bias)
+        
         weight_id = id(weight)
         bias_id = id(bias)
 

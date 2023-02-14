@@ -86,3 +86,9 @@ def assert_ints_same_as_other_ranks(ints: List[int]) -> None:
     if ints != rank0_ints:
         raise RuntimeError(f"disagreement between rank0 and rank{dist.get_rank()}: "
                            f"rank0: {rank0_ints}, rank{dist.get_rank()}: {ints}")
+
+def user_friendly_assert(input, weight, bias=None):
+    if input.size(-1) != weight.size(-2):
+        raise RuntimeError(f"Size mismatch: Got {input.size(0)}x{input.size(-1)}, expected {input.size(0)}x{weight.size(-2)}.")
+    if bias is not None and bias.size(0) != weight.size(-1):
+        raise RuntimeError(f"Size mismatch: Got bias with {bias.size(0)} elements, expected {weight.size(-1)} elements.")
