@@ -3,7 +3,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 """
 import torch
 
-from ..op_builder import RandomLTDBuilder
+from deepspeed.ops.op_builder import RandomLTDBuilder
 """
 Returns:
     sampled_indices: [layers, batch_size, reserved_length]

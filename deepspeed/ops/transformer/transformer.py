@@ -6,8 +6,8 @@ import math
 import torch
 from torch import nn
 from torch.autograd import Function
-
-from ..op_builder import TransformerBuilder, StochasticTransformerBuilder
+from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder import TransformerBuilder, StochasticTransformerBuilder
 
 # Cuda modules will be imported if needed
 transformer_cuda_module = None
@@ -481,7 +481,7 @@ class DeepSpeedTransformerLayer(nn.Module):
         print("DeepSpeed Transformer config is ", self.config.__dict__)
 
         if self.config.local_rank >= 0:
-            torch.cuda.set_device(self.config.local_rank)
+            get_accelerator().set_device(self.config.local_rank)
 
         if initial_weights is None and initial_biases is None:
             self.attn_qkvw = nn.Parameter(
@@ -586,6 +586,7 @@ class DeepSpeedTransformerLayer(nn.Module):
                 output_attentions=False,
                 grads=None):
         self.config.is_grad_enabled = torch.is_grad_enabled()
+        self.config.training = self.training
         return DeepSpeedTransformerFunction.apply(hidden_states,
                                                   attention_mask,
                                                   self,

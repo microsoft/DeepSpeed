@@ -7,6 +7,7 @@ from deepspeed import comm as dist
 
 from deepspeed.utils import logger
 from deepspeed.utils.timer import ThroughputTimer
+from deepspeed.accelerator import get_accelerator
 
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
 from ..utils import PartitionedTensor
@@ -104,9 +105,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         self._force_grad_boundary = False
 
-        self.batch_timer = ThroughputTimer(batch_size=self.micro_batch_size *
-                                           self.micro_batches,
-                                           num_workers=self.dp_world_size,
+        self.batch_timer = ThroughputTimer(batch_size=self.train_batch_size(),
                                            logging_fn=self.tput_log,
                                            monitor_memory=False,
                                            steps_per_output=self.steps_per_print())
@@ -1272,14 +1271,14 @@ class PipelineEngine(DeepSpeedEngine):
         if print_rank != -1 and rank != print_rank:
             return
 
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
 
         if reset_max:
-            torch.cuda.reset_max_memory_cached()
-            torch.cuda.reset_max_memory_allocated()
+            get_accelerator().reset_max_memory_cached()
+            get_accelerator().reset_max_memory_allocated()
 
-        new_alloced = torch.cuda.memory_allocated()
-        new_cached = torch.cuda.memory_cached()
+        new_alloced = get_accelerator().memory_allocated()
+        new_cached = get_accelerator().memory_cached()
 
         delta_alloced = new_alloced - mem_alloced
         delta_cached = new_cached - mem_cached
@@ -1287,8 +1286,8 @@ class PipelineEngine(DeepSpeedEngine):
         mem_cached = new_cached
         mem_alloced = new_alloced
 
-        max_alloced = torch.cuda.max_memory_allocated()
-        max_cached = torch.cuda.max_memory_cached()
+        max_alloced = get_accelerator().max_memory_allocated()
+        max_cached = get_accelerator().max_memory_cached()
 
         # convert to GB for printing
         new_alloced /= 1024**3
