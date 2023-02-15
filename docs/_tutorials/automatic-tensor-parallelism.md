@@ -3,7 +3,7 @@ title: "Automatic Tensor Parallelism for HuggingFace Models"
 tags: inference
 ---
 
-This tutorial demonstrates the new automatic tensor parallelism feature for inference. Previously, the user needed to provide an injection policy to DeepSpeed to enable tensor parallelism. DeepSpeed now supports automatic tensor parallelism for HuggingFace models by simply setting the replace method to empty string "". This is convenient for when the injection policy of a model is not known and improving performance of models without kernel injection support.
+This tutorial demonstrates the new automatic tensor parallelism feature for inference. Previously, the user needed to provide an injection policy to DeepSpeed to enable tensor parallelism. DeepSpeed now supports automatic tensor parallelism for HuggingFace models by default as long as kernel injection is not true and an injection policy is not provided. This is convenient for when the injection policy of a model is not known and for improving performance of models without kernel injection support.
 
 ```python
 # create the model
@@ -14,8 +14,7 @@ pipe = pipeline("text2text-generation", model="google/t5-v1_1-small", device=loc
 pipe.model = deepspeed.init_inference(
     pipe.model,
     mp_size=world_size,
-    dtype=torch.float,
-    replace_method=""
+    dtype=torch.float
 )
 output = pipe('Input String')
 ```
@@ -38,7 +37,7 @@ pipe.model = deepspeed.init_inference(
 output = pipe('Input String')
 ```
 
-With automatic tensor parallelism, we do not need to provide the injection policy and can use replace method set to empty string "" instead. The injection policy will be determined at runtime.
+With automatic tensor parallelism, we do not need to provide the injection policy for supported models. The injection policy will be determined at runtime and applied automatically.
 
 
 ## Example Script
