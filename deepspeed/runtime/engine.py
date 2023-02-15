@@ -20,6 +20,7 @@ from typing import Callable, Dict, Union, Iterable
 import deepspeed
 
 from deepspeed.runtime.utils import see_memory_usage, DummyOptim
+from .zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
@@ -645,8 +646,18 @@ class DeepSpeedEngine(Module):
     def zero_offload_param(self):
         return self._config.zero_config.offload_param
 
+    def zero_use_cpu_optimizer(self):
+        if self._config.zero_config.offload_optimizer is not None:
+            return self._config.zero_config.offload_optimizer.device in [
+                OffloadDeviceEnum.cpu,
+                OffloadDeviceEnum.nvme
+            ]
+        return False
+
     def zero_cpu_offload(self):
-        return self._config.zero_config.offload_optimizer is not None
+        if self._config.zero_config.offload_optimizer is not None:
+            return self._config.zero_config.offload_optimizer.device == OffloadDeviceEnum.cpu
+        return False
 
     def zero_sub_group_size(self):
         return self._config.zero_config.sub_group_size
@@ -755,6 +766,9 @@ class DeepSpeedEngine(Module):
 
     def zero_round_robin_gradients(self):
         return self._config.zero_config.round_robin_gradients
+
+    def zero_param_group_size(self):
+        return self._config.zero_config.zero_param_group_size
 
     def dump_state(self):
         return self._config.dump_state
@@ -1185,7 +1199,7 @@ class DeepSpeedEngine(Module):
                     optimizer = torch.optim.AdamW(model_parameters,
                                                   **optimizer_parameters)
             else:
-                if self.zero_cpu_offload():
+                if self.zero_use_cpu_optimizer():
                     if self.optimizer_name() == ADAGRAD_OPTIMIZER:
                         from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
                         optimizer = DeepSpeedCPUAdagrad(model_parameters,
@@ -1411,7 +1425,8 @@ class DeepSpeedEngine(Module):
                 fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(
                 ),
                 communication_data_type=self.communication_data_type,
-                elastic_checkpoint=self.zero_elastic_checkpoint())
+                elastic_checkpoint=self.zero_elastic_checkpoint(),
+                zero_param_group_size=self.zero_param_group_size())
 
         elif zero_stage == ZeroStageEnum.weights:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
@@ -1428,7 +1443,8 @@ class DeepSpeedEngine(Module):
                     param_persistence_threshold=self.zero_param_persistence_threshold(),
                     model_persistence_threshold=self.zero_model_persistence_threshold(),
                     offload_param_config=self.zero_offload_param(),
-                    mpu=self.mpu)
+                    mpu=self.mpu,
+                    zero_param_group_size=self.zero_param_group_size)
             else:
                 log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage),
                          ranks=[0])
@@ -1460,7 +1476,8 @@ class DeepSpeedEngine(Module):
                     gradient_predivide_factor=self.gradient_predivide_factor(),
                     gradient_accumulation_steps=self.gradient_accumulation_steps(),
                     aio_config=self.aio_config(),
-                    communication_data_type=self.communication_data_type)
+                    communication_data_type=self.communication_data_type,
+                    zero_param_group_size=self.zero_param_group_size())
 
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))

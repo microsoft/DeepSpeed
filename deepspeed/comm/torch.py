@@ -6,7 +6,47 @@ from deepspeed import utils
 from .utils import *
 from .backend import *
 from .comm import *
+import os
 
+
+DS_COMM_ALL_GATHER_OFF=False
+DS_COMM_REDUCE_SCATTER_OFF=False
+DS_COMM_BROADCAST_OFF=False
+DS_COMM_ALL_REDUCE_OFF=False
+DS_COMM_REDUCE_OFF=False
+
+
+##Utilities to turn comm off 
+##TODO: move to base comm (wrapper)
+def all_gather_comm_off(flag=False):
+   global DS_COMM_ALL_GATHER_OFF
+   DS_COMM_ALL_GATHER_OFF=flag
+
+def reduce_scatter_comm_off(flag=False):
+   global DS_COMM_REDUCE_SCATTER_OFF
+   DS_COMM_REDUCE_SCATTER_OFF=flag
+
+def broadcast_comm_off(flag=False):
+   global DS_COMM_BROADCAST_OFF
+   DS_COMM_BROADCAST_OFF=flag
+
+def all_reduce_comm_off(flag=False):
+   global DS_COMM_ALL_REDUCE_OFF
+   DS_COMM_ALL_REDUCE_OFF=flag
+
+def reduce_comm_off(flag=False):
+   global DS_COMM_REDUCE_OFF
+   DS_COMM_REDUCE_OFF=flag
+
+#assumption: all_gather and reduce scatter 
+## are what we care about
+def backward_comm_off(flag=False):
+    all_gather_comm_off(flag)
+    reduce_scatter_comm_off(flag)
+
+class Noop:
+    def wait(self):
+        return None
 
 class TorchBackend(Backend):
     """
@@ -29,6 +69,7 @@ class TorchBackend(Backend):
         self.single_gpu_mode = True
         self.init_process_group(backend, timeout, init_method)
 
+
     def init_process_group(self, backend, timeout, init_method):
         if not torch.distributed.is_initialized():
             torch.distributed.init_process_group(backend,
@@ -41,13 +82,22 @@ class TorchBackend(Backend):
                    op=torch.distributed.ReduceOp.SUM,
                    group=None,
                    async_op=False):
-        op = self._reduce_op(op)
-        return torch.distributed.all_reduce(tensor=tensor,
-                                            op=op,
-                                            group=group,
-                                            async_op=async_op)
+        if DS_COMM_ALL_REDUCE_OFF:
+            if int(os.getenv('RANK', '0')) == 0:
+                utils.logger.warning("ALL REDUCE is OFF")
+            return Noop()
+        else:
+            op = self._reduce_op(op)
+            return torch.distributed.all_reduce(tensor=tensor,
+                                                op=op,
+                                                group=group,
+                                                async_op=async_op)
 
     def reduce(self, tensor, dst, op=ReduceOp.SUM, group=None, async_op=False):
+        if DS_COMM_REDUCE_OFF:
+            if int(os.getenv('RANK', '0')) == 0:
+                utils.logger.warning("REDUCE is OFF")
+            return Noop()
         return torch.distributed.reduce(tensor=tensor,
                                         dst=dst,
                                         op=self._reduce_op(op),
@@ -60,54 +110,79 @@ class TorchBackend(Backend):
                        op=ReduceOp.SUM,
                        group=None,
                        async_op=False):
-        return torch.distributed.reduce_scatter(output=output,
-                                                input_list=input_list,
-                                                op=self._reduce_op(op),
-                                                group=group,
-                                                async_op=async_op)
+        if DS_COMM_REDUCE_SCATTER_OFF:
+            if int(os.getenv('RANK', '0')) == 0:
+                utils.logger.warning("REDUCE SCATTER  is OFF")
+            return Noop()
+        else:
+            return torch.distributed.reduce_scatter(output=output,
+                                                    input_list=input_list,
+                                                    op=self._reduce_op(op),
+                                                    group=group,
+                                                    async_op=async_op)
 
     def broadcast(self, tensor, src, group=None, async_op=False):
-        return torch.distributed.broadcast(tensor=tensor,
-                                           src=src,
-                                           group=group,
-                                           async_op=async_op)
+        if DS_COMM_BROADCAST_OFF:
+            if int(os.getenv('RANK', '0')) == 0:
+                utils.logger.warning("BROADCAST  is OFF")
+            return Noop()
+        else:
+            return torch.distributed.broadcast(tensor=tensor,
+                                               src=src,
+                                               group=group,
+                                               async_op=async_op)
 
     def all_gather(self, tensor_list, tensor, group=None, async_op=False):
-        return torch.distributed.all_gather(tensor_list=tensor_list,
+        if DS_COMM_ALL_GATHER_OFF:
+            if int(os.getenv('RANK', '0')) == 0:
+                utils.logger.warning("All Gather is OFF")
+            return Noop()
+        else:
+            return torch.distributed.all_gather(tensor_list=tensor_list,
                                             tensor=tensor,
                                             group=group,
                                             async_op=async_op)
-
     def all_gather_base(self, output_tensor, input_tensor, group=None, async_op=False):
-        if self.has_allgather_base:
-            return torch.distributed.distributed_c10d._all_gather_base(
-                output_tensor=output_tensor,
-                input_tensor=input_tensor,
-                group=group,
-                async_op=async_op)
+        if DS_COMM_ALL_GATHER_OFF:
+            if int(os.getenv('RANK', '0')) == 0:
+                utils.logger.warning("All Gather is OFF")
+            return Noop()
         else:
-            utils.logger.warning(
-                "unable to find torch.distributed._all_gather_base. will fall back to "
-                "torch.distributed.reduce_scatter which will result in suboptimal performance. "
-                "please consider upgrading your pytorch installation.")
-            pass
+            if self.has_allgather_base:
+                return torch.distributed.distributed_c10d._all_gather_base(
+                    output_tensor=output_tensor,
+                    input_tensor=input_tensor,
+                    group=group,
+                    async_op=async_op)
+            else:
+                utils.logger.warning(
+                    "unable to find torch.distributed._all_gather_base. will fall back to "
+                    "torch.distributed.reduce_scatter which will result in suboptimal performance. "
+                    "please consider upgrading your pytorch installation.")
+                pass
 
     def reduce_scatter_base(self,
                             output_tensor,
                             input_tensor,
                             group=None,
                             async_op=False):
-        if self.has_reduce_scatter_base:
-            return torch.distributed._reduce_scatter_base(output_tensor,
-                                                          input_tensor,
-                                                          group=group,
-                                                          async_op=async_op)
+
+        if DS_COMM_REDUCE_SCATTER_OFF:
+            if int(os.getenv('RANK', '0')) == 0:
+                utils.logger.warning("REDUCE SCATTER is OFF")
+            return Noop()
         else:
-            utils.logger.warning(
-                "unable to find torch.distributed._reduce_scatter_base. will fall back to "
-                "torch.distributed.reduce_scatter which will result in suboptimal performance. "
-                "please consider upgrading your pytorch installation.")
-            pass
+            if self.has_reduce_scatter_base:
+                return torch.distributed._reduce_scatter_base(output_tensor,
+                                                              input_tensor,
+                                                              group=group,
+                                                              async_op=async_op)
+            else:
+                utils.logger.warning(
+                    "unable to find torch.distributed._reduce_scatter_base. will fall back to "
+                    "torch.distributed.reduce_scatter which will result in suboptimal performance. "
+                    "please consider upgrading your pytorch installation.")
+                pass
 
     def all_to_all_single(self,
                           output,
