@@ -3,7 +3,6 @@ name: amd
 on:
   push:
     branches:
-      - 'master'
       - 'staging**'
     paths-ignore:
       - 'docs/**'
@@ -25,26 +24,14 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
-      # Runs a single command using the runners shell
-      - name: environment
+      - id: setup-venv
+        uses: ./.github/workflows/setup-venv
+
+      - name: Install pytorch
         run: |
-          echo "JobID: $AISC_NODE_INSTANCE_ID"
-          rocm-smi --showhw
-          which python
-          python --version
-          which hipcc
-          hipcc --version
-          pip install --upgrade pip
-          pip uninstall --yes torch torchvision
           pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/rocm5.1.1
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
-          sudo apt-get update
-          sudo apt-get install -y libaio-dev
-
-      - name: Python environment
-        run: |
-          pip list
 
       - name: Install transformers
         run: |
@@ -62,10 +49,14 @@ jobs:
           #python -c "from deepspeed.env_report import cli_main; cli_main()"
           ds_report
 
+      - name: Python environment
+        run: |
+          pip list
+
       # Runs a set of commands using the runners shell
       - name: Unit tests
         run: |
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --forked -n 4 --verbose unit/
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --forked --verbose -m 'sequential' unit/
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 -n 4 --verbose unit/
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose -m 'sequential' unit/

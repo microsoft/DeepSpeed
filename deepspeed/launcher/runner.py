@@ -7,6 +7,7 @@ per rank for training.
 """
 
 import os
+import re
 import sys
 import json
 import base64
@@ -16,18 +17,18 @@ import collections
 from copy import deepcopy
 import signal
 import time
-import torch.cuda
 
-from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner
-from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER
+from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner, SlurmRunner
+from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER, SLURM_LAUNCHER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..nebula.constants import NEBULA_EXPORT_ENVS
 from ..utils import logger
 
 from ..autotuning import Autotuner
+from deepspeed.accelerator import get_accelerator
 
 DLTS_HOSTFILE = "/job/hostfile"
-EXPORT_ENVS = ['NCCL', 'PYTHON', 'MV2', 'UCX']
+EXPORT_ENVS = ['MLFLOW', 'NCCL', 'PYTHON', 'MV2', 'UCX']
 EXPORT_ENVS += NEBULA_EXPORT_ENVS
 DEEPSPEED_ENVIRONMENT_NAME = ".deepspeed_env"
 DEEPSPEED_ENVIRONMENT_PATHS = [os.path.expanduser("~"), '.']
@@ -108,11 +109,12 @@ def parse_args(args=None):
                         help="(optional) IP address of node 0, will be "
                         "inferred via 'hostname -I' if not specified.")
 
-    parser.add_argument("--launcher",
-                        default=PDSH_LAUNCHER,
-                        type=str,
-                        help="(optional) choose launcher backend for multi-node "
-                        "training. Options currently include PDSH, OpenMPI, MVAPICH.")
+    parser.add_argument(
+        "--launcher",
+        default=PDSH_LAUNCHER,
+        type=str,
+        help="(optional) choose launcher backend for multi-node "
+        "training. Options currently include PDSH, OpenMPI, MVAPICH, SLURM.")
 
     parser.add_argument("--launcher_args",
                         default="",
@@ -153,6 +155,12 @@ def parse_args(args=None):
         "Useful when launching deepspeed processes programmatically.")
 
     parser.add_argument(
+        "--enable_each_rank_log",
+        default="None",
+        type=str,
+        help="redirect the stdout and stderr from each rank into different log files")
+
+    parser.add_argument(
         "--autotuning",
         default="",
         choices=["tune",
@@ -181,25 +189,45 @@ def fetch_hostfile(hostfile_path):
 
     # e.g., worker-0 slots=16
     with open(hostfile_path, 'r') as fd:
-        resource_pool = collections.OrderedDict()
-        for line in fd.readlines():
-            line = line.strip()
-            if line == '':
-                # skip empty lines
-                continue
-            try:
-                hostname, slots = line.split()
-                _, slot_count = slots.split("=")
-                slot_count = int(slot_count)
-            except ValueError as err:
-                logger.error("Hostfile is not formatted correctly, unable to "
-                             "proceed with training.")
-                raise err
-            if hostname in resource_pool:
-                logger.error("Hostfile contains duplicate hosts, unable to "
-                             "proceed with training.")
-                raise ValueError(f"host {hostname} is already defined")
-            resource_pool[hostname] = slot_count
+        hostfile_text = fd.readlines()
+
+    return _parse_hostfile(hostfile_text)
+
+
+def _parse_hostfile(hostfile_lines):
+    # Regex matches one or more non-whitespace characters (\S+) at the start of
+    # the line, followed by one or more whitespace characters (\s+), followed
+    # by the string "slots=", followed by one or more digits (\d+).
+    pattern = r'^(\S+)\s+slots=(\d+)'
+
+    resource_pool = collections.OrderedDict()
+
+    for line in hostfile_lines:
+        line = line.strip()
+        match = re.search(pattern, line)
+        if line.startswith("#") or line == "":
+            # hostfile comment or empty line, ignore
+            continue
+        elif match:
+            host = match.group(1)
+            num_slots = int(match.group(2))
+            if host in resource_pool:
+                logger.error(f"Bad hostfile text: {hostfile_lines}")
+                raise ValueError(
+                    f"Hostfile contains multiple entries for {host}, unable to proceed with launching"
+                )
+            resource_pool[host] = num_slots
+        else:
+            logger.error(f"Bad hostfile text: {hostfile_lines}")
+            raise ValueError(
+                "Hostfile contains a bad entry: {line}, unable to proceed with launching"
+            )
+
+    if len(resource_pool) == 0:
+        logger.error(f"Bad hostfile text: {hostfile_lines}")
+        raise ValueError(
+            "Hostfile is empty or not formatted correctly, unable to proceed with launching."
+        )
 
     return resource_pool
 
@@ -328,6 +356,7 @@ def run_autotuning(args, active_resources):
     tuner.print_tuning_results()
 
     logger.info("[End] Running autotuning")
+    tuner.write_optimal_config()
 
     if args.autotuning == "run":
         tuner.run_after_tuning()
@@ -377,7 +406,7 @@ def main(args=None):
     multi_node_exec = True
     if not resource_pool:
         resource_pool = {}
-        device_count = torch.cuda.device_count()
+        device_count = get_accelerator().device_count()
         if device_count == 0:
             raise RuntimeError("Unable to proceed, no GPU resources available")
         resource_pool['localhost'] = device_count
@@ -410,8 +439,18 @@ def main(args=None):
         assert multi_node_exec
         first_host = list(active_resources.keys())[0]
         hostname_cmd = [f"ssh {first_host} hostname -I"]
-        result = subprocess.check_output(hostname_cmd, shell=True)
+        try:
+            result = subprocess.check_output(hostname_cmd, shell=True)
+        except subprocess.CalledProcessError as err:
+            logger.error(
+                "Unable to detect suitable master address via `hostname -I`, please manually specify one via --master_addr"
+            )
+            raise err
         args.master_addr = result.decode('utf-8').split()[0]
+        if not args.master_addr:
+            raise RuntimeError(
+                f"Unable to detect suitable master address via `hostname -I`, please manually specify one via --master_addr"
+            )
         logger.info(f"Using IP address of {args.master_addr} for node {first_host}")
 
     if args.autotuning != "":
@@ -458,6 +497,9 @@ def main(args=None):
             deepspeed_launch.append("--no_local_rank")
         if args.save_pid:
             deepspeed_launch += ["--save_pid", f"{os.getpid()}"]
+        if args.enable_each_rank_log:
+            deepspeed_launch.append(
+                f"--enable_each_rank_log={args.enable_each_rank_log}")
         if args.elastic_training:
             deepspeed_launch.append("--enable_elastic_training")
             deepspeed_launch.append(f"--max_elastic_nodes={args.max_elastic_nodes}")
@@ -471,6 +513,8 @@ def main(args=None):
             runner = OpenMPIRunner(args, world_info_base64, resource_pool)
         elif args.launcher == MVAPICH_LAUNCHER:
             runner = MVAPICHRunner(args, world_info_base64, resource_pool)
+        elif args.launcher == SLURM_LAUNCHER:
+            runner = SlurmRunner(args, world_info_base64, resource_pool)
         else:
             raise NotImplementedError(f"Unknown launcher {args.launcher}")
 

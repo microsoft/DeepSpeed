@@ -17,6 +17,9 @@ from _pytest.fixtures import FixtureLookupError, FixtureFunctionMarker
 # Worker timeout *after* the first worker has completed.
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 120
 
+# Worker timeout for tests that hang
+DEEPSPEED_TEST_TIMEOUT = 600
+
 
 def get_xdist_worker_id():
     xdist_worker = os.environ.get('PYTEST_XDIST_WORKER', None)
@@ -72,6 +75,7 @@ class DistributedExec(ABC):
     backend = "nccl"
     init_distributed = True
     set_dist_env = True
+    requires_cuda_env = True
 
     @abstractmethod
     def run(self):
@@ -80,6 +84,9 @@ class DistributedExec(ABC):
     def __call__(self, request=None):
         self._fixture_kwargs = self._get_fixture_kwargs(request, self.run)
         world_size = self.world_size
+        if self.requires_cuda_env and not torch.cuda.is_available():
+            pytest.skip("only supported in CUDA environments.")
+
         if isinstance(world_size, int):
             world_size = [world_size]
         for procs in world_size:
@@ -112,11 +119,19 @@ class DistributedExec(ABC):
         # Now loop and wait for a test to complete. The spin-wait here isn't a big
         # deal because the number of processes will be O(#GPUs) << O(#CPUs).
         any_done = False
-        while not any_done:
+        start = time.time()
+        while (not any_done) and ((time.time() - start) < DEEPSPEED_TEST_TIMEOUT):
             for p in processes:
                 if not p.is_alive():
                     any_done = True
                     break
+            time.sleep(.1)  # So we don't hog CPU
+
+        # If we hit the timeout, then presume a test is hanged
+        if not any_done:
+            for p in processes:
+                p.terminate()
+            pytest.exit("Test hanged, exiting", returncode=0)
 
         # Wait for all other processes to complete
         for p in processes:
@@ -153,7 +168,8 @@ class DistributedExec(ABC):
         # turn off NCCL logging if set
         os.environ.pop('NCCL_DEBUG', None)
 
-        set_cuda_visibile()
+        if torch.cuda.is_available():
+            set_cuda_visibile()
 
         if self.init_distributed:
             deepspeed.init_distributed(dist_backend=self.backend)
@@ -300,6 +316,9 @@ class DistributedTest(DistributedExec):
     def __call__(self, request):
         self._current_test = self._get_current_test_func(request)
         self._fixture_kwargs = self._get_fixture_kwargs(request, self._current_test)
+
+        if self.requires_cuda_env and not torch.cuda.is_available():
+            pytest.skip("only supported in CUDA environments.")
 
         # Catch world_size override pytest mark
         for mark in getattr(request.function, "pytestmark", []):

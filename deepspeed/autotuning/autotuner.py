@@ -1,6 +1,5 @@
 import shutil
 import subprocess
-import torch
 import time
 import datetime
 import math
@@ -9,18 +8,30 @@ import hjson
 from ..runtime.config_utils import dict_raise_error_on_duplicate_keys
 from ..runtime.constants import *
 
-from ..runtime.zero.config import DeepSpeedZeroConfig, ZERO_OPTIMIZATION, ZeroStageEnum
+from ..runtime.zero.config import ZERO_OPTIMIZATION, ZeroStageEnum
 from ..utils import logger
 from .config import DeepSpeedAutotuningConfig
 from .constants import *
 from .scheduler import ResourceManager
 from .tuner import GridSearchTuner, RandomTuner, ModelBasedTuner
 from .utils import *
+from deepspeed.accelerator import get_accelerator
 
 try:
     from tabulate import tabulate
 except ImportError:
     tabulate = None
+
+try:
+    import mlflow
+    has_mlflow = True
+except Exception as e:
+    has_mlflow = False
+
+ZERO_OPTIMIZATION_STAGE = "stage"
+OFFLOAD_OPTIMIZER = "offload_optimizer"
+OFFLOAD_PARAM = "offload_param"
+ZERO_OPTIMIZATION_STAGE_DEFAULT = ZeroStageEnum.disabled
 
 
 class Autotuner:
@@ -39,22 +50,37 @@ class Autotuner:
         assert self.user_config is not None, "DeepSpeed configuration is not provided"
 
         self.autotuning_config = DeepSpeedAutotuningConfig(self.user_config)
+        if self.user_config[AUTOTUNING]:
+            if AUTOTUNING_EXPS_DIR in self.user_config[AUTOTUNING].keys():
+                del self.user_config[AUTOTUNING][AUTOTUNING_EXPS_DIR]
+            if AUTOTUNING_RESULTS_DIR in self.user_config[AUTOTUNING].keys():
+                del self.user_config[AUTOTUNING][AUTOTUNING_RESULTS_DIR]
 
-        self.exps_dir = DEFAULT_EXPRS_DIR
-        if self.autotuning_config.exps_dir and self.autotuning_config.exps_dir != "":
-            self.exps_dir = self.autotuning_config.exps_dir
+        self.exps_dir = self.autotuning_config.exps_dir
         if self.autotuning_config.overwrite and os.path.exists(self.exps_dir):
             shutil.rmtree(self.exps_dir, ignore_errors=True)
         if not os.path.exists(self.exps_dir):
-            os.makedirs(self.exps_dir, exist_ok=True)
+            try:
+                os.makedirs(self.exps_dir, exist_ok=True)
+                logger.info(f"Created autotuning experiments directory: {self.exps_dir}")
+            except:
+                logger.error(
+                    f"Failed to create {self.exps_dir}, please check `exps_dir` in the autotuning config file is accessible by all the nodes in the job."
+                )
+                exit(-1)
 
-        self.results_dir = DEFAULT_RESULTS_DIR
-        if self.autotuning_config.results_dir and self.autotuning_config.results_dir != "":
-            self.results_dir = self.autotuning_config.results_dir
+        self.results_dir = self.autotuning_config.results_dir
         if self.autotuning_config.overwrite and os.path.exists(self.results_dir):
             shutil.rmtree(self.results_dir, ignore_errors=True)
         if not os.path.exists(self.results_dir):
-            os.makedirs(self.results_dir, exist_ok=True)
+            try:
+                os.makedirs(self.results_dir, exist_ok=True)
+                logger.info(f"Created autotuning resutls directory: {self.exps_dir}")
+            except:
+                logger.error(
+                    f"Failed to create {self.results_dir}, please check `results_dir` in the autotuning config file is accessible by all the nodes in the job."
+                )
+                exit(-1)
 
         # set the active resource for the autotuner resource manager
         self.rm = self._get_resource_manager(active_resources)
@@ -67,6 +93,10 @@ class Autotuner:
             self.rm.nodes), "num_nodes in the autotuning configuration must not be less than the --num_nodes value in the train script if any"
 
         self.records = {}
+        self.optimal_cmd = None
+        self.optmal_ds_config = None
+
+        self.mlflow_parent_id = None
 
     def print_tuning_results(self):
         """Print the autotuning results in tabular format.
@@ -249,7 +279,7 @@ class Autotuner:
             return False
 
     def get_gpu_memory_info(self):
-        return torch.cuda.get_device_properties(0).total_memory
+        return get_accelerator().total_memory()
 
     def get_activation_memory_per_gpu(self):
         if self.model_info and "activation_mem_per_gpu" in self.model_info:
@@ -304,8 +334,8 @@ class Autotuner:
         exps = []
 
         # each zero stage uses a different template configuration file
-        config_zero = tuning_space.zero_optimization
-        stage = config_zero.stage
+        config_zero = tuning_space.get(ZERO_OPTIMIZATION, {})
+        stage = config_zero.get(ZERO_OPTIMIZATION_STAGE, ZERO_OPTIMIZATION_STAGE_DEFAULT)
         template_config = {}
         if stage == 0:
             template_path = DEFAULT_TEMPLATE_PATH_ZERO_0
@@ -351,11 +381,11 @@ class Autotuner:
 
         logger.debug(f"tuning_keys = {tuning_keys}")
 
-        logger.debug(f"before prunning total configs = {len(all_configs)}")
+        logger.debug(f"before pruning total configs = {len(all_configs)}")
 
         pruned_list = prune_configs(all_configs)
 
-        logger.debug(f"after prunning total configs = {len(pruned_list)}")
+        logger.debug(f"after pruning total configs = {len(pruned_list)}")
 
         for config in pruned_list:
             exp_config = copy.deepcopy(template_config)
@@ -365,13 +395,12 @@ class Autotuner:
             # if the config does not use offloading, remove the offloading section
             config_zero = config.get(ZERO_OPTIMIZATION, None)
             if config_zero:
-                if not config_zero.offload_optimizer and 'offload_optimizer' in exp_config[
+                if OFFLOAD_OPTIMIZER not in config_zero and OFFLOAD_OPTIMIZER in exp_config[
                         ZERO_OPTIMIZATION]:
-                    del exp_config[ZERO_OPTIMIZATION]['offload_optimizer']
-                if not config_zero.offload_param and 'offload_param' in exp_config[
+                    del exp_config[ZERO_OPTIMIZATION][OFFLOAD_OPTIMIZER]
+                if OFFLOAD_PARAM not in config_zero and OFFLOAD_PARAM in exp_config[
                         ZERO_OPTIMIZATION]:
-                    del exp_config[ZERO_OPTIMIZATION]['offload_param']
-
+                    del exp_config[ZERO_OPTIMIZATION][OFFLOAD_PARAM]
             # set gradient accumulation steps according to max_train_batch_size_per_gpu
             mbs = exp_config[TRAIN_MICRO_BATCH_SIZE_PER_GPU]
             gas = max_train_batch_size_per_gpu // mbs
@@ -392,6 +421,10 @@ class Autotuner:
     def tune(self):
         """ Tunes Zero stages, micro batch size per GPU, and other Zero configurations. Performance metrics of different tuning spaces are recorded in self.records.
         """
+        if has_mlflow:
+            self.mlflow_parent_id = os.environ['MLFLOW_RUN_ID']
+            mlflow.start_run(run_id=self.mlflow_parent_id)
+
         self.start_time = time.time()
         if self.fast_enabled():
             logger.info(f"Fast mode is enabled. Tuning micro batch size only.")
@@ -416,7 +449,11 @@ class Autotuner:
             f"The model requires at least {memory_to_string(self.activation_mem, postfix='B')} activation memory for micro batch size 1."
         )
 
-        stage = self.user_config.zero_optimization.stage if 'stage' in self.user_config.zero_optimization.__fields_set__ else "all"
+        #TODO: FIX THIS
+        stage = self.user_config.get(ZERO_OPTIMIZATION,
+                                     {}).get(ZERO_OPTIMIZATION_STAGE,
+                                             "all")
+        stage = "all"
         user_zero_stages = [stage] if not isinstance(stage, list) else stage
         logger.info(f"User-defined zero stages are {stage}.")
 
@@ -437,6 +474,8 @@ class Autotuner:
                     mbs = next_mbs
                     max_mbs = next_max_mbs
                     metric_val = next_metric_val
+                if has_mlflow:
+                    mlflow.log_metric(f"z0{self.metric()}", next_metric_val)
         else:
             logger.info(
                 f"The model is not runable with ZERO stage {ZeroStageEnum.disabled} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
@@ -455,6 +494,8 @@ class Autotuner:
                     mbs = next_mbs
                     max_mbs = next_max_mbs
                     metric_val = next_metric_val
+                if has_mlflow:
+                    mlflow.log_metric(f"z1{self.metric()}", next_metric_val)
         else:
             logger.info(
                 f"The model is not runable with ZERO stage {ZeroStageEnum.optimizer_states} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
@@ -473,6 +514,8 @@ class Autotuner:
                     mbs = next_mbs
                     max_mbs = next_max_mbs
                     metric_val = next_metric_val
+                if has_mlflow:
+                    mlflow.log_metric(f"z2{self.metric()}", next_metric_val)
         else:
             logger.info(
                 f"The model is not runable with ZERO stage {ZeroStageEnum.gradients} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
@@ -485,13 +528,17 @@ class Autotuner:
                 logger.info(
                     f"The model might be runable with ZERO 3 (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory), adding DEFAULT_TUNING_SPACE_ZERO_3 to the global tuning space"
                 )
-                _, _, _ = self.tune_space(
+                _, _, next_metric_val = self.tune_space(
                     DEFAULT_TUNING_SPACE_ZERO_3, prev_max_mbs = max_mbs, prev_best_mbs=mbs, prev_best_metric_val=metric_val)
+                if has_mlflow:
+                    mlflow.log_metric(f"z3{self.metric()}", next_metric_val)
         else:
             logger.info(
                 f"The model has {self.get_model_num_params()} parameters and requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory per GPU with DeepSpeed Zero stage {ZeroStageEnum.weights} optimization. Memory per GPU in system is {memory_to_string(self.gpu_mem)}. No tuning is performed."
             )
             return
+        if has_mlflow:
+            mlflow.end_run()
 
     def tune_space(self,
                    tuning_space,
@@ -499,7 +546,7 @@ class Autotuner:
                    prev_best_mbs=0,
                    prev_best_metric_val=0):
         config_zero = tuning_space.get(ZERO_OPTIMIZATION, {})
-        stage = config_zero.stage
+        stage = config_zero.get(ZERO_OPTIMIZATION_STAGE, None)
         tuning_space_name = TUNING_MICRO_BATCH_SIZE_PREFIX + str(stage)
         tuning_micro_batch_sizes = []
         max_train_batch_size_per_gpu = 0
@@ -753,7 +800,7 @@ class Autotuner:
         max_micro_batch_size_metric_val = 0
 
         ds_config = get_first_config(self.user_config)
-        ds_config[ZERO_OPTIMIZATION] = DeepSpeedZeroConfig(stage=stage)
+        ds_config[ZERO_OPTIMIZATION] = {ZERO_OPTIMIZATION_STAGE: stage}
         tuning_space_name = TUNING_MICRO_BATCH_SIZE_PREFIX + str(stage)
 
         exp_paths = []
@@ -779,11 +826,12 @@ class Autotuner:
 
         self.rm.schedule_experiments(exp_paths)
         self.rm.run()
+
         for exp_id, (exp, err) in self.rm.finished_experiments.items():
             if exp:
                 metric_file = exp[DS_CONFIG][AUTOTUNING][AUTOTUNING_METRIC_PATH]
-
                 if os.path.exists(metric_file):
+
                     with open(metric_file, 'r') as f:
                         results = hjson.load(f)
                         metric_val = results[self.metric()]
@@ -791,11 +839,19 @@ class Autotuner:
                         if max_micro_batch_size == exp[DS_CONFIG][
                                 TRAIN_MICRO_BATCH_SIZE_PER_GPU]:
                             max_micro_batch_size_metric_val = metric_val
+                        if has_mlflow:
+                            os.environ.pop('MLFLOW_RUN_ID')
+                            mlflow.start_run(nested=True, run_name=exp['name'])
+                            for metric in results:
+                                mlflow.log_metric(metric, results[metric])
+                            mlflow.end_run()
+                            os.environ['MLFLOW_RUN_ID'] = self.mlflow_parent_id
                 else:
                     self.update_records(tuning_space_name, exp, 0, 1)
             else:
                 mbs = exp[DS_CONFIG][TRAIN_MICRO_BATCH_SIZE_PER_GPU]
                 logger.info(f"micro batch size = {mbs} was not run successfully")
+
         self.rm.clear()
 
         if tuning_micro_batch_sizes_overwritten:
@@ -825,7 +881,18 @@ class Autotuner:
                 self.exp_num_gpus * self.exp_num_nodes // self.mp_size()
             exp_name = tuning_space_name + "_gas" + str(gas) + "_tmbspg" + str(mbs)
             exp, metric_val = self.run_ds_config(ds_config, exp_name)
+
             if metric_val:
+                with open(metric_file, 'r') as f:
+                    results = hjson.load(f)
+                    metric_val = results[self.metric()]
+                    if has_mlflow:
+                        os.environ.pop('MLFLOW_RUN_ID')
+                        mlflow.start_run(nested=True, run_name=exp_name)
+                        for metric in results:
+                            mlflow.log_metric(metric, results[metric])
+                        mlflow.end_run()
+                        os.environ['MLFLOW_RUN_ID'] = self.mlflow_parent_id
                 self.update_records(tuning_space_name, exp, metric_val, 1)
                 if metric_val > prev_best_metric_val * (1 + METRIC_PERCENT_DIFF_CONST):
                     prev_best_metric_val = metric_val
@@ -837,7 +904,6 @@ class Autotuner:
                 break
         if prev_best_mbs != max_micro_batch_size:
             tuning_micro_batch_sizes[-1] = prev_best_mbs
-
         return tuning_micro_batch_sizes
 
     def get_min_max_micro_batch_size(self,
@@ -852,7 +918,7 @@ class Autotuner:
         tuning_space_name = TUNING_MICRO_BATCH_SIZE_PREFIX + str(stage)
 
         ds_config = get_first_config(self.user_config)
-        ds_config[ZERO_OPTIMIZATION] = DeepSpeedZeroConfig(stage=stage)
+        ds_config[ZERO_OPTIMIZATION] = {ZERO_OPTIMIZATION_STAGE: stage}
         gas = self.get_gas_from_user_config()
         ds_config[GRADIENT_ACCUMULATION_STEPS] = gas
 
@@ -955,11 +1021,10 @@ class Autotuner:
 
         low = min_micro_batch_size
         high = max_micro_batch_size
-        while low < high:
+        # binary search until low is the smallest micro batch size that OOMs.
+        while low <= high:
             mid = int((low + high) // 2)
             logger.debug(f"trying mbs = {mid}, low = {low}, high = {high}")
-            if mid == low:
-                break
             if mid not in used_micro_batch_sizes:
                 ds_config[TRAIN_MICRO_BATCH_SIZE_PER_GPU] = mid
                 ds_config[TRAIN_BATCH_SIZE] = mid * gas * \
@@ -967,7 +1032,7 @@ class Autotuner:
                 exp_name = tuning_space_name + "_gas" + str(gas) + "_tmbspg" + str(mid)
                 exp, metric_val = self.run_ds_config(ds_config, exp_name)
                 if metric_val:
-                    low = mid
+                    low = mid + 1
                     self.update_records(tuning_space_name, exp, metric_val, 1)
                     used_micro_batch_sizes.append(mid)
                     if prev_metric_val and ((metric_val - prev_metric_val) /
@@ -979,8 +1044,8 @@ class Autotuner:
                     self.update_records(tuning_space_name, exp, 0, 1)
                     high = mid - 1
             else:
-                low = mid
-        max_micro_batch_size = low
+                low = mid + 1
+        max_micro_batch_size = low - 1
 
         logger.info(
             f"min_micro_batch_size = {min_micro_batch_size}, max_micro_batch_size = {max_micro_batch_size}."
@@ -1078,26 +1143,18 @@ class Autotuner:
             json.dump(exp_config, fd)
             fd.flush()
             os.fsync(fd)
-
         self.rm.schedule_experiments([exp_path])
         self.rm.run()
         exp, metric_val = self.rm.parse_results(self.metric())
         self.rm.clear()
         return exp, metric_val
 
-    def run_after_tuning(self):
-        """ Launches the training with the optmimal DeepSpeed configuration found through the autotuning process.
-            "ds_config_optimal.json" describing the optmimal DeepSpeed configuration as well the command used to launch training "cmd_optimal.txt" are saved to self.results_dir.
-        """
+    def write_optimal_config(self):
         best_space_records = self.get_best_space_records()
         if GLOBAL_TUNING_SPACE not in best_space_records:
             return
         best_exp, best_metric_val, _ = best_space_records[GLOBAL_TUNING_SPACE]
         if best_exp:
-            logger.info(
-                "Start training with the optmimal DeepSpeed configuration found through the tuning process"
-            )
-
             exp_dir = best_exp["result_dir"]
             cmd = None
             with open(os.path.join(exp_dir, "cmd.txt"), "r") as f:
@@ -1109,18 +1166,27 @@ class Autotuner:
             ds_config_path = os.path.join(self.results_dir, "ds_config_optimal.json")
             json.dump(ds_config, open(ds_config_path, "w"))
 
-            idx = cmd.index(os.path.join(exp_dir, "ds_config.json"))
-            cmd[idx] = ds_config_path
-
             cmd_path = os.path.join(self.results_dir, "cmd_optimal.txt")
             with open(cmd_path, "w") as fd:
                 fd.write(" ".join(cmd))
                 fd.write("\n")
                 fd.flush()
+            self.optimal_cmd = cmd
+            self.optmal_ds_config = ds_config
+            logger.info(
+                f"Wrote the optimal DeepSpeed configuration found by autotuning to {ds_config_path}, and the corresponding DeepSpeed command to {cmd_path}"
+            )
 
-            result = subprocess.Popen(cmd)
+    def run_after_tuning(self):
+        """ Launches the training with the optimal DeepSpeed configuration found through the autotuning process.
+            "ds_config_optimal.json" describing the optmimal DeepSpeed configuration as well the command used to launch training "cmd_optimal.txt" are saved to self.results_dir.
+        """
+        if self.optimal_cmd:
+            result = subprocess.Popen(self.optimal_cmd)
             result.wait()
 
             logger.info(
-                f"Done running with the optimal DeepSpeed configuration found by autotuning: {ds_config_path}"
+                f"Done running with the optimal DeepSpeed configuration using {self.optimal_cmd}"
             )
+        else:
+            logger.info(f"No optimal DeepSpeed configuration found by autotuning.")

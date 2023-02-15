@@ -8,9 +8,10 @@ Functionality of swapping optimizer tensors to/from (NVMe) storage devices.
 import torch
 import os
 import time
-from deepspeed.ops.aio import AsyncIOBuilder
 from multiprocessing import Pool, Barrier
 from test_ds_aio_utils import report_results, task_log, task_barrier
+from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder import AsyncIOBuilder
 
 
 def pre_basic(args, tid, read_op):
@@ -19,7 +20,10 @@ def pre_basic(args, tid, read_op):
     file = args.read_file if read_op else f'{args.write_file}.{tid}'
 
     task_log(tid, f'Allocate tensor of size {num_bytes} bytes')
-    buffer = torch.empty(num_bytes, dtype=torch.uint8, device='cpu').pin_memory()
+    buffer = get_accelerator().pin_memory(
+        torch.empty(num_bytes,
+                    dtype=torch.uint8,
+                    device='cpu'))
     task_log(
         tid,
         f'{io_string} file {file} of size {num_bytes} bytes from buffer on device {buffer.device}'

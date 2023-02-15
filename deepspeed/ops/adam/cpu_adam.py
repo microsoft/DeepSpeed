@@ -4,9 +4,9 @@ Copyright 2020 The Microsoft DeepSpeed Team
 
 import torch
 from cpuinfo import get_cpu_info
-from ..op_builder import CPUAdamBuilder
 from deepspeed.utils import logger
 from deepspeed.utils.logging import should_log_le
+from deepspeed.ops.op_builder import CPUAdamBuilder
 
 
 class DeepSpeedCPUAdam(torch.optim.Optimizer):
