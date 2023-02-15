@@ -14,7 +14,7 @@ class DS_BloomContainer(MetaTensorContainer, BaseTransformerContainer):
         self.bigscience_bloom = True
 
     def create_module(self, config=None):
-        _config = config if config is not None else self.config
+        _config = config if config is not None else self.ds_model_config
 
         self.module = DeepSpeedBloomInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
@@ -28,6 +28,22 @@ class DS_BloomContainer(MetaTensorContainer, BaseTransformerContainer):
             self.module.attention.attn_qkvb,
             self.qkvb)
 
+    def get_param_names(self):
+        return 'self_attention.query_key_value.weight', \
+               'self_attention.query_key_value.bias', \
+               'self_attention.dense.weight', \
+               'self_attention.dense.bias', \
+               'mlp.dense_h_to_4h.weight', \
+               'mlp.dense_h_to_4h.bias', \
+               'mlp.dense_4h_to_h.weight', \
+               'mlp.dense_4h_to_h.bias', \
+               'input_layernorm.weight', \
+               'input_layernorm.bias', \
+               'post_attention_layernorm.weight', \
+               'post_attention_layernorm.bias', \
+               self.policy.use_load_prefix, \
+               self.policy.split_qkv
+
 
 class BLOOMLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
@@ -37,7 +53,10 @@ class BLOOMLayerPolicy(TransformerPolicy):
                  inference=True,
                  use_load_prefix=True,
                  split_qkv=False):
-        super().__init__(inference, linear_layer=True)
+        super().__init__(inference,
+                         linear_layer=True,
+                         use_load_prefix=use_load_prefix,
+                         split_qkv=split_qkv)
         self.client_module = client_module
         try:
             import transformers
@@ -72,19 +91,3 @@ class BLOOMLayerPolicy(TransformerPolicy):
                self.client_module.post_attention_layernorm.bias, \
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
-
-    def get_param_names(self):
-        return 'self_attention.query_key_value.weight', \
-               'self_attention.query_key_value.bias', \
-               'self_attention.dense.weight', \
-               'self_attention.dense.bias', \
-               'mlp.dense_h_to_4h.weight', \
-               'mlp.dense_h_to_4h.bias', \
-               'mlp.dense_4h_to_h.weight', \
-               'mlp.dense_4h_to_h.bias', \
-               'input_layernorm.weight', \
-               'input_layernorm.bias', \
-               'post_attention_layernorm.weight', \
-               'post_attention_layernorm.bias', \
-               self.use_load_prefix, \
-               self.split_qkv
