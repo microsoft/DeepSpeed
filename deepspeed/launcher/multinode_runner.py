@@ -166,17 +166,16 @@ class OpenMPIRunner(MultiNodeRunner):
 
         return mpirun_cmd + export_cmd + python_exec + [self.user_script
                                                         ] + self.user_arguments
-                                                        
-                                                        
+
+
 class MPICHRunner(MultiNodeRunner):
     def __init__(self, args, world_info_base64, resource_pool):
         super().__init__(args, world_info_base64)
         self.resource_pool = resource_pool
-        #self.add_export('UCX_TLS', 'tcp')
 
     def backend_exists(self):
         #TODO: if IB is available we should suggestion mpich
-        return shutil.which('mpiexec') #mpich_info
+        return shutil.which('mpirun')  #mpich_info
 
     @property
     def name(self):
@@ -188,27 +187,25 @@ class MPICHRunner(MultiNodeRunner):
         if self.args.include != "" or self.args.exclude != "":
             raise ValueError(
                 f"{self.name} backend does not support worker include/exclusion")
-        
+
         if self.args.num_nodes != -1 or self.args.num_gpus != -1:
             raise ValueError(
                 f"{self.name} backend does not support limiting num nodes/gpus")
-        
-        
+
     def get_cmd(self, environment, active_resources):
         devices_per_node = self.resource_pool.values()
         total_process_count = sum(devices_per_node)
         process_per_node = list(devices_per_node)[0]
-        
+
         mpirun_cmd = [
-            'mpiexec',
+            'mpirun',
             '-n',
             f'{total_process_count}',
             '-ppn',
             f'{process_per_node}',
-               
         ] + split(self.args.launcher_args)
         export_cmd = []
-        
+
         for k, v in self.exports.items():
             export_cmd += ['-x', "{}={}".format(k, v)]
 
@@ -217,7 +214,7 @@ class MPICHRunner(MultiNodeRunner):
             python_exec = [sys.executable, "-u"]
             if self.args.module:
                 python_exec.append("-m")
-        return mpirun_cmd +  python_exec + [self.user_script] + self.user_arguments
+        return mpirun_cmd + python_exec + [self.user_script] + self.user_arguments
 
 
 class SlurmRunner(MultiNodeRunner):
