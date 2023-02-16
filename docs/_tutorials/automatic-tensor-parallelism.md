@@ -3,13 +3,17 @@ title: "Automatic Tensor Parallelism for HuggingFace Models"
 tags: inference
 ---
 
-This tutorial demonstrates the new automatic tensor parallelism feature for inference. Previously, the user needed to provide an injection policy to DeepSpeed to enable tensor parallelism. DeepSpeed now supports automatic tensor parallelism for HuggingFace models by default as long as kernel injection is not enabled and an injection policy is not provided. This allows our users to improve performance of models that are not currently supported via kernel injection, without providing the injection policy.
+This tutorial demonstrates the new automatic tensor parallelism feature for inference. Previously, the user needed to provide an injection policy to DeepSpeed to enable tensor parallelism. DeepSpeed now supports automatic tensor parallelism for HuggingFace models by default as long as kernel injection is not enabled and an injection policy is not provided. This allows our users to improve performance of models that are not currently supported via kernel injection, without providing the injection policy. Below is an example of the new method:
 
 ```python
-# create the model
+import os
+import torch
 import transformers
 import deepspeed
-pipe = pipeline("text2text-generation", model="google/t5-v1_1-small", device=local_rank)
+local_rank = int(os.getenv("LOCAL_RANK", "0"))
+world_size = int(os.getenv("WORLD_SIZE", "1"))
+# create the model pipeline
+pipe = transformers.pipeline(task="text2text-generation", model="google/t5-v1_1-small", device=local_rank)
 # Initialize the DeepSpeed-Inference engine
 pipe.model = deepspeed.init_inference(
     pipe.model,
@@ -23,10 +27,15 @@ Previously, to run inference with only tensor parallelism for the models that do
 
 ```python
 # create the model
+import os
+import torch
 import transformers
-from transformers.models.t5.modeling_t5 import T5Block
 import deepspeed
-pipe = pipeline("text2text-generation", model="google/t5-v1_1-small", device=local_rank)
+from transformers.models.t5.modeling_t5 import T5Block
+local_rank = int(os.getenv("LOCAL_RANK", "0"))
+world_size = int(os.getenv("WORLD_SIZE", "1"))
+# create the model pipeline
+pipe = transformers.pipeline(task="text2text-generation", model="google/t5-v1_1-small", device=local_rank)
 # Initialize the DeepSpeed-Inference engine
 pipe.model = deepspeed.init_inference(
     pipe.model,
