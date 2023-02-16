@@ -281,7 +281,7 @@ class TestModelTask(DistributedTest):
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
         # Load the model on CPU first to avoid OOM for large models @fp32
-        pipe = pipeline(task, model=model, device=-1, framework="pt")
+        pipe = pipeline(task, model=model, device=torch.device("cpu"), framework="pt")
         if dtype == torch.half:
             pipe.model.half()
 
@@ -303,7 +303,6 @@ class TestModelTask(DistributedTest):
             pipe.model,
             mp_size=1,
             dtype=dtype,
-            replace_method="auto",
             replace_with_kernel_inject=True,
             enable_cuda_graph=enable_cuda_graph,
         )
@@ -362,13 +361,12 @@ class TestMPSize(DistributedTest):
 
         # We have to load these large models on CPU with pipeline because not
         # enough GPU memory
-        pipe = pipeline(task, model=model, device=-1, framework="pt")
+        pipe = pipeline(task, model=model, device=torch.device("cpu"), framework="pt")
         bs_output = pipe(query, **inf_kwargs)
 
         pipe.model = deepspeed.init_inference(pipe.model,
                                               mp_size=self.world_size,
                                               dtype=dtype,
-                                              replace_method="auto",
                                               replace_with_kernel_inject=True)
         check_injection(pipe.model)
         # Switch device to GPU so that input tensors are not on CPU
@@ -425,7 +423,7 @@ class TestInjectionPolicy(DistributedTest):
 
         # We have to load these large models on CPU with pipeline because not
         # enough GPU memory
-        pipe = pipeline(task, model=model, device=-1, framework="pt")
+        pipe = pipeline(task, model=model, device=torch.device("cpu"), framework="pt")
         bs_output = pipe(query, **inf_kwargs)
 
         pipe.model = deepspeed.init_inference(pipe.model,
@@ -476,13 +474,12 @@ class TestAutoTensorParallelism(DistributedTest):
 
         # We have to load these large models on CPU with pipeline because not
         # enough GPU memory
-        pipe = pipeline(task, model=model, device=-1, framework="pt")
+        pipe = pipeline(task, model=model, device=torch.device("cpu"), framework="pt")
         bs_output = pipe(query, **inf_kwargs)
 
         pipe.model = deepspeed.init_inference(pipe.model,
                                               mp_size=world_size,
-                                              dtype=dtype,
-                                              replace_method="")
+                                              dtype=dtype)
         # Switch device to GPU so that input tensors are not on CPU
         pipe.device = torch.device(f"cuda:{local_rank}")
         ds_output = pipe(query, **inf_kwargs)
@@ -543,7 +540,6 @@ class TestLMCorrectness(DistributedTest):
                     model_family),
             mp_size=1,
             dtype=dtype,
-            replace_method="auto",
             replace_with_kernel_inject=True,
             enable_cuda_graph=False,
         )
