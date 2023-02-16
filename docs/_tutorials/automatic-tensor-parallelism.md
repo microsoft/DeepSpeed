@@ -19,7 +19,7 @@ pipe.model = deepspeed.init_inference(
 output = pipe('Input String')
 ```
 
-Previously, to run inference with only tensor parallelism for the models that we don't support kernels, you can pass an injection policy that shows the two specific linear layers on a Transformer Encoder/Decoder layer: 1) the attention output GeMM and 2) layer output GeMM. We need these parts of the layer to add the required all-reduce communication between GPUs to merge the partial results across model-parallel ranks. Below, we bring an example that shows how you can use deepspeed-inference with a T5 model:
+Previously, to run inference with only tensor parallelism for the models that don't have kernel injection support, you could pass an injection policy that showed the two specific linear layers on a Transformer Encoder/Decoder layer: 1) the attention output GeMM and 2) layer output GeMM. We needed these parts of the layer to add the required all-reduce communication between GPUs to merge the partial results across model-parallel ranks. Below, we show an example of this previous method:
 
 ```python
 # create the model
@@ -47,17 +47,17 @@ We can observe performance improvement with automatic tensor parallism using the
 
 ## Launching
 
-To run without DeepSpeed and without tensor parallelism:
+Use the following command to run without DeepSpeed and without tensor parallelism. Set the `test_performance` flag to collect performance data:
 
 ```bash
-deepspeed --num_gpus <num_gpus> DeepSpeedExamples/inference/huggingface/text-generation/inference-test.py --name <model> --batch_size <batch_size>
+deepspeed --num_gpus <num_gpus> DeepSpeedExamples/inference/huggingface/text-generation/inference-test.py --name <model> --batch_size <batch_size> --test_performance
 ```
 
 
-To enable tensor parallelism, you need to set the `ds_inference` to True for the compatible models:
+To enable tensor parallelism, you need to use the flag `ds_inference` for the compatible models:
 
 ```bash
-deepspeed --num_gpus <num_gpus> DeepSpeedExamples/inference/huggingface/text-generation/inference-test.py --name <model> --batch_size <batch_size> --ds_inference
+deepspeed --num_gpus <num_gpus> DeepSpeedExamples/inference/huggingface/text-generation/inference-test.py --name <model> --batch_size <batch_size> --test_performance --ds_inference
 ```
 
 ## OPT 13B Inference Performance Comparison
