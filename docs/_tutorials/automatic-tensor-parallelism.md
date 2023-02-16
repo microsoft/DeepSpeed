@@ -3,7 +3,7 @@ title: "Automatic Tensor Parallelism for HuggingFace Models"
 tags: inference
 ---
 
-This tutorial demonstrates the new automatic tensor parallelism feature for inference. Previously, the user needed to provide an injection policy to DeepSpeed to enable tensor parallelism. DeepSpeed now supports automatic tensor parallelism for HuggingFace models by default as long as kernel injection is not true and an injection policy is not provided. This is convenient for when the injection policy of a model is not known and for improving performance of models without kernel injection support.
+This tutorial demonstrates the new automatic tensor parallelism feature for inference. Previously, the user needed to provide an injection policy to DeepSpeed to enable tensor parallelism. DeepSpeed now supports automatic tensor parallelism for HuggingFace models by default as long as kernel injection is not enabled and an injection policy is not provided. This allows our users to improve performance of models that are not currently supported via kernel injection, without providing the injection policy.
 
 ```python
 # create the model
