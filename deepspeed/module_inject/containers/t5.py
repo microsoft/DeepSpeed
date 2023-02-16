@@ -1,6 +1,6 @@
 import torch
 from .base import BaseTransformerContainer
-from ...model_implementations.encoder_decoder.ds_t5 import DeepSpeedT5Inference
+from deepspeed.model_implementations.encoder_decoder.ds_t5 import DeepSpeedT5Inference
 from ..policy import TransformerPolicy
 
 
