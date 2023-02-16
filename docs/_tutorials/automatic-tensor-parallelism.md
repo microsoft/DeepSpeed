@@ -3,9 +3,21 @@ title: "Automatic Tensor Parallelism for HuggingFace Models"
 tags: inference
 ---
 
+## Contents
+   * [Introduction](#introduction)
+   * [Example Script](#example-script)
+   * [Launching](#launching)
+   * [OPT 13B Inference Performance Comparison](#opt-13b-inference-performance-comparison)
+   * [Supported Models](#supported-models)
+   * [Unsupported Models](#unsupported-models)
+
+## Introduction
 This tutorial demonstrates the new automatic tensor parallelism feature for inference. Previously, the user needed to provide an injection policy to DeepSpeed to enable tensor parallelism. DeepSpeed now supports automatic tensor parallelism for HuggingFace models by default as long as kernel injection is not enabled and an injection policy is not provided. This allows our users to improve performance of models that are not currently supported via kernel injection, without providing the injection policy. Below is an example of the new method:
 
 ```python
+# ---------------------------------------
+# New automatic tensor parallelism method
+# ---------------------------------------
 import os
 import torch
 import transformers
@@ -26,7 +38,9 @@ output = pipe('Input String')
 Previously, to run inference with only tensor parallelism for the models that don't have kernel injection support, you could pass an injection policy that showed the two specific linear layers on a Transformer Encoder/Decoder layer: 1) the attention output GeMM and 2) layer output GeMM. We needed these parts of the layer to add the required all-reduce communication between GPUs to merge the partial results across model-parallel ranks. Below, we show an example of this previous method:
 
 ```python
-# create the model
+# ----------------------------------
+# Previous tensor parallelism method
+# ----------------------------------
 import os
 import torch
 import transformers
@@ -51,7 +65,7 @@ With automatic tensor parallelism, we do not need to provide the injection polic
 
 ## Example Script
 
-We can observe performance improvement with automatic tensor parallism using the [inference test suite](https://github.com/microsoft/DeepSpeedExamples/blob/master/inference/huggingface/text-generation/inference-test.py). The script includes per token latency, bandwidth, throughput and memory checks for comparison.
+We can observe performance improvement with automatic tensor parallelism using the [inference test suite](https://github.com/microsoft/DeepSpeedExamples/blob/master/inference/huggingface/text-generation/inference-test.py). The script includes per token latency, bandwidth, throughput and memory checks for comparison. See the [README](https://github.com/microsoft/DeepSpeedExamples/tree/master/inference/huggingface/text-generation#deepspeed-huggingface-text-generation-examples) for more information.
 
 
 ## Launching
