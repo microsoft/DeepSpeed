@@ -3,15 +3,15 @@ title: "Automatic Tensor Parallelism for HuggingFace Models"
 tags: inference
 ---
 
-## Contents
+# Contents
    * [Introduction](#introduction)
    * [Example Script](#example-script)
-   * [Launching](#launching)
-   * [OPT 13B Inference Performance Comparison](#opt-13b-inference-performance-comparison)
+        * [Launching](#launching)
+        * [OPT 13B Inference Performance Comparison](#opt-13b-inference-performance-comparison)
    * [Supported Models](#supported-models)
    * [Unsupported Models](#unsupported-models)
 
-## Introduction
+# Introduction
 This tutorial demonstrates the new automatic tensor parallelism feature for inference. Previously, the user needed to provide an injection policy to DeepSpeed to enable tensor parallelism. DeepSpeed now supports automatic tensor parallelism for HuggingFace models by default as long as kernel injection is not enabled and an injection policy is not provided. This allows our users to improve performance of models that are not currently supported via kernel injection, without providing the injection policy. Below is an example of the new method:
 
 ```python
@@ -63,7 +63,7 @@ output = pipe('Input String')
 With automatic tensor parallelism, we do not need to provide the injection policy for supported models. The injection policy will be determined at runtime and applied automatically.
 
 
-## Example Script
+# Example Script
 
 We can observe performance improvement with automatic tensor parallelism using the [inference test suite](https://github.com/microsoft/DeepSpeedExamples/blob/master/inference/huggingface/text-generation/inference-test.py). The script includes per token latency, bandwidth, throughput and memory checks for comparison. See the [README](https://github.com/microsoft/DeepSpeedExamples/tree/master/inference/huggingface/text-generation#deepspeed-huggingface-text-generation-examples) for more information.
 
@@ -101,7 +101,7 @@ The following results were collected using V100 SXM2 32GB GPUs.
 | 2 GPU TP | 12.23 GB | 20 | 4.61 TFlops |
 | 4 GPU TP | 6.36 GB  | 56 | 4.90 TFlops |
 
-## Supported Models
+# Supported Models
 
 The following model families have been successfully tested with automatic tensor parallelism. Other models may work but have not been tested yet.
 
@@ -137,7 +137,7 @@ The following model families have been successfully tested with automatic tensor
 - xlm_roberta
 - yoso
 
-## Unsupported Models
+# Unsupported Models
 
 The following models are not currently supported:
 
