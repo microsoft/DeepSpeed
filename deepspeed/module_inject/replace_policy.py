@@ -13,6 +13,7 @@ from .containers import HFDistilBertLayerPolicy
 from .containers import HFCLIPLayerPolicy
 from .containers import UNetPolicy
 from .containers import VAEPolicy
+from .containers import HFT5LayerPolicy
 
 # transformer-based policies
 replace_policies = [
@@ -25,7 +26,8 @@ replace_policies = [
     BLOOMLayerPolicy,
     HFOPTLayerPolicy,
     HFCLIPLayerPolicy,
-    HFDistilBertLayerPolicy
+    HFDistilBertLayerPolicy,
+    HFT5LayerPolicy,
 ]
 
 # non-transformer-based policies
