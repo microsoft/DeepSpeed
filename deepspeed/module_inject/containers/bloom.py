@@ -2,6 +2,8 @@ from .base import *
 from .features.meta_tensor import MetaTensorContainer
 from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
 from ..policy import TransformerPolicy
+from ..policy import transformer_param_names
+from ..policy import maybe_copy
 
 supported_models = {None}
 
@@ -14,7 +16,7 @@ class DS_BloomContainer(MetaTensorContainer, BaseTransformerContainer):
         self.bigscience_bloom = True
 
     def create_module(self, config=None):
-        _config = config if config is not None else self.config
+        _config = config if config is not None else self.ds_model_config
 
         self.module = DeepSpeedBloomInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
@@ -28,6 +30,53 @@ class DS_BloomContainer(MetaTensorContainer, BaseTransformerContainer):
             self.module.attention.attn_qkvb,
             self.qkvb)
 
+    def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
+        param_names = (
+            'self_attention.query_key_value.weight', \
+            'self_attention.query_key_value.bias', \
+            'self_attention.dense.weight', \
+            'self_attention.dense.bias', \
+            'mlp.dense_h_to_4h.weight', \
+            'mlp.dense_h_to_4h.bias', \
+            'mlp.dense_4h_to_h.weight', \
+            'mlp.dense_4h_to_h.bias', \
+            'post_attention_layernorm.weight', \
+            'post_attention_layernorm.bias', \
+            'input_layernorm.weight', \
+            'input_layernorm.bias'
+        )
+        for i in range(0, 2):
+            maybe_copy(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i],
+                       qkv=True,
+                       megatron_v2=self.is_megatron_v2,
+                       split_qkv=self.split_qkv)
+        for i in range(2, 4):
+            maybe_copy(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
+        for i in range(4, 10):
+            maybe_copy(module.mlp,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
+        for i in range(10, 12):
+            maybe_copy(module,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
+
 
 class BLOOMLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
@@ -37,7 +86,10 @@ class BLOOMLayerPolicy(TransformerPolicy):
                  inference=True,
                  use_load_prefix=True,
                  split_qkv=False):
-        super().__init__(inference, linear_layer=True)
+        super().__init__(inference,
+                         linear_layer=True,
+                         use_load_prefix=use_load_prefix,
+                         split_qkv=split_qkv)
         self.client_module = client_module
         try:
             import transformers
@@ -63,28 +115,12 @@ class BLOOMLayerPolicy(TransformerPolicy):
 
     def mlp(self):
         return self.client_module.mlp.dense_h_to_4h.weight, \
-            self.client_module.mlp.dense_h_to_4h.bias, \
-            self.client_module.mlp.dense_4h_to_h.weight, \
-            self.client_module.mlp.dense_4h_to_h.bias
+               self.client_module.mlp.dense_h_to_4h.bias, \
+               self.client_module.mlp.dense_4h_to_h.weight, \
+               self.client_module.mlp.dense_4h_to_h.bias
 
     def layernorm(self):
         return self.client_module.post_attention_layernorm.weight, \
                self.client_module.post_attention_layernorm.bias, \
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
-
-    def get_param_names(self):
-        return 'self_attention.query_key_value.weight', \
-               'self_attention.query_key_value.bias', \
-               'self_attention.dense.weight', \
-               'self_attention.dense.bias', \
-               'mlp.dense_h_to_4h.weight', \
-               'mlp.dense_h_to_4h.bias', \
-               'mlp.dense_4h_to_h.weight', \
-               'mlp.dense_4h_to_h.bias', \
-               'input_layernorm.weight', \
-               'input_layernorm.bias', \
-               'post_attention_layernorm.weight', \
-               'post_attention_layernorm.bias', \
-               self.use_load_prefix, \
-               self.split_qkv
