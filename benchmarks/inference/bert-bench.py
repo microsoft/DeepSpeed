@@ -67,7 +67,6 @@ if args.deepspeed:
                                           dtype=dtype,
                                           mp_size=1,
                                           replace_with_kernel_inject=args.kernel_inject,
-                                          replace_method='auto',
                                           enable_cuda_graph=args.graphs)
     pipe.model.profile_model_time()
 
