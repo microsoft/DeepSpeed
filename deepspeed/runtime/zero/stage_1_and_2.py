@@ -1493,7 +1493,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def _clear_previous_reduced_grads(self):
         if self.previous_reduced_grads is not None:
             for param in self.previous_reduced_grads:
-                param.grad = None  # overlap enabled
+                self.clear_reduc_grad(param)
             self.previous_reduced_grads = None
 
     # if rank is specified do a reduction instead of an allreduce
@@ -1700,9 +1700,15 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                            return_tensor_list=False):
         flat_tensor_list = []
         current_size = 0
+        add_reduc_to_accum = self.use_separate_grad_accum and not self.reduce_accum_grad
+
         for i, tensor in enumerate(tensor_list):
             if tensor.accum_grad is None:
                 tensor.accum_grad = torch.zeros_like(tensor, dtype=dtype)
+
+            if add_reduc_to_accum:
+                if tensor.reduc_grad is not None:
+                    tensor.accum_grad.add_(param.reduc_grad.to(self.grad_accum_dtype).view(param.accum_grad.shape))
 
             tensor = tensor.accum_grad
             num_elements = tensor.numel()
