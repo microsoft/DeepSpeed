@@ -279,7 +279,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
         self.grad_accum_dtype = gradient_accumulation_dtype;
 
-        if self.dtype == self.grad_accum_dtype:
+        if self.dtype != self.grad_accum_dtype:
             self.use_separate_grad_accum = True
         else:
             self.use_separate_grad_accum = False
@@ -881,6 +881,13 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         else:
             param.reduc_grad = param.grad
 
+    # Called after a memory defrag moves tensor object via copy
+    def point_grad_to_reduc(self, param):
+        if self.reduce_accum_grad:
+            param.accum_grad = param.reduc_grad
+        else:
+            param.grad = param.reduc_grad
+
     def create_set_accum_grad_hooks(self):
         for param_group in self.bit16_groups:
             for param in param_group:
@@ -962,6 +969,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 param.numel())
             new_grad_tensor.copy_(param.reduc_grad.view(-1))
             param.reduc_grad.data = new_grad_tensor.data.view_as(param.reduc_grad)
+            self.point_grad_to_reduc(param)
 
         self.elements_in_ipg_bucket += param.numel()
 
@@ -1326,6 +1334,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             param.numel())
         new_grad_tensor.copy_(param.reduc_grad.view(-1))
         param.reduc_grad.data = new_grad_tensor.data.view_as(param.reduc_grad)
+        self.point_grad_to_reduc(param)
         #print(f"Grad norm after copy to contiguous_buffer {param.grad.data.norm()}")
         self.grads_in_partition_offset += param.numel()
 
