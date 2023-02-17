@@ -857,7 +857,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             param.accum_grad = param.grad
         # Accum the gradient in a separate tensor
         else:
-            if param.grad is not None
+            if param.grad is not None:
                 if param.accum_grad is None:
                     param.accum_grad = param.grad.to(self.grad_accum_dtype)
                 else:
