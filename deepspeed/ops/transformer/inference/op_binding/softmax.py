@@ -8,6 +8,8 @@ class SoftmaxOp(BaseOp):
         super(SoftmaxOp, self).__init__(config)
         if self.config.fp16:
             self.softmax_func = self.inference_cuda_module.softmax_fp16
+        elif self.config.bf16:
+            self.softmax_func = self.inference_cuda_module.softmax_bf16
         else:
             self.softmax_func = self._not_implemented
 

@@ -6,10 +6,15 @@ from .base import BaseOp
 class LinearOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(LinearOp, self).__init__(config)
-        if self.config.fp16:
-            self.linear_func = self.inference_cuda_module.linear_layer_fp16
-        else:
-            self.linear_func = self.inference_cuda_module.linear_layer_fp32
+        try:
+            if self.config.fp16:
+                self.linear_func = self.inference_cuda_module.linear_layer_fp16
+            elif self.config.bf16:
+                self.linear_func = self.inference_cuda_module.linear_layer_bf16
+            else:
+                self.linear_func = self.inference_cuda_module.linear_layer_fp32
+        except AttributeError:
+            self.linear_func = None
 
     def forward(self,
                 input: torch.Tensor,
@@ -20,10 +25,14 @@ class LinearOp(BaseOp):
                 num_heads: int,
                 external_cache: bool = None,
                 num_layers: int = None):
-        qkv_out = self.linear_func(input,
-                                   weight,
-                                   bias,
-                                   add_bias,
-                                   do_flash_attn,
-                                   num_heads)
+        if self.linear_func != None:
+            qkv_out = self.linear_func(input,
+                                      weight,
+                                      bias,
+                                      add_bias,
+                                      do_flash_attn,
+                                      num_heads)
+        else:
+            # fallback
+            pass
         return qkv_out

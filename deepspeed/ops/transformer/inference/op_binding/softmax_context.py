@@ -7,10 +7,15 @@ from .base import BaseOp
 class SoftmaxContextOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(SoftmaxContextOp, self).__init__(config)
-        if self.config.fp16:
-            self.softmax_context_func = self.inference_cuda_module.softmax_context_fp16
-        else:
-            self.softmax_context_func = self.inference_cuda_module.softmax_context_fp32
+        try:
+            if self.config.fp16:
+                self.softmax_context_func = self.inference_cuda_module.softmax_context_fp16
+            elif self.config.bf16:
+                self.softmax_context_func = self.inference_cuda_module.softmax_context_bf16
+            else:
+                self.softmax_context_func = self.inference_cuda_module.softmax_context_fp32
+        except AttributeError:
+            self.softmax_context_func = None
 
     def forward(self,
                 query_key_value: torch.Tensor,
@@ -29,18 +34,23 @@ class SoftmaxContextOp(BaseOp):
         else:
             alibi = torch.empty(1)
 
-        output = self.softmax_context_func(query_key_value,
-                                           attn_mask,
-                                           self.config.rotary_dim,
-                                           self.config.rotate_half,
-                                           self.config.rotate_every_two,
-                                           heads,
-                                           norm_factor,
-                                           self.config.triangular_masking,
-                                           self.config.local_attention,
-                                           self.config.window_size,
-                                           no_masking,
-                                           layer_id,
-                                           num_layers,
-                                           alibi)
+        if self.softmax_context_func != None:
+            output = self.softmax_context_func(query_key_value,
+                                              attn_mask,
+                                              self.config.rotary_dim,
+                                              self.config.rotate_half,
+                                              self.config.rotate_every_two,
+                                              heads,
+                                              norm_factor,
+                                              self.config.triangular_masking,
+                                              self.config.local_attention,
+                                              self.config.window_size,
+                                              no_masking,
+                                              layer_id,
+                                              num_layers,
+                                              alibi)
+        else:
+            # fallback
+            pass
+
         return output

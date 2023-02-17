@@ -85,8 +85,15 @@ class DeepSpeedTransformerInference(nn.Module):
                                                device=device),
                                    requires_grad=False)
         self.layer_past = None
-        self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if (not config.fp16) else \
-                                inference_cuda_module.allocate_workspace_fp16
+        try:
+            if config.fp16:
+                self.allocate_workspace = inference_cuda_module.allocate_workspace_fp16
+            elif config.bf16:
+                self.allocate_workspace = inference_cuda_module.allocate_workspace_bf16
+            else:
+                self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32
+        except AttributeError:
+            self.allocate_workspace = None
 
     @classmethod
     def reset_cache(cls):
@@ -124,15 +131,16 @@ class DeepSpeedTransformerInference(nn.Module):
 
         # Allocate memory only on first layer forward
         if self.config.layer_id == 0:
-            self.allocate_workspace(self.config.hidden_size,
-                                    self.config.heads,
-                                    input.size()[1],
-                                    input.size()[0],
-                                    DeepSpeedTransformerInference.layer_id,
-                                    self.config.mp_size,
-                                    self.config.bigscience_bloom,
-                                    dist.get_rank() if dist.is_initialized() else 0,
-                                    self.config.max_out_tokens)
+            if self.allocate_workspace != None:
+                self.allocate_workspace(self.config.hidden_size,
+                                        self.config.heads,
+                                        input.size()[1],
+                                        input.size()[0],
+                                        DeepSpeedTransformerInference.layer_id,
+                                        self.config.mp_size,
+                                        self.config.bigscience_bloom,
+                                        dist.get_rank() if dist.is_initialized() else 0,
+                                        self.config.max_out_tokens)
 
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
