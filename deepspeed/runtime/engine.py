@@ -1216,13 +1216,9 @@ class DeepSpeedEngine(Module):
                         "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
                     )
 
-            if model_dtype == torch.bfloat16 and grad_accum_dtype == torch.float32 and self.zero_optimization_stage(
-            ) == 1:
-                return BFLOAT16
-
-            if model_dtype != grad_accum_dtype:
+            if model_dtype != grad_accum_dtype and self.zero_optimization_stage() == 3:
                 raise NotImplementedError(
-                    "Model data type and gradient accumulation data type must be equal to use ZeRO"
+                    "Model data type and gradient accumulation data type must be equal to use ZeRO stage 3"
                 )
             return ZERO_OPTIMIZATION
         elif amp_enabled:
@@ -1568,6 +1564,7 @@ class DeepSpeedEngine(Module):
                 has_moe_layers=self.has_moe_layers,
                 fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(
                 ),
+                gradient_accumulation_dtype=grad_accum_dtype,
                 communication_data_type=self.communication_data_type,
                 elastic_checkpoint=self.zero_elastic_checkpoint())
 
