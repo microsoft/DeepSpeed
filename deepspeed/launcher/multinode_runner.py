@@ -5,7 +5,7 @@ import subprocess
 import warnings
 from shlex import split
 from abc import ABC, abstractmethod
-
+from deepspeed.accelerator import get_accelerator
 from ..utils import logger
 from .constants import PDSH_MAX_FAN_OUT, MVAPICH_TMP_HOSTFILE
 
@@ -66,7 +66,14 @@ class PDSHRunner(MultiNodeRunner):
 
         # PDSH flags for max node fan out and specific hosts to launch on
         # See https://linux.die.net/man/1/pdsh for flag details
-        pdsh_cmd_args = ['pdsh', '-S', '-f', str(PDSH_MAX_FAN_OUT), '-w', active_workers]
+        pdsh_cmd_args = [
+            'pdsh',
+            '-S',
+            '-f',
+            str(PDSH_MAX_FAN_OUT),
+            '-w',
+            active_workers
+        ] + split(self.args.launcher_args)
 
         exports = ""
         for key, val in self.exports.items():
@@ -180,7 +187,7 @@ class SlurmRunner(MultiNodeRunner):
             'srun',
             '-n',
             f'{total_process_count}',
-        ]
+        ] + split(self.args.launcher_args)
 
         if getattr(self.args, 'slurm_comment', ''):
             srun_cmd += ['--comment', self.args.slurm_comment]
@@ -220,7 +227,8 @@ class MVAPICHRunner(MultiNodeRunner):
         self.add_export('MV2_DEBUG_SHOW_BACKTRACE', '1')
 
         # Enabled cuda-aware communication
-        self.add_export('MV2_USE_CUDA', '1')
+        if get_accelerator().device_name() == 'cuda':
+            self.add_export('MV2_USE_CUDA', '1')
 
         # Support deep learning frameworks: http://hidl.cse.ohio-state.edu/userguide/horovod/
         self.add_export('MV2_SUPPORT_DL', '1')
