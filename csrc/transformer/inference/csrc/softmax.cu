@@ -107,6 +107,12 @@ __global__ void attn_softmax_v2(__half* vals,
                                          ? __half2float(vals[data_id + 3]) * layer_scale
                                          : minus_infinity;
                     if (alibi) {
+                        printf("data:  %f %f %f %f\nalibi: %f %f %f %f\n",
+                                low_data[i].x, low_data[i].y, high_data[i].x, high_data[i].y,
+                                __half2float(alibi[data_id + alibi_offset]),
+                                __half2float(alibi[data_id + alibi_offset+1]),
+                                __half2float(alibi[data_id + alibi_offset+2]),
+                                __half2float(alibi[data_id + alibi_offset+3]));
                         low_data[i].x = low_data[i].x + __half2float(alibi[data_id + alibi_offset]);
                         low_data[i].y =
                             low_data[i].y + __half2float(alibi[data_id + alibi_offset + 1]);
@@ -116,9 +122,16 @@ __global__ void attn_softmax_v2(__half* vals,
                             high_data[i].y + __half2float(alibi[data_id + alibi_offset + 3]);
                     }
                     if (mask) {
-                        low_data[i].x += __half2float(mask[data_id + mask_offset]);
-                        low_data[i].y += __half2float(mask[data_id + mask_offset + 1]);
-                        high_data[i].x += __half2float(mask[data_id + mask_offset + 2]);
+                        // printf("maskdata:  %f %f %f %f\nmask: %f %f %f %f\n",
+                        // low_data[i].x, low_data[i].y, high_data[i].x, high_data[i].y,
+                        //         __half2float(mask[data_id + mask_offset]),
+                        //         __half2float(mask[data_id + mask_offset+1]),
+                        //         __half2float(mask[data_id + mask_offset+2]),
+                        //         __half2float(mask[data_id + mask_offset+3]));
+
+                        low_data[i].x += __half2float(mask[data_id + mask_offset]);       //0
+                        low_data[i].y += __half2float(mask[data_id + mask_offset + 1]);      
+                        high_data[i].x += __half2float(mask[data_id + mask_offset + 2]); //0
                         high_data[i].y += __half2float(mask[data_id + mask_offset + 3]);
                     }
                 } else {
@@ -136,6 +149,17 @@ __global__ void attn_softmax_v2(__half* vals,
                                          ? __half2float(vals[data_id + 2]) * layer_scale
                                          : minus_infinity;
                     if (alibi) {
+                        //if (blockIdx.x * blockDim.x + threadIdx.x == 0){
+                            //printf("\n-----------------------------------------\n");
+                           // printf("data:  %f %f %f %f\nalibi: %f %f %f %f\n", low_data[i].x, low_data[i].y, high_data[i].x, high_data[i].y,alibi[data_id + alibi_offset],alibi[data_id + alibi_offset+1],alibi[data_id + alibi_offset+2],alibi[data_id + alibi_offset+3]);
+                            printf("data:  %f %f %f %f\nalibi: %f %f %f %f\n",
+                                    low_data[i].x, low_data[i].y, high_data[i].x, high_data[i].y,
+                                __half2float(alibi[data_id + alibi_offset]),
+                                __half2float(alibi[data_id + alibi_offset+1]),
+                                __half2float(alibi[data_id + alibi_offset+2]),
+                                __half2float(alibi[data_id + alibi_offset+3]));
+                        //printf("alibi: %f %f %f %f\n", __half2float(alibi[0]),__half2float(alibi[1]),__half2float(alibi[2]),__half2float(alibi[3]));
+                        //}
                         low_data[i].x = low_data[i].x + __half2float(alibi[data_id + alibi_offset]);
                         if ((data_id + 1) < sequence_length)
                             low_data[i].y =

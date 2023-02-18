@@ -519,6 +519,7 @@ class InferenceEngine(Module):
             *inputs: Variable length input list
             **kwargs: variable length keyword arguments
         """
+        
         start = None
         if self.model_profile_enabled and get_accelerator().device_name(
         ) == 'cuda' and self._config.enable_cuda_graph:
@@ -542,6 +543,8 @@ class InferenceEngine(Module):
         return outputs
 
     def _generate(self, *inputs, **kwargs):
+        import pdb
+        pdb.set_trace()
         # Reset KV-cache at the beginning of generate
         if hasattr(self.module, 'reset_cache'):
             self.module.reset_cache()

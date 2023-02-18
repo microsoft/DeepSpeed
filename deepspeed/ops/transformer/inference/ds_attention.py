@@ -231,17 +231,42 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
                                      value_layer),
                                     dim=-2)
 
+        ofile = open("ds_out.txt","a")
+        ofile.write("\n----- qkv_out -----\n")
+        ofile.write(str(qkv_out))
+        ofile.write("\n----- query_layer -----\n")
+        ofile.write(str(query_layer))
+        ofile.write("\n----- key_layer -----\n")
+        ofile.write(str(key_layer))
+
         presents = (key_layer, value_layer)
         # Raw attention scores. [batch_size * num_heads, q_length, k_length]
         matmul_result = torch.matmul(query_layer, key_layer)
+        # matmul_result = torch.mul(matmul_result, 0.125)
+
+        ofile.write("\n----- matmul_result -----\n")
+        ofile.write(str(matmul_result))
+
         # change view to [batch_size, num_heads, q_length, k_length]
         attention_scores = matmul_result.view(output_size[0],
                                               output_size[1],
                                               output_size[2],
                                               -1)
 
+        ofile.write("\n----- inv_norm_factor -----\n")
+        ofile.write(str(1 / (self.norm_factor * self.norm_factor)))
+        ofile.write("\n----- alibi -----\n")
+        ofile.write(str(alibi))
+        ofile.write("\n----- attention_scores -----\n")
+        ofile.write(str(attention_scores))
+
+        ofile.write("\n----- input_mask -----\n")
+        ofile.write(str(input_mask))
+
         offset = dist.get_rank(
         ) * self.num_attention_heads_per_partition if dist.is_initialized() else 0
+        input_mask = input_mask.to(torch.int64)
+        #import pdb;pdb.set_trace()
         attention_probs = self.softmax_func(
             attn_scores=attention_scores,
             attn_mask=((1 - input_mask).half() *
@@ -255,9 +280,16 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
             async_op=False,
             layer_scale=1 / (self.norm_factor * self.norm_factor),
             head_offset=offset)
+        ofile.write("\n----- attention_probs_after_softmax -----\n")
+        ofile.write(str(attention_probs))
 
         # change view [batch_size x num_heads, q_length, k_length]
         attention_probs_reshaped = attention_probs.view(*matmul_result.shape)
+
+        ofile.write("\n----- attention_probs_reshaped -----\n")
+        ofile.write(str(attention_probs_reshaped))
+
+        ofile.close()
 
         # matmul: [batch_size * num_heads, q_length, head_dim]
         context_layer = torch.bmm(attention_probs_reshaped, value_layer)
