@@ -59,18 +59,18 @@ One can run our GPT finetuning example by:
 
 ```shell
 DeepSpeedExamples/data_efficiency/gpt_finetuning$ pip install -r requirement.txt
-DeepSpeedExamples/data_efficiency/gpt_finetuning$ bash ./bash_script/run_base.sh
-DeepSpeedExamples/data_efficiency/gpt_finetuning$ bash ./bash_script/run_medium.sh
+DeepSpeedExamples/data_efficiency/gpt_finetuning$ bash ./bash_script/run_base_random_ltd.sh
+DeepSpeedExamples/data_efficiency/gpt_finetuning$ bash ./bash_script/run_medium_random_ltd.sh
 ```
 
 And the reference final result is:
 
 ```shell
-For run_base.sh:
-'step':1047, 'ppl': 23.9859276900444, 'seq_len': 1024, 'consume layer-tokens': 19534848
+For run_base_random_ltd.sh:
+End of training epoch 3 step 1344 consumed_token 2148032 best perplexity 22.552324221233757 time 0.17486039188173083 hr
 
-For run_medium.sh:
-'step':1047, 'ppl': 18.569010769928337, 'seq_len': 1024, 'consume layer-tokens': 35567104
+For run_medium_random_ltd.sh:
+End of training epoch 3 step 1373 consumed_token 2147024 best perplexity 17.332243199130996 time 0.4661190489927928 hr
 ```
 
 One can run our ViT finetuning example by:
