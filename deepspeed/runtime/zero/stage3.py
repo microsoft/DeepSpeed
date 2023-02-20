@@ -7,7 +7,7 @@ import sys
 import gc
 import collections
 from typing import Deque, Dict, Tuple
-from torch._six import inf
+from torch import inf
 
 from deepspeed.runtime import ZeROOptimizer
 from deepspeed.utils import logger
