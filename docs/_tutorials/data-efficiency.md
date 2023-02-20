@@ -30,6 +30,9 @@ The `examples/data_efficiency` directory in our [Megatron-DeepSpeed repo](https:
 
 **Eval/finetuning** `examples/data_efficiency/gpt/eval/` and `examples/data_efficiency/bert/finetune` include the example scripts for GPT-3 model's zero-/few-shot evaluation and BERT model's finetuning. Our [paper](https://arxiv.org/abs/2212.03597) includes the reference eval/finetune results if you follow our example scripts to perform the pretraining/eval/finetuning.
 
+#### 1.3.2 GPT-2 finetuning
+The `data_efficiency/gpt_finetuning` directory in our [DeepSpeedExamples repo](https://github.com/microsoft/DeepSpeedExamples) includes our examples of how to apply curriculum learning to GPT-2 finetuning. `data_efficiency/gpt_finetuning/finetune/ds_finetune_gpt2_run.sh` is the example finetuning script. For CL metrics that require data analysis (e.g., the vocabulary rarity metric), you need to first use ```data_efficiency/gpt_finetuning/finetune/ds_analyze_gpt_data_*``` to analyze and index the dataset, similar to the GPT-3 pre-training case described above in 1.3.1.
+
 ## 2. Random layerwise token dropping (random-LTD)
 
 ### 2.1 What is random-LTD
@@ -92,3 +95,6 @@ iter 5474 | LR [0.0001]| val_acc 97.97000122070312 | layer_token 305784192
 The `examples/data_efficiency` directory in our [Megatron-DeepSpeed repo](https://github.com/microsoft/Megatron-DeepSpeed) includes our examples of how to compose curriculum learning random-LTD, and apply both of them to GPT-3 and BERT pretraining.
 
 The changes needed are the same as described in previous two sections, since DeepSpeed Data Efficiency already handles the complexity when composing the two techniques. However, one thing to note is that since both random-LTD and some of the curriculum learning metrics will change the sequence length, it could require some extra code to calculate the effective sequence length at each step. We provide an example implementation of this change in `megatron/training.py` function `train` where we calculate the `actual_seq_length`.
+
+#### 3.2 GPT-2 finetuning
+The `data_efficiency/gpt_finetuning` directory in our [DeepSpeedExamples repo](https://github.com/microsoft/DeepSpeedExamples) includes our examples of how to compose curriculum learning random-LTD for GPT-2 finetuning. `data_efficiency/gpt_finetuning/finetune/ds_finetune_gpt2_run.sh` is the example finetuning script.
