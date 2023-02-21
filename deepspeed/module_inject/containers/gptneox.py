@@ -4,6 +4,8 @@ from .features.megatron import MegatronContainer
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
 import torch
 from ..policy import TransformerPolicy
+from ..policy import transformer_param_names
+from ..policy import maybe_copy
 from packaging import version as pkg_version
 
 
@@ -16,7 +18,7 @@ class DS_GPTNEOXContainer(MetaTensorContainer,
         # All model specific things should be defined here instead of the base class.
 
     def create_module(self, config=None):
-        _config = config if config is not None else self.config
+        _config = config if config is not None else self.ds_model_config
         self.module = DeepSpeedGPTInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
 
@@ -26,13 +28,61 @@ class DS_GPTNEOXContainer(MetaTensorContainer,
 
         return self.module
 
+    def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
+        param_names = (
+            'attention.query_key_value.weight', \
+            'attention.query_key_value.bias', \
+            'attention.dense.weight', \
+            'attention.dense.bias', \
+            'mlp.dense_h_to_4h.weight', \
+            'mlp.dense_h_to_4h.bias', \
+            'mlp.dense_4h_to_h.weight', \
+            'mlp.dense_4h_to_h.bias', \
+            'post_attention_layernorm.weight', \
+            'post_attention_layernorm.bias', \
+            'input_layernorm.weight', \
+            'input_layernorm.bias'
+        )
+        for i in range(0, 2):
+            maybe_copy(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i],
+                       qkv=True,
+                       megatron_v2=self.is_megatron_v2,
+                       split_qkv=self.split_qkv,
+                       heads=self.client_module.attention.num_attention_heads)
+        for i in range(2, 4):
+            maybe_copy(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
+        for i in range(4, 10):
+            maybe_copy(module.mlp,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
+        for i in range(10, 12):
+            maybe_copy(module,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
+
 
 class GPTNEOXLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
     version = 0
 
     def __init__(self, client_module, inference=True, megatron_v2=True, split_qkv=False):
-        super().__init__(inference, megatron_v2=megatron_v2)
+        super().__init__(inference, megatron_v2=megatron_v2, split_qkv=split_qkv)
         self.client_module = client_module
         if GPTNEOXLayerPolicy._orig_layer_class is None:
             if pkg_version.parse(torch.__version__) <= pkg_version.parse("1.2"):
@@ -75,19 +125,3 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
                self.client_module.post_attention_layernorm.bias, \
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
-
-    def get_param_names(self):
-        return 'attention.query_key_value.weight', \
-               'attention.query_key_value.bias', \
-               'attention.dense.weight', \
-               'attention.dense.bias', \
-               'mlp.dense_h_to_4h.weight', \
-               'mlp.dense_h_to_4h.bias', \
-               'mlp.dense_4h_to_h.weight', \
-               'mlp.dense_4h_to_h.bias', \
-               'input_layernorm.weight', \
-               'input_layernorm.bias', \
-               'post_attention_layernorm.weight', \
-               'post_attention_layernorm.bias', \
-               self.use_load_prefix, \
-               self.split_qkv
