@@ -129,7 +129,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                  cpu_offload=False,
                  mpu=None,
                  clip_grad=0.0,
-                 gradient_accumulation_dtype = torch.float32,
+                 gradient_accumulation_dtype=torch.float32,
                  communication_data_type=torch.float16,
                  postscale_gradients=True,
                  gradient_predivide_factor=1.0,
@@ -277,7 +277,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         self.all_reduce_print = False
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
-        self.grad_accum_dtype = gradient_accumulation_dtype;
+        self.grad_accum_dtype = gradient_accumulation_dtype
 
         if self.dtype != self.grad_accum_dtype:
             self.use_separate_grad_accum = True
@@ -301,7 +301,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             # push this group to list before modify
             # TODO: Explore simplification that avoids the extra book-keeping by pushing the reordered group
             trainable_parameters = []
-            for param in param_group['params']: 
+            for param in param_group['params']:
                 if param.requires_grad:
                     param.accum_grad = None
                     param.reduc_grad = None
@@ -861,7 +861,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 if param.accum_grad is None:
                     param.accum_grad = param.grad.to(self.grad_accum_dtype)
                 else:
-                    param.accum_grad.add_(param.grad.to(self.grad_accum_dtype).view(param.accum_grad.shape))
+                    param.accum_grad.add_(
+                        param.grad.to(self.grad_accum_dtype).view(
+                            param.accum_grad.shape))
                 # Don't clear if you still need the native grad for reduction (stage 2)
                 if self.reduce_accum_grad:
                     param.grad = None
@@ -889,6 +891,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             param.grad = param.reduc_grad
 
     def create_set_accum_grad_hooks(self):
+        self.accum_accs = []
         for param_group in self.bit16_groups:
             for param in param_group:
                 if param.requires_grad:
@@ -901,6 +904,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                             self.set_accum_grad(param)
 
                         grad_acc.register_hook(accumulation_grad_setter)
+                        self.accum_accs.append(grad_acc)
 
                     wrapper(param)
 
@@ -1717,7 +1721,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
             if add_reduc_to_accum:
                 if tensor.reduc_grad is not None:
-                    tensor.accum_grad.add_(param.reduc_grad.to(self.grad_accum_dtype).view(param.accum_grad.shape))
+                    tensor.accum_grad.add_(
+                        tensor.reduc_grad.to(self.grad_accum_dtype).view(
+                            tensor.accum_grad.shape))
 
             tensor = tensor.accum_grad
             num_elements = tensor.numel()
@@ -1759,6 +1765,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def free_grad_in_param_list(self, param_list):
         for p in param_list:
             p.grad = None  # in step
+            p.reduc_grad = None
+            p.accum_grad = None
 
     def reset_cpu_buffers(self):
         self.norm_for_param_grads = {}
