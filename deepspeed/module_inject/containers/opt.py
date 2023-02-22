@@ -22,60 +22,6 @@ class DS_OPTContainer(MetaTensorContainer, BaseTransformerContainer):
         self.module.config.scale_attention = self.scale_attention
         return self.module
 
-    def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
-        param_names = (
-            'self_attn.q_proj.weight', \
-            'self_attn.k_proj.weight', \
-            'self_attn.v_proj.weight', \
-            'self_attn.q_proj.bias', \
-            'self_attn.k_proj.bias', \
-            'self_attn.v_proj.bias', \
-            'self_attn.out_proj.weight', \
-            'self_attn.out_proj.bias', \
-            'fc1.weight', \
-            'fc1.bias', \
-            'fc2.weight', \
-            'fc2.bias', \
-            'final_layer_norm.weight', \
-            'final_layer_norm.bias', \
-            'self_attn_layer_norm.weight', \
-            'self_attn_layer_norm.bias'
-        )
-
-        for i in range(0, 6, 3):
-            maybe_copy_qkv(module.attention,
-                           sd,
-                           weight_quantizer,
-                           mp_replace,
-                           transformer_param_names[i // 3],
-                           [
-                               prefix + param_names[i],
-                               prefix + param_names[i + 1],
-                               prefix + param_names[i + 2]
-                           ],
-                           split_qkv=self.split_qkv)
-        for i in range(6, 8):
-            maybe_copy(module.attention,
-                       sd,
-                       weight_quantizer,
-                       mp_replace,
-                       transformer_param_names[i - 4],
-                       prefix + param_names[i])
-        for i in range(8, 14):
-            maybe_copy(module.mlp,
-                       sd,
-                       weight_quantizer,
-                       mp_replace,
-                       transformer_param_names[i - 4],
-                       prefix + param_names[i])
-        for i in range(14, 16):
-            maybe_copy(module,
-                       sd,
-                       weight_quantizer,
-                       mp_replace,
-                       transformer_param_names[i - 4],
-                       prefix + param_names[i])
-
 
 class HFOPTLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
@@ -130,3 +76,58 @@ class HFOPTLayerPolicy(TransformerPolicy):
                self.client_module.final_layer_norm.bias, \
                self.client_module.self_attn_layer_norm.weight, \
                self.client_module.self_attn_layer_norm.bias
+
+
+    def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
+        param_names = (
+            'self_attn.q_proj.weight', \
+            'self_attn.k_proj.weight', \
+            'self_attn.v_proj.weight', \
+            'self_attn.q_proj.bias', \
+            'self_attn.k_proj.bias', \
+            'self_attn.v_proj.bias', \
+            'self_attn.out_proj.weight', \
+            'self_attn.out_proj.bias', \
+            'fc1.weight', \
+            'fc1.bias', \
+            'fc2.weight', \
+            'fc2.bias', \
+            'final_layer_norm.weight', \
+            'final_layer_norm.bias', \
+            'self_attn_layer_norm.weight', \
+            'self_attn_layer_norm.bias'
+        )
+
+        for i in range(0, 6, 3):
+            maybe_copy_qkv(module.attention,
+                           sd,
+                           weight_quantizer,
+                           mp_replace,
+                           transformer_param_names[i // 3],
+                           [
+                               prefix + param_names[i],
+                               prefix + param_names[i + 1],
+                               prefix + param_names[i + 2]
+                           ],
+                           split_qkv=self.split_qkv)
+        for i in range(6, 8):
+            maybe_copy(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i - 4],
+                       prefix + param_names[i])
+        for i in range(8, 14):
+            maybe_copy(module.mlp,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i - 4],
+                       prefix + param_names[i])
+        for i in range(14, 16):
+            maybe_copy(module,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i - 4],
+                       prefix + param_names[i])
