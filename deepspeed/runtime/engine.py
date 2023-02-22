@@ -1124,15 +1124,7 @@ class DeepSpeedEngine(Module):
             if self.zero_optimization_partition_weights() and any(
                 [hasattr(param,
                          "ds_id") for param in self.module.parameters()]):
-                if not all(
-                    [param.dtype == torch.half for param in self.module.parameters()]):
-                    names = [
-                        n for n,
-                        p in self.module.named_parameters() if p.dtype != torch.half
-                    ]
-                    raise ValueError(
-                        f"fp16 is enabled but the following parameters have dtype that is not fp16: {', '.join(names)}"
-                    )
+                self.__check_params(self.module, torch.half)
             self.module.half()
         elif self.bfloat16_enabled():
             if self.zero_optimization_partition_weights() and any(
@@ -1502,7 +1494,6 @@ class DeepSpeedEngine(Module):
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
         model_dtype, gradient_accumulation_dtype = self.get_data_types()
-        assert self.communication_data_type in (torch.float16, torch.bfloat16), "ZeRO supports only 'communication_data_type': ['fp16', 'bfp16']"
         timers = self.timers if self.wall_clock_breakdown() else None
 
         if optimizer is None:
@@ -1694,8 +1685,8 @@ class DeepSpeedEngine(Module):
             deepspeed_io_timer = self.tput_timer
 
         # If mpu is provided, forward world size and parallel rank to sampler.
-        data_parallel_world_size = None
-        data_parallel_rank = None
+        data_parallel_world_size = self.dp_world_size
+        data_parallel_rank = self.global_rank
         if self.mpu is not None:
             data_parallel_world_size = self.mpu.get_data_parallel_world_size()
             data_parallel_rank = self.mpu.get_data_parallel_rank()
@@ -3198,6 +3189,9 @@ class DeepSpeedEngine(Module):
                         global_expert_id,
                         tag,
                         self.mpu)
+                    if self.random_ltd_enabled():
+                        expert_state_dict = remove_random_ltd_state_dict(
+                            expert_state_dict)
                     self.checkpoint_engine.save(expert_state_dict, moe_save_path)
                 moe_layer_id += 1
 
@@ -3234,6 +3228,13 @@ class DeepSpeedEngine(Module):
                 'lr_scheduler':
                 self.lr_scheduler.state_dict()
                 if self.lr_scheduler is not None else None,
+                'data_sampler':
+                self.training_dataloader.data_sampler.state_dict() if
+                (self.training_dataloader is not None
+                 and self.curriculum_learning_enabled()) else None,
+                'random_ltd':
+                self.random_ltd_scheduler.state_dict()
+                if self.random_ltd_enabled() else None,
                 'sparse_tensor_module_names':
                 self.sparse_tensor_module_names,
                 'skipped_steps':
