@@ -233,14 +233,16 @@ def main():
             # spawn the processes
             cmd = []
             if args.bind_cores_to_rank:
-                total_cores=112  #assuming totally 112 cores
-                total_sockets=2  #assuming totally 2 sockets
+                total_cores=psutil.cpu_count(logical=False)
+                cores_per_rank = total_cores // num_local_procs
+                os.environ["OMP_NUM_THREADS"] = f"{cores_per_rank}"
                 cmd.append("numactl")
-                cmd.append("-m")
-                cmd.append("{}".format(local_rank//(num_local_procs//total_sockets)))
+                #total_sockets=2  #assuming totally 2 sockets
+                #cmd.append("-m")
+                #cmd.append("{}".format(local_rank//(num_local_procs//total_sockets)))
                 cmd.append("-C")
-                cmd.append("{}-{}".format(total_cores//num_local_procs*local_rank,
-                                          total_cores//num_local_procs*(local_rank+1)-1))
+                cmd.append("{}-{}".format(cores_per_rank * local_rank,
+                                          cores_per_rank * (local_rank + 1) - 1))
             if not args.no_python:
                 cmd.append(sys.executable)
                 cmd.append("-u")
