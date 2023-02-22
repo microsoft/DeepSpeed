@@ -98,6 +98,11 @@ def parse_args():
         type=str,
         help="redirect the stdout and stderr from each rank into different log files")
 
+    parser.add_argument("--bind_cores_to_rank",
+                        type=bool,
+                        default=False,
+                        help="Bind each rank to different cores of the host")
+
     # positional
     parser.add_argument("training_script",
                         type=str,
@@ -227,13 +232,15 @@ def main():
 
             # spawn the processes
             cmd = []
-            cmd.append("numactl")
-            cmd.append("-m")
-            cmd.append("{}".format(local_rank//(num_local_procs//2)))
-            total_cores=112  #assuming totally 112 cores
-            cmd.append("-C")
-            cmd.append("{}-{}".format(total_cores//num_local_procs*local_rank,
-                                      total_cores//num_local_procs*(local_rank+1)-1))
+            if args.bind_cores_to_rank:
+                total_cores=112  #assuming totally 112 cores
+                total_sockets=2  #assuming totally 2 sockets
+                cmd.append("numactl")
+                cmd.append("-m")
+                cmd.append("{}".format(local_rank//(num_local_procs//total_sockets)))
+                cmd.append("-C")
+                cmd.append("{}-{}".format(total_cores//num_local_procs*local_rank,
+                                          total_cores//num_local_procs*(local_rank+1)-1))
             if not args.no_python:
                 cmd.append(sys.executable)
                 cmd.append("-u")

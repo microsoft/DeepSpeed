@@ -178,6 +178,10 @@ def parse_args(args=None):
                         help="User script to launch, followed by any required "
                         "arguments.")
     parser.add_argument('user_args', nargs=argparse.REMAINDER)
+    parser.add_argument("--bind_cores_to_rank",
+                        type=bool,
+                        default=False,
+                        help="Bind each rank to different cores of the host")
     return parser.parse_args(args=args)
 
 
@@ -504,6 +508,8 @@ def main(args=None):
             deepspeed_launch.append("--enable_elastic_training")
             deepspeed_launch.append(f"--max_elastic_nodes={args.max_elastic_nodes}")
             deepspeed_launch.append(f"--min_elastic_nodes={args.min_elastic_nodes}")
+        if args.bind_cores_to_rank:
+            deepspeed_launch.append("--bind_cores_to_rank=True")
         cmd = deepspeed_launch + [args.user_script] + args.user_args
     else:
         args.launcher = args.launcher.lower()
