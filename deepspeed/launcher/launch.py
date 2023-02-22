@@ -229,12 +229,11 @@ def main():
             cmd = []
             cmd.append("numactl")
             cmd.append("-m")
-            cmd.append("{}".format(local_rank))
+            cmd.append("{}".format(local_rank//(num_local_procs//2)))
+            total_cores=112  #assuming totally 112 cores
             cmd.append("-C")
-            if local_rank == 0:
-                cmd.append("0-55")
-            else:
-                cmd.append("56-111")
+            cmd.append("{}-{}".format(total_cores//num_local_procs*local_rank,
+                                      total_cores//num_local_procs*(local_rank+1)-1))
             if not args.no_python:
                 cmd.append(sys.executable)
                 cmd.append("-u")
