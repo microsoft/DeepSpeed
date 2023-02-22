@@ -6,7 +6,7 @@ This file is adapted from NVIDIA/apex/optimizer/fused_adam and implements the LA
 '''
 import types
 import torch
-from ..op_builder import FusedLambBuilder
+from deepspeed.ops.op_builder import FusedLambBuilder
 
 
 class FusedLamb(torch.optim.Optimizer):

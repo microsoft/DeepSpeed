@@ -3,8 +3,8 @@ import pytest
 import torch
 import deepspeed
 from deepspeed.model_implementations import DeepSpeedTransformerInference
-from transformers import AutoConfig, AutoModelForCausalLM
 from unit.common import DistributedTest, DistributedFixture
+from transformers import AutoConfig, AutoModelForCausalLM
 
 
 def check_dtype(model, expected_dtype):
@@ -49,7 +49,6 @@ class save_shard(DistributedFixture):
             inf_config = {
                 "replace_with_kernel_inject": True,
                 "dtype": torch.float16,
-                "replace_method": "auto",
                 "enable_cuda_graph": False,
                 "tensor_parallel": {
                     "tp_size": world_size
@@ -73,7 +72,6 @@ class TestCheckpointShard(DistributedTest):
         inf_config = {
             "replace_with_kernel_inject": True,
             "dtype": dtype,
-            "replace_method": "auto",
             "enable_cuda_graph": False,
             "tensor_parallel": {
                 "tp_size": world_size
