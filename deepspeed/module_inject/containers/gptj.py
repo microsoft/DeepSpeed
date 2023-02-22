@@ -21,47 +21,6 @@ class DS_GPTJContainer(MetaTensorContainer, BaseTransformerContainer):
         self.module.config.scale_attention = self.scale_attention
         return self.module
 
-
-class HFGPTJLayerPolicy(TransformerPolicy):
-    _orig_layer_class = None
-
-    def __init__(self, client_module, inference=True):
-        super().__init__(inference, scale_attention=True)
-        self.client_module = client_module
-        try:
-            import transformers
-            HFGPTJLayerPolicy._orig_layer_class = transformers.models.gptj.modeling_gptj.GPTJBlock
-        except:
-            HFGPTJLayerPolicy._orig_layer_class = None
-
-    def get_hidden_heads(self):
-        return self.client_module.attn.q_proj.weight.shape[1], \
-                self.client_module.attn.num_attention_heads
-
-    def attention(self):
-        qw = self.client_module.attn.q_proj.weight
-        kw = self.client_module.attn.k_proj.weight
-        vw = self.client_module.attn.v_proj.weight
-
-        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
-
-        return qkvw, \
-               None, \
-               self.client_module.attn.out_proj.weight, \
-               None,
-
-    def mlp(self):
-        return self.client_module.mlp.fc_in.weight, \
-               self.client_module.mlp.fc_in.bias, \
-               self.client_module.mlp.fc_out.weight, \
-               self.client_module.mlp.fc_out.bias
-
-    def layernorm(self):
-        return None, \
-               None, \
-               self.client_module.ln_1.weight, \
-               self.client_module.ln_1.bias
-
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
             'attn.q_proj.weight', \
@@ -106,3 +65,44 @@ class HFGPTJLayerPolicy(TransformerPolicy):
                        mp_replace,
                        transformer_param_names[i + 2],
                        prefix + param_names[i])
+
+
+class HFGPTJLayerPolicy(TransformerPolicy):
+    _orig_layer_class = None
+
+    def __init__(self, client_module, inference=True):
+        super().__init__(inference, scale_attention=True)
+        self.client_module = client_module
+        try:
+            import transformers
+            HFGPTJLayerPolicy._orig_layer_class = transformers.models.gptj.modeling_gptj.GPTJBlock
+        except:
+            HFGPTJLayerPolicy._orig_layer_class = None
+
+    def get_hidden_heads(self):
+        return self.client_module.attn.q_proj.weight.shape[1], \
+                self.client_module.attn.num_attention_heads
+
+    def attention(self):
+        qw = self.client_module.attn.q_proj.weight
+        kw = self.client_module.attn.k_proj.weight
+        vw = self.client_module.attn.v_proj.weight
+
+        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
+
+        return qkvw, \
+               None, \
+               self.client_module.attn.out_proj.weight, \
+               None,
+
+    def mlp(self):
+        return self.client_module.mlp.fc_in.weight, \
+               self.client_module.mlp.fc_in.bias, \
+               self.client_module.mlp.fc_out.weight, \
+               self.client_module.mlp.fc_out.bias
+
+    def layernorm(self):
+        return None, \
+               None, \
+               self.client_module.ln_1.weight, \
+               self.client_module.ln_1.bias

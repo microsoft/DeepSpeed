@@ -28,6 +28,54 @@ class DS_GPTNEOXContainer(MetaTensorContainer,
 
         return self.module
 
+    def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
+        param_names = (
+            'attention.query_key_value.weight', \
+            'attention.query_key_value.bias', \
+            'attention.dense.weight', \
+            'attention.dense.bias', \
+            'mlp.dense_h_to_4h.weight', \
+            'mlp.dense_h_to_4h.bias', \
+            'mlp.dense_4h_to_h.weight', \
+            'mlp.dense_4h_to_h.bias', \
+            'post_attention_layernorm.weight', \
+            'post_attention_layernorm.bias', \
+            'input_layernorm.weight', \
+            'input_layernorm.bias'
+        )
+        for i in range(0, 2):
+            maybe_copy(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i],
+                       qkv=True,
+                       megatron_v2=self.is_megatron_v2,
+                       split_qkv=self.split_qkv,
+                       heads=self.client_module.attention.num_attention_heads)
+        for i in range(2, 4):
+            maybe_copy(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
+        for i in range(4, 10):
+            maybe_copy(module.mlp,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
+        for i in range(10, 12):
+            maybe_copy(module,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       transformer_param_names[i],
+                       prefix + param_names[i])
+
 
 class GPTNEOXLayerPolicy(TransformerPolicy):
     _orig_layer_class = None
@@ -77,51 +125,3 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
                self.client_module.post_attention_layernorm.bias, \
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
-
-    def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
-        param_names = (
-            'attention.query_key_value.weight', \
-            'attention.query_key_value.bias', \
-            'attention.dense.weight', \
-            'attention.dense.bias', \
-            'mlp.dense_h_to_4h.weight', \
-            'mlp.dense_h_to_4h.bias', \
-            'mlp.dense_4h_to_h.weight', \
-            'mlp.dense_4h_to_h.bias', \
-            'post_attention_layernorm.weight', \
-            'post_attention_layernorm.bias', \
-            'input_layernorm.weight', \
-            'input_layernorm.bias'
-        )
-        for i in range(0, 2):
-            maybe_copy(module.attention,
-                       sd,
-                       weight_quantizer,
-                       mp_replace,
-                       transformer_param_names[i],
-                       prefix + param_names[i],
-                       qkv=True,
-                       megatron_v2=self.is_megatron_v2,
-                       split_qkv=self.split_qkv,
-                       heads=self.client_module.attention.num_attention_heads)
-        for i in range(2, 4):
-            maybe_copy(module.attention,
-                       sd,
-                       weight_quantizer,
-                       mp_replace,
-                       transformer_param_names[i],
-                       prefix + param_names[i])
-        for i in range(4, 10):
-            maybe_copy(module.mlp,
-                       sd,
-                       weight_quantizer,
-                       mp_replace,
-                       transformer_param_names[i],
-                       prefix + param_names[i])
-        for i in range(10, 12):
-            maybe_copy(module,
-                       sd,
-                       weight_quantizer,
-                       mp_replace,
-                       transformer_param_names[i],
-                       prefix + param_names[i])
