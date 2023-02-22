@@ -62,7 +62,6 @@ class HFGPTJLayerPolicy(TransformerPolicy):
                self.client_module.ln_1.weight, \
                self.client_module.ln_1.bias
 
-
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
             'attn.q_proj.weight', \
@@ -107,4 +106,3 @@ class HFGPTJLayerPolicy(TransformerPolicy):
                        mp_replace,
                        transformer_param_names[i + 2],
                        prefix + param_names[i])
-

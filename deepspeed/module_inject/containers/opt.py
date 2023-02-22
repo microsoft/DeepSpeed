@@ -77,7 +77,6 @@ class HFOPTLayerPolicy(TransformerPolicy):
                self.client_module.self_attn_layer_norm.weight, \
                self.client_module.self_attn_layer_norm.bias
 
-
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
             'self_attn.q_proj.weight', \

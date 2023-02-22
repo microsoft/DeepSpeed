@@ -124,6 +124,7 @@ class TransformerPolicy(DSPolicy):
             "A load_params() function must be defined in the model container \
                                   when inheriting the MetaTensorContainer feature")
 
+
 # TODO (lekurile): This function exists in base container as well, consolidate as some point
 def transpose(data):
     with torch.no_grad():

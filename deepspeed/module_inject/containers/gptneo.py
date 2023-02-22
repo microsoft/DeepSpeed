@@ -60,7 +60,6 @@ class HFGPTNEOLayerPolicy(TransformerPolicy):
                self.client_module.ln_1.weight, \
                self.client_module.ln_1.bias
 
-
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
             'attn.attention.q_proj.weight', \

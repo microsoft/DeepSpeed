@@ -78,7 +78,6 @@ class BLOOMLayerPolicy(TransformerPolicy):
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
 
-
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
             'self_attention.query_key_value.weight', \
@@ -125,4 +124,3 @@ class BLOOMLayerPolicy(TransformerPolicy):
                        mp_replace,
                        transformer_param_names[i],
                        prefix + param_names[i])
-

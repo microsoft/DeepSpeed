@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 
 
 class MetaTensorContainer(ABC):
@@ -31,4 +31,3 @@ class MetaTensorContainer(ABC):
     def transpose(self):
         if not self.is_meta:
             super().transpose()
-
