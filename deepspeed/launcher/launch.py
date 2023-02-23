@@ -101,7 +101,15 @@ def parse_args():
     parser.add_argument("--bind_cores_to_rank",
                         type=bool,
                         default=False,
-                        help="Bind each rank to different cores of the host")
+                        help="Bind each rank to different cores of the host. "
+                        "This improves host efficiency especially for CPU backend")
+
+    parser.add_argument("--bind_core_list",
+                        type=str,
+                        default=None,
+                        help="List of cores to bind to with comma seperated list of "
+                        "numbers and range. i.e. 1,3-5,7 => [1,3,4,5,7].  When not "
+                        "specified, all cores on system would be used rank binding")
 
     # positional
     parser.add_argument("training_script",
@@ -130,6 +138,21 @@ def terminate_process_tree(pid):
     for p in alive:
         p.kill()
 
+from itertools import chain
+
+def parse_range(rng):
+    parts = rng.split('-')
+    if 1 > len(parts) > 2:
+        raise ValueError("Bad range: '%s'" % (rng,))
+    parts = [int(i) for i in parts]
+    start = parts[0]
+    end = start if len(parts) == 1 else parts[1]
+    if start > end:
+        end, start = start, end
+    return range(start, end + 1)
+
+def parse_range_list(rngs):
+    return sorted(set(chain(*[parse_range(rng) for rng in rngs.split(',')])))
 
 def main():
     args = parse_args()
@@ -233,16 +256,22 @@ def main():
             # spawn the processes
             cmd = []
             if args.bind_cores_to_rank:
-                total_cores=psutil.cpu_count(logical=False)
+                if args.bind_core_list != None:
+                    core_list = parse_range_list(args.bind_core_list)
+                    total_cores = len(core_list)
+                else:
+                    total_cores=psutil.cpu_count(logical=False)
+                    core_list = range(total_cores)
                 cores_per_rank = total_cores // num_local_procs
+                assert cores_per_rank >= 1, "At least one core needs to be assigned to each rank"
+                core_list_for_rank = core_list[cores_per_rank * local_rank: cores_per_rank * (local_rank+1)]
                 os.environ["OMP_NUM_THREADS"] = f"{cores_per_rank}"
                 cmd.append("numactl")
-                #total_sockets=2  #assuming totally 2 sockets
-                #cmd.append("-m")
-                #cmd.append("{}".format(local_rank//(num_local_procs//total_sockets)))
                 cmd.append("-C")
-                cmd.append("{}-{}".format(cores_per_rank * local_rank,
-                                          cores_per_rank * (local_rank + 1) - 1))
+                core_list_str = f"{core_list_for_rank[0]}"
+                for core_id in core_list_for_rank[1:]:
+                    core_list_str = f"{core_list_str},{core_id}"
+                cmd.append(f"{core_list_str}")
             if not args.no_python:
                 cmd.append(sys.executable)
                 cmd.append("-u")
