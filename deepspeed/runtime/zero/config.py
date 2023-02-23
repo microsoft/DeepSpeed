@@ -132,7 +132,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     ignore_unused_parameters: bool = True
     legacy_stage1: bool = False
     round_robin_gradients: bool = False
-    zero_param_group_size: int = Field(1e6, ge=1)
+    zero_param_group_size: int = Field(1, ge=0)
 
     @validator("overlap_comm")
     def overlap_comm_valid(cls, field_value, values):
