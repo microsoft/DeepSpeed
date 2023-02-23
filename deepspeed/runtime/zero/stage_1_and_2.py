@@ -1147,7 +1147,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             current_offset += num_elements
 
     def update_overflow_tracker_for_param_grad(self, param):
-        if param.grad is not None and self._has_inf_or_nan(param.grad.data):
+        if param.grad_accum is not None and self._has_inf_or_nan(param.grad_accum.data):
             self.local_overflow = True
 
     def async_accumulate_grad_in_cpu_via_gpu(self, param):
@@ -1174,19 +1174,19 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     dest_offset,
                     num_elements)
 
-        #accumulate gradients into param.grad or parts of it that belongs to this partition
+        #accumulate gradients into param.grad_accum or parts of it that belongs to this partition
         def accumulate_gradients():
             if not self.fp16_master_weights_and_gradients:
                 dest_buffer.copy_(self.accumulated_grads_in_cpu[param_id].view(-1),
                                   non_blocking=True)
-                param.grad.data.view(-1).add_(dest_buffer)
+                param.grad_accum.data.view(-1).add_(dest_buffer)
             else:
                 dest_buffer.narrow(0,
                                    source_offset,
                                    num_elements).copy_(
                                        self.accumulated_grads_in_cpu[param_id].view(-1),
                                        non_blocking=True)
-                param.grad.data.view(-1).narrow(
+                param.grad_accum.data.view(-1).narrow(
                     0,
                     source_offset,
                     num_elements).add_(dest_buffer.narrow(0,
@@ -1197,13 +1197,13 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         def copy_gradients_to_cpu():
             if not self.fp16_master_weights_and_gradients:
                 self.accumulated_grads_in_cpu[param_id].data.copy_(
-                    param.grad.data.view(-1),
+                    param.grad_accum.data.view(-1),
                     non_blocking=True)
             else:
                 self.accumulated_grads_in_cpu[param_id].data.copy_(
-                    param.grad.data.view(-1).narrow(0,
-                                                    source_offset,
-                                                    num_elements),
+                    param.grad_accum.data.view(-1).narrow(0,
+                                                          source_offset,
+                                                          num_elements),
                     non_blocking=True)
 
         if param_id not in self.accumulated_grads_in_cpu:
@@ -1219,7 +1219,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def set_norm_for_param_grad(self, param):
         param_id = self.get_param_id(param)
         accumulated_grad = self.accumulated_grads_in_cpu[
-            param_id] if self.gradient_accumulation_steps > 1 else param.grad
+            param_id] if self.gradient_accumulation_steps > 1 else param.grad_accum
 
         [i, source_offset, dest_offset, num_elements] = self.grad_position[param_id]
 
@@ -1230,7 +1230,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def set_norm_for_param_grad_in_gpu(self, param):
         param_id = self.get_param_id(param)
-        accumulated_grad = param.grad
+        accumulated_grad = param.grad_accum
 
         [i, source_offset, dest_offset, num_elements] = self.grad_position[param_id]
 
@@ -1249,12 +1249,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             dest_offset,
             num_elements)
 
-        src_tensor = param.grad.view(-1).narrow(0, source_offset, num_elements)
+        src_tensor = param.grad_accum.view(-1).narrow(0, source_offset, num_elements)
         if not self.fp16_master_weights_and_gradients:
             src_tensor = src_tensor.float()
 
         dest_tensor.copy_(src_tensor, non_blocking=True)
         param.grad = None  #offload only
+        param.grad_accum = None  #offload only
+        param.grad_reduc = None  #offload only
 
     def complete_grad_norm_calculation_for_cpu_offload(self, params):
         total_norm = 0.0
