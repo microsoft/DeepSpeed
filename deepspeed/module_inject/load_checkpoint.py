@@ -197,11 +197,7 @@ def load_model_with_checkpoint(r_module,
             for n, child in module.named_children():
                 load_parameters(child, prefix + n + '.')
         else:
-            container.load_params(module,
-                                       sd[0],
-                                       weight_quantizer,
-                                       mp_replace,
-                                       prefix)
+            container.load_params(module, sd[0], weight_quantizer, mp_replace, prefix)
 
     try:
         import transformers
