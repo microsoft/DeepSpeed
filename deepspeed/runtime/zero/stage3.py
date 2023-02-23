@@ -1267,7 +1267,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         offload_fp32_offsets = {}
         for param, grad_partition in zip(params_to_release, grad_partitions):
 
-            contains_real_data = param.partition_numel() * dist.get_rank(self.dp_process_group) < param.ds_numel
+            contains_real_data = param.partition_numel() * dist.get_rank(
+                self.dp_process_group) < param.ds_numel
             if not contains_real_data:
                 # this grad partition is empty - don't need to do anything
                 param.grad = None
