@@ -2199,6 +2199,7 @@ class DeepSpeedEngine(Module):
         if flops_profiler_active:
             if self.autotuning_enabled():
                 self.flops = self.flops_profiler.get_total_flops() * 3
+                self.fwd_duration = self.flops_profiler.get_total_duration()
             else:
                 self.flops_profiler.print_model_profile(
                     profile_step=self.global_steps,
@@ -2252,11 +2253,13 @@ class DeepSpeedEngine(Module):
                 STEP_GLOBAL_TIMER,
             ],
                                        reset=False)
-            titer = msg[FORWARD_GLOBAL_TIMER] + msg[BACKWARD_GLOBAL_TIMER] + msg[
-                STEP_GLOBAL_TIMER]
+            titer = (msg[FORWARD_GLOBAL_TIMER] + msg[BACKWARD_GLOBAL_TIMER] + msg[
+                STEP_GLOBAL_TIMER]) * self.gradient_accumulation_steps()
             msg["latency"] = titer
             msg["FLOPS_per_gpu"] = self.flops * 1_000_000 * self.gradient_accumulation_steps(
             ) / titer
+            msg["num_flops"] = self.flops
+            msg["fwd_duration"] = self.fwd_duration
             msg["throughput"] = self.train_batch_size() * 1_000_000 / \
                 msg["latency"]
             print_json_dist(msg, [0], path=self.autotuning_metric_path())
