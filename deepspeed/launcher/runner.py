@@ -185,7 +185,7 @@ def parse_args(args=None):
     parser.add_argument("--bind_core_list",
                         type=str,
                         default=None,
-                        help="List of cores to bind to with comma seperated list of "
+                        help="List of cores to bind to with comma separated list of "
                         "numbers and range. i.e. 1,3-5,7 => [1,3,4,5,7].  When not "
                         "specified, all cores on system would be used rank binding")
     return parser.parse_args(args=args)

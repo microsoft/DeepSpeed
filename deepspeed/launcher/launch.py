@@ -107,7 +107,7 @@ def parse_args():
     parser.add_argument("--bind_core_list",
                         type=str,
                         default=None,
-                        help="List of cores to bind to with comma seperated list of "
+                        help="List of cores to bind to with comma separated list of "
                         "numbers and range. i.e. 1,3-5,7 => [1,3,4,5,7].  When not "
                         "specified, all cores on system would be used rank binding")
 
@@ -138,12 +138,14 @@ def terminate_process_tree(pid):
     for p in alive:
         p.kill()
 
+
 from itertools import chain
+
 
 def parse_range(rng):
     parts = rng.split('-')
     if 1 > len(parts) > 2:
-        raise ValueError("Bad range: '%s'" % (rng,))
+        raise ValueError("Bad range: '%s'" % (rng, ))
     parts = [int(i) for i in parts]
     start = parts[0]
     end = start if len(parts) == 1 else parts[1]
@@ -151,8 +153,10 @@ def parse_range(rng):
         end, start = start, end
     return range(start, end + 1)
 
+
 def parse_range_list(rngs):
     return sorted(set(chain(*[parse_range(rng) for rng in rngs.split(',')])))
+
 
 def main():
     args = parse_args()
@@ -260,11 +264,13 @@ def main():
                     core_list = parse_range_list(args.bind_core_list)
                     total_cores = len(core_list)
                 else:
-                    total_cores=psutil.cpu_count(logical=False)
+                    total_cores = psutil.cpu_count(logical=False)
                     core_list = range(total_cores)
                 cores_per_rank = total_cores // num_local_procs
                 assert cores_per_rank >= 1, "At least one core needs to be assigned to each rank"
-                core_list_for_rank = core_list[cores_per_rank * local_rank: cores_per_rank * (local_rank+1)]
+                core_list_for_rank = core_list[cores_per_rank *
+                                               local_rank:cores_per_rank *
+                                               (local_rank + 1)]
                 os.environ["OMP_NUM_THREADS"] = f"{cores_per_rank}"
                 cmd.append("numactl")
                 cmd.append("-C")
@@ -287,7 +293,6 @@ def main():
                 cmd.append(f"--local_rank={local_rank}")
             cmd += args.training_script_args
 
-            print ("******** laucnhig command = {}".format(cmd))
             if args.enable_each_rank_log != "None":
                 log_file = os.path.join(args.enable_each_rank_log,
                                         f"{log_name_prefix}_rank{dist_rank}.log")
