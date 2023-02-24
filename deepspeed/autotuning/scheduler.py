@@ -243,7 +243,7 @@ class ResourceManager:
             if os.path.exists(metric_file):
                 with open(metric_file, 'r') as f:
                     logger.info(
-                        f"Loading the metric file {metric_file} for the experiment exp_id = {exp_id}, exp_name = {exp['name']}}"
+                        f"Loading the metric file {metric_file} for the experiment exp_id = {exp_id}, exp_name = {exp['name']}"
                     )
                     results = json.load(f)
                     curr_throughput = results[metric]

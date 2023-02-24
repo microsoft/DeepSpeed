@@ -97,9 +97,12 @@ def print_json_dist(message, ranks=None, path=None):
     if should_log:
         message['rank'] = my_rank
         import json
+        from filelock import FileLock
         with open(path, 'w') as outfile:
-            json.dump(message, outfile)
-            os.fsync(outfile)
+            with FileLock(path):
+                # work with the file as it is now locked
+                json.dump(message, outfile)
+                os.fsync(outfile)
 
 
 def get_current_level():
