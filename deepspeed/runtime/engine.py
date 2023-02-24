@@ -2253,8 +2253,8 @@ class DeepSpeedEngine(Module):
                 STEP_GLOBAL_TIMER,
             ],
                                        reset=False)
-            titer = (msg[FORWARD_GLOBAL_TIMER] + msg[BACKWARD_GLOBAL_TIMER] + msg[
-                STEP_GLOBAL_TIMER]) * self.gradient_accumulation_steps()
+            titer = (msg[FORWARD_GLOBAL_TIMER] + msg[BACKWARD_GLOBAL_TIMER] +
+                     msg[STEP_GLOBAL_TIMER]) * self.gradient_accumulation_steps()
             msg["latency"] = titer
             msg["FLOPS_per_gpu"] = self.flops * 1_000_000 * self.gradient_accumulation_steps(
             ) / titer
