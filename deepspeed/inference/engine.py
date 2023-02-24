@@ -552,15 +552,8 @@ class InferenceEngine(Module):
             get_accelerator().synchronize()
             start = time.time()
 
-<<<<<<< HEAD
-        if self.enable_cuda_graph:
-            if self._input_signature(*inputs, **kwargs) not in self._cuda_graphs:
-=======
         if get_accelerator().device_name() == 'cuda' and self._config.enable_cuda_graph:
-            if self.cuda_graph_created:
-                outputs = self._graph_replay(*inputs, **kwargs)
-            else:
->>>>>>> master
+            if self._input_signature(*inputs, **kwargs) not in self._cuda_graphs:
                 self._create_cuda_graph(*inputs, **kwargs)
             outputs = self._graph_replay(*inputs, **kwargs)
         else:
