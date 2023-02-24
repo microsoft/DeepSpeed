@@ -70,10 +70,6 @@ class InferenceEngine(Module):
         self.quantize_merge_count = 1
         self.quantization_scales = None
 
-        self.triangular_masking = triangular_masking
-        self.expert_mp_group = expert_mp_group
-        self.enable_cuda_graph = enable_cuda_graph
-
         # these are not needed in the config as we are creating them ourselves in the inference engine
         self.ep_group = None  # config.moe.ep_group
         self.expert_mp_group = None  # config.moe.ep_mp_group
