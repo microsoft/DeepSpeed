@@ -10,6 +10,7 @@ import base64
 
 import os
 import hjson
+import json
 from tqdm import tqdm
 
 from ..utils import logger
@@ -241,7 +242,10 @@ class ResourceManager:
 
             if os.path.exists(metric_file):
                 with open(metric_file, 'r') as f:
-                    results = hjson.load(f)
+                    logger.info(
+                        f"Loading the metric file {metric_file} for the experiment exp_id = {exp_id}, exp_name = {exp['name']}}"
+                    )
+                    results = json.load(f)
                     curr_throughput = results[metric]
                     if curr_throughput > max_throughput:
                         max_throughput = curr_throughput
