@@ -883,6 +883,9 @@ class Autotuner:
             exp, metric_val = self.run_ds_config(ds_config, exp_name)
 
             if metric_val:
+                if not os.path.exists(metric_file):
+                    logger.info(f"metric file {metric_file} does not exist")
+                    continue
                 with open(metric_file, 'r') as f:
                     results = hjson.load(f)
                     metric_val = results[self.metric()]

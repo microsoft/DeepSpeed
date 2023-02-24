@@ -1771,8 +1771,7 @@ class DeepSpeedEngine(Module):
             see_memory_usage("Engine before forward", force=self.memory_breakdown())
 
         flops_profiler_active = (self.flops_profiler_enabled() and self.global_steps
-                                 == self.flops_profiler_profile_step()
-                                 and self.global_rank == 0)
+                                 == self.flops_profiler_profile_step())
 
         # used to check quantization happens at step 0!
         if self.global_steps == 0 and hasattr(self, "compression_scheduler"):
@@ -2127,8 +2126,7 @@ class DeepSpeedEngine(Module):
         # Check early because self.global_steps is incremented at some point here.
         # TODO: Delay self.global_steps increment until very end of this function.
         flops_profiler_active = self.flops_profiler_enabled(
-        ) and self.global_steps == self.flops_profiler_profile_step(
-        ) and self.global_rank == 0
+        ) and self.global_steps == self.flops_profiler_profile_step()
 
         self._start_timers(self.engine_timers.step_timers)
 
@@ -2261,11 +2259,14 @@ class DeepSpeedEngine(Module):
         msg["fwd_duration"] = self.fwd_duration
         msg["throughput"] = self.train_batch_size() * 1_000_000 / \
             msg["latency"]
-        print_json_dist(msg, [0], path=self.autotuning_metric_path())
-        log_dist(
-            f"Wrote metrics to {self.autotuning_metric_path()}, {os.path.abspath(self.autotuning_metric_path())}",
-            ranks=[0])
-        log_dist(f"Autotuning: done with running current ds config.", ranks=[0])
+        if not os.path.exists(self.autotuning_metric_path()):
+            my_rank = dist.get_rank() if dist.is_initialized() else -1
+            print_json_dist(msg, [my_rank], path=self.autotuning_metric_path())
+            log_dist(
+                f"Wrote metrics to {self.autotuning_metric_path()}, {os.path.abspath(self.autotuning_metric_path())}",
+                ranks=[my_rank])
+            log_dist(f"Autotuning: done with running current ds config.",
+                     ranks=[my_rank])
         exit()
 
     def _write_monitor(self):
