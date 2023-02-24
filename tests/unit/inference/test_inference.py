@@ -469,7 +469,7 @@ class TestLMCorrectness(DistributedTest):
                            "text-generation")],
                          ids=["gpt-neo"])
 class TestVariableBatchSizeCudaGraph(DistributedTest):
-    world_size = 1 # Do we need this?
+    world_size = 1
 
     def test(
         self,
@@ -507,12 +507,11 @@ class TestVariableBatchSizeCudaGraph(DistributedTest):
         success = True
         try:
             pipe(query, batch_size=2)
-            pipe([query]*4, batch_size=4)
+            pipe([query] * 4, batch_size=4)
             pipe(query, batch_size=1)
         except Exception as e:
             success = False
             print(f"Exception in TestVariableBatchSizeCudaGraph caught: {e}")
 
         # Assert operation succeeded w/o exception
-        assert(success)
-    
+        assert (success)
