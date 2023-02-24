@@ -6,6 +6,7 @@ from functools import partial
 from typing import List, Optional
 from collections import OrderedDict
 import numpy as np
+from deepspeed.accelerator import get_accelerator
 
 Tensor = torch.Tensor
 
@@ -98,7 +99,7 @@ class FlopsProfiler(object):
                 module.__post_hook_handle__ = module.register_forward_hook(post_hook)
 
             def start_time_hook(module, input):
-                torch.cuda.synchronize()
+                get_accelerator().synchronize()
                 module.__start_time__ = time.time()
 
             if not hasattr(module, "__start_time_hook_handle"):
@@ -106,7 +107,7 @@ class FlopsProfiler(object):
                     start_time_hook)
 
             def end_time_hook(module, input, output):
-                torch.cuda.synchronize()
+                get_accelerator().synchronize()
                 module.__duration__ += time.time() - module.__start_time__
 
             if not hasattr(module, "__end_time_hook_handle__"):
@@ -480,38 +481,38 @@ def _prod(dims):
 
 def _linear_flops_compute(input, weight, bias=None):
     out_features = weight.shape[0]
-    macs = torch.numel(input) * out_features
+    macs = input.numel() * out_features
     return 2 * macs, macs
 
 
 def _relu_flops_compute(input, inplace=False):
-    return torch.numel(input), 0
+    return input.numel(), 0
 
 
 def _prelu_flops_compute(input: Tensor, weight: Tensor):
-    return torch.numel(input), 0
+    return input.numel(), 0
 
 
 def _elu_flops_compute(input: Tensor, alpha: float = 1.0, inplace: bool = False):
-    return torch.numel(input), 0
+    return input.numel(), 0
 
 
 def _leaky_relu_flops_compute(input: Tensor,
                               negative_slope: float = 0.01,
                               inplace: bool = False):
-    return torch.numel(input), 0
+    return input.numel(), 0
 
 
 def _relu6_flops_compute(input: Tensor, inplace: bool = False):
-    return torch.numel(input), 0
+    return input.numel(), 0
 
 
 def _silu_flops_compute(input: Tensor, inplace: bool = False):
-    return torch.numel(input), 0
+    return input.numel(), 0
 
 
-def _gelu_flops_compute(input):
-    return torch.numel(input), 0
+def _gelu_flops_compute(input, **kwargs):
+    return input.numel(), 0
 
 
 def _pool_flops_compute(input,
@@ -523,7 +524,7 @@ def _pool_flops_compute(input,
                         count_include_pad=True,
                         divisor_override=None,
                         return_indices=None):
-    return torch.numel(input), 0
+    return input.numel(), 0
 
 
 def _conv_flops_compute(input,
@@ -625,8 +626,8 @@ def _batch_norm_flops_compute(
     has_affine = weight is not None
     if training:
         # estimation
-        return torch.numel(input) * (5 if has_affine else 4), 0
-    flops = torch.numel(input) * (2 if has_affine else 1)
+        return input.numel() * (5 if has_affine else 4), 0
+    flops = input.numel() * (2 if has_affine else 1)
     return flops, 0
 
 
@@ -639,7 +640,7 @@ def _layer_norm_flops_compute(
 ):
     has_affine = weight is not None
     # estimation
-    return torch.numel(input) * (5 if has_affine else 4), 0
+    return input.numel() * (5 if has_affine else 4), 0
 
 
 def _group_norm_flops_compute(input: Tensor,
@@ -649,7 +650,7 @@ def _group_norm_flops_compute(input: Tensor,
                               eps: float = 1e-5):
     has_affine = weight is not None
     # estimation
-    return torch.numel(input) * (5 if has_affine else 4), 0
+    return input.numel() * (5 if has_affine else 4), 0
 
 
 def _instance_norm_flops_compute(
@@ -664,21 +665,19 @@ def _instance_norm_flops_compute(
 ):
     has_affine = weight is not None
     # estimation
-    return torch.numel(input) * (5 if has_affine else 4), 0
+    return input.numel() * (5 if has_affine else 4), 0
 
 
-def _upsample_flops_compute(input,
-                            size=None,
-                            scale_factor=None,
-                            mode="nearest",
-                            align_corners=None):
+def _upsample_flops_compute(input, **kwargs):
+    size = kwargs.get('size', None)
     if size is not None:
-        if isinstance(size, tuple):
+        if isinstance(size, tuple) or isinstance(size, list):
             return int(_prod(size)), 0
         else:
             return int(size), 0
+    scale_factor = kwargs.get('scale_factor', None)
     assert scale_factor is not None, "either size or scale_factor should be defined"
-    flops = torch.numel(input)
+    flops = input.numel()
     if isinstance(scale_factor, tuple) and len(scale_factor) == len(input):
         flops * int(_prod(scale_factor))
     else:
@@ -687,7 +686,7 @@ def _upsample_flops_compute(input,
 
 
 def _softmax_flops_compute(input, dim=None, _stacklevel=3, dtype=None):
-    return torch.numel(input), 0
+    return input.numel(), 0
 
 
 def _embedding_flops_compute(
@@ -787,7 +786,7 @@ def _elementwise_flops_compute(input, other):
 
 def wrapFunc(func, funcFlopCompute):
     oldFunc = func
-    name = func.__name__
+    name = func.__str__
     old_functions[name] = oldFunc
 
     def newFunc(*args, **kwds):
@@ -798,7 +797,7 @@ def wrapFunc(func, funcFlopCompute):
             module_mac_count[-1].append((name, macs))
         return oldFunc(*args, **kwds)
 
-    newFunc.__name__ = func.__name__
+    newFunc.__str__ = func.__str__
 
     return newFunc
 
@@ -864,7 +863,7 @@ def _patch_tensor_methods():
     torch.mm = wrapFunc(torch.mm, _matmul_flops_compute)
     torch.Tensor.mm = wrapFunc(torch.Tensor.mm, _matmul_flops_compute)
     torch.bmm = wrapFunc(torch.bmm, _matmul_flops_compute)
-    torch.Tensor.bmm = wrapFunc(torch.bmm, _matmul_flops_compute)
+    torch.Tensor.bmm = wrapFunc(torch.Tensor.bmm, _matmul_flops_compute)
 
     torch.addmm = wrapFunc(torch.addmm, _addmm_flops_compute)
     torch.Tensor.addmm = wrapFunc(torch.Tensor.addmm, _tensor_addmm_flops_compute)
@@ -877,42 +876,65 @@ def _patch_tensor_methods():
 
     torch.einsum = wrapFunc(torch.einsum, _einsum_flops_compute)
 
+    torch.baddbmm = wrapFunc(torch.baddbmm, _tensor_addmm_flops_compute)
+
 
 def _reload_functionals():
     # torch.nn.functional does not support importlib.reload()
-    F.linear = old_functions[F.linear.__name__]
-    F.conv1d = old_functions[F.conv1d.__name__]
-    F.conv2d = old_functions[F.conv2d.__name__]
-    F.conv3d = old_functions[F.conv3d.__name__]
-    F.conv_transpose1d = old_functions[F.conv_transpose1d.__name__]
-    F.conv_transpose2d = old_functions[F.conv_transpose2d.__name__]
-    F.conv_transpose3d = old_functions[F.conv_transpose3d.__name__]
-    F.relu = old_functions[F.relu.__name__]
-    F.prelu = old_functions[F.prelu.__name__]
-    F.elu = old_functions[F.elu.__name__]
-    F.leaky_relu = old_functions[F.leaky_relu.__name__]
-    F.relu6 = old_functions[F.relu6.__name__]
-    F.batch_norm = old_functions[F.batch_norm.__name__]
-    F.avg_pool1d = old_functions[F.avg_pool1d.__name__]
-    F.avg_pool2d = old_functions[F.avg_pool2d.__name__]
-    F.avg_pool3d = old_functions[F.avg_pool3d.__name__]
-    F.max_pool1d = old_functions[F.max_pool1d.__name__]
-    F.max_pool2d = old_functions[F.max_pool2d.__name__]
-    F.max_pool3d = old_functions[F.max_pool3d.__name__]
-    F.adaptive_avg_pool1d = old_functions[F.adaptive_avg_pool1d.__name__]
-    F.adaptive_avg_pool2d = old_functions[F.adaptive_avg_pool2d.__name__]
-    F.adaptive_avg_pool3d = old_functions[F.adaptive_avg_pool3d.__name__]
-    F.adaptive_max_pool1d = old_functions[F.adaptive_max_pool1d.__name__]
-    F.adaptive_max_pool2d = old_functions[F.adaptive_max_pool2d.__name__]
-    F.adaptive_max_pool3d = old_functions[F.adaptive_max_pool3d.__name__]
-    F.upsample = old_functions[F.upsample.__name__]
-    F.interpolate = old_functions[F.interpolate.__name__]
-    F.softmax = old_functions[F.softmax.__name__]
-    F.embedding = old_functions[F.embedding.__name__]
+    F.linear = old_functions[F.linear.__str__]
+    F.conv1d = old_functions[F.conv1d.__str__]
+    F.conv2d = old_functions[F.conv2d.__str__]
+    F.conv3d = old_functions[F.conv3d.__str__]
+    F.conv_transpose1d = old_functions[F.conv_transpose1d.__str__]
+    F.conv_transpose2d = old_functions[F.conv_transpose2d.__str__]
+    F.conv_transpose3d = old_functions[F.conv_transpose3d.__str__]
+    F.relu = old_functions[F.relu.__str__]
+    F.prelu = old_functions[F.prelu.__str__]
+    F.elu = old_functions[F.elu.__str__]
+    F.leaky_relu = old_functions[F.leaky_relu.__str__]
+    F.relu6 = old_functions[F.relu6.__str__]
+    if hasattr(F, "silu"):
+        F.silu = old_functions[F.silu.__str__]
+    F.gelu = old_functions[F.gelu.__str__]
+    F.batch_norm = old_functions[F.batch_norm.__str__]
+    F.layer_norm = old_functions[F.layer_norm.__str__]
+    F.instance_norm = old_functions[F.instance_norm.__str__]
+    F.group_norm = old_functions[F.group_norm.__str__]
+    F.avg_pool1d = old_functions[F.avg_pool1d.__str__]
+    F.avg_pool2d = old_functions[F.avg_pool2d.__str__]
+    F.avg_pool3d = old_functions[F.avg_pool3d.__str__]
+    F.max_pool1d = old_functions[F.max_pool1d.__str__]
+    F.max_pool2d = old_functions[F.max_pool2d.__str__]
+    F.max_pool3d = old_functions[F.max_pool3d.__str__]
+    F.adaptive_avg_pool1d = old_functions[F.adaptive_avg_pool1d.__str__]
+    F.adaptive_avg_pool2d = old_functions[F.adaptive_avg_pool2d.__str__]
+    F.adaptive_avg_pool3d = old_functions[F.adaptive_avg_pool3d.__str__]
+    F.adaptive_max_pool1d = old_functions[F.adaptive_max_pool1d.__str__]
+    F.adaptive_max_pool2d = old_functions[F.adaptive_max_pool2d.__str__]
+    F.adaptive_max_pool3d = old_functions[F.adaptive_max_pool3d.__str__]
+    F.upsample = old_functions[F.upsample.__str__]
+    F.interpolate = old_functions[F.interpolate.__str__]
+    F.softmax = old_functions[F.softmax.__str__]
+    F.embedding = old_functions[F.embedding.__str__]
 
 
 def _reload_tensor_methods():
-    torch.matmul = old_functions[torch.matmul.__name__]
+    torch.matmul = old_functions[torch.matmul.__str__]
+    torch.Tensor.matmul = old_functions[torch.Tensor.matmul.__str__]
+    torch.mm = old_functions[torch.mm.__str__]
+    torch.Tensor.mm = old_functions[torch.Tensor.mm.__str__]
+    torch.bmm = old_functions[torch.matmul.__str__]
+    torch.Tensor.bmm = old_functions[torch.Tensor.bmm.__str__]
+    torch.addmm = old_functions[torch.addmm.__str__]
+    torch.Tensor.addmm = old_functions[torch.Tensor.addmm.__str__]
+    torch.mul = old_functions[torch.mul.__str__]
+    torch.Tensor.mul = old_functions[torch.Tensor.mul.__str__]
+    torch.add = old_functions[torch.add.__str__]
+    torch.Tensor.add = old_functions[torch.Tensor.add.__str__]
+
+    torch.einsum = old_functions[torch.einsum.__str__]
+
+    torch.baddbmm = old_functions[torch.baddbmm.__str__]
 
 
 def _rnn_flops(flops, rnn_module, w_ih, w_hh, input_size):

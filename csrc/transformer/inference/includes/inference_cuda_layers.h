@@ -20,6 +20,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #define SMs 80
 
 #define MAX_REGISTERS 256
+
 template <typename T>
 void launch_attn_softmax_v2(T* vals,
                             T* mask,
@@ -46,6 +47,14 @@ void launch_bias_gelu(T* input,
                       int batch_size,
                       cudaStream_t stream);
 
+template <typename T>
+void launch_fused_bias_geglu(T* output,
+                             const T* activation,
+                             const T* bias,
+                             int rows,
+                             int elems_per_row,
+                             cudaStream_t stream);
+
 // Fused bias add with relu activation
 template <typename T>
 void launch_bias_relu(T* input,
@@ -70,29 +79,40 @@ void launch_bias_residual(T* input,
                           cudaStream_t stream);
 
 template <typename T>
-void launch_layer_norm(T* out,
-                       T* vals,
-                       const T* gamma,
-                       const T* beta,
-                       float epsilon,
-                       int batch_size,
-                       int hidden_dim,
-                       cudaStream_t stream);
+void launch_fused_ln(T* output,
+                     const T* vals,
+                     const T* gamma,
+                     const T* beta,
+                     float epsilon,
+                     int rows,
+                     int elems_per_row,
+                     cudaStream_t stream);
 
 template <typename T>
-void launch_residual_layer_norm(T* norm,
-                                T* res_add,
-                                T* vals,
-                                T* residual,
-                                const T* bias,
-                                const T* gamma,
-                                const T* beta,
-                                float epsilon,
-                                int batch_size,
-                                int hidden_dim,
-                                bool preLN,
-                                bool mlp_after_attn,
-                                cudaStream_t stream);
+void launch_fused_residual_ln(T* output,
+                              const T* vals,
+                              const T* residual,
+                              const T* bias,
+                              const T* gamma,
+                              const T* beta,
+                              float epsilon,
+                              int rows,
+                              int elems_per_row,
+                              cudaStream_t stream);
+
+template <typename T>
+void launch_fused_residual_ln_store_pre_ln_res(T* norm_output,
+                                               T* res_output,
+                                               const T* vals,
+                                               const T* residual,
+                                               const T* bias,
+                                               const T* gamma,
+                                               const T* beta,
+                                               float epsilon,
+                                               int rows,
+                                               int elems_per_row,
+                                               cudaStream_t stream);
+
 template <typename T>
 void launch_dequantize(T* output,
                        const int8_t* input,

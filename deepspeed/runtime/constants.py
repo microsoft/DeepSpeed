@@ -135,7 +135,7 @@ FP16 parameters should be of the format:
   "enabled": true,
   "auto_cast": false,
   "loss_scale": 0,
-  "initial_scale_power": 32,
+  "initial_scale_power": 16,
   "loss_scale_window": 1000,
   "hysteresis": 2,
   "min_loss_scale": 1
@@ -155,7 +155,7 @@ FP16_AUTO_CAST_DEFAULT = False
 
 # FP16 initial dynamic scale loss power
 FP16_INITIAL_SCALE_POWER = "initial_scale_power"
-FP16_INITIAL_SCALE_POWER_DEFAULT = 32
+FP16_INITIAL_SCALE_POWER_DEFAULT = 16
 
 # FP16 loss scale window
 FP16_LOSS_SCALE_WINDOW = "loss_scale_window"
@@ -343,14 +343,6 @@ PLD_THETA_DEFAULT = 1.0
 PLD_GAMMA = "gamma"
 PLD_GAMMA_DEFAULT = 0.001
 
-#########################################
-# Curriculum Learning
-#########################################
-CURRICULUM_LEARNING = "curriculum_learning"
-
-CURRICULUM_ENABLED = "enabled"
-CURRICULUM_ENABLED_DEFAULT = False
-
 
 #########################################
 # Validation modes
@@ -392,6 +384,18 @@ CHECKPOINT_PARALLEL_WRITE_PIPELINE_STAGE = "pipeline_stage"
 CHECKPOINT_PARALLEL_WRITE_PIPELINE_STAGE_DEFAULT = False
 
 #########################################
+# Data types config params
+#########################################
+# "data_types": {
+#   grad_accum_dtype=["bf16"|"fp16"|"fp32"]
+#   }
+# }
+
+DATA_TYPES = "data_types"
+GRAD_ACCUM_DTYPE = "grad_accum_dtype"
+GRAD_ACCUM_DTYPE_DEFAULT = None
+
+#########################################
 # Drop the last incomplete Batch
 # #########################################
 # dataloader_drop_last. By default, this feature is not enabled.
@@ -407,3 +411,9 @@ DATALOADER_DROP_LAST_DEFAULT = False
 # PIPELINE PARALLELISM
 #########################################
 PIPE_REPLICATED = 'ds_pipe_replicated'
+
+#########################################
+# DATA PARALLELISM
+#########################################
+DATA_PARALLEL_GROUP = "data_parallel_group"
+GLOBAL_RANK = "global_rank"

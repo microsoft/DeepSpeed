@@ -8,6 +8,7 @@ import cupy
 import numpy as np
 
 from deepspeed.runtime.compression.cupy import CupyBackend
+from deepspeed.accelerator import get_accelerator
 
 
 class NcclBackend(object):
@@ -68,7 +69,7 @@ class NcclBackend(object):
             buffer_m = torch.cat([buffer_m, empty_tensor])
 
         buffer_m.add_(worker_error)
-        worker_scale = torch.norm(buffer_m) / np.sqrt(torch.numel(buffer_m))
+        worker_scale = torch.norm(buffer_m) / np.sqrt(buffer_m.numel())
         worker_error.set_(buffer_m - worker_scale *
                           buffer_m.sign().add_(1).bool().float().add_(-0.5).mul_(2.0))
 
@@ -100,7 +101,8 @@ class NcclBackend(object):
         recvbuf_scale = [
             torch.zeros(1,
                         dtype=worker_scale.dtype,
-                        device=torch.device(local_rank)) for i in range(self.size)
+                        device=torch.device(get_accelerator().device_name(local_rank)))
+            for i in range(self.size)
         ]
 
         # communication phase 1

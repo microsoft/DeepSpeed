@@ -15,6 +15,7 @@ import distutils.log
 import distutils.sysconfig
 from distutils.errors import CompileError, LinkError
 from abc import ABC, abstractmethod
+from typing import List
 
 YELLOW = '\033[93m'
 END = '\033[0m'
@@ -34,7 +35,10 @@ else:
     TORCH_MINOR = int(torch.__version__.split('.')[1])
 
 
-def installed_cuda_version():
+def installed_cuda_version(name=""):
+    import torch.cuda
+    if not torch.cuda.is_available():
+        return 0, 0
     import torch.utils.cpp_extension
     cuda_home = torch.utils.cpp_extension.CUDA_HOME
     assert cuda_home is not None, "CUDA_HOME does not exist, unable to compile CUDA op(s)"
@@ -47,7 +51,6 @@ def installed_cuda_version():
     release = output_split[release_idx + 1].replace(',', '').split(".")
     # Ignore patch versions, only look at major + minor
     cuda_major, cuda_minor = release[:2]
-    installed_cuda_version = ".".join(release[:2])
     return int(cuda_major), int(cuda_minor)
 
 
@@ -84,8 +87,10 @@ cuda_minor_mismatch_ok = {
 }
 
 
-def assert_no_cuda_mismatch():
-    cuda_major, cuda_minor = installed_cuda_version()
+def assert_no_cuda_mismatch(name=""):
+    cuda_major, cuda_minor = installed_cuda_version(name)
+    if cuda_minor == 0 and cuda_major == 0:
+        return False
     sys_cuda_version = f'{cuda_major}.{cuda_minor}'
     torch_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
     # This is a show-stopping error, should probably not proceed past this
@@ -96,11 +101,12 @@ def assert_no_cuda_mismatch():
             print(f"Installed CUDA version {sys_cuda_version} does not match the "
                   f"version torch was compiled with {torch.version.cuda} "
                   "but since the APIs are compatible, accepting this combination")
-            return
+            return True
         raise Exception(
-            f"Installed CUDA version {sys_cuda_version} does not match the "
+            f">- DeepSpeed Op Builder: Installed CUDA version {sys_cuda_version} does not match the "
             f"version torch was compiled with {torch.version.cuda}, unable to compile "
             "cuda/cpp extensions without a matching cuda version.")
+    return True
 
 
 class OpBuilder(ABC):
@@ -110,6 +116,7 @@ class OpBuilder(ABC):
     def __init__(self, name):
         self.name = name
         self.jit_mode = False
+        self.build_for_cpu = False
         self.error_log = None
 
     @abstractmethod
@@ -131,34 +138,39 @@ class OpBuilder(ABC):
         pass
 
     @staticmethod
-    def assert_torch_info(torch_info):
+    def validate_torch_version(torch_info):
         install_torch_version = torch_info['version']
-        install_cuda_version = torch_info['cuda_version']
-        install_hip_version = torch_info['hip_version']
+        current_torch_version = ".".join(torch.__version__.split('.')[:2])
+        if install_torch_version != current_torch_version:
+            raise RuntimeError(
+                "PyTorch version mismatch! DeepSpeed ops were compiled and installed "
+                "with a different version than what is being used at runtime. "
+                f"Please re-install DeepSpeed or switch torch versions. "
+                f"Install torch version={install_torch_version}, "
+                f"Runtime torch version={current_torch_version}")
 
+    @staticmethod
+    def validate_torch_op_version(torch_info):
         if not OpBuilder.is_rocm_pytorch():
             current_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
+            install_cuda_version = torch_info['cuda_version']
+            if install_cuda_version != current_cuda_version:
+                raise RuntimeError(
+                    "CUDA version mismatch! DeepSpeed ops were compiled and installed "
+                    "with a different version than what is being used at runtime. "
+                    f"Please re-install DeepSpeed or switch torch versions. "
+                    f"Install CUDA version={install_cuda_version}, "
+                    f"Runtime CUDA version={current_cuda_version}")
         else:
             current_hip_version = ".".join(torch.version.hip.split('.')[:2])
-
-        current_torch_version = ".".join(torch.__version__.split('.')[:2])
-
-        if not OpBuilder.is_rocm_pytorch():
-            if install_cuda_version != current_cuda_version or install_torch_version != current_torch_version:
+            install_hip_version = torch_info['hip_version']
+            if install_hip_version != current_hip_version:
                 raise RuntimeError(
-                    "PyTorch and CUDA version mismatch! DeepSpeed ops were compiled and installed "
-                    "with a different version than what is being used at runtime. Please re-install "
-                    f"DeepSpeed or switch torch versions. DeepSpeed install versions: "
-                    f"torch={install_torch_version}, cuda={install_cuda_version}, runtime versions:"
-                    f"torch={current_torch_version}, cuda={current_cuda_version}")
-        else:
-            if install_hip_version != current_hip_version or install_torch_version != current_torch_version:
-                raise RuntimeError(
-                    "PyTorch and HIP version mismatch! DeepSpeed ops were compiled and installed "
-                    "with a different version than what is being used at runtime. Please re-install "
-                    f"DeepSpeed or switch torch versions. DeepSpeed install versions: "
-                    f"torch={install_torch_version}, hip={install_hip_version}, runtime versions:"
-                    f"torch={current_torch_version}, hip={current_hip_version}")
+                    "HIP version mismatch! DeepSpeed ops were compiled and installed "
+                    "with a different version than what is being used at runtime. "
+                    f"Please re-install DeepSpeed or switch torch versions. "
+                    f"Install HIP version={install_hip_version}, "
+                    f"Runtime HIP version={current_hip_version}")
 
     @staticmethod
     def is_rocm_pytorch():
@@ -356,6 +368,17 @@ class OpBuilder(ABC):
             return '-mcpu=native'
         return '-march=native'
 
+    def is_cuda_enable(self):
+        try:
+            if torch.cuda.is_available():
+                return '-D__ENABLE_CUDA__'
+        except:
+            print(
+                f"{WARNING} {self.name} torch.cuda is missing, only cpu ops can be compiled!"
+            )
+            return '-D__DISABLE_CUDA__'
+        return '-D__DISABLE_CUDA__'
+
     def _backup_cpuinfo(self):
         # Construct cpu_info dict from lscpu that is similar to what py-cpuinfo provides
         if not self.command_exists('lscpu'):
@@ -375,6 +398,8 @@ class OpBuilder(ABC):
             cpu_info['arch'] = 'X86_64'
             if 'avx512' in result:
                 cpu_info['flags'] += 'avx512,'
+            elif 'avx512f' in result:
+                cpu_info['flags'] += 'avx512f,'
             if 'avx2' in result:
                 cpu_info['flags'] += 'avx2'
         elif 'ppc64le' in result:
@@ -401,7 +426,7 @@ class OpBuilder(ABC):
                 return '-D__SCALAR__'
 
         if cpu_info['arch'] == 'X86_64':
-            if 'avx512' in cpu_info['flags']:
+            if 'avx512' in cpu_info['flags'] or 'avx512f' in cpu_info['flags']:
                 return '-D__AVX512__'
             elif 'avx2' in cpu_info['flags']:
                 return '-D__AVX256__'
@@ -447,12 +472,13 @@ class OpBuilder(ABC):
             extra_link_args=self.strip_empty_entries(self.extra_ldflags()))
 
     def load(self, verbose=True):
-        from ...git_version_info import installed_ops, torch_info
+        from deepspeed.git_version_info import installed_ops, torch_info
         if installed_ops[self.name]:
             # Ensure the op we're about to load was compiled with the same
             # torch/cuda versions we are currently using at runtime.
-            if isinstance(self, CUDAOpBuilder):
-                self.assert_torch_info(torch_info)
+            self.validate_torch_version(torch_info)
+            if torch.cuda.is_available() and isinstance(self, CUDAOpBuilder):
+                self.validate_torch_op_version(torch_info)
 
             return importlib.import_module(self.absolute_name())
         else:
@@ -471,7 +497,7 @@ class OpBuilder(ABC):
             )
 
         if isinstance(self, CUDAOpBuilder) and not self.is_rocm_pytorch():
-            assert_no_cuda_mismatch()
+            self.build_for_cpu = not assert_no_cuda_mismatch(self.name)
 
         self.jit_mode = True
         from torch.utils.cpp_extension import load
@@ -499,6 +525,7 @@ class OpBuilder(ABC):
             extra_cuda_cflags=self.strip_empty_entries(self.nvcc_args()),
             extra_ldflags=self.strip_empty_entries(self.extra_ldflags()),
             verbose=verbose)
+
         build_duration = time.time() - start_build
         if verbose:
             print(f"Time to load {self.name} op: {build_duration} seconds")
@@ -524,7 +551,7 @@ class CUDAOpBuilder(OpBuilder):
         - `TORCH_CUDA_ARCH_LIST` may use ; or whitespace separators. Examples:
 
         TORCH_CUDA_ARCH_LIST="6.1;7.5;8.6" pip install ...
-        TORCH_CUDA_ARCH_LIST="5.2 6.0 6.1 7.0 7.5 8.0 8.6+PTX" pip install ...
+        TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0 7.5 8.0 8.6+PTX" pip install ...
 
         - `cross_compile_archs` uses ; separator.
 
@@ -554,6 +581,12 @@ class CUDAOpBuilder(OpBuilder):
                     cross_compile_archs = get_default_compute_capabilities()
             ccs = cross_compile_archs.split(';')
 
+        ccs = self.filter_ccs(ccs)
+        if len(ccs) == 0:
+            raise RuntimeError(
+                f"Unable to load {self.name} op due to no compute capabilities remaining after filtering"
+            )
+
         args = []
         for cc in ccs:
             num = cc[0] + cc[2]
@@ -562,6 +595,13 @@ class CUDAOpBuilder(OpBuilder):
                 args.append(f'-gencode=arch=compute_{num},code=compute_{num}')
 
         return args
+
+    def filter_ccs(self, ccs: List[str]):
+        """
+        Prune any compute capabilities that are not compatible with the builder. Should log
+        which CCs have been pruned.
+        """
+        return ccs
 
     def version_dependent_macros(self):
         # Fix from apex that might be relevant for us as well, related to https://github.com/NVIDIA/apex/issues/456
@@ -580,18 +620,23 @@ class CUDAOpBuilder(OpBuilder):
         return super().is_compatible(verbose)
 
     def builder(self):
-        from torch.utils.cpp_extension import CUDAExtension
-        if not self.is_rocm_pytorch():
-            assert_no_cuda_mismatch()
-        cuda_ext = CUDAExtension(
+        self.build_for_cpu = not assert_no_cuda_mismatch(self.name)
+        if self.build_for_cpu:
+            from torch.utils.cpp_extension import CppExtension as ExtensionBuilder
+        else:
+            from torch.utils.cpp_extension import CUDAExtension as ExtensionBuilder
+
+        compile_args = {'cxx': self.strip_empty_entries(self.cxx_args())} if self.build_for_cpu else \
+                       {'cxx': self.strip_empty_entries(self.cxx_args()), \
+                           'nvcc': self.strip_empty_entries(self.nvcc_args())}
+
+        cuda_ext = ExtensionBuilder(
             name=self.absolute_name(),
             sources=self.strip_empty_entries(self.sources()),
             include_dirs=self.strip_empty_entries(self.include_paths()),
             libraries=self.strip_empty_entries(self.libraries_args()),
-            extra_compile_args={
-                'cxx': self.strip_empty_entries(self.cxx_args()),
-                'nvcc': self.strip_empty_entries(self.nvcc_args())
-            })
+            extra_compile_args=compile_args)
+
         if self.is_rocm_pytorch():
             # hip converts paths to absolute, this converts back to relative
             sources = cuda_ext.sources
@@ -624,6 +669,8 @@ class CUDAOpBuilder(OpBuilder):
             return ['-O3', '-std=c++14', '-g', '-Wno-reorder']
 
     def nvcc_args(self):
+        if self.build_for_cpu:
+            return []
         args = ['-O3']
         if self.is_rocm_pytorch():
             ROCM_MAJOR, ROCM_MINOR = self.installed_rocm_version()
@@ -646,10 +693,15 @@ class CUDAOpBuilder(OpBuilder):
                 '-U__CUDA_NO_HALF_CONVERSIONS__',
                 '-U__CUDA_NO_HALF2_OPERATORS__'
             ]
+            if os.environ.get('DS_DEBUG_CUDA_BUILD', '0') == '1':
+                args.append('--ptxas-options=-v')
             args += self.compute_capability_args()
         return args
 
     def libraries_args(self):
+        if self.build_for_cpu:
+            return []
+
         if sys.platform == "win32":
             return ['cublas', 'curand']
         else:
@@ -658,28 +710,39 @@ class CUDAOpBuilder(OpBuilder):
 
 class TorchCPUOpBuilder(CUDAOpBuilder):
     def extra_ldflags(self):
+        if self.build_for_cpu:
+            return ['-fopenmp']
+
         if not self.is_rocm_pytorch():
             return ['-lcurand']
-        else:
-            return []
+
+        return []
 
     def cxx_args(self):
         import torch
-        if not self.is_rocm_pytorch():
-            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
-        else:
-            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")
+        args = []
+        if not self.build_for_cpu:
+            if not self.is_rocm_pytorch():
+                CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
+            else:
+                CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")
+
+            args += super().cxx_args()
+            args += [
+                f'-L{CUDA_LIB64}',
+                '-lcudart',
+                '-lcublas',
+                '-g',
+            ]
+
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
-
-        args = super().cxx_args()
+        CUDA_ENABLE = self.is_cuda_enable()
         args += [
-            f'-L{CUDA_LIB64}',
-            '-lcudart',
-            '-lcublas',
-            '-g',
             CPU_ARCH,
             '-fopenmp',
             SIMD_WIDTH,
+            CUDA_ENABLE,
         ]
+
         return args

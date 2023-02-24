@@ -35,10 +35,12 @@ collections:
       - advanced-install.md
       - getting-started.md
       - azure.md
+      - automatic-tensor-parallelism.md
       - bert-finetuning.md
       - bert-pretraining.md
       - cifar-10.md
       - curriculum-learning.md
+      - data-efficiency.md
       - flops-profiler.md
       - pytorch-profiler.md
       - autotuning.md

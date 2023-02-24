@@ -58,13 +58,14 @@ pipe = pipeline("fill-mask", model=args.model, framework="pt", device=args.local
 if dtype == torch.half:
     pipe.model.half()
 
-br = pipe("Hello I'm a [MASK] model")
+mask = pipe.tokenizer.mask_token
+
+br = pipe(f"Hello I'm a {mask} model")
 if args.deepspeed:
     pipe.model = deepspeed.init_inference(pipe.model,
                                           dtype=dtype,
                                           mp_size=1,
                                           replace_with_kernel_inject=args.kernel_inject,
-                                          replace_method='auto',
                                           enable_cuda_graph=args.graphs)
     pipe.model.profile_model_time()
 
@@ -74,7 +75,7 @@ mtimes = []
 for i in range(args.trials):
     torch.cuda.synchronize()
     start = time.time()
-    r = pipe("Hello I'm a [MASK] model")
+    r = pipe(f"Hello I'm a {mask} model")
     torch.cuda.synchronize()
     end = time.time()
     responses.append(r)

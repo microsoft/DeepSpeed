@@ -25,13 +25,14 @@ import time
 torch_available = True
 try:
     import torch
-    from torch.utils.cpp_extension import BuildExtension
 except ImportError:
     torch_available = False
     print('[WARNING] Unable to import torch, pre-compiling ops will be disabled. ' \
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
 
-from op_builder import ALL_OPS, get_default_compute_capabilities, OpBuilder
+from op_builder import get_default_compute_capabilities, OpBuilder
+from op_builder.all_ops import ALL_OPS
+from op_builder.builder import installed_cuda_version
 
 # fetch rocm state
 is_rocm_pytorch = OpBuilder.is_rocm_pytorch()
@@ -74,7 +75,7 @@ if torch_available and torch.cuda.is_available():
         if rocm_major <= 4:
             cupy = f"cupy-rocm-{rocm_major}-{rocm_minor}"
     else:
-        cupy = f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}"
+        cupy = f"cupy-cuda{''.join(map(str,installed_cuda_version()))}"
     if cupy:
         extras_require['1bit'].append(cupy)
         extras_require['1bit_mpi'].append(cupy)
@@ -90,7 +91,9 @@ cmdclass = {}
 
 # For any pre-installed ops force disable ninja
 if torch_available:
-    cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
+    from accelerator import get_accelerator
+    cmdclass['build_ext'] = get_accelerator().build_extension().with_options(
+        use_ninja=False)
 
 if torch_available:
     TORCH_MAJOR = torch.__version__.split('.')[0]
@@ -194,13 +197,14 @@ if sys.platform == "win32":
     # It needs Administrator privilege to create symlinks on Windows.
     create_dir_symlink('..\\..\\csrc', '.\\deepspeed\\ops\\csrc')
     create_dir_symlink('..\\..\\op_builder', '.\\deepspeed\\ops\\op_builder')
+    create_dir_symlink('..\\accelerator', '.\\deepspeed\\accelerator')
     egg_info.manifest_maker.template = 'MANIFEST_win.in'
 
 # Parse the DeepSpeed version string from version.txt
 version_str = open('version.txt', 'r').read().strip()
 
 # Build specifiers like .devX can be added at install time. Otherwise, add the git hash.
-# example: DS_BUILD_STR=".dev20201022" python setup.py sdist bdist_wheel
+# example: DS_BUILD_STRING=".dev20201022" python setup.py sdist bdist_wheel
 
 # Building wheel for distribution, update version file
 if 'DS_BUILD_STRING' in os.environ:
@@ -277,18 +281,8 @@ setup(name='deepspeed',
       },
       install_requires=install_requires,
       extras_require=extras_require,
-      packages=find_packages(exclude=[
-          "azure",
-          "csrc",
-          "docker",
-          "docs",
-          "examples",
-          "op_builder",
-          "release",
-          "requirements",
-          "scripts",
-          "tests"
-      ]),
+      packages=find_packages(include=['deepspeed',
+                                      'deepspeed.*']),
       include_package_data=True,
       scripts=[
           'bin/deepspeed',
@@ -304,7 +298,8 @@ setup(name='deepspeed',
           'Programming Language :: Python :: 3.6',
           'Programming Language :: Python :: 3.7',
           'Programming Language :: Python :: 3.8',
-          'Programming Language :: Python :: 3.9'
+          'Programming Language :: Python :: 3.9',
+          'Programming Language :: Python :: 3.10'
       ],
       license='MIT',
       ext_modules=ext_modules,

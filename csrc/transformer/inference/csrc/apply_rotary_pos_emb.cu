@@ -67,7 +67,6 @@ __global__ void apply_rotary_pos_emb(__half* mixed_query,
                                      unsigned total_count,
                                      int max_out_tokens)
 {
-#if __CUDA_ARCH__ >= 700
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
 
@@ -102,7 +101,6 @@ __global__ void apply_rotary_pos_emb(__half* mixed_query,
             lane += WARP_SIZE;
         }
     }
-#endif
 }
 __global__ void apply_rotary_pos_emb1(float* mixed_query,
                                       float* key_layer,
@@ -159,7 +157,6 @@ __global__ void apply_rotary_pos_emb1(__half* mixed_query,
                                       unsigned total_count,
                                       int max_out_tokens)
 {
-#if __CUDA_ARCH__ >= 700
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
 
@@ -181,7 +178,7 @@ __global__ void apply_rotary_pos_emb1(__half* mixed_query,
         0x2000000,        0x4000000,        0x8000000,        0x10000000,       0x20000000,
         0x40000000,       0x80000000};
 
-    unsigned seq_id = (head_id / num_heads) % seq_len + seq_offset;
+    unsigned seq_id = (head_id % seq_len) + seq_offset;
     unsigned half_dim = rotary_dim >> 1;
     if (head_id < total_count) {
         while (lane < rotary_dim) {
@@ -205,7 +202,6 @@ __global__ void apply_rotary_pos_emb1(__half* mixed_query,
             lane += WARP_SIZE;
         }
     }
-#endif
 }
 
 template <typename T>
