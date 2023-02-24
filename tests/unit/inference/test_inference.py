@@ -461,3 +461,58 @@ class TestLMCorrectness(DistributedTest):
                        ds_output["results"][task]["ppl"])
         #assert ds_time <= bs_time
         assert ppl_diff < 0.01
+
+
+@pytest.mark.inference
+@pytest.mark.parametrize("model_w_task",
+                         [("EleutherAI/gpt-neo-1.3B",
+                           "text-generation")],
+                         ids=["gpt-neo"])
+class TestVariableBatchSizeCudaGraph(DistributedTest):
+    world_size = 1 # Do we need this?
+
+    def test(
+        self,
+        model_w_task,
+        dtype,
+        query,
+        inf_kwargs,
+        assert_fn,
+        invalid_model_task_config,
+    ):
+        if invalid_model_task_config:
+            pytest.skip(invalid_model_task_config)
+
+        model, task = model_w_task
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+
+        # Load the model on CPU first to avoid OOM for large models @fp32
+        pipe = pipeline(task, model=model, device=-1, framework="pt")
+        if dtype == torch.half:
+            pipe.model.half()
+
+        # Switch device to GPU after converting to half
+        device = torch.device(f"cuda:{local_rank}")
+        pipe.device = device
+        pipe.model.to(device)
+
+        pipe.model = deepspeed.init_inference(pipe.model,
+                                              mp_size=1,
+                                              dtype=dtype,
+                                              replace_with_kernel_inject=True,
+                                              replace_method='auto',
+                                              enable_cuda_graph=True)
+
+        # Run pipe test with increasing and then decreasing batch size
+        success = True
+        try:
+            pipe(query, batch_size=2)
+            pipe([query]*4, batch_size=4)
+            pipe(query, batch_size=1)
+        except Exception as e:
+            success = False
+            print(f"Exception in TestVariableBatchSizeCudaGraph caught: {e}")
+
+        # Assert operation succeeded w/o exception
+        assert(success)
+    
