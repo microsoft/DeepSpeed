@@ -2259,12 +2259,12 @@ class DeepSpeedEngine(Module):
         msg["fwd_duration"] = self.fwd_duration
         msg["throughput"] = self.train_batch_size() * 1_000_000 / \
             msg["latency"]
-        if not os.path.exists(self.autotuning_metric_path()):
+        metric_path = os.path.abspath(self.autotuning_metric_path())
+        if not os.path.exists(metric_path):
+            os.makedirs(os.path.dirname(metric_path), exist_ok=True)
             my_rank = dist.get_rank() if dist.is_initialized() else -1
-            print_json_dist(msg, [my_rank], path=self.autotuning_metric_path())
-            log_dist(
-                f"Wrote metrics to {self.autotuning_metric_path()}, {os.path.abspath(self.autotuning_metric_path())}",
-                ranks=[my_rank])
+            print_json_dist(msg, [my_rank], path=metric_path)
+            log_dist(f"Wrote metrics to {metric_path}", ranks=[my_rank])
             log_dist(f"Autotuning: done with running current ds config.",
                      ranks=[my_rank])
         exit()
