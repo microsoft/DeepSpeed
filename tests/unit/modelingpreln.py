@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 # DeepSpeed note, code taken from commit 3d59216cec89a363649b4fe3d15295ba936ced0f
 # https://github.com/NVIDIA/DeepLearningExamples/blob/master/PyTorch/LanguageModeling/BERT/modeling.py
 
