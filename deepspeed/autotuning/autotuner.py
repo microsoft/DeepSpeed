@@ -95,6 +95,7 @@ class Autotuner:
         self.records = {}
         self.optimal_cmd = None
         self.optmal_ds_config = None
+        self.overflow_mbs = None
 
         self.mlflow_parent_id = None
 
@@ -557,6 +558,14 @@ class Autotuner:
         calculated_max_micro_batch_size = int(
             self.gpu_mem -
             self.get_instantiation_memory_required_per_gpu(stage)) // self.activation_mem
+
+        if self.overflow_mbs:
+            calculated_max_micro_batch_size = min(self.overflow_mbs,
+                                                  calculated_max_micro_batch_size)
+            logger.info(
+                f"Capping calculated_max_micro_batch_size to {calculated_max_micro_batch_size}"
+            )
+
         logger.info(
             f"Start tuning for space {tuning_space_name}, calculated_max_micro_batch_size = {calculated_max_micro_batch_size}"
         )
@@ -884,7 +893,10 @@ class Autotuner:
 
             if metric_val:
                 if not os.path.exists(metric_file):
-                    logger.info(f"metric file {metric_file} does not exist")
+                    self.overflow_mbs = mbs
+                    logger.info(
+                        f"metric file {metric_file} does not exist, training finished before resolving loss scale overflow, setting global overflow_bs to {mbs}"
+                    )
                     continue
                 with open(metric_file, 'r') as f:
                     results = hjson.load(f)

@@ -2246,27 +2246,29 @@ class DeepSpeedEngine(Module):
             self.timers(name).stop(record=record)
 
     def _autotuning_exit(self):
-        msg = self.timers.get_mean([
-            FORWARD_GLOBAL_TIMER,
-            BACKWARD_GLOBAL_TIMER,
-            STEP_GLOBAL_TIMER,
-        ],
-                                   reset=False)
-        titer = (msg[FORWARD_GLOBAL_TIMER] + msg[BACKWARD_GLOBAL_TIMER] +
-                 msg[STEP_GLOBAL_TIMER]) * self.gradient_accumulation_steps()
-        msg["latency"] = titer
-        msg["FLOPS_per_gpu"] = self.flops * 1_000_000 * self.gradient_accumulation_steps(
-        ) / titer
-        msg["num_flops"] = self.flops
-        msg["fwd_duration"] = self.fwd_duration
-        msg["throughput"] = self.train_batch_size() * 1_000_000 / \
-            msg["latency"]
-        metric_path = os.path.abspath(self.autotuning_metric_path())
-        os.makedirs(os.path.dirname(metric_path), exist_ok=True)
         print_rank = 0
-        print_json_dist(msg, [print_rank], path=metric_path)
-        log_dist(f"Wrote metrics to {metric_path}", ranks=[print_rank])
-        log_dist(f"Autotuning: done with running current ds config.", ranks=[print_rank])
+        if self.global_rank == 0:
+            msg = self.timers.get_mean([
+                FORWARD_GLOBAL_TIMER,
+                BACKWARD_GLOBAL_TIMER,
+                STEP_GLOBAL_TIMER,
+            ],
+                                       reset=False)
+            titer = (msg[FORWARD_GLOBAL_TIMER] + msg[BACKWARD_GLOBAL_TIMER] +
+                     msg[STEP_GLOBAL_TIMER]) * self.gradient_accumulation_steps()
+            msg["latency"] = titer
+            msg["FLOPS_per_gpu"] = self.flops * 1_000_000 * self.gradient_accumulation_steps(
+            ) / titer
+            msg["num_flops"] = self.flops
+            msg["fwd_duration"] = self.fwd_duration
+            msg["throughput"] = self.train_batch_size() * 1_000_000 / \
+                msg["latency"]
+            metric_path = os.path.abspath(self.autotuning_metric_path())
+            os.makedirs(os.path.dirname(metric_path), exist_ok=True)
+            print_json_dist(msg, [print_rank], path=metric_path)
+            log_dist(f"Wrote metrics to {metric_path}", ranks=[print_rank])
+            log_dist(f"Autotuning: done with running current ds config.",
+                     ranks=[print_rank])
         if dist:
             dist.barrier()
         exit()
