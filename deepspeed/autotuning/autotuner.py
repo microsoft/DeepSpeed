@@ -893,7 +893,9 @@ class Autotuner:
 
             if metric_val:
                 if not os.path.exists(metric_file):
-                    self.overflow_mbs = min(mbs, self.overflow_mbs)
+                    self.overflow_mbs = min(
+                        mbs,
+                        self.overflow_mbs) if self.overflow_mbs else mbs
                     logger.info(
                         f"metric file {metric_file} does not exist, training finished before resolving loss scale overflow, setting global overflow_bs to {mbs}"
                     )
