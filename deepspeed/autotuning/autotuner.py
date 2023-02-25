@@ -559,12 +559,12 @@ class Autotuner:
             self.gpu_mem -
             self.get_instantiation_memory_required_per_gpu(stage)) // self.activation_mem
 
-        if self.overflow_mbs:
-            calculated_max_micro_batch_size = min(self.overflow_mbs,
-                                                  calculated_max_micro_batch_size)
-            logger.info(
-                f"Capping calculated_max_micro_batch_size to {calculated_max_micro_batch_size}"
-            )
+        # if self.overflow_mbs: #TODO: add early stopping for loss scale overflow
+        #     calculated_max_micro_batch_size = min(self.overflow_mbs,
+        #                                           calculated_max_micro_batch_size)
+        #     logger.info(
+        #         f"Capping calculated_max_micro_batch_size to {calculated_max_micro_batch_size}"
+        #     )
 
         logger.info(
             f"Start tuning for space {tuning_space_name}, calculated_max_micro_batch_size = {calculated_max_micro_batch_size}"
