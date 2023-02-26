@@ -604,8 +604,8 @@ def init_distributed(dist_backend=None,
                      init_method=None,
                      dist_init_required=None,
                      config=None,
-                     rank=None,
-                     world_size=None):
+                     rank=-1,
+                     world_size=-1):
     ''' Initialize dist backend, potentially performing MPI discovery if needed
 
     Arguments:
