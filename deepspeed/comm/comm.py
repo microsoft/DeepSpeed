@@ -603,7 +603,9 @@ def init_distributed(dist_backend=None,
                      timeout=default_pg_timeout,
                      init_method=None,
                      dist_init_required=None,
-                     config=None):
+                     config=None,
+                     rank=None,
+                     world_size=None):
     ''' Initialize dist backend, potentially performing MPI discovery if needed
 
     Arguments:
@@ -658,7 +660,7 @@ def init_distributed(dist_backend=None,
                     'Initializing TorchBackend in DeepSpeed with backend {}'.format(
                         dist_backend))
             # Create a torch backend object, initialize torch distributed, and assign to cdb
-            cdb = TorchBackend(dist_backend, timeout, init_method)
+            cdb = TorchBackend(dist_backend, timeout, init_method, rank, world_size)
 
 
 def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True):
