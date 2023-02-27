@@ -561,9 +561,9 @@ class TestLMCorrectness(DistributedTest):
 
 @pytest.mark.inference
 @pytest.mark.parametrize("model_w_task",
-                         [("EleutherAI/gpt-neo-1.3B",
+                         [("bigscience/bloom-560m",
                            "text-generation")],
-                         ids=["gpt-neo"])
+                         ids=["bloom-560m"])
 class TestVariableBatchSizeCudaGraph(DistributedTest):
     world_size = 1
 
@@ -581,7 +581,10 @@ class TestVariableBatchSizeCudaGraph(DistributedTest):
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
-        pipe = pipeline(task, model=model, device=torch.device(f"cuda:{local_rank}"), framework="pt")
+        pipe = pipeline(task,
+                        model=model,
+                        device=torch.device(f"cuda:{local_rank}"),
+                        framework="pt")
         if dtype == torch.half:
             pipe.model.half()
 
