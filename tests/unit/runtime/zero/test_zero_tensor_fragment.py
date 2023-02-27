@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import pytest
 import deepspeed.comm as dist
 import torch
