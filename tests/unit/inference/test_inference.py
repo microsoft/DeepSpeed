@@ -571,7 +571,6 @@ class TestVariableBatchSizeCudaGraph(DistributedTest):
         dtype,
         query,
         inf_kwargs,
-        assert_fn,
         invalid_model_task_config,
     ):
         if invalid_model_task_config:
@@ -580,15 +579,9 @@ class TestVariableBatchSizeCudaGraph(DistributedTest):
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
-        # Load the model on CPU first to avoid OOM for large models @fp32
-        pipe = pipeline(task, model=model, device=-1, framework="pt")
+        pipe = pipeline(task, model=model, device=torch.device(f"cuda:{local_rank}"), framework="pt")
         if dtype == torch.half:
             pipe.model.half()
-
-        # Switch device to GPU after converting to half
-        device = torch.device(f"cuda:{local_rank}")
-        pipe.device = device
-        pipe.model.to(device)
 
         pipe.model = deepspeed.init_inference(pipe.model,
                                               mp_size=1,
