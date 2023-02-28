@@ -1,20 +1,16 @@
 #import torch
 from deepspeed.ops import op_builder
+from deepspeed.accelerator import get_accelerator
 
 ccl_cpp_module = None
 
 
 def build_ccl_op():
     global ccl_cpp_module
-    builder = op_builder.CCLCommBuilder()
-    try:
-        ccl_cpp_module = builder.load()
-        print(f'DeepSpeed {builder.absolute_name()} built successfully')
-        return ccl_cpp_module
-    except Exception as inst:
-        # if comm cannot be built, use torch.dist.
-        print(f"Failed to build {builder.absolute_name()}. Full error: {inst}")
-        exit(0)
+    builder = get_accelerator().create_op_builder("CCLCommBuilder")
+    ccl_cpp_module = builder.load()
+    print(f'DeepSpeed {builder.absolute_name()} built successfully')
+    return ccl_cpp_module
 
 
 def get_ccl_id():

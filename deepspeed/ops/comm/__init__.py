@@ -1,1 +1,1 @@
-from ccl import *
+from .ccl import *

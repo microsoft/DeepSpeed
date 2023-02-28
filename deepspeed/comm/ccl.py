@@ -8,13 +8,13 @@ from deepspeed.ops.comm.ccl import build_ccl_op
 
 from .utils import *
 from .backend import *
-from .comm import ReduceOp
+from .reduce_op import ReduceOp
 from deepspeed.utils import logger
 
 
-class CclBackend(Backend):
+class CCLBackend(Backend):
     def __init__(self, name='ccl', rank=0, size=1, mpu=None):
-        super(CclBackend, self).__init__()
+        super(CCLBackend, self).__init__()
         # has_allgather_base is needed for torch. Included here for compatibility with ds comms
         self.has_allgather_base = True
         self.name = 'ccl'

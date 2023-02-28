@@ -25,25 +25,14 @@
         -- deepspeed groups API should be brought into ds.comm
 """
 
-from enum import Enum
 import torch
 import os
 
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
 from .constants import *
+from .reduce_op import *
 from deepspeed.accelerator import get_accelerator
-
-
-class ReduceOp(Enum):
-    SUM = 0
-    PRODUCT = 1
-    MIN = 2
-    MAX = 3
-    BAND = 4
-    BOR = 5
-    BXOR = 6
-    AVG = 7
-    UNUSED = 8
+from deepspeed.comm.ccl import CCLBackend
 
 
 from deepspeed.utils.comms_logging import CommsLogger
@@ -54,7 +43,7 @@ from deepspeed import utils
 from datetime import timedelta
 
 # Current deepspeed.comm backend (cdb) global object for simple access by client code
-use_ds_backend = False
+use_ds_backend = True
 cdb = None
 
 # Create global timer for ops
@@ -70,6 +59,7 @@ has_warned_reduce_scatter = False
 # Maintain objects of all initialized ds backends and assign them using the API functions in this file
 nccl_backend = None
 mpi_backend = None
+ccl_backend = None
 
 # This should be set here so all rank/size information from the launcher can be propagated
 from deepspeed.comm.utils import *
@@ -163,6 +153,8 @@ def init_deepspeed_backend(ds_backend):
         utils.logger.warn("MPI backend in DeepSpeed not yet implemented")
     elif ds_backend == GLOO_BACKEND:
         utils.logger.warn("Gloo backend in DeepSpeed not yet implemented")
+    elif ds_backend == CCL_BACKEND:
+        utils.logger.warn("CCL backend in DeepSpeed not yet implemented")
     else:
         utils.logger.warn(f"DeepSpeed does not support {ds_backend} backend")
 
@@ -196,7 +188,7 @@ def is_available() -> bool:
     return True
 
 
-def set_backend(backend):
+def set_backend():
     if not use_ds_backend:
         utils.logger.error(
             "DeepSpeed communication backend is required. Please use deepspeed.comm.init_distributed(backend, use_deepspeed=True) to use this functionality"
@@ -208,16 +200,23 @@ def set_backend(backend):
     global cdb
     global nccl_backend
     global mpi_backend
+    global ccl_backend
 
-    try:
-        if backend_name == NCCL_BACKEND:
-            if nccl_backend is not None and nccl_backend.is_initialized():
-                cdb = nccl_backend
-        elif backend_name == MPI_BACKEND:
-            if mpi_backend is not None and mpi_backend.is_initialized():
-                cdb = mpi_backend
-    except Exception as inst:
-        print(inst)
+    backend_name = get_accelerator().communication_backend_name()
+
+    print (f"########{backend_name} {CCL_BACKEND}")
+    if backend_name == NCCL_BACKEND:
+        if nccl_backend is not None and nccl_backend.is_initialized():
+            cdb = nccl_backend
+    elif backend_name == MPI_BACKEND:
+        if mpi_backend is not None and mpi_backend.is_initialized():
+            cdb = mpi_backend
+    elif backend_name == CCL_BACKEND:
+        if ccl_backend is None:
+            rank = os.environ["RANK"]
+            size = os.environ["WORLD_SIZE"]
+            ccl_backend = CCLBackend(rank = rank, size = size)
+        cdb = ccl_backend
 
 
 @timed_op
@@ -622,6 +621,10 @@ def init_distributed(dist_backend=None,
     if dist_init_required is None:
         dist_init_required = cdb is None or not cdb.is_initialized()
 
+    if cdb is None:
+        # check whether can set backend to deepspeed backend
+        set_backend()
+        print (f'cdb={cdb}')
     if cdb is None and torch.distributed.is_initialized():
         # The user initialized torch.dist themselves, create cdb and short-circuit
         cdb = TorchBackend(dist_backend, timeout, init_method)
