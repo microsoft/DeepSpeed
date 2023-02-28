@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 '''Copyright The Microsoft DeepSpeed Team'''
 
 # This script extracts fp32 consolidated weights from a zero 2 and 3 DeepSpeed checkpoints. It gets
