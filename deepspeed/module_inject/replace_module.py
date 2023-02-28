@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import os
 import torch
 import tqdm
@@ -564,7 +566,7 @@ def replace_transformer_layer(orig_layer_impl,
                                            ckpt_type,
                                            ckpt_mp_size,
                                            quantizer,
-                                           replace_policy=container_g.policy)
+                                           container=container_g)
                 pbar.update(1)
         else:
             import gc
@@ -595,7 +597,7 @@ def replace_transformer_layer(orig_layer_impl,
                                            ckpt_mp_size,
                                            quantizer,
                                            int(rank % tp_split_size),
-                                           replace_policy=container_g.policy)
+                                           container=container_g)
                 sds = [None for _ in sds]
                 gc.collect()
 
@@ -617,7 +619,7 @@ def replace_transformer_layer(orig_layer_impl,
                                                ckpt_mp_size,
                                                quantizer,
                                                int(rank % tp_split_size),
-                                               replace_policy=container_g.policy)
+                                               container=container_g)
                     sds = [None for _ in sds]
                     gc.collect()
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
