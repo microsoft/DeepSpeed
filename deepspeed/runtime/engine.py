@@ -1208,6 +1208,9 @@ class DeepSpeedEngine(Module):
                         "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
                     )
 
+            if model_dtype == torch.bfloat16 and grad_accum_dtype == torch.float32 and self.zero_optimization_stage(
+            ) == 1:
+                return BFLOAT16
             if model_dtype != grad_accum_dtype and self.zero_optimization_stage() == 3:
                 raise NotImplementedError(
                     "Model data type and gradient accumulation data type must be equal to use ZeRO stage 3"
