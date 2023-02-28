@@ -863,6 +863,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     if self.use_grad_accum_for_reduction:
                         param.grad = None
 
+    def point_grad_accum(self):
+        for group in self.bit16_groups:
+            for param in group:
+                param.grad_accum = param.grad
+
     # Clear the tensor the reduction gradient attribute is pointing to
     def clear_grad_reduc(self, param):
         param.grad_reduc = None
@@ -884,6 +889,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             param.grad_accum = param.grad_reduc
         else:
             param.grad = param.grad_reduc
+            if not self.use_separate_grad_accum:
+                param.grad_accum = param.grad
 
     def create_reduce_and_remove_grad_hooks(self):
         self.grad_accs = []
@@ -1695,10 +1702,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         add_reduc_to_accum = self.use_separate_grad_accum and not self.use_grad_accum_for_reduction
 
         for i, tensor in enumerate(tensor_list):
-            # Mode 1: the grad accum is just the normal param.grad
-            if not self.use_separate_grad_accum:
-                tensor.grad_accum = tensor.grad
-
             if tensor.grad_accum is None:
                 tensor.grad_accum = torch.zeros_like(tensor, dtype=dtype)
 
@@ -2100,6 +2103,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         if self.use_separate_grad_accum:
             self.update_separate_grad_accum()
+        else:
+            self.point_grad_accum()
 
     def check_overflow(self, partition_gradients=True):
         self._check_overflow(partition_gradients)
