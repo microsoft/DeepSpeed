@@ -1,3 +1,4 @@
+'''Copyright The Microsoft DeepSpeed Team'''
 import os
 import torch
 import deepspeed
