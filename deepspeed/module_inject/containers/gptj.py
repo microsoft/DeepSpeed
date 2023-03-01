@@ -75,21 +75,33 @@ class HFGPTJLayerPolicy(TransformerPolicy):
         self.client_module = client_module
         try:
             import transformers
-            HFGPTJLayerPolicy._orig_layer_class = transformers.models.gptj.modeling_gptj.GPTJBlock
+            HFGPTJLayerPolicy._orig_layer_class = [
+                transformers.models.gptj.modeling_gptj.GPTJBlock,
+                transformers.models.codegen.modeling_codegen.CodeGenBlock
+            ]
         except:
             HFGPTJLayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
-        return self.client_module.attn.q_proj.weight.shape[1], \
+        return self.client_module.attn.out_proj.weight.shape[1], \
                 self.client_module.attn.num_attention_heads
 
     def attention(self):
-        qw = self.client_module.attn.q_proj.weight
-        kw = self.client_module.attn.k_proj.weight
-        vw = self.client_module.attn.v_proj.weight
-
-        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
-
+        if self.client_module.__class__ == HFGPTJLayerPolicy._orig_layer_class[0]:
+            qw = self.client_module.attn.q_proj.weight
+            kw = self.client_module.attn.k_proj.weight
+            vw = self.client_module.attn.v_proj.weight
+            qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
+        else: # this branch is added to support codegen which is based on gpt-j
+            mp_num = 4
+            qkvw = self.client_module.attn.qkv_proj.weight
+            hidden_size = qkvw.shape[1]
+            local_dim = hidden_size // mp_num
+            qkvw = qkvw.reshape(mp_num, -1, hidden_size)
+            qkvw_split = torch.split(qkvw, local_dim, dim=-2)
+            qkvw = torch.cat([qkvw_split[0].reshape(-1, hidden_size), \
+                             qkvw_split[2].reshape(-1, hidden_size), \
+                             qkvw_split[1].reshape(-1, hidden_size)], dim=0).contiguous()
         return qkvw, \
                None, \
                self.client_module.attn.out_proj.weight, \

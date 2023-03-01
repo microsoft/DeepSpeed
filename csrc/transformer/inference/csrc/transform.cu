@@ -130,7 +130,7 @@ __global__ void bias_add_transform_0213(__half* output,  // q
         float4 q = vals_vec[d3];
         __half2* q_h = reinterpret_cast<__half2*>(&q);
         if (rotate_every_two) {
-#pragma unroll
+        #pragma unroll
             for (int o = 0; o < 4; o++) {
                 float inv_freq = (float)(((d3 << 2) + o) * 2) / (float)(rotary_dim << 3);
                 inv_freq = 1.0 / powf(10000.0, inv_freq) * (float)seq_id;

@@ -117,6 +117,15 @@ class InferenceCheckpointConfig(DeepSpeedConfigModel):
     save_mp_checkpoint_path: str = None
     base_dir: str = None
 
+class MUPConfig(DeepSpeedConfigModel):
+    enabled: bool = False
+    attn_multiplier: int = 1.0
+
+class RoPEConfig(DeepSpeedConfigModel):
+    enabled: bool = False
+    rotary_dim: int = -1
+    rotate_half: bool = False
+    rotate_every_two: bool = False
 
 class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     """ Sets parameters for DeepSpeed Inference Engine. """
@@ -189,6 +198,10 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     This shows the root directory under which all the checkpoint files exists.
     This can be passed through the json config too.
     """
+    
+    mup: MUPConfig = Field({}, alias="mup_config")
+
+    rope: RoPEConfig = Field({}, alias="rope_config")
 
     save_mp_checkpoint_path: str = None
     """

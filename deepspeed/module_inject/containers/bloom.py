@@ -5,8 +5,6 @@ from ..policy import TransformerPolicy
 from ..policy import transformer_param_names
 from ..policy import maybe_copy
 
-supported_models = {None}
-
 
 class DS_BloomContainer(MetaTensorContainer, BaseTransformerContainer):
     def __init__(self, **kwargs):
@@ -94,9 +92,6 @@ class BLOOMLayerPolicy(TransformerPolicy):
         try:
             import transformers
             BLOOMLayerPolicy._orig_layer_class = transformers.models.bloom.modeling_bloom.BloomBlock
-            global supported_models
-            supported_models.update(
-                {transformers.models.bloom.modeling_bloom.BloomModel})
         except Exception as e:
             print(
                 f"WARNING! Setting BLOOMLayerPolicy._orig_layer_class to None due to Exception: {e}"

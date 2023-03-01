@@ -38,7 +38,7 @@ class ReplaceWithTensorSlicing:
 
     def qkv_copy(self, dst, src, int8=False):
         if src is None:
-            return src
+            return  src
         src_shape = src.shape
         dst_shape = dst.shape
 
@@ -341,6 +341,7 @@ def replace_transformer_layer(orig_layer_impl,
                             triangular_masking,
                             inference=False,
                             layer_id=0):
+        child = child.cuda()
         policy = policy_cls(child, inference=inference)
         if not policy.cuda_graph_supported:
             # policy says cuda graph is not supported raise an error if set

@@ -62,8 +62,13 @@ class DeepSpeedMLP(nn.Module):
         self.vector_matmul_func = VectorMatMulOp(config)
         self.fused_gemm_gelu = GELUGemmOp(config)
         self.residual_add_func = ResidualAddOp(config)
+        self.base_forward = None
 
     def forward(self, input, residual, residual_norm, bias):
+        if self.base_forward is not None:
+            feed_forward_hidden_states = self.base_forward(residual_norm)
+            hidden_states = residual + feed_forward_hidden_states + input
+            return hidden_states
         residual_add = None
         if self.attn_nw is None:
             output = self.fused_gemm_gelu(input=residual_norm,
