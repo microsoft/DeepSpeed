@@ -103,5 +103,6 @@ class AutoTP():
                 gem_list = list(set(gem_list))
                 policy_list = AutoTP.update_policy_list(policy_list, module, gem_list)
                 gem_list = []
+        print(policy_list)
         assert len(policy_list), "Not able to determine model policy automatically. Please provide policy."
         return policy_list
