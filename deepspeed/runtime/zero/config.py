@@ -41,7 +41,7 @@ ZeRO optimization should be enabled as:
 """
 
 ZERO_OPTIMIZATION = "zero_optimization"
-
+PARAM_PERSISTENCE_THRESHOLD_DEFAULT = 1e5 
 
 def read_zero_config_deprecated(param_dict):
     zero_config_dict = {}
@@ -193,7 +193,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     ZeRO3-Offload, ZeRO-Infinity, and ZeRO-Inference.
     """
 
-    param_persistence_threshold: int = Field(pp_int(1e5),
+    param_persistence_threshold: int = Field(pp_int(PARAM_PERSISTENCE_THRESHOLD_DEFAULT),
                                              ge=0,
                                              alias="stage3_param_persistence_threshold")
     """

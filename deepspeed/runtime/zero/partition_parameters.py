@@ -5,6 +5,7 @@ Licensed under the MIT license.
 
 import math
 import os
+import sys 
 import types
 from typing import Callable, Iterable
 from enum import Enum
@@ -24,6 +25,7 @@ import deepspeed
 from ..utils import get_only_unique_item, see_memory_usage
 from deepspeed.runtime.zero.utils import assert_ints_same_as_other_ranks
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
+from deepspeed.runtime.zero.config import PARAM_PERSISTENCE_THRESHOLD_DEFAULT
 from deepspeed.utils import instrument_w_nvtx, logger
 from deepspeed.comm.comm import init_distributed
 from deepspeed.utils.debug import (debug_param2name_id_shape,
@@ -538,6 +540,10 @@ class AllGatherCoalescedHandle:
 # Replaces all parameters in module with Scattered Parameters
 class Init(InsertPostInitMethodToModuleSubClasses):
     param_id = 0
+    param_persistence_threshold = PARAM_PERSISTENCE_THRESHOLD_DEFAULT
+    model_persistence_threshold = sys.maxsize
+    num_persisted_parameters = 0
+    num_persisted_elements = 0
 
     def __init__(self,
                  module=None,
@@ -678,9 +684,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             os.environ["LOCAL_RANK"]))
         get_accelerator().set_device(self.local_device)
 
-        if _ds_config is not None and _ds_config.zero_config.offload_param is not None:
-            remote_device = _ds_config.zero_config.offload_param.device
-            pin_memory = _ds_config.zero_config.offload_param.pin_memory
+        if _ds_config is not None: 
+            self._update_persist_config(_ds_config)
+
+            if _ds_config.zero_config.offload_param is not None:
+                remote_device = _ds_config.zero_config.offload_param.device
+                pin_memory = _ds_config.zero_config.offload_param.pin_memory
 
         self._validate_remote_device(remote_device, _ds_config)
 
@@ -711,6 +720,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         else:
             logger.info(
                 f"_all_gather_base API is not available in torch {torch.__version__}")
+
+    def _update_persist_config(self, ds_config):
+        Init.param_persistence_threshold = ds_config.zero_config.param_persistence_threshold
+        Init.model_persistence_threshold = ds_config.zero_config.model_persistence_threshold // self.world_size
+
 
     def _convert_to_zero_parameters(self, param_list):
         for param in param_list:
@@ -784,7 +798,13 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         # If this flag is true, then the parameters are replicated throughput training
         # And only partitioned before the step
-        param.ds_persist = False
+        if param.ds_numel <= Init.param_persistence_threshold and Init.num_persisted_elements + param.ds_numel <= Init.model_persistence_threshold:
+            param.ds_persist = True
+            Init.num_persisted_parameters += 1 
+            Init.num_persisted_elements += param.ds_numel
+        else:
+            param.ds_persist = False
+
 
         param.is_external_param = False
 
@@ -798,6 +818,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # DeepSpeed Param ID
         param.ds_id = Init.param_id
         Init.param_id += 1
+
+
 
         def all_gather(param_list=None, async_op=False, hierarchy=0):
             cls = param
@@ -988,7 +1010,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
     def _ensure_availability_of_partitioned_params(self, params):
         swap_in_list = []
         swap_in_flight = []
-        for param in params:
+        partitioned_params = [p for p in params if not p.ds_persist]
+        for param in partitioned_params:
             if param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE:
                 assert param.ds_tensor.final_location == OffloadDeviceEnum.nvme and param.ds_status == ZeroParamStatus.NOT_AVAILABLE
                 swap_in_list.append(param)
@@ -1032,7 +1055,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         return handles
 
     def _partition(self, param_list, force=False, has_been_updated=False):
-        for param in param_list:
+        partitioned_list = [p for p in param_list if not p.ds_persist]
+        for param in partitioned_list:
             #print_rank_0(f"Before Partitioning Param {param.ds_id}")
             # self._param_status(param)
             self._partition_param(param, has_been_updated=has_been_updated)
@@ -1070,11 +1094,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
                 see_memory_usage(
                     f'Before partitioning param {param.ds_id} {param.shape}',
-                    force=False)
+                    force=True)
                 # param.data does not store anything meaningful in partitioned state
                 free_param(param)
                 see_memory_usage(f'After partitioning param {param.ds_id} {param.shape}',
-                                 force=False)
+                                 force=True)
 
                 if param.ds_tensor.final_location == OffloadDeviceEnum.nvme:
                     print_rank_0(
@@ -1152,10 +1176,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             # param.data does not store anything meaningful in partitioned state
 
             see_memory_usage(f'Before partitioning param {param.ds_id} {param.shape}',
-                             force=False)
+                             force=True)
             free_param(param)
             see_memory_usage(f'After partitioning param {param.ds_id} {param.shape}',
-                             force=False)
+                             force=True)
 
             if param.ds_tensor.final_location == OffloadDeviceEnum.nvme:
                 self.param_swapper.swap_out_and_release([param])
