@@ -561,9 +561,9 @@ class TestLMCorrectness(DistributedTest):
 
 @pytest.mark.inference
 @pytest.mark.parametrize("model_w_task",
-                         [("bigscience/bloom-560m",
-                           "text-generation")],
-                         ids=["bloom-560m"])
+                         [("bert-base-cased",
+                           "fill-mask")],
+                         ids=["bert-base-cased"])
 class TestVariableBatchSizeCudaGraph(DistributedTest):
     world_size = 1
 
