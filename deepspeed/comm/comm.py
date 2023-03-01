@@ -65,6 +65,12 @@ ccl_backend = None
 from deepspeed.comm.utils import *
 
 
+class ProcessGroup():
+    def __init__(self, comm_id, ranks=[]):
+        self.ranks = ranks
+        self.comm_id = comm_id
+        self.size = len(ranks)
+
 def _configure_using_config_file(config):
     if config.comms_logger_enabled:
         comms_logger.configure(config)
@@ -204,7 +210,6 @@ def set_backend():
 
     backend_name = get_accelerator().communication_backend_name()
 
-    print (f"########{backend_name} {CCL_BACKEND}")
     if backend_name == NCCL_BACKEND:
         if nccl_backend is not None and nccl_backend.is_initialized():
             cdb = nccl_backend

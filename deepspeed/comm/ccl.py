@@ -10,17 +10,31 @@ from .utils import *
 from .backend import *
 from .reduce_op import ReduceOp
 from deepspeed.utils import logger
+import os
 
 
 class CCLBackend(Backend):
-    def __init__(self, name='ccl', rank=0, size=1, mpu=None):
+    def __init__(self, name='ccl', rank=-1, size=-1, mpu=None):
         super(CCLBackend, self).__init__()
+        print (f'rank={rank} size={size}')
         # has_allgather_base is needed for torch. Included here for compatibility with ds comms
         self.has_allgather_base = True
         self.name = 'ccl'
         self.ccl_comm_op = build_ccl_op()
-        self.rank = self.ccl_comm_op.get_rank(0)
-        self.size = self.ccl_comm_op.get_world_size(0)
+        if rank == -1:
+            self.rank = self.ccl_comm_op.get_rank(0)
+            self.size = self.ccl_comm_op.get_world_size(0)
+        else:
+            self.rank = int(rank)
+            self.size = int(size)
+        os.environ['CCL_LOCAL_SIZE']=f"{self.size}"
+        os.environ['CCL_LOCAL_RANK']=f"{self.rank}"
+        os.environ['LOCAL_SIZE']=f"{self.size}"
+        os.environ['LOCAL_RANK']=f"{self.rank}"
+        os.environ['WORLD_SIZE']=f"{self.size}"
+        os.environ['SIZE']=f"{self.size}"
+        os.environ['RANK']=f"{self.rank}"
+        print (f'self.rank={self.rank} self.size={self.size}')
         self.enable_onebit = False
         self.init_process_group()
 
