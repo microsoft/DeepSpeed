@@ -87,6 +87,7 @@ class DeepSpeedTransformerInference(nn.Module):
         self.layer_past = None
         self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if (not config.fp16) else \
                                 inference_cuda_module.allocate_workspace_fp16
+
     @classmethod
     def reset_cache(cls):
         if inference_cuda_module is not None:
@@ -153,19 +154,19 @@ class DeepSpeedTransformerInference(nn.Module):
             input = input.half()
         with torch.no_grad():
             attn_outputs = self.attention(input,
-                             input_mask,
-                             head_mask,
-                             layer_past,
-                             get_present,
-                             encoder_hidden_states,
-                             encoder_attention_mask,
-                             output_attentions,
-                             self.norm_w,
-                             self.norm_b,
-                             alibi)
+                                          input_mask,
+                                          head_mask,
+                                          layer_past,
+                                          get_present,
+                                          encoder_hidden_states,
+                                          encoder_attention_mask,
+                                          output_attentions,
+                                          self.norm_w,
+                                          self.norm_b,
+                                          alibi)
             attention_output, key, value, context_outputtn_ctx, inp_norm = attn_outputs
             presents = (key, value)
-                
+
             self.layer_past = presents if layer_past is None else None
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
 

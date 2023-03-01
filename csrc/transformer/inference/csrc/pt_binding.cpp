@@ -1628,8 +1628,7 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                            rotate_half,
                                            rotate_every_two,
                                            Context::Instance().GetCurrentStream(),
-                                           Context::Instance().GetMaxTokenLenght()
-                                           );
+                                           Context::Instance().GetMaxTokenLenght());
     else
         launch_apply_rotary_pos_emb<__half>((__half*)query_cont.data_ptr(),
                                             (__half*)key_cont.data_ptr(),
@@ -1642,8 +1641,7 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                             rotate_half,
                                             rotate_every_two,
                                             Context::Instance().GetCurrentStream(),
-                                            Context::Instance().GetMaxTokenLenght()
-                                            );
+                                            Context::Instance().GetMaxTokenLenght());
     return {query_cont, key_cont};
 }
 

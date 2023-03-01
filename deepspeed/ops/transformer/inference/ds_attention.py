@@ -9,41 +9,8 @@ from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
 from .op_binding import LinearOp, VectorMatMulOp, SoftmaxContextOp, QKVGemmOp, SoftmaxOp
 from .op_binding.base import BaseOp
+
 minus_inf = -10000.0
-
-def fixed_pos_embedding(x, seq_dim=1, seq_len=None):
-    dim = x.shape[-1]
-    if seq_len is None:
-        seq_len = x.shape[seq_dim]
-    inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2) / dim))
-    sinusoid_inp = (
-        torch.einsum("i , j -> i j", torch.arange(seq_len, dtype=torch.float), inv_freq).to(x.device).float()
-    )
-    return torch.sin(sinusoid_inp), torch.cos(sinusoid_inp)
-
-
-def rotate_every_two(x):
-    x1 = x[:, :, :, ::2]
-    x2 = x[:, :, :, 1::2]
-    x = torch.stack((-x2, x1), dim=-1)
-    return x.flatten(-2)  # in einsum notation: rearrange(x, '... d j -> ... (d j)')
-
-
-def duplicate_interleave(m):
-    """
-    A simple version of `torch.repeat_interleave` for duplicating a matrix while interleaving the copy.
-    """
-    dim0 = m.shape[0]
-    m = m.view(-1, 1)  # flatten the matrix
-    m = m.repeat(1, 2)  # repeat all elements into the 2nd dimension
-    m = m.view(dim0, -1)  # reshape into a matrix, interleaving the copy
-    return m
-
-
-def apply_rotary_pos_emb(x, sincos, offset=0):
-    sin, cos = map(lambda t: duplicate_interleave(t)[None, offset : x.shape[1] + offset, None, :], sincos)
-    # einsum notation for lambda t: repeat(t[offset:x.shape[1]+offset,:], "n d -> () n () (d j)", j=2)
-    return (x * cos) + (rotate_every_two(x) * sin)
 
 
 class DeepSpeedSelfAttention(BaseOp):
@@ -104,69 +71,6 @@ class DeepSpeedSelfAttention(BaseOp):
         self.vector_matmul_func = VectorMatMulOp(config)
         self.softmax_func = SoftmaxOp(self.config)
 
-        self.base_forward = None
-        self.register_buffer(
-            "causal_mask",
-            torch.tril(torch.ones((1024, 1024), dtype=torch.uint8)).view(
-                1, 1, 1024, 1024
-            ),
-        )
-    #def _split_heads(self, tensor, num_attention_heads, attn_head_size, rotary):
-    #    """
-    #    Splits hidden dim into attn_head_size and num_attention_heads
-    #    """
-    #    new_shape = tensor.size()[:-1] + (num_attention_heads, attn_head_size)
-    #    tensor = tensor.view(new_shape)
-    #    
-    #    return tensor
-    def _split_heads(self, x, n_head, dim_head, mp_num):
-        #import pdb;pdb.set_trace()
-        reshaped = x.reshape(x.shape[:-1] + (n_head // mp_num, dim_head))
-        reshaped = reshaped.reshape(x.shape[:-1] + (-1,) + reshaped.shape[-1:])
-        return reshaped
-
-    def _attn(
-        self,
-        query,
-        key,
-        value,
-        attention_mask=None,
-        alibi=None,
-        head_mask=None,
-    ):
-        attention_scores = torch.matmul(query, key.transpose(-1, -2))
-
-        attn_weights = self.softmax_func(
-            attn_scores=attention_scores,
-            attn_mask=((1 - attention_mask).half() *
-                       minus_inf) if attention_mask.dtype == torch.int64 else attention_mask,
-            alibi=alibi,
-            triangular=(self.config.triangular_masking
-                        and (attention_scores.shape[-2] > 1)),
-            recompute=False,
-            local_attention=False,
-            window_size=1,
-            async_op=False,
-            layer_scale=1 / (self.norm_factor * self.norm_factor),
-            head_offset=0)
-
-        attn_output = torch.matmul(attn_weights, value)
-
-        return attn_output, attn_weights
-
-    def _merge_heads(self, tensor, num_attention_heads, attn_head_size):
-        """
-        Merges attn_head_size dim and num_attn_heads dim into n_ctx
-        """
-        if len(tensor.shape) == 5:
-            tensor = tensor.permute(0, 1, 3, 2, 4).contiguous()
-        elif len(tensor.shape) == 4:
-            tensor = tensor.permute(0, 2, 1, 3).contiguous()
-        else:
-            raise ValueError(f"Input tensor rank should be one of [4, 5], but is: {len(tensor.shape)}")
-        new_shape = tensor.size()[:-2] + (num_attention_heads * attn_head_size,)
-        return tensor.view(new_shape)
-
     def compute_attention(self, qkv_out, input_mask, layer_past, alibi):
         if isinstance(qkv_out, list):
             qkv_out = qkv_out[0]
@@ -188,7 +92,7 @@ class DeepSpeedSelfAttention(BaseOp):
             alibi=alibi)
 
         context_layer, key_layer, value_layer = attn_key_value
-        
+
         return context_layer, key_layer, value_layer
 
     def forward(self,

@@ -92,7 +92,7 @@ class HFGPTJLayerPolicy(TransformerPolicy):
             kw = self.client_module.attn.k_proj.weight
             vw = self.client_module.attn.v_proj.weight
             qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
-        else: # this branch is added to support codegen which is based on gpt-j
+        else:  # this branch is added to support codegen which is based on gpt-j
             mp_num = 4
             qkvw = self.client_module.attn.qkv_proj.weight
             hidden_size = qkvw.shape[1]

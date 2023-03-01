@@ -38,7 +38,7 @@ class ReplaceWithTensorSlicing:
 
     def qkv_copy(self, dst, src, int8=False):
         if src is None:
-            return  src
+            return src
         src_shape = src.shape
         dst_shape = dst.shape
 

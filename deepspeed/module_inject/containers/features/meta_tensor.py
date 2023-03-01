@@ -20,13 +20,13 @@ class MetaTensorContainer(ABC):
         else:
             super().apply_tensor_parallelism(mp_replace)
 
-    def copy_data_to_new_module(self, child):
+    def copy_data_to_new_module(self):
         if self.is_meta:
             if self.attn_nw is None:
                 self.module.mlp.attn_nw = self.attn_nw
                 self.module.mlp.attn_nb = self.attn_nb
         else:
-            super().copy_data_to_new_module(child)
+            super().copy_data_to_new_module()
 
     def transpose(self):
         if not self.is_meta:
