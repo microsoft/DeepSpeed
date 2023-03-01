@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import torch
 import pytest
 from deepspeed.accelerator import get_accelerator

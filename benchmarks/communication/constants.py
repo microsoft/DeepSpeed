@@ -1,3 +1,4 @@
+'''Copyright The Microsoft DeepSpeed Team'''
 from deepspeed.accelerator import get_accelerator
 
 DEFAULT_WARMUPS = 5
