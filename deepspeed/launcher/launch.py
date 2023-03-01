@@ -271,7 +271,7 @@ def main():
                 core_list_for_rank = core_list[cores_per_rank *
                                                local_rank:cores_per_rank *
                                                (local_rank + 1)]
-                os.environ["OMP_NUM_THREADS"] = f"{cores_per_rank}"
+                current_env["OMP_NUM_THREADS"] = f"{cores_per_rank}"
                 cmd.append("numactl")
                 cmd.append("-C")
                 core_list_str = f"{core_list_for_rank[0]}"
