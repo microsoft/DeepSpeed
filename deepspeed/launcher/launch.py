@@ -99,8 +99,7 @@ def parse_args():
         help="redirect the stdout and stderr from each rank into different log files")
 
     parser.add_argument("--bind_cores_to_rank",
-                        type=bool,
-                        default=False,
+                        action="store_true",
                         help="Bind each rank to different cores of the host. "
                         "This improves host efficiency especially for CPU backend")
 
