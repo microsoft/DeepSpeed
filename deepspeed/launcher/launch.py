@@ -138,9 +138,6 @@ def terminate_process_tree(pid):
         p.kill()
 
 
-from itertools import chain
-
-
 def parse_range(rng):
     try:
         value = int(rng)
@@ -149,18 +146,23 @@ def parse_range(rng):
         # value is not a single number
         parts = rng.split('-')
         if len(parts) != 2:
-            raise ValueError("Bad range: '%s', range must be either a number or two number seperated by dash" % (rng, ))
+            raise ValueError(
+                "Bad range: '%s', range must be either a number or two number separated by dash"
+                % (rng,
+                   ))
         start = int(parts[0])
         end = int(parts[1])
         if start > end:
-            raise ValueError("Bad range: '%s', range end must larger than or equal to start" % (rng, ))
+            raise ValueError(
+                "Bad range: '%s', range end must larger than or equal to start" % (rng,
+                                                                                   ))
         return range(start, end + 1)
 
 
-# parse comma and dash seperated range list into list
+# parse comma and dash separated range list into list
 # i.e. "0,2-4,6" --> [0, 2, 3, 4, 6]
 # rules:
-# 1. Range list numser be comma seperated, each item are either a single number,
+# 1. Range list numser be comma sepeaated, each item are either a single number,
 #    or a range marked by two numbers (both number are included in the range)
 # 2. Sub ranges must be in ascend order and not overlap with each other
 # 3. No space in the range expression
@@ -171,7 +173,10 @@ def parse_range_list(range_str):
     for sub_range in range_list:
         sub_number_list = parse_range(sub_range)
         if sub_number_list[0] <= last:
-            raise ValueError("Bad range: '%s', sub ranges must not overlap with each other and should be in ascend order" % (range_str, ))
+            raise ValueError(
+                "Bad range: '%s', sub ranges must not overlap with each other and should be in ascend order"
+                % (range_str,
+                   ))
         last = sub_number_list[-1]
         number_list.extend(sub_number_list)
     return number_list
