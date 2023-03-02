@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import os
 import torch
 import time
@@ -92,7 +94,6 @@ if args.deepspeed:
         dtype=dtype,
         mp_size=args.world_size,
         replace_with_kernel_inject=args.kernel_inject,
-        replace_method="auto",
         enable_cuda_graph=args.graphs,
     )
     pipe.model.profile_model_time()

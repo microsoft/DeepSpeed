@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 from .base import *
 from deepspeed.model_implementations.transformers.ds_bert import DeepSpeedBERTInference
 import torch
@@ -71,6 +73,3 @@ class HFDistilBertLayerPolicy(TransformerPolicy):
                attention_layernorm.bias, \
                transformer_layernorm.weight, \
                transformer_layernorm.bias
-
-    def get_param_names(self):
-        pass
