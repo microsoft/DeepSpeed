@@ -103,5 +103,5 @@ def test_core_deepscale_arguments():
     assert args.deepspeed_config == 'foo.json'
 
 def test_core_binding_arguments():
-    core_list = parse_range_list("0,2-4,6")
-    assert core_list == [0, 2, 3, 4, 6]
+    core_list = parse_range_list("0,2-4,6,8-9")
+    assert core_list == [0, 2, 3, 4, 6, 8, 9]

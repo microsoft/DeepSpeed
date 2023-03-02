@@ -141,27 +141,40 @@ def terminate_process_tree(pid):
 from itertools import chain
 
 
-# https://gist.github.com/kgaughan/2491663
 def parse_range(rng):
-    parts = rng.split('-')
-    if 1 > len(parts) > 2:
-        raise ValueError("Bad range: '%s'" % (rng, ))
-    parts = [int(i) for i in parts]
-    start = parts[0]
-    end = start if len(parts) == 1 else parts[1]
-    if start > end:
-        end, start = start, end
-    return range(start, end + 1)
+    try:
+        value = int(rng)
+        return range(value, value + 1)
+    except ValueError:
+        # value is not a single number
+        parts = rng.split('-')
+        if len(parts) != 2:
+            raise ValueError("Bad range: '%s', range must be either a number or two number seperated by dash" % (rng, ))
+        start = int(parts[0])
+        end = int(parts[1])
+        if start > end:
+            raise ValueError("Bad range: '%s', range end must larger than or equal to start" % (rng, ))
+        return range(start, end + 1)
 
 
 # parse comma and dash seperated range list into list
 # i.e. "0,2-4,6" --> [0, 2, 3, 4, 6]
 # rules:
-# 1. range list numser be comma seperated, each item are either a single number,
+# 1. Range list numser be comma seperated, each item are either a single number,
 #    or a range marked by two numbers (both number are included in the range)
-# 2. all numbers appeard in range list must be in strict assendent order
-def parse_range_list(rngs):
-    return sorted(set(chain(*[parse_range(rng) for rng in rngs.split(',')])))
+# 2. Sub ranges must be in ascend order and not overlap with each other
+# 3. No space in the range expression
+def parse_range_list(range_str):
+    number_list = []
+    last = -1
+    range_list = range_str.split(',')
+    for sub_range in range_list:
+        sub_number_list = parse_range(sub_range)
+        if sub_number_list[0] <= last:
+            raise ValueError("Bad range: '%s', sub ranges must not overlap with each other and should be in ascend order" % (range_str, ))
+        last = sub_number_list[-1]
+        number_list.extend(sub_number_list)
+    return number_list
 
 
 def main():
