@@ -142,6 +142,7 @@ def terminate_process_tree(pid):
 from itertools import chain
 
 
+# https://gist.github.com/kgaughan/2491663
 def parse_range(rng):
     parts = rng.split('-')
     if 1 > len(parts) > 2:
