@@ -154,6 +154,12 @@ def parse_range(rng):
     return range(start, end + 1)
 
 
+# parse comma and dash seperated range list into list
+# i.e. "0,2-4,6" --> [0, 2, 3, 4, 6]
+# rules:
+# 1. range list numser be comma seperated, each item are either a single number,
+#    or a range marked by two numbers (both number are included in the range)
+# 2. all numbers appeard in range list must be in strict assendent order
 def parse_range_list(rngs):
     return sorted(set(chain(*[parse_range(rng) for rng in rngs.split(',')])))
 
