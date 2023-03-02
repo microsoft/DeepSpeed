@@ -230,7 +230,7 @@ int ds_adam_step(int optimizer_id,
                 grads_ptr,
                 exp_avg_ptr,
                 exp_avg_sq_ptr,
-                params_c.size(0),
+                params_c.numel(),
                 nullptr,
                 (params.options().dtype() == at::kHalf));
 
@@ -275,7 +275,7 @@ int ds_adam_step_plus_copy(int optimizer_id,
                 grads_ptr,
                 exp_avg_ptr,
                 exp_avg_sq_ptr,
-                params_c.size(0),
+                params_c.numel(),
                 gpu_params_ptr,
                 (params.options().dtype() == at::kHalf));
 
