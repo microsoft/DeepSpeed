@@ -43,7 +43,6 @@ from deepspeed import utils
 from datetime import timedelta
 
 # Current deepspeed.comm backend (cdb) global object for simple access by client code
-use_ds_backend = True
 cdb = None
 
 # Create global timer for ops
@@ -151,7 +150,6 @@ def init_deepspeed_backend(ds_backend):
     global cdb
     global nccl_backend
     global mpi_backend
-    global use_ds_backend
 
     if ds_backend == NCCL_BACKEND:
         utils.logger.warn("NCCL backend in DeepSpeed not yet implemented")
@@ -195,13 +193,8 @@ def is_available() -> bool:
 
 
 def set_backend():
-    if not use_ds_backend:
-        utils.logger.error(
-            "DeepSpeed communication backend is required. Please use deepspeed.comm.init_distributed(backend, use_deepspeed=True) to use this functionality"
-        )
-        raise RuntimeError(
-            'Error: Custom DeepSpeed backend called without initializing DeepSpeed distributed.'
-        )
+    # if user specific --prefer_deepspeed_comm when launching deepspeed, will load cdb to
+    # DeepSpeed backend, otherwise fallback to torch distributed backend
 
     global cdb
     global nccl_backend
@@ -218,9 +211,14 @@ def set_backend():
             cdb = mpi_backend
     elif backend_name == CCL_BACKEND:
         if ccl_backend is None:
-            rank = os.environ["RANK"]
-            size = os.environ["WORLD_SIZE"]
-            ccl_backend = CCLBackend(rank = rank, size = size)
+            prefer_deepspeed_comm = os.environ.get("PREFER_DEEPSPEED_COMM")
+            print (f"prefer_deepspeed_comm = {prefer_deepspeed_comm}")
+            # if launch from DeepSpeed launcher, prefer_deepspeed_comm would only be "False" or "True", but
+            # we want to be more robust
+            if prefer_deepspeed_comm == "True" or prefer_deepspeed_comm == "true" or prefer_deepspeed_comm == "1":
+                rank = os.environ["RANK"]
+                size = os.environ["WORLD_SIZE"]
+                ccl_backend = CCLBackend(rank = rank, size = size)
         cdb = ccl_backend
 
 
