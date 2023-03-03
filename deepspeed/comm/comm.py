@@ -34,7 +34,6 @@ from .reduce_op import *
 from deepspeed.accelerator import get_accelerator
 from deepspeed.comm.ccl import CCLBackend
 
-
 from deepspeed.utils.comms_logging import CommsLogger
 from deepspeed.utils import timer, get_caller_func
 from deepspeed.comm.torch import TorchBackend
@@ -69,6 +68,7 @@ class ProcessGroup():
         self.ranks = ranks
         self.comm_id = comm_id
         self.size = len(ranks)
+
 
 def _configure_using_config_file(config):
     if config.comms_logger_enabled:
@@ -212,13 +212,13 @@ def set_backend():
     elif backend_name == CCL_BACKEND:
         if ccl_backend is None:
             prefer_deepspeed_comm = os.environ.get("PREFER_DEEPSPEED_COMM")
-            print (f"prefer_deepspeed_comm = {prefer_deepspeed_comm}")
+            print(f"prefer_deepspeed_comm = {prefer_deepspeed_comm}")
             # if launch from DeepSpeed launcher, prefer_deepspeed_comm would only be "False" or "True", but
             # we want to be more robust
             if prefer_deepspeed_comm == "True" or prefer_deepspeed_comm == "true" or prefer_deepspeed_comm == "1":
                 rank = os.environ["RANK"]
                 size = os.environ["WORLD_SIZE"]
-                ccl_backend = CCLBackend(rank = rank, size = size)
+                ccl_backend = CCLBackend(rank=rank, size=size)
         cdb = ccl_backend
 
 
@@ -468,7 +468,7 @@ def barrier(group=None,
             log_name='barrier',
             debug=get_caller_func()):
     global cdb
-    return cdb.barrier(group=group, async_op=async_op, device_ids=device_ids)
+    return cdb.barrier(group=group, async_op=async_op)
 
 
 @timed_op
@@ -627,7 +627,7 @@ def init_distributed(dist_backend=None,
     if cdb is None:
         # check whether can set backend to deepspeed backend
         set_backend()
-        print (f'cdb={cdb}')
+        print(f'cdb={cdb}')
     if cdb is None and torch.distributed.is_initialized():
         # The user initialized torch.dist themselves, create cdb and short-circuit
         cdb = TorchBackend(dist_backend, timeout, init_method)

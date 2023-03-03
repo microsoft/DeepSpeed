@@ -16,7 +16,6 @@ import os
 class CCLBackend(Backend):
     def __init__(self, name='ccl', rank=-1, size=-1, mpu=None):
         super(CCLBackend, self).__init__()
-        print (f'rank={rank} size={size}')
         # has_allgather_base is needed for torch. Included here for compatibility with ds comms
         self.has_allgather_base = True
         self.name = 'ccl'
@@ -27,14 +26,13 @@ class CCLBackend(Backend):
         else:
             self.rank = int(rank)
             self.size = int(size)
-        os.environ['CCL_LOCAL_SIZE']=f"{self.size}"
-        os.environ['CCL_LOCAL_RANK']=f"{self.rank}"
-        os.environ['LOCAL_SIZE']=f"{self.size}"
-        os.environ['LOCAL_RANK']=f"{self.rank}"
-        os.environ['WORLD_SIZE']=f"{self.size}"
-        os.environ['SIZE']=f"{self.size}"
-        os.environ['RANK']=f"{self.rank}"
-        print (f'self.rank={self.rank} self.size={self.size}')
+        os.environ['CCL_LOCAL_SIZE'] = f"{self.size}"
+        os.environ['CCL_LOCAL_RANK'] = f"{self.rank}"
+        os.environ['LOCAL_SIZE'] = f"{self.size}"
+        os.environ['LOCAL_RANK'] = f"{self.rank}"
+        os.environ['WORLD_SIZE'] = f"{self.size}"
+        os.environ['SIZE'] = f"{self.size}"
+        os.environ['RANK'] = f"{self.rank}"
         self.enable_onebit = False
         self.init_process_group()
 
@@ -57,6 +55,7 @@ class CCLBackend(Backend):
             self.ccl_comm_op.initialize(self.rank, self.size)
             self.initialized = True
             self.single_gpu_mode = False
+        self.using_mpi = False
 
     def destroy_process_group(self, group=None):
         pass
@@ -85,8 +84,8 @@ class CCLBackend(Backend):
     def get_world_group(self):
         return self.ccl_comm_op.get_world_group()
 
-    def barrier(self):
-        self.ccl_comm_op.barrier()
+    def barrier(self, group=None, async_op=False):
+        self.ccl_comm_op.barrier(group, async_op)
 
     def broadcast(self, tensor, src, group=None, async_op=False, block=False):
         # TODO: Fix calls to op. Fix op to support groups and async
