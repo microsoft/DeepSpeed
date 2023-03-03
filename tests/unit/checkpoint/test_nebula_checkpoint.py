@@ -7,8 +7,9 @@ import pytest
 class TestNebulaCheckpoint(DistributedTest):
   world_size = 4
 
-  @pytest.mark.parametrize("zero_stage", [0, 1])
-  def test_checkpoint_nebula_engine(self, zero_stage, tmpdir):
+  @pytest.mark.parametrize("zero_stage", [0, 1, 2, 3])
+  @pytest.mark.parametrize("stage3_gather_16bit_weights_on_model_save", [True, False])
+  def test_checkpoint_nebula_engine(self, zero_stage, stage3_gather_16bit_weights_on_model_save, tmpdir):
     config_dict = {
         "train_batch_size": 2,
         "train_micro_batch_size_per_gpu": 1,
@@ -20,7 +21,8 @@ class TestNebulaCheckpoint(DistributedTest):
             }
         },
         "zero_optimization": {
-            "stage": zero_stage
+            "stage": zero_stage,
+            "stage3_gather_16bit_weights_on_model_save": stage3_gather_16bit_weights_on_model_save
         },
         "fp16": {
             "enabled": zero_stage > 0
