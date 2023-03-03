@@ -5,7 +5,7 @@ import pytest
 import json
 
 class TestNebulaCheckpoint(DistributedTest):
-    world_size = 2
+    world_size = 1
 
     # @pytest.mark.parametrize('zero_stage', [3])
     # def test_save_16bit_model(self, tmpdir, zero_stage):
