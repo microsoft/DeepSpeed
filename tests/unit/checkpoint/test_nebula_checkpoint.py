@@ -1,10 +1,8 @@
-import time
 from unit.common import DistributedTest
 from unit.checkpoint.common import *
 from unit.simple_model import *
-import torch_nebula as tn
 import pytest
-
+import json
 
 class TestNebulaCheckpoint(DistributedTest):
     world_size = 2
@@ -120,6 +118,8 @@ class TestNebulaCheckpoint(DistributedTest):
         
         assert list(trained_model.parameters())[0].dtype == list(
             loaded_model.parameters())[0].dtype
+        
+        import torch_nebula as tn
         
         tn.flush_persistence()
 
