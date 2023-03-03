@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 # Automatic Tensor Parallelism
 import re
 
@@ -25,13 +27,25 @@ class AutoTP():
         return mlist
 
     def supported(model):
-        unsupported = ['bloom', 'codegen', 'flaubert', 'xlm']
+        unsupported = [
+            'bloom',
+            'codegen',
+            'deberta',
+            'flaubert',
+            'fsmt',
+            'gpt2',
+            'led',
+            'longformer',
+            'xlm',
+            'xlnet'
+        ]
         model = str(model)
         key = re.search(r": (.*?)Model", model)
         if key is None:
             key = re.search(r": (.*?)Stack", model)
         if key is None:
             key = re.match(r"(.*?)Model", model)
+        assert key is not None, "Not able to determine model policy automatically. Please provide policy."
         if key.group(1).lower() in unsupported:
             return False
         return True
@@ -41,11 +55,23 @@ class AutoTP():
         for key, submodule in module._modules.items():
             if isinstance(submodule, nn.Linear):
                 layer_list = layer_list + [parent + "." + key]
-            elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm':
+            elif isinstance(submodule,
+                            nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm':
                 layer_list = layer_list + ["ln"]
             else:
                 layer_list = layer_list + AutoTP.get_layers(key, submodule)
         return layer_list
+
+    def update_policy_list(policy_list, new_module, new_gems):
+        if len(policy_list):
+            for i, policy in enumerate(policy_list):
+                # if module already exists in policy, combine gems and remove duplicates
+                if policy[0] == type(new_module):
+                    new_gems = set(new_gems + policy[1])
+                    policy_list[i] = tuple([type(new_module), new_gems])
+                    return policy_list
+        policy_list.append(tuple([type(new_module), new_gems]))
+        return policy_list
 
     def tp_parser(model):
         policy_list = []
@@ -60,7 +86,9 @@ class AutoTP():
             for key, submodule in module._modules.items():
                 if isinstance(submodule, nn.Linear):
                     layer_list = layer_list + ["." + key]
-                elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm':
+                elif isinstance(
+                        submodule,
+                        nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm':
                     layer_list = layer_list + ["ln"]
                 else:
                     layer_list = layer_list + AutoTP.get_layers(key, submodule)
@@ -70,7 +98,10 @@ class AutoTP():
                         gem_list = gem_list + [layer_list[i - 1]]
                 elif 'out_proj' in layer:
                     gem_list = gem_list + [layer]
+            layer_list = []
             if gem_list != []:
-                policy_list.append(tuple([type(module), gem_list]))
+                gem_list = list(set(gem_list))
+                policy_list = AutoTP.update_policy_list(policy_list, module, gem_list)
                 gem_list = []
+        assert len(policy_list), "Not able to determine model policy automatically. Please provide policy."
         return policy_list

@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import os
 import pytest
 import torch
@@ -49,7 +51,6 @@ class save_shard(DistributedFixture):
             inf_config = {
                 "replace_with_kernel_inject": True,
                 "dtype": torch.float16,
-                "replace_method": "auto",
                 "enable_cuda_graph": False,
                 "tensor_parallel": {
                     "tp_size": world_size
@@ -73,7 +74,6 @@ class TestCheckpointShard(DistributedTest):
         inf_config = {
             "replace_with_kernel_inject": True,
             "dtype": dtype,
-            "replace_method": "auto",
             "enable_cuda_graph": False,
             "tensor_parallel": {
                 "tp_size": world_size
