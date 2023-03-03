@@ -1,10 +1,12 @@
 '''Copyright The Microsoft DeepSpeed Team'''
 
 import torch
-from benchmarks.communication.utils import *
-from benchmarks.communication.constants import *
+import sys, os, time
+COMMS_BENCH_DIR  = os.path.join(os.path.dirname(__file__), "../")
+sys.path.append(COMMS_BENCH_DIR)
 
-import time
+from communication.utils import *
+from communication.constants import *
 
 
 def timed_broadcast(input, args):
