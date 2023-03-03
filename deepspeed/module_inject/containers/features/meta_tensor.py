@@ -7,7 +7,6 @@ class MetaTensorContainer(ABC):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.is_meta = False
-        self.ckpt_load_enabled = True
 
     def initialize_tensors(self):
         super().initialize_tensors()
