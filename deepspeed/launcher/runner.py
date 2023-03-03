@@ -187,9 +187,10 @@ def parse_args(args=None):
                         help="List of cores to bind to with comma separated list of "
                         "numbers and range. i.e. 1,3-5,7 => [1,3,4,5,7].  When not "
                         "specified, all cores on system would be used rank binding")
-    parser.add_argument("--prefer_deepspeed_comm",
-                        action="store_true",
-                        help="Use DeepSpeed builtin communication backend instead of torch distributed")
+    parser.add_argument(
+        "--prefer_deepspeed_comm",
+        action="store_true",
+        help="Use DeepSpeed builtin communication backend instead of torch distributed")
     return parser.parse_args(args=args)
 
 
@@ -422,7 +423,8 @@ def main(args=None):
         if device_count == 0:
             raise RuntimeError("Unable to proceed, no GPU resources available")
         resource_pool['localhost'] = device_count
-        args.master_addr = "127.0.0.1"
+        if args.master_addr == "":
+            args.master_addr = "127.0.0.1"
         multi_node_exec = False
 
     if not multi_node_exec and args.num_nodes > 1:
