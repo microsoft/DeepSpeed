@@ -1,8 +1,8 @@
 '''Copyright The Microsoft DeepSpeed Team'''
 
-import torch
-import sys, os, time
-COMMS_BENCH_DIR  = os.path.join(os.path.dirname(__file__), "../")
+import sys, os
+
+COMMS_BENCH_DIR = os.path.join(os.path.dirname(__file__), "../")
 sys.path.append(COMMS_BENCH_DIR)
 
 from communication.utils import *
