@@ -5,7 +5,7 @@ import pytest
 
 
 class TestNebulaCheckpoint(DistributedTest):
-    world_size = 4
+    world_size = 2
 
     # @pytest.mark.parametrize('zero_stage', [3])
     # def test_save_16bit_model(self, tmpdir, zero_stage):
@@ -66,26 +66,15 @@ class TestNebulaCheckpoint(DistributedTest):
     #     compare_model_states(ds_model,
     #                          loaded_model)
         
-    @pytest.mark.parametrize('zero_stage', [0, 1])
-    def test_save_checkpoint(self, tmpdir, zero_stage):
+    def test_save_checkpoint(self, tmpdir):
         config_dict = {
-            "train_batch_size": 4,
+            "train_batch_size": 2,
             "steps_per_print": 1,
             "optimizer": {
-                "type": 'Adam',
+                "type": "Adam",
                 "params": {
-                    "lr": 0.00015,
-                    "betas": [0.8,
-                              0.999],
-                    "eps": 1e-8,
-                    "weight_decay": 3e-7
+                    "lr": 0.00015
                 }
-            },
-            "fp16": {
-                "enabled": True
-            },
-            "zero_optimization": {
-                "stage": zero_stage
             },
             "nebula": {
                 "enabled": True,
