@@ -5,7 +5,7 @@ import pytest
 
 
 class TestNebulaCheckpoint(DistributedTest):
-    world_size = 2
+    world_size = 4
 
     @pytest.mark.parametrize('zero_stage', [3])
     def test_save_16bit_model(self, tmpdir, zero_stage):
@@ -36,8 +36,8 @@ class TestNebulaCheckpoint(DistributedTest):
         models = [SimpleModel(hidden_dim=hidden_dim) for _ in range(2)]
 
         ds_model = create_deepspeed_model(config_dict=config_dict,
-                                            model=models[0],
-                                            base_optimizer=None)
+                                          model=models[0],
+                                          base_optimizer=None)
 
         data_loader = random_dataloader(model=ds_model,
                                         total_samples=2,
@@ -52,7 +52,7 @@ class TestNebulaCheckpoint(DistributedTest):
 
         ds_model.save_16bit_model(tmpdir, "model.pt")
 
-    @pytest.mark.parametrize('zero_stage', [0,1])
+    @pytest.mark.parametrize('zero_stage', [0, 1])
     def test_save_checkpoint(self, tmpdir, zero_stage):
         config_dict = {
             "optimizer": {
