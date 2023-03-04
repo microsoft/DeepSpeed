@@ -21,9 +21,9 @@ class TestNebulaCheckpoint(DistributedTest):
                 "stage": zero_stage,
                 "stage3_gather_fp16_weights_on_model_save": True,
             },
-            "gradient_accumulation_steps": 1,
+            "gradient_accumulation_steps": 2,
             "train_micro_batch_size_per_gpu": 1,
-            "train_batch_size": 4,
+            "train_batch_size": 2,
             "nebula": {
                 "enabled": True,
                 "persistent_storage_path": "/tmp/nebula_checkpoint/",
