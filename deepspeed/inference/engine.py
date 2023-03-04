@@ -90,7 +90,9 @@ class InferenceEngine(Module):
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
                 "If you want to use cuda graph, please upgrade torch to at least v1.10"
 
-        self.is_meta = self.module.device.type == 'meta' if hasattr(self.module, "device") else False
+        self.is_meta = self.module.device.type == 'meta' if hasattr(
+            self.module,
+            "device") else False
 
         if config.checkpoint and not self.is_meta:
             self._load_checkpoint(config.checkpoint)
