@@ -70,8 +70,8 @@ class TestNebulaCheckpoint(DistributedTest):
 
         # get latest checkpoints by name
         latest_ckpt = tn.get_latest_checkpoint()
-        loaded_model.load_checkpoint(save_folder,
-                                    tag=save_tag)
+        loaded_model.load_checkpoint(config_dict.nebula.persistent_storage_path,
+                                    tag=latest_ckpt.tag)
 
         compare_model_states(ds_model,
                             loaded_model,
