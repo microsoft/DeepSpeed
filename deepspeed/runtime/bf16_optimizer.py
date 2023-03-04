@@ -8,7 +8,7 @@ import sys
 import os
 from deepspeed import comm as dist
 from deepspeed.runtime.constants import PIPE_REPLICATED
-from deepspeed.ops.op_builder import UtilsBuilder
+from deepspeed.ops.op_builder.utils import UtilsBuilder
 from deepspeed.runtime import ZeROOptimizer
 from packaging import version as pkg_version
 

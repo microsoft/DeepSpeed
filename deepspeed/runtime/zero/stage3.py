@@ -23,7 +23,7 @@ from deepspeed.runtime.swap_tensor.partitioned_optimizer_swapper import Partitio
 from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedOptimizerSwapper
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUPS, PARTITION_COUNT, ZERO_STAGE
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import UtilsBuilder
+from deepspeed.ops.op_builder.utils import UtilsBuilder
 
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without

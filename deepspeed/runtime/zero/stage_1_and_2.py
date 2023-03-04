@@ -28,7 +28,7 @@ from deepspeed.git_version_info import version
 
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import UtilsBuilder
+from deepspeed.ops.op_builder.utils import UtilsBuilder
 
 from deepspeed.checkpoint.constants import (DS_VERSION,
                                             GROUP_PADDINGS,
