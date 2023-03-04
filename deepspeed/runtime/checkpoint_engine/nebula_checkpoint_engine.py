@@ -45,8 +45,10 @@ class NebulaCheckpointEngine(CheckpointEngine):
         tag = _get_tag_from_path(path)
         partititon_name = os.path.basename(path)
         logger.info(f"[Nebula] Saving {partititon_name} under tag {tag}...")
+        print(f"[Nebula] Saving {partititon_name} under tag {tag}...")
         self.checkpoint.save(partititon_name, state_dict)
         logger.info(f"[Nebula] Saved {partititon_name} under tag {tag}.")
+        print(f"[Nebula] Saved {partititon_name} under tag {tag}.")
         return None
 
     def load(self, path: str, map_location=None):
@@ -100,6 +102,7 @@ class NebulaCheckpointEngine(CheckpointEngine):
         partition = checkpoint.load(partititon_name, map_location=map_location)
         logger.info(
             f"[Nebula] Loaded {path} under tag {tag} from {self.nebula_load_path}.")
+        print(f"[Nebula] Loaded {path} under tag {tag} from {self.nebula_load_path}.")
         return partition
 
     def commit(self, tag):

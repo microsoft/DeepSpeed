@@ -921,6 +921,7 @@ class DeepSpeedEngine(Module):
                     NebulaCheckpointEngine
                 self.checkpoint_engine = NebulaCheckpointEngine(
                     config_params=self._config.nebula_config)
+                print("Use NebulaCheckpointEngine")
             except ImportError as err:
                 logger.error(
                     f"No torch_nebula was found! Will fall back to torch.save. Details: {err}"
