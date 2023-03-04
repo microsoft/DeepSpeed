@@ -77,6 +77,7 @@ class TestNebulaCheckpoint(DistributedTest):
                             loaded_model,
                             compare_optimizer=True,
                             load_module_only=False)
+        tn._shutdown()
         
     def test_save_checkpoint(self, tmpdir):
         config_dict = {
@@ -118,7 +119,7 @@ class TestNebulaCheckpoint(DistributedTest):
         trained_model = ds_model
 
         save_folder = os.path.join(tmpdir, 'saved_checkpoint')
-        save_tag = "global_step25"
+        save_tag = None
 
         trained_model.save_checkpoint(save_folder, tag=save_tag)
 
@@ -133,7 +134,7 @@ class TestNebulaCheckpoint(DistributedTest):
         
         import torch_nebula as tn
         
-        tn.flush_persistence(save_tag)
+        tn.flush_persistence()
 
         global_tag_ckpt = tn.list_checkpoints()
         js = json.dumps(global_tag_ckpt, sort_keys=True, indent=4, separators=(",", ":"))
@@ -147,5 +148,7 @@ class TestNebulaCheckpoint(DistributedTest):
                             loaded_model,
                             compare_optimizer=True,
                             load_module_only=False)
+        
+        tn._shutdown()
 
 
