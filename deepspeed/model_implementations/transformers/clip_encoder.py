@@ -44,6 +44,7 @@ class DSClipEncoder(torch.nn.Module):
 
     def forward(self, *inputs, **kwargs):
         if self.enable_cuda_graph:
+            #import pdb; pdb.set_trace()
             if self.cuda_graph_created[self.iter]:
                 outputs = self._graph_replay(*inputs, **kwargs)
             else:
