@@ -90,6 +90,8 @@ class InferenceEngine(Module):
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
                 "If you want to use cuda graph, please upgrade torch to at least v1.10"
 
+        # Check if model passed to engine is loaded w/ meta tensors, in which case
+        # checkpoint data will be loaded at a later stage of inference initialization.
         self.is_meta = self.module.device.type == 'meta' if hasattr(
             self.module,
             "device") else False
