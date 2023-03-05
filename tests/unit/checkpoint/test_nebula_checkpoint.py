@@ -8,7 +8,7 @@ class TestNebulaCheckpoint(DistributedTest):
     world_size = 1
         
     @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
-    def test_save_checkpoint(self, tmpdir):
+    def test_save_checkpoint(self, tmpdir, zero_stage):
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
