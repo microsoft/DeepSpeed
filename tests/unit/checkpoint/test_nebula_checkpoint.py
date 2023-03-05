@@ -4,12 +4,11 @@ from unit.simple_model import *
 import pytest
 import json
 
-@pytest.mark.world_size(1)
 class TestNebulaCheckpoint(DistributedTest):
     #world_size = 1
 
-    @pytest.mark.parametrize('zero_stage', [3])
-    def test_save_16bit_model(self, tmpdir, zero_stage):
+    def test_save_16bit_model(self, tmpdir):
+        world_size = 1
         config_dict = {
             "optimizer": {
                 "type": 'Adam'
@@ -19,7 +18,7 @@ class TestNebulaCheckpoint(DistributedTest):
                 "initial_scale_power": 8
             },
             "zero_optimization": {
-                "stage": zero_stage,
+                "stage": 3,
                 "stage3_gather_fp16_weights_on_model_save": True,
             },
             "gradient_accumulation_steps": 2,
@@ -81,6 +80,7 @@ class TestNebulaCheckpoint(DistributedTest):
         tn._shutdown()
         
     def test_save_checkpoint(self, tmpdir):
+        world_size = 1
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
