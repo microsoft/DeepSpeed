@@ -76,4 +76,3 @@ class TestNebulaCheckpoint2(DistributedTest):
                             loaded_model,
                             compare_optimizer=True,
                             load_module_only=False)
-        tn._shutdown()
