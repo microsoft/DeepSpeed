@@ -7,6 +7,7 @@ import json
 class TestNebulaCheckpoint(DistributedTest):
     world_size = 1
         
+    @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
     def test_save_checkpoint(self, tmpdir):
         config_dict = {
             "train_batch_size": 2,
@@ -16,6 +17,10 @@ class TestNebulaCheckpoint(DistributedTest):
                 "params": {
                     "lr": 0.00015
                 }
+            },
+            "zero_optimization": {
+                "stage": zero_stage,
+                "stage3_gather_fp16_weights_on_model_save": True,
             },
             "nebula": {
                 "enabled": True,
@@ -76,7 +81,6 @@ class TestNebulaCheckpoint(DistributedTest):
                             loaded_model,
                             compare_optimizer=True,
                             load_module_only=False)
-        tn._shutdown()
         
 # class TestNebulaCheckpoint2(DistributedTest):
 #     world_size = 2
