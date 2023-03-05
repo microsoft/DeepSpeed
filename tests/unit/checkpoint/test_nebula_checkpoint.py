@@ -76,6 +76,7 @@ class TestNebulaCheckpoint(DistributedTest):
                             loaded_model,
                             compare_optimizer=True,
                             load_module_only=False)
+        tn._shutdown()
         
 class TestNebulaCheckpoint2(DistributedTest):
     world_size = 2
@@ -142,10 +143,11 @@ class TestNebulaCheckpoint2(DistributedTest):
 
         # get latest checkpoints by name
         latest_ckpt = tn.get_latest_checkpoint()
-        loaded_model.load_checkpoint(config_dict.nebula.persistent_storage_path,
+        loaded_model.load_checkpoint("/tmp/nebula_checkpoint_16bit/",
                                     tag=latest_ckpt.tag)
 
         compare_model_states(ds_model,
                             loaded_model,
                             compare_optimizer=True,
                             load_module_only=False)
+        tn._shutdown()
