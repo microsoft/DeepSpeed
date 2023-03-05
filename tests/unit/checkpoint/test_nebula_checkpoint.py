@@ -4,11 +4,11 @@ from unit.simple_model import *
 import pytest
 import json
 
+@pytest.mark.world_size(1)
 class TestNebulaCheckpoint(DistributedTest):
-    world_size = 1
+    #world_size = 1
 
     @pytest.mark.parametrize('zero_stage', [3])
-    @pytest.mark.world_size(2)
     def test_save_16bit_model(self, tmpdir, zero_stage):
         config_dict = {
             "optimizer": {
@@ -24,7 +24,7 @@ class TestNebulaCheckpoint(DistributedTest):
             },
             "gradient_accumulation_steps": 2,
             "train_micro_batch_size_per_gpu": 1,
-            "train_batch_size": 4,
+            "train_batch_size": 2,
             "nebula": {
                 "enabled": True,
                 "persistent_storage_path": "/tmp/nebula_checkpoint_16bit/",
