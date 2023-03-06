@@ -118,9 +118,7 @@ class TestNebulaCheckpoint(DistributedTest):
         files = os.listdir("/tmp/nebula_checkpoint/")
         print("list /tmp/nebula_checkpoint/ before remove: ", files)
         if files != []:
-            shutil.rmtree("/tmp/nebula_checkpoint/")   
-        files = os.listdir("/tmp/nebula_checkpoint/")
-        print("list /tmp/nebula_checkpoint/ after remove: ", files)     
+            shutil.rmtree("/tmp/nebula_checkpoint/")       
         
         trained_model.save_checkpoint(save_folder, tag=save_tag)
         print("list /dev/shm after save: ", os.listdir("/dev/shm/"))
