@@ -18,7 +18,7 @@ class TestNebulaCheckpoint(DistributedTest):
             },
             "nebula": {
                 "enabled": True,
-                "persistent_storage_path": "/tmp/nebula_checkpoint/",
+                "persistent_storage_path": "/tmp/nebula_checkpoint_1/",
                 "persistent_time_interval": 10,
                 "num_of_version_in_retention": 2,
                 "enable_nebula_load": True
@@ -46,7 +46,7 @@ class TestNebulaCheckpoint(DistributedTest):
         trained_model = ds_model
 
         save_folder = os.path.join(tmpdir, 'saved_checkpoint')
-        save_tag = None
+        save_tag = "global_step100"
 
         trained_model.save_checkpoint(save_folder, tag=save_tag)
 
@@ -69,6 +69,9 @@ class TestNebulaCheckpoint(DistributedTest):
 
         # get latest checkpoints by name
         latest_ckpt = tn.get_latest_checkpoint()
+        js = json.dumps(latest_ckpt, sort_keys=True, indent=4, separators=(",", ":"))
+        print(js)
+        print(latest_ckpt.tag)
         loaded_model.load_checkpoint(save_folder,
                                     tag=save_tag)
 
