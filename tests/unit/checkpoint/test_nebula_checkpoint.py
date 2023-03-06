@@ -119,9 +119,11 @@ class TestNebulaCheckpoint(DistributedTest):
 
         save_folder = os.path.join(tmpdir, 'saved_checkpoint')
         save_tag = None
-
+        files = os.listdir("/dev/shm")
+        print("files before save: ", files)
         trained_model.save_checkpoint(save_folder, tag=save_tag)
-
+        files = os.listdir("/dev/shm")
+        print("files before save: ", files)
         dist.barrier()
 
         loaded_model = create_deepspeed_model(config_dict=config_dict,
@@ -135,6 +137,11 @@ class TestNebulaCheckpoint(DistributedTest):
         
         tn.flush_persistence()
 
+        for root, dirs, files in os.walk("/tmp/nebula_checkpoint/", topdown=False):
+            for name in files:
+                print(os.path.join(root, name))
+            for name in dirs:
+                print(os.path.join(root, name))
         global_tag_ckpt = tn.list_checkpoints()
         js = json.dumps(global_tag_ckpt, sort_keys=True, indent=4, separators=(",", ":"))
         print(js)
