@@ -7,8 +7,10 @@ import sys
 import gc
 import collections
 from typing import Deque, Dict, Tuple
-from torch._six import inf
-
+try:
+    from torch._six import inf
+except ImportError:
+    from torch import inf
 from deepspeed.runtime import ZeROOptimizer
 from deepspeed.utils import logger
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
