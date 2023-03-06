@@ -1,5 +1,6 @@
 import glob
 import shutil
+import subprocess
 from unit.common import DistributedTest
 from unit.checkpoint.common import *
 from unit.simple_model import *
@@ -78,6 +79,12 @@ class TestNebulaCheckpoint(DistributedTest):
         if isExist:
             shutil.rmtree("/tmp/nebula_checkpoint/")
 
+        env_dist = os.environ
+        redis_a = env_dist.get('DLTS_JOB_ID', 'dummy')
+        print("redis_a: ", redis_a)
+        subprocess.call(["redis-cli", "-a", redis_a, "-p", "6380", "flushall"])
+        import torch_nebula as tn
+        tn._shutdown()
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
