@@ -1094,11 +1094,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
                 see_memory_usage(
                     f'Before partitioning param {param.ds_id} {param.shape}',
-                    force=True)
+                    force=False)
                 # param.data does not store anything meaningful in partitioned state
                 free_param(param)
                 see_memory_usage(f'After partitioning param {param.ds_id} {param.shape}',
-                                 force=True)
+                                 force=False)
 
                 if param.ds_tensor.final_location == OffloadDeviceEnum.nvme:
                     print_rank_0(
@@ -1176,10 +1176,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             # param.data does not store anything meaningful in partitioned state
 
             see_memory_usage(f'Before partitioning param {param.ds_id} {param.shape}',
-                             force=True)
+                             force=False)
             free_param(param)
             see_memory_usage(f'After partitioning param {param.ds_id} {param.shape}',
-                             force=True)
+                             force=False)
 
             if param.ds_tensor.final_location == OffloadDeviceEnum.nvme:
                 self.param_swapper.swap_out_and_release([param])
