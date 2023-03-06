@@ -1,3 +1,5 @@
+import glob
+import shutil
 from unit.common import DistributedTest
 from unit.checkpoint.common import *
 from unit.simple_model import *
@@ -107,8 +109,19 @@ class TestNebulaCheckpoint(DistributedTest):
 
         save_folder = os.path.join(tmpdir, 'saved_checkpoint')
         save_tag = None
-
+        
+        print("list /dev/shm origin status: ", os.listdir("/dev/shm/"))
+        for filename in glob.glob("/dev/shm/shm_name_partition_*"):
+            os.remove(filename) 
         print("list /dev/shm before save: ", os.listdir("/dev/shm/"))
+
+        files = os.listdir("/tmp/nebula_checkpoint/")
+        print("list /tmp/nebula_checkpoint/ before remove: ", files)
+        if files != []:
+            shutil.rmtree("/tmp/nebula_checkpoint/")   
+        files = os.listdir("/tmp/nebula_checkpoint/")
+        print("list /tmp/nebula_checkpoint/ after remove: ", files)     
+        
         trained_model.save_checkpoint(save_folder, tag=save_tag)
         print("list /dev/shm after save: ", os.listdir("/dev/shm/"))
         dist.barrier()
