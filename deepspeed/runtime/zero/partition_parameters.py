@@ -5,7 +5,7 @@ Licensed under the MIT license.
 
 import math
 import os
-import sys 
+import sys
 import types
 from typing import Callable, Iterable
 from enum import Enum
@@ -684,7 +684,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             os.environ["LOCAL_RANK"]))
         get_accelerator().set_device(self.local_device)
 
-        if _ds_config is not None: 
+        if _ds_config is not None:
             self._update_persist_config(_ds_config)
 
             if _ds_config.zero_config.offload_param is not None:
@@ -724,7 +724,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
     def _update_persist_config(self, ds_config):
         Init.param_persistence_threshold = ds_config.zero_config.param_persistence_threshold
         Init.model_persistence_threshold = ds_config.zero_config.model_persistence_threshold // self.world_size
-
 
     def _convert_to_zero_parameters(self, param_list):
         for param in param_list:
@@ -800,11 +799,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # And only partitioned before the step
         if param.ds_numel <= Init.param_persistence_threshold and Init.num_persisted_elements + param.ds_numel <= Init.model_persistence_threshold:
             param.ds_persist = True
-            Init.num_persisted_parameters += 1 
+            Init.num_persisted_parameters += 1
             Init.num_persisted_elements += param.ds_numel
         else:
             param.ds_persist = False
-
 
         param.is_external_param = False
 
@@ -818,8 +816,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # DeepSpeed Param ID
         param.ds_id = Init.param_id
         Init.param_id += 1
-
-
 
         def all_gather(param_list=None, async_op=False, hierarchy=0):
             cls = param
