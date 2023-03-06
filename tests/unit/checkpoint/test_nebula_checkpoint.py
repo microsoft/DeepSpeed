@@ -55,12 +55,12 @@ class TestNebulaCheckpoint(DistributedTest):
         loaded_model = create_deepspeed_model(config_dict=config_dict,
                                             model=models[1],
                                             base_optimizer=None)
-        
+
         assert list(trained_model.parameters())[0].dtype == list(
             loaded_model.parameters())[0].dtype
-        
+
         import torch_nebula as tn
-        
+
         tn.flush_persistence()
 
         global_tag_ckpt = tn.list_checkpoints()
@@ -68,6 +68,7 @@ class TestNebulaCheckpoint(DistributedTest):
         print(js)
 
         # get latest checkpoints by name
+        latest_ckpt = tn.get_latest_checkpoint()
         loaded_model.load_checkpoint(save_folder,
                                     tag=save_tag)
 
