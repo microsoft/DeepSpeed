@@ -532,8 +532,6 @@ class InferenceEngine(Module):
             for name in module.__dict__.keys():
                 sub_module = getattr(module, name)
 
-                print(f"DEBUG: sub_module_cuda_graph = {sub_module_cuda_graph}")
-                print(f"DEBUG: sub_module = {sub_module}")
                 if self._module_match(sub_module) and hasattr(sub_module,
                                                               "enable_cuda_graph"):
                     sub_module_cuda_graph = True
