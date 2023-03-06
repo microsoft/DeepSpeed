@@ -69,8 +69,6 @@ class TestNebulaCheckpoint(DistributedTest):
 
         # get latest checkpoints by name
         latest_ckpt = tn.get_latest_checkpoint()
-        js = json.dumps(latest_ckpt, sort_keys=True, indent=4, separators=(",", ":"))
-        print(js)
         print(latest_ckpt.tag)
         loaded_model.load_checkpoint(save_folder,
                                     tag=save_tag)
