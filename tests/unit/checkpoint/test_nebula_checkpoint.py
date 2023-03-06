@@ -26,65 +26,63 @@ class TestNebulaCheckpoint(DistributedTest):
         }
         hidden_dim = 10
         models = [SimpleModel(hidden_dim=hidden_dim) for _ in range(2)]
-        checkpoint_correctness_verification(config_dict=config_dict,
-                                    models=models,
-                                    hidden_dim=hidden_dim,
-                                    tmpdir=tmpdir,
-                                    load_optimizer_states=True,
-                                    load_lr_scheduler_states=False,
-                                    fp16=False,
-                                    empty_tag=True)
-        # dtype = torch.float32
-        # ds_model = create_deepspeed_model(config_dict=config_dict,
-        #                                 model=models[0],
-        #                                 base_optimizer=None)
+        dtype = torch.float32
+        ds_model = create_deepspeed_model(config_dict=config_dict,
+                                        model=models[0],
+                                        base_optimizer=None)
 
-        # data_loader = random_dataloader(model=ds_model,
-        #                                 total_samples=50,
-        #                                 hidden_dim=hidden_dim,
-        #                                 device=ds_model.device,
-        #                                 dtype=dtype)
+        data_loader = random_dataloader(model=ds_model,
+                                        total_samples=50,
+                                        hidden_dim=hidden_dim,
+                                        device=ds_model.device,
+                                        dtype=dtype)
 
 
-        # for _, batch in enumerate(data_loader):
-        #     loss = ds_model(batch[0], batch[1])
-        #     ds_model.backward(loss)
-        #     ds_model.step()
+        for _, batch in enumerate(data_loader):
+            loss = ds_model(batch[0], batch[1])
+            ds_model.backward(loss)
+            ds_model.step()
 
-        # trained_model = ds_model
+        trained_model = ds_model
 
-        # save_folder = os.path.join(tmpdir, 'saved_checkpoint')
-        # save_tag = "global_step100"
+        save_folder = os.path.join(tmpdir, 'saved_checkpoint')
+        save_tag = "global_step100"
+        files = os.listdir("/dev/shm")
+        print("list /dev/shm before save",files)
+        trained_model.save_checkpoint(save_folder, tag=save_tag)
+        files = os.listdir("/dev/shm")
+        print("list /dev/shm after save",files)
+        dist.barrier()
 
-        # trained_model.save_checkpoint(save_folder, tag=save_tag)
+        loaded_model = create_deepspeed_model(config_dict=config_dict,
+                                            model=models[1],
+                                            base_optimizer=None)
 
-        # dist.barrier()
+        assert list(trained_model.parameters())[0].dtype == list(
+            loaded_model.parameters())[0].dtype
 
-        # loaded_model = create_deepspeed_model(config_dict=config_dict,
-        #                                     model=models[1],
-        #                                     base_optimizer=None)
+        import torch_nebula as tn
 
-        # assert list(trained_model.parameters())[0].dtype == list(
-        #     loaded_model.parameters())[0].dtype
+        tn.flush_persistence()
+        for root, dirs, files in os.walk(".", topdown=False):
+            for name in files:
+                print(os.path.join(root, name))
+            for name in dirs:
+                print(os.path.join(root, name))
+        global_tag_ckpt = tn.list_checkpoints()
+        js = json.dumps(global_tag_ckpt, sort_keys=True, indent=4, separators=(",", ":"))
+        print(js)
 
-        # import torch_nebula as tn
+        # get latest checkpoints by name
+        latest_ckpt = tn.get_latest_checkpoint()
+        print(latest_ckpt.tag)
+        loaded_model.load_checkpoint(save_folder,
+                                    tag=save_tag)
 
-        # tn.flush_persistence()
-
-        # global_tag_ckpt = tn.list_checkpoints()
-        # js = json.dumps(global_tag_ckpt, sort_keys=True, indent=4, separators=(",", ":"))
-        # print(js)
-
-        # # get latest checkpoints by name
-        # latest_ckpt = tn.get_latest_checkpoint()
-        # print(latest_ckpt.tag)
-        # loaded_model.load_checkpoint(save_folder,
-        #                             tag=save_tag)
-
-        # compare_model_states(trained_model,
-        #                     loaded_model,
-        #                     compare_optimizer=True,
-        #                     load_module_only=False)
+        compare_model_states(trained_model,
+                            loaded_model,
+                            compare_optimizer=True,
+                            load_module_only=False)
         
 # class TestNebulaCheckpoint2(DistributedTest):
 #     world_size = 2
