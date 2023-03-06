@@ -141,6 +141,7 @@ class TestNebulaCheckpoint(DistributedTest):
 
         # get latest checkpoints by name
         latest_ckpt = tn.get_latest_checkpoint()
+        print(latest_ckpt.tag)
         loaded_model.load_checkpoint(save_folder,
                                     tag=save_tag)
 
