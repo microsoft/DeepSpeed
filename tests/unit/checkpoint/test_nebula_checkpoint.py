@@ -74,10 +74,10 @@ class TestNebulaCheckpoint(DistributedTest):
             os.remove(filename) 
         print("list /dev/shm before save: ", os.listdir("/dev/shm/"))  
 
-        files = os.listdir("/tmp/nebula_checkpoint/")
-        print("list /tmp/nebula_checkpoint/ before remove: ", files)
-        if files != []:
+        isExist = os.path.exists("/tmp/nebula_checkpoint/")
+        if isExist:
             shutil.rmtree("/tmp/nebula_checkpoint/")
+
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
