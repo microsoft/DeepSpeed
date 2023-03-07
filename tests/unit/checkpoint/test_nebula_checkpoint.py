@@ -82,9 +82,12 @@ class TestNebulaCheckpoint(DistributedTest):
         env_dist = os.environ
         redis_a = env_dist.get('DLTS_JOB_ID', 'dummy')
         print("redis_a: ", redis_a)
-        subprocess.call(["redis-cli", "-a", redis_a, "-p", "6380", "flushall"])
+        return_code = subprocess.call(["redis-cli", "-a", redis_a, "-p", "6380", "flushall"])
+        print("return_code: ", return_code)
+        
         import torch_nebula as tn
         tn._shutdown()
+
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
