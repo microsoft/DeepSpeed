@@ -15,13 +15,7 @@ minus_inf = -10000.0
 class DeepSpeedSelfAttention(nn.Module):
     num_layers = 0
 
-    def __init__(self,
-                 config,
-                 mp_group=None,
-                 q_scales=None,
-                 q_groups=1,
-                 merge_count=1,
-                 qkv_merging=False):
+    def __init__(self, config, mp_group=None, q_scales=None, q_groups=1, merge_count=1):
         super(DeepSpeedSelfAttention, self).__init__()
         self.config = config
         data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.float
@@ -66,7 +60,6 @@ class DeepSpeedSelfAttention(nn.Module):
         self.norm_factor = math.sqrt(self.config.hidden_size // self.config.heads)
         if not config.use_mup:
             self.norm_factor = math.sqrt(self.norm_factor)
-        self.qkv_merging = qkv_merging
 
         if self.config.scale_attn_by_inverse_layer_idx is True:
             self.norm_factor *= math.sqrt(self.config.layer_id + 1)
@@ -251,8 +244,7 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
         ) * self.num_attention_heads_per_partition if dist.is_initialized() else 0
         attention_probs = self.softmax_func(
             attn_scores=attention_scores,
-            attn_mask=((1 - input_mask).half() *
-                       minus_inf) if input_mask.dtype == torch.int64 else input_mask,
+            attn_mask=((1 - input_mask).half() * minus_inf),
             alibi=alibi,
             triangular=(self.config.triangular_masking
                         and (attention_scores.shape[-2] > 1)),

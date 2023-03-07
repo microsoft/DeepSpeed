@@ -1,7 +1,11 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 # A test on its own
+import os
 import torch
 import pytest
 import json
+import hjson
 import argparse
 
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
@@ -13,6 +17,21 @@ import deepspeed.comm as dist
 # A test on its own
 import deepspeed
 from deepspeed.runtime.config import DeepSpeedConfig, get_bfloat16_enabled
+
+
+class TestBasicConfig(DistributedTest):
+    world_size = 1
+
+    def test_cuda(self):
+        assert (torch.cuda.is_available())
+
+    def test_check_version(self):
+        assert hasattr(deepspeed, "__git_hash__")
+        assert hasattr(deepspeed, "__git_branch__")
+        assert hasattr(deepspeed, "__version__")
+        assert hasattr(deepspeed, "__version_major__")
+        assert hasattr(deepspeed, "__version_minor__")
+        assert hasattr(deepspeed, "__version_patch__")
 
 
 @pytest.fixture
@@ -30,19 +49,6 @@ def base_config():
         }
     }
     return config_dict
-
-
-def test_cuda():
-    assert (torch.cuda.is_available())
-
-
-def test_check_version():
-    assert hasattr(deepspeed, "__git_hash__")
-    assert hasattr(deepspeed, "__git_branch__")
-    assert hasattr(deepspeed, "__version__")
-    assert hasattr(deepspeed, "__version_major__")
-    assert hasattr(deepspeed, "__version_minor__")
-    assert hasattr(deepspeed, "__version_patch__")
 
 
 def _run_batch_config(ds_config, train_batch=None, micro_batch=None, gas=None):
@@ -156,11 +162,41 @@ def test_get_bfloat16_enabled(bf16_key):
     assert get_bfloat16_enabled(cfg) == True
 
 
+class TestConfigLoad(DistributedTest):
+    world_size = 1
+
+    def test_dict(self, base_config):
+        hidden_dim = 10
+        model = SimpleModel(hidden_dim)
+        model, _, _, _ = deepspeed.initialize(config=base_config,
+                                              model=model,
+                                              model_parameters=model.parameters())
+
+    def test_json(self, base_config, tmpdir):
+        config_path = os.path.join(tmpdir, "config.json")
+        with open(config_path, 'w') as fp:
+            json.dump(base_config, fp)
+        hidden_dim = 10
+        model = SimpleModel(hidden_dim)
+        model, _, _, _ = deepspeed.initialize(config=config_path,
+                                              model=model,
+                                              model_parameters=model.parameters())
+
+    def test_hjson(self, base_config, tmpdir):
+        config_path = os.path.join(tmpdir, "config.json")
+        with open(config_path, 'w') as fp:
+            hjson.dump(base_config, fp)
+        hidden_dim = 10
+        model = SimpleModel(hidden_dim)
+        model, _, _, _ = deepspeed.initialize(config=config_path,
+                                              model=model,
+                                              model_parameters=model.parameters())
+
+
 class TestDeprecatedDeepScaleConfig(DistributedTest):
     world_size = 1
 
     def test(self, base_config, tmpdir):
-
         config_path = create_config_from_dict(tmpdir, base_config)
         parser = argparse.ArgumentParser()
         args = parser.parse_args(args='')

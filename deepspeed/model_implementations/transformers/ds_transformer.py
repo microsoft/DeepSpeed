@@ -3,13 +3,14 @@ Copyright 2022 The Microsoft DeepSpeed Team
 '''
 
 import torch
-from deepspeed.ops import op_builder
 import torch.nn as nn
 from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
 
 from deepspeed.ops.transformer.inference.ds_mlp import DeepSpeedMLP
 from deepspeed.ops.transformer.inference.ds_attention import DeepSpeedSelfAttention, BloomSelfAttention
+from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder import InferenceBuilder
 
 inference_cuda_module = None
 
@@ -38,8 +39,7 @@ class DeepSpeedTransformerInference(nn.Module):
                  quantize_scales=None,
                  quantize_groups=1,
                  merge_count=1,
-                 mlp_extra_grouping=False,
-                 qkv_merging=False):
+                 mlp_extra_grouping=False):
         super(DeepSpeedTransformerInference, self).__init__()
 
         self.config = config
@@ -49,7 +49,7 @@ class DeepSpeedTransformerInference(nn.Module):
         data_type = torch.half if config.fp16 else torch.float
         global inference_cuda_module
         if inference_cuda_module is None:
-            builder = op_builder.InferenceBuilder()
+            builder = InferenceBuilder()
             inference_cuda_module = builder.load()
 
         if DeepSpeedTransformerInference.layer_id == 1:
@@ -60,15 +60,13 @@ class DeepSpeedTransformerInference(nn.Module):
                                                 mp_group,
                                                 quantize_scales,
                                                 quantize_groups,
-                                                merge_count,
-                                                qkv_merging)
+                                                merge_count)
         else:
             self.attention = DeepSpeedSelfAttention(self.config,
                                                     mp_group,
                                                     quantize_scales,
                                                     quantize_groups,
-                                                    merge_count,
-                                                    qkv_merging)
+                                                    merge_count)
         self.mlp = DeepSpeedMLP(self.config,
                                 mp_group,
                                 quantize_scales,
@@ -76,7 +74,8 @@ class DeepSpeedTransformerInference(nn.Module):
                                 merge_count,
                                 mlp_extra_grouping)
 
-        device = torch.cuda.current_device()  #if config.bigscience_bloom else 'cpu'
+        device = get_accelerator().current_device_name(
+        )  # if config.bigscience_bloom else 'cpu'
         self.norm_w = nn.Parameter(torch.empty(self.config.hidden_size,
                                                dtype=data_type,
                                                device=device),
@@ -88,6 +87,11 @@ class DeepSpeedTransformerInference(nn.Module):
         self.layer_past = None
         self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if (not config.fp16) else \
                                 inference_cuda_module.allocate_workspace_fp16
+
+    @classmethod
+    def reset_cache(cls):
+        if inference_cuda_module is not None:
+            inference_cuda_module.reset_cache()
 
     def forward(
             self,

@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import torch
 import deepspeed.comm as dist
 import deepspeed
@@ -617,7 +619,7 @@ class TestAmp(DistributedTest):
             model.backward(loss)
             model.step()
 
-    def test_adam_O2_empty_grad(tmpdir):
+    def test_adam_O2_empty_grad(self):
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,

@@ -1,3 +1,4 @@
+'''Copyright The Microsoft DeepSpeed Team'''
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from enum import Enum
 from pydantic import root_validator, validator, Field

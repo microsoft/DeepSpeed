@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 from .compress import get_module_name
 from .helper import recursive_getattr
 from deepspeed.utils import logger

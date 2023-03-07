@@ -1,3 +1,4 @@
+'''Copyright The Microsoft DeepSpeed Team'''
 """
 Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
@@ -7,6 +8,7 @@ from typing import Union
 
 import torch
 import json
+import hjson
 import copy
 import base64
 
@@ -25,7 +27,7 @@ from .config_utils import (
 from .zero.config import get_zero_config, ZeroStageEnum
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
 from ..comm.config import DeepSpeedCommsConfig
-from ..monitor.config import DeepSpeedMonitorConfig
+from ..monitor.config import get_monitor_config
 
 from deepspeed import comm as dist
 
@@ -704,14 +706,14 @@ class DeepSpeedConfig(object):
         if isinstance(config, dict):
             self._param_dict = config
         elif os.path.exists(config):
-            self._param_dict = json.load(
+            self._param_dict = hjson.load(
                 open(config,
                      "r"),
                 object_pairs_hook=dict_raise_error_on_duplicate_keys)
         else:
             try:
                 config_decoded = base64.urlsafe_b64decode(config).decode('utf-8')
-                self._param_dict = json.loads(config_decoded)
+                self._param_dict = hjson.loads(config_decoded)
             except (UnicodeDecodeError, AttributeError):
                 raise ValueError(
                     f"Expected a string path to an existing deepspeed config, or a dictionary or a valid base64. Received: {config}"
@@ -828,7 +830,7 @@ class DeepSpeedConfig(object):
             param_dict)
 
         self.comms_config = DeepSpeedCommsConfig(param_dict)
-        self.monitor_config = DeepSpeedMonitorConfig(param_dict)
+        self.monitor_config = get_monitor_config(param_dict)
 
         self.gradient_clipping = get_gradient_clipping(param_dict)
         self.fp16_enabled = get_fp16_enabled(param_dict)
