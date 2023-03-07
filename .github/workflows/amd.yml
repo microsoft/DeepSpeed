@@ -49,6 +49,10 @@ jobs:
           #python -c "from deepspeed.env_report import cli_main; cli_main()"
           ds_report
 
+      - name: Install torch_nebula
+        run: |
+          pip install tests/nebula-package/torch_nebula-0.16.0-py3-none-any.whl
+
       - name: Python environment
         run: |
           pip list

@@ -43,7 +43,7 @@ jobs:
         run: |
           pip install .[dev,1bit,autotuning]
           ds_report
-        
+
       - name: Install torch_nebula
         run: |
           pip install tests/nebula-package/torch_nebula-0.16.0-py3-none-any.whl

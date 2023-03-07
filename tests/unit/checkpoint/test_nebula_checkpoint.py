@@ -1,11 +1,12 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import glob
 import shutil
-import subprocess
 from unit.common import DistributedTest
 from unit.checkpoint.common import *
 from unit.simple_model import *
-import pytest
 import json
+
 
 class TestNebulaCheckpoint(DistributedTest):
     world_size = 1
@@ -56,11 +57,11 @@ class TestNebulaCheckpoint(DistributedTest):
     #     save_folder = os.path.join(tmpdir, 'save_16bit_model')
     #     save_tag = None
     #     ds_model.save_16bit_model(save_folder)
-        
+
     #     loaded_model = create_deepspeed_model(config_dict=config_dict,
     #                                         model=models[1],
     #                                         base_optimizer=None)
-        
+
     #     assert list(ds_model.parameters())[0].dtype == list(loaded_model.parameters())[0].dtype
 
     #     loaded_model.load_checkpoint(tmpdir,
@@ -68,19 +69,22 @@ class TestNebulaCheckpoint(DistributedTest):
 
     #     compare_model_states(ds_model,
     #                          loaded_model)
-        
+
     def test_save_checkpoint(self, tmpdir):
         print("list /dev/shm origin status: ", os.listdir("/dev/shm/"))
         for filename in glob.glob("/dev/shm/shm_name_partition_*"):
-            os.remove(filename) 
-        print("list /dev/shm before save: ", os.listdir("/dev/shm/"))  
+            os.remove(filename)
+        print("list /dev/shm before save: ", os.listdir("/dev/shm/"))
 
         isExist = os.path.exists("/tmp/nebula_checkpoint/")
         if isExist:
             shutil.rmtree("/tmp/nebula_checkpoint/")
 
         #judge if nebula service is running
-        if is_service_launched("redis-server") or is_service_launched("n2e0b2u2la_saturn") or is_service_launched("n2e0b2u2la_mars") or is_service_launched("n2e0b2u2la_replica_server"):
+        if is_service_launched("redis-server") or is_service_launched(
+                "n2e0b2u2la_saturn") or is_service_launched(
+                    "n2e0b2u2la_mars") or is_service_launched(
+                        "n2e0b2u2la_replica_server"):
             shut_down_nebula_service()
         config_dict = {
             "train_batch_size": 2,
@@ -103,15 +107,14 @@ class TestNebulaCheckpoint(DistributedTest):
         models = [SimpleModel(hidden_dim=hidden_dim) for _ in range(2)]
         dtype = torch.float32
         ds_model = create_deepspeed_model(config_dict=config_dict,
-                                        model=models[0],
-                                        base_optimizer=None)
+                                          model=models[0],
+                                          base_optimizer=None)
 
         data_loader = random_dataloader(model=ds_model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
                                         device=ds_model.device,
                                         dtype=dtype)
-
 
         for _, batch in enumerate(data_loader):
             loss = ds_model(batch[0], batch[1])
@@ -121,21 +124,21 @@ class TestNebulaCheckpoint(DistributedTest):
         trained_model = ds_model
 
         save_folder = os.path.join(tmpdir, 'saved_checkpoint')
-        save_tag = None   
-        
+        save_tag = None
+
         trained_model.save_checkpoint(save_folder, tag=save_tag)
         print("list /dev/shm after save: ", os.listdir("/dev/shm/"))
         dist.barrier()
 
         loaded_model = create_deepspeed_model(config_dict=config_dict,
-                                            model=models[1],
-                                            base_optimizer=None)
-        
+                                              model=models[1],
+                                              base_optimizer=None)
+
         assert list(trained_model.parameters())[0].dtype == list(
             loaded_model.parameters())[0].dtype
-        
+
         import torch_nebula as tn
-        
+
         tn.flush_persistence()
         for root, dirs, files in os.walk("/tmp/nebula_checkpoint/", topdown=False):
             for name in files:
@@ -149,11 +152,10 @@ class TestNebulaCheckpoint(DistributedTest):
         # get latest checkpoints by name
         latest_ckpt = tn.get_latest_checkpoint()
         print("latest_ckpt: ", latest_ckpt.tag)
-        loaded_model.load_checkpoint(save_folder,
-                                    tag=save_tag)
+        loaded_model.load_checkpoint(save_folder, tag=save_tag)
 
         compare_model_states(trained_model,
-                            loaded_model,
-                            compare_optimizer=True,
-                            load_module_only=False)
+                             loaded_model,
+                             compare_optimizer=True,
+                             load_module_only=False)
         shut_down_nebula_service()
