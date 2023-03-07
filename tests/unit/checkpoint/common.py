@@ -244,11 +244,6 @@ def is_service_launched(binary_name, port=None):
 
 
 def shut_down_nebula_service():
-    env_dist = os.environ
-    redis_a = env_dist.get('DLTS_JOB_ID', 'dummy')
-    print("redis_a: ", redis_a)
-    return_code = subprocess.call(["redis-cli", "-a", redis_a, "-p", "6380", "flushall"])
-    print("return_code: ", return_code)
-
+    subprocess.call(["redis-cli", "-a", 'dummy', "-p", "6380", "flushall"])
     import torch_nebula as tn
     tn._shutdown()
