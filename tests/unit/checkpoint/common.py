@@ -11,7 +11,7 @@ from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
 
 from unit.simple_model import *
-
+import psutil
 
 def compare_deepspeed_states(saved_model, loaded_model):
     # These are compared in more depth in other places
@@ -218,3 +218,34 @@ def checkpoint_correctness_verification(config_dict,
 
     if load_lr_scheduler_states:
         compare_lr_scheduler_states(trained_model, loaded_model)
+
+
+def is_service_launched(binary_name, port=None):
+    for p in psutil.process_iter():
+        try:
+            # Zombie process will be ignored.
+            if p.status() == psutil.STATUS_ZOMBIE:
+                continue
+            if binary_name == p.name():
+                try:
+                    if (
+                        port is not None
+                        and len([connect for connect in p.connections() if connect.laddr.port == port]) == 0
+                    ):
+                        continue
+                except psutil.AccessDenied:
+                    continue
+                return True
+        except psutil.NoSuchProcess:
+            pass
+    return False
+
+def shut_down_nebula_service():
+    env_dist = os.environ
+    redis_a = env_dist.get('DLTS_JOB_ID', 'dummy')
+    print("redis_a: ", redis_a)
+    return_code = subprocess.call(["redis-cli", "-a", redis_a, "-p", "6380", "flushall"])
+    print("return_code: ", return_code)
+    
+    import torch_nebula as tn
+    tn._shutdown()

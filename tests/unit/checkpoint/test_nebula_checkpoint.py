@@ -79,15 +79,9 @@ class TestNebulaCheckpoint(DistributedTest):
         if isExist:
             shutil.rmtree("/tmp/nebula_checkpoint/")
 
-        env_dist = os.environ
-        redis_a = env_dist.get('DLTS_JOB_ID', 'dummy')
-        print("redis_a: ", redis_a)
-        return_code = subprocess.call(["redis-cli", "-a", redis_a, "-p", "6380", "flushall"])
-        print("return_code: ", return_code)
-        
-        import torch_nebula as tn
-        tn._shutdown()
-
+        #judge if nebula service is running
+        if is_service_launched("redis-server") or is_service_launched("n2e0b2u2la_saturn") or is_service_launched("n2e0b2u2la_mars") or is_service_launched("n2e0b2u2la_replica_server"):
+            shut_down_nebula_service()
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -162,3 +156,4 @@ class TestNebulaCheckpoint(DistributedTest):
                             loaded_model,
                             compare_optimizer=True,
                             load_module_only=False)
+        shut_down_nebula_service()
