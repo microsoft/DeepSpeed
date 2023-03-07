@@ -6,7 +6,7 @@ from unit.checkpoint.common import *
 from unit.simple_model import *
 import pytest
 import json
-
+import subprocess
 class TestNebulaCheckpoint(DistributedTest):
     world_size = 1
 
