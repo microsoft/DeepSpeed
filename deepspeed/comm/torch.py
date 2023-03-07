@@ -16,7 +16,13 @@ class TorchBackend(Backend):
         so no need to wrap all the functions. We can keep adding wrappers as
         needed.
     """
-    def __init__(self, backend, timeout, init_method, rank=-1, world_size=-1, name='torch'):
+    def __init__(self,
+                 backend,
+                 timeout,
+                 init_method,
+                 rank=-1,
+                 world_size=-1,
+                 name='torch'):
         super(TorchBackend, self).__init__()
         self.torch_version_before_18 = older_torch()
         self.has_allgather_base = has_allgather_base()
