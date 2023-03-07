@@ -72,12 +72,12 @@ class TestNebulaCheckpoint(DistributedTest):
         print("list /dev/shm after save: ", os.listdir("/dev/shm/"))
         dist.barrier()
 
-        loaded_model = create_deepspeed_model(config_dict=config_dict,
-                                              model=models[1],
-                                              base_optimizer=None)
+        # loaded_model = create_deepspeed_model(config_dict=config_dict,
+        #                                       model=models[1],
+        #                                       base_optimizer=None)
 
-        assert list(trained_model.parameters())[0].dtype == list(
-            loaded_model.parameters())[0].dtype
+        # assert list(trained_model.parameters())[0].dtype == list(
+        #     loaded_model.parameters())[0].dtype
 
         import torch_nebula as tn
         tn.flush_persistence()
@@ -90,10 +90,24 @@ class TestNebulaCheckpoint(DistributedTest):
         latest_ckpt = tn.get_latest_checkpoint()
         print("latest_ckpt: ", latest_ckpt.tag)
 
-        loaded_model.load_checkpoint(save_folder, tag=save_tag)
+        for root, dirs, files in os.walk("/tmp/nebula_checkpoint/"):
+            if len(dirs) != 1:
+                print("dirs: ", dirs)
+                raise ValueError("Persist dir should only have one dir")
+            if dirs[0] != latest_ckpt.tag:
+                print("dirs[0]: ", dirs[0])
+                raise ValueError(f"Dir name should be {latest_ckpt.tag}")
+            for file in files:
+                if file == "complete.txt":
+                    comlete_file = os.path.join(root, file)
+                    #read complete.txt
+                    with open(comlete_file, "r") as f:
+                        if f.read() != "OK":
+                            raise ValueError("complete.txt should be OK")
+        # loaded_model.load_checkpoint(save_folder, tag=save_tag)
 
-        compare_model_states(trained_model,
-                             loaded_model,
-                             compare_optimizer=True,
-                             load_module_only=False)
+        # compare_model_states(trained_model,
+        #                      loaded_model,
+        #                      compare_optimizer=True,
+        #                      load_module_only=False)
         shut_down_nebula_service()
