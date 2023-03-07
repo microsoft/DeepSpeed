@@ -87,57 +87,40 @@ class CCLBackend(Backend):
     def barrier(self, group=None, async_op=False):
         self.ccl_comm_op.barrier(group, async_op)
 
-    def broadcast(self, tensor, src, group=None, async_op=False, block=False):
+    def broadcast(self, tensor, src, group=None, async_op=False):
         # TODO: Fix calls to op. Fix op to support groups and async
-        self.ccl_comm_op.broadcast(tensor, src, block, group, async_op)
+        self.ccl_comm_op.broadcast(tensor, src, group, async_op)
 
-    def send(self, tensor, dst, group=None, tag=0, block=False, async_op=False):
-        self.ccl_comm_op.send(tensor, dst, tag, block, group, async_op)
+    def send(self, tensor, dst, group=None, tag=0, async_op=False):
+        self.ccl_comm_op.send(tensor, dst, tag, group, async_op)
 
-    def recv(self, tensor, src=None, group=None, tag=0, block=False, async_op=False):
-        self.ccl_comm_op.recv(tensor, src, tag, block, group, async_op)
+    def recv(self, tensor, src=None, group=None, tag=0, async_op=False):
+        self.ccl_comm_op.recv(tensor, src, tag, group, async_op)
 
-    def all_reduce(self,
-                   tensor,
-                   op=ReduceOp.SUM,
-                   group=None,
-                   async_op=False,
-                   block=False):
-        self.ccl_comm_op.all_reduce(tensor, op, block, group, async_op)
+    def all_reduce(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
+        self.ccl_comm_op.all_reduce(tensor, op, group, async_op)
 
-    def reduce(self,
-               tensor,
-               dst,
-               op=ReduceOp.SUM,
-               group=None,
-               async_op=False,
-               block=False):
-        self.ccl_comm_op.reduce(tensor, dst, op, block, group, async_op)
+    def reduce(self, tensor, dst, op=ReduceOp.SUM, group=None, async_op=False):
+        self.ccl_comm_op.reduce(tensor, dst, op, group, async_op)
 
     def reduce_scatter(self,
                        output,
                        input_list,
                        op=ReduceOp.SUM,
                        group=None,
-                       async_op=False,
-                       block=False):
-        self.ccl_comm_op.reduce_scatter(tensor, op, block, group, async_op)
+                       async_op=False):
+        self.ccl_comm_op.reduce_scatter(tensor, op, group, async_op)
 
-    def all_gather(self, tensor_list, tensor, group=None, async_op=False, block=False):
-        self.ccl_comm_op.all_gather([tensor_list], [tensor], block, group, async_op)
+    def all_gather(self, tensor_list, tensor, group=None, async_op=False):
+        self.ccl_comm_op.all_gather([tensor_list], [tensor], group, async_op)
 
     def all_gather_base(self,
                         output_tensor,
                         input_tensor,
                         group=None,
                         async_op=False,
-                        block=False,
                         comm_id=0):
-        self.ccl_comm_op.all_gather_base(output_tensor,
-                                         input_tensor,
-                                         block,
-                                         group,
-                                         async_op)
+        self.ccl_comm_op.all_gather_base(output_tensor, input_tensor, group, async_op)
 
     def all_to_all_single(self,
                           output,
@@ -145,17 +128,15 @@ class CCLBackend(Backend):
                           output_split_sizes=None,
                           input_split_sizes=None,
                           group=None,
-                          async_op=False,
-                          block=False):
-        self.ccl_comm_op.all_to_all_single(output, input, block, group, async_op)
+                          async_op=False):
+        self.ccl_comm_op.all_to_all_single(output, input, group, async_op)
 
     def all_to_all(self,
                    output_tensor_list,
                    input_tensor_list,
                    group=None,
-                   async_op=False,
-                   block=False):
-        self.ccl_comm_op.all_to_all(output, input, block, group, async_op)
+                   async_op=False):
+        self.ccl_comm_op.all_to_all(output, input, group, async_op)
 
     def synchronize():
         self.ccl_comm_op.synchronize()
