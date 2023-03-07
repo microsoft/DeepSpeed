@@ -224,8 +224,8 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def op_builder_dir(self):
         try:
-            # during installation time op_builder is visible, otherwise return deepspeed.ops.op_builder
-            import op_builder  # noqa: F401
+            # during installation time op_builder is visible as a local path, otherwise return deepspeed.ops.op_builder
+            from .op_builder import builder  # noqa: F401
             return "op_builder"
         except ImportError:
             return "deepspeed.ops.op_builder"
