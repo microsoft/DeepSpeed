@@ -77,7 +77,7 @@ deepspeed --num_gpus <num_gpus> DeepSpeedExamples/inference/huggingface/text-gen
 ```
 
 
-To enable tensor parallelism, you need to use the flag `ds_inference`:
+To enable tensor parallelism, you need to use the flag `ds_inference` for the compatible models:
 
 ```bash
 deepspeed --num_gpus <num_gpus> DeepSpeedExamples/inference/huggingface/text-generation/inference-test.py --name <model> --batch_size <batch_size> --test_performance --ds_inference
