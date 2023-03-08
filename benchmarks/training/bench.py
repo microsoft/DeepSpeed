@@ -10,6 +10,8 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from abc import ABC, abstractmethod
 
+from model_configs import gpt2_configs
+
 
 def get_parameters_in_billions(model):
     gpus_per_model = int(os.getenv("WORLD_SIZE", "1"))
@@ -137,8 +139,7 @@ class GPT2ModelSetup(BenchModelSetup):
     def dataset(self):
         batch_size = self.ds_config.get("train_micro_batch_size_per_gpu")
         steps = self.args.steps
-        world_size = int(os.getenv("WORLD_SIZE", "1"))
-        size = batch_size * world_size * steps
+        size = batch_size * steps
         vocab_size = self.model_config.get("vocab_size")
         seq_length = self.model_config.get("seq_length")
         return SyntheticTokenDataset(size, vocab_size, seq_length)
@@ -153,15 +154,13 @@ class OPTModelSetup(BenchModelSetup):
     def model(self):
         hf_config = transformers.AutoConfig.from_pretrained(self.args.model_name)
         self.model_config["vocab_size"] = hf_config.vocab_size
-        hf_model = transformers.OPTForCausalLM(config=hf_config)
-        return hf_model
+        return transformers.OPTForCausalLM(config=hf_config)
 
     @property
     def dataset(self):
         batch_size = self.ds_config.get("train_micro_batch_size_per_gpu")
         steps = self.args.steps
-        world_size = int(os.getenv("WORLD_SIZE", "1"))
-        size = batch_size * world_size * steps
+        size = batch_size * steps
         vocab_size = self.model_config.get("vocab_size")
         seq_length = self.model_config.get("seq_length")
         return SyntheticTokenDataset(size, vocab_size, seq_length)
@@ -172,10 +171,19 @@ class OPTModelSetup(BenchModelSetup):
 
 
 def get_model_class(model_name):
-    if model_name.lower() == "gpt2":
+    if "gpt2" in model_name.lower():
         return GPT2ModelSetup
     elif "opt" in model_name.lower():
         return OPTModelSetup
+    else:
+        raise NotImplementedError(f"This benchmark does not yet support {model_name}")
+
+
+def get_model_config(model_name):
+    if "gpt2" in model_name.lower():
+        return gpt2_configs[model_name.lower()]
+    if "opt" in model_name.lower():
+        return {"seq_length": 256}
     else:
         raise NotImplementedError(f"This benchmark does not yet support {model_name}")
 
@@ -201,6 +209,7 @@ def deepspeed_bench(model_setup):
     for step, batch in enumerate(data):
         time_start = time.time_ns()
         for key, val in batch.items():
+            # print(key, val.shape)
             batch[key] = val.to(f"cuda:{local_rank}")
         outputs = model(**batch)
 
@@ -212,6 +221,16 @@ def deepspeed_bench(model_setup):
         if step >= model_setup.args.warmup:
             times.append((time_end - time_start) / (10**9))
 
+    # return throughput_calculator(
+    #    model_setup.model,
+    #    model_setup.ds_config["train_micro_batch_size_per_gpu"],
+    #    np.sum(times),
+    #    step,
+    #    model_setup.model_config["seq_length"],
+    #    model_setup.model_config["hidden_size"],
+    #    model_setup.model_config["depth"],
+    #    model_setup.model_config["vocab_size"],
+    # )
     return times
 
 
@@ -235,25 +254,21 @@ def parse_args():
         choices=(0, 1, 2, 3),
         help="zero stage",
     )
+    parser.add_argument(
+        "--offload", "-o", action="store_true", help="enable cpu offloading"
+    )
+    parser.add_argument(
+        "--batch-size-per-gpu", type=int, default=16, help="per-gpu micro batch size"
+    )
     args = parser.parse_args()
     return args
 
 
 def main():
     args = parse_args()
-    model_config = {
-        "seq_length": 128,
-        "vocab_size": 50257,
-        "hidden_size": 768,
-        "num_heads": 12,
-        "depth": 12,
-        "nume": 124439808,
-        "checkpoint": False,
-        "evaluation": "ppl",
-        "use_cache": False,
-    }
+    model_config = get_model_config(args.model_name)
     ds_config = {
-        "train_micro_batch_size_per_gpu": 16,
+        "train_micro_batch_size_per_gpu": args.batch_size_per_gpu,
         "optimizer": {"type": "Adam", "params": {"lr": 1e-4}},
         "fp16": {"enabled": True, "loss_scale": 32768},
         "zero_optimization": {
@@ -266,13 +281,14 @@ def main():
             "contiguous_gradients": True,
         },
     }
+    if args.offload:
+        ds_config["zero_optimization"]["offload_optimizer"] = {"device": "cpu"}
 
     model_setup = get_model_class(args.model_name)(
         model_config=model_config, ds_config=ds_config, args=args
     )
     times = deepspeed_bench(model_setup)
-    print(len(times))
-    print(np.mean(times))
+    print(f"Average time per step: {np.mean(times)}")
 
 
 if __name__ == "__main__":
