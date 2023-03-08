@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import os
 import time
 import pytest
@@ -5,6 +7,7 @@ import torch
 import deepspeed
 from transformers import pipeline
 from unit.common import DistributedTest
+from deepspeed.accelerator import get_accelerator
 
 
 @pytest.fixture
@@ -66,19 +69,18 @@ class TestModelProfiling(DistributedTest):
                                               dtype=dtype,
                                               mp_size=world_size,
                                               replace_with_kernel_inject=True,
-                                              replace_method="auto",
                                               enable_cuda_graph=cuda_graphs)
         pipe.model.profile_model_time(use_cuda_events=use_cuda_events)
 
         e2e_times = []
         model_times = []
         for _ in range(10):
-            torch.cuda.synchronize()
+            get_accelerator().synchronize()
             start = time.perf_counter_ns()
 
             r = pipe(query, **inf_kwargs)
 
-            torch.cuda.synchronize()
+            get_accelerator().synchronize()
             end = time.perf_counter_ns()
 
             e2e_times.append((end - start) / 1e6)  # convert ns to ms
