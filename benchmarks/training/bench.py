@@ -73,7 +73,9 @@ class GPTLMLoss(torch.nn.Module):
         super().__init__()
         self.loss = torch.nn.CrossEntropyLoss()
 
-    def forward(self, logits, labels):
+    def forward(self, outputs, batch):
+        logits = outputs.logits
+        labels = batch.get("labels")
         shift_logits = logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
         # Flatten the tokens
@@ -103,7 +105,7 @@ class SyntheticTokenDataset(Dataset):
 
 
 class BenchModelSetup(ABC):
-    def __init__(self, args, model_config, ds_config):
+    def __init__(self, args, model_config={}, ds_config={}):
         self.args = args
         self.model_config = model_config
         self.ds_config = ds_config
@@ -134,7 +136,7 @@ class GPT2ModelSetup(BenchModelSetup):
     @property
     def dataset(self):
         batch_size = self.ds_config.get("train_micro_batch_size_per_gpu")
-        steps = self.args.steps_per_epoch
+        steps = self.args.steps
         world_size = int(os.getenv("WORLD_SIZE", "1"))
         size = batch_size * world_size * steps
         vocab_size = self.model_config.get("vocab_size")
@@ -146,7 +148,36 @@ class GPT2ModelSetup(BenchModelSetup):
         return GPTLMLoss()
 
 
-model_classes = {"gpt2": GPT2ModelSetup}
+class OPTModelSetup(BenchModelSetup):
+    @property
+    def model(self):
+        hf_config = transformers.AutoConfig.from_pretrained(self.args.model_name)
+        self.model_config["vocab_size"] = hf_config.vocab_size
+        hf_model = transformers.OPTForCausalLM(config=hf_config)
+        return hf_model
+
+    @property
+    def dataset(self):
+        batch_size = self.ds_config.get("train_micro_batch_size_per_gpu")
+        steps = self.args.steps
+        world_size = int(os.getenv("WORLD_SIZE", "1"))
+        size = batch_size * world_size * steps
+        vocab_size = self.model_config.get("vocab_size")
+        seq_length = self.model_config.get("seq_length")
+        return SyntheticTokenDataset(size, vocab_size, seq_length)
+
+    @property
+    def criterion(self):
+        return lambda outputs, batch: outputs.loss
+
+
+def get_model_class(model_name):
+    if model_name.lower() == "gpt2":
+        return GPT2ModelSetup
+    elif "opt" in model_name.lower():
+        return OPTModelSetup
+    else:
+        raise NotImplementedError(f"This benchmark does not yet support {model_name}")
 
 
 def deepspeed_bench(model_setup):
@@ -173,7 +204,7 @@ def deepspeed_bench(model_setup):
             batch[key] = val.to(f"cuda:{local_rank}")
         outputs = model(**batch)
 
-        loss = criterion(outputs.logits, batch["labels"])
+        loss = criterion(outputs, batch)
         model.backward(loss)
         model.step()
         time_end = time.time_ns()
@@ -186,11 +217,8 @@ def deepspeed_bench(model_setup):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", "-m", type=str, help="hf model name")
-    parser.add_argument(
-        "--steps-per-epoch", "-s", type=int, default=50, help="steps per epoch"
-    )
-    parser.add_argument("--epochs", "-e", type=int, default=10, help="number of epochs")
+    parser.add_argument("--model-name", "-m", type=str, help="hf model name")
+    parser.add_argument("--steps", "-s", type=int, default=50, help="total steps")
     parser.add_argument(
         "--warmup",
         "-w",
@@ -199,13 +227,22 @@ def parse_args():
         help="number of steps before measuring performance",
     )
     parser.add_argument("--local_rank", type=int, default=0, help="local rank")
+    parser.add_argument(
+        "--zero-stage",
+        "-z",
+        type=int,
+        default=3,
+        choices=(0, 1, 2, 3),
+        help="zero stage",
+    )
     args = parser.parse_args()
     return args
 
 
 def main():
-    gpt2_config = {
-        "seq_length": 1024,
+    args = parse_args()
+    model_config = {
+        "seq_length": 128,
         "vocab_size": 50257,
         "hidden_size": 768,
         "num_heads": 12,
@@ -218,9 +255,9 @@ def main():
     ds_config = {
         "train_micro_batch_size_per_gpu": 16,
         "optimizer": {"type": "Adam", "params": {"lr": 1e-4}},
-        "fp16": {"enabled": True},
+        "fp16": {"enabled": True, "loss_scale": 32768},
         "zero_optimization": {
-            "stage": 3,
+            "stage": args.zero_stage,
             "allgather_partitions": True,
             "allgather_bucket_size": 2e8,
             "reduce_scatter": True,
@@ -229,12 +266,12 @@ def main():
             "contiguous_gradients": True,
         },
     }
-    args = parse_args()
 
-    model_setup = model_classes[args.model](
-        model_config=gpt2_config, ds_config=ds_config, args=args
+    model_setup = get_model_class(args.model_name)(
+        model_config=model_config, ds_config=ds_config, args=args
     )
     times = deepspeed_bench(model_setup)
+    print(len(times))
     print(np.mean(times))
 
 
