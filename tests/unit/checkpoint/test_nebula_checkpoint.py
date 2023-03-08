@@ -12,7 +12,6 @@ class TestNebulaCheckpoint(DistributedTest):
     world_size = 1
 
     def test_save_checkpoint(self, tmpdir):
-        print("list /dev/shm origin status: ", os.listdir("/dev/shm/"))
         for filename in glob.glob("/dev/shm/shm_name_partition_*"):
             os.remove(filename)
         print("list /dev/shm before save: ", os.listdir("/dev/shm/"))
