@@ -1,3 +1,6 @@
 [tool.yapf]
 split_all_comma_separated_values = true
 column_limit = 89
+
+[project.entry-points."pytest_randomly.random_seeder"]
+deepspeed = "deepspeed.runtime.utils:set_random_seed"
