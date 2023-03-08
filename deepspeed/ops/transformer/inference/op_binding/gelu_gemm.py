@@ -8,7 +8,9 @@ from .base import BaseOp
 class GELUGemmOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(GELUGemmOp, self).__init__(config)
-        if self.config.fp16:
+        if not torch.cuda.is_available():
+            self.fused_gemm_gelu = None
+        elif self.config.fp16:
             self.fused_gemm_gelu = self.inference_cuda_module.fused_gemm_gelu_fp16
         elif self.config.bf16:
             self.fused_gemm_gelu = self.inference_cuda_module.fused_gemm_gelu_bf16

@@ -8,6 +8,8 @@ from .base import BaseOp
 class SoftmaxOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(SoftmaxOp, self).__init__(config)
+        if not torch.cuda.is_available():
+            self.softmax_func = None
         if self.config.fp16:
             self.softmax_func = self.inference_cuda_module.softmax_fp16
         elif self.config.bf16:

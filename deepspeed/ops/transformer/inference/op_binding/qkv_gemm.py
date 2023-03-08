@@ -1,6 +1,7 @@
 '''Copyright The Microsoft DeepSpeed Team'''
 
 import torch
+import torch.nn.functional as F
 from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
 from deepspeed import comm as dist
@@ -9,7 +10,9 @@ from deepspeed import comm as dist
 class QKVGemmOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(QKVGemmOp, self).__init__(config)
-        if self.config.fp16:
+        if not torch.cuda.is_available():
+            self.qkv_gemm_func = None
+        elif self.config.fp16:
             self.qkv_gemm_func = self.inference_cuda_module.qkv_gemm_fp16
         elif self.config.bf16:
             self.qkv_gemm_func = self.inference_cuda_module.qkv_gemm_bf16
@@ -30,6 +33,12 @@ class QKVGemmOp(BaseOp):
         external_cache = self.config.bigscience_bloom
         rank = dist.get_rank() if dist.is_initialized() else 0
         q_int8 = self.config.q_int8
+        if self.qkv_gemm_func is None:
+            inp_norm = F.layer_norm(input, (input.shape[2],), gamma, beta, self.config.epsilon)
+            tmp = torch.matmul(inp_norm, weight)
+            if add_bias:
+                tmp += bias
+            return [tmp, inp_norm]
         output = self.qkv_gemm_func(input,
                                     weight,
                                     q_scale,

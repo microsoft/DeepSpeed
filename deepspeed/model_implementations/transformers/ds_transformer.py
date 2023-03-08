@@ -85,7 +85,8 @@ class DeepSpeedTransformerInference(nn.Module):
                                                device=device),
                                    requires_grad=False)
         self.layer_past = None
-        self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if (not config.fp16) else \
+        if torch.cuda.is_available():
+            self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if (not config.fp16) else \
                                 inference_cuda_module.allocate_workspace_fp16
 
     @classmethod
@@ -123,7 +124,7 @@ class DeepSpeedTransformerInference(nn.Module):
                       attn_mask) if attention_mask is None else attention_mask
 
         # Allocate memory only on first layer forward
-        if self.config.layer_id == 0:
+        if torch.cuda.is_available() and self.config.layer_id == 0:
             self.allocate_workspace(self.config.hidden_size,
                                     self.config.heads,
                                     input.size()[1],

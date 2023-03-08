@@ -1,6 +1,7 @@
 '''Copyright The Microsoft DeepSpeed Team'''
 
 import torch
+import torch.nn.functional as F
 from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
 
@@ -8,7 +9,9 @@ from .base import BaseOp
 class MLPGemmOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(MLPGemmOp, self).__init__(config)
-        if self.config.fp16:
+        if not torch.cuda.is_available():
+            self.mlp_gemm_func = None
+        elif self.config.fp16:
             self.mlp_gemm_func = self.inference_cuda_module.mlp_gemm_fp16
         elif self.config.bf16:
             self.mlp_gemm_func = self.inference_cuda_module.mlp_gemm_bf16
@@ -24,6 +27,13 @@ class MLPGemmOp(BaseOp):
                 bias: torch.Tensor,
                 gamma: torch.Tensor,
                 beta: torch.Tensor):
+        if self.mlp_gemm_func is None:
+            assert self.config.mlp_after_attn
+            inp_norm = F.layer_norm(input+residual+input_bias, (input.shape[2],), gamma, beta, self.config.epsilon)
+            tmp = torch.matmul(inp_norm, weight_interm)
+            tmp = F.gelu(tmp + bias)
+            tmp = torch.matmul(tmp, weight_out)
+            return tmp, inp_norm
         output, residual_add = self.mlp_gemm_func(
                                     input,
                                     residual,

@@ -9,7 +9,9 @@ from .base import BaseOp
 class SoftmaxContextOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(SoftmaxContextOp, self).__init__(config)
-        if self.config.fp16:
+        if not torch.cuda.is_available():
+            self.softmax_context_func = None
+        elif self.config.fp16:
             self.softmax_context_func = self.inference_cuda_module.softmax_context_fp16
         elif self.config.bf16:
             self.softmax_context_func = self.inference_cuda_module.softmax_context_bf16
