@@ -244,7 +244,7 @@ class TrainSchedule(PipeSchedule):
 
     def num_pipe_buffers(self):
         """Return the number of pipeline buffers required for this stage.
-        
+
         This is equivalent to the maximum number of in-flight forward passes,
         since we need to remember the activations of forward passes in order
         to run backpropagation. For synchronous 1F1B, this is equivalent to
