@@ -686,7 +686,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if not self.overlap_comm:
             for i, group in enumerate(self.bit16_groups):
                 for param in group:
-                    self.point_grad_reduc(param)
+                    self.set_grad_reduc_pointer(param)
                     if param.grad_reduc is not None:
                         self.reduce_ready_partitions_and_remove_grads(param, i)
         # reduce any pending grads in either hook/non-hook case
@@ -863,13 +863,13 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     if self.use_grad_accum_for_reduction:
                         param.grad = None
 
-    def point_grad_accum(self):
+    def set_grad_accum_pointer(self):
         for group in self.bit16_groups:
             for param in group:
                 param.grad_accum = param.grad
 
     # Clear the tensor the reduction gradient attribute is pointing to
-    def clear_grad_reduc(self, param):
+    def clear_grad_reduc_pointer(self, param):
         param.grad_reduc = None
         if self.use_grad_accum_for_reduction:
             param.grad_accum = None
@@ -877,7 +877,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             param.grad = None
 
     # Point to the gradient tensor to use in reduction
-    def point_grad_reduc(self, param):
+    def set_grad_reduc_pointer(self, param):
         if self.use_grad_accum_for_reduction:
             param.grad_reduc = param.grad_accum
         else:
@@ -928,7 +928,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     ############### Independent Partition Gradient ########################
     def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):
         if param.grad_reduc is None:
-            self.point_grad_reduc(param)
+            self.set_grad_reduc_pointer(param)
 
         if self.elements_in_ipg_bucket + param.numel() > self.reduce_bucket_size:
             self.report_ipg_memory_usage("In ipg_remove_grads before reduce_ipg_grads",
@@ -1386,7 +1386,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                                 self.previous_reduced_grads = []
                             self.previous_reduced_grads.append(param)
                         else:
-                            self.clear_grad_reduc(param)
+                            self.clear_grad_reduc_pointer(param)
                     elif self.contiguous_gradients:
                         self.copy_grads_in_partition(param)
                 else:  # zero stage 1 - partition only optimizer state
@@ -1503,7 +1503,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def _clear_previous_reduced_grads(self):
         if self.previous_reduced_grads is not None:
             for param in self.previous_reduced_grads:
-                self.clear_grad_reduc(param)
+                self.clear_grad_reduc_pointer(param)
             self.previous_reduced_grads = None
 
     # if rank is specified do a reduction instead of an allreduce
@@ -2109,7 +2109,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.use_separate_grad_accum and not self.partition_gradients:
             self.update_separate_grad_accum()
         else:
-            self.point_grad_accum()
+            self.set_grad_accum_pointer()
 
     def check_overflow(self, partition_gradients=True):
         self._check_overflow(partition_gradients)
