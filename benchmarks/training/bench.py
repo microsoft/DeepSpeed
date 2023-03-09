@@ -1,4 +1,4 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+"""Copyright The Microsoft DeepSpeed Team"""
 
 # Usage:
 # deepspeed --num_gpus 1 --model-name facebook/opt1.3b --steps 100 --offload --batch-size-per-gpu 32 --zero-stage 3
@@ -253,7 +253,6 @@ def parse_args():
         default=5,
         help="number of steps before measuring performance",
     )
-    parser.add_argument("--local_rank", type=int, default=0, help="local rank")
     parser.add_argument(
         "--zero-stage",
         "-z",
@@ -272,6 +271,18 @@ def parse_args():
         default=16,
         help="per-gpu micro batch size",
     )
+    parser.add_argument(
+        "--local_rank",
+        type=int,
+        default=int(os.getenv("LOCAL_RANK", "0")),
+        help="local rank",
+    )
+    parser.add_argument(
+        "--world_size",
+        type=int,
+        default=int(os.getenv("WORLD_SIZE", "1")),
+        help="world size",
+    )
     args = parser.parse_args()
     return args
 
@@ -281,7 +292,7 @@ def main():
     model_config = get_model_config(args.model_name)
     ds_config = {
         "train_micro_batch_size_per_gpu": args.batch_size_per_gpu,
-        "train_batch_size": args.batch_size_per_gpu,
+        "train_batch_size": args.batch_size_per_gpu * args.world_size,
         "gradient_accumulation_steps": 1,
         "zero_optimization": {
             "stage": args.zero_stage,
