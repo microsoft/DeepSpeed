@@ -9,6 +9,8 @@ import numpy as np
 
 from torch.utils.data import Dataset, DataLoader
 from abc import ABC, abstractmethod
+from deepspeed.runtime.utils import see_memory_usage
+from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 from model_configs import gpt2_configs
 
@@ -183,7 +185,7 @@ def get_model_config(model_name):
     if "gpt2" in model_name.lower():
         return gpt2_configs[model_name.lower()]
     if "opt" in model_name.lower():
-        return {"seq_length": 256}
+        return {"seq_length": 1024}
     else:
         raise NotImplementedError(f"This benchmark does not yet support {model_name}")
 
@@ -193,10 +195,13 @@ def deepspeed_bench(model_setup):
     dataset = model_setup.dataset
     criterion = model_setup.criterion
 
-    model, _, _, _ = deepspeed.initialize(
+    optimizer = DeepSpeedCPUAdam(hf_model.parameters(), lr=1e-4)
+    hf_model.gradient_checkpointing_enable()
+    model, optimizer, _, _ = deepspeed.initialize(
         model=hf_model,
         model_parameters=hf_model.parameters(),
         config=model_setup.ds_config,
+        optimizer=optimizer,
     )
     model.train()
 
@@ -204,18 +209,15 @@ def deepspeed_bench(model_setup):
         dataset, batch_size=model_setup.ds_config["train_micro_batch_size_per_gpu"]
     )
 
-    local_rank = int(os.getenv("LOCAL_RANK", "0"))
     times = []
     for step, batch in enumerate(data):
         time_start = time.time_ns()
         for key, val in batch.items():
-            # print(key, val.shape)
-            batch[key] = val.to(f"cuda:{local_rank}")
+            batch[key] = val.to(f"cuda:{model_setup.args.local_rank}")
         outputs = model(**batch)
-
         loss = criterion(outputs, batch)
         model.backward(loss)
-        model.step()
+        optimizer.step()
         time_end = time.time_ns()
 
         if step >= model_setup.args.warmup:
@@ -258,7 +260,11 @@ def parse_args():
         "--offload", "-o", action="store_true", help="enable cpu offloading"
     )
     parser.add_argument(
-        "--batch-size-per-gpu", type=int, default=16, help="per-gpu micro batch size"
+        "--batch-size-per-gpu",
+        "-b",
+        type=int,
+        default=16,
+        help="per-gpu micro batch size",
     )
     args = parser.parse_args()
     return args
@@ -269,24 +275,22 @@ def main():
     model_config = get_model_config(args.model_name)
     ds_config = {
         "train_micro_batch_size_per_gpu": args.batch_size_per_gpu,
-        "optimizer": {"type": "Adam", "params": {"lr": 1e-4}},
-        "fp16": {"enabled": True, "loss_scale": 32768},
+        "train_batch_size": args.batch_size_per_gpu,
+        "gradient_accumulation_steps": 1,
         "zero_optimization": {
             "stage": args.zero_stage,
-            "allgather_partitions": True,
-            "allgather_bucket_size": 2e8,
-            "reduce_scatter": True,
-            "reduce_bucket_size": 2e8,
-            "overlap_comm": True,
-            "contiguous_gradients": True,
         },
+        "steps_per_print": 100000000,
+        "fp16": {"enabled": True, "initial_scale_power": 10},
     }
     if args.offload:
         ds_config["zero_optimization"]["offload_optimizer"] = {"device": "cpu"}
+        ds_config["zero_optimization"]["offload_param"] = {"device": "cpu"}
 
     model_setup = get_model_class(args.model_name)(
         model_config=model_config, ds_config=ds_config, args=args
     )
+
     times = deepspeed_bench(model_setup)
     print(f"Average time per step: {np.mean(times)}")
 
