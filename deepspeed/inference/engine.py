@@ -526,6 +526,7 @@ class InferenceEngine(Module):
 
     def _local_cuda_graph_used(self, module):
         if isinstance(module, torch.nn.Module):
+            # TODO (lekurile): Add general recursive local CG search code here for non-SD cases
             return False
         else:
             sub_module_cuda_graph = False
