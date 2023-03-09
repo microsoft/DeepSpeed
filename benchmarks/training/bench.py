@@ -1,3 +1,9 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
+# Usage:
+# deepspeed --num_gpus 1 --model-name facebook/opt1.3b --steps 100 --offload --batch-size-per-gpu 32 --zero-stage 3
+# Supports models: GPT2 (see model_config.py for all variants), facebook/opt-*
+
 import torch
 import deepspeed
 import transformers
