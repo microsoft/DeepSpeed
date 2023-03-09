@@ -229,6 +229,10 @@ def get_all_subclasses(cls):
     return set(subclass_list)
 
 
+def get_all_wrapped_classes():
+    return functools.reduce(lambda x, y: x.union(y), [ctx.wrapped_cls for ctx in zero_init_context], set())
+
+
 @instrument_w_nvtx
 def free_param(param: Parameter) -> None:
     """Free underlying storage of a parameter."""
@@ -377,7 +381,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         # Replace .__init__() for all existing subclasses of torch.nn.Module recursively
         global zero_init_context
         self.nest_level = len(zero_init_context)
-        all_wrapped_classes = functools.reduce(lambda x, y: x.union(y), [ctx.wrapped_cls for ctx in zero_init_context], set())
+        all_wrapped_classes = get_all_wrapped_classes()
         
         for subclass in get_all_subclasses(torch.nn.modules.module.Module):
             # Only wrap classes that haven't been wrapped yet
@@ -421,10 +425,16 @@ class InsertPostInitMethodToModuleSubClasses(object):
         if not self.enabled:
             return
 
-        global zero_init_context
+        all_wrapped_classes = get_all_wrapped_classes()
+        for subclass in get_all_subclasses(torch.nn.modules.module.Module):
+            if subclass not in all_wrapped_classes:
+                msg = f"`{subclass.__name__}' was not properly set up for sharding by zero.Init(). Any subclass of torch.nn.Module must be defined before zero.Init() where an instance of the class is created."
+                raise RuntimeError(msg)
+
         self.remove_wrappers()
         
         # Exiting the top level context
+        global zero_init_context
         zero_init_context.pop()
         if self.nest_level == 0:
             if dist.get_rank() == 0:
