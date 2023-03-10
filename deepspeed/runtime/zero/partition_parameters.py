@@ -37,6 +37,7 @@ from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwa
 param_count = 0
 partitioned_param_data_shape = [0]
 zero_init_context = []
+all_wrapped_classes = set()
 
 
 def _dist_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group=None):
@@ -229,10 +230,6 @@ def get_all_subclasses(cls):
     return set(subclass_list)
 
 
-def get_all_wrapped_classes():
-    return functools.reduce(lambda x, y: x.union(y), [ctx.wrapped_cls for ctx in zero_init_context], set())
-
-
 @instrument_w_nvtx
 def free_param(param: Parameter) -> None:
     """Free underlying storage of a parameter."""
@@ -381,13 +378,15 @@ class InsertPostInitMethodToModuleSubClasses(object):
         # Replace .__init__() for all existing subclasses of torch.nn.Module recursively
         global zero_init_context
         self.nest_level = len(zero_init_context)
-        all_wrapped_classes = get_all_wrapped_classes()
-        
+
+        global all_wrapped_classes
         for subclass in get_all_subclasses(torch.nn.modules.module.Module):
             # Only wrap classes that haven't been wrapped yet
             if subclass not in all_wrapped_classes:
                 _enable_class(subclass)
                 self.wrapped_cls.add(subclass)
+
+        all_wrapped_classes = all_wrapped_classes.union(self.wrapped_cls)
 
         # Wrap some functions only at top level call of Init
         if self.nest_level == 0:
@@ -397,17 +396,24 @@ class InsertPostInitMethodToModuleSubClasses(object):
             torch.Tensor.__old_new__ = torch.Tensor.__new__
 
             # Replace .__init__() for future subclasses of torch.nn.Module
-            torch.nn.modules.module.Module.__init_subclass__ = classmethod(_init_subclass)
+            torch.nn.modules.module.Module.__init_subclass__ = classmethod(
+                _init_subclass)
             torch.nn.modules.module.Module.apply = apply_with_gather(
                 torch.nn.modules.module.Module._old_apply)
 
             torch.Tensor.__new__ = get_new_tensor_fn_for_dtype(self.dtype)
-            torch.empty = zero_wrapper_for_fp_tensor_constructor(_orig_torch_empty,
-                                                                self.dtype)
-            torch.zeros = zero_wrapper_for_fp_tensor_constructor(_orig_torch_zeros,
-                                                                self.dtype)
-            torch.ones = zero_wrapper_for_fp_tensor_constructor(_orig_torch_ones, self.dtype)
-            torch.full = zero_wrapper_for_fp_tensor_constructor(_orig_torch_full, self.dtype)
+            torch.empty = zero_wrapper_for_fp_tensor_constructor(
+                _orig_torch_empty,
+                self.dtype)
+            torch.zeros = zero_wrapper_for_fp_tensor_constructor(
+                _orig_torch_zeros,
+                self.dtype)
+            torch.ones = zero_wrapper_for_fp_tensor_constructor(
+                _orig_torch_ones,
+                self.dtype)
+            torch.full = zero_wrapper_for_fp_tensor_constructor(
+                _orig_torch_full,
+                self.dtype)
 
             if self.mem_efficient_linear:
                 print_rank_0(
@@ -420,19 +426,12 @@ class InsertPostInitMethodToModuleSubClasses(object):
 
         zero_init_context.append(self)
 
-
     def __exit__(self, exc_type, exc_value, traceback):
         if not self.enabled:
             return
 
-        all_wrapped_classes = get_all_wrapped_classes()
-        for subclass in get_all_subclasses(torch.nn.modules.module.Module):
-            if subclass not in all_wrapped_classes:
-                msg = f"`{subclass.__name__}' was not properly set up for sharding by zero.Init(). Any subclass of torch.nn.Module must be defined before zero.Init() where an instance of the class is created."
-                raise RuntimeError(msg)
-
         self.remove_wrappers()
-        
+
         # Exiting the top level context
         global zero_init_context
         zero_init_context.pop()
@@ -464,7 +463,6 @@ class InsertPostInitMethodToModuleSubClasses(object):
             self.dtype = dtype or torch.half
 
     def remove_wrappers(self):
-
         def _disable_class(cls):
             cls.__init__ = cls._old_init
 
@@ -491,6 +489,13 @@ class InsertPostInitMethodToModuleSubClasses(object):
             #            torch.nn.functional.linear = self.linear_bk
 
             self.torch_func_wrapped = False
+
+            global all_wrapped_classes
+            for subclass in get_all_subclasses(torch.nn.modules.module.Module):
+                if subclass not in all_wrapped_classes:
+                    msg = f"`{subclass}' was not properly set up for sharding by zero.Init(). A subclass of torch.nn.Module must be defined before zero.Init() where an instance of the class is created."
+                    raise RuntimeError(msg)
+            all_wrapped_classes.clear()
 
 
 def shutdown_init_context():
@@ -1635,8 +1640,6 @@ class GatheredParameters:
         If this approach is not used, then the full model will first be copied to each GPU. For models
         bigger than the memory of a single GPU, this method is required.
         """
-
-        print(f"GatheredParameters={enabled}")
 
         self.enabled = enabled
         if not enabled:
