@@ -11,6 +11,8 @@ class SoftmaxContextOp(BaseOp):
         super(SoftmaxContextOp, self).__init__(config)
         if self.config.fp16:
             self.softmax_context_func = self.inference_cuda_module.softmax_context_fp16
+        elif self.config.bf16:
+            self.softmax_context_func = self.inference_cuda_module.softmax_context_bf16
         else:
             self.softmax_context_func = self.inference_cuda_module.softmax_context_fp32
 

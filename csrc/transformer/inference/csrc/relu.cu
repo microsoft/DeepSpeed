@@ -60,4 +60,9 @@ void launch_bias_relu(T* input,
 }
 
 template void launch_bias_relu<float>(float*, const float*, int, int, cudaStream_t);
+template void launch_bias_relu<__nv_bfloat16>(__nv_bfloat16*,
+                                              const __nv_bfloat16*,
+                                              int,
+                                              int,
+                                              cudaStream_t);
 template void launch_bias_relu<__half>(__half*, const __half*, int, int, cudaStream_t);

@@ -10,6 +10,8 @@ class VectorMatMulOp(BaseOp):
         super(VectorMatMulOp, self).__init__(config)
         if self.config.fp16:
             self.vector_matmul_func = self.inference_cuda_module.vector_matmul_fp16
+        elif self.config.bf16:
+            self.vector_matmul_func = self.inference_cuda_module.vector_matmul_bf16
         else:
             self.vector_matmul_func = self.inference_cuda_module.vector_matmul_fp32
 

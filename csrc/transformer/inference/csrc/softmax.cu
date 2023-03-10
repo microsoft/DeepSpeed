@@ -3,6 +3,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 */
 
 #include <limits>
+#include "conversion_utils.h"
 #include "inference_cuda_layers.h"
 
 #ifndef __HIP_PLATFORM_HCC__
@@ -30,9 +31,10 @@ void CheckCudaErrorAux(const char* file, unsigned line)
 
 namespace cg = cooperative_groups;
 
-__global__ void attn_softmax_v2(__half* vals,
-                                __half* mask,
-                                __half* alibi,
+template <typename T>
+__global__ void attn_softmax_v2(T* vals,
+                                T* mask,
+                                T* alibi,
                                 float layer_scale,
                                 bool triangular,
                                 bool recompute,
@@ -53,7 +55,7 @@ __global__ void attn_softmax_v2(__half* vals,
 
     float2 low_data[MAX_REG_SIZE];
     float2 high_data[MAX_REG_SIZE];
-    const __half zero_h = __float2half(0.f);
+    const T zero_h = conversion::to<T>(0.f);
 
     int wid = threadIdx.x >> 5;
     int lane = threadIdx.x & 0x1f;
@@ -92,65 +94,69 @@ __global__ void attn_softmax_v2(__half* vals,
                 data_id < sequence_length) {
                 if ((sequence_length - data_id) >= 4) {
                     low_data[i].x = data_id > window_stride
-                                        ? __half2float(vals[data_id]) * layer_scale
+                                        ? conversion::to<float>(vals[data_id]) * layer_scale
                                         : minus_infinity;
                     low_data[i].y = ((!triangular || ((data_id + 1) <= seq_id)) &&
                                      (data_id + 1) > window_stride)
-                                        ? __half2float(vals[data_id + 1]) * layer_scale
+                                        ? conversion::to<float>(vals[data_id + 1]) * layer_scale
                                         : minus_infinity;
                     high_data[i].x = ((!triangular || ((data_id + 2) <= seq_id)) &&
                                       (data_id + 2) > window_stride)
-                                         ? __half2float(vals[data_id + 2]) * layer_scale
+                                         ? conversion::to<float>(vals[data_id + 2]) * layer_scale
                                          : minus_infinity;
                     high_data[i].y = ((!triangular || ((data_id + 3) <= seq_id)) &&
                                       (data_id + 3) > window_stride)
-                                         ? __half2float(vals[data_id + 3]) * layer_scale
+                                         ? conversion::to<float>(vals[data_id + 3]) * layer_scale
                                          : minus_infinity;
                     if (alibi) {
-                        low_data[i].x = low_data[i].x + __half2float(alibi[data_id + alibi_offset]);
-                        low_data[i].y =
-                            low_data[i].y + __half2float(alibi[data_id + alibi_offset + 1]);
-                        high_data[i].x =
-                            high_data[i].x + __half2float(alibi[data_id + alibi_offset + 2]);
-                        high_data[i].y =
-                            high_data[i].y + __half2float(alibi[data_id + alibi_offset + 3]);
+                        low_data[i].x =
+                            low_data[i].x + conversion::to<float>(alibi[data_id + alibi_offset]);
+                        low_data[i].y = low_data[i].y +
+                                        conversion::to<float>(alibi[data_id + alibi_offset + 1]);
+                        high_data[i].x = high_data[i].x +
+                                         conversion::to<float>(alibi[data_id + alibi_offset + 2]);
+                        high_data[i].y = high_data[i].y +
+                                         conversion::to<float>(alibi[data_id + alibi_offset + 3]);
                     }
                     if (mask) {
-                        low_data[i].x += __half2float(mask[data_id + mask_offset]);
-                        low_data[i].y += __half2float(mask[data_id + mask_offset + 1]);
-                        high_data[i].x += __half2float(mask[data_id + mask_offset + 2]);
-                        high_data[i].y += __half2float(mask[data_id + mask_offset + 3]);
+                        low_data[i].x += conversion::to<float>(mask[data_id + mask_offset]);
+                        low_data[i].y += conversion::to<float>(mask[data_id + mask_offset + 1]);
+                        high_data[i].x += conversion::to<float>(mask[data_id + mask_offset + 2]);
+                        high_data[i].y += conversion::to<float>(mask[data_id + mask_offset + 3]);
                     }
                 } else {
                     low_data[i].x = data_id > window_stride
-                                        ? __half2float(vals[data_id]) * layer_scale
+                                        ? conversion::to<float>(vals[data_id]) * layer_scale
                                         : minus_infinity;
                     low_data[i].y = (((!triangular || (data_id + 1) <= seq_id) &&
                                       (data_id + 1) > window_stride) &&
                                      (data_id + 1) < sequence_length)
-                                        ? __half2float(vals[data_id + 1]) * layer_scale
+                                        ? conversion::to<float>(vals[data_id + 1]) * layer_scale
                                         : minus_infinity;
                     high_data[i].x = (((!triangular || (data_id + 2) <= seq_id) &&
                                        (data_id + 2) > window_stride) &&
                                       (data_id + 2) < sequence_length)
-                                         ? __half2float(vals[data_id + 2]) * layer_scale
+                                         ? conversion::to<float>(vals[data_id + 2]) * layer_scale
                                          : minus_infinity;
                     if (alibi) {
-                        low_data[i].x = low_data[i].x + __half2float(alibi[data_id + alibi_offset]);
+                        low_data[i].x =
+                            low_data[i].x + conversion::to<float>(alibi[data_id + alibi_offset]);
                         if ((data_id + 1) < sequence_length)
-                            low_data[i].y =
-                                low_data[i].y + __half2float(alibi[data_id + alibi_offset + 1]);
+                            low_data[i].y = low_data[i].y + conversion::to<float>(
+                                                                alibi[data_id + alibi_offset + 1]);
                         if ((data_id + 2) < sequence_length)
                             high_data[i].x =
-                                high_data[i].x + __half2float(alibi[data_id + alibi_offset + 2]);
+                                high_data[i].x +
+                                conversion::to<float>(alibi[data_id + alibi_offset + 2]);
                     }
                     high_data[i].y = minus_infinity;
                     if (mask) {
-                        low_data[i].x += __half2float(mask[data_id + mask_offset]);
+                        low_data[i].x += conversion::to<float>(mask[data_id + mask_offset]);
                         if ((data_id + 1) < sequence_length)
-                            low_data[i].y += __half2float(mask[data_id + mask_offset + 1]);
+                            low_data[i].y += conversion::to<float>(mask[data_id + mask_offset + 1]);
                         if ((data_id + 2) < sequence_length)
-                            high_data[i].x += __half2float(mask[data_id + mask_offset + 2]);
+                            high_data[i].x +=
+                                conversion::to<float>(mask[data_id + mask_offset + 2]);
                     }
                 }
                 // if(lane == 0) printf("%f , %d, %d \n", low_data[i].x, data_id, seq_id);
@@ -216,16 +222,16 @@ __global__ void attn_softmax_v2(__half* vals,
 
             if (data_id < sequence_length) {
                 if ((sequence_length - data_id) >= 4) {
-                    vals[data_id] = __float2half(low_data[i].x / sum);
-                    vals[data_id + 1] = __float2half(low_data[i].y / sum);
-                    vals[data_id + 2] = __float2half(high_data[i].x / sum);
-                    vals[data_id + 3] = __float2half(high_data[i].y / sum);
+                    vals[data_id] = conversion::to<T>(low_data[i].x / sum);
+                    vals[data_id + 1] = conversion::to<T>(low_data[i].y / sum);
+                    vals[data_id + 2] = conversion::to<T>(high_data[i].x / sum);
+                    vals[data_id + 3] = conversion::to<T>(high_data[i].y / sum);
                 } else {
-                    vals[data_id] = __float2half(low_data[i].x / sum);
+                    vals[data_id] = conversion::to<T>(low_data[i].x / sum);
                     if ((data_id + 1) < sequence_length)
-                        vals[data_id + 1] = __float2half(low_data[i].y / sum);
+                        vals[data_id + 1] = conversion::to<T>(low_data[i].y / sum);
                     if ((data_id + 2) < sequence_length)
-                        vals[data_id + 2] = __float2half(high_data[i].x / sum);
+                        vals[data_id + 2] = conversion::to<T>(high_data[i].x / sum);
                 }
             }
         }
@@ -470,6 +476,24 @@ template void launch_attn_softmax_v2(float* vals,
                                      int mask_stride,
                                      int mp_size,
                                      cudaStream_t stream);
+
+template void launch_attn_softmax_v2(__nv_bfloat16* vals,
+                                     __nv_bfloat16* mask,
+                                     __nv_bfloat16* alibi,
+                                     float layer_scale,
+                                     bool triangular,
+                                     bool recompute,
+                                     bool local_attention,
+                                     int window_size,
+                                     int batch_size,
+                                     int heads,
+                                     int num_seq,
+                                     int sequence_length,
+                                     int head_offset,
+                                     int mask_stride,
+                                     int mp_size,
+                                     cudaStream_t stream);
+
 template void launch_attn_softmax_v2(__half* vals,
                                      __half* mask,
                                      __half* alibi,
@@ -486,3 +510,39 @@ template void launch_attn_softmax_v2(__half* vals,
                                      int mask_stride,
                                      int mp_size,
                                      cudaStream_t stream);
+
+template __global__ void attn_softmax_v2(__half* vals,
+                                         __half* mask,
+                                         __half* alibi,
+                                         float layer_scale,
+                                         bool triangular,
+                                         bool recompute,
+                                         bool local_attention,
+                                         int window_size,
+                                         int total_count,
+                                         int heads,
+                                         int sequence_length,
+                                         int num_seq,
+                                         int head_offset,
+                                         int mask_stride,
+                                         int mp_size,
+                                         int iterations,
+                                         int reduceWidth);
+
+template __global__ void attn_softmax_v2(__nv_bfloat16* vals,
+                                         __nv_bfloat16* mask,
+                                         __nv_bfloat16* alibi,
+                                         float layer_scale,
+                                         bool triangular,
+                                         bool recompute,
+                                         bool local_attention,
+                                         int window_size,
+                                         int total_count,
+                                         int heads,
+                                         int sequence_length,
+                                         int num_seq,
+                                         int head_offset,
+                                         int mask_stride,
+                                         int mp_size,
+                                         int iterations,
+                                         int reduceWidth);

@@ -7,6 +7,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #include "ds_kernel_utils.h"
 
 #include <cuda.h>
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <stdio.h>
 #include <stdlib.h>

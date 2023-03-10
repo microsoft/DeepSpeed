@@ -46,7 +46,7 @@ class DeepSpeedTransformerInference(nn.Module):
         self.config.layer_id = DeepSpeedTransformerInference.layer_id
         DeepSpeedTransformerInference.layer_id += 1
 
-        data_type = torch.half if config.fp16 else torch.float
+        data_type = torch.half if config.fp16 else torch.bfloat16 if config.bf16 else torch.float
         global inference_cuda_module
         if inference_cuda_module is None:
             builder = InferenceBuilder()

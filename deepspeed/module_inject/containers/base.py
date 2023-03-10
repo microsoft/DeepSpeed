@@ -86,6 +86,7 @@ class BaseTransformerContainer(ABC):
             heads=self.num_attention_heads,
             layer_norm_eps=self.layer_norm_eps,
             fp16=self.fp16,
+            bf16=self.bf16,
             pre_layer_norm=self.pre_layer_norm,
             mp_size=self.mp_size,
             q_int8=self.quantize,
@@ -123,9 +124,19 @@ class BaseTransformerContainer(ABC):
 
                 if isinstance(v, torch.Tensor) or isinstance(v, torch.nn.Parameter):
                     self.__dict__[k] = v.half()
+        if dtype == torch.bfloat16:
+            for k, v in self.__dict__.items():
+                # The list comprehension is used for MoE tensor lists
+                if isinstance(v, list) and all((isinstance(tensor, torch.Tensor) \
+                   or isinstance(tensor, torch.nn.Parameter)) for tensor in v):
+                    self.__dict__[k] = [moe_tensor.bfloat() for moe_tensor in v]
 
-    def set_dtype(self, fp16=False):
+                if isinstance(v, torch.Tensor) or isinstance(v, torch.nn.Parameter):
+                    self.__dict__[k] = v.bfloat16()
+
+    def set_dtype(self, fp16=False, bf16=False):
         self.fp16 = fp16
+        self.bf16 = bf16
 
     def set_moe(self, moe=False):
         self.moe = moe

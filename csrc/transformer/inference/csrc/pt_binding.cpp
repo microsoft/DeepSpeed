@@ -6,6 +6,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #include <torch/extension.h>
 #include <stdexcept>
 #include <vector>
+#include "cuda_bf16.h"
 #include "inference_context.h"
 #include "inference_cublas_wrappers.h"
 #include "inference_cuda_layers.h"
@@ -1701,9 +1702,13 @@ at::Tensor moe_res_matmul(at::Tensor& moe_res, at::Tensor& coef, at::Tensor& out
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("softmax_fp32", &ds_softmax<float>, "DeepSpeed SoftMax with fp32 (CUDA)");
+    m.def("softmax_bf16", &ds_softmax<__nv_bfloat16>, "DeepSpeed SoftMax with bf16 (CUDA)");
     m.def("softmax_fp16", &ds_softmax<__half>, "DeepSpeed SoftMax with fp16 (CUDA)");
     m.def(
         "softmax_context_fp32", &ds_softmax_context<float>, "DeepSpeed attention with fp32 (CUDA)");
+    m.def("softmax_context_bf16",
+          &ds_softmax_context<__nv_bfloat16>,
+          "DeepSpeed attention with bf16 (CUDA)");
     m.def("softmax_context_fp16",
           &ds_softmax_context<__half>,
           "DeepSpeed attention with fp16 (CUDA)");
@@ -1711,15 +1716,21 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           &ds_softmax_context1<__half>,
           "DeepSpeed attention with int8 (CUDA)");
     m.def("bias_gelu_fp32", &ds_bias_gelu<float>, "DeepSpeed Gelu with fp32 (CUDA)");
+    m.def("bias_gelu_bf16", &ds_bias_gelu<__nv_bfloat16>, "DeepSpeed Gelu with bf16 (CUDA)");
     m.def("bias_gelu_fp16", &ds_bias_gelu<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
     m.def("bias_geglu", &ds_bias_geglu, "DeepSpeed Bias GEGLU (CUDA)");
     m.def("bias_add_fp32", &ds_bias_add<float>, "DeepSpeed Bias Add with fp32 (CUDA)");
+    m.def("bias_add_bf16", &ds_bias_add<__nv_bfloat16>, "DeepSpeed Gelu with bf16 (CUDA)");
     m.def("bias_add_fp16", &ds_bias_add<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
     m.def("bias_relu_fp32", &ds_bias_relu<float>, "DeepSpeed ReLU with fp32 (CUDA)");
+    m.def("bias_relu_bf16", &ds_bias_relu<__nv_bfloat16>, "DeepSpeed ReLU with bf16 (CUDA)");
     m.def("bias_relu_fp16", &ds_bias_relu<__half>, "DeepSpeed ReLU with fp16 (CUDA)");
     m.def("bias_residual_fp32",
           &ds_bias_residual<float>,
           "DeepSpeed residual-bias add with fp32 (CUDA)");
+    m.def("bias_residual_bf16",
+          &ds_bias_residual<__nv_bfloat16>,
+          "DeepSpeed residual-bias add with bf16 (CUDA)");
     m.def("bias_residual_fp16",
           &ds_bias_residual<__half>,
           "DeepSpeed residual-bias add with fp16 (CUDA)");
@@ -1730,26 +1741,39 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           &ds_layer_norm_residual_store_pre_ln_res,
           "DeepSpeed layer norm + store pre Layernorm residual (CUDA)");
     m.def("qkv_gemm_fp32", &ds_qkv_gemm<float>, "DeepSpeed qkv gemm with fp32 (CUDA)");
+    m.def("qkv_gemm_bf16", &ds_qkv_gemm<__nv_bfloat16>, "DeepSpeed qkv gemm with bf16 (CUDA)");
     m.def("qkv_gemm_fp16", &ds_qkv_gemm<__half>, "DeepSpeed qkv gemm with fp16 (CUDA)");
     m.def("qkv_gemm_int8", &ds_qkv_gemm_int8<__half>, "DeepSpeed qkv gemm with int8 (CUDA)");
     m.def("mlp_gemm_fp32", &ds_mlp_gemm<float>, "DeepSpeed mlp with fp32 (CUDA)");
+    m.def("mlp_gemm_bf16", &ds_mlp_gemm<__nv_bfloat16>, "DeepSpeed mlp with bf16 (CUDA)");
     m.def("mlp_gemm_fp16", &ds_mlp_gemm<__half>, "DeepSpeed mlp with fp16 (CUDA)");
     m.def("mlp_gemm_int8", &ds_mlp_gemm_int8<__half>, "DeepSpeed mlp with int8 (CUDA)");
     m.def("vector_matmul_fp32", &ds_vector_matmul<float>, "DeepSpeed vector-MM with fp32 (CUDA)");
+    m.def("vector_matmul_bf16",
+          &ds_vector_matmul<__nv_bfloat16>,
+          "DeepSpeed vector-MM with bf16 (CUDA)");
     m.def("vector_matmul_fp16", &ds_vector_matmul<__half>, "DeepSpeed vector-MM with fp16 (CUDA)");
     m.def("vector_matmul_int8",
           &ds_vector_matmul_int8<__half>,
           "DeepSpeed vector-MM with int8 (CUDA)");
     m.def("linear_layer_fp32", &ds_linear_layer<float>, "DeepSpeed linear_layer with fp32 (CUDA)");
+    m.def("linear_layer_bf16",
+          &ds_linear_layer<__nv_bfloat16>,
+          "DeepSpeed linear_layer with bf16 (CUDA)");
     m.def("linear_layer_fp16", &ds_linear_layer<__half>, "DeepSpeed linear_layer with fp16 (CUDA)");
     m.def("linear_layer_int8",
           &ds_linear_layer_int8<__half>,
           "DeepSpeed linear_layer with int8 (CUDA)");
     m.def("fused_gemm_gelu_fp32", &fused_gemm_gelu<float>, "DeepSpeed mlp with fp32 (CUDA)");
+    m.def(
+        "fused_gemm_gelu_bf16", &fused_gemm_gelu<__nv_bfloat16>, "DeepSpeed mlp with bf16 (CUDA)");
     m.def("fused_gemm_gelu_fp16", &fused_gemm_gelu<__half>, "DeepSpeed mlp with fp16 (CUDA)");
     m.def("residual_add_bias_fp32",
           &residual_add_bias<float>,
           "DeepSpeed residual add with fp32 (CUDA)");
+    m.def("residual_add_bias_bf16",
+          &residual_add_bias<__nv_bfloat16>,
+          "DeepSpeed residual add with bf16 (CUDA)");
     m.def("residual_add_bias_fp16",
           &residual_add_bias<__half>,
           "DeepSpeed residual add with fp16 (CUDA)");
@@ -1757,22 +1781,32 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("einsum_sec_sm_ecm_fp32",
           &einsum_sec_sm_ecm<float>,
           "DeepSpeed vector-MM with fp32 (CUDA)");
-
+    m.def("einsum_sec_sm_ecm_bf16",
+          &einsum_sec_sm_ecm<__nv_bfloat16>,
+          "DeepSpeed vector-MM with bf16 (CUDA)");
     m.def("einsum_sec_sm_ecm_fp16",
           &einsum_sec_sm_ecm<__half>,
           "DeepSpeed vector-MM with fp16 (CUDA)");
     m.def("moe_res_matmul", &moe_res_matmul, "DeepSpeed moe residual matmul (CUDA)");
     m.def("add_padding_fp32", &add_padding<float>, "DeepSpeed residual add with fp32 (CUDA)");
+    m.def(
+        "add_padding_bf16", &add_padding<__nv_bfloat16>, "DeepSpeed residual add with bf16 (CUDA)");
     m.def("add_padding_fp16", &add_padding<__half>, "DeepSpeed residual add with fp16 (CUDA)");
     m.def("pad_transform_fp32",
           &padd_add_transform<float>,
           "DeepSpeed residual add with fp32 (CUDA)");
+    m.def("pad_transform_bf16",
+          &padd_add_transform<__nv_bfloat16>,
+          "DeepSpeed residual add with bf16 (CUDA)");
     m.def("pad_transform_fp16",
           &padd_add_transform<__half>,
           "DeepSpeed residual add with fp16 (CUDA)");
     m.def("allocate_workspace_fp32",
           &allocate_workspace<float>,
           "DeepSpeed memory allocation for GPT inference with fp32 (CUDA)");
+    m.def("allocate_workspace_bf16",
+          &allocate_workspace<__nv_bfloat16>,
+          "DeepSpeed memory allocation for GPT inference with bf16 (CUDA)");
     m.def("allocate_workspace_fp16",
           &allocate_workspace<__half>,
           "DeepSpeed memory allocation for GPT inference with fp16 (CUDA)");
