@@ -35,7 +35,7 @@ class NebulaCheckpointEngine(CheckpointEngine):
         }
         torch_nebula.init(**nebula_config_params)
 
-    def create(self, tag):
+    def create(self, save_dir, tag):
         log_dist(f"[Nebula] Start Checkpoint for tag:{tag}", ranks=[0])
         # -2 means: customer needs to  explicitly tell nebula
         # current checkpoint is complete by commit method.
@@ -52,18 +52,22 @@ class NebulaCheckpointEngine(CheckpointEngine):
         logger.info(f"[Nebula] Saved {partition_name} under tag {tag}.")
         return None
 
-    def load(self, path: str, map_location=None):
-        tag = _get_tag_from_path(path)
+    def commit(self, tag):
+        # nebula commit will be call when all files under give tag are ready to be persisted in the async way.
+        logger.info(
+            f"[Nebula] all files for {tag} are saved in tier1. It is ready to start persisting"
+        )
+        commit_rls = self.checkpoint.commit()
+        if not commit_rls:
+            logger.error(
+                f"[Nebula] failed to commit the checkpoint, please check the log.")
+            return False
+        return commit_rls
+
+    def open(self, load_dir=None, tag=None):
         first_load_flag = self.tag_flag is None or self.tag_flag == tag
         if not self.enable_nebula_load and first_load_flag:
-            self.tag_flag = tag
-            logger.info(f"[Nebula] Disable nebula load. Loading checkpoint from {path} ...")
-            partition = torch.load(path, map_location=map_location)
-            logger.info(f"[Nebula] Disable nebula load. Loaded checkpoint from {path} .")
-            return partition
-
-        partition_name = os.path.basename(path)
-        logger.info(f"[Nebula] Loading {path} under tag {tag} from nebula path {self.nebula_load_path}...")
+            return tag
 
         checkpoint = None
         if tag in (None, 'latest', 'latest_universal'):
@@ -91,17 +95,33 @@ class NebulaCheckpointEngine(CheckpointEngine):
                 logger.warning(f"Unable to find valid checkpoint from Nebula under tag:{tag}.")
                 return None
 
-        tag = checkpoint.tag
+        self.checkpoint = checkpoint
         self.tag_flag = -1
-        partition = checkpoint.load(partition_name, map_location=map_location)
-        logger.info(f"[Nebula] Loaded {path} under tag {tag} from {self.nebula_load_path}.")
+
+        tag = checkpoint.tag
+        return tag
+
+    def load(self, path: str, map_location=None):
+        if self.checkpoint is None:
+            tag = _get_tag_from_path(path)
+            self.tag_flag = tag
+            logger.info(
+                f"[Nebula] Disable nebula load. Loading checkpoint from {path} ...")
+            partition = torch.load(path, map_location=map_location)
+            logger.info(f"[Nebula] Disable nebula load. Loaded checkpoint from {path} .")
+            return partition
+
+        tag = self.checkpoint.tag
+
+        partititon_name = os.path.basename(path)
+        logger.info(
+            f"[Nebula] Loading {path} under tag {tag} from nebula path {self.nebula_load_path}..."
+        )
+
+        partition = self.checkpoint.load(partititon_name, map_location=map_location)
+        logger.info(
+            f"[Nebula] Loaded {path} under tag {tag} from {self.nebula_load_path}.")
         return partition
 
-    def commit(self, tag):
-        # nebula commit will be call when all files under give tag are ready to be persisted in the async way.
-        logger.info(f"[Nebula] all files for {tag} are saved in tier1. It is ready to start persisting")
-        commit_rls = self.checkpoint.commit()
-        if not commit_rls:
-            logger.error(f"[Nebula] failed to commit the checkpoint, please check the log.")
-            return False
-        return commit_rls
+    def close(self, tag):
+        self.checkpoint = None
