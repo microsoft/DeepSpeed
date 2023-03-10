@@ -3,6 +3,7 @@
 from benchmarks.communication.utils import *
 from benchmarks.communication.constants import *
 from deepspeed.accelerator import get_accelerator
+from deepspeed.comm import TorchBackend
 
 import time
 
@@ -11,36 +12,29 @@ import time
 def timed_all_gather(input, output, args):
     if args.dist == 'torch':
         import torch.distributed as dist
+
+        all_gather_func = TorchBackend.get_all_gather_function()
     elif args.dist == 'deepspeed':
         import deepspeed.comm as dist
+
+        all_gather_func = dist.allgather_fn
 
     sync_all()
     # Warmups, establish connections, etc.
     for i in range(args.warmups):
-        # use all_gather_base if available
-        if args.dist == 'torch':
-            if hasattr(torch.distributed, "_all_gather_base"):
-                dist._all_gather_base(output, input, group=None, async_op=args.async_op)
-        elif args.dist == 'deepspeed':
-            dist.allgather_fn(output, input, group=None, async_op=args.async_op)
+        all_gather_func(output, input, group=None, async_op=args.async_op)
     sync_all()
 
     # time the actual comm op trials times and average it
     pre = time.perf_counter()
     for i in range(args.trials):
-        # use all_gather_base if available
-        if args.dist == 'torch':
-            if hasattr(torch.distributed, "_all_gather_base"):
-                dist._all_gather_base(output, input, group=None, async_op=args.async_op)
-        elif args.dist == 'deepspeed':
-            dist.allgather_fn(output, input, group=None, async_op=args.async_op)
+        all_gather_func(output, input, group=None, async_op=args.async_op)
     sync_all()
     duration = time.perf_counter() - pre
 
     # maintain and clean performance data
     avg_duration = duration / args.trials
     size = input.element_size() * input.nelement()
-    n = dist.get_world_size()
     tput, busbw = get_bw('all_gather', size, avg_duration, args)
     tput_str, busbw_str, duration_str = get_metric_strings(args, tput, busbw, avg_duration)
     desc = f'{input.nelement()}x{input.element_size()}'
@@ -100,7 +94,7 @@ def run_all_gather(local_rank, args):
             timed_all_gather(input, output, args)
     else:
         # all_gather_into_tensor saves memory
-        if (args.dist == 'torch' and hasattr(dist, "_all_gather_base")) or (args.dist == 'deepspeed' and dist.has_all_gather_into_tensor()):
+        if ((args.dist == 'torch' or args.dist == 'deepspeed') and dist.has_all_gather_into_tensor()):
             mem_factor = args.mem_factor + 0.2
         else:
             mem_factor = args.mem_factor

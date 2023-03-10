@@ -25,8 +25,8 @@ class TorchBackend(Backend):
                  name='torch'):
         super(TorchBackend, self).__init__()
         self.torch_version_before_18 = older_torch()
-        self.has_all_gather_into_tensor = has_all_gather_into_tensor()
         self.has_reduce_scatter_base = has_reduce_scatter_base()
+        self.all_gather_function = self.get_all_gather_function()
         self.initialized = True
         self.name = name
         # Future functionality to support ds.initialize() on a single GPU
@@ -34,6 +34,17 @@ class TorchBackend(Backend):
         # it is not so we can run on a single GPU without doing any init_process_group
         self.single_gpu_mode = True
         self.init_process_group(backend, timeout, init_method, rank, world_size)
+
+    @classmethod
+    def get_all_gather_function(self):
+        if hasattr(torch.distributed, "all_gather_into_tensor"):
+            return torch.distributed.all_gather_into_tensor
+        elif hasattr(torch.distributed, "_all_gather_base"):
+            return torch.distributed._all_gather_base
+        return None
+
+    def has_all_gather_into_tensor(self):
+        return self.all_gather_function is not None
 
     def init_process_group(self, backend, timeout, init_method, rank, world_size):
         if not torch.distributed.is_initialized():
@@ -86,16 +97,16 @@ class TorchBackend(Backend):
                                             group=group,
                                             async_op=async_op)
 
-    def all_gather_base(self, output_tensor, input_tensor, group=None, async_op=False):
-        if self.has_all_gather_into_tensor:
-            return torch.distributed.distributed_c10d._all_gather_base(
+    def all_gather_into_tensor(self, output_tensor, input_tensor, group=None, async_op=False):
+        if self.has_all_gather_into_tensor():
+            return self.all_gather_function(
                 output_tensor=output_tensor,
                 input_tensor=input_tensor,
                 group=group,
                 async_op=async_op)
         else:
             utils.logger.warning(
-                "unable to find torch.distributed._all_gather_base. will fall back to "
+                "unable to find torch.distributed.all_gather_into_tensor. will fall back to "
                 "torch.distributed.reduce_scatter which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
             pass

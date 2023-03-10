@@ -307,15 +307,15 @@ def reduce_scatter_base(output_tensor,
 
 
 @timed_op
-def all_gather_base(output_tensor,
+def all_gather_into_tensor(output_tensor,
                     tensor,
                     group=None,
                     async_op=False,
                     prof=False,
-                    log_name='all_gather_base',
+                    log_name='all_gather_into_tensor',
                     debug=get_caller_func()):
     global cdb
-    return cdb.all_gather_base(output_tensor=output_tensor,
+    return cdb.all_gather_into_tensor(output_tensor=output_tensor,
                                input_tensor=tensor,
                                group=group,
                                async_op=async_op)
@@ -324,8 +324,7 @@ def all_gather_base(output_tensor,
 def has_all_gather_into_tensor():
     global cdb
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    assert cdb.all_gather_into_tensor is not None, 'all_gather_into_tensor is not yet defined'
-    return cdb.all_gather_into_tensor
+    return cdb.has_all_gather_into_tensor()
 
 
 def allgather_fn(output_tensor,
@@ -337,7 +336,7 @@ def allgather_fn(output_tensor,
     global has_warned_all_gather
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     if cdb.has_all_gather_into_tensor:
-        return all_gather_base(output_tensor,
+        return all_gather_into_tensor(output_tensor,
                                input_tensor,
                                group=group,
                                async_op=async_op,
@@ -345,7 +344,7 @@ def allgather_fn(output_tensor,
     else:
         if not has_warned_all_gather and get_rank() == 0:
             utils.logger.warning(
-                "unable to find torch.distributed._all_gather_base. will fall back to "
+                "unable to find torch.distributed.all_gather_into_tensor. will fall back to "
                 "torch.distributed.all_gather which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
             has_warned_all_gather = True

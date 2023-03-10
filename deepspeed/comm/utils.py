@@ -20,13 +20,6 @@ def older_torch():
         return False
 
 
-def has_all_gather_into_tensor():
-    '''
-        Helper to check if torch.distributed has all_gather_into_tensor
-    '''
-    return hasattr(torch.distributed, "all_gather_into_tensor") or hasattr(torch.distributed, "_all_gather_base")
-
-
 def has_reduce_scatter_base():
     '''
         Helper to check if torch.distributed has _reduce_scatter_base
