@@ -25,7 +25,7 @@ class TorchBackend(Backend):
                  name='torch'):
         super(TorchBackend, self).__init__()
         self.torch_version_before_18 = older_torch()
-        self.has_allgather_base = has_allgather_base()
+        self.has_all_gather_into_tensor = has_all_gather_into_tensor()
         self.has_reduce_scatter_base = has_reduce_scatter_base()
         self.initialized = True
         self.name = name
@@ -87,7 +87,7 @@ class TorchBackend(Backend):
                                             async_op=async_op)
 
     def all_gather_base(self, output_tensor, input_tensor, group=None, async_op=False):
-        if self.has_allgather_base:
+        if self.has_all_gather_into_tensor:
             return torch.distributed.distributed_c10d._all_gather_base(
                 output_tensor=output_tensor,
                 input_tensor=input_tensor,

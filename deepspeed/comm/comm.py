@@ -321,11 +321,11 @@ def all_gather_base(output_tensor,
                                async_op=async_op)
 
 
-def has_allgather_base():
+def has_all_gather_into_tensor():
     global cdb
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    assert cdb.has_allgather_base is not None, 'has_allgather_base is not yet defined'
-    return cdb.has_allgather_base
+    assert cdb.all_gather_into_tensor is not None, 'all_gather_into_tensor is not yet defined'
+    return cdb.all_gather_into_tensor
 
 
 def allgather_fn(output_tensor,
@@ -336,7 +336,7 @@ def allgather_fn(output_tensor,
     global cdb
     global has_warned_all_gather
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    if cdb.has_allgather_base:
+    if cdb.has_all_gather_into_tensor:
         return all_gather_base(output_tensor,
                                input_tensor,
                                group=group,

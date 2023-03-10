@@ -705,9 +705,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             assert isinstance(module, torch.nn.Module)
             self._convert_to_zero_parameters(module.parameters(recurse=True))
 
-        self.use_all_gather_base = False
-        if dist.has_allgather_base():
-            self.use_all_gather_base = True
+        self.use_all_gather_into_tensor = False
+        if dist.has_all_gather_into_tensor():
+            self.use_all_gather_into_tensor = True
         else:
             logger.info(
                 f"_all_gather_base API is not available in torch {torch.__version__}")
@@ -1212,7 +1212,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         #                                                   param.ds_numel).view(param.ds_shape)
         #            param.data = replicated_tensor.data
         #            return None
-        if self.use_all_gather_base:
+        if self.use_all_gather_into_tensor:
             # try the _all_gather_base on PyTorch master branch
             handle = dist.all_gather_base(flat_tensor,
                                           param.ds_tensor.to(
@@ -1269,7 +1269,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         for param_idx, param in enumerate(param_list):
             input_tensor = local_tensors[param_idx].view(-1)
 
-            if self.use_all_gather_base:
+            if self.use_all_gather_into_tensor:
                 # try the _all_gather_base from Pytorch master
                 h = dist.all_gather_base(allgather_params[param_idx],
                                          input_tensor,
