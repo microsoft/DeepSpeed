@@ -110,9 +110,10 @@ def parse_args():
                         "numbers and range. i.e. 1,3-5,7 => [1,3,4,5,7].  When not "
                         "specified, all cores on system would be used rank binding")
 
-    parser.add_argument("--prefer_deepspeed_comm",
-                        action="store_true",
-                        help="Use DeepSpeed builtin communication backend instead of torch distributed")
+    parser.add_argument(
+        "--prefer_deepspeed_comm",
+        action="store_true",
+        help="Use DeepSpeed builtin communication backend instead of torch distributed")
     # positional
     parser.add_argument("training_script",
                         type=str,
@@ -158,6 +159,28 @@ def parse_range(rng):
 
 def parse_range_list(rngs):
     return sorted(set(chain(*[parse_range(rng) for rng in rngs.split(',')])))
+
+
+# return a list of list for cores to numa mapping
+# [
+#     [ cores for numa 0 ]
+#     [ cores belong to numa 1 ]
+#     ...
+# ]
+def get_numa_cores():
+    ret = []
+    output = subprocess.check_output(['numactl', '--hardware']).decode("utf-8")
+    lines = output.split('\n')
+    for line in lines:
+        if line.startswith('available:'):
+            num_numas = int(line.split(' ')[1])
+            break
+    for numa in range(num_numas):
+        for line in lines:
+            if line.startswith(f'node {numa} cpus:'):
+                cores = line.split(' ')[3:]
+                ret.append([int(core) for core in cores])
+    return ret
 
 
 def main():
@@ -276,6 +299,16 @@ def main():
                                                (local_rank + 1)]
                 os.environ["OMP_NUM_THREADS"] = f"{cores_per_rank}"
                 cmd.append("numactl")
+
+                # check if all cores belong to same numa, if true, bind process to that numa domain with -m parameter
+                numa_cores = get_numa_cores()
+                num_numas = len(numa_cores)
+                for i in range(num_numas):
+                    if set(core_list_for_rank) <= set(numa_cores[i]):
+                        cmd.append("-m")
+                        cmd.append(f"{i}")
+                        break
+
                 cmd.append("-C")
                 core_list_str = f"{core_list_for_rank[0]}"
                 for core_id in core_list_for_rank[1:]:
