@@ -247,11 +247,10 @@ def all_gather(tensor_list,
                           async_op=async_op)
 
 
-def has_reduce_scatter_base():
+def has_reduce_scatter_tensor():
     global cdb
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    assert cdb.has_reduce_scatter_base is not None, 'has_reduce_scatter_base is not yet defined'
-    return cdb.has_reduce_scatter_base
+    return cdb.has_reduce_scatter_tensor()
 
 
 def reduce_scatter_fn(output_tensor,
@@ -264,8 +263,8 @@ def reduce_scatter_fn(output_tensor,
     global cdb
     global has_warned_reduce_scatter
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    if cdb.has_reduce_scatter_base:
-        return reduce_scatter_base(output_tensor,
+    if cdb.has_reduce_scatter_tensor():
+        return reduce_scatter_tensor(output_tensor,
                                    tensor,
                                    op=op,
                                    group=group,
@@ -275,7 +274,7 @@ def reduce_scatter_fn(output_tensor,
     else:
         if not has_warned_reduce_scatter:
             utils.logger.warning(
-                "unable to find torch.distributed._reduce_scatter_base. will fall back to "
+                "unable to find torch.distributed.reduce_scatter_tensor. will fall back to "
                 "torch.distributed.all_gather which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
             has_warned_reduce_scatter = True
@@ -290,16 +289,16 @@ def reduce_scatter_fn(output_tensor,
 
 
 @timed_op
-def reduce_scatter_base(output_tensor,
+def reduce_scatter_tensor(output_tensor,
                         tensor,
                         op=ReduceOp.SUM,
                         group=None,
                         async_op=False,
                         prof=False,
-                        log_name='reduce_scatter_base',
+                        log_name='reduce_scatter_tensor',
                         debug=get_caller_func()):
     global cdb
-    return cdb.reduce_scatter_base(output_tensor=output_tensor,
+    return cdb.reduce_scatter_tensor(output_tensor=output_tensor,
                                    input_tensor=tensor,
                                    op=op,
                                    group=group,
@@ -335,7 +334,7 @@ def allgather_fn(output_tensor,
     global cdb
     global has_warned_all_gather
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    if cdb.has_all_gather_into_tensor:
+    if cdb.has_all_gather_into_tensor():
         return all_gather_into_tensor(output_tensor,
                                input_tensor,
                                group=group,

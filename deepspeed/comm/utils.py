@@ -20,13 +20,6 @@ def older_torch():
         return False
 
 
-def has_reduce_scatter_base():
-    '''
-        Helper to check if torch.distributed has _reduce_scatter_base
-    '''
-    return hasattr(torch.distributed, "_reduce_scatter_base")
-
-
 def get_local_rank_from_launcher():
 
     # DeepSpeed launcher will set it so get from there
