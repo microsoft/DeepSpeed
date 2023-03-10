@@ -108,13 +108,16 @@ class TorchBackend(Backend):
                                             group=group,
                                             async_op=async_op)
 
-    def all_gather_into_tensor(self, output_tensor, input_tensor, group=None, async_op=False):
+    def all_gather_into_tensor(self,
+                               output_tensor,
+                               input_tensor,
+                               group=None,
+                               async_op=False):
         if self.has_all_gather_into_tensor():
-            return self.all_gather_function(
-                output_tensor=output_tensor,
-                input_tensor=input_tensor,
-                group=group,
-                async_op=async_op)
+            return self.all_gather_function(output_tensor=output_tensor,
+                                            input_tensor=input_tensor,
+                                            group=group,
+                                            async_op=async_op)
         else:
             utils.logger.warning(
                 "unable to find torch.distributed.all_gather_into_tensor. will fall back to "
@@ -123,17 +126,17 @@ class TorchBackend(Backend):
             pass
 
     def reduce_scatter_tensor(self,
-                            output_tensor,
-                            input_tensor,
-                            op=ReduceOp.SUM,
-                            group=None,
-                            async_op=False):
+                              output_tensor,
+                              input_tensor,
+                              op=ReduceOp.SUM,
+                              group=None,
+                              async_op=False):
         if self.has_reduce_scatter_tensor():
             return self.reduce_scatter_function(output_tensor,
-                                                          input_tensor,
-                                                          op=self._reduce_op(op),
-                                                          group=group,
-                                                          async_op=async_op)
+                                                input_tensor,
+                                                op=self._reduce_op(op),
+                                                group=group,
+                                                async_op=async_op)
         else:
             utils.logger.warning(
                 "unable to find torch.distributed.reduce_scatter_tensor. will fall back to "

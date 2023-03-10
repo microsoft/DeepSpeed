@@ -265,12 +265,12 @@ def reduce_scatter_fn(output_tensor,
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     if cdb.has_reduce_scatter_tensor():
         return reduce_scatter_tensor(output_tensor,
-                                   tensor,
-                                   op=op,
-                                   group=group,
-                                   async_op=async_op,
-                                   prof=prof,
-                                   debug=debug)
+                                     tensor,
+                                     op=op,
+                                     group=group,
+                                     async_op=async_op,
+                                     prof=prof,
+                                     debug=debug)
     else:
         if not has_warned_reduce_scatter:
             utils.logger.warning(
@@ -290,34 +290,34 @@ def reduce_scatter_fn(output_tensor,
 
 @timed_op
 def reduce_scatter_tensor(output_tensor,
-                        tensor,
-                        op=ReduceOp.SUM,
-                        group=None,
-                        async_op=False,
-                        prof=False,
-                        log_name='reduce_scatter_tensor',
-                        debug=get_caller_func()):
+                          tensor,
+                          op=ReduceOp.SUM,
+                          group=None,
+                          async_op=False,
+                          prof=False,
+                          log_name='reduce_scatter_tensor',
+                          debug=get_caller_func()):
     global cdb
     return cdb.reduce_scatter_tensor(output_tensor=output_tensor,
-                                   input_tensor=tensor,
-                                   op=op,
-                                   group=group,
-                                   async_op=async_op)
+                                     input_tensor=tensor,
+                                     op=op,
+                                     group=group,
+                                     async_op=async_op)
 
 
 @timed_op
 def all_gather_into_tensor(output_tensor,
-                    tensor,
-                    group=None,
-                    async_op=False,
-                    prof=False,
-                    log_name='all_gather_into_tensor',
-                    debug=get_caller_func()):
+                           tensor,
+                           group=None,
+                           async_op=False,
+                           prof=False,
+                           log_name='all_gather_into_tensor',
+                           debug=get_caller_func()):
     global cdb
     return cdb.all_gather_into_tensor(output_tensor=output_tensor,
-                               input_tensor=tensor,
-                               group=group,
-                               async_op=async_op)
+                                      input_tensor=tensor,
+                                      group=group,
+                                      async_op=async_op)
 
 
 def has_all_gather_into_tensor():
@@ -336,10 +336,10 @@ def allgather_fn(output_tensor,
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     if cdb.has_all_gather_into_tensor():
         return all_gather_into_tensor(output_tensor,
-                               input_tensor,
-                               group=group,
-                               async_op=async_op,
-                               debug=debug)
+                                      input_tensor,
+                                      group=group,
+                                      async_op=async_op,
+                                      debug=debug)
     else:
         if not has_warned_all_gather and get_rank() == 0:
             utils.logger.warning(

@@ -708,7 +708,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         self.use_all_gather_into_tensor = dist.has_all_gather_into_tensor()
         if not self.use_all_gather_into_tensor:
             logger.info(
-                f"all_gather_into_tensor API is not available in torch {torch.__version__}")
+                f"all_gather_into_tensor API is not available in torch {torch.__version__}"
+            )
 
     def _convert_to_zero_parameters(self, param_list):
         for param in param_list:
@@ -1213,10 +1214,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         if self.use_all_gather_into_tensor:
             # try the all_gather_into_tensor on PyTorch master branch
             handle = dist.all_gather_into_tensor(flat_tensor,
-                                          param.ds_tensor.to(
-                                              get_accelerator().device_name()),
-                                          group=self.ds_process_group,
-                                          async_op=async_op)
+                                                 param.ds_tensor.to(
+                                                     get_accelerator().device_name()),
+                                                 group=self.ds_process_group,
+                                                 async_op=async_op)
         else:
             partitions = []
             for i in range(self.world_size):
@@ -1270,9 +1271,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             if self.use_all_gather_into_tensor:
                 # try the all_gather_into_tensor from Pytorch master
                 h = dist.all_gather_into_tensor(allgather_params[param_idx],
-                                         input_tensor,
-                                         group=self.ds_process_group,
-                                         async_op=True)
+                                                input_tensor,
+                                                group=self.ds_process_group,
+                                                async_op=True)
             else:
                 output_list = []
                 for i in range(self.world_size):
