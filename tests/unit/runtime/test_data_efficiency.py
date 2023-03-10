@@ -1,6 +1,9 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import torch
 import os
 import deepspeed
+from deepspeed.accelerator import get_accelerator
 from unit.common import DistributedTest
 from unit.simple_model import Curriculum_SimpleModel, SimpleModel, random_dataloader, random_dataset
 
@@ -70,7 +73,7 @@ class TestDataEfficiency(DistributedTest):
                     "num_workers": 0,
                     "curriculum_learning": {
                         "enabled": True,
-                        "data_cluster_path": "data_clusters",
+                        "data_cluster_path": "/tmp",
                         "curriculum_metrics": {
                             "dummy_metric": {
                                 "index_to_sample_path": "dummy",
@@ -104,13 +107,12 @@ class TestDataEfficiency(DistributedTest):
                                               training_data=dataset,
                                               model_parameters=model.parameters(),
                                               mpu=MPU(1))
-        if model.mpu.get_data_parallel_rank(
-        ) == 0 and not os.path.exists('data_clusters'):
-            os.makedirs('data_clusters')
+        if model.mpu.get_data_parallel_rank() == 0 and not os.path.exists('/tmp'):
+            os.makedirs('/tmp')
         model.set_data_post_process_func(data_post_process)
         for n, batch in enumerate(data_loader):
-            x = batch[0].to(torch.cuda.current_device())
-            y = batch[1].to(torch.cuda.current_device())
+            x = batch[0].to(get_accelerator().current_device_name())
+            y = batch[1].to(get_accelerator().current_device_name())
             loss = model(x, y)
             model.backward(loss)
             model.step()
