@@ -9,6 +9,7 @@ from .base import BaseOp
 class SoftmaxOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(SoftmaxOp, self).__init__(config)
+        self.num_attention_heads_per_partition = config.heads // config.mp_size
         try:
             if self.config.fp16:
                 self.softmax_func = self.inference_cuda_module.softmax_fp16

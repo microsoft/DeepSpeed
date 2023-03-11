@@ -18,8 +18,8 @@ class DeepSpeedSelfAttention(nn.Module):
     def __init__(self, config, mp_group=None, q_scales=None, q_groups=1, merge_count=1):
         super(DeepSpeedSelfAttention, self).__init__()
         self.config = config
-        data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.float
-        data_type_fp = torch.half if config.fp16 else torch.float
+        data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.bfloat16 if config.bf16 else torch.float
+        data_type_fp = torch.half if config.fp16 else torch.bfloat16 if config.bf16 else torch.float
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
         device = get_accelerator().current_device_name(

@@ -29,6 +29,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                 using model-parallel architecture. If the client model already takes care of this, there is no
                 need to pass this argument.
             fp16: Enable half-precision computation
+            bf16: Enable bf16 floating point computation
             pre_layer_norm: Select between Pre-LN or Post-LN transformer architecture
             stochastic_mode:  Enable for high performance, please note that this flag has some level of
                 non-determinism and can produce different results on different runs.  However, we have seen
@@ -49,6 +50,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  local_rank=-1,
                  mp_size=1,
                  fp16=False,
+                 bf16=False,
                  q_int8=False,
                  pre_layer_norm=True,
                  stochastic_mode=False,
@@ -76,6 +78,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                   heads,
                   num_hidden_layers)
         self.fp16 = fp16
+        self.bf16 = bf16
         self.pre_layer_norm = pre_layer_norm
         self.local_rank = local_rank
         self.stochastic_mode = stochastic_mode

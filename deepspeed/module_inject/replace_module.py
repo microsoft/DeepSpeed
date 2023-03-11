@@ -210,7 +210,7 @@ def _module_match(module):
     return None
 
 
-def generic_injection(module, fp16=False, enable_cuda_graph=True):
+def generic_injection(module, fp16=False, bf16=False, enable_cuda_graph=True):
     def replace_attn(child, policy):
         policy_attn = policy.attention(child)
         if policy_attn is None:
@@ -224,6 +224,7 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
             hidden_size=hidden_size,
             heads=heads,
             fp16=fp16,
+            bf16=bf16,
             triangular_masking=False,
             max_out_tokens=4096,
         )
@@ -257,8 +258,8 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
     if isinstance(module, torch.nn.Module):
         pass
     else:
-        if fp16 is False:
-            raise ValueError("Generic injection only supported with FP16")
+        if fp16 is False and bf16 is False:
+            raise ValueError("Generic injection only supported with FP16 of BF16")
 
         try:
             import diffusers
@@ -323,6 +324,7 @@ def replace_transformer_layer(orig_layer_impl,
     """
     # defining globals as internally defined functions inherit these everywhere
     fp16 = (config.dtype == torch.float16 or config.dtype == torch.int8)
+    bf16 = (config.dtype == torch.bfloat16)
     quantize = (config.dtype == torch.int8)
     # todo: Refactor later. In future, let's minimize the style used above and use config.** instead
 
@@ -360,7 +362,7 @@ def replace_transformer_layer(orig_layer_impl,
                                             model_config=model_config,
                                             layer_id=layer_id,
                                             child=child)
-        _container.set_dtype(fp16)
+        _container.set_dtype(fp16, bf16)
         _container.set_moe(moe)
 
         # 2. Set the tensor parallelism config
@@ -373,6 +375,8 @@ def replace_transformer_layer(orig_layer_impl,
         # 4. deal with data types -- needs refactor to use dtype instead of fp16
         if fp16:
             _container.convert_to_required_dtype(dtype=torch.half)
+        if bf16:
+            _container.convert_to_required_dtype(dtype=torch.bfloat16)
 
         # 5. Set the quantization config
         quantizer = GroupQuantizer(q_int8=quantize)
@@ -556,9 +560,7 @@ def replace_transformer_layer(orig_layer_impl,
 
             for i in range(len(checkpoint)):
                 sd = [
-                    torch.load(os.path.join(base_dir1,
-                                            checkpoint[i]),
-                               map_location='cpu')
+                    torch.load(checkpoint[i], map_location='cpu')
                 ]
                 load_model_with_checkpoint(replaced_module,
                                            sd,
@@ -676,7 +678,8 @@ def replace_transformer_layer(orig_layer_impl,
                 'tp_size':
                 world_size,
                 'dtype':
-                'int8' if quantize else ('float16' if fp16 else 'float32')
+                'int8' if quantize else
+                ('float16' if fp16 else 'bfloat16' if bf16 else 'float32')
             })
             with open(f"{config.save_mp_checkpoint_path}/ds_inference_config.json",
                       "w") as cfg:

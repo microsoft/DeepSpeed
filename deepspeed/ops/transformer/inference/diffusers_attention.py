@@ -146,8 +146,8 @@ class DeepSpeedDiffusersAttention(nn.Module):
         ) if config.bigscience_bloom else 'cpu'
         qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
 
-        data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.float
-        data_type_fp = torch.half if config.fp16 else torch.float
+        data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.bfloat16 if config.bf16 else torch.float
+        data_type_fp = torch.half if config.fp16 else torch.bfloat16 if config.bf16 else torch.float
         global inference_cuda_module
         if inference_cuda_module is None:
             builder = InferenceBuilder()
