@@ -24,6 +24,8 @@ from deepspeed.accelerator import get_accelerator
 from ..module_inject.policy import TransformerPolicy
 from ..module_inject.auto_tp import AutoTP
 
+from ..module_inject.replace_policy import generic_policies
+
 DS_INFERENCE_ENABLED = False
 from torch import nn
 
@@ -116,7 +118,11 @@ class InferenceEngine(Module):
         # retain this from the old conditional argument being passed to apply_injection_policy()
         if not config.replace_with_kernel_inject:
             config.checkpoint = None
+
+        # We only support three modes: 1) user specified policy for tensor-parallelism, 2) kernel injection (replace_with_kernel_inject), and 3) automatic tensor parallelism.
         if self.injection_dict:
+            # 1. User specified Tensor Parallelism
+            assert not config.replace_with_kernel_inject, "Cannot use both user specified injection policy and kernel injection"
             for client_module, injection_policy in self.injection_dict.items():
                 # construct the tuple and pass that instead of a string or dict.
                 if isinstance(injection_policy, str):
@@ -124,17 +130,20 @@ class InferenceEngine(Module):
                 else:
                     config.injection_policy_tuple = injection_policy
                 self._apply_injection_policy(config, client_module)
-        elif config.replace_method == 'auto':
-            self._apply_injection_policy(config)
-        elif not config.replace_with_kernel_inject:
-            # Automatic Tensor Parallelism
-            parser_dict = AutoTP.tp_parser(model)
-            for client_module, injection_policy in parser_dict:
-                if isinstance(injection_policy, str):
-                    config.injection_policy_tuple = (injection_policy, )
-                else:
-                    config.injection_policy_tuple = injection_policy
-                self._apply_injection_policy(config, client_module)
+        else:
+            if config.replace_with_kernel_inject:
+                # 2. DeepSpeed Kernel Injection
+                self._apply_injection_policy(config)
+            else:
+                # 3. Automatic Tensor Parallelism
+                parser_dict = AutoTP.tp_parser(model)
+                print("AutoTP: ", parser_dict)
+                for client_module, injection_policy in parser_dict:
+                    if isinstance(injection_policy, str):
+                        config.injection_policy_tuple = (injection_policy, )
+                    else:
+                        config.injection_policy_tuple = injection_policy
+                    self._apply_injection_policy(config, client_module)
 
         device = get_accelerator().current_device_name()
         self.module.to(device)
@@ -147,6 +156,9 @@ class InferenceEngine(Module):
 
         if config.tensor_parallel.tp_size > 1:
             assert not config.enable_cuda_graph, "Cuda graph is not supported for model parallelism"
+
+        # Check if local CUDA graphs can be created in replacement modules
+        self.local_cuda_graph = self._local_cuda_graph_used(self.module)
 
     def profile_model_time(self, use_cuda_events=True):
         if not self.model_profile_enabled and not self._config.enable_cuda_graph:
@@ -505,6 +517,27 @@ class InferenceEngine(Module):
         self._model_times = []
         return model_times
 
+    def _module_match(self, module):
+        for policy in generic_policies:
+            policy = policy()
+            if policy.match_replaced(module):
+                return True
+        return False
+
+    def _local_cuda_graph_used(self, module):
+        if isinstance(module, torch.nn.Module):
+            return False
+        else:
+            sub_module_cuda_graph = False
+            for name in module.__dict__.keys():
+                sub_module = getattr(module, name)
+
+                if self._module_match(sub_module) and hasattr(sub_module,
+                                                              "enable_cuda_graph"):
+                    sub_module_cuda_graph = True
+
+            return sub_module_cuda_graph
+
     def forward(self, *inputs, **kwargs):
         """Execute forward propagation
 
@@ -518,7 +551,8 @@ class InferenceEngine(Module):
             get_accelerator().synchronize()
             start = time.time()
 
-        if get_accelerator().device_name() == 'cuda' and self._config.enable_cuda_graph:
+        if get_accelerator().device_name(
+        ) == 'cuda' and self._config.enable_cuda_graph and not self.local_cuda_graph:
             if self.cuda_graph_created:
                 outputs = self._graph_replay(*inputs, **kwargs)
             else:

@@ -1,16 +1,19 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import pytest
 import os
 import filecmp
 import torch
 import deepspeed
 import deepspeed.comm as dist
-from deepspeed.ops.aio import AsyncIOBuilder
+from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder import AsyncIOBuilder
 from unit.common import DistributedTest
 
-MEGA_BYTE = 1024**2
-BLOCK_SIZE = MEGA_BYTE
+KILO_BYTE = 1024
+BLOCK_SIZE = KILO_BYTE
 QUEUE_DEPTH = 2
-IO_SIZE = 4 * 1024
+IO_SIZE = 4 * BLOCK_SIZE
 IO_PARALLEL = 2
 
 if not deepspeed.ops.__compatible_ops__[AsyncIOBuilder.NAME]:
@@ -18,7 +21,7 @@ if not deepspeed.ops.__compatible_ops__[AsyncIOBuilder.NAME]:
 
 
 def _skip_for_invalid_environment(use_cuda_device=True, use_cuda_pinned_tensor=True):
-    if not torch.cuda.is_available():
+    if not get_accelerator().is_available():
         if use_cuda_device:
             pytest.skip("GPU tensors only supported in CUDA environments.")
         if use_cuda_pinned_tensor:
@@ -26,7 +29,7 @@ def _skip_for_invalid_environment(use_cuda_device=True, use_cuda_pinned_tensor=T
 
 
 def _get_local_rank():
-    if torch.cuda.is_available():
+    if get_accelerator().is_available():
         return dist.get_rank()
     return 0
 
@@ -48,14 +51,14 @@ def _get_test_write_file(tmpdir, index):
 
 def _get_test_write_file_and_cuda_buffer(tmpdir, ref_buffer, index=0):
     test_file = _get_test_write_file(tmpdir, index)
-    test_buffer = torch.cuda.ByteTensor(list(ref_buffer))
+    test_buffer = get_accelerator().ByteTensor(list(ref_buffer))
     return test_file, test_buffer
 
 
 def _get_test_write_file_and_cpu_buffer(tmpdir, ref_buffer, aio_handle=None, index=0):
     test_file = _get_test_write_file(tmpdir, index)
     if aio_handle is None:
-        test_buffer = torch.ByteTensor(list(ref_buffer)).pin_memory()
+        test_buffer = get_accelerator().pin_memory(torch.ByteTensor(list(ref_buffer)))
     else:
         tmp_buffer = torch.ByteTensor(list(ref_buffer))
         test_buffer = aio_handle.new_cpu_locked_tensor(len(ref_buffer), tmp_buffer)
@@ -78,7 +81,7 @@ def _validate_handle_state(handle, single_submit, overlap_events):
 class TestRead(DistributedTest):
     world_size = 1
     requires_cuda_env = False
-    if not torch.cuda.is_available():
+    if not get_accelerator().is_available():
         init_distributed = False
         set_dist_env = False
 
@@ -97,9 +100,10 @@ class TestRead(DistributedTest):
                                                IO_PARALLEL)
 
         if use_cuda_pinned_tensor:
-            aio_buffer = torch.empty(IO_SIZE,
-                                     dtype=torch.uint8,
-                                     device='cpu').pin_memory()
+            aio_buffer = get_accelerator().pin_memory(
+                torch.empty(IO_SIZE,
+                            dtype=torch.uint8,
+                            device='cpu'))
         else:
             aio_buffer = h.new_cpu_locked_tensor(IO_SIZE,
                                                  torch.empty(0,
@@ -136,11 +140,14 @@ class TestRead(DistributedTest):
                                                IO_PARALLEL)
 
         if cuda_device:
-            aio_buffer = torch.empty(IO_SIZE, dtype=torch.uint8, device='cuda')
-        elif use_cuda_pinned_tensor:
             aio_buffer = torch.empty(IO_SIZE,
                                      dtype=torch.uint8,
-                                     device='cpu').pin_memory()
+                                     device=get_accelerator().device_name())
+        elif use_cuda_pinned_tensor:
+            aio_buffer = get_accelerator().pin_memory(
+                torch.empty(IO_SIZE,
+                            dtype=torch.uint8,
+                            device='cpu'))
         else:
             aio_buffer = h.new_cpu_locked_tensor(IO_SIZE,
                                                  torch.empty(0,
@@ -170,7 +177,7 @@ class TestRead(DistributedTest):
 class TestWrite(DistributedTest):
     world_size = 1
     requires_cuda_env = False
-    if not torch.cuda.is_available():
+    if not get_accelerator().is_available():
         init_distributed = False
         set_dist_env = False
 
@@ -250,12 +257,13 @@ class TestWrite(DistributedTest):
         assert filecmp.cmp(ref_file, aio_file, shallow=False)
 
 
+@pytest.mark.sequential
 @pytest.mark.parametrize("use_cuda_pinned_tensor", [True, False])
 @pytest.mark.parametrize("cuda_device", [True, False])
 class TestAsyncQueue(DistributedTest):
     world_size = 1
     requires_cuda_env = False
-    if not torch.cuda.is_available():
+    if not get_accelerator().is_available():
         init_distributed = False
         set_dist_env = False
 
@@ -282,13 +290,15 @@ class TestAsyncQueue(DistributedTest):
             aio_buffers = [
                 torch.empty(IO_SIZE,
                             dtype=torch.uint8,
-                            device='cuda') for _ in range(async_queue)
+                            device=get_accelerator().device_name())
+                for _ in range(async_queue)
             ]
         elif use_cuda_pinned_tensor:
             aio_buffers = [
-                torch.empty(IO_SIZE,
-                            dtype=torch.uint8,
-                            device='cpu').pin_memory() for _ in range(async_queue)
+                get_accelerator().pin_memory(
+                    torch.empty(IO_SIZE,
+                                dtype=torch.uint8,
+                                device='cpu')) for _ in range(async_queue)
             ]
         else:
             tmp_tensor = torch.empty(0, dtype=torch.uint8)
