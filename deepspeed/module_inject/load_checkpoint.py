@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 from torch import nn
 from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
@@ -10,6 +12,7 @@ from .layers import LinearLayer, Normalize, EmbeddingLayer, OPTEmbedding
 import torch
 import gc
 from deepspeed.accelerator import get_accelerator
+import re
 
 
 def load_model_with_checkpoint(r_module,
@@ -19,8 +22,17 @@ def load_model_with_checkpoint(r_module,
                                ckpt_mp_size,
                                weight_quantizer=None,
                                rank=0,
-                               replace_policy=None):
+                               container=None):
     error_msgs = []
+
+    def prefix_check():
+        # if keys start with 'model.', don't skip level 0 prefix
+        for key in sd[0].keys():
+            if re.match("^model[.]", key):
+                return False
+        return True
+
+    skip_level_0_prefix = prefix_check() and container.policy.use_load_prefix
 
     def transpose(data):
         with torch.no_grad():
@@ -197,11 +209,7 @@ def load_model_with_checkpoint(r_module,
             for n, child in module.named_children():
                 load_parameters(child, prefix + n + '.')
         else:
-            replace_policy.load_params(module,
-                                       sd[0],
-                                       weight_quantizer,
-                                       mp_replace,
-                                       prefix)
+            container.load_params(module, sd[0], weight_quantizer, mp_replace, prefix)
 
     try:
         import transformers
@@ -272,7 +280,7 @@ def load_model_with_checkpoint(r_module,
             else:
                 load_module_recursive(
                     child,
-                    prefix if (level == 0 and ckpt_type == 'pp') and replace_policy.use_load_prefix else \
+                    prefix if (level == 0 and ckpt_type == 'pp') and skip_level_0_prefix else \
                     prefix + name + '.',
                     level + 1)
 

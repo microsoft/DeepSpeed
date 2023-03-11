@@ -719,6 +719,9 @@ class DeepSpeedEngine(Module):
     def zero_allow_untested_optimizer(self):
         return self._config.zero_allow_untested_optimizer
 
+    def zero_force_ds_cpu_optimizer(self):
+        return self._config.zero_force_ds_cpu_optimizer
+
     def zero_reduce_scatter(self):
         return self._config.zero_config.reduce_scatter
 
@@ -1265,6 +1268,13 @@ class DeepSpeedEngine(Module):
             else:
                 basic_optimizer = client_optimizer(model_parameters)
                 log_dist('Using client callable to create basic optimizer', ranks=[0])
+
+            if self.zero_use_cpu_optimizer() and not isinstance(
+                    basic_optimizer,
+                    deepspeed.ops.adam.DeepSpeedCPUAdam):
+                if self.zero_force_ds_cpu_optimizer():
+                    msg = f'You are using ZeRO-Offload with a client provided optimizer ({type(basic_optimizer)}) which in most cases will yield poor performance. Please either use deepspeed.ops.adam.DeepSpeedCPUAdam or set an optimizer in your ds-config (https://www.deepspeed.ai/docs/config-json/#optimizer-parameters). If you really want to use a custom optimizer w. ZeRO-Offload and understand the performance impacts you can also set <"zero_force_ds_cpu_optimizer": false> in your configuration file.'
+                    raise ZeRORuntimeException(msg)
         else:
             basic_optimizer = self._configure_basic_optimizer(model_parameters)
             log_dist(
@@ -1673,9 +1683,6 @@ class DeepSpeedEngine(Module):
                 or self.is_iterable_style_dataset(dataset)):
             raise ValueError("Training data must be a torch Dataset")
 
-        if data_sampler is None and (route == ROUTE_PREDICT or route == ROUTE_EVAL):
-            data_sampler = torch.utils.data.SequentialSampler(dataset)
-
         if batch_size is None:
             batch_size = self.train_micro_batch_size_per_gpu()
 
@@ -1693,6 +1700,14 @@ class DeepSpeedEngine(Module):
         if self.mpu is not None:
             data_parallel_world_size = self.mpu.get_data_parallel_world_size()
             data_parallel_rank = self.mpu.get_data_parallel_rank()
+
+        if data_sampler is None and (route == ROUTE_PREDICT or route == ROUTE_EVAL):
+            data_sampler = torch.utils.data.DistributedSampler(
+                dataset,
+                num_replicas=data_parallel_world_size,
+                rank=data_parallel_rank,
+                shuffle=False,
+            )
 
         deepspeed_dataloader_config = {}
         if self.curriculum_learning_enabled():

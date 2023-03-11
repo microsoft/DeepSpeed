@@ -16,11 +16,12 @@ from math import floor
 from bisect import bisect_left
 
 import torch
-try:
-    from torch._six import inf
-except ImportError:
-    from torch import inf
 from deepspeed import comm as dist
+
+try:
+    from torch._six import inf as inf
+except ModuleNotFoundError:
+    from torch import inf as inf
 
 from deepspeed.utils import groups, logger
 from deepspeed.runtime.constants import PIPE_REPLICATED

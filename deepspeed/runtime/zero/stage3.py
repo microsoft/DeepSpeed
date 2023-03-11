@@ -7,15 +7,11 @@ import sys
 import gc
 import collections
 from typing import Deque, Dict, Tuple
-try:
-    from torch._six import inf
-except ImportError:
-    from torch import inf
 from deepspeed.runtime import ZeROOptimizer
 from deepspeed.utils import logger
-from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
+from deepspeed.runtime.fp16.loss_scaler import CreateLossScaler
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced
-from deepspeed.runtime.utils import get_global_norm, is_model_parallel_parameter
+from deepspeed.runtime.utils import inf, get_global_norm, is_model_parallel_parameter
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.config import ZeroStageEnum
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
@@ -335,20 +331,15 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         #exit(0)
 
         # we may have a way of fusing dynamic scale. Do not support for now
-        if self.dtype == torch.float or not dynamic_loss_scale:
-            loss_scale_value = 1.0 if self.dtype == torch.float else static_loss_scale
-
-            self.dynamic_loss_scale = False
-            self.loss_scaler = LossScaler(scale=loss_scale_value)
-        else:
-            if dynamic_loss_args is None:
-                self.loss_scaler = DynamicLossScaler()
-            else:
-                self.loss_scaler = DynamicLossScaler(**dynamic_loss_args)
-
-            self.dynamic_loss_scale = True
+        self.loss_scaler = CreateLossScaler(dtype=self.dtype,
+                                            static_loss_scale=static_loss_scale,
+                                            dynamic_scaling=dynamic_loss_scale,
+                                            dynamic_loss_args=dynamic_loss_args)
+        self.dynamic_loss_scale = self.loss_scaler.dynamic
 
         self.debug_fp16_grads = [{} for _ in self.fp16_groups]
+
+        self._link_all_hp_params()
 
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=True)
@@ -411,6 +402,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     offset,
                     param.partition_numel())
             offset += param.partition_numel()
+
+    def _link_all_hp_params(self):
+        for p in self.module.parameters():
+            p._z3_optimizer = self
 
     def set_lr(self, lr):
         """Set the learning rate."""
@@ -1265,9 +1260,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         offload_fp32_gradients = {}
         offload_fp32_offsets = {}
         for param, grad_partition in zip(params_to_release, grad_partitions):
-            if param.partition_numel() * dist.get_rank(
-                    self.dp_process_group) > param.ds_numel:
+
+            contains_real_data = param.partition_numel() * dist.get_rank(
+                self.dp_process_group) < param.ds_numel
+            if not contains_real_data:
                 # this grad partition is empty - don't need to do anything
+                param.grad = None
                 continue
 
             # move or accumulate gradient partition to target buffer
@@ -1838,11 +1836,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         see_memory_usage('After overflow after clearing gradients', force=False)
 
         if dist.get_rank() == 0:
-            logger.info(
-                "[deepspeed] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
-                "reducing to {}".format(dist.get_rank(),
-                                        prev_scale,
-                                        self.loss_scale))
+            overflow_msg = f"[deepspeed] OVERFLOW! Rank {dist.get_rank()} Skipping step."
+            if self.dtype == torch.half:
+                overflow_msg += f" Attempted loss scale: {prev_scale}, reducing to {self.loss_scale}"
+            logger.info(overflow_msg)
 
     @instrument_w_nvtx
     def _overflow_check_and_loss_scale_update(self):
@@ -2119,6 +2116,65 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     grad_dict[group_idx][param_idx] = gradient.float()
 
         return grad_dict
+
+    def _fp32_state_allgather(self, param, fp32_state):
+        reduce_buffer = torch.zeros(self.partition_count * fp32_state.numel(),
+                                    dtype=torch.float32,
+                                    device=param.device).flatten()
+        my_rank = dist.get_rank(group=self.dp_process_group)
+        partitions = [
+            reduce_buffer.narrow(0,
+                                 fp32_state.numel() * i,
+                                 fp32_state.numel()) for i in range(self.partition_count)
+        ]
+        partitions[my_rank].data.copy_(fp32_state.data, non_blocking=False)
+
+        dist.all_gather(partitions, partitions[my_rank], group=self.dp_process_group)
+
+        return reduce_buffer.narrow(0, 0, param.ds_numel).view(param.ds_shape)
+
+    def get_fp32_grad_for_param(self, param) -> Tensor:
+        if not param.requires_grad:
+            return None
+
+        self.__reduce_and_partition_stream.synchronize()
+
+        if self.offload_optimizer:
+            group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
+            fp32_grad = self.fp32_partitioned_groups_flat[group_idx].grad.narrow(
+                0,
+                dest_offset,
+                num_elements).to(device=param.device)
+        else:
+            fp32_grad = self.__param_id_to_grad_partition[param.ds_id].float()
+
+        return self._fp32_state_allgather(param, fp32_grad)
+
+    def get_full_hp_param(self, param, optim_state_key=None) -> Tensor:
+        if not param.requires_grad:
+            return None
+
+        self.__reduce_and_partition_stream.synchronize()
+        group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
+
+        if self._swappable_optimizer_subgroup(group_idx):
+            self._optimizer_states_and_gradient_swap_in(group_idx)
+
+        fp32_param = self.fp32_partitioned_groups_flat[group_idx]
+        if optim_state_key is None:
+            fp32_opt_state = fp32_param.narrow(0,
+                                               dest_offset,
+                                               num_elements).to(device=param.device)
+        else:
+            fp32_opt_state = self.optimizer.state[fp32_param][optim_state_key].narrow(
+                0,
+                dest_offset,
+                num_elements).to(device=param.device)
+
+        hp_param = self._fp32_state_allgather(param, fp32_opt_state)
+        if self._swappable_optimizer_subgroup(group_idx):
+            self._optimizer_states_and_gradient_swap_out(group_idx)
+        return hp_param
 
     @instrument_w_nvtx
     def _partition_all_parameters(self):
