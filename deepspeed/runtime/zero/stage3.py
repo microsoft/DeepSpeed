@@ -7,6 +7,7 @@ import sys
 import gc
 import collections
 from typing import Deque, Dict, Tuple
+
 from deepspeed.runtime import ZeROOptimizer
 from deepspeed.utils import logger
 from deepspeed.runtime.fp16.loss_scaler import CreateLossScaler

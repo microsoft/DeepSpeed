@@ -3,6 +3,7 @@
 import argparse
 import pytest
 import deepspeed
+from deepspeed.launcher.launch import parse_range_list
 
 
 def basic_parser():
@@ -100,3 +101,8 @@ def test_core_deepscale_arguments():
     assert hasattr(args, 'deepspeed_config')
     assert type(args.deepspeed_config) == str
     assert args.deepspeed_config == 'foo.json'
+
+
+def test_core_binding_arguments():
+    core_list = parse_range_list("0,2-4,6,8-9")
+    assert core_list == [0, 2, 3, 4, 6, 8, 9]

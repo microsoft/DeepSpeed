@@ -142,23 +142,48 @@ def terminate_process_tree(pid):
         p.kill()
 
 
-from itertools import chain
-
-
 def parse_range(rng):
-    parts = rng.split('-')
-    if 1 > len(parts) > 2:
-        raise ValueError("Bad range: '%s'" % (rng, ))
-    parts = [int(i) for i in parts]
-    start = parts[0]
-    end = start if len(parts) == 1 else parts[1]
-    if start > end:
-        end, start = start, end
-    return range(start, end + 1)
+    try:
+        value = int(rng)
+        return range(value, value + 1)
+    except ValueError:
+        # value is not a single number
+        parts = rng.split('-')
+        if len(parts) != 2:
+            raise ValueError(
+                "Bad range: '%s', range must be either a number or two number separated by dash"
+                % (rng,
+                   ))
+        start = int(parts[0])
+        end = int(parts[1])
+        if start > end:
+            raise ValueError(
+                "Bad range: '%s', range end must larger than or equal to start" % (rng,
+                                                                                   ))
+        return range(start, end + 1)
 
 
-def parse_range_list(rngs):
-    return sorted(set(chain(*[parse_range(rng) for rng in rngs.split(',')])))
+# parse comma and dash separated range list into list
+# i.e. "0,2-4,6" --> [0, 2, 3, 4, 6]
+# rules:
+# 1. Range list numser be comma sepeaated, each item are either a single number,
+#    or a range marked by two numbers (both number are included in the range)
+# 2. Sub ranges must be in ascend order and not overlap with each other
+# 3. No space in the range expression
+def parse_range_list(range_str):
+    number_list = []
+    last = -1
+    range_list = range_str.split(',')
+    for sub_range in range_list:
+        sub_number_list = parse_range(sub_range)
+        if sub_number_list[0] <= last:
+            raise ValueError(
+                "Bad range: '%s', sub ranges must not overlap with each other and should be in ascend order"
+                % (range_str,
+                   ))
+        last = sub_number_list[-1]
+        number_list.extend(sub_number_list)
+    return number_list
 
 
 # return a list of list for cores to numa mapping
@@ -297,7 +322,7 @@ def main():
                 core_list_for_rank = core_list[cores_per_rank *
                                                local_rank:cores_per_rank *
                                                (local_rank + 1)]
-                os.environ["OMP_NUM_THREADS"] = f"{cores_per_rank}"
+                current_env["OMP_NUM_THREADS"] = f"{cores_per_rank}"
                 cmd.append("numactl")
 
                 # check if all cores belong to same numa, if true, bind process to that numa domain with -m parameter
