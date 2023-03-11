@@ -8,10 +8,15 @@ from .base import BaseOp
 class ResidualAddOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(ResidualAddOp, self).__init__(config)
-        if self.config.fp16 or self.config.q_int8:
-            self.residual_add_func = self.inference_cuda_module.residual_add_bias_fp16
-        else:
-            self.residual_add_func = self.inference_cuda_module.residual_add_bias_fp32
+        try:
+            if self.config.fp16 or self.config.q_int8:
+                self.residual_add_func = self.inference_cuda_module.residual_add_bias_fp16
+            elif self.config.bf16:
+                self.residual_add_func = self.inference_cuda_module.residual_add_bias_bf16
+            else:
+                self.residual_add_func = self.inference_cuda_module.residual_add_bias_fp32
+        except AttributeError:
+            self.residual_add_func = None
 
     def forward(self,
                 hidden_state: torch.Tensor,
@@ -26,13 +31,17 @@ class ResidualAddOp(BaseOp):
             # only use residual add if its set and we are not pre layer norm
             residual = residual_add
 
-        self.residual_add_func(hidden_state,
-                               residual,
-                               attention_output,
-                               attention_bias,
-                               final_bias,
-                               self.config.mp_size,
-                               self.config.mlp_after_attn,
-                               add_bias,
-                               self.config.pre_layer_norm)
+        if self.residual_add_func != None:
+            self.residual_add_func(hidden_state,
+                                   residual,
+                                   attention_output,
+                                   attention_bias,
+                                   final_bias,
+                                   self.config.mp_size,
+                                   self.config.mlp_after_attn,
+                                   add_bias,
+                                   self.config.pre_layer_norm)
+        else:
+            # fallback
+            raise NotImplementedError
         return residual
