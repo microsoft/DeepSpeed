@@ -1,6 +1,7 @@
 '''Copyright The Microsoft DeepSpeed Team'''
 
 import torch
+import torch.nn.functional as F
 from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
 
@@ -46,5 +47,16 @@ class MLPGemmOp(BaseOp):
                                         self.config.mlp_act_func_type)
         else:
             # fallback
-            raise NotImplementedError
+            if self.config.mlp_after_attn:
+                residual_add = F.layer_norm(input + residual + input_bias,
+                                            (input.shape[2],
+                                             ),
+                                            gamma,
+                                            beta,
+                                            self.config.epsilon)
+                tmp = torch.matmul(residual_add, weight_interm)
+                tmp = F.gelu(tmp + bias)
+                output = torch.matmul(tmp, weight_out)
+            else:
+                raise NotImplementedError
         return output, residual_add

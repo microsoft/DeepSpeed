@@ -1,6 +1,7 @@
 '''Copyright The Microsoft DeepSpeed Team'''
 
 import torch
+import torch.nn.functional as F
 from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
 from deepspeed import comm as dist
@@ -49,6 +50,15 @@ class QKVGemmOp(BaseOp):
                                         q_int8)
         else:
             # fallback
-            raise NotImplementedError
+            inp_norm = F.layer_norm(input,
+                                    (input.shape[2],
+                                     ),
+                                    gamma,
+                                    beta,
+                                    self.config.epsilon)
+            tmp = torch.matmul(inp_norm, weight)
+            if add_bias:
+                tmp += bias
+            output = [tmp, inp_norm]
 
         return output

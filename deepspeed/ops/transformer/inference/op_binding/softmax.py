@@ -1,6 +1,7 @@
 '''Copyright The Microsoft DeepSpeed Team'''
 
 import torch
+import torch.nn.functional as F
 from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
 
@@ -8,15 +9,15 @@ from .base import BaseOp
 class SoftmaxOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(SoftmaxOp, self).__init__(config)
-        if self.config.fp16:
-            self.softmax_func = self.inference_cuda_module.softmax_fp16
-        elif self.config.bf16:
-            self.softmax_func = self.inference_cuda_module.softmax_bf16
-        else:
-            self.softmax_func = self._not_implemented
-
-    def _not_implemented(self, *args, **kwargs):
-        raise NotImplementedError
+        try:
+            if self.config.fp16:
+                self.softmax_func = self.inference_cuda_module.softmax_fp16
+            elif self.config.bf16:
+                self.softmax_func = self.inference_cuda_module.softmax_bf16
+            else:
+                self.softmax_func = self.inference_cuda_module.softmax_fp32
+        except AttributeError:
+            self.softmax_func = None
 
     def forward(self,
                 attn_scores: torch.Tensor,
@@ -29,15 +30,32 @@ class SoftmaxOp(BaseOp):
                 async_op: bool,
                 layer_scale: float,
                 head_offset: int):
-        output = self.softmax_func(attn_scores,
-                                   attn_mask,
-                                   alibi,
-                                   triangular,
-                                   recompute,
-                                   local_attention,
-                                   window_size,
-                                   async_op,
-                                   layer_scale,
-                                   head_offset,
-                                   self.config.mp_size)
+        if self.softmax_func != None:
+            output = self.softmax_func(attn_scores,
+                                       attn_mask,
+                                       alibi,
+                                       triangular,
+                                       recompute,
+                                       local_attention,
+                                       window_size,
+                                       async_op,
+                                       layer_scale,
+                                       head_offset,
+                                       self.config.mp_size)
+        else:
+            # fallback
+            alibi = alibi[head_offset:head_offset +
+                          self.num_attention_heads_per_partition]
+            input_dtype = attn_scores.dtype
+            if (triangular):
+                tri = ~torch.tril(torch.ones_like(attn_scores)).to(bool)
+                attn_scores = torch.masked_fill(attn_scores * layer_scale,
+                                                tri,
+                                                torch.finfo(input_dtype).min)
+            if alibi is not None:
+                attn_scores += alibi
+            if attn_mask is not None:
+                attn_scores += attn_mask
+            output = F.softmax(attn_scores, dim=-1, dtype=torch.float32).to(input_dtype)
+
         return output

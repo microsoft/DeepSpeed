@@ -24,6 +24,6 @@ class VectorMatMulOp(BaseOp):
         if self.vector_matmul_func != None:
             output = self.vector_matmul_func(input, weight, async_op, q_scale, q_int8)
         else:
-            # fallback path
-            raise NotImplementedError
+            # fallback
+            output = torch.matmul(input, weight)
         return output

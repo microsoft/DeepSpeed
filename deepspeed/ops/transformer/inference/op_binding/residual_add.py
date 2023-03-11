@@ -43,5 +43,16 @@ class ResidualAddOp(BaseOp):
                                    self.config.pre_layer_norm)
         else:
             # fallback
-            raise NotImplementedError
+            if self.config.mlp_after_attn:
+                if self.config.pre_layer_norm:
+                    tmp = (residual.float() + attention_output.float() +
+                           attention_bias.float() + final_bias.float()
+                           ) / self.config.mp_size + hidden_state.float()
+                else:
+                    tmp = residual.float() + hidden_state.float() + final_bias.float()
+
+                input_dtype = hidden_state.dtype
+                residual = tmp.to(input_dtype)
+            else:
+                raise NotImplementedError
         return residual

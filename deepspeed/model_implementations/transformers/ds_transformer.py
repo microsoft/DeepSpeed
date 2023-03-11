@@ -141,9 +141,6 @@ class DeepSpeedTransformerInference(nn.Module):
                                         self.config.bigscience_bloom,
                                         dist.get_rank() if dist.is_initialized() else 0,
                                         self.config.max_out_tokens)
-            else:
-                # fallback
-                raise NotImplementedError
 
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
