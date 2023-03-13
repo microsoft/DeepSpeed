@@ -56,6 +56,8 @@ class SoftmaxOp(BaseOp):
             if alibi is not None:
                 attn_scores += alibi
             if attn_mask is not None:
+                # expand atten_mask from two dim into 4 dim, insert two dims in the middle
+                attn_mask = attn_mask[:, None, None, :]
                 attn_scores += attn_mask
             output = F.softmax(attn_scores, dim=-1, dtype=torch.float32).to(input_dtype)
 
