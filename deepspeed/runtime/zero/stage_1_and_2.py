@@ -1183,8 +1183,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             num_elements)
 
         src_tensor = param.grad.view(-1).narrow(0, source_offset, num_elements)
-        if not self.fp16_master_weights_and_gradients:
-            src_tensor = src_tensor.float()
+        # Copy gradients of type FP16 CUDA tensor directly into FP32 CPU tensor
+        #if not self.fp16_master_weights_and_gradients:
+        #    src_tensor = src_tensor.float()
 
         dest_tensor.copy_(src_tensor, non_blocking=True)
         param.grad = None  #offload only
