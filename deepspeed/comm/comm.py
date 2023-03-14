@@ -275,7 +275,8 @@ def reduce_scatter_fn(output_tensor,
     else:
         if not has_warned_reduce_scatter:
             utils.logger.warning(
-                "unable to find torch.distributed._reduce_scatter_base. will fall back to "
+                "unable to find neither torch.distributed.reduce_scatter_tensor nor "
+                "torch.distributed._reduce_scatter_base. will fall back to "
                 "torch.distributed.all_gather which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
             has_warned_reduce_scatter = True

@@ -25,8 +25,10 @@ class TorchBackend(Backend):
                  name='torch'):
         super(TorchBackend, self).__init__()
         self.torch_version_before_18 = older_torch()
-        self.has_allgather_base = has_allgather_base()
-        self.has_reduce_scatter_base = has_reduce_scatter_base()
+        self.allgather_base_fn = get_allgather_base_fn()
+        self.reduce_scatter_base_fn = get_reduce_scatter_base_fn()
+        self.has_allgather_base = self.allgather_base_fn is not None
+        self.has_reduce_scatter_base = self.reduce_scatter_base_fn is not None
         self.initialized = True
         self.name = name
         # Future functionality to support ds.initialize() on a single GPU
@@ -88,16 +90,16 @@ class TorchBackend(Backend):
 
     def all_gather_base(self, output_tensor, input_tensor, group=None, async_op=False):
         if self.has_allgather_base:
-            return torch.distributed.distributed_c10d._all_gather_base(
-                output_tensor=output_tensor,
-                input_tensor=input_tensor,
-                group=group,
-                async_op=async_op)
+            return self.allgather_base_fn(output_tensor=output_tensor,
+                                          input_tensor=input_tensor,
+                                          group=group,
+                                          async_op=async_op)
         else:
             utils.logger.warning(
-                "unable to find torch.distributed._all_gather_base. will fall back to "
+                "Unable to find neither torch.distributed.all_gather_into_tensor nor "
+                "torch.distributed._all_gather_base. Will fall back to "
                 "torch.distributed.reduce_scatter which will result in suboptimal performance. "
-                "please consider upgrading your pytorch installation.")
+                "Please consider upgrading your pytorch installation.")
             pass
 
     def reduce_scatter_base(self,
@@ -107,16 +109,17 @@ class TorchBackend(Backend):
                             group=None,
                             async_op=False):
         if self.has_reduce_scatter_base:
-            return torch.distributed._reduce_scatter_base(output_tensor,
-                                                          input_tensor,
-                                                          op=self._reduce_op(op),
-                                                          group=group,
-                                                          async_op=async_op)
+            return self.reduce_scatter_base_fn(output_tensor,
+                                               input_tensor,
+                                               op=self._reduce_op(op),
+                                               group=group,
+                                               async_op=async_op)
         else:
             utils.logger.warning(
-                "unable to find torch.distributed._reduce_scatter_base. will fall back to "
+                "Unable to find neither torch.distributed.reduce_scatter_tensor nor "
+                "torch.distributed._reduce_scatter_base. Will fall back to "
                 "torch.distributed.reduce_scatter which will result in suboptimal performance. "
-                "please consider upgrading your pytorch installation.")
+                "Please consider upgrading your pytorch installation.")
             pass
 
     def all_to_all_single(self,

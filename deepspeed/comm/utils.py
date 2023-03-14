@@ -27,11 +27,28 @@ def has_allgather_base():
     return hasattr(torch.distributed, "_all_gather_base")
 
 
-def has_reduce_scatter_base():
+def get_allgather_base_fn():
     '''
-        Helper to check if torch.distributed has _reduce_scatter_base
+    Returns torch.distributed.all_gather_into_tensor if it exists (most recent pytorch)
+    or torch.distributed.allgather_base._allgather_base if it exists (older pytorch)
+    or None (very old pytorch)
     '''
-    return hasattr(torch.distributed, "_reduce_scatter_base")
+    if hasattr(torch.distributed, "all_gather_into_tensor"):
+        return torch.distributed.all_gather_into_tensor
+    else:
+        return getattr(torch.distributed, "_allgather_base", None)
+
+
+def get_reduce_scatter_base_fn():
+    '''
+    Returns torch.distributed.reduce_scatter_tensor if it exists (most recent pytorch)
+    or torch.distributed.reduce_scatter_base._reduce_scatter_base if it exists (older pytorch)
+    or None (very old pytorch)
+    '''
+    if hasattr(torch.distributed, "reduce_scatter_tensor"):
+        return torch.distributed.reduce_scatter_tensor
+    else:
+        return getattr(torch.distributed, "_reduce_scatter_base", None)
 
 
 def get_local_rank_from_launcher():
