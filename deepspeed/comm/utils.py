@@ -20,13 +20,6 @@ def older_torch():
         return False
 
 
-def has_allgather_base():
-    '''
-        Helper to check if torch.distributed has _all_gather_base
-    '''
-    return hasattr(torch.distributed, "_all_gather_base")
-
-
 def get_allgather_base_fn():
     '''
     Returns torch.distributed.all_gather_into_tensor if it exists (most recent pytorch)
