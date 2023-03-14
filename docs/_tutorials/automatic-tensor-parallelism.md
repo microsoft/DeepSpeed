@@ -97,12 +97,23 @@ The following results were collected using V100 SXM2 32GB GPUs.
 
 ### Memory
 
-| Test           | Memory Allocated per GPU   |
-| -------------- | -------------------------- |
-| No TP or 1 GPU | 21.06 GB                   |
-| 2 GPU TP       | 10.56 GB                   |
-| 4 GPU TP       | 5.31 GB                    |
-| 8 GPU TP       | 2.69 GB                    |
+| Test           | Memory Allocated per GPU   | Max Batch Size | Max Throughput per GPU |
+| -------------- | -------------------------- | -------------- | ---------------------- |
+| No TP or 1 GPU | 21.06 GB                   | 64             | 9.29 TFLOPS            |
+| 2 GPU TP       | 10.56 GB                   | 320            | 13.04 TFLOPS           |
+| 4 GPU TP       | 5.31 GB                    | 768            | 14.04 TFLOPS           |
+
+## OPT 13B Inference Performance Comparison
+
+The following results were collected using V100 SXM2 32GB GPUs.
+
+![OPT Throughput Graph](/assets/images/auto-tp-chart-opt-throughput.png){: .align-center}
+
+| Test       | Memory Allocated per GPU   | Max Batch Size   | Max Throughput per GPU   |
+| ---------- | -------------------------- | ---------------- | ------------------------ |
+| No TP      | 23.94 GB                   | 2                | 1.65 TFlops              |
+| 2 GPU TP   | 12.23 GB                   | 20               | 4.61 TFlops              |
+| 4 GPU TP   | 6.36 GB                    | 56               | 4.90 TFlops              |
 
 # Supported Models
 
