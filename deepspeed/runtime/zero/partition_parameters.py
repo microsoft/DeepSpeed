@@ -477,7 +477,9 @@ class NoGatherHandle:
         if param.ds_status != ZeroParamStatus.INFLIGHT:
             raise RuntimeError(f"expected param {param.ds_summary()} to be available")
 
-        param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(), non_blocking=True).view(param.ds_shape)
+        param.data = param.ds_tensor.data.to(
+            device=get_accelerator().current_device_name(),
+            non_blocking=True).view(param.ds_shape)
         self.__param = param
 
     def wait(self) -> None:
@@ -486,10 +488,7 @@ class NoGatherHandle:
 
 
 class NoGatherCoalescedHandle:
-    def __init__(
-        self,
-        params: List[Parameter]
-    ) -> None:
+    def __init__(self, params: List[Parameter]) -> None:
         self.__params = params
         self.__complete = False
 
@@ -497,7 +496,9 @@ class NoGatherCoalescedHandle:
             if param.ds_status != ZeroParamStatus.INFLIGHT:
                 raise RuntimeError(
                     f"expected param {param.ds_summary()} to not be available")
-            param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(), non_blocking=True).view(param.ds_shape)        
+            param.data = param.ds_tensor.data.to(
+                device=get_accelerator().current_device_name(),
+                non_blocking=True).view(param.ds_shape)
 
     @instrument_w_nvtx
     def wait(self) -> None:
@@ -509,7 +510,8 @@ class NoGatherCoalescedHandle:
             assert param.ds_status == ZeroParamStatus.INFLIGHT, f"expected param {param.ds_summary()} to be inflight"
             param.ds_status = ZeroParamStatus.AVAILABLE
 
-        self.__complete = True    
+        self.__complete = True
+
 
 class AllGatherHandle:
     def __init__(self, handle, param: Parameter) -> None:
@@ -564,7 +566,8 @@ class AllGatherCoalescedHandle:
                         min(param.ds_numel - param_start,
                             param.ds_tensor.ds_numel))
                     partitions.append(part_to_copy)
-            import pdb; pdb.set_trace()
+            import pdb
+            pdb.set_trace()
             param.data = instrument_w_nvtx(torch.cat)(partitions).view(param.ds_shape)
             param.ds_status = ZeroParamStatus.AVAILABLE
 
@@ -862,16 +865,15 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 param_list = [cls]
             return self._all_gather(param_list, async_op=async_op, hierarchy=hierarchy)
 
-
-        def _no_gather_coalesced(params: Iterable[Parameter]) -> AllGatherCoalescedHandle:
+        def _no_gather_coalesced(
+                params: Iterable[Parameter]) -> AllGatherCoalescedHandle:
             params = sorted(params, key=lambda p: p.ds_id)
             if len(params) == 1:
-                param, = params 
+                param, = params
                 return NoGatherHandle(param)
-            
+
             return NoGatherCoalescedHandle(params)
 
-            
         @instrument_w_nvtx
         def all_gather_coalesced(params: Iterable[Parameter],
                                  safe_mode: bool = False) -> AllGatherCoalescedHandle:
@@ -885,7 +887,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 param.ds_status = ZeroParamStatus.INFLIGHT
 
             if self.world_size == 1:
-                return _no_gather_coalesced(params) 
+                return _no_gather_coalesced(params)
 
             # ensure that each rank has params in same order. the allgather
             # is done by flattening the parameter list into a single tensor that
