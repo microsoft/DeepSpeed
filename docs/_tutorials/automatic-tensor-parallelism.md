@@ -8,6 +8,7 @@ tags: inference
    * [Example Script](#example-script)
         * [Launching](#launching)
         * [T5 11B Inference Performance Comparison](#t5-11b-inference-performance-comparison)
+        * [OPT 13B Inference Performance Comparison](#opt-13b-inference-performance-comparison)
    * [Supported Models](#supported-models)
    * [Unsupported Models](#unsupported-models)
 
