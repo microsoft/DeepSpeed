@@ -5,6 +5,7 @@ Licensed under the MIT license.
 """
 import os
 from typing import Union
+from enum import Enum
 
 import torch
 import json
