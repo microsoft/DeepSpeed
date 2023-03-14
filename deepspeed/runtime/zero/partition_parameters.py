@@ -1006,8 +1006,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
     def _ensure_availability_of_partitioned_params(self, params):
         swap_in_list = []
         swap_in_flight = []
-        partitioned_params = [p for p in params if not p.ds_persist]
-        for param in partitioned_params:
+        for param in params:
             if param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE:
                 assert param.ds_tensor.final_location == OffloadDeviceEnum.nvme and param.ds_status == ZeroParamStatus.NOT_AVAILABLE
                 swap_in_list.append(param)
@@ -1051,8 +1050,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         return handles
 
     def _partition(self, param_list, force=False, has_been_updated=False):
-        partitioned_list = [p for p in param_list if not p.ds_persist]
-        for param in partitioned_list:
+        for param in param_list:
             #print_rank_0(f"Before Partitioning Param {param.ds_id}")
             # self._param_status(param)
             self._partition_param(param, has_been_updated=has_been_updated)
@@ -1122,11 +1120,16 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     )
 
                 else:
-                    partitioned_tensor = torch.empty(
-                        partition_size,
-                        dtype=param.dtype,
-                        device=OffloadDeviceEnum.cpu if self.remote_device
-                        == OffloadDeviceEnum.nvme else self.remote_device)
+                    if param.ds_persist:
+                        device = self.local_device
+                    elif self.remote_device == OffloadDeviceEnum.nvme:
+                        device = OffloadDeviceEnum.cpu
+                    else:
+                        device = self.remote_device
+
+                    partitioned_tensor = torch.empty(partition_size,
+                                                     dtype=param.dtype,
+                                                     device=device)
                     if self.pin_memory:
                         partitioned_tensor = get_accelerator().pin_memory(
                             partitioned_tensor)
