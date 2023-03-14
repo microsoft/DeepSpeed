@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import os
 import pkgutil
 import importlib
@@ -23,7 +25,7 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
         for _, module_name, _ in pkgutil.iter_modules([os.path.dirname(op_builder_module.__file__)]):
             # avoid self references
-            if module_name != 'all_ops' and module_name != 'builder' and module_name != 'builder_names':
+            if module_name != 'all_ops' and module_name != 'builder':
                 module = importlib.import_module("{}.{}".format(
                     op_builder_dir,
                     module_name))
@@ -88,11 +90,9 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         return torch.cuda.default_generators[device_index]
 
     # Streams/Events
-    def Stream(self, device=None, priority=0, **kwargs):
-        return torch.cuda.Stream(device, priority, **kwargs)
-
-    def StreamContext(self, stream):
-        return torch.cuda.StreamContext(stream)
+    @property
+    def Stream(self):
+        return torch.cuda.Stream
 
     def stream(self, stream):
         return torch.cuda.stream(stream)
@@ -103,8 +103,9 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def default_stream(self, device_index=None):
         return torch.cuda.default_stream(device_index)
 
-    def Event(self, **kwargs):
-        return torch.cuda.Event(**kwargs)
+    @property
+    def Event(self):
+        return torch.cuda.Event
 
     # Memory management
     def empty_cache(self):
@@ -223,8 +224,9 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def op_builder_dir(self):
         try:
-            # during installation time op_builder is visible, otherwise return deepspeed.ops.op_builder
-            import op_builder  # noqa: F401
+            # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
+            # if successful this also means we're doing a local install and not JIT compile path
+            from op_builder import __deepspeed__  # noqa: F401
             return "op_builder"
         except ImportError:
             return "deepspeed.ops.op_builder"
@@ -234,9 +236,17 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     # this dict will be filled at init stage
     class_dict = {}
 
+    # create an instance of op builder and return, name specified by class_name
     def create_op_builder(self, class_name):
         if class_name in self.class_dict:
             return self.class_dict[class_name]()
+        else:
+            return None
+
+    # return an op builder class, name specified by class_name
+    def get_op_builder(self, class_name):
+        if class_name in self.class_dict:
+            return self.class_dict[class_name]
         else:
             return None
 

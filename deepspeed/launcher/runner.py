@@ -17,15 +17,15 @@ import collections
 from copy import deepcopy
 import signal
 import time
-import torch.cuda
 
-from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner, SlurmRunner
-from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER, SLURM_LAUNCHER
+from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner, SlurmRunner, MPICHRunner
+from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER, SLURM_LAUNCHER, MPICH_LAUNCHER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..nebula.constants import NEBULA_EXPORT_ENVS
 from ..utils import logger
 
 from ..autotuning import Autotuner
+from deepspeed.accelerator import get_accelerator
 
 DLTS_HOSTFILE = "/job/hostfile"
 EXPORT_ENVS = ['MLFLOW', 'NCCL', 'PYTHON', 'MV2', 'UCX']
@@ -114,7 +114,7 @@ def parse_args(args=None):
         default=PDSH_LAUNCHER,
         type=str,
         help="(optional) choose launcher backend for multi-node "
-        "training. Options currently include PDSH, OpenMPI, MVAPICH, SLURM.")
+        "training. Options currently include PDSH, OpenMPI, MVAPICH, SLURM, MPICH.")
 
     parser.add_argument("--launcher_args",
                         default="",
@@ -406,7 +406,7 @@ def main(args=None):
     multi_node_exec = True
     if not resource_pool:
         resource_pool = {}
-        device_count = torch.cuda.device_count()
+        device_count = get_accelerator().device_count()
         if device_count == 0:
             raise RuntimeError("Unable to proceed, no GPU resources available")
         resource_pool['localhost'] = device_count
@@ -511,6 +511,8 @@ def main(args=None):
             runner = PDSHRunner(args, world_info_base64)
         elif args.launcher == OPENMPI_LAUNCHER:
             runner = OpenMPIRunner(args, world_info_base64, resource_pool)
+        elif args.launcher == MPICH_LAUNCHER:
+            runner = MPICHRunner(args, world_info_base64, resource_pool)
         elif args.launcher == MVAPICH_LAUNCHER:
             runner = MVAPICHRunner(args, world_info_base64, resource_pool)
         elif args.launcher == SLURM_LAUNCHER:

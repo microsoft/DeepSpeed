@@ -421,6 +421,8 @@ void attention_unfused(T* prev_key_cont,
 #endif
 }
 
+void reset_cache() { Context::Instance().reset_tokens(); }
+
 template <typename T>
 std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                            at::Tensor& attn_mask,
@@ -766,15 +768,15 @@ void quantized_gemm(void* output,
                     int bsz,
                     int hidden_size)
 {
-    T* weight16 = (T*)Context::Instance().GetWorkSpace() + 12 * hidden_size * bsz;
+    // T* weight16 = (T*)Context::Instance().GetWorkSpace() + 12 * hidden_size * bsz;
 
-    // auto options = at::TensorOptions()
-    //                    .dtype(at::kHalf)
-    //                    .layout(at::kStrided)
-    //                    .device(at::kCUDA)
-    //                    .requires_grad(false);
-    // auto tmp = torch::empty(weight.sizes(), options);
-    // T* weight16 = (T*)tmp.data_ptr();
+    auto options = at::TensorOptions()
+                       .dtype(at::kHalf)
+                       .layout(at::kStrided)
+                       .device(at::kCUDA)
+                       .requires_grad(false);
+    auto tmp = torch::empty(weight.sizes(), options);
+    T* weight16 = (T*)tmp.data_ptr();
     launch_dequantize(weight16,
                       (int8_t*)weight.data_ptr(),
                       (float*)qscale.data_ptr(),
@@ -1774,4 +1776,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("allocate_workspace_fp16",
           &allocate_workspace<__half>,
           "DeepSpeed memory allocation for GPT inference with fp16 (CUDA)");
+    m.def("reset_cache", &reset_cache, "Reset Cache for generation tasks");
 }

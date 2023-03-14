@@ -2,11 +2,13 @@
 Copyright 2022 The Microsoft DeepSpeed Team
 '''
 import torch
+from deepspeed.accelerator import get_accelerator
+from ..features.cuda_graph import CUDAGraph
 
 
-class DSClipEncoder(torch.nn.Module):
+class DSClipEncoder(CUDAGraph, torch.nn.Module):
     def __init__(self, enc, enable_cuda_graph=False):
-        super().__init__()
+        super().__init__(enable_cuda_graph=enable_cuda_graph)
         enc.text_model._build_causal_attention_mask = self._build_causal_attention_mask
         self.enc = enc
         self.device = self.enc.device
@@ -17,7 +19,6 @@ class DSClipEncoder(torch.nn.Module):
         self.static_output = [None, None]
         self._cuda_graphs = [None, None]
         self.iter = 0
-        self.enable_cuda_graph = enable_cuda_graph
         self.config = self.enc.config
 
     def _build_causal_attention_mask(self, bsz, seq_len, dtype):
@@ -25,7 +26,7 @@ class DSClipEncoder(torch.nn.Module):
                            seq_len,
                            seq_len,
                            dtype=dtype,
-                           device=torch.cuda.current_device())
+                           device=get_accelerator().current_device_name())
         mask.fill_(torch.tensor(torch.finfo(dtype).min))
         mask.triu_(1)
         mask = mask.unsqueeze(1)

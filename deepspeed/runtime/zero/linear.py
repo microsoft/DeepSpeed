@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 #Linear Module to use with ZeRO Stage 3 to allow for parameter memory release
 #after the module execution during forward
 #Instead of saving variables using save_for_backward, we save variable ids
@@ -19,6 +21,7 @@ from torch.nn import init
 from torch.nn.modules.module import Module
 from deepspeed.runtime.utils import noop_decorator
 from deepspeed import comm as dist
+from deepspeed.accelerator import get_accelerator
 
 tensor_map = {}
 
@@ -28,10 +31,15 @@ def print_rank_0(message, debug=False, force=False):
         print(message)
 
 
-try:
-    autocast_custom_fwd = torch.cuda.amp.custom_fwd
-    autocast_custom_bwd = torch.cuda.amp.custom_bwd
-except (ImportError, AttributeError) as exp:
+device = get_accelerator().device_name()
+if device == 'cuda':
+    try:
+        autocast_custom_fwd = torch.cuda.amp.custom_fwd
+        autocast_custom_bwd = torch.cuda.amp.custom_bwd
+    except (ImportError, AttributeError) as exp:
+        autocast_custom_fwd = noop_decorator
+        autocast_custom_bwd = noop_decorator
+else:
     autocast_custom_fwd = noop_decorator
     autocast_custom_bwd = noop_decorator
 
