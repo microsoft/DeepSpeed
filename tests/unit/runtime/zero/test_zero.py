@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import math
 from typing import Dict, List, Set
 import pytest
@@ -16,6 +18,8 @@ import deepspeed
 from deepspeed.runtime.engine import DeepSpeedEngine
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.utils.zero_to_fp32 import load_state_dict_from_zero_checkpoint
+from deepspeed.runtime.zero.utils import ZeRORuntimeException
+from deepspeed.accelerator import get_accelerator
 
 
 def run_unbalanced_gradients(model, data_loader):
@@ -209,23 +213,26 @@ class TestZeroToFP32(DistributedTest):
         # make sure all sides saved it
         dist.barrier()
 
-        if zero_stage == 3:
-            with deepspeed.zero.GatheredParameters(list(
-                    model.module.parameters(recurse=True)),
-                                                   modifier_rank=None):
-                pass  # this forces gathering the model
-
-        #dump_state_dict(model)
-
         orig_state_dict = {}
         for name, param in model.module.named_parameters():
-            orig_state_dict[name] = param.detach().cpu()
+            if zero_stage == 3:
+                with deepspeed.zero.GatheredParameters(param, modifier_rank=None):
+                    orig_state_dict[name] = param.detach().cpu()
+            else:
+                orig_state_dict[name] = param.detach().cpu()
+
+        if zero_stage == 3:
+            with deepspeed.zero.GatheredParameters(model.parameters(),
+                                                   modifier_rank=None):
+                fp32_model = load_state_dict_from_zero_checkpoint(model.module, tmpdir)
+                fp32_state_dict = fp32_model.state_dict()
+        else:
+            fp32_model = load_state_dict_from_zero_checkpoint(model.module, tmpdir)
+            fp32_state_dict = fp32_model.state_dict()
+
+        #dump_state_dict(fp32_model)
 
         if dist.get_rank() == 0:
-            fp32_model = load_state_dict_from_zero_checkpoint(model.module, tmpdir)
-            #dump_state_dict(fp32_model)
-
-            fp32_state_dict = fp32_model.state_dict()
             for name in orig_state_dict.keys():
                 # float() workaround for torch<1.6
                 assert torch.allclose(orig_state_dict[name].float(),
@@ -308,23 +315,28 @@ class TestZeroToFP32(DistributedTest):
         # make sure all sides saved it
         dist.barrier()
 
-        if zero_stage == 3:
-            with deepspeed.zero.GatheredParameters(list(
-                    model.module.parameters(recurse=True)),
-                                                   modifier_rank=None):
-                pass  # this forces gathering the model
-
         #dump_state_dict(model)
 
         orig_state_dict = {}
         for name, param in model.module.named_parameters():
-            orig_state_dict[name] = param.detach().cpu()
+            if zero_stage == 3:
+                with deepspeed.zero.GatheredParameters(param, modifier_rank=None):
+                    orig_state_dict[name] = param.detach().cpu()
+            else:
+                orig_state_dict[name] = param.detach().cpu()
+
+        if zero_stage == 3:
+            with deepspeed.zero.GatheredParameters(model.parameters(),
+                                                   modifier_rank=None):
+                fp32_model = load_state_dict_from_zero_checkpoint(model.module, tmpdir)
+                fp32_state_dict = fp32_model.state_dict()
+        else:
+            fp32_model = load_state_dict_from_zero_checkpoint(model.module, tmpdir)
+            fp32_state_dict = fp32_model.state_dict()
+
+        #dump_state_dict(fp32_model)
 
         if dist.get_rank() == 0:
-            fp32_model = load_state_dict_from_zero_checkpoint(model.module, tmpdir)
-            #dump_state_dict(fp32_model)
-
-            fp32_state_dict = fp32_model.state_dict()
             for name in orig_state_dict.keys():
                 # float() workaround for torch<1.6
                 assert torch.allclose(orig_state_dict[name].float(),
@@ -688,30 +700,30 @@ class TestZero3ParamPartitioningBase(DistributedTest):
             grad_multiplier = 1 if zero_grad else (train_iter + 1)
             if dist.get_rank() == 0:
                 assert torch.allclose(
-                    dloss_wrt_layer3.cuda(),
+                    dloss_wrt_layer3.to(get_accelerator().device_name()),
                     grad_multiplier * create_tensor([2] * 8,
                                                     torch.float))
                 assert torch.allclose(
-                    dloss_wrt_layer2.cuda(),
+                    dloss_wrt_layer2.to(get_accelerator().device_name()),
                     grad_multiplier * create_tensor([3 * 1] * 8,
                                                     torch.float))
                 assert torch.allclose(
-                    dloss_wrt_layer1.cuda(),
+                    dloss_wrt_layer1.to(get_accelerator().device_name()),
                     grad_multiplier * create_tensor([3 * 2 * 1] * 8,
                                                     torch.float))
             elif dist.get_rank() == 1:
                 # parameters dont split evenly across ranks so rank 1 has a zero-padded
                 # partition
                 assert torch.allclose(
-                    dloss_wrt_layer3.cuda(),
+                    dloss_wrt_layer3.to(get_accelerator().device_name()),
                     grad_multiplier * create_tensor(([8] * 7) + [0],
                                                     torch.float))
                 assert torch.allclose(
-                    dloss_wrt_layer2.cuda(),
+                    dloss_wrt_layer2.to(get_accelerator().device_name()),
                     grad_multiplier * create_tensor(([6 * 2] * 7) + [0],
                                                     torch.float))
                 assert torch.allclose(
-                    dloss_wrt_layer1.cuda(),
+                    dloss_wrt_layer1.to(get_accelerator().device_name()),
                     grad_multiplier * create_tensor(([6 * 4 * 1] * 7) + [0],
                                                     torch.float))
             else:
@@ -1118,28 +1130,28 @@ class TestZero3ParamPartitioningBaseBF16(DistributedTest):
             grad_multiplier = 1 if zero_grad else (train_iter + 1)
             if dist.get_rank() == 0:
                 assert torch.allclose(
-                    dloss_wrt_layer3.cuda(),
+                    dloss_wrt_layer3.to(get_accelerator().device_name()),
                     grad_multiplier * create_tensor([2] * 8).to(expected_grad_dtype))
                 assert torch.allclose(
-                    dloss_wrt_layer2.cuda(),
+                    dloss_wrt_layer2.to(get_accelerator().device_name()),
                     grad_multiplier * create_tensor([3 * 1] * 8).to(expected_grad_dtype))
                 assert torch.allclose(
-                    dloss_wrt_layer1.cuda(),
+                    dloss_wrt_layer1.to(get_accelerator().device_name()),
                     grad_multiplier *
                     create_tensor([3 * 2 * 1] * 8).to(expected_grad_dtype))
             elif dist.get_rank() == 1:
                 # parameters dont split evenly across ranks so rank 1 has a zero-padded
                 # partition
                 assert torch.allclose(
-                    dloss_wrt_layer3.cuda(),
+                    dloss_wrt_layer3.to(get_accelerator().device_name()),
                     grad_multiplier *
                     create_tensor(([8] * 7) + [0]).to(expected_grad_dtype))
                 assert torch.allclose(
-                    dloss_wrt_layer2.cuda(),
+                    dloss_wrt_layer2.to(get_accelerator().device_name()),
                     grad_multiplier *
                     create_tensor(([6 * 2] * 7) + [0]).to(expected_grad_dtype))
                 assert torch.allclose(
-                    dloss_wrt_layer1.cuda(),
+                    dloss_wrt_layer1.to(get_accelerator().device_name()),
                     grad_multiplier *
                     create_tensor(([6 * 4 * 1] * 7) + [0]).to(expected_grad_dtype))
             else:
@@ -1313,3 +1325,100 @@ class TestZeroAdamOptimizerStepCount(DistributedTest):
                         state = optimizer.optimizer.state[param]
                         step_counts.append(state['step'])
                 assert all(step == step_counts[0] for step in step_counts)
+
+
+class TestZeroFrozenWeights(DistributedTest):
+    world_size = 1
+
+    def test(self):
+        config_dict = {
+            "train_batch_size": 4,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 1e-4
+                }
+            },
+            "fp16": {
+                "enabled": True
+            },
+            "zero_optimization": {
+                "stage": 3
+            }
+        }
+        hidden_dim = 10
+
+        class MyModel(torch.nn.Module):
+            def __init__(self, hidden_dim):
+                super(MyModel, self).__init__()
+                self.l1 = torch.nn.Linear(hidden_dim, hidden_dim)
+                self.l2 = torch.nn.Linear(hidden_dim, hidden_dim)
+                self.act = torch.nn.ReLU()
+                self.cel = torch.nn.CrossEntropyLoss()
+
+                # freeze one fc
+                self.l2.weight.requires_grad = False
+                self.l2.bias.requires_grad = False
+
+            def forward(self, x, y):
+                x = self.l1(x)
+                x = self.act(x)
+                x = self.l2(x)
+                loss = self.cel(x, y)
+                val = (x, loss)
+                return val
+
+        with deepspeed.zero.Init(config_dict_or_path=config_dict):
+            model = MyModel(hidden_dim)
+
+        model, _, _, _ = deepspeed.initialize(model=model,
+                                              model_parameters=model.parameters(),
+                                              config=config_dict)
+        data_loader = random_dataloader(model=model,
+                                        total_samples=50,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        dist.barrier()
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            loss = loss[1]
+            model.backward(loss)
+            model.step()
+
+
+@pytest.mark.parametrize('force_ds_optim', [True, False])
+class TestZeroOffloadOptim(DistributedTest):
+    world_size = 1
+
+    def test(self, force_ds_optim):
+        config_dict = {
+            "train_batch_size": 4,
+            "gradient_accumulation_steps": 2,
+            "steps_per_print": 1,
+            "fp16": {
+                "enabled": True
+            },
+            "zero_optimization": {
+                "stage": 1,
+                "offload_optimizer": {
+                    "device": "cpu"
+                }
+            },
+            "zero_force_ds_cpu_optimizer": force_ds_optim,
+        }
+        hidden_dim = 10
+
+        model = SimpleModel(hidden_dim)
+
+        optimizer = torch.optim.Adam(model.parameters())
+
+        if force_ds_optim:
+            with pytest.raises(ZeRORuntimeException):
+                model, _, _, _ = deepspeed.initialize(model=model,
+                                                      optimizer=optimizer,
+                                                      config=config_dict)
+        else:
+            model, _, _, _ = deepspeed.initialize(model=model,
+                                                  optimizer=optimizer,
+                                                  config=config_dict)

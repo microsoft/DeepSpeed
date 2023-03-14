@@ -1,9 +1,12 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import os
 import torch
 import time
 import deepspeed
 import argparse
 from transformers import pipeline
+from deepspeed.accelerator import get_accelerator
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", "-m", type=str, help="hf model name")
@@ -61,7 +64,7 @@ def print_latency(latency_set, title, warmup=3):
         print("\t999 Latency: {0:8.2f} ms".format(p999 * 1000))
 
 
-deepspeed.init_distributed("nccl")
+deepspeed.init_distributed()
 
 if args.local_rank == 0:
     print("BENCHMARK SETTINGS:")
@@ -92,7 +95,6 @@ if args.deepspeed:
         dtype=dtype,
         mp_size=args.world_size,
         replace_with_kernel_inject=args.kernel_inject,
-        replace_method="auto",
         enable_cuda_graph=args.graphs,
     )
     pipe.model.profile_model_time()
@@ -101,10 +103,10 @@ responses = []
 times = []
 mtimes = []
 for i in range(args.trials):
-    torch.cuda.synchronize()
+    get_accelerator().synchronize()
     start = time.time()
     r = pipe("DeepSpeed is", do_sample=False, max_new_tokens=args.max_tokens)
-    torch.cuda.synchronize()
+    get_accelerator().synchronize()
     end = time.time()
     responses.append(r)
     times.append(end - start)  # / (args.max_tokens - 3))

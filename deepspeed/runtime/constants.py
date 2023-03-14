@@ -1,3 +1,4 @@
+'''Copyright The Microsoft DeepSpeed Team'''
 """
 Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
@@ -72,6 +73,8 @@ MAX_GRAD_NORM = 'max_grad_norm'
 #############################################
 ZERO_ALLOW_UNTESTED_OPTIMIZER = "zero_allow_untested_optimizer"
 ZERO_ALLOW_UNTESTED_OPTIMIZER_DEFAULT = False
+ZERO_FORCE_DS_CPU_OPTIMIZER = "zero_force_ds_cpu_optimizer"
+ZERO_FORCE_DS_CPU_OPTIMIZER_DEFAULT = True
 
 # Steps
 STEPS_PER_PRINT = "steps_per_print"
