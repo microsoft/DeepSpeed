@@ -306,6 +306,13 @@ def main():
             # spawn the processes
             cmd = []
             if args.bind_cores_to_rank:
+                if 'KMP_AFFINITY' in os.environ.keys():
+                    raise ValueError(
+                        "Environment variable KMP_AFFINITY conflicts with numactl "
+                        "because it interfere with how many CPU cores numactl can set. "
+                        "Unset KMP_AFFINITY before launching deepspeed.\n\n"
+                        "\t$ unset KMP_AFFINITY\n"
+                        "\t$ deepspeed <deepspeed command parameters>")
                 if args.bind_core_list != None:
                     core_list = parse_range_list(args.bind_core_list)
                     total_cores = len(core_list)
