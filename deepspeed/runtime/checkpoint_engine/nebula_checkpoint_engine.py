@@ -64,7 +64,7 @@ class NebulaCheckpointEngine(CheckpointEngine):
             return False
         return commit_rls
 
-    def open(self, load_dir=None, tag=None):
+    def open(self, load_dir, tag=None):
         first_load_flag = self.tag_flag is None or self.tag_flag == tag
         if not self.enable_nebula_load and first_load_flag:
             return tag

@@ -39,8 +39,10 @@ class TorchCheckpointEngine(CheckpointEngine):
         logger.info(f"[Torch] Checkpoint {tag} is ready now!")
         return True
 
-    def open(self, load_dir=None, tag=None):
+    def open(self, load_dir, tag=None):
         # read tag from latest file if not given an actual name
+        if tag is None:
+            tag = 'latest'
         if tag in ['latest', 'latest_universal']:
             latest_path = os.path.join(load_dir, tag)
             if os.path.isfile(latest_path):

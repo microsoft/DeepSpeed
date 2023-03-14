@@ -23,14 +23,28 @@ class CheckpointEngine(object):
         pass
 
     def commit(self, tag):
-        # to tell checkpoint services if all files are readys.
+        # to tell checkpoint services if all files are ready.
         pass
 
-    def open(self, load_dir=None, tag=None):
+    def open(self, load_dir, tag=None):
+        # The open() function can be used by the checkpoint engine to find
+        # and prepare a checkpoint for reading. The caller must specify
+        # a directory in load_dir and a checkpoint name in tag. If
+        # tag == None or "latest", the checkpoint engine loads the most
+        # recent checkpoint that it can find. Otherwise, the checkpoint
+        # engine attempts to load the checkpoint named in tag.
+        #
+        # open() returns the tag value of the checkpoint that it actually
+        # loaded or None if it fails to find a checkpoint.
         pass
 
     def load(self, path: str, map_location=None):
+        # Reads and returns data from a checkpoint file.
+        # Must be called between open() and close().
         pass
 
     def close(self, tag):
+        # Must be called after loading all checkpoint files.
+        # Can be used by checkpoint engine to free resources it
+        # may have allocated during open().
         pass
