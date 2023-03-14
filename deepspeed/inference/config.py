@@ -14,6 +14,7 @@ class DtypeEnum(Enum):
     fp16 = torch.float16, "torch.float16", "fp16", "float16", "half"
     fp32 = torch.float32, "torch.float32", "fp32", "float32", "float"
     int8 = torch.int8, "torch.int8", "int8"
+
     # bf16 not supported
     # bf16 = torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16"
 
