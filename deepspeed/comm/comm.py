@@ -63,10 +63,6 @@ timer_summary = {}
 
 comms_logger = CommsLogger()
 
-# Ensure we don't warn about base collectives more than once
-has_warned_all_gather = False
-has_warned_reduce_scatter = False
-
 # Maintain objects of all initialized ds backends and assign them using the API functions in this file
 nccl_backend = None
 mpi_backend = None
@@ -261,7 +257,6 @@ def reduce_scatter_fn(output_tensor,
                       prof=False,
                       debug=get_caller_func()):
     global cdb
-    global has_warned_reduce_scatter
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     if cdb.has_reduce_scatter_tensor():
         return reduce_scatter_tensor(output_tensor,
@@ -272,12 +267,11 @@ def reduce_scatter_fn(output_tensor,
                                      prof=prof,
                                      debug=debug)
     else:
-        if not has_warned_reduce_scatter:
-            utils.logger.warning(
+        if get_rank() == 0:
+            utils.logger.warning_once(
                 "unable to find torch.distributed.reduce_scatter_tensor. will fall back to "
                 "torch.distributed.all_gather which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
-            has_warned_reduce_scatter = True
         input_tensor_lst = list(torch.chunk(tensor, cdb.get_world_size(group)))
         return reduce_scatter(output_tensor,
                               input_tensor_lst,
@@ -332,7 +326,6 @@ def allgather_fn(output_tensor,
                  async_op=False,
                  debug=get_caller_func()):
     global cdb
-    global has_warned_all_gather
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     if cdb.has_all_gather_into_tensor():
         return all_gather_into_tensor(output_tensor,
@@ -341,12 +334,11 @@ def allgather_fn(output_tensor,
                                       async_op=async_op,
                                       debug=debug)
     else:
-        if not has_warned_all_gather and get_rank() == 0:
-            utils.logger.warning(
+        if get_rank() == 0:
+            utils.logger.warning_once(
                 "unable to find torch.distributed.all_gather_into_tensor. will fall back to "
                 "torch.distributed.all_gather which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
-            has_warned_all_gather = True
         output_tensors = list(torch.chunk(output_tensor, cdb.get_world_size(group)))
         return all_gather(output_tensors,
                           input_tensor,
