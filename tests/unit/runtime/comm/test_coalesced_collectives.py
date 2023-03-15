@@ -1,8 +1,10 @@
+'''Copyright The Microsoft DeepSpeed Team'''
 """unit tests for coalesced collectives"""
 
 import torch
 import deepspeed.comm as dist
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced
+from deepspeed.accelerator import get_accelerator
 
 from unit.common import DistributedTest
 
@@ -15,7 +17,7 @@ class TestReduceScatterCoalesced(DistributedTest):
                             ),
                            dist.get_rank(),
                            dtype=torch.half,
-                           device=torch.cuda.current_device())
+                           device=get_accelerator().current_device_name())
 
         (output, ) = reduce_scatter_coalesced([input], dist.get_world_group())
 
@@ -23,7 +25,10 @@ class TestReduceScatterCoalesced(DistributedTest):
         assert torch.allclose(output, torch.full_like(output, 0.5))
 
     def test_two_inputs(self):
-        tensor_kwargs = {"device": torch.cuda.current_device(), "dtype": torch.half}
+        tensor_kwargs = {
+            "device": get_accelerator().current_device_name(),
+            "dtype": torch.half
+        }
         inputs = [
             dist.get_rank() * torch.arange(0,
                                            6,
@@ -51,7 +56,10 @@ class TestReduceScatterCoalescedTensorSmallerThanWorldSize(DistributedTest):
     world_size = 2
 
     def test(self):
-        input = torch.zeros((1, ), dtype=torch.half, device=torch.cuda.current_device())
+        input = torch.zeros((1,
+                             ),
+                            dtype=torch.half,
+                            device=get_accelerator().current_device_name())
 
         (output, ) = reduce_scatter_coalesced([input], dist.get_world_group())
 

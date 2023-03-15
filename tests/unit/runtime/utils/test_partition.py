@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import pytest
 
 import torch
@@ -7,6 +9,7 @@ from deepspeed.runtime.utils import partition_uniform
 from deepspeed.runtime.utils import partition_balanced
 from deepspeed.runtime.utils import prefix_sum_inc
 from deepspeed.runtime.utils import PartitionedTensor
+from deepspeed.accelerator import get_accelerator
 
 from unit.common import DistributedTest
 
@@ -23,7 +26,7 @@ class TestPartitionedTensor(DistributedTest):
         rows = world * 4
         cols = 3
 
-        full = torch.rand(rows, cols).cuda()
+        full = torch.rand(rows, cols).to(get_accelerator().device_name())
         dist.broadcast(full, src=0, group=group)
         part = PartitionedTensor(full, group=group)
 
@@ -46,7 +49,7 @@ class TestPartitionedTensorMeta(DistributedTest):
         rows = world * 7
         cols = 3
 
-        full = torch.rand(rows, cols).cuda()
+        full = torch.rand(rows, cols).to(get_accelerator().device_name())
         dist.broadcast(full, src=0, group=group)
         part = PartitionedTensor(full, group=group)
 

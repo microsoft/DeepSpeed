@@ -5,16 +5,16 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import torch
 import os
 from deepspeed import comm as dist
-from torch._six import inf
 from packaging import version as pkg_version
 from collections import OrderedDict
 
 from deepspeed.runtime import ZeROOptimizer
-from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
+from deepspeed.runtime.fp16.loss_scaler import CreateLossScaler
 from deepspeed.runtime.utils import (bwc_tensor_model_parallel_rank,
                                      get_global_norm,
                                      empty_cache,
                                      see_memory_usage,
+                                     inf,
                                      is_model_parallel_parameter,
                                      align_dense_tensors,
                                      all_gather_dp_groups)
@@ -486,6 +486,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # will store the averaged gradients required by this partition
         self.averaged_gradients = {}
 
+        # For cpu_offload, will store the averaged gradients required by this partition
+        self.offload_gradient_dict = {}
+
         # store index of first parameter in each partition
         self.first_param_index_in_partition = {}
 
@@ -503,21 +506,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.external_loss_scale = None
 
         # we may have a way of fusing dynamic scale. Do not support for now
-        if self.dtype == torch.float or self.dtype == torch.bfloat16 or not dynamic_loss_scale:
-            loss_scale_value = 1.0 if (
-                (self.dtype == torch.float) or
-                (self.dtype == torch.bfloat16)) else static_loss_scale
-
-            self.dynamic_loss_scale = False
-            self.loss_scaler = LossScaler(scale=loss_scale_value)
-            cur_iter = 0
-        else:
-            if dynamic_loss_args is None:
-                self.loss_scaler = DynamicLossScaler()
-            else:
-                self.loss_scaler = DynamicLossScaler(**dynamic_loss_args)
-
-            self.dynamic_loss_scale = True
+        self.loss_scaler = CreateLossScaler(dtype=self.dtype,
+                                            static_loss_scale=static_loss_scale,
+                                            dynamic_scaling=dynamic_loss_scale,
+                                            dynamic_loss_args=dynamic_loss_args)
+        self.dynamic_loss_scale = self.loss_scaler.dynamic
 
         see_memory_usage("Before initializing optimizer states", force=True)
         self.initialize_optimizer_states()
@@ -552,6 +545,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def _link_all_hp_params(self):
         dp_world_size = dist.get_world_size(group=self.dp_process_group)
+        if self.cpu_offload:
+            self._get_offload_gradient_dict()
+
         for i, _ in enumerate(self.optimizer.param_groups):
             # Link bit16 and fp32 params in partition
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
@@ -560,6 +556,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             link_hp_params(
                 lp_param_list=self.bit16_groups[i],
                 flat_hp_partition=flat_hp_partition,
+                gradient_dict=self.averaged_gradients,
+                offload_gradient_dict=self.offload_gradient_dict,
+                use_offload=self.cpu_offload,
+                param_group_index=i,
                 partition_start=partition_id * partition_size,
                 partition_size=partition_size,
                 partition_optimizer_state=self.optimizer.state[flat_hp_partition],
@@ -1070,6 +1070,18 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def update_overflow_tracker_for_param_grad(self, param):
         if param.grad is not None and self._has_inf_or_nan(param.grad.data):
             self.local_overflow = True
+
+    def _get_offload_gradient_dict(self):
+        for param_group_index, _ in enumerate(self.optimizer.param_groups):
+            self.offload_gradient_dict[param_group_index] = []
+            for lp_param in self.params_in_partition[param_group_index]:
+                param_id = self.get_param_id(lp_param)
+                [_, _, dest_offset, num_elements] = self.grad_position[param_id]
+                dest_tensor = self.single_partition_of_fp32_groups[
+                    param_group_index].grad.view(-1).narrow(0,
+                                                            dest_offset,
+                                                            num_elements)
+                self.offload_gradient_dict[param_group_index].append(dest_tensor)
 
     def async_accumulate_grad_in_cpu_via_gpu(self, param):
         param_id = self.get_param_id(param)
@@ -1765,13 +1777,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         prev_scale = self.loss_scale
         self._update_scale(self.overflow)
         if self.overflow:
-            if dist.get_rank() == 0:
-                logger.info(
-                    "[deepspeed] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
-                    "reducing to {}".format(dist.get_rank(),
-                                            prev_scale,
-                                            self.loss_scale))
-
             see_memory_usage('After overflow before clearing gradients')
             self.zero_grad(set_to_none=True)
             if self.cpu_offload:
