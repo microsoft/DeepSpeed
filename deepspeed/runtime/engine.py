@@ -246,6 +246,7 @@ class DeepSpeedEngine(Module):
 
         # needed for zero_to_fp32 weights reconstruction to remap nameless data to state_dict
         self.param_names = {param: name for name, param in model.named_parameters()}
+        self.params = [p for p in model.parameters()]
 
         # Set config using config_params for backwards compat
         if self.config is None and config_params is not None:
@@ -2138,6 +2139,8 @@ class DeepSpeedEngine(Module):
 
         self.global_steps += 1
         self.global_samples += self.train_batch_size()
+
+        self.myparams[0].partition(param_list=self.myparams)
 
     def step(self, lr_kwargs=None):
         r"""Execute the weight update step after forward and backward propagation
