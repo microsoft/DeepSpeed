@@ -35,7 +35,10 @@ else:
     TORCH_MINOR = int(torch.__version__.split('.')[1])
 
 
-def installed_cuda_version():
+def installed_cuda_version(name=""):
+    import torch.cuda
+    if not torch.cuda.is_available():
+        return 0, 0
     import torch.utils.cpp_extension
     cuda_home = torch.utils.cpp_extension.CUDA_HOME
     assert cuda_home is not None, "CUDA_HOME does not exist, unable to compile CUDA op(s)"
@@ -48,7 +51,6 @@ def installed_cuda_version():
     release = output_split[release_idx + 1].replace(',', '').split(".")
     # Ignore patch versions, only look at major + minor
     cuda_major, cuda_minor = release[:2]
-    installed_cuda_version = ".".join(release[:2])
     return int(cuda_major), int(cuda_minor)
 
 
