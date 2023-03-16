@@ -41,6 +41,47 @@ partitioned_param_data_shape = [0]
 zero_init_enabled = False
 
 
+class NoGatherHandle:
+    def __init__(self, param: Parameter) -> None:
+        if param.ds_status != ZeroParamStatus.INFLIGHT:
+            raise RuntimeError(f"expected param {param.ds_summary()} to be available")
+
+        param.data = param.ds_tensor.data.to(
+            device=get_accelerator().current_device_name(),
+            non_blocking=True).view(param.ds_shape)
+        self.__param = param
+
+    def wait(self) -> None:
+        get_accelerator().current_stream().synchronize()
+        self.__param.ds_status = ZeroParamStatus.AVAILABLE
+
+
+class NoGatherCoalescedHandle:
+    def __init__(self, params: List[Parameter]) -> None:
+        self.__params = params
+        self.__complete = False
+
+        for param in self.__params:
+            if param.ds_status != ZeroParamStatus.INFLIGHT:
+                raise RuntimeError(
+                    f"expected param {param.ds_summary()} to not be available")
+            param.data = param.ds_tensor.data.to(
+                device=get_accelerator().current_device_name(),
+                non_blocking=True).view(param.ds_shape)
+
+    @instrument_w_nvtx
+    def wait(self) -> None:
+        if self.__complete:
+            return
+
+        get_accelerator().current_stream().synchronize()
+        for param in self.__params:
+            assert param.ds_status == ZeroParamStatus.INFLIGHT, f"expected param {param.ds_summary()} to be inflight"
+            param.ds_status = ZeroParamStatus.AVAILABLE
+
+        self.__complete = True
+
+
 def _dist_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group=None):
     return instrument_w_nvtx(dist.allgather_fn)(output_tensor,
                                                 input_tensor,
@@ -472,47 +513,6 @@ def shutdown_init_context():
     zero_init_enabled = False
 
 
-class NoGatherHandle:
-    def __init__(self, param: Parameter) -> None:
-        if param.ds_status != ZeroParamStatus.INFLIGHT:
-            raise RuntimeError(f"expected param {param.ds_summary()} to be available")
-
-        param.data = param.ds_tensor.data.to(
-            device=get_accelerator().current_device_name(),
-            non_blocking=True).view(param.ds_shape)
-        self.__param = param
-
-    def wait(self) -> None:
-        get_accelerator().current_stream().synchronize()
-        self.__param.ds_status = ZeroParamStatus.AVAILABLE
-
-
-class NoGatherCoalescedHandle:
-    def __init__(self, params: List[Parameter]) -> None:
-        self.__params = params
-        self.__complete = False
-
-        for param in self.__params:
-            if param.ds_status != ZeroParamStatus.INFLIGHT:
-                raise RuntimeError(
-                    f"expected param {param.ds_summary()} to not be available")
-            param.data = param.ds_tensor.data.to(
-                device=get_accelerator().current_device_name(),
-                non_blocking=True).view(param.ds_shape)
-
-    @instrument_w_nvtx
-    def wait(self) -> None:
-        if self.__complete:
-            return
-
-        get_accelerator().current_stream().synchronize()
-        for param in self.__params:
-            assert param.ds_status == ZeroParamStatus.INFLIGHT, f"expected param {param.ds_summary()} to be inflight"
-            param.ds_status = ZeroParamStatus.AVAILABLE
-
-        self.__complete = True
-
-
 class AllGatherHandle:
     def __init__(self, handle, param: Parameter) -> None:
         if param.ds_status != ZeroParamStatus.INFLIGHT:
@@ -575,6 +575,19 @@ class AllGatherCoalescedHandle:
             param_offset += param.ds_tensor.ds_numel
 
         self.__complete = True
+
+
+def _no_gather_coalesced(params: Iterable[Parameter]) -> AllGatherCoalescedHandle:
+    for param in params:
+        if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
+            raise RuntimeError(param.ds_summary())
+        param.ds_status = ZeroParamStatus.INFLIGHT
+
+    params = sorted(params, key=lambda p: p.ds_id)
+    if len(params) == 1:
+        param, = params
+        return NoGatherHandle(param)
+    return NoGatherCoalescedHandle(params)
 
 
 # Replaces all parameters in module with Scattered Parameters
@@ -863,15 +876,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 param_list = [cls]
             return self._all_gather(param_list, async_op=async_op, hierarchy=hierarchy)
 
-        def _no_gather_coalesced(
-                params: Iterable[Parameter]) -> AllGatherCoalescedHandle:
-            params = sorted(params, key=lambda p: p.ds_id)
-            if len(params) == 1:
-                param, = params
-                return NoGatherHandle(param)
-
-            return NoGatherCoalescedHandle(params)
-
         @instrument_w_nvtx
         def all_gather_coalesced(params: Iterable[Parameter],
                                  safe_mode: bool = False) -> AllGatherCoalescedHandle:
@@ -879,13 +883,13 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             # fetches from nvme if the partition is not available and in nvme
             self._ensure_availability_of_partitioned_params(params)
 
+            if self.world_size == 1:
+                return _no_gather_coalesced(params)
+
             for param in params:
                 if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
                     raise RuntimeError(param.ds_summary())
                 param.ds_status = ZeroParamStatus.INFLIGHT
-
-            if self.world_size == 1:
-                return _no_gather_coalesced(params)
 
             # ensure that each rank has params in same order. the allgather
             # is done by flattening the parameter list into a single tensor that
@@ -1321,6 +1325,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         """
         if len(param_list) == 0:
             return
+
+        if self.world_size == 1:
+            handle = _no_gather_coalesced(param_list)
+            handle.wait()
+            return None
+
         # collect local tensors and partition sizes
         partition_sizes = []
         local_tensors = []
