@@ -1108,7 +1108,6 @@ class DeepSpeedEngine(Module):
 
     @staticmethod
     def __check_params(model: Module, dtype: torch.dtype) -> None:
-        return
         if not all(param.dtype == dtype
                    for param in model.parameters()) and dist.get_rank() == 0:
             raise ValueError(
