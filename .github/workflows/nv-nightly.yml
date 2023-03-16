@@ -20,7 +20,7 @@ jobs:
 
       - name: Install pytorch
         run: |
-          pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu116
+          pip install torch==1.13.1 torchvision==0.14.1 --extra-index-url https://download.pytorch.org/whl/cu116
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
