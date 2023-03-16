@@ -2,11 +2,17 @@
 Copyright 2021 The Microsoft DeepSpeed Team
 '''
 
-from deepspeed.ops.comm.ccl import build_ccl_op
-
+import torch
+from deepspeed.accelerator import get_accelerator
 from .reduce_op import ReduceOp
 from .torch import TorchBackend
-import torch
+
+
+def build_ccl_op():
+    builder = get_accelerator().create_op_builder("CCLCommBuilder")
+    ccl_cpp_module = builder.load()
+    print(f'DeepSpeed {builder.absolute_name()} built successfully')
+    return ccl_cpp_module
 
 
 class CCLBackend(TorchBackend):
