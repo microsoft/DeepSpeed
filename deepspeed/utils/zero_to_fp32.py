@@ -105,11 +105,9 @@ def parse_model_state(file):
     for param in state_dict["module"]:
         if param not in [*param_names, *buffer_names]:
             for share_param in state_dict["module"]:
-                if (
-                    state_dict["module"][share_param].data_ptr()
-                    == state_dict["module"][param].data_ptr()
-                    and share_param != param
-                ):
+                if (state_dict["module"][share_param].data_ptr()
+                        == state_dict["module"][param].data_ptr()
+                        and share_param != param):
                     shared_params.append([param, share_param])
                     break
 
