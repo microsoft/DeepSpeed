@@ -332,6 +332,10 @@ class DeepSpeedEngine(Module):
         if model_parameters is None:
             model_parameters = self.module.parameters()
 
+        # Convert model parameters from generator to list
+        if not isinstance(model_parameters, list):
+            model_parameters = list(model_parameters)
+
         if has_optimizer:
             self._configure_optimizer(optimizer, model_parameters)
             self._configure_lr_scheduler(lr_scheduler)
@@ -1915,7 +1919,9 @@ class DeepSpeedEngine(Module):
 
         # Communicate only at gradient accumulation boundaries
         elif self.is_gradient_accumulation_boundary():
-            if self.zero_optimization_stage() == ZeroStageEnum.optimizer_states:
+            if self.zero_optimization_stage(
+            ) == ZeroStageEnum.optimizer_states and hasattr(self.optimizer,
+                                                            'reduce_gradients'):
                 self.optimizer.reduce_gradients(
                     pipeline_parallel=self.pipeline_parallelism)
             else:
@@ -2097,7 +2103,7 @@ class DeepSpeedEngine(Module):
         # the behaviour that we want
         if self.bfloat16_enabled():
             # TODO: Temporary until bf16_optimizer and zero_optimizer are integrated
-            if self.zero_optimization():
+            if self.zero_optimization() and hasattr(self.optimizer, "zero_grad"):
                 self.optimizer.zero_grad()
             else:
                 pass
