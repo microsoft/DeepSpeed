@@ -26,7 +26,7 @@ jobs:
 
       - name: Install pytorch
         run: |
-          pip install torch==1.13.1 torchvision --extra-index-url https://download.pytorch.org/whl/cu111
+          pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu111
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -45,7 +45,7 @@ jobs:
           git clone https://github.com/huggingface/accelerate
           cd accelerate
           # tmp fix
-          git checkout 5f4ba04628eeea14f9d248ab0e54399899503532
+          #git checkout 5f4ba04628eeea14f9d248ab0e54399899503532
           git rev-parse --short HEAD
           # installing dependencies
           pip install .[testing]
