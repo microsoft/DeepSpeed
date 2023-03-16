@@ -155,11 +155,11 @@ for op_name, builder in ALL_OPS.items():
             builder.warning(f"One can disable {op_name} with {env_var}=0")
         abort(f"Unable to pre-compile {op_name}")
 
-    # If op is compatible but install is not enabled (JIT mode)
+    # If op is compatible but install is not enabled (JIT mode).
     if is_rocm_pytorch and op_compatible and not op_enabled(op_name):
         builder.hipify_extension()
 
-    # If op install enabled, add builder to extensions
+    # If op install enabled, add builder to extensions.
     if op_enabled(op_name) and op_compatible:
         assert torch_available, f"Unable to pre-compile {op_name}, please first install torch"
         install_ops[op_name] = op_enabled(op_name)
