@@ -192,7 +192,7 @@ def is_available() -> bool:
     return True
 
 
-def set_backend():
+def set_backend(timeout=None, init_method=None):
     # if user specific --prefer_deepspeed_comm when launching deepspeed, will load cdb to
     # DeepSpeed backend, otherwise fallback to torch distributed backend
 
@@ -216,9 +216,12 @@ def set_backend():
             # if launch from DeepSpeed launcher, prefer_deepspeed_comm would only be "False" or "True", but
             # we want to be more robust
             if prefer_deepspeed_comm == "True" or prefer_deepspeed_comm == "true" or prefer_deepspeed_comm == "1":
-                rank = os.environ["RANK"]
-                size = os.environ["WORLD_SIZE"]
-                ccl_backend = CCLBackend(rank=rank, size=size)
+                rank = int(os.environ["RANK"])
+                size = int(os.environ["WORLD_SIZE"])
+                ccl_backend = CCLBackend(rank=rank,
+                                         world_size=size,
+                                         timeout=timeout,
+                                         init_method=init_method)
         cdb = ccl_backend
 
 
@@ -630,7 +633,7 @@ def init_distributed(dist_backend=None,
 
     if cdb is None:
         # check whether can set backend to deepspeed backend
-        set_backend()
+        set_backend(timeout, init_method)
         print(f'cdb={cdb}')
     if cdb is None and torch.distributed.is_initialized():
         # The user initialized torch.dist themselves, create cdb and short-circuit
