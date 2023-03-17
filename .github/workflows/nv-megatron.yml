@@ -45,7 +45,7 @@ jobs:
 
       - name: Megatron unit tests
         run: |
-          git clone --branch mrwyattii/fix-deprecated-numpy-types https://github.com/microsoft/Megatron-DeepSpeed.git
+          git clone https://github.com/microsoft/Megatron-DeepSpeed.git
           cd Megatron-DeepSpeed
           pip install .
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
