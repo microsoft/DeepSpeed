@@ -34,11 +34,8 @@ class CCLBackend(TorchBackend):
         self.ccl_comm_op = build_ccl_op()
         size = self.get_world_size()
         rank = self.get_rank()
-        if rank == 0:
-            main_kvs = self.ccl_comm_op.create_main_kvs()
-            main_kvs = torch.tensor(main_kvs).to(torch.uint8)
-        else:
-            main_kvs = torch.zeros((256), dtype=torch.uint8)
+        main_kvs = self.ccl_comm_op.get_kvs_addr(rank)
+        main_kvs = torch.tensor(main_kvs).to(torch.uint8)
         super(CCLBackend, self).broadcast(main_kvs, 0)
         self.ccl_comm_op.initialize(size, rank, main_kvs)
 
