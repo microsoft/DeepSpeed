@@ -598,7 +598,7 @@ class TestVariableBatchSizeCudaGraph(DistributedTest):
         # Run pipe test with increasing and then decreasing batch size
         success = True
         try:
-            pipe(query, batch_size=2)
+            pipe(query, batch_size=1)
             pipe([query] * 4, batch_size=4)
             pipe(query, batch_size=1)
         except Exception as e:
