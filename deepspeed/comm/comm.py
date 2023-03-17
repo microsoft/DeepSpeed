@@ -208,7 +208,6 @@ def set_backend(timeout=None, init_method=None):
     elif backend_name == CCL_BACKEND:
         if ccl_backend is None:
             prefer_deepspeed_comm = os.environ.get("PREFER_DEEPSPEED_COMM")
-            print(f"prefer_deepspeed_comm = {prefer_deepspeed_comm}")
             # if launch from DeepSpeed launcher, prefer_deepspeed_comm would only be "False" or "True", but
             # we want to be more robust
             if prefer_deepspeed_comm == "True" or prefer_deepspeed_comm == "true" or prefer_deepspeed_comm == "1":
@@ -218,6 +217,7 @@ def set_backend(timeout=None, init_method=None):
                                          world_size=size,
                                          timeout=timeout,
                                          init_method=init_method)
+                print("Using CCLBackend instead of TorchBackend")
         cdb = ccl_backend
 
 

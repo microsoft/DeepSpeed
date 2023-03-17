@@ -423,8 +423,7 @@ def main(args=None):
         if device_count == 0:
             raise RuntimeError("Unable to proceed, no GPU resources available")
         resource_pool['localhost'] = device_count
-        if args.master_addr == "":
-            args.master_addr = "127.0.0.1"
+        args.master_addr = "127.0.0.1"
         multi_node_exec = False
 
     if not multi_node_exec and args.num_nodes > 1:

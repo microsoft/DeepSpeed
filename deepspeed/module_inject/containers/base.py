@@ -115,24 +115,15 @@ class BaseTransformerContainer(ABC):
 
     def convert_to_required_dtype(self, dtype):
         # Note: converting tensors to fp16 requires that we do it in-place using self.__dict__ and not make a list/dict copy
-        if dtype == torch.half:
+        if dtype == torch.half or dtype == torch.bfloat16:
             for k, v in self.__dict__.items():
                 # The list comprehension is used for MoE tensor lists
                 if isinstance(v, list) and all((isinstance(tensor, torch.Tensor) \
                    or isinstance(tensor, torch.nn.Parameter)) for tensor in v):
-                    self.__dict__[k] = [moe_tensor.half() for moe_tensor in v]
+                    self.__dict__[k] = [moe_tensor.to(dtype) for moe_tensor in v]
 
                 if isinstance(v, torch.Tensor) or isinstance(v, torch.nn.Parameter):
-                    self.__dict__[k] = v.half()
-        if dtype == torch.bfloat16:
-            for k, v in self.__dict__.items():
-                # The list comprehension is used for MoE tensor lists
-                if isinstance(v, list) and all((isinstance(tensor, torch.Tensor) \
-                   or isinstance(tensor, torch.nn.Parameter)) for tensor in v):
-                    self.__dict__[k] = [moe_tensor.bfloat() for moe_tensor in v]
-
-                if isinstance(v, torch.Tensor) or isinstance(v, torch.nn.Parameter):
-                    self.__dict__[k] = v.bfloat16()
+                    self.__dict__[k] = v.to(dtype)
 
     def set_dtype(self, fp16=False, bf16=False):
         self.fp16 = fp16
