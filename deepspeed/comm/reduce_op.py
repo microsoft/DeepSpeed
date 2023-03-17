@@ -1,4 +1,8 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 from enum import Enum
+
+
 class ReduceOp(Enum):
     SUM = 0
     PRODUCT = 1
@@ -9,4 +13,3 @@ class ReduceOp(Enum):
     BXOR = 6
     AVG = 7
     UNUSED = 8
-
