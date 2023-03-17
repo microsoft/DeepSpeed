@@ -69,7 +69,9 @@ class MockGPT2ModelPipe(PipelineModule):
             '--tensor-model-parallel-size',
             str(mp_size),
             '--make-vocab-size-divisible-by',
-            str(1)
+            str(1),
+            '--micro-batch-size'.
+            str(1),
         ])
 
         initialize_megatron(args_defaults=args_defaults, ignore_unknown_args=True)
