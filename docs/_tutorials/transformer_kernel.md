@@ -14,7 +14,7 @@ To this end, we have developed a new kernel for transformer networks which inclu
 optimizations specific to these layers, which boost the training throughput on single GPU and scales
 well as we increase the number of GPUs. For more information on the details
 of transformer kernel, please visit our recent blog post on the [fastest BERT
-training](https://www.deepspeed.ai/news/2020/05/27/fastest-bert-training.html).
+training](https://www.deepspeed.ai/2020/05/27/fastest-bert-training.html).
 
 ## Prerequisites
 
