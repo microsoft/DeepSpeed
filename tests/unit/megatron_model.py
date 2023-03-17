@@ -19,7 +19,7 @@ def get_megatron_version():
 
 
 def get_gpt2_model(args_others, mp_size=1):
-    from megatron.model import GPT2Model
+    from megatron.model import GPTModel
     from megatron.initialize import initialize_megatron
 
     args_defaults = {
