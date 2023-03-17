@@ -32,7 +32,7 @@ def get_gpt2_model(args_others, mp_size=1):
 
     # setting "make-vocab-size-divisible-by" to avoid word-embedding size change in resizing testing.
     sys.argv.extend([
-        '--model-parallel-size',
+        '--tensor-model-parallel-size',
         str(mp_size),
         '--make-vocab-size-divisible-by',
         str(1)
@@ -66,7 +66,7 @@ class MockGPT2ModelPipe(PipelineModule):
 
         # setting "make-vocab-size-divisible-by" to avoid word-embedding size change in resizing testing.
         sys.argv.extend([
-            '--model-parallel-size',
+            '--tensor-model-parallel-size',
             str(mp_size),
             '--make-vocab-size-divisible-by',
             str(1)
