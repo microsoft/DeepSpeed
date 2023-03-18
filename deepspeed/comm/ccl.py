@@ -43,7 +43,12 @@ class CCLBackend(TorchBackend):
         self.ccl_comm_op.broadcast(tensor, src, group, async_op)
 
     def all_reduce(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
-        self.ccl_comm_op.all_reduce(tensor, op, group, async_op)
+        use_caching = False
+        if use_caching:
+            match_id = f"{tensor.size()}-{op}"
+            self.ccl_comm_op.all_reduce_caching(tensor, op, match_id, group, async_op)
+        else:
+            self.ccl_comm_op.all_reduce(tensor, op, group, async_op)
 
     def barrier(self, group=None, async_op=False):
         self.ccl_comm_op.barrier(group, async_op)
