@@ -129,6 +129,7 @@ class InferenceEngine(Module):
                     config.injection_policy_tuple = (injection_policy, )
                 else:
                     config.injection_policy_tuple = injection_policy
+                assert issubclass(client_module, torch.nn.Module), f"{client_module} is not a subclass of torch.nn.Module"
                 self._apply_injection_policy(config, client_module)
         else:
             if config.replace_with_kernel_inject:
