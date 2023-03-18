@@ -118,5 +118,6 @@ class AutoTP():
                 gem_list = list(set(gem_list))
                 policy_list = AutoTP.update_policy_list(policy_list, module, gem_list)
                 gem_list = []
-        assert len(policy_list), "AutoTP not supported for model. Please use kernel injection since container policy for model exists."
+        assert len(policy_list), "AutoTP not supported for model. Please use kernel injection since container policy for model exists." \
+        if AutoTP.kernel_supported(module_list) else "Not able to determine model policy automatically. Please provide policy."
         return policy_list
