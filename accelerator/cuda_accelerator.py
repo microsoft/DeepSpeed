@@ -37,6 +37,9 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
                             self.class_dict[member_name] = getattr(module, member_name)
         # end initialize for create_op_builder()
 
+    def is_synchronized_device(self):
+        return False
+
     # Device APIs
     def device_name(self, device_index=None):
         if device_index == None:

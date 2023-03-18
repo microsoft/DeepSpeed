@@ -46,11 +46,10 @@ class SynchronizedWallClockTimer:
         def start(self):
             """Start the timer."""
             assert not self.started_, f"{self.name_} timer has already been started"
-            event_class = get_accelerator().Event
-            if event_class == None:
-                # in the case that backend does not have Event (CPU for example), directly log time
+            if get_accelerator().is_synchronized_device():
                 self.start_time = time.time()
             else:
+                event_class = get_accelerator().Event
                 self.start_event = event_class(enable_timing=True)
                 self.start_event.record()
             self.started_ = True
@@ -59,10 +58,11 @@ class SynchronizedWallClockTimer:
             """Stop the timer."""
             assert self.started_, "timer is not started"
             event_class = get_accelerator().Event
-            if event_class == None:
+            if get_accelerator().is_synchronized_device():
                 self.end_time = time.time()
                 self.event_timers.append(self.end_time - self.start_time)
             else:
+                event_class = get_accelerator().Event
                 end_event = event_class(enable_timing=True)
                 end_event.record()
                 self.event_timers.append(CudaEventTimer(self.start_event, end_event))
@@ -70,8 +70,7 @@ class SynchronizedWallClockTimer:
             self.started_ = False
 
         def _get_elapsed_msec(self):
-            if self.start_event == None:
-                # times are directly measured
+            if get_accelerator().is_synchronized_device():
                 self.elapsed_records = [et * 1000.0 for et in self.event_timers]
             else:
                 self.elapsed_records = [
