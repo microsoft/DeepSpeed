@@ -10,11 +10,11 @@ class ResidualAddOp(BaseOp):
         super(ResidualAddOp, self).__init__(config)
         try:
             if self.config.fp16 or self.config.q_int8:
-                self.residual_add_func = self.inference_cuda_module.residual_add_bias_fp16
+                self.residual_add_func = self.inference_module.residual_add_bias_fp16
             elif self.config.bf16:
-                self.residual_add_func = self.inference_cuda_module.residual_add_bias_bf16
+                self.residual_add_func = self.inference_module.residual_add_bias_bf16
             else:
-                self.residual_add_func = self.inference_cuda_module.residual_add_bias_fp32
+                self.residual_add_func = self.inference_module.residual_add_bias_fp32
         except AttributeError:
             self.residual_add_func = None
 

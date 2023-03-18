@@ -11,7 +11,7 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
 
 # Cuda modules will be imported if needed
-inference_cuda_module = None
+inference_module = None
 minus_inf = -10000.0
 triton_flash_attn = None
 
@@ -97,7 +97,7 @@ class DeepSpeedDiffusersAttentionFunction(Function):
                     query = query.contiguous()
                     key = key.contiguous()
                     value = value.contiguous()
-                query, key, value = inference_cuda_module.pad_transform_fp16(query, key, value, config.heads, do_flash_attn)
+                query, key, value = inference_module.pad_transform_fp16(query, key, value, config.heads, do_flash_attn)
                 attention_scores = (torch.matmul(query,
                                                  key.transpose(-1,
                                                                -2)) *
@@ -148,10 +148,10 @@ class DeepSpeedDiffusersAttention(nn.Module):
 
         data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.bfloat16 if config.bf16 else torch.float
         data_type_fp = torch.half if config.fp16 else torch.bfloat16 if config.bf16 else torch.float
-        global inference_cuda_module
-        if inference_cuda_module is None:
+        global inference_module
+        if inference_module is None:
             builder = InferenceBuilder()
-            inference_cuda_module = builder.load()
+            inference_module = builder.load()
 
         if DeepSpeedDiffusersAttention.layer_id == 1:
             log_dist(f"DeepSpeed-Attention config: {self.config.__dict__}", [0])
@@ -207,12 +207,12 @@ class DeepSpeedDiffusersAttention(nn.Module):
             self.norm_factor *= math.sqrt(self.config.layer_id + 1)
             # https://github.com/huggingface/transformers/blob/v4.24.0/src/transformers/models/gpt2/modeling_gpt2.py#L191
 
-        self.score_context_func = inference_cuda_module.softmax_context_fp32 if (not config.fp16) else \
-                                    inference_cuda_module.softmax_context_fp16
-        self.linear_func = inference_cuda_module.linear_layer_fp16 if config.fp16 else \
-                                    inference_cuda_module.linear_layer_fp32
-        self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if not (config.fp16) else \
-                                    inference_cuda_module.allocate_workspace_fp16
+        self.score_context_func = inference_module.softmax_context_fp32 if (not config.fp16) else \
+                                    inference_module.softmax_context_fp16
+        self.linear_func = inference_module.linear_layer_fp16 if config.fp16 else \
+                                    inference_module.linear_layer_fp32
+        self.allocate_workspace = inference_module.allocate_workspace_fp32 if not (config.fp16) else \
+                                    inference_module.allocate_workspace_fp16
 
     def forward(self, input, context=None, input_mask=None):
         if self.config.layer_id == 0:

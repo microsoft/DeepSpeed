@@ -12,7 +12,7 @@ from deepspeed.ops.transformer.inference.ds_attention import DeepSpeedSelfAttent
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
 
-inference_cuda_module = None
+inference_module = None
 
 
 class DeepSpeedTransformerInference(nn.Module):
@@ -47,10 +47,10 @@ class DeepSpeedTransformerInference(nn.Module):
         DeepSpeedTransformerInference.layer_id += 1
 
         data_type = torch.half if config.fp16 else torch.bfloat16 if config.bf16 else torch.float
-        global inference_cuda_module
-        if inference_cuda_module is None:
+        global inference_module
+        if inference_module is None:
             builder = InferenceBuilder()
-            inference_cuda_module = builder.load()
+            inference_module = builder.load()
 
         if DeepSpeedTransformerInference.layer_id == 1:
             log_dist(f"DeepSpeed-Inference config: {self.config.__dict__}", [0])
@@ -87,18 +87,18 @@ class DeepSpeedTransformerInference(nn.Module):
         self.layer_past = None
         try:
             if config.fp16:
-                self.allocate_workspace = inference_cuda_module.allocate_workspace_fp16
+                self.allocate_workspace = inference_module.allocate_workspace_fp16
             elif config.bf16:
-                self.allocate_workspace = inference_cuda_module.allocate_workspace_bf16
+                self.allocate_workspace = inference_module.allocate_workspace_bf16
             else:
-                self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32
+                self.allocate_workspace = inference_module.allocate_workspace_fp32
         except AttributeError:
             self.allocate_workspace = None
 
     @classmethod
     def reset_cache(cls):
-        if inference_cuda_module is not None:
-            inference_cuda_module.reset_cache()
+        if inference_module is not None:
+            inference_module.reset_cache()
 
     def forward(
             self,
@@ -179,10 +179,10 @@ class DeepSpeedTransformerInference(nn.Module):
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
 
             if not self.config.pre_layer_norm:
-                output = inference_cuda_module.layer_norm(output,
-                                                          self.norm_w,
-                                                          self.norm_b,
-                                                          self.config.epsilon)
+                output = inference_module.layer_norm(output,
+                                                     self.norm_w,
+                                                     self.norm_b,
+                                                     self.config.epsilon)
 
             output = output.to(input_type)
         if get_present:

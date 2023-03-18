@@ -10,11 +10,11 @@ class LinearOp(BaseOp):
         super(LinearOp, self).__init__(config)
         try:
             if self.config.fp16:
-                self.linear_func = self.inference_cuda_module.linear_layer_fp16
+                self.linear_func = self.inference_module.linear_layer_fp16
             elif self.config.bf16:
-                self.linear_func = self.inference_cuda_module.linear_layer_bf16
+                self.linear_func = self.inference_module.linear_layer_bf16
             else:
-                self.linear_func = self.inference_cuda_module.linear_layer_fp32
+                self.linear_func = self.inference_module.linear_layer_fp32
         except AttributeError:
             self.linear_func = None
 

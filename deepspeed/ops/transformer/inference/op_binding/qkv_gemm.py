@@ -12,11 +12,11 @@ class QKVGemmOp(BaseOp):
         super(QKVGemmOp, self).__init__(config)
         try:
             if self.config.fp16:
-                self.qkv_gemm_func = self.inference_cuda_module.qkv_gemm_fp16
+                self.qkv_gemm_func = self.inference_module.qkv_gemm_fp16
             elif self.config.bf16:
-                self.qkv_gemm_func = self.inference_cuda_module.qkv_gemm_bf16
+                self.qkv_gemm_func = self.inference_module.qkv_gemm_bf16
             else:
-                self.qkv_gemm_func = self.inference_cuda_module.qkv_gemm_fp32
+                self.qkv_gemm_func = self.inference_module.qkv_gemm_fp32
         except AttributeError:
             self.qkv_gemm_func = None
 

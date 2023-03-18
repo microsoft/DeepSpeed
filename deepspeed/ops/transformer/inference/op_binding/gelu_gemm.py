@@ -10,11 +10,11 @@ class GELUGemmOp(BaseOp):
         super(GELUGemmOp, self).__init__(config)
         try:
             if self.config.fp16:
-                self.fused_gemm_gelu = self.inference_cuda_module.fused_gemm_gelu_fp16
+                self.fused_gemm_gelu = self.inference_module.fused_gemm_gelu_fp16
             elif self.config.bf16:
-                self.fused_gemm_gelu = self.inference_cuda_module.fused_gemm_gelu_bf16
+                self.fused_gemm_gelu = self.inference_module.fused_gemm_gelu_bf16
             else:
-                self.fused_gemm_gelu = self.inference_cuda_module.fused_gemm_gelu_fp32
+                self.fused_gemm_gelu = self.inference_module.fused_gemm_gelu_fp32
         except AttributeError:
             self.fused_gemm_gelu = None
 

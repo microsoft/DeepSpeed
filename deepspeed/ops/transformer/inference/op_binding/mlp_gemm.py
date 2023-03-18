@@ -11,11 +11,11 @@ class MLPGemmOp(BaseOp):
         super(MLPGemmOp, self).__init__(config)
         try:
             if self.config.fp16:
-                self.mlp_gemm_func = self.inference_cuda_module.mlp_gemm_fp16
+                self.mlp_gemm_func = self.inference_module.mlp_gemm_fp16
             elif self.config.bf16:
-                self.mlp_gemm_func = self.inference_cuda_module.mlp_gemm_bf16
+                self.mlp_gemm_func = self.inference_module.mlp_gemm_bf16
             else:
-                self.mlp_gemm_func = self.inference_cuda_module.mlp_gemm_fp32
+                self.mlp_gemm_func = self.inference_module.mlp_gemm_fp32
         except AttributeError:
             self.mlp_gemm_func = None
 

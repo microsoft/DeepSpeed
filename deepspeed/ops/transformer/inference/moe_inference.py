@@ -5,9 +5,8 @@ import json
 import math
 import torch
 from torch.autograd import Function
-#from ...inference.engine import inference_cuda_module, specialized_mode
-# Cuda modules will be imported if needed
-inference_cuda_module = None
+# accelerator modules will be imported if needed
+inference_module = None
 specialized_mode = None
 import torch.nn as nn
 from .ds_attention import DeepSpeedSelfAttention
@@ -133,7 +132,7 @@ class DeepSpeedMLPFunction(Function):
                 mp_group,
                 async_op):
         if config.q_int8:
-            intermediate = inference_cuda_module.fused_gemm_gelu_int8(
+            intermediate = inference_module.fused_gemm_gelu_int8(
                 input,
                 inter_w,
                 inter_b,
@@ -141,14 +140,14 @@ class DeepSpeedMLPFunction(Function):
                 q_scales[2],
                 (q_groups * (2**merge_count)),
                 config.pre_layer_norm)
-            output = inference_cuda_module.vector_matmul_int8(intermediate,
-                                                              output_w,
-                                                              q_scales[3],
-                                                              q_groups,
-                                                              (merge_count))
+            output = inference_module.vector_matmul_int8(intermediate,
+                                                         output_w,
+                                                         q_scales[3],
+                                                         q_groups,
+                                                         (merge_count))
         else:
-            mlp_gemm_func = inference_cuda_module.fused_gemm_gelu_fp16 if config.fp16 else \
-                                    inference_cuda_module.fused_gemm_gelu_fp32
+            mlp_gemm_func = inference_module.fused_gemm_gelu_fp16 if config.fp16 else \
+                                    inference_module.fused_gemm_gelu_fp32
 
             output = mlp_gemm_func(input,
                                    inter_w,
@@ -240,17 +239,17 @@ class DeepSpeedMoEInference(nn.Module):
 
         self.config = config
         self.config.layer_id = DeepSpeedMoEInference.layer_id
-        global inference_cuda_module
+        global inference_module
         global specialized_mode
-        if inference_cuda_module is None:
+        if inference_module is None:
             specialized_mode = False
             # InferenceSpecializedBuilder is not among DeepSpeed provided builder yet, so we infer by builder name string
             builder = get_accelerator().create_op_builder("InferenceSpecializedBuilder")
             if builder != None and builder.is_compatible():
-                inference_cuda_module = builder.load()
+                inference_module = builder.load()
                 specialized_mode = True
             else:
-                inference_cuda_module = InferenceBuilder().load()
+                inference_module = InferenceBuilder().load()
         self.config.specialized_mode = specialized_mode
 
         DeepSpeedMoEInference.layer_id += 1
@@ -273,10 +272,10 @@ class DeepSpeedMoEInference(nn.Module):
                                            mlp_extra_grouping,
                                            mp_group)
             self.res_coef = nn.Parameter(torch.Tensor(self.config.hidden_size, 2))
-            self.coef_func = inference_cuda_module.softmax_fp16 if self.config.fp16 or self.config.q_int8 else \
-                                        inference_cuda_module.softmax_fp32
-            self.vector_matmul_func = inference_cuda_module.vector_matmul_fp16 if config.fp16 else \
-                                    inference_cuda_module.vector_matmul_fp32
+            self.coef_func = inference_module.softmax_fp16 if self.config.fp16 or self.config.q_int8 else \
+                                        inference_module.softmax_fp32
+            self.vector_matmul_func = inference_module.vector_matmul_fp16 if config.fp16 else \
+                                    inference_module.vector_matmul_fp32
 
         config.mp_size = 1
         self.mlp = nn.ModuleList(
@@ -303,12 +302,12 @@ class DeepSpeedMoEInference(nn.Module):
 
         print("DeepSpeed MoE Transformer Inference config is ", self.config.__dict__)
 
-        self.bias_residual_func = inference_cuda_module.bias_residual_fp16 if config.fp16 or config.q_int8 else \
-                                        inference_cuda_module.bias_residual_fp32
-        self.ds_layernorm = inference_cuda_module.layer_norm_fp16 if self.config.fp16 or self.config.q_int8 else \
-                                        inference_cuda_module.layer_norm_fp32
-        self.einsum_sec_sm_ecm = inference_cuda_module.einsum_sec_sm_ecm_fp16 if self.config.fp16 or self.config.q_int8 else \
-                                        inference_cuda_module.einsum_sec_sm_ecm_fp32
+        self.bias_residual_func = inference_module.bias_residual_fp16 if config.fp16 or config.q_int8 else \
+                                        inference_module.bias_residual_fp32
+        self.ds_layernorm = inference_module.layer_norm_fp16 if self.config.fp16 or self.config.q_int8 else \
+                                        inference_module.layer_norm_fp32
+        self.einsum_sec_sm_ecm = inference_module.einsum_sec_sm_ecm_fp16 if self.config.fp16 or self.config.q_int8 else \
+                                        inference_module.einsum_sec_sm_ecm_fp32
 
     def res_coef_func(self, inp, async_op):
         inp = self.vector_matmul_func(inp, self.res_coef, async_op)
@@ -444,7 +443,7 @@ class DeepSpeedMoEInference(nn.Module):
                                       dim=0)[dist.get_rank(group=self.expert_mp_group)]
 
             if self.config.mlp_type == 'residual':
-                inference_cuda_module.moe_res_matmul(res_mlp_out, res_coef_out, output)
+                inference_module.moe_res_matmul(res_mlp_out, res_coef_out, output)
 
             output = self.bias_residual_func(output, residual_add, torch.empty(1))
 

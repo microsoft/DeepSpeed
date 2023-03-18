@@ -12,11 +12,11 @@ class SoftmaxOp(BaseOp):
         self.num_attention_heads_per_partition = config.heads // config.mp_size
         try:
             if self.config.fp16:
-                self.softmax_func = self.inference_cuda_module.softmax_fp16
+                self.softmax_func = self.inference_module.softmax_fp16
             elif self.config.bf16:
-                self.softmax_func = self.inference_cuda_module.softmax_bf16
+                self.softmax_func = self.inference_module.softmax_bf16
             else:
-                self.softmax_func = self.inference_cuda_module.softmax_fp32
+                self.softmax_func = self.inference_module.softmax_fp32
         except AttributeError:
             self.softmax_func = None
 
