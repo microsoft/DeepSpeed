@@ -1,6 +1,6 @@
 '''Copyright The Microsoft DeepSpeed Team'''
 
-from .builder import CPUOpBuilder, cpu_kernel_path, cpu_kernel_include
+from .builder import CPUOpBuilder
 
 
 class CCLCommBuilder(CPUOpBuilder):
@@ -15,14 +15,12 @@ class CCLCommBuilder(CPUOpBuilder):
         return f'deepspeed.ops.comm.{self.NAME}_op'
 
     def sources(self):
-        return [cpu_kernel_path('csrc/comm/ccl.cpp')]
-        #return [cpu_kernel_path('csrc/foo.c')]
+        return ['csrc/cpu/comm/ccl.cpp']
 
     def include_paths(self):
-        includes = [cpu_kernel_include('csrc/includes')]
+        includes = ['csrc/cpu/includes']
         return includes
 
-    #if 0
     def is_compatible(self, verbose=True):
         # TODO: add soft compatibility check for private binary release.
         #  a soft check, as in we know it can be trivially changed.
@@ -30,5 +28,3 @@ class CCLCommBuilder(CPUOpBuilder):
 
     def extra_ldflags(self):
         return ['-lccl']
-
-    #endif

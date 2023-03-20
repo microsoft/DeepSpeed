@@ -1,6 +1,6 @@
 '''Copyright The Microsoft DeepSpeed Team'''
 
-from .builder import CPUOpBuilder, cpu_kernel_path
+from .builder import CPUOpBuilder
 
 
 class InferenceBuilder(CPUOpBuilder):
@@ -16,7 +16,7 @@ class InferenceBuilder(CPUOpBuilder):
 
     def sources(self):
         return [
-            cpu_kernel_path('csrc/foo.c'),
+            'csrc/cpu/foo.c',
         ]
 
     def extra_ldflags(self):
