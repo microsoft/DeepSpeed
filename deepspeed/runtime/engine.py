@@ -3540,3 +3540,7 @@ class DeepSpeedEngine(Module):
             self.checkpoint_engine.save(state_dict, path)
 
         return True
+
+    def empty_partition_cache(self):
+        if hasattr(self.optimizer, 'empty_partition_cache'):
+            self.optimizer.empty_partition_cache()
