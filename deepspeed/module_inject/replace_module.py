@@ -259,7 +259,7 @@ def generic_injection(module, fp16=False, bf16=False, enable_cuda_graph=True):
         pass
     else:
         if fp16 is False and bf16 is False:
-            raise ValueError("Generic injection only supported with FP16 of BF16")
+            raise ValueError("Generic injection only supported with FP16 or BF16")
 
         try:
             import diffusers
