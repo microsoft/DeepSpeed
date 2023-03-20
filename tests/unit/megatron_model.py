@@ -19,7 +19,7 @@ def get_megatron_version():
 
 
 def get_gpt2_model(args_others, mp_size=1):
-    from megatron.model import GPTModel
+    from megatron.model import GPT2Model
     from megatron.initialize import initialize_megatron
 
     args_defaults = {
@@ -39,7 +39,7 @@ def get_gpt2_model(args_others, mp_size=1):
     ])
 
     initialize_megatron(args_defaults=args_defaults, ignore_unknown_args=True)
-    model = GPTModel(num_tokentypes=0, parallel_output=False)
+    model = GPT2Model(num_tokentypes=0, parallel_output=False)
     model.to(get_accelerator().device_name())
     from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
     from megatron import mpu
