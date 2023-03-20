@@ -49,7 +49,9 @@ class SoftmaxOp(BaseOp):
                           self.num_attention_heads_per_partition]
             input_dtype = attn_scores.dtype
             if (triangular):
-                tri = ~torch.tril(torch.ones_like(attn_scores)).to(bool)
+                tri = ~torch.tril(
+                    torch.ones(attn_scores.size(),
+                               device=attn_scores.device)).to(bool)
                 attn_scores = torch.masked_fill(attn_scores * layer_scale,
                                                 tri,
                                                 torch.finfo(input_dtype).min)
