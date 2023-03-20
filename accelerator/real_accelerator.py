@@ -51,6 +51,10 @@ def get_accelerator():
         from .cuda_accelerator import CUDA_Accelerator
         ds_accelerator = CUDA_Accelerator()
         _validate_accelerator(ds_accelerator)
+        if not ds_accelerator.is_available():
+            from .cpu_accelerator import CPU_Accelerator
+            ds_accelerator = CPU_Accelerator()
+            _validate_accelerator(ds_accelerator)
     return ds_accelerator
 
 

@@ -223,7 +223,13 @@ class CPU_Accelerator(DeepSpeedAccelerator):
 
     # return an op builder class, name specified by class_name
     def get_op_builder(self, class_name):
-        from intel_extension_for_deepspeed.op_builder.cpu import InferenceBuilder, CCLCommBuilder
+        try:
+            # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
+            # if successful this also means we're doing a local install and not JIT compile path
+            from op_builder import __deepspeed__  # noqa: F401
+            from op_builder.cpu import InferenceBuilder, CCLCommBuilder
+        except ImportError:
+            from deepspeed.op_builder.cpu import InferenceBuilder, CCLCommBuilder
 
         if class_name == "InferenceBuilder":
             return InferenceBuilder
