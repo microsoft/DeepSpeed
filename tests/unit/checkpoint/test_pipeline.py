@@ -4,7 +4,7 @@ from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchChe
 from unit.common import DistributedTest
 from unit.simple_model import *
 from unit.checkpoint.common import checkpoint_correctness_verification
-from util import skip_on_arch
+from unit.util import skip_on_arch
 
 import pytest
 

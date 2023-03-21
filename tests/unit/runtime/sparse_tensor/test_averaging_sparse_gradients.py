@@ -3,7 +3,7 @@
 import torch
 import deepspeed
 from unit.common import DistributedTest
-from util import skip_on_arch
+from unit.util import skip_on_arch
 
 
 class Model(torch.nn.Module):

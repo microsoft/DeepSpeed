@@ -9,7 +9,7 @@ from deepspeed.runtime.pipe.topology import PipeDataParallelTopology
 from deepspeed.runtime.pipe.module import PipelineModule
 from unit.alexnet_model import AlexNetPipe, train_cifar
 from unit.common import DistributedTest
-from util import skip_on_arch
+from unit.util import skip_on_arch
 
 PipeTopo = PipeDataParallelTopology
 
