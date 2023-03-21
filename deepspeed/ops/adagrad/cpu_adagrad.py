@@ -3,7 +3,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 '''
 
 import torch
-from ..op_builder import CPUAdagradBuilder
+from deepspeed.ops.op_builder import CPUAdagradBuilder
 from deepspeed.utils.logging import should_log_le
 
 

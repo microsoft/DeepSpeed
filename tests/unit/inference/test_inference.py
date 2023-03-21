@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import os
 import time
 import torch
@@ -12,6 +14,9 @@ from transformers import pipeline
 from transformers.models.t5.modeling_t5 import T5Block
 from transformers.models.roberta.modeling_roberta import RobertaLayer
 from huggingface_hub import HfApi
+from deepspeed.model_implementations import DeepSpeedTransformerInference
+from torch import nn
+from deepspeed.accelerator import get_accelerator
 
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
@@ -58,6 +63,8 @@ test_tasks = [
     "token-classification",
     "text-generation",
     "text2text-generation",
+    "summarization",
+    "translation"
 ]
 pytest.all_models = {
     task: [m.modelId for m in _all_models if m.pipeline_tag == task]
@@ -137,8 +144,19 @@ statement for each combination of model /task
 @pytest.fixture
 def query(model_w_task):
     model, task = model_w_task
+    angle_bracket_mask_models = [
+        "roberta",
+        "camembert",
+        "esm",
+        "ibert",
+        "luke",
+        "mpnet",
+        "yoso",
+        "mpnet"
+    ]
+
     if task == "fill-mask":
-        if "roberta" in model:
+        if any(map(lambda x: x in model, angle_bracket_mask_models)):
             return "Hello I'm a <mask> model."
         else:
             return "Hell I'm a [MASK] model."
@@ -155,6 +173,8 @@ def query(model_w_task):
         return "DeepSpeed is the greatest"
     elif task == "text2text-generation":
         return "Is this review positive or negative? Review: this is the best cast iron skillet you will ever buy"
+    elif task == "translation" or task == "summarization":
+        return "Hello, my dog is cute"
     else:
         NotImplementedError(f'query for task "{task}" is not implemented')
 
@@ -197,6 +217,15 @@ def text2text_generation_assert(x, y):
                                                           for res in y)
 
 
+def translation_assert(x, y):
+    return set(res["translation_text"] for res in x) == set(res["translation_text"]
+                                                            for res in y)
+
+
+def summarization_assert(x, y):
+    return set(res["summary_text"] for res in x) == set(res["summary_text"] for res in y)
+
+
 @pytest.fixture
 def assert_fn(model_w_task):
     model, task = model_w_task
@@ -207,11 +236,26 @@ def assert_fn(model_w_task):
         "token-classification": token_classification_assert,
         "text-generation": text_generation_assert,
         "text2text-generation": text2text_generation_assert,
+        "translation": translation_assert,
+        "summarization": summarization_assert
     }
     assert_fn = assert_fn_dict.get(task, None)
     if assert_fn is None:
         NotImplementedError(f'assert_fn for task "{task}" is not implemented')
     return assert_fn
+
+
+def check_injection(model):
+    def verify_injection(module):
+        for child in module.children():
+            if isinstance(child, nn.ModuleList):
+                assert isinstance(child[0], DeepSpeedTransformerInference),\
+                    "DeepSpeed-Inference Transformer kernels has not been injected in the model"
+                break
+            else:
+                verify_injection(child)
+
+    verify_injection(model)
 
 
 """
@@ -240,39 +284,39 @@ class TestModelTask(DistributedTest):
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
         # Load the model on CPU first to avoid OOM for large models @fp32
-        pipe = pipeline(task, model=model, device=-1, framework="pt")
+        pipe = pipeline(task, model=model, device=torch.device("cpu"), framework="pt")
         if dtype == torch.half:
             pipe.model.half()
 
         # Switch device to GPU after converting to half
-        device = torch.device(f"cuda:{local_rank}")
+        device = torch.device(get_accelerator().device_name(local_rank))
         pipe.device = device
         pipe.model.to(device)
 
         # Warm-up queries for perf measurement
         #for i in range(10):
         #    _ = pipe(query, **inf_kwargs)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         start = time.time()
         bs_output = pipe(query, **inf_kwargs)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         bs_time = time.time() - start
 
         pipe.model = deepspeed.init_inference(
             pipe.model,
             mp_size=1,
             dtype=dtype,
-            replace_method="auto",
             replace_with_kernel_inject=True,
             enable_cuda_graph=enable_cuda_graph,
         )
+        check_injection(pipe.model)
         # Warm-up queries for perf measurement
         #for i in range(10):
         #    _ = pipe(query, **inf_kwargs)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         start = time.time()
         ds_output = pipe(query, **inf_kwargs)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         ds_time = time.time() - start
 
         # facebook/opt* and some bigscient/bloom* models are not matching
@@ -320,16 +364,16 @@ class TestMPSize(DistributedTest):
 
         # We have to load these large models on CPU with pipeline because not
         # enough GPU memory
-        pipe = pipeline(task, model=model, device=-1, framework="pt")
+        pipe = pipeline(task, model=model, device=torch.device("cpu"), framework="pt")
         bs_output = pipe(query, **inf_kwargs)
 
         pipe.model = deepspeed.init_inference(pipe.model,
                                               mp_size=self.world_size,
                                               dtype=dtype,
-                                              replace_method="auto",
                                               replace_with_kernel_inject=True)
+        check_injection(pipe.model)
         # Switch device to GPU so that input tensors are not on CPU
-        pipe.device = torch.device(f"cuda:{local_rank}")
+        pipe.device = torch.device(get_accelerator().device_name(local_rank))
         ds_output = pipe(query, **inf_kwargs)
 
         print(local_rank, "baseline", bs_output)
@@ -382,7 +426,7 @@ class TestInjectionPolicy(DistributedTest):
 
         # We have to load these large models on CPU with pipeline because not
         # enough GPU memory
-        pipe = pipeline(task, model=model, device=-1, framework="pt")
+        pipe = pipeline(task, model=model, device=torch.device("cpu"), framework="pt")
         bs_output = pipe(query, **inf_kwargs)
 
         pipe.model = deepspeed.init_inference(pipe.model,
@@ -390,7 +434,57 @@ class TestInjectionPolicy(DistributedTest):
                                               dtype=dtype,
                                               injection_policy=injection_policy)
         # Switch device to GPU so that input tensors are not on CPU
-        pipe.device = torch.device(f"cuda:{local_rank}")
+        pipe.device = torch.device(get_accelerator().device_name(local_rank))
+        ds_output = pipe(query, **inf_kwargs)
+
+        print(local_rank, "baseline", bs_output)
+        print(local_rank, "deepspeed", ds_output)
+        assert assert_fn(bs_output, ds_output)
+
+
+@pytest.mark.seq_inference
+@pytest.mark.parametrize(
+    "model_w_task",
+    [
+        ("Helsinki-NLP/opus-mt-en-de",
+         "translation"),
+    ],
+    ids=[
+        "marian",
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float16], ids=["fp16"])
+@pytest.mark.parametrize("enable_cuda_graph", [False], ids=["noCG"])
+class TestAutoTensorParallelism(DistributedTest):
+    world_size = [2]
+
+    def test(
+        self,
+        model_w_task,
+        query,
+        inf_kwargs,
+        assert_fn,
+        invalid_model_task_config,
+        dtype,
+        enable_cuda_graph,
+    ):
+        if invalid_model_task_config:
+            pytest.skip(invalid_model_task_config)
+
+        model, task = model_w_task
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+        world_size = int(os.getenv("WORLD_SIZE", "2"))
+
+        # We have to load these large models on CPU with pipeline because not
+        # enough GPU memory
+        pipe = pipeline(task, model=model, device=torch.device("cpu"), framework="pt")
+        bs_output = pipe(query, **inf_kwargs)
+
+        pipe.model = deepspeed.init_inference(pipe.model,
+                                              mp_size=world_size,
+                                              dtype=dtype)
+        # Switch device to GPU so that input tensors are not on CPU
+        pipe.device = torch.device(get_accelerator().device_name(local_rank))
         ds_output = pipe(query, **inf_kwargs)
 
         print(local_rank, "baseline", bs_output)
@@ -410,7 +504,7 @@ class TestInjectionPolicy(DistributedTest):
          "gpt2-xl"],
     ),
 )
-@pytest.mark.parametrize("task", ["lambada"])
+@pytest.mark.parametrize("task", ["lambada_standard"])
 class TestLMCorrectness(DistributedTest):
     world_size = 1
 
@@ -422,7 +516,7 @@ class TestLMCorrectness(DistributedTest):
         import lm_eval.evaluator
 
         local_rank = os.getenv("LOCAL_RANK", "0")
-        device = torch.device(f"cuda:{local_rank}")
+        device = torch.device(get_accelerator().device_name(local_rank))
         dtype = torch.float
         task_dict = lm_eval.tasks.get_task_dict([task])
 
@@ -436,12 +530,12 @@ class TestLMCorrectness(DistributedTest):
         else:
             lm = lm_eval.models.get_model(model_family).create_from_arg_string(
                 f"pretrained={model_name}",
-                {"device": "cuda"})
+                {"device": get_accelerator().device_name()})
 
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         start = time.time()
         bs_output = lm_eval.evaluator.evaluate(lm=lm, task_dict=task_dict)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         bs_time = time.time() - start
 
         ds_model = deepspeed.init_inference(
@@ -449,15 +543,15 @@ class TestLMCorrectness(DistributedTest):
                     model_family),
             mp_size=1,
             dtype=dtype,
-            replace_method="auto",
             replace_with_kernel_inject=True,
             enable_cuda_graph=False,
         )
+        check_injection(ds_model)
         setattr(lm, model_family, ds_model)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         start = time.time()
         ds_output = lm_eval.evaluator.evaluate(lm=lm, task_dict=task_dict)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         ds_time = time.time() - start
 
         ppl_diff = abs(bs_output["results"][task]["ppl"] -

@@ -4,9 +4,9 @@ Copyright 2020 The Microsoft DeepSpeed Team
 
 import torch
 from cpuinfo import get_cpu_info
-from ..op_builder import CPUAdamBuilder
 from deepspeed.utils import logger
 from deepspeed.utils.logging import should_log_le
+from deepspeed.ops.op_builder import CPUAdamBuilder
 
 
 class DeepSpeedCPUAdam(torch.optim.Optimizer):
@@ -75,7 +75,9 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                             amsgrad=amsgrad)
         super(DeepSpeedCPUAdam, self).__init__(model_params, default_args)
 
-        self.cpu_vendor = get_cpu_info()["vendor_id_raw"].lower()
+        cpu_info = get_cpu_info()
+        self.cpu_vendor = cpu_info["vendor_id_raw"].lower(
+        ) if "vendor_id_raw" in cpu_info else "unknown"
         if "amd" in self.cpu_vendor:
             for group_id, group in enumerate(self.param_groups):
                 for param_id, p in enumerate(group['params']):

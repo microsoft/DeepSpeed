@@ -31,6 +31,7 @@ import os
 
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
 from .constants import *
+from deepspeed.accelerator import get_accelerator
 
 
 class ReduceOp(Enum):
@@ -61,10 +62,6 @@ timers = timer.SynchronizedWallClockTimer()
 timer_summary = {}
 
 comms_logger = CommsLogger()
-
-# Ensure we don't warn about base collectives more than once
-has_warned_all_gather = False
-has_warned_reduce_scatter = False
 
 # Maintain objects of all initialized ds backends and assign them using the API functions in this file
 nccl_backend = None
@@ -127,7 +124,7 @@ def timed_op(func):
         finally:
             if comms_logger.enabled:
                 # Need to make op blocking for accurate logging
-                torch.cuda.synchronize()
+                get_accelerator().synchronize()
                 # If we're using MPI, we can't simply sync the stream
                 if cdb.using_mpi:
                     cdb.barrier()
@@ -261,7 +258,6 @@ def reduce_scatter_fn(output_tensor,
                       prof=False,
                       debug=get_caller_func()):
     global cdb
-    global has_warned_reduce_scatter
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     if cdb.has_reduce_scatter_base:
         return reduce_scatter_base(output_tensor,
@@ -272,12 +268,10 @@ def reduce_scatter_fn(output_tensor,
                                    prof=prof,
                                    debug=debug)
     else:
-        if not has_warned_reduce_scatter:
-            utils.logger.warning(
-                "unable to find torch.distributed._reduce_scatter_base. will fall back to "
-                "torch.distributed.all_gather which will result in suboptimal performance. "
-                "please consider upgrading your pytorch installation.")
-            has_warned_reduce_scatter = True
+        utils.logger.warning_once(
+            "unable to find torch.distributed._reduce_scatter_base. will fall back to "
+            "torch.distributed.all_gather which will result in suboptimal performance. "
+            "please consider upgrading your pytorch installation.")
         input_tensor_lst = list(torch.chunk(tensor, cdb.get_world_size(group)))
         return reduce_scatter(output_tensor,
                               input_tensor_lst,
@@ -333,7 +327,6 @@ def allgather_fn(output_tensor,
                  async_op=False,
                  debug=get_caller_func()):
     global cdb
-    global has_warned_all_gather
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     if cdb.has_allgather_base:
         return all_gather_base(output_tensor,
@@ -342,12 +335,11 @@ def allgather_fn(output_tensor,
                                async_op=async_op,
                                debug=debug)
     else:
-        if not has_warned_all_gather and get_rank() == 0:
-            utils.logger.warning(
+        if get_rank() == 0:
+            utils.logger.warning_once(
                 "unable to find torch.distributed._all_gather_base. will fall back to "
                 "torch.distributed.all_gather which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
-            has_warned_all_gather = True
         output_tensors = list(torch.chunk(output_tensor, cdb.get_world_size(group)))
         return all_gather(output_tensors,
                           input_tensor,
@@ -595,14 +587,16 @@ def get_global_rank(group=None, group_rank=0):
 
 
 # Main DeepSpeed Comms. public API.
-def init_distributed(dist_backend="nccl",
+def init_distributed(dist_backend=None,
                      auto_mpi_discovery=True,
                      distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT,
                      verbose=True,
                      timeout=default_pg_timeout,
                      init_method=None,
                      dist_init_required=None,
-                     config=None):
+                     config=None,
+                     rank=-1,
+                     world_size=-1):
     ''' Initialize dist backend, potentially performing MPI discovery if needed
 
     Arguments:
@@ -613,6 +607,8 @@ def init_distributed(dist_backend="nccl",
         timeout: Optional (timedelta). Timeout for operations executed against the process group. Default value equals 30 minutes.
         init_method: Optional (string). Torch distributed, URL specifying how to initialize the process group. Default is “env://” if no init_method or store is specified.
         config: Optional (dict). DeepSpeed configuration for setting up comms options (e.g. Comms profiling)
+        rank: Optional (int). The current manually specified rank. Some init_method like “tcp://” need the rank and world_size as well (see: https://pytorch.org/docs/stable/distributed.html#tcp-initialization)
+        world_size: Optional (int). Desired world_size for the TCP or Shared file-system initialization.
     '''
     global cdb
 
@@ -650,12 +646,14 @@ def init_distributed(dist_backend="nccl",
                 utils.logger.info('Distributed backend already initialized')
         else:
             assert isinstance(timeout, timedelta)
+            if dist_backend == None:
+                dist_backend = get_accelerator().communication_backend_name()
             if int(os.getenv('RANK', '0')) == 0:
                 utils.logger.info(
                     'Initializing TorchBackend in DeepSpeed with backend {}'.format(
                         dist_backend))
             # Create a torch backend object, initialize torch distributed, and assign to cdb
-            cdb = TorchBackend(dist_backend, timeout, init_method)
+            cdb = TorchBackend(dist_backend, timeout, init_method, rank, world_size)
 
 
 def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True):
