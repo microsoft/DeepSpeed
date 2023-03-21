@@ -92,6 +92,7 @@ def parse_args(args=None):
                         "Default is num_nodes when elastic training is enabled")
 
     parser.add_argument("--num_gpus",
+                        "--num_accelerators",
                         type=int,
                         default=-1,
                         help="Max number of GPUs to use on each node, will use "
