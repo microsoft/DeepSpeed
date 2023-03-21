@@ -28,7 +28,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          pip install .[dev,autotuning]
+          pip install .[dev,autotuning,cpu]
           ds_report
 
       - name: Formatting checks
