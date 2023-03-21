@@ -285,8 +285,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.use_separate_grad_accum = False
         if self.use_separate_grad_accum and not self.partition_gradients:
             self.use_grad_accum_for_reduction = True
+            self.reduction_dtype = self.gradient_accumulation_dtype
         else:
             self.use_grad_accum_for_reduction = False
+            self.reduction_dtype = self.dtype
 
         self.round_robin_bit16_groups = []
         self.round_robin_bit16_indices = []
@@ -678,7 +680,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if pipeline_parallel and self.contiguous_gradients:
             self.ipg_buffer = []
             buf_0 = torch.empty(int(self.reduce_bucket_size),
-                                dtype=self.dtype,
+                                dtype=self.reduction_dtype,
                                 device=get_accelerator().current_device_name())
             self.ipg_buffer.append(buf_0)
             self.ipg_index = 0
@@ -1325,7 +1327,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             see_memory_usage(f"before copying {total_size} gradients into partition")
             self.grads_in_partition = torch.empty(
                 int(total_size),
-                dtype=self.dtype,
+                dtype=self.reduction_dtype,
                 device=get_accelerator().current_device_name())
             see_memory_usage(f"after copying {total_size} gradients into partition")
 
@@ -2081,14 +2083,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.contiguous_gradients:
             self.ipg_buffer = []
             buf_0 = torch.empty(int(self.reduce_bucket_size),
-                                dtype=self.dtype,
+                                dtype=self.reduction_dtype,
                                 device=get_accelerator().current_device_name())
             self.ipg_buffer.append(buf_0)
 
             # Use double buffers to avoid data access conflict when overlap_comm is enabled.
             if self.overlap_comm:
                 buf_1 = torch.empty(int(self.reduce_bucket_size),
-                                    dtype=self.dtype,
+                                    dtype=self.reduction_dtype,
                                     device=get_accelerator().current_device_name())
                 self.ipg_buffer.append(buf_1)
             self.ipg_index = 0
