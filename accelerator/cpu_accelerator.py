@@ -229,7 +229,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
             from op_builder import __deepspeed__  # noqa: F401
             from op_builder.cpu import InferenceBuilder, CCLCommBuilder
         except ImportError:
-            from deepspeed.op_builder.cpu import InferenceBuilder, CCLCommBuilder
+            from deepspeed.ops.op_builder.cpu import InferenceBuilder, CCLCommBuilder
 
         if class_name == "InferenceBuilder":
             return InferenceBuilder
