@@ -8,6 +8,7 @@ import argparse
 COMMS_BENCH_DIR = os.path.join(os.path.dirname(__file__), "../")
 sys.path.append(COMMS_BENCH_DIR)
 from communication.constants import *
+from deepspeed.accelerator import get_accelerator
 
 global dist
 
@@ -71,7 +72,8 @@ def init_torch_distributed(backend):
         os.environ['WORLD_SIZE'] = str(world_size)
 
     torch.distributed.init_process_group(backend)
-    torch.cuda.set_device(local_rank)
+    local_rank = int(os.environ['LOCAL_RANK'])
+    get_accelerator().set_device(local_rank)
 
 
 def init_deepspeed_comm(backend):
@@ -80,7 +82,7 @@ def init_deepspeed_comm(backend):
     import deepspeed.comm as dist
     deepspeed.init_distributed(dist_backend=backend)
     local_rank = int(os.environ['LOCAL_RANK'])
-    torch.cuda.set_device(local_rank)
+    get_accelerator().set_device(local_rank)
 
 
 def init_processes(local_rank, args):
@@ -158,14 +160,13 @@ def get_metric_strings(args, tput, busbw, duration):
 
 
 def sync_all():
-    torch.cuda.synchronize()
+    get_accelerator().synchronize()
     dist.barrier()
 
 
 def max_numel(comm_op, dtype, mem_factor, local_rank, args):
     dtype_size = _element_size(dtype)
-    max_memory_per_gpu = torch.cuda.get_device_properties(
-        local_rank).total_memory * mem_factor
+    max_memory_per_gpu = get_accelerator().total_memory(local_rank) * mem_factor
     if comm_op == 'all_reduce' or comm_op == 'pt2pt' or comm_op == 'broadcast':
         elements_per_gpu = int(max_memory_per_gpu // dtype_size)
     elif comm_op == 'all_gather':
@@ -242,7 +243,8 @@ def benchmark_parser():
     parser.add_argument("--backend",
                         type=str,
                         default=DEFAULT_BACKEND,
-                        choices=['nccl'],
+                        choices=['nccl',
+                                 'ccl'],
                         help='Communication library to use')
     parser.add_argument("--dist",
                         type=str,

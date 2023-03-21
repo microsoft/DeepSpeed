@@ -10,6 +10,7 @@ from unit.modeling import BertConfig
 from unit.modelingpreln import BertEncoder as BertEncoderPreln
 from deepspeed.compression.basic_layer import LinearLayer_Compress, ColumnParallelLinear_Compress, RowParallelLinear_Compress
 from deepspeed.compression.helper import convert_conv1d_to_linear
+from deepspeed.accelerator import get_accelerator
 from unit.common import DistributedTest
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
@@ -23,7 +24,7 @@ def reset_random(seed=1234):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    get_accelerator().manual_seed_all(seed)
 
 
 def create_bert_model():
@@ -227,6 +228,9 @@ class TestCompression(DistributedTest):
                           LinearLayer_Compress)
 
     def test_mpu_compress(self, tmpdir):
+        TORCH_MAJOR = int(torch.__version__.split(".")[0])
+        if TORCH_MAJOR > 1:
+            pytest.skip("megatron not compatible with torch >1.13")
         from megatron import mpu
         args_defaults = {
             'num_layers': 2,
