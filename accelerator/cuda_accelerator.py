@@ -169,7 +169,11 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         return None
 
     def is_available(self):
-        return torch.cuda.is_available()
+        try:
+            import torch
+            return torch.cuda.is_available()
+        except ImportError:
+            return True
 
     def range_push(self, msg):
         if hasattr(torch.cuda.nvtx, 'range_push'):
