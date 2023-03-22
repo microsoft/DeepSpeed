@@ -15,7 +15,7 @@ def skip_on_arch(min_arch=7):
         return
 
 
-def skip_on_cuda(valid_cuda=[101, 102, 110, 111, 112, 116, 117]):
+def skip_on_cuda(valid_cuda):
     split_version = lambda x: map(int, x.split('.')[:2])
     if deepspeed.accelerator.get_accelerator().device_name() == 'cuda':
         CUDA_MAJOR, CUDA_MINOR = split_version(torch_info['cuda_version'])
