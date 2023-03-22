@@ -2,33 +2,73 @@
 
 import torch
 from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
+import numpy
+import torch
+from torch.optim import Adagrad
 import time
+from typing import Callable, Tuple
 
-NUM_ITERS = 100
+num_iters = 20
+num_params = 2048
+values = numpy.linspace(0.01, 1, num_params)
+x = torch.from_numpy(values).type(torch.FloatTensor)
 
+def reseed(seed: int) -> None:
+    torch.manual_seed(seed)
+    numpy.random.seed(seed)
 
-def _test_perf(param, optimizer_func):
-    optimizer = optimizer_func(param)
-    avg = 0
-    for i in range(NUM_ITERS):
-        for i, p in enumerate(param):
-            p.grad = torch.ones_like(p) * 2
-        start = time.time()
-        optimizer.step()
-        stop = time.time()
-        avg += (stop - start)
+def get_model(seed: int) -> torch.nn.Module:
+    reseed(seed)
+    model = torch.nn.Linear(num_params, num_params, num_params)
+    return model
 
-    return avg / NUM_ITERS
+def build_adagrad(modelA, modelB):
+    optimizerA = Adagrad(modelA.parameters(), lr=1e-3)
+    optimizerB = DeepSpeedCPUAdagrad(modelB.parameters(), lr=1e-3)
+    return optimizerA, optimizerB
 
+def test_optims(model_factory: Callable, optim_factory, seed:int = 1234, num_steps: int = num_iters):
+    modelA = model_factory(seed)
+    modelB = model_factory(seed)
 
-def _main():
-    device = 'cpu'
-    model_size = 1 * 1024**3
-    group_size = [model_size, 274432]
-    param = [torch.nn.Parameter(torch.ones(size, device=device)) for size in group_size]
-    torch_time = _test_perf(param, torch.optim.Adagrad)
-    ds_time = _test_perf(param, DeepSpeedCPUAdagrad)
-    print(f"Step time: {torch_time=} {ds_time=}")
+    optimizerA, optimizerB = optim_factory(modelA, modelB)
+    avgA = 0
+    avgB = 0
 
+    for i in range(num_steps):
+        xA = x.clone().detach().requires_grad_(True)
+        xB = x.clone().detach().requires_grad_(True) 
 
-_main()
+        optimizerA.zero_grad()
+        optimizerB.zero_grad()
+
+        y = modelA(xA)
+        lossA = y.sum()
+        lossA.backward()
+        # time the optimization step
+        startA = time.time()
+        optimizerA.step()
+        stopA = time.time()
+        avgA += stopA - startA
+
+        y = modelB(xB)
+        lossB = y.sum()
+        lossB.backward()
+
+        #time the optimization step
+        startB = time.time()
+        optimizerB.step()
+        stopB = time.time()
+        avgB += stopB - startB
+        
+        print(f"step: {i} {type(optimizerA).__name__}: {lossA.item():.4f} {type(optimizerB).__name__}: {lossB.item():.4f}")
+    print()
+    print(f"Step time: {type(optimizerA).__name__}: {avgA/num_iters:.4f} secs {type(optimizerB).__name__} {avgB/num_iters:.4f} secs")
+
+def main():
+    seed = 1234
+    #then compare ds optimizer to the baselines 
+    test_optims(get_model, build_adagrad, seed=seed)
+
+if __name__ == "__main__":
+    main()
