@@ -48,10 +48,23 @@ def get_accelerator():
             _validate_accelerator(ds_accelerator)
             return ds_accelerator
 
-        from .cuda_accelerator import CUDA_Accelerator
-        ds_accelerator = CUDA_Accelerator()
-        _validate_accelerator(ds_accelerator)
-        if not ds_accelerator.is_available():
+        # We need a way to choose between CUDA_Accelerator and CPU_Accelerator
+        # Currently we detect whether intel_etension_for_pytorch is installed
+        # in the environment and use CPU_Accelerator if the answewr is True.
+        # An alternative might be detect whether CUDA device is installed on
+        # the system but this comes with two pitfalls:
+        # 1. the system may not have torch pre-installed, so
+        #    get_accelerator().is_avaiable() may not work.
+        # 2. Some scenario like install on login node (without CUDA device)
+        #    and run on compute node (with CUDA device) may cause mismatch
+        #    between installation time and runtime.
+        try:
+            import intel_extension_for_pytorch  # noqa: F401
+        except ImportError as e:
+            from .cuda_accelerator import CUDA_Accelerator
+            ds_accelerator = CUDA_Accelerator()
+            _validate_accelerator(ds_accelerator)
+        else:
             from .cpu_accelerator import CPU_Accelerator
             ds_accelerator = CPU_Accelerator()
             _validate_accelerator(ds_accelerator)
