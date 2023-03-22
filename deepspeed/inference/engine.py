@@ -130,7 +130,7 @@ class InferenceEngine(Module):
                 else:
                     config.injection_policy_tuple = injection_policy
                 self._apply_injection_policy(config, client_module)
-        else:
+        elif not config.enable_cuda_graph:
             if config.replace_with_kernel_inject:
                 # 2. DeepSpeed Kernel Injection
                 self._apply_injection_policy(config)
