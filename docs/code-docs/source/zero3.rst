@@ -333,10 +333,13 @@ These routines can be used in a training loop as shown in the following snippet.
     optimizer.step()
 
 
-Accelerator Memory Management
+GPU Memory Management
 ---------------------
 
-By default at the end of the training some parameters will remain unpartitioned and use up some gpu memory. This is done on purpose as an optimization should you resume training again. If you'd like to clear out the cached parameters that use up gpu memory, you can call:
+By default at the end of training with ZeRO stage 3 some parameters will remain unpartitioned and use up some gpu memory.
+This is done on purpose as an optimization should you resume training again. If you'd like to clear out the cached
+parameters that use up gpu memory, you can call `empty_partition_cache` method of the DeepSpeed engine. The following code
+snippet illustrates this functionality.
 
 .. code-block:: python
 
