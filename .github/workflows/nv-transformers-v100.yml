@@ -43,7 +43,7 @@ jobs:
         run: |
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           #git clone https://github.com/huggingface/transformers
-          git clone https://github.com/mrwyattii/transformers@fix-gptj-torch-fx
+          git clone -b fix-gptj-torch-fx https://github.com/mrwyattii/transformers
           cd transformers
           # if needed switch to the last known good SHA until transformers@master is fixed
           #git checkout 6268694e2
