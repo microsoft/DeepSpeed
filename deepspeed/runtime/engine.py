@@ -9,6 +9,7 @@ import torch
 import hashlib
 from collections import defaultdict, OrderedDict, deque
 from shutil import copyfile
+import gc
 
 from torch.nn.modules import Module
 from torch.nn.parameter import Parameter
@@ -3547,3 +3548,5 @@ class DeepSpeedEngine(Module):
         """
         if hasattr(self.optimizer, 'empty_partition_cache'):
             self.optimizer.empty_partition_cache()
+            gc.collect()
+            get_accelerator().empty_cache()
