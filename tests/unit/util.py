@@ -16,11 +16,12 @@ def skip_on_arch(min_arch=7):
 
 
 def skip_on_cuda(valid_cuda=[101, 102, 110, 111, 112, 116, 117]):
+    split_version = lambda x: map(int, x.split('.')[:2])
     if deepspeed.accelerator.get_accelerator().device_name() == 'cuda':
         CUDA_MAJOR, CUDA_MINOR = split_version(torch_info['cuda_version'])
         CUDA_VERSION = (CUDA_MAJOR * 10) + CUDA_MINOR
-        if valid_cuda.count(CUDA_VERSION) = 0:
-           pytest.skip(f"requires cuda versions {valid_cuda}")
+        if valid_cuda.count(CUDA_VERSION) == 0:
+            pytest.skip(f"requires cuda versions {valid_cuda}")
     else:
         assert deepspeed.accelerator.get_accelerator().device_name() == 'xpu'
         return
