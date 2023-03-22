@@ -3542,5 +3542,8 @@ class DeepSpeedEngine(Module):
         return True
 
     def empty_partition_cache(self):
+        """
+        Release GPU memory consumed by offloaded model parameters.
+        """
         if hasattr(self.optimizer, 'empty_partition_cache'):
             self.optimizer.empty_partition_cache()
