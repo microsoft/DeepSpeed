@@ -52,7 +52,7 @@ from ..elasticity.constants import (
 )
 
 from ..profiling.config import DeepSpeedFlopsProfilerConfig
-from ..autotuning.config import DeepSpeedAutotuningConfig
+from ..autotuning.config import get_autotuning_config
 from ..nebula.config import DeepSpeedNebulaConfig
 
 from ..compression.config import get_compression_config, get_quantize_enabled
@@ -902,7 +902,7 @@ class DeepSpeedConfig(object):
         self.wall_clock_breakdown = (get_wall_clock_breakdown(param_dict)
                                      | self.flops_profiler_config.enabled)
         self.memory_breakdown = get_memory_breakdown(param_dict)
-        self.autotuning_config = DeepSpeedAutotuningConfig(param_dict)
+        self.autotuning_config = get_autotuning_config(param_dict)
 
         (
             self.eigenvalue_enabled,

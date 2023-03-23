@@ -77,7 +77,7 @@ class Autotuner:
         if not os.path.exists(self.results_dir):
             try:
                 os.makedirs(self.results_dir, exist_ok=True)
-                logger.info(f"Created autotuning resutls directory: {self.exps_dir}")
+                logger.info(f"Created autotuning results directory: {self.results_dir}")
             except:
                 logger.error(
                     f"Failed to create {self.results_dir}, please check `results_dir` in the autotuning config file is accessible by all the nodes in the job."
@@ -647,9 +647,9 @@ class Autotuner:
         exps = self._generate_experiments(tuning_space, max_train_batch_size_per_gpu)
 
         logger.info(f'Tuner type is {self.autotuning_config.tuner_type}')
-        if self.autotuning_config.tuner_type == AUTOTUNING_TUNER_MODELBASED:
+        if self.autotuning_config.tuner_type == AutotuningTunerEnum.model_based:
             t = ModelBasedTuner(exps, self.rm, self.metric(), tuning_space)
-        elif self.autotuning_config.tuner_type == AUTOTUNING_TUNER_RANDOM:
+        elif self.autotuning_config.tuner_type == AutotuningTunerEnum.random:
             t = RandomTuner(exps, self.rm, self.metric())
         else:
             t = GridSearchTuner(exps, self.rm, self.metric())
@@ -712,7 +712,7 @@ class Autotuner:
         """
         logger.info("Starting model info profile run.")
         model_info = self.autotuning_config.model_info
-        if model_info and MODEL_INFO_NUM_PARAMS in model_info:
+        if model_info.num_params != None:
             return model_info
 
         ds_config = copy.deepcopy(self.user_config)

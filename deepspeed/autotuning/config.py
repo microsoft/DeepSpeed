@@ -4,132 +4,79 @@ Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
 
-from deepspeed.runtime.config_utils import get_scalar_param, get_dict_param, DeepSpeedConfigObject
-from deepspeed.autotuning.constants import *
+from typing import Dict
+from pydantic import Field, validator, root_validator
+from enum import Enum
+from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 
-class DeepSpeedAutotuningConfig(DeepSpeedConfigObject):
-    def __init__(self, param_dict):
-        super(DeepSpeedAutotuningConfig, self).__init__()
-
-        self.enabled = None
-        self.start_step = None
-        self.end_step = None
-        self.metric_path = None
-        self.arg_mappings = None
-        self.metric = None
-        self.model_info = None
-        self.results_dir = None
-        self.exps_dir = None
-        self.overwrite = None
-
-        if param_dict and AUTOTUNING in param_dict.keys():
-            autotuning_dict = param_dict[AUTOTUNING]
-        else:
-            autotuning_dict = {}
-
-        self._initialize(autotuning_dict)
-
-    def _initialize(self, autotuning_dict):
-        self.enabled = get_scalar_param(autotuning_dict,
-                                        AUTOTUNING_ENABLED,
-                                        AUTOTUNING_ENABLED_DEFAULT)
-
-        self.fast = get_scalar_param(autotuning_dict,
-                                     AUTOTUNING_FAST,
-                                     AUTOTUNING_FAST_DEFAULT)
-
-        self.results_dir = get_scalar_param(autotuning_dict,
-                                            AUTOTUNING_RESULTS_DIR,
-                                            AUTOTUNING_RESULTS_DIR_DEFAULT)
-        assert self.results_dir, "results_dir cannot be empty"
-        self.exps_dir = get_scalar_param(autotuning_dict,
-                                         AUTOTUNING_EXPS_DIR,
-                                         AUTOTUNING_EXPS_DIR_DEFAULT)
-        assert self.exps_dir, "exps_dir cannot be empty"
-        self.overwrite = get_scalar_param(autotuning_dict,
-                                          AUTOTUNING_OVERWRITE,
-                                          AUTOTUNING_OVERWRITE_DEFAULT)
-
-        self.start_profile_step = get_scalar_param(
-            autotuning_dict,
-            AUTOTUNING_START_PROFILE_STEP,
-            AUTOTUNING_START_PROFILE_STEP_DEFAULT)
-
-        self.end_profile_step = get_scalar_param(autotuning_dict,
-                                                 AUTOTUNING_END_PROFILE_STEP,
-                                                 AUTOTUNING_END_PROFILE_STEP_DEFAULT)
-
-        self.metric = get_scalar_param(autotuning_dict,
-                                       AUTOTUNING_METRIC,
-                                       AUTOTUNING_METRIC_DEFAULT)
-
-        self.metric_path = get_scalar_param(autotuning_dict,
-                                            AUTOTUNING_METRIC_PATH,
-                                            AUTOTUNING_METRIC_PATH_DEFAULT)
-
-        self.tuner_type = get_scalar_param(autotuning_dict,
-                                           AUTOTUNING_TUNER_TYPE,
-                                           AUTOTUNING_TUNER_TYPE_DEFAULT)
-
-        self.tuner_early_stopping = get_scalar_param(
-            autotuning_dict,
-            AUTOTUNING_TUNER_EARLY_STOPPING,
-            AUTOTUNING_TUNER_EARLY_STOPPING_DEFAULT)
-
-        self.tuner_num_trials = get_scalar_param(autotuning_dict,
-                                                 AUTOTUNING_TUNER_NUM_TRIALS,
-                                                 AUTOTUNING_TUNER_NUM_TRIALS_DEFAULT)
-
-        self.arg_mappings = get_dict_param(autotuning_dict,
-                                           AUTOTUNING_ARG_MAPPINGS,
-                                           AUTOTUNING_ARG_MAPPINGS_DEFAULT)
-
-        self.model_info = get_model_info_config(autotuning_dict)
-
-        self.model_info_path = get_scalar_param(autotuning_dict,
-                                                AUTOTUNING_MODEL_INFO_PATH,
-                                                AUTOTUNING_MODEL_INFO_PATH_DEFAULT)
-        self.mp_size = get_scalar_param(autotuning_dict,
-                                        AUTOTUNING_MP_SIZE,
-                                        AUTOTUNING_MP_SIZE_DEFAULT)
-
-        self.max_train_batch_size = get_dict_param(
-            autotuning_dict,
-            AUTOTUNING_MAX_TRAIN_BATCH_SIZE,
-            AUTOTUNING_MAX_TRAIN_BATCH_SIZE_DEFAULT)
-
-        self.min_train_batch_size = get_dict_param(
-            autotuning_dict,
-            AUTOTUNING_MIN_TRAIN_BATCH_SIZE,
-            AUTOTUNING_MIN_TRAIN_BATCH_SIZE_DEFAULT)
-
-        self.max_train_micro_batch_size_per_gpu = get_dict_param(
-            autotuning_dict,
-            AUTOTUNING_MAX_TRAIN_MICRO_BATCH_SIZE_PER_GPU,
-            AUTOTUNING_MAX_TRAIN_MICRO_BATCH_SIZE_PER_GPU_DEFAULT)
-
-        self.min_train_micro_batch_size_per_gpu = get_dict_param(
-            autotuning_dict,
-            AUTOTUNING_MIN_TRAIN_MICRO_BATCH_SIZE_PER_GPU,
-            AUTOTUNING_MIN_TRAIN_MICRO_BATCH_SIZE_PER_GPU_DEFAULT)
-
-        self.num_tuning_micro_batch_sizes = get_dict_param(
-            autotuning_dict,
-            AUTOTUNING_NUM_TUNING_MICRO_BATCH_SIZES,
-            AUTOTUNING_NUM_TUNING_MICRO_BATCH_SIZES_DEFAULT)
+def get_autotuning_config(param_dict):
+    return DeepSpeedAutotuningConfig(**param_dict.get("autotuning", {}))
 
 
-def get_model_info_config(param_dict):
-    if MODEL_INFO in param_dict and param_dict[MODEL_INFO] is not None:
-        model_info_config = {}
-        for key, default_value in MODEL_INFO_KEY_DEFAULT_DICT.items():
-            model_info_config[key] = get_scalar_param(param_dict[MODEL_INFO],
-                                                      key,
-                                                      default_value)
-        return model_info_config
-    return None
+class AutotuningMetricEnum(str, Enum):
+    latency = "latency"
+    throughput = "throughput"
+    flops = "flops"
+    forward = "forward"
+    steps = "steps"
 
 
-def get_default_model_info_config():
-    return MODEL_INFO_KEY_DEFAULT_DICT
+class AutotuningTunerEnum(str, Enum):
+    gridsearch = "gridsearch"
+    random = "random"
+    model_based = "model_based"
+
+
+class ModelInfoConfig(DeepSpeedConfigModel):
+    profile: bool = False
+    num_params: int = Field(None, ge=0)
+    hidden_size: int = Field(None, ge=0)
+    num_layers: int = Field(None, ge=0)
+
+
+class DeepSpeedAutotuningConfig(DeepSpeedConfigModel):
+    enabled: bool = False
+    fast: bool = True
+    results_dir: str = "autotuning_results"
+    exps_dir: str = "autotuning_exps"
+    overwrite: bool = True
+    start_profile_step: int = Field(3, ge=0)
+    end_profile_step: int = Field(5, ge=0)
+    metric: AutotuningMetricEnum = "throughput"
+    metric_path: str = None
+    tuner_type: AutotuningTunerEnum = "gridsearch"
+    tuner_num_trials: int = Field(50, ge=0)
+    tuner_early_stopping: int = Field(5, ge=0)
+    arg_mappings: Dict[str, str] = None
+    model_info: ModelInfoConfig = {}
+    model_info_path: str = None
+    mp_size: int = Field(1, ge=1)
+    max_train_batch_size: int = Field(None, ge=1)
+    min_train_batch_size: int = Field(1, ge=1)
+    max_train_micro_batch_size_per_gpu: int = Field(1024, ge=1)
+    min_train_micro_batch_size_per_gpu: int = Field(1, ge=1)
+    num_tuning_micro_batch_sizes: int = Field(3, ge=1)
+
+    @validator("results_dir", "exps_dir")
+    def assert_non_empty_str(cls, field_value, values):
+        assert field_value != "", "field cannot by empty"
+        return field_value
+
+    @root_validator
+    def check_profile_start_end(cls, values):
+        start_step = values.get("start_profile_step")
+        end_step = values.get("end_profile_step")
+        assert start_step <= end_step, f"start_profiling_step ({start_step}) cannot be greater than end_profiling_step ({end_step})"
+        return values
+
+    @root_validator
+    def check_min_max_batch_sizes(cls, values):
+        max_batch = values.get("max_train_batch_size")
+        min_batch = values.get("min_train_batch_size")
+        assert min_batch <= max_batch, f"min_train_batch_size ({min_batch}) cannot be greater than max_train_batch_size ({max_batch})"
+
+        max_micro_batch = values.get("max_train_micro_batch_size")
+        min_micro_batch = values.get("min_train_micro_batch_size")
+        assert min_micro_batch <= max_micro_batch, f"min_train_micro_batch_size ({min_micro_batch}) cannot be greater than max_train_micro_batch_size ({max_micro_batch})"
+        return values
