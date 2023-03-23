@@ -53,7 +53,7 @@ from ..elasticity.constants import (
 
 from ..profiling.config import DeepSpeedFlopsProfilerConfig
 from ..autotuning.config import DeepSpeedAutotuningConfig
-from ..nebula.config import DeepSpeedNebulaConfig
+from ..nebula.config import get_nebula_config
 
 from ..compression.config import get_compression_config, get_quantize_enabled
 from ..compression.constants import *
@@ -951,7 +951,7 @@ class DeepSpeedConfig(object):
 
         self.dataloader_drop_last = get_dataloader_drop_last(param_dict)
 
-        self.nebula_config = DeepSpeedNebulaConfig(param_dict)
+        self.nebula_config = get_nebula_config(param_dict)
 
     def _batch_assertion(self):
 

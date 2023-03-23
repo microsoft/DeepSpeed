@@ -11,7 +11,6 @@ Saving Training Checkpoints
 ---------------------------
 .. autofunction:: deepspeed.DeepSpeedEngine.save_checkpoint
 
-
 ZeRO Checkpoint fp32 Weights Recovery
 -------------------------------------
 
@@ -22,3 +21,12 @@ DeepSpeed provides routines for extracting fp32 weights from the saved ZeRO chec
 .. autofunction:: deepspeed.utils.zero_to_fp32.load_state_dict_from_zero_checkpoint
 
 .. autofunction:: deepspeed.utils.zero_to_fp32.convert_zero_checkpoint_to_fp32_state_dict
+
+Nebula Checkpoint Engine
+------------------------
+
+DeepSpeed supports the Nebula checkpoint engine. The behavior of this
+checkpoint engine can be controlled with the following configuration class.
+
+.. _DeepSpeedNebulaConfig:
+.. autopydantic_model:: deepspeed.nebula.config.DeepSpeedNebulaConfig

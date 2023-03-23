@@ -7,7 +7,6 @@ import torch_nebula
 from deepspeed.runtime.checkpoint_engine.checkpoint_engine import \
     CheckpointEngine
 from deepspeed.utils import logger, log_dist
-from deepspeed.nebula.constants import *
 
 
 def _get_tag_from_path(path):
@@ -21,14 +20,13 @@ class NebulaCheckpointEngine(CheckpointEngine):
         self.tag_flag = None
         self.enable_nebula_load = config_params.enable_nebula_load
         self.nebula_load_path = config_params.load_path
-        if self.nebula_load_path is None:
-            self.nebula_load_path = config_params.persistent_storage_path
 
         nebula_config_params = {
-            NEBULA_PERSISTENT_STORAGE_PATH: config_params.persistent_storage_path,
-            NEBULA_PERSISTENT_TIME_INTERVAL: config_params.persistent_time_interval,
-            NEBULA_NUM_OF_VERSION_IN_RETENTION:
-            config_params.num_of_version_in_retention,
+            key: getattr(config_params,
+                         key)
+            for key in ("persistent_storage_path",
+                        "persisten_time_interval",
+                        "num_of_version_in_retention")
         }
         torch_nebula.init(**nebula_config_params)
 
