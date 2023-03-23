@@ -16,7 +16,7 @@ class InferenceBuilder(CPUOpBuilder):
 
     def sources(self):
         return [
-            'csrc/cpu/foo.c',
+            'csrc/cpu/foo.cpp',
         ]
 
     def extra_ldflags(self):
