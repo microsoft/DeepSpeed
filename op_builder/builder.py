@@ -36,9 +36,9 @@ else:
 
 
 def installed_cuda_version(name=""):
-    import torch.cuda
-    if not torch.cuda.is_available():
-        return 0, 0
+    # import torch.cuda
+    # if not torch.cuda.is_available():
+    #     return 0, 0
     import torch.utils.cpp_extension
     cuda_home = torch.utils.cpp_extension.CUDA_HOME
     assert cuda_home is not None, "CUDA_HOME does not exist, unable to compile CUDA op(s)"
