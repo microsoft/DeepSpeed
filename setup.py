@@ -63,8 +63,7 @@ extras_require = {
     'autotuning_ml': fetch_requirements('requirements/requirements-autotuning-ml.txt'),
     'sparse_attn': fetch_requirements('requirements/requirements-sparse_attn.txt'),
     'inf': fetch_requirements('requirements/requirements-inf.txt'),
-    'sd': fetch_requirements('requirements/requirements-sd.txt'),
-    'cpu': fetch_requirements('requirements/requirements-cpu.txt')
+    'sd': fetch_requirements('requirements/requirements-sd.txt')
 }
 
 # Add specific cupy version to both onebit extension variants
