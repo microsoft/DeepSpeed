@@ -11,12 +11,12 @@ from deepspeed.ops.adam import FusedAdam
 from deepspeed.ops.op_builder import CPUAdamBuilder
 from unit.common import DistributedTest
 
+num_col = 3
+print("bing: builder name", CPUAdamBuilder.NAME)
 if not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
-    pytest.skip("cpu-adam is not compatible", allow_module_level=True)
+    pytest.skip("reason: cpu-adam is not compatible", allow_module_level=True)
 
 pytest.cpu_vendor = get_cpu_info()["vendor_id_raw"].lower()
-
-num_col = 3
 
 
 def check_equal(first, second, atol=1e-2, verbose=False):
@@ -68,10 +68,10 @@ class TestCPUAdam(DistributedTest):
         set_dist_env = False
 
     @pytest.mark.skipif(not get_accelerator().is_available(),
-                        reason="only supported in CUDA environments.")
+                        reason="reason: only supported in CUDA environments.")
     def test_fused_adam_equal(self, dtype, model_size):
         if ("amd" in pytest.cpu_vendor) and (dtype == torch.half):
-            pytest.skip("cpu-adam with half precision not supported on AMD CPUs")
+            pytest.skip("reason: cpu-adam with half precision not supported on AMD CPUs")
 
         from deepspeed.ops.adam import DeepSpeedCPUAdam
 
@@ -102,12 +102,13 @@ class TestCPUAdam(DistributedTest):
     def test_torch_adamw_equal(self, dtype, model_size):
         if get_accelerator().is_available():
             if ("amd" in pytest.cpu_vendor) and (dtype == torch.half):
-                pytest.skip("cpu-adam with half precision not supported on AMD CPUs")
+                pytest.skip(
+                    "reason: cpu-adam with half precision not supported on AMD CPUs")
             ref_param_device = get_accelerator().device_name()
         else:
             if dtype == torch.half:
                 pytest.skip(
-                    "torch.optim.AdamW with half precision only supported in CUDA environments."
+                    "reason: torch.optim.AdamW with half precision only supported in CUDA environments."
                 )
             ref_param_device = 'cpu'
 
