@@ -25,7 +25,7 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
         for _, module_name, _ in pkgutil.iter_modules([os.path.dirname(op_builder_module.__file__)]):
             # avoid self references
-            if module_name != 'all_ops' and module_name != 'builder':
+            if module_name != 'all_ops' and module_name != 'builder' and module_name != 'cpu':
                 module = importlib.import_module("{}.{}".format(
                     op_builder_dir,
                     module_name))
