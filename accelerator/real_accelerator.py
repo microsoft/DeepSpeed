@@ -46,6 +46,7 @@ def get_accelerator():
         else:
             ds_accelerator = XPU_Accelerator()
             _validate_accelerator(ds_accelerator)
+            print(f"Setting ds_accelerator to {ds_accelerator._name} (auto-detect)")
             return ds_accelerator
 
         # We need a way to choose between CUDA_Accelerator and CPU_Accelerator
@@ -64,16 +65,22 @@ def get_accelerator():
             from .cuda_accelerator import CUDA_Accelerator
             ds_accelerator = CUDA_Accelerator()
             _validate_accelerator(ds_accelerator)
+            print(f"Setting ds_accelerator to {ds_accelerator._name} (auto-detect)")
+            return ds_accelerator
         else:
             from .cpu_accelerator import CPU_Accelerator
             ds_accelerator = CPU_Accelerator()
             _validate_accelerator(ds_accelerator)
-    return ds_accelerator
+            print(f"Setting ds_accelerator to {ds_accelerator._name} (auto-detect)")
+            return ds_accelerator
+    else:
+        return ds_accelerator
 
 
 def set_accelerator(accel_obj):
     global ds_accelerator
     _validate_accelerator(accel_obj)
+    print(f"Setting ds_accelerator to {accel_obj._name}")
     ds_accelerator = accel_obj
 
 
