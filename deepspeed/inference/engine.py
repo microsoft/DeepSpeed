@@ -69,19 +69,13 @@ class InferenceEngine(Module):
         self.mpu = config.tensor_parallel.mpu
 
         #self._validate_args(self.mpu, config.replace_with_kernel_inject)
-        self.quantize_merge_count = 1
-        self.quantization_scales = None
-
+        
         # these are not needed in the config as we are creating them ourselves in the inference engine
         self.ep_group = None  # config.moe.ep_group
         self.expert_mp_group = None  # config.moe.ep_mp_group
 
         self.cuda_graph_created = False
         self.checkpoint_engine = TorchCheckpointEngine()
-        quantization_setting = None
-        self._init_quantization_setting(
-            quantization_setting
-        )  # todo: update with the new quant config for weight quant
         self.model_profile_enabled = False
         self._model_times = []
 
@@ -240,21 +234,6 @@ class InferenceEngine(Module):
                     _expert_mp_group = dist.new_group(expert_mp_comm_ranks)
                     if dist.get_rank() in expert_mp_comm_ranks:
                         self.expert_mp_group.update({moe_ep_size: _expert_mp_group})
-
-    def _init_quantization_setting(self, quantization_setting):
-        self.quantize_bits = 8
-        self.mlp_extra_grouping = False
-        self.quantize_groups = 1
-        if type(quantization_setting) is tuple:
-            self.mlp_extra_grouping, \
-            self.quantize_groups = quantization_setting
-        elif quantization_setting is not None:
-            self.quantize_groups = quantization_setting
-        log_dist(
-            f"quantize_bits = {self.quantize_bits} "
-            f"mlp_extra_grouping = {self.mlp_extra_grouping}, "
-            f"quantize_groups = {self.quantize_groups}",
-            [0])
 
     # TODO: remove this function and add this functionality to pydantic config checking
     def _validate_args(self, mpu, replace_with_kernel_inject):
@@ -423,14 +402,11 @@ class InferenceEngine(Module):
         else:
             mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
 
-            load_path, checkpoint, quantize_config = sd_loader.load(self._config.tensor_parallel.tp_size,
+            load_path, checkpoint, _ = sd_loader.load(self._config.tensor_parallel.tp_size,
                                                     mp_rank,
                                                     is_pipe_parallel=is_pipe_parallel,
-                                                    quantize=(self._config.dtype is torch.int8),
-                                                    quantize_groups=self.quantize_groups,
-                                                    mlp_extra_grouping=self.mlp_extra_grouping)
-
-            self.quantization_scales, self.quantize_merge_count = quantize_config
+                                                    quantize=(self._config.dtype is torch.int8)
+                                                    )
 
             moe, _ = has_moe_layers(self.module)
             if moe:
@@ -463,13 +439,7 @@ class InferenceEngine(Module):
         if not isinstance(self.module, torch.nn.Module):
             return
 
-        if False:  #config.dtype is torch.int8 and self.quantization_scales is None:
-            quantizer = WeightQuantization(mlp_extra_grouping=self.mlp_extra_grouping)
-            model, self.quantization_scales = quantizer.model_quantize(self.module,
-                                                                        self.injection_dict,
-                                                                        self.quantize_bits,
-                                                                        self.quantize_groups)
-        elif config.dtype == torch.half:
+        if config.dtype == torch.half:
             self.module.half()
         elif config.dtype == torch.bfloat16:
             self.module.bfloat16()
