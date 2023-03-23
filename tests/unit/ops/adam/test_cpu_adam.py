@@ -16,6 +16,8 @@ if not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
 
 pytest.cpu_vendor = get_cpu_info()["vendor_id_raw"].lower()
 
+num_col = 3
+
 
 def check_equal(first, second, atol=1e-2, verbose=False):
     x = first.detach().numpy()
@@ -30,7 +32,11 @@ def check_equal(first, second, atol=1e-2, verbose=False):
 
 def _compare_optimizers(model_size, param1, optimizer1, param2, optimizer2):
     for i in range(10):
-        param1.grad = torch.randn(model_size, device=param1.device).to(param1.dtype)
+        # param1.grad = torch.randn(model_size, device=param1.device).to(param1.dtype)
+        param1.grad = torch.from_numpy(np.linspace(0.01,
+                                                   1,
+                                                   model_size)).to(device=param1.device,
+                                                                   dtype=param1.dtype)
         param2.grad = param1.grad.clone().detach().to(device=param2.device,
                                                       dtype=param2.dtype)
 
@@ -69,7 +75,12 @@ class TestCPUAdam(DistributedTest):
 
         from deepspeed.ops.adam import DeepSpeedCPUAdam
 
-        cpu_data = torch.randn(model_size, device='cpu').to(dtype)
+        # cpu_data = torch.randn(model_size, device='cpu').to(dtype)
+
+        oneD_data = np.linspace(0.01, 1, model_size).astype(dtype)
+        cpu_data = torch.from_numpy(oneD_data).view(model_size,
+                                                    num_col).to(device='cpu',
+                                                                dtype=dtype)
         cpu_param = torch.nn.Parameter(cpu_data)
         cuda_param = torch.nn.Parameter(cpu_data.to(get_accelerator().device_name()))
 
@@ -102,7 +113,11 @@ class TestCPUAdam(DistributedTest):
 
             from deepspeed.ops.adam import DeepSpeedCPUAdam
 
-            cpu_data = torch.randn(model_size, device='cpu').to(dtype)
+            #cpu_data = torch.randn(model_size, device='cpu').to(dtype)
+            oneD_data = np.linspace(0.01, 1, model_size).astype(dtype)
+            cpu_data = torch.from_numpy(oneD_data).view(model_size,
+                                                        num_col).to(device='cpu',
+                                                                    dtype=dtype)
             cpu_param = torch.nn.Parameter(cpu_data)
             ref_param = torch.nn.Parameter(cpu_data.to(ref_param_device))
 
