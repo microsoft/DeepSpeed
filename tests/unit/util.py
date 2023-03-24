@@ -1,7 +1,30 @@
 '''Copyright The Microsoft DeepSpeed Team'''
 
+import pytest
 import torch
+import deepspeed
 from deepspeed.git_version_info import torch_info
+
+
+def skip_on_arch(min_arch=7):
+    if deepspeed.accelerator.get_accelerator().device_name() == 'cuda':
+        if torch.cuda.get_device_capability()[0] < min_arch:  #ignore-cuda
+            pytest.skip(f"needs higher compute capability than {min_arch}")
+    else:
+        assert deepspeed.accelerator.get_accelerator().device_name() == 'xpu'
+        return
+
+
+def skip_on_cuda(valid_cuda):
+    split_version = lambda x: map(int, x.split('.')[:2])
+    if deepspeed.accelerator.get_accelerator().device_name() == 'cuda':
+        CUDA_MAJOR, CUDA_MINOR = split_version(torch_info['cuda_version'])
+        CUDA_VERSION = (CUDA_MAJOR * 10) + CUDA_MINOR
+        if valid_cuda.count(CUDA_VERSION) == 0:
+            pytest.skip(f"requires cuda versions {valid_cuda}")
+    else:
+        assert deepspeed.accelerator.get_accelerator().device_name() == 'xpu'
+        return
 
 
 def required_torch_version():
