@@ -74,7 +74,7 @@ __global__ void attn_softmax_v2(__half* vals,
         alibi_offset = (alibi_offset + ((iter_offset / num_seq) % heads)) * sequence_length;
         mask_offset = mask_offset * sequence_length;
         int seq_id = iter_offset % num_seq;
-        int seq_id4 = seq_id >> 2;
+        //int seq_id4 = seq_id >> 2;
 
         int real_seq_id = seq_id + (num_seq == sequence_length ? 0 : sequence_length);
         int window_stride4 = (local_attention && (real_seq_id >> 2) > (window_size >> 2))
@@ -87,7 +87,7 @@ __global__ void attn_softmax_v2(__half* vals,
         // if (lane == 0) printf("%d, %d: %d \n", wid, blockIdx.x, mask_offset);
         for (int i = 0; i < iterations; i++) {
             int data_id = i * (reduceWidth << 2) + (seq_lane);
-            bool check1 = ((!triangular || ((data_id >> 2) <= seq_id4)) && (data_id >> 2) >= window_stride4 && data_id < sequence_length);
+            bool check1 = ((!triangular || (data_id <= seq_id)) && (data_id >> 2) >= window_stride4 && data_id < sequence_length);
             bool low_x_check =  check1 && (data_id > window_stride);
             bool low_y_check =  check1 && ((data_id + reduceWidth) < sequence_length) && ((!triangular || ((data_id + reduceWidth) <= seq_id)) && (data_id + reduceWidth) > window_stride);
             bool high_x_check = check1 && ((data_id + reduceWidth*2) < sequence_length) && ((!triangular || ((data_id + reduceWidth*2) <= seq_id)) && (data_id + reduceWidth*2) > window_stride);
