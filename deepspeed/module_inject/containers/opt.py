@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 from .base import *
 from .features.meta_tensor import MetaTensorContainer
 from deepspeed.model_implementations.transformers.ds_opt import DeepSpeedOPTInference
@@ -53,7 +55,7 @@ class DS_OPTContainer(MetaTensorContainer, BaseTransformerContainer):
                                prefix + param_names[i + 1],
                                prefix + param_names[i + 2]
                            ],
-                           split_qkv=self.split_qkv)
+                           split_qkv=self.policy.split_qkv)
         for i in range(6, 8):
             maybe_copy(module.attention,
                        sd,

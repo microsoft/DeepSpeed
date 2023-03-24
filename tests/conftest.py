@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 # tests directory-specific settings - this file is run automatically by pytest before any tests are run
 
 import sys
@@ -14,6 +16,13 @@ os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 # 'pip install -e .[dev]' when switching between checkouts and running tests.
 git_repo_path = abspath(join(dirname(dirname(__file__)), "src"))
 sys.path.insert(1, git_repo_path)
+
+
+def pytest_configure(config):
+    config.option.color = "yes"
+    config.option.durations = 0
+    config.option.durations_min = 1
+    config.option.verbose = True
 
 
 def pytest_addoption(parser):

@@ -1,9 +1,11 @@
+'''Copyright The Microsoft DeepSpeed Team'''
 """
 Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
 import os
 from typing import Union
+from enum import Enum
 
 import torch
 import json
@@ -89,6 +91,33 @@ ADAM_W_MODE_DEFAULT = True
 
 class DeepSpeedConfigError(Exception):
     pass
+
+
+class DtypeEnum(Enum):
+    # The torch dtype must always be the first value (so we return torch.dtype)
+    fp16 = torch.float16, "torch.float16", "fp16", "float16", "half"
+    fp32 = torch.float32, "torch.float32", "fp32", "float32", "float"
+    int8 = torch.int8, "torch.int8", "int8"
+    bf16 = torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16"
+
+    # Copied from https://stackoverflow.com/a/43210118
+    # Allows us to use multiple values for each Enum index and returns first
+    # listed value when Enum is called
+    def __new__(cls, *values):
+        obj = object.__new__(cls)
+        # first value is canonical value
+        obj._value_ = values[0]
+        for other_value in values[1:]:
+            cls._value2member_map_[other_value] = obj
+        obj._all_values = values
+        return obj
+
+    def __repr__(self):
+        return "<%s.%s: %s>" % (
+            self.__class__.__name__,
+            self._name_,
+            ", ".join([repr(v) for v in self._all_values]),
+        )
 
 
 def get_pld_enabled(param_dict):
@@ -501,6 +530,12 @@ def get_zero_allow_untested_optimizer(param_dict):
                             ZERO_ALLOW_UNTESTED_OPTIMIZER_DEFAULT)
 
 
+def get_zero_force_ds_cpu_optimizer(param_dict):
+    return get_scalar_param(param_dict,
+                            ZERO_FORCE_DS_CPU_OPTIMIZER,
+                            ZERO_FORCE_DS_CPU_OPTIMIZER_DEFAULT)
+
+
 def get_scheduler_name(param_dict):
     if SCHEDULER in param_dict.keys() and TYPE in param_dict[SCHEDULER].keys():
         return param_dict[SCHEDULER][TYPE]
@@ -857,6 +892,8 @@ class DeepSpeedConfig(object):
 
         self.zero_allow_untested_optimizer = get_zero_allow_untested_optimizer(
             param_dict)
+
+        self.zero_force_ds_cpu_optimizer = get_zero_force_ds_cpu_optimizer(param_dict)
 
         self.scheduler_name = get_scheduler_name(param_dict)
         self.scheduler_params = get_scheduler_params(param_dict)

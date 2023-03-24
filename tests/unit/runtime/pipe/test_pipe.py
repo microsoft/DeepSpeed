@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import copy
 import torch.nn as nn
 import pytest
@@ -7,6 +9,7 @@ from deepspeed.runtime.pipe.topology import PipeDataParallelTopology
 from deepspeed.runtime.pipe.module import PipelineModule
 from unit.alexnet_model import AlexNetPipe, train_cifar
 from unit.common import DistributedTest
+from unit.util import skip_on_arch
 
 PipeTopo = PipeDataParallelTopology
 
@@ -34,6 +37,8 @@ class TestPipeCifar10(DistributedTest):
     world_size = 4
 
     def test(self, topo_config):
+        skip_on_arch(min_arch=7)
+
         config_dict = {
             "train_batch_size": 16,
             "train_micro_batch_size_per_gpu": 4,
