@@ -29,7 +29,6 @@ class AutoTP():
 
     def supported(model):
         unsupported = [
-            'bloom',
             'codegen',
             'deberta',
             'flaubert',

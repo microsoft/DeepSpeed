@@ -83,13 +83,12 @@ def build_bloom_alibi_tensor(attention_mask: torch.Tensor,
     # https://github.com/huggingface/transformers/blob/f681437203baa7671de3174b0fa583c349d9d5e1/src/transformers/models/t5/modeling_t5.py#L527
     arange_tensor = ((attention_mask.cumsum(dim=-1) - 1) * attention_mask)[:, None, :]
     alibi = slopes[..., None] * arange_tensor
-    alibi = alibi.reshape(batch_size * num_heads, 1, seq_length).to(dtype)
     if dist.is_initialized():
         num_heads_per_rank = int(num_heads / dist.get_world_size())
         offset = dist.get_rank() * num_heads_per_rank
         alibi = alibi.view(batch_size, num_heads, 1, seq_length)
         alibi = alibi[:, offset:num_heads_per_rank + offset, :, :]
-        return alibi.reshape(batch_size * num_heads_per_rank, 1, seq_length)
+        return alibi.reshape(batch_size * num_heads_per_rank, 1, seq_length).to(dtype)
     else:
         return alibi.reshape(batch_size * num_heads, 1, seq_length).to(dtype)
 
@@ -147,10 +146,11 @@ class InferenceEngine(Module):
         self.model_profile_enabled = False
         self._model_times = []
 
-        if not self.injection_dict:
+        if not self.injection_dict and config.replace_with_kernel_inject:
             # This is a hack to remove the prepare_mask function on HF side for BLOOM architecture
             self.remove_mask_prepare_for_bloom()
-        else:
+
+        if self.injection_dict or not config.replace_with_kernel_inject:
             # This is a hack to redefine the alibi func due to TP
             self.build_alibi_tensor()
 
