@@ -87,82 +87,32 @@ __global__ void attn_softmax_v2(__half* vals,
         // if (lane == 0) printf("%d, %d: %d \n", wid, blockIdx.x, mask_offset);
         for (int i = 0; i < iterations; i++) {
             int data_id = i * (reduceWidth << 2) + (seq_lane << 2);
-            if ((!triangular || ((data_id >> 2) <= seq_id4)) && (data_id >> 2) >= window_stride4 &&
-                data_id < sequence_length) {
-                if ((sequence_length - data_id) >= 4) {
-                    low_data[i].x = data_id > window_stride
-                                        ? __half2float(vals[data_id]) * layer_scale
-                                        : minus_infinity;
-                    low_data[i].y = ((!triangular || ((data_id + 1) <= seq_id)) &&
-                                     (data_id + 1) > window_stride)
-                                        ? __half2float(vals[data_id + 1]) * layer_scale
-                                        : minus_infinity;
-                    high_data[i].x = ((!triangular || ((data_id + 2) <= seq_id)) &&
-                                      (data_id + 2) > window_stride)
-                                         ? __half2float(vals[data_id + 2]) * layer_scale
-                                         : minus_infinity;
-                    high_data[i].y = ((!triangular || ((data_id + 3) <= seq_id)) &&
-                                      (data_id + 3) > window_stride)
-                                         ? __half2float(vals[data_id + 3]) * layer_scale
-                                         : minus_infinity;
-                    if (alibi) {
-                        low_data[i].x = low_data[i].x + __half2float(alibi[data_id + alibi_offset]);
-                        low_data[i].y =
-                            low_data[i].y + __half2float(alibi[data_id + alibi_offset + 1]);
-                        high_data[i].x =
-                            high_data[i].x + __half2float(alibi[data_id + alibi_offset + 2]);
-                        high_data[i].y =
-                            high_data[i].y + __half2float(alibi[data_id + alibi_offset + 3]);
-                    }
-                    if (mask) {
-                        low_data[i].x += __half2float(mask[data_id + mask_offset]);
-                        low_data[i].y += __half2float(mask[data_id + mask_offset + 1]);
-                        high_data[i].x += __half2float(mask[data_id + mask_offset + 2]);
-                        high_data[i].y += __half2float(mask[data_id + mask_offset + 3]);
-                    }
-                } else {
-                    low_data[i].x = data_id > window_stride
-                                        ? __half2float(vals[data_id]) * layer_scale
-                                        : minus_infinity;
-                    low_data[i].y = (((!triangular || (data_id + 1) <= seq_id) &&
-                                      (data_id + 1) > window_stride) &&
-                                     (data_id + 1) < sequence_length)
-                                        ? __half2float(vals[data_id + 1]) * layer_scale
-                                        : minus_infinity;
-                    high_data[i].x = (((!triangular || (data_id + 2) <= seq_id) &&
-                                       (data_id + 2) > window_stride) &&
-                                      (data_id + 2) < sequence_length)
-                                         ? __half2float(vals[data_id + 2]) * layer_scale
-                                         : minus_infinity;
-                    if (alibi) {
-                        low_data[i].x = low_data[i].x + __half2float(alibi[data_id + alibi_offset]);
-                        if ((data_id + 1) < sequence_length)
-                            low_data[i].y =
-                                low_data[i].y + __half2float(alibi[data_id + alibi_offset + 1]);
-                        if ((data_id + 2) < sequence_length)
-                            high_data[i].x =
-                                high_data[i].x + __half2float(alibi[data_id + alibi_offset + 2]);
-                    }
-                    high_data[i].y = minus_infinity;
-                    if (mask) {
-                        low_data[i].x += __half2float(mask[data_id + mask_offset]);
-                        if ((data_id + 1) < sequence_length)
-                            low_data[i].y += __half2float(mask[data_id + mask_offset + 1]);
-                        if ((data_id + 2) < sequence_length)
-                            high_data[i].x += __half2float(mask[data_id + mask_offset + 2]);
-                    }
-                }
-                // if(lane == 0) printf("%f , %d, %d \n", low_data[i].x, data_id, seq_id);
-                max_val = (low_data[i].x > max_val ? low_data[i].x : max_val);
-                max_val = (low_data[i].y > max_val ? low_data[i].y : max_val);
-                max_val = (high_data[i].x > max_val ? high_data[i].x : max_val);
-                max_val = (high_data[i].y > max_val ? high_data[i].y : max_val);
-            } else {
-                low_data[i].x = minus_infinity;
-                low_data[i].y = minus_infinity;
-                high_data[i].x = minus_infinity;
-                high_data[i].y = minus_infinity;
-            }
+            bool check1 = ((!triangular || ((data_id >> 2) <= seq_id4)) && (data_id >> 2) >= window_stride4 && data_id < sequence_length);
+            bool check2 = ((sequence_length - data_id) >= 4);
+            bool low_x_check = check1 && check2 && (data_id > window_stride);
+            bool low_y_check = check1 && ((data_id + 1) < sequence_length) && ((!triangular || ((data_id + 1) <= seq_id)) && (data_id + 1) > window_stride);
+            bool high_x_check = check1 && ((data_id + 2) < sequence_length) && ((!triangular || ((data_id + 2) <= seq_id)) && (data_id + 2) > window_stride);
+            bool high_y_check = check1 && check2 && ((!triangular || ((data_id + 3) <= seq_id)) && (data_id + 3) > window_stride);
+
+            low_data[i].x = low_x_check
+                                ? __half2float(vals[data_id]) * layer_scale + ( __half2float(alibi[data_id + alibi_offset])) + ( __half2float(mask[data_id + mask_offset]))
+                                : minus_infinity;
+            low_data[i].y = low_y_check
+                                ? __half2float(vals[data_id + 1]) * layer_scale + (  __half2float(alibi[data_id + alibi_offset + 1])) + ( __half2float(mask[data_id + mask_offset + 1]))
+                                : minus_infinity;
+            high_data[i].x = high_x_check
+                                ? __half2float(vals[data_id + 2]) * layer_scale + (  __half2float(alibi[data_id + alibi_offset + 2])) + ( __half2float(mask[data_id + mask_offset + 2]))
+                                : minus_infinity;
+            high_data[i].y = high_y_check
+                                ? __half2float(vals[data_id + 3]) * layer_scale + (  __half2float(alibi[data_id + alibi_offset + 3])) + ( __half2float(mask[data_id + mask_offset + 3]))
+                                : minus_infinity;
+
+            // if(lane == 0) printf("%f , %d, %d \n", low_data[i].x, data_id, seq_id);
+            max_val = (low_data[i].x > max_val ? low_data[i].x : max_val);
+            max_val = (low_data[i].y > max_val ? low_data[i].y : max_val);
+            max_val = (high_data[i].x > max_val ? high_data[i].x : max_val);
+            max_val = (high_data[i].y > max_val ? high_data[i].y : max_val);
+
         }
 
         for (int i = 1; i < WARP_SIZE; i *= 2) {
