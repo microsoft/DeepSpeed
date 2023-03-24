@@ -14,7 +14,6 @@ def policy_to_ds_container(**kwargs):
     from .containers import HFOPTLayerPolicy, DS_OPTContainer
     from .containers import MegatronLayerPolicy, DS_MegatronGPTContainer
     from .containers import HFDistilBertLayerPolicy, DS_DistilBERTContainer
-
     policy_to_container = {
         HFGPT2LayerPolicy: DS_GPT2Container,
         HFBertLayerPolicy: DS_BERTContainer,

@@ -8,15 +8,16 @@ import torch.nn as nn
 from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
 from .op_binding import LinearOp, VectorMatMulOp, SoftmaxContextOp, QKVGemmOp, SoftmaxOp
+from .op_binding.base import BaseOp
 
 minus_inf = -10000.0
 
 
-class DeepSpeedSelfAttention(nn.Module):
+class DeepSpeedSelfAttention(BaseOp):
     num_layers = 0
 
     def __init__(self, config, mp_group=None, q_scales=None, q_groups=1, merge_count=1):
-        super(DeepSpeedSelfAttention, self).__init__()
+        super(DeepSpeedSelfAttention, self).__init__(config)
         self.config = config
         data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.float
         data_type_fp = torch.half if config.fp16 else torch.float
@@ -56,7 +57,6 @@ class DeepSpeedSelfAttention(nn.Module):
         self.q_scales = q_scales
         self.q_groups = q_groups
         self.merge_count = int(math.log2(merge_count))
-
         self.norm_factor = math.sqrt(self.config.hidden_size // self.config.heads)
         if not config.use_mup:
             self.norm_factor = math.sqrt(self.norm_factor)
@@ -69,6 +69,7 @@ class DeepSpeedSelfAttention(nn.Module):
         self.score_context_func = SoftmaxContextOp(config)
         self.linear_func = LinearOp(config)
         self.vector_matmul_func = VectorMatMulOp(config)
+        self.softmax_func = SoftmaxOp(self.config)
 
     def compute_attention(self, qkv_out, input_mask, layer_past, alibi):
         if isinstance(qkv_out, list):
@@ -91,6 +92,7 @@ class DeepSpeedSelfAttention(nn.Module):
             alibi=alibi)
 
         context_layer, key_layer, value_layer = attn_key_value
+
         return context_layer, key_layer, value_layer
 
     def forward(self,
@@ -105,7 +107,6 @@ class DeepSpeedSelfAttention(nn.Module):
                 norm_w=None,
                 norm_b=None,
                 alibi=None):
-
         if not self.config.pre_layer_norm:
             qkv_out = self.linear_func(input=input,
                                        weight=self.attn_qkvw,
@@ -130,7 +131,6 @@ class DeepSpeedSelfAttention(nn.Module):
             input_mask=input_mask,
             layer_past=layer_past,
             alibi=alibi)
-
         output = self.vector_matmul_func(input=context_layer, weight=self.attn_ow)
 
         inp_norm = qkv_out[-1]
@@ -239,7 +239,6 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
                                               output_size[1],
                                               output_size[2],
                                               -1)
-
         offset = dist.get_rank(
         ) * self.num_attention_heads_per_partition if dist.is_initialized() else 0
         attention_probs = self.softmax_func(

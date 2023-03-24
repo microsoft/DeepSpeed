@@ -156,20 +156,20 @@ class DeepSpeedTransformerInference(nn.Module):
             and input.dtype == torch.float:
             input = input.half()
         with torch.no_grad():
-            attention_output, key, value, context_outputtn_ctx, inp_norm = \
-                                     self.attention(input,
-                                              input_mask,
-                                              head_mask,
-                                              layer_past,
-                                              get_present,
-                                              encoder_hidden_states,
-                                              encoder_attention_mask,
-                                              output_attentions,
-                                              self.norm_w,
-                                              self.norm_b,
-                                              alibi)
-
+            attn_outputs = self.attention(input,
+                                          input_mask,
+                                          head_mask,
+                                          layer_past,
+                                          get_present,
+                                          encoder_hidden_states,
+                                          encoder_attention_mask,
+                                          output_attentions,
+                                          self.norm_w,
+                                          self.norm_b,
+                                          alibi)
+            attention_output, key, value, context_outputtn_ctx, inp_norm = attn_outputs
             presents = (key, value)
+
             self.layer_past = presents if layer_past is None else None
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
 
