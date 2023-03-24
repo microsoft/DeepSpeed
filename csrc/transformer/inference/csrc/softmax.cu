@@ -86,25 +86,24 @@ __global__ void attn_softmax_v2(__half* vals,
         float max_val = minus_infinity;
         // if (lane == 0) printf("%d, %d: %d \n", wid, blockIdx.x, mask_offset);
         for (int i = 0; i < iterations; i++) {
-            int data_id = i * (reduceWidth << 2) + (seq_lane << 2);
+            int data_id = i * (reduceWidth << 2) + (seq_lane);
             bool check1 = ((!triangular || ((data_id >> 2) <= seq_id4)) && (data_id >> 2) >= window_stride4 && data_id < sequence_length);
-            bool check2 = ((sequence_length - data_id) >= 4);
-            bool low_x_check = check1 && check2 && (data_id > window_stride);
-            bool low_y_check = check1 && ((data_id + 1) < sequence_length) && ((!triangular || ((data_id + 1) <= seq_id)) && (data_id + 1) > window_stride);
-            bool high_x_check = check1 && ((data_id + 2) < sequence_length) && ((!triangular || ((data_id + 2) <= seq_id)) && (data_id + 2) > window_stride);
-            bool high_y_check = check1 && check2 && ((!triangular || ((data_id + 3) <= seq_id)) && (data_id + 3) > window_stride);
+            bool low_x_check =  check1 && (data_id > window_stride);
+            bool low_y_check =  check1 && ((data_id + reduceWidth) < sequence_length) && ((!triangular || ((data_id + reduceWidth) <= seq_id)) && (data_id + reduceWidth) > window_stride);
+            bool high_x_check = check1 && ((data_id + reduceWidth*2) < sequence_length) && ((!triangular || ((data_id + reduceWidth*2) <= seq_id)) && (data_id + reduceWidth*2) > window_stride);
+            bool high_y_check = check1 && ((data_id + reduceWidth*3) < sequence_length) && ((!triangular || ((data_id + reduceWidth*3) <= seq_id)) && (data_id + reduceWidth*3) > window_stride);
 
             low_data[i].x = low_x_check
                                 ? __half2float(vals[data_id]) * layer_scale + ( __half2float(alibi[data_id + alibi_offset])) + ( __half2float(mask[data_id + mask_offset]))
                                 : minus_infinity;
             low_data[i].y = low_y_check
-                                ? __half2float(vals[data_id + 1]) * layer_scale + (  __half2float(alibi[data_id + alibi_offset + 1])) + ( __half2float(mask[data_id + mask_offset + 1]))
+                                ? __half2float(vals[data_id + reduceWidth]) * layer_scale + (  __half2float(alibi[data_id + alibi_offset + reduceWidth])) + ( __half2float(mask[data_id + mask_offset + reduceWidth]))
                                 : minus_infinity;
             high_data[i].x = high_x_check
-                                ? __half2float(vals[data_id + 2]) * layer_scale + (  __half2float(alibi[data_id + alibi_offset + 2])) + ( __half2float(mask[data_id + mask_offset + 2]))
+                                ? __half2float(vals[data_id + reduceWidth*2]) * layer_scale + (  __half2float(alibi[data_id + alibi_offset + reduceWidth*2])) + ( __half2float(mask[data_id + mask_offset + reduceWidth*2]))
                                 : minus_infinity;
             high_data[i].y = high_y_check
-                                ? __half2float(vals[data_id + 3]) * layer_scale + (  __half2float(alibi[data_id + alibi_offset + 3])) + ( __half2float(mask[data_id + mask_offset + 3]))
+                                ? __half2float(vals[data_id + reduceWidth*3]) * layer_scale + (  __half2float(alibi[data_id + alibi_offset + reduceWidth*3])) + ( __half2float(mask[data_id + mask_offset + reduceWidth*3]))
                                 : minus_infinity;
 
             // if(lane == 0) printf("%f , %d, %d \n", low_data[i].x, data_id, seq_id);
@@ -161,21 +160,16 @@ __global__ void attn_softmax_v2(__half* vals,
         }
         sum += 1e-6;
         for (int i = 0; i < iterations; i++) {
-            int data_id = i * (reduceWidth << 2) + (seq_lane << 2);
+            int data_id = i * (reduceWidth << 2) + (seq_lane);
 
             if (data_id < sequence_length) {
-                if ((sequence_length - data_id) >= 4) {
-                    vals[data_id] = __float2half(low_data[i].x / sum);
-                    vals[data_id + 1] = __float2half(low_data[i].y / sum);
-                    vals[data_id + 2] = __float2half(high_data[i].x / sum);
-                    vals[data_id + 3] = __float2half(high_data[i].y / sum);
-                } else {
-                    vals[data_id] = __float2half(low_data[i].x / sum);
-                    if ((data_id + 1) < sequence_length)
-                        vals[data_id + 1] = __float2half(low_data[i].y / sum);
-                    if ((data_id + 2) < sequence_length)
-                        vals[data_id + 2] = __float2half(high_data[i].x / sum);
-                }
+                vals[data_id] = __float2half(low_data[i].x / sum);
+                if ((data_id + reduceWidth) < sequence_length)
+                    vals[data_id + reduceWidth] = __float2half(low_data[i].y / sum);
+                if ((data_id + reduceWidth*2) < sequence_length)
+                    vals[data_id + reduceWidth*2] = __float2half(high_data[i].x / sum);
+                if ((data_id + reduceWidth*3) < sequence_length)
+                    vals[data_id + reduceWidth*3] = __float2half(high_data[i].y / sum);
             }
         }
     }
