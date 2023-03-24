@@ -9,6 +9,7 @@ import torch
 import hashlib
 from collections import defaultdict, OrderedDict, deque
 from shutil import copyfile
+import gc
 
 from torch.nn.modules import Module
 from torch.nn.parameter import Parameter
@@ -79,7 +80,7 @@ from deepspeed.runtime.data_pipeline.data_routing.basic_layer import RandomLayer
 from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 
 from .pipe.module import PipelineModule
-from .utils import ensure_directory_exists, get_ma_status
+from .utils import get_ma_status
 from ..ops.adam import FusedAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE
@@ -92,7 +93,7 @@ from deepspeed.utils.logging import print_json_dist, print_configuration
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import UtilsBuilder
 
-from deepspeed.inference.config import DtypeEnum
+from deepspeed.runtime.config import DtypeEnum
 
 # Set to torch's distributed package or deepspeed.comm based inside DeepSpeedEngine init
 dist = None
@@ -331,6 +332,10 @@ class DeepSpeedEngine(Module):
         # If no parameters given by init default to module parameters
         if model_parameters is None:
             model_parameters = self.module.parameters()
+
+        # Convert model parameters from generator to list
+        if not isinstance(model_parameters, list):
+            model_parameters = list(model_parameters)
 
         if has_optimizer:
             self._configure_optimizer(optimizer, model_parameters)
@@ -1915,7 +1920,9 @@ class DeepSpeedEngine(Module):
 
         # Communicate only at gradient accumulation boundaries
         elif self.is_gradient_accumulation_boundary():
-            if self.zero_optimization_stage() == ZeroStageEnum.optimizer_states:
+            if self.zero_optimization_stage(
+            ) == ZeroStageEnum.optimizer_states and hasattr(self.optimizer,
+                                                            'reduce_gradients'):
                 self.optimizer.reduce_gradients(
                     pipeline_parallel=self.pipeline_parallelism)
             else:
@@ -2097,7 +2104,7 @@ class DeepSpeedEngine(Module):
         # the behaviour that we want
         if self.bfloat16_enabled():
             # TODO: Temporary until bf16_optimizer and zero_optimizer are integrated
-            if self.zero_optimization():
+            if self.zero_optimization() and hasattr(self.optimizer, "zero_grad"):
                 self.optimizer.zero_grad()
             else:
                 pass
@@ -3100,7 +3107,7 @@ class DeepSpeedEngine(Module):
         # There seems to be issue creating them in parallel
 
         # Ensure save_dir directory exists
-        os.makedirs(save_dir, exist_ok=True)
+        self.checkpoint_engine.makedirs(save_dir, exist_ok=True)
         dist.barrier()
 
         if tag is None:
@@ -3278,7 +3285,8 @@ class DeepSpeedEngine(Module):
                          if zero_checkpoint else self._get_ckpt_name)
         try:
             checkpoint_name = name_function(save_dir, tag)
-            ensure_directory_exists(checkpoint_name)
+            path = os.path.dirname(checkpoint_name)
+            self.checkpoint_engine.makedirs(path, exist_ok=True)
         except:
             logger.error(f"Failed saving model checkpoint to {save_dir} with tag {tag}")
             return False
@@ -3527,9 +3535,24 @@ class DeepSpeedEngine(Module):
         else:
             state_dict = self.module.state_dict()
 
+        tag = f"global_step{self.global_steps}"
+        tag = str(tag)
+        self.checkpoint_engine.create(tag)
+
         if dist.get_rank() == 0:
-            os.makedirs(save_dir, exist_ok=True)
-            logger.info(f"Saving model weights to {path}")
+            self.checkpoint_engine.makedirs(save_dir, exist_ok=True)
+            logger.info(f"Saving model weights to {path}, tag: {tag}")
             self.checkpoint_engine.save(state_dict, path)
 
+        self.checkpoint_engine.commit(tag)
+
         return True
+
+    def empty_partition_cache(self):
+        """
+        Release GPU memory consumed by offloaded model parameters.
+        """
+        if hasattr(self.optimizer, 'empty_partition_cache'):
+            self.optimizer.empty_partition_cache()
+            gc.collect()
+            get_accelerator().empty_cache()
