@@ -9,6 +9,7 @@ import torch
 import hashlib
 from collections import defaultdict, OrderedDict, deque
 from shutil import copyfile
+import gc
 
 from torch.nn.modules import Module
 from torch.nn.parameter import Parameter
@@ -3534,9 +3535,24 @@ class DeepSpeedEngine(Module):
         else:
             state_dict = self.module.state_dict()
 
+        tag = f"global_step{self.global_steps}"
+        tag = str(tag)
+        self.checkpoint_engine.create(tag)
+
         if dist.get_rank() == 0:
             self.checkpoint_engine.makedirs(save_dir, exist_ok=True)
-            logger.info(f"Saving model weights to {path}")
+            logger.info(f"Saving model weights to {path}, tag: {tag}")
             self.checkpoint_engine.save(state_dict, path)
 
+        self.checkpoint_engine.commit(tag)
+
         return True
+
+    def empty_partition_cache(self):
+        """
+        Release GPU memory consumed by offloaded model parameters.
+        """
+        if hasattr(self.optimizer, 'empty_partition_cache'):
+            self.optimizer.empty_partition_cache()
+            gc.collect()
+            get_accelerator().empty_cache()
