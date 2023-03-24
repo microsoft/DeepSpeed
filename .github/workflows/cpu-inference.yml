@@ -24,6 +24,15 @@ jobs:
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
 
+      - name: Detect instruction sets on instance
+        run: |
+          cat /proc/cpuinfo
+          git clone https://github.com/intel/intel-extension-for-pytorch
+          cd intel-extension-for-pytorch/tests/cpu/isa
+          cmake .
+          make
+          ./cpu_features
+
       - name: Install oneCCL Bindings for PyTorch
         run: |
           python -m pip install intel_extension_for_pytorch
@@ -39,7 +48,6 @@ jobs:
       - name: Install deepspeed
         run: |
           # check why the host does not have AVX2 support
-          cat /proc/cpuinfo
           pip install .[dev,1bit,autotuning,inf]
           ds_report
 
