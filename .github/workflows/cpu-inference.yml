@@ -26,7 +26,8 @@ jobs:
 
       - name: Detect instruction sets on instance
         run: |
-          cat /proc/cpuinfo
+          lscpu
+          pip install cmake
           git clone https://github.com/intel/intel-extension-for-pytorch
           cd intel-extension-for-pytorch/tests/cpu/isa
           cmake .
