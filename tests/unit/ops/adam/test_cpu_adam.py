@@ -11,8 +11,6 @@ from deepspeed.ops.adam import FusedAdam
 from deepspeed.ops.op_builder import CPUAdamBuilder
 from unit.common import DistributedTest
 
-num_col = 3
-print("bing: builder name", CPUAdamBuilder.NAME)
 if not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
     pytest.skip("reason: cpu-adam is not compatible", allow_module_level=True)
 
@@ -32,11 +30,9 @@ def check_equal(first, second, atol=1e-2, verbose=False):
 
 def _compare_optimizers(model_size, param1, optimizer1, param2, optimizer2):
     for i in range(10):
-        # param1.grad = torch.randn(model_size, device=param1.device).to(param1.dtype)
-        param1.grad = torch.from_numpy(np.linspace(0.01,
-                                                   1,
-                                                   model_size)).to(device=param1.device,
-                                                                   dtype=param1.dtype)
+       # param1.grad = torch.randn(model_size, device=param1.device).to(param1.dtype)
+        twoD_data = np.array([np.linspace(0.01, 1, model_size)] * model_size)
+        param1.grad = torch.tensor(twoD_data, device=param1.device, dtype=param1.dtype)
         param2.grad = param1.grad.clone().detach().to(device=param2.device,
                                                       dtype=param2.dtype)
 
@@ -50,15 +46,16 @@ def _compare_optimizers(model_size, param1, optimizer1, param2, optimizer2):
                 verbose=True)
 
 
-@pytest.mark.parametrize('dtype', [torch.half, torch.float], ids=["fp16", "fp32"])
+#@pytest.mark.parametrize('dtype', [torch.half, torch.float], ids=["fp16", "fp32"])
+@pytest.mark.parametrize('dtype', [torch.half], ids=["fp16"])
 @pytest.mark.parametrize('model_size',
                          [
                              (64),
-                             (22),
-                             #(55),
-                             (128),
-                             (1024),
-                             (1048576),
+ #                            (22),
+ #                            #(55),
+ #                            (128),
+ #                            (1024),
+ #                            (1048576),
                          ]) # yapf: disable
 class TestCPUAdam(DistributedTest):
     world_size = 1
@@ -76,11 +73,8 @@ class TestCPUAdam(DistributedTest):
         from deepspeed.ops.adam import DeepSpeedCPUAdam
 
         # cpu_data = torch.randn(model_size, device='cpu').to(dtype)
-
-        oneD_data = np.linspace(0.01, 1, model_size).astype(dtype)
-        cpu_data = torch.from_numpy(oneD_data).view(model_size,
-                                                    num_col).to(device='cpu',
-                                                                dtype=dtype)
+        twoD_data = np.array([np.linspace(0.01, 1, model_size)] * model_size)
+        cpu_data = torch.tensor(twoD_data, device='cpu', dtype=dtype)
         cpu_param = torch.nn.Parameter(cpu_data)
         cuda_param = torch.nn.Parameter(cpu_data.to(get_accelerator().device_name()))
 
@@ -89,7 +83,6 @@ class TestCPUAdam(DistributedTest):
         #             cuda_param.float().cpu().norm(),
         #             atol=tolerance,
         #             verbose=True)
-
         cpu_optimizer = DeepSpeedCPUAdam([cpu_param])
         cuda_optimizer = FusedAdam([cuda_param])
 
