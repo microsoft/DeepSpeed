@@ -133,7 +133,7 @@ int create_adam_optimizer(int optimizer_id,
                           float betta2 = 0.999,
                           float eps = 1e-8,
                           float weight_decay = 0,
-                          bool adamw_mode = false,
+                          bool adamw_mode = true,
                           bool should_log = false)
 {
     auto opt =
@@ -230,7 +230,7 @@ int ds_adam_step(int optimizer_id,
                 grads_ptr,
                 exp_avg_ptr,
                 exp_avg_sq_ptr,
-                params_c.numel(),
+                params_c.size(0),
                 nullptr,
                 (params.options().dtype() == at::kHalf));
 
@@ -275,7 +275,7 @@ int ds_adam_step_plus_copy(int optimizer_id,
                 grads_ptr,
                 exp_avg_ptr,
                 exp_avg_sq_ptr,
-                params_c.numel(),
+                params_c.size(0),
                 gpu_params_ptr,
                 (params.options().dtype() == at::kHalf));
 

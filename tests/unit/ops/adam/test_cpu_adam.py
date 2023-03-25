@@ -11,6 +11,7 @@ from deepspeed.ops.adam import FusedAdam
 from deepspeed.ops.op_builder import CPUAdamBuilder
 from unit.common import DistributedTest
 
+print("bing, why")
 if not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
     pytest.skip("reason: cpu-adam is not compatible", allow_module_level=True)
 
@@ -35,7 +36,8 @@ def _compare_optimizers(model_size, param1, optimizer1, param2, optimizer2):
         param1.grad = torch.tensor(twoD_data, device=param1.device, dtype=param1.dtype)
         param2.grad = param1.grad.clone().detach().to(device=param2.device,
                                                       dtype=param2.dtype)
-
+        print("param1.grad = {}".format(param1.grad))
+        print("param2.grad = {}".format(param2.grad))
         optimizer1.step()
         optimizer2.step()
 
@@ -85,7 +87,6 @@ class TestCPUAdam(DistributedTest):
         #             verbose=True)
         cpu_optimizer = DeepSpeedCPUAdam([cpu_param])
         cuda_optimizer = FusedAdam([cuda_param])
-
         _compare_optimizers(model_size=model_size,
                             param1=cpu_param,
                             optimizer1=cpu_optimizer,
