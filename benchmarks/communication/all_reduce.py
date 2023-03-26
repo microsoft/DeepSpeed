@@ -81,6 +81,8 @@ def run_all_reduce(local_rank, args):
                         print('WARNING: Ran out of GPU memory. Exiting comm op.')
                     sync_all()
                     break
+                else:
+                    raise e
             sync_all()
             timed_all_reduce(input, args)
     else:
@@ -106,6 +108,8 @@ def run_all_reduce(local_rank, args):
                     )
                 sync_all()
                 return
+            else:
+                raise e
         sync_all()
         timed_all_reduce(input, args)
 

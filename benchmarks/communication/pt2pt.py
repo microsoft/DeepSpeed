@@ -100,6 +100,8 @@ def run_pt2pt(local_rank, args):
                         print('WARNING: Ran out of GPU memory. Exiting comm op.')
                     sync_all()
                     break
+                else:
+                    raise e
             sync_all()
             timed_pt2pt(input, args)
     else:

@@ -81,6 +81,8 @@ def run_broadcast(local_rank, args):
                         print('WARNING: Ran out of GPU memory. Exiting comm op.')
                     sync_all()
                     break
+                else:
+                    raise e
             sync_all()
             timed_broadcast(input, args)
     else:

@@ -110,6 +110,8 @@ def run_all_gather(local_rank, args):
                         print('WARNING: Ran out of GPU memory. Exiting comm op.')
                     sync_all()
                     break
+                else:
+                    raise e
             sync_all()
             timed_all_gather(input, output, args)
     else:
@@ -151,6 +153,8 @@ def run_all_gather(local_rank, args):
                     )
                 sync_all()
                 return
+            else:
+                raise e
 
         sync_all()
         timed_all_gather(input, output, args)

@@ -82,6 +82,8 @@ def run_all_to_all(local_rank, args):
                         print('WARNING: Ran out of GPU memory. Exiting comm op.')
                     sync_all()
                     break
+                else:
+                    raise e
             sync_all()
             timed_all_to_all(input, output, args)
     else:
@@ -114,6 +116,8 @@ def run_all_to_all(local_rank, args):
                     )
                 sync_all()
                 return
+            else:
+                raise e
         sync_all()
 
         if args.debug:

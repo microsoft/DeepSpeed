@@ -244,7 +244,8 @@ def benchmark_parser():
                         type=str,
                         default=DEFAULT_BACKEND,
                         choices=['nccl',
-                                 'ccl'],
+                                 'ccl',
+                                 'mpi'],
                         help='Communication library to use')
     parser.add_argument("--dist",
                         type=str,
