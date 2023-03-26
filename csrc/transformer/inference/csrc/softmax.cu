@@ -74,7 +74,6 @@ __global__ void attn_softmax_v2(__half* vals,
         alibi_offset = (alibi_offset + ((iter_offset / num_seq) % heads)) * sequence_length;
         mask_offset = mask_offset * sequence_length;
         int seq_id = iter_offset % num_seq;
-        //int seq_id4 = seq_id >> 2;
 
         int real_seq_id = seq_id + (num_seq == sequence_length ? 0 : sequence_length);
         int window_stride4 = (local_attention && (real_seq_id >> 2) > (window_size >> 2))
@@ -96,15 +95,19 @@ __global__ void attn_softmax_v2(__half* vals,
             low_data[i].x = low_x_check
                                 ? __half2float(vals[data_id]) * layer_scale + ( __half2float(alibi[data_id + alibi_offset])) + ( __half2float(mask[data_id + mask_offset]))
                                 : minus_infinity;
+            b.sync();
             low_data[i].y = low_y_check
                                 ? __half2float(vals[data_id + reduceWidth]) * layer_scale + (  __half2float(alibi[data_id + alibi_offset + reduceWidth])) + ( __half2float(mask[data_id + mask_offset + reduceWidth]))
                                 : minus_infinity;
+            b.sync();
             high_data[i].x = high_x_check
                                 ? __half2float(vals[data_id + reduceWidth*2]) * layer_scale + (  __half2float(alibi[data_id + alibi_offset + reduceWidth*2])) + ( __half2float(mask[data_id + mask_offset + reduceWidth*2]))
                                 : minus_infinity;
+            b.sync();
             high_data[i].y = high_y_check
                                 ? __half2float(vals[data_id + reduceWidth*3]) * layer_scale + (  __half2float(alibi[data_id + alibi_offset + reduceWidth*3])) + ( __half2float(mask[data_id + mask_offset + reduceWidth*3]))
                                 : minus_infinity;
+            b.sync();
 
             // if(lane == 0) printf("%f , %d, %d \n", low_data[i].x, data_id, seq_id);
             max_val = (low_data[i].x > max_val ? low_data[i].x : max_val);
@@ -164,12 +167,16 @@ __global__ void attn_softmax_v2(__half* vals,
 
             if (data_id < sequence_length) {
                 vals[data_id] = __float2half(low_data[i].x / sum);
+                b.sync();
                 if ((data_id + reduceWidth) < sequence_length)
                     vals[data_id + reduceWidth] = __float2half(low_data[i].y / sum);
+                    b.sync();
                 if ((data_id + reduceWidth*2) < sequence_length)
                     vals[data_id + reduceWidth*2] = __float2half(high_data[i].x / sum);
+                    b.sync();
                 if ((data_id + reduceWidth*3) < sequence_length)
                     vals[data_id + reduceWidth*3] = __float2half(high_data[i].y / sum);
+                    b.sync();
             }
         }
     }
