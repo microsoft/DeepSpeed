@@ -6,7 +6,7 @@ import torch
 import deepspeed
 from deepspeed.model_implementations import DeepSpeedTransformerInference
 from unit.common import DistributedTest, DistributedFixture
-from transformers import AutoConfig, AutoModelForCausalLM
+from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM
 
 
 def check_dtype(model, expected_dtype):
@@ -30,7 +30,7 @@ def check_dtype(model, expected_dtype):
     "bigscience/bloom-560m",
     "EleutherAI/gpt-j-6B",
     "EleutherAI/gpt-neo-125M",
-    "facebook/opt-125m"
+    "facebook/opt-125m",
 ])
 def model_name(request):
     return request.param
@@ -70,7 +70,9 @@ class TestCheckpointShard(DistributedTest):
     world_size = 2
 
     def test(self, model_name, dtype, class_tmpdir, save_shard):
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
         world_size = int(os.getenv("WORLD_SIZE", "1"))
+
         inf_config = {
             "replace_with_kernel_inject": True,
             "dtype": dtype,
@@ -91,4 +93,33 @@ class TestCheckpointShard(DistributedTest):
                                                      torch_dtype=torch.bfloat16)
         model = model.eval()
         model = deepspeed.init_inference(model, config=inf_config)
+
+        # Ensure dtype is correct
         check_dtype(model, dtype)
+
+        # Check that outputs match with baseline (only for fp16 since int8 will not match)
+        if dtype == torch.float16:
+            inputs = ["DeepSpeed is the"]
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            tokens = tokenizer.batch_encode_plus(inputs,
+                                                 return_tensors="pt",
+                                                 padding=True)
+            for t in tokens:
+                if torch.is_tensor(tokens[t]):
+                    tokens[t] = tokens[t].to(f"cuda:{local_rank}")
+
+            # Get deepspeed output
+            greedy_output = model.generate(**tokens)
+            deepspeed_output = tokenizer.batch_decode(greedy_output,
+                                                      skip_special_tokens=True)[0]
+
+            # Get baseline output
+            model = (AutoModelForCausalLM.from_pretrained(model_name).to(
+                f"cuda:{local_rank}").half())
+            greedy_output = model.generate(**tokens)
+            baseline_output = tokenizer.batch_decode(greedy_output,
+                                                     skip_special_tokens=True)[0]
+
+            assert (
+                baseline_output == deepspeed_output
+            ), f"Outputs do not match:\nBaseline: {baseline_output}\nDeepSpeed: {deepspeed_output}"
