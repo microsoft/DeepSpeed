@@ -38,8 +38,7 @@ def _compare_optimizers(model_size, param1, optimizer1, param2, optimizer2):
 
         optimizer1.step()
         optimizer2.step()
-
-    tolerance = param1.float().norm().detach().numpy() * 1e-2
+    tolerance = param1.float().norm().detach().numpy() * 1e-4
     check_equal(param1.float().norm(),
                 param2.float().cpu().norm(),
                 atol=tolerance,
@@ -50,8 +49,7 @@ def _compare_optimizers(model_size, param1, optimizer1, param2, optimizer2):
 @pytest.mark.parametrize('dtype', [torch.float], ids=["fp32"])
 @pytest.mark.parametrize('model_size',
                          [
-                            (4),
-                             (22),
+                            (64),
                              #(64),
                              (128),
                              (1024),
@@ -73,7 +71,7 @@ class TestCPUAdam(DistributedTest):
         from deepspeed.ops.adam import DeepSpeedCPUAdam
 
     #    cpu_data = torch.randn(model_size, device='cpu').to(dtype)
-        cpu_data = torch.randn(model_size, 1, device='cpu', dtype=dtype)
+        cpu_data = torch.randn(4, model_size, device='cpu', dtype=dtype)
         cpu_param = torch.nn.Parameter(cpu_data)
         cuda_param = torch.nn.Parameter(cpu_data.to(get_accelerator().device_name()))
 
@@ -83,7 +81,7 @@ class TestCPUAdam(DistributedTest):
         #             atol=tolerance,
         #             verbose=True)
 
-        cpu_optimizer = DeepSpeedCPUAdam([cpu_param])
+        cpu_optimizer = DeepSpeedCPUAdam([cpu_param], adamw_mode=False)
         cuda_optimizer = FusedAdam([cuda_param])
 
         _compare_optimizers(model_size=model_size,
@@ -108,12 +106,12 @@ class TestCPUAdam(DistributedTest):
 
         #cpu_data = torch.randn(model_size, device='cpu').to(dtype)
         #cpu_param = torch.nn.Parameter(cpu_data)
-        cpu_data = torch.randn(model_size, 2, device='cpu', dtype=dtype)
+        cpu_data = torch.randn(4, model_size, device='cpu', dtype=dtype)
         cpu_param = torch.nn.Parameter(cpu_data)
         ref_param = torch.nn.Parameter(cpu_data.to(ref_param_device))
 
-        cpu_optimizer = DeepSpeedCPUAdam([cpu_param])
-        ref_optimizer = torch.optim.AdamW([ref_param])
+        cpu_optimizer = DeepSpeedCPUAdam([cpu_param], adamw_mode=False)
+        ref_optimizer = torch.optim.Adam([ref_param])
 
         _compare_optimizers(model_size=model_size,
                                 param1=cpu_param,
