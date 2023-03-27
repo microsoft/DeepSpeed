@@ -50,7 +50,8 @@ def _compare_optimizers(model_size, param1, optimizer1, param2, optimizer2):
 @pytest.mark.parametrize('model_size',
                          [
                             (64),
-                             #(64),
+                              #(64),
+                            (8, 8),
                              (128),
                              (1024),
                              (1048576),
@@ -71,7 +72,7 @@ class TestCPUAdam(DistributedTest):
         from deepspeed.ops.adam import DeepSpeedCPUAdam
 
     #    cpu_data = torch.randn(model_size, device='cpu').to(dtype)
-        cpu_data = torch.randn(4, model_size, device='cpu', dtype=dtype)
+        cpu_data = torch.randn(model_size, device='cpu', dtype=dtype)
         cpu_param = torch.nn.Parameter(cpu_data)
         cuda_param = torch.nn.Parameter(cpu_data.to(get_accelerator().device_name()))
 
@@ -90,7 +91,7 @@ class TestCPUAdam(DistributedTest):
                             param2=cuda_param,
                             optimizer2=cuda_optimizer)
 
-    def test_torch_adamw_equal(self, dtype, model_size):
+    def test_torch_adam_equal(self, dtype, model_size):
         if get_accelerator().is_available():
             if ("amd" in pytest.cpu_vendor) and (dtype == torch.half):
                 pytest.skip("cpu-adam with half precision not supported on AMD CPUs")
@@ -106,7 +107,7 @@ class TestCPUAdam(DistributedTest):
 
         #cpu_data = torch.randn(model_size, device='cpu').to(dtype)
         #cpu_param = torch.nn.Parameter(cpu_data)
-        cpu_data = torch.randn(4, model_size, device='cpu', dtype=dtype)
+        cpu_data = torch.randn(model_size, device='cpu', dtype=dtype)
         cpu_param = torch.nn.Parameter(cpu_data)
         ref_param = torch.nn.Parameter(cpu_data.to(ref_param_device))
 
