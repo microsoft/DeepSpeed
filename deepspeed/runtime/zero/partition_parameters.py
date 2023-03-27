@@ -39,13 +39,13 @@ zero_init_enabled = False
 
 
 class NoGatherHandle:
+
     def __init__(self, param: Parameter) -> None:
         if param.ds_status != ZeroParamStatus.INFLIGHT:
             raise RuntimeError(f"expected param {param.ds_summary()} to be available")
 
-        param.data = param.ds_tensor.data.to(
-            device=get_accelerator().current_device_name(),
-            non_blocking=True).view(param.ds_shape)
+        param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(),
+                                             non_blocking=True).view(param.ds_shape)
         self.__param = param
 
     def wait(self) -> None:
@@ -54,17 +54,16 @@ class NoGatherHandle:
 
 
 class NoGatherCoalescedHandle:
+
     def __init__(self, params: List[Parameter]) -> None:
         self.__params = params
         self.__complete = False
 
         for param in self.__params:
             if param.ds_status != ZeroParamStatus.INFLIGHT:
-                raise RuntimeError(
-                    f"expected param {param.ds_summary()} to not be available")
-            param.data = param.ds_tensor.data.to(
-                device=get_accelerator().current_device_name(),
-                non_blocking=True).view(param.ds_shape)
+                raise RuntimeError(f"expected param {param.ds_summary()} to not be available")
+            param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(),
+                                                 non_blocking=True).view(param.ds_shape)
 
     @instrument_w_nvtx
     def wait(self) -> None:
@@ -1111,13 +1110,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     else:
                         device = self.remote_device
 
-                    partitioned_tensor = torch.empty(partition_size,
-                                                     dtype=param.dtype,
-                                                     device=device)
+                    partitioned_tensor = torch.empty(partition_size, dtype=param.dtype, device=device)
 
                     if device == OffloadDeviceEnum.cpu and self.pin_memory:
-                        partitioned_tensor = get_accelerator().pin_memory(
-                            partitioned_tensor)
+                        partitioned_tensor = get_accelerator().pin_memory(partitioned_tensor)
 
                 partitioned_tensor.requires_grad = False
                 param.ds_tensor = partitioned_tensor
