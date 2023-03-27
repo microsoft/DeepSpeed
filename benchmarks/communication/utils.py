@@ -45,29 +45,14 @@ def init_torch_distributed(backend):
             master_addr = result.decode('utf-8').split()[0]
         master_addr = comm.bcast(master_addr, root=0)
         os.environ['MASTER_ADDR'] = master_addr
-    local_rank = env2int([
-        'LOCAL_RANK',
-        'MPI_LOCALRANKID',
-        'OMPI_COMM_WORLD_LOCAL_RANK',
-        'MV2_COMM_WORLD_LOCAL_RANK',
-        'SLURM_LOCALID'
-    ])
+    local_rank = env2int(
+        ['LOCAL_RANK', 'MPI_LOCALRANKID', 'OMPI_COMM_WORLD_LOCAL_RANK', 'MV2_COMM_WORLD_LOCAL_RANK', 'SLURM_LOCALID'])
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(local_rank)
-    rank = env2int([
-        'RANK',
-        'MPI_RANKID',
-        'OMPI_COMM_WORLD_RANK',
-        'MV2_COMM_WORLD_RANK',
-        'SLURM_PROCID'
-    ])
+    rank = env2int(['RANK', 'MPI_RANKID', 'OMPI_COMM_WORLD_RANK', 'MV2_COMM_WORLD_RANK', 'SLURM_PROCID'])
     if 'RANK' not in os.environ:
         os.environ['RANK'] = str(rank)
-    world_size = env2int(
-        ['WORLD_SIZE',
-         'OMPI_COMM_WORLD_SIZE',
-         'MV2_COMM_WORLD_SIZE',
-         'SLURM_NPROCS'])
+    world_size = env2int(['WORLD_SIZE', 'OMPI_COMM_WORLD_SIZE', 'MV2_COMM_WORLD_SIZE', 'SLURM_NPROCS'])
     if 'WORLD_SIZE' not in os.environ:
         os.environ['WORLD_SIZE'] = str(world_size)
 
