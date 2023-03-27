@@ -409,10 +409,24 @@ void launch_attn_softmax_v2(T* vals,
         if (iterations == 1){
             LAUNCH_ATTN_SOFTMAX_V2(1);
         }
+        else if (iterations == 2){
+            LAUNCH_ATTN_SOFTMAX_V2(2);
+        }
         else if (iterations == 4){
             LAUNCH_ATTN_SOFTMAX_V2(4);
         }
-        else LAUNCH_ATTN_SOFTMAX_V2(1);
+        else if (iterations == 8){
+            LAUNCH_ATTN_SOFTMAX_V2(8);
+        }
+        else if (iterations == 16){
+            LAUNCH_ATTN_SOFTMAX_V2(16);
+        }
+        else if (iterations == 32){
+            LAUNCH_ATTN_SOFTMAX_V2(32);
+        }
+        else if (iterations == 64){
+            LAUNCH_ATTN_SOFTMAX_V2(64);
+        }
     }
     else
         throw std::runtime_error("Unsupport Seq_Length!");
