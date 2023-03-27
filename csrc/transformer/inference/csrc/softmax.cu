@@ -29,6 +29,7 @@ void CheckCudaErrorAux(const char* file, unsigned line)
 
 namespace cg = cooperative_groups;
 
+template <int iterations>
 __global__ void attn_softmax_v2(__half* vals,
                                 __half* mask,
                                 __half* alibi,
@@ -44,7 +45,6 @@ __global__ void attn_softmax_v2(__half* vals,
                                 int head_offset,
                                 int mask_stride,
                                 int mp_size,
-                                int iterations,
                                 int reduceWidth)
 {
     cg::thread_block b = cg::this_thread_block();
@@ -182,6 +182,7 @@ __global__ void attn_softmax_v2(__half* vals,
     }
 }
 
+template <int iterations>
 __global__ void attn_softmax_v2(float* vals,
                                 float* attn_mask,
                                 float* alibi,
@@ -197,7 +198,6 @@ __global__ void attn_softmax_v2(float* vals,
                                 int head_offset,
                                 int mask_stride,
                                 int mp_size,
-                                int iterations,
                                 int reduceWidth)
 {
     cg::thread_block b = cg::this_thread_block();
@@ -355,6 +355,11 @@ __global__ void attn_softmax_v2(float* vals,
     }
 }
 
+#define LAUNCH_ATTN_SOFTMAX_V2(iterations) \
+    attn_softmax_v2<iterations><<<grid, block, 0, stream>>> \
+    (vals,mask,alibi,layer_scale,triangular,recompute,local_attention,window_size,total_count,heads, \
+    sequence_length,num_seq,head_offset,mask_stride,mp_size,reduce_width);
+
 template <typename T>
 void launch_attn_softmax_v2(T* vals,
                             T* mask,
@@ -400,24 +405,15 @@ void launch_attn_softmax_v2(T* vals,
     dim3 grid((total_count + partitions - 1) / partitions);
     dim3 block(attn_threads);
 
-    if (sequence_length <= 32768)
-        attn_softmax_v2<<<grid, block, 0, stream>>>(vals,
-                                                    mask,
-                                                    alibi,
-                                                    layer_scale,
-                                                    triangular,
-                                                    recompute,
-                                                    local_attention,
-                                                    window_size,
-                                                    total_count,
-                                                    heads,
-                                                    sequence_length,
-                                                    num_seq,
-                                                    head_offset,
-                                                    mask_stride,
-                                                    mp_size,
-                                                    iterations,
-                                                    reduce_width);
+    if (sequence_length <= 32768){
+        if (iterations == 1){
+            LAUNCH_ATTN_SOFTMAX_V2(1);
+        }
+        else if (iterations == 4){
+            LAUNCH_ATTN_SOFTMAX_V2(4);
+        }
+        else LAUNCH_ATTN_SOFTMAX_V2(1);
+    }
     else
         throw std::runtime_error("Unsupport Seq_Length!");
 }
