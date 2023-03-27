@@ -1,9 +1,12 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import torch
 from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
 
 
 class VectorMatMulOp(BaseOp):
+
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(VectorMatMulOp, self).__init__(config)
         if self.config.fp16:

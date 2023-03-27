@@ -1,9 +1,12 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 from .base import *
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
 from ..policy import TransformerPolicy
 
 
 class DS_GPT2Container(BaseTransformerContainer):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -50,6 +53,3 @@ class HFGPT2LayerPolicy(TransformerPolicy):
                self.client_module.ln_2.bias, \
                self.client_module.ln_1.weight, \
                self.client_module.ln_1.bias
-
-    def get_param_names(self):
-        pass

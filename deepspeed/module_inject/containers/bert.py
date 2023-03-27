@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 from .base import *
 from deepspeed.model_implementations.transformers.ds_bert import DeepSpeedBERTInference
 import torch
@@ -6,6 +8,7 @@ from ..policy import TransformerPolicy
 
 
 class DS_BERTContainer(BaseTransformerContainer):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -21,6 +24,7 @@ class DS_BERTContainer(BaseTransformerContainer):
 
 
 class HFBertLayerPolicy(TransformerPolicy):
+
     def __init__(self, client_module, inference=False):
         super().__init__(inference, pre_attn_norm=False)
         self.client_module = client_module
@@ -77,6 +81,3 @@ class HFBertLayerPolicy(TransformerPolicy):
                attention_layernorm.bias, \
                transformer_layernorm.weight, \
                transformer_layernorm.bias
-
-    def get_param_names(self):
-        pass

@@ -1,12 +1,18 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 from .base import *
 from .features.meta_tensor import MetaTensorContainer
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
 import torch
 from torch.nn.parameter import Parameter
 from ..policy import TransformerPolicy
+from ..policy import transformer_param_names
+from ..policy import maybe_copy
+from ..policy import maybe_copy_qkv
 
 
 class DS_GPTJContainer(MetaTensorContainer, BaseTransformerContainer):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -17,6 +23,35 @@ class DS_GPTJContainer(MetaTensorContainer, BaseTransformerContainer):
         self.module = DeepSpeedGPTInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
         return self.module
+
+    def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
+        param_names = (
+            'attn.q_proj.weight', \
+            'attn.k_proj.weight', \
+            'attn.v_proj.weight', \
+            'attn.out_proj.weight', \
+            'mlp.fc_in.weight', \
+            'mlp.fc_in.bias', \
+            'mlp.fc_out.weight', \
+            'mlp.fc_out.bias', \
+            'ln_1.weight', \
+            'ln_1.bias'
+        )
+        maybe_copy_qkv(module.attention,
+                       sd,
+                       weight_quantizer,
+                       mp_replace,
+                       'attn_qkvw', [prefix + param_names[0], prefix + param_names[1], prefix + param_names[2]],
+                       split_qkv=self.policy.split_qkv)
+        for i in range(3, 4):
+            maybe_copy(module.attention, sd, weight_quantizer, mp_replace, transformer_param_names[i - 1],
+                       prefix + param_names[i])
+        for i in range(4, 8):
+            maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[i],
+                       prefix + param_names[i])
+        for i in range(8, 10):
+            maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[i + 2],
+                       prefix + param_names[i])
 
 
 class HFGPTJLayerPolicy(TransformerPolicy):
@@ -58,17 +93,3 @@ class HFGPTJLayerPolicy(TransformerPolicy):
                None, \
                self.client_module.ln_1.weight, \
                self.client_module.ln_1.bias
-
-    def get_param_names(self):
-        return 'attn.q_proj.weight', \
-               'attn.k_proj.weight', \
-               'attn.v_proj.weight', \
-               'attn.out_proj.weight', \
-               'mlp.fc_in.weight', \
-               'mlp.fc_in.bias', \
-               'mlp.fc_out.weight', \
-               'mlp.fc_out.bias', \
-               'ln_1.weight', \
-               'ln_1.bias', \
-               self.use_load_prefix, \
-               self.split_qkv

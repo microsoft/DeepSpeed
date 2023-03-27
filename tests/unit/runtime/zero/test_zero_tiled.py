@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import copy
 
 import torch
@@ -118,6 +120,7 @@ class LinearWrapper(torch.nn.Linear):
 
     Megatron-LM optionally delays the bias addition to fuse with a proceeding kernel.
     """
+
     def forward(self, input):
         out = super().forward(input)
         return out, self.bias

@@ -1,3 +1,4 @@
+'''Copyright The Microsoft DeepSpeed Team'''
 """
  Support different forms of monitoring such as wandb and tensorboard
 """
@@ -7,6 +8,7 @@ import deepspeed.comm as dist
 
 
 class Monitor(ABC):
+
     @abstractmethod
     def __init__(self, monitor_config):
         self.monitor_config = monitor_config
@@ -22,6 +24,7 @@ from .csv_monitor import csvMonitor
 
 
 class MonitorMaster(Monitor):
+
     def __init__(self, monitor_config):
         super().__init__(monitor_config)
         self.tb_monitor = None
@@ -33,9 +36,9 @@ class MonitorMaster(Monitor):
             if monitor_config.tensorboard.enabled:
                 self.tb_monitor = TensorBoardMonitor(monitor_config.tensorboard)
             if monitor_config.wandb.enabled:
-                self.wandb_monitor = WandbMonitor(monitor_config.csv_monitor)
+                self.wandb_monitor = WandbMonitor(monitor_config.wandb)
             if monitor_config.csv_monitor.enabled:
-                self.csv_monitor = csvMonitor(monitor_config.wandb)
+                self.csv_monitor = csvMonitor(monitor_config.csv_monitor)
 
     def write_events(self, event_list):
         if dist.get_rank() == 0:

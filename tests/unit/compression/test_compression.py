@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import torch
 import pytest
 import random
@@ -8,20 +10,20 @@ from unit.modeling import BertConfig
 from unit.modelingpreln import BertEncoder as BertEncoderPreln
 from deepspeed.compression.basic_layer import LinearLayer_Compress, ColumnParallelLinear_Compress, RowParallelLinear_Compress
 from deepspeed.compression.helper import convert_conv1d_to_linear
+from deepspeed.accelerator import get_accelerator
 from unit.common import DistributedTest
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])
-pytestmark = pytest.mark.skipif(
-    TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 5),
-    reason='Megatron-LM package requires Pytorch version 1.5 or above')
+pytestmark = pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 5),
+                                reason='Megatron-LM package requires Pytorch version 1.5 or above')
 
 
 def reset_random(seed=1234):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    get_accelerator().manual_seed_all(seed)
 
 
 def create_bert_model():
@@ -70,6 +72,7 @@ class Conv1D(torch.nn.Module):
         nf (`int`): The number of output features.
         nx (`int`): The number of input features.
     """
+
     def __init__(self, nf, nx):
         super().__init__()
         self.nf = nf
@@ -92,6 +95,7 @@ def create_conv1d_model():
 
 
 class TestCompression(DistributedTest):
+
     def setup_method(self, method):
         reset_random()
 
@@ -129,8 +133,7 @@ class TestCompression(DistributedTest):
                                 "target_bits": 8,
                                 "quantization_period": 50
                             },
-                            "modules": ["attention.self",
-                                        "intermediate"]
+                            "modules": ["attention.self", "intermediate"]
                         },
                         "wq2": {
                             "params": {
@@ -202,9 +205,7 @@ class TestCompression(DistributedTest):
                                 "dense_ratio": 0.5
                             },
                             "modules": ["attention.output.dense"],
-                            "related_modules": [["self.query",
-                                                 "self.key",
-                                                 "self.value"]]
+                            "related_modules": [["self.query", "self.key", "self.value"]]
                         }
                     }
                 }
@@ -217,14 +218,14 @@ class TestCompression(DistributedTest):
         model = create_bert_model()
         compressed_model = init_compression(model, self.get_ds_config())
 
-        assert isinstance(compressed_model.layer[0].attention.self.query,
-                          LinearLayer_Compress)
-        assert isinstance(compressed_model.layer[0].attention.self.key,
-                          LinearLayer_Compress)
-        assert isinstance(compressed_model.layer[0].attention.self.value,
-                          LinearLayer_Compress)
+        assert isinstance(compressed_model.layer[0].attention.self.query, LinearLayer_Compress)
+        assert isinstance(compressed_model.layer[0].attention.self.key, LinearLayer_Compress)
+        assert isinstance(compressed_model.layer[0].attention.self.value, LinearLayer_Compress)
 
     def test_mpu_compress(self, tmpdir):
+        TORCH_MAJOR = int(torch.__version__.split(".")[0])
+        if TORCH_MAJOR > 1:
+            pytest.skip("megatron not compatible with torch >1.13")
         from megatron import mpu
         args_defaults = {
             'num_layers': 2,
@@ -236,21 +237,14 @@ class TestCompression(DistributedTest):
         model = get_gpt2_model(args_defaults)
         compressed_model = init_compression(model, self.get_ds_config(), mpu=mpu)
 
-        assert isinstance(
-            compressed_model.module.language_model.transformer.layers[0].attention.
-            query_key_value,
-            ColumnParallelLinear_Compress)
-        assert isinstance(
-            compressed_model.module.language_model.transformer.layers[0].attention.dense,
-            RowParallelLinear_Compress)
-        assert isinstance(
-            compressed_model.module.language_model.transformer.layers[0].mlp.
-            dense_h_to_4h,
-            ColumnParallelLinear_Compress)
-        assert isinstance(
-            compressed_model.module.language_model.transformer.layers[0].mlp.
-            dense_4h_to_h,
-            RowParallelLinear_Compress)
+        assert isinstance(compressed_model.module.language_model.transformer.layers[0].attention.query_key_value,
+                          ColumnParallelLinear_Compress)
+        assert isinstance(compressed_model.module.language_model.transformer.layers[0].attention.dense,
+                          RowParallelLinear_Compress)
+        assert isinstance(compressed_model.module.language_model.transformer.layers[0].mlp.dense_h_to_4h,
+                          ColumnParallelLinear_Compress)
+        assert isinstance(compressed_model.module.language_model.transformer.layers[0].mlp.dense_4h_to_h,
+                          RowParallelLinear_Compress)
 
     def test_conv1d_convertion(self, tmpdir):
         model = create_conv1d_model()

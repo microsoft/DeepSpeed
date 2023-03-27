@@ -1,3 +1,4 @@
+'''Copyright The Microsoft DeepSpeed Team'''
 ''' DeepSpeed Communication Backend.
 
 In the future, directly use NCCL/MPI/Gloo/etc without requiring torch.distributed. Simply wrap torch.distributed for now.
@@ -19,6 +20,7 @@ In the future, directly use NCCL/MPI/Gloo/etc without requiring torch.distribute
 
 
 class Backend(object):
+
     def __init__(self, name='backend', rank=0, size=1):
         self.name = name
         # The world size and rank of the world process group

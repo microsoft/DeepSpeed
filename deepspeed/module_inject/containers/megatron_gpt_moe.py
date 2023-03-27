@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 from .base import *
 from .base_moe import *
 from .features.megatron import MegatronContainer
@@ -8,6 +10,7 @@ from packaging import version as pkg_version
 
 
 class DS_MegatronGPTMoEContainer(MegatronContainer, BaseTransformerMoEContainer):
+
     def __init__(self, policy, config, model_config, layer_id):
         super().__init__(policy, config, model_config, layer_id)
 
@@ -78,6 +81,3 @@ class MegatronMoELayerPolicy(MegatronLayerPolicy):
                     self.client_module.mlp.mlp.dense_4h_to_h.weight, \
                     self.client_module.mlp.mlp.dense_4h_to_h.bias, \
                     self.client_module.mlp.coefficient.weight
-
-    def get_param_names(self):
-        pass

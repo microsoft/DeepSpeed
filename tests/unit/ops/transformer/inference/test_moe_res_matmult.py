@@ -5,11 +5,11 @@ Copyright 2022 The Microsoft DeepSpeed Team
 import pytest
 import torch
 import deepspeed
+from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
-    pytest.skip("Inference ops are not available on this system",
-                allow_module_level=True)
+    pytest.skip("Inference ops are not available on this system", allow_module_level=True)
 
 inference_module = None
 
@@ -37,14 +37,10 @@ def run_moe_res_matmul_ds(residual, coef, output):
 @pytest.mark.parametrize("c", [1, 4])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_moe_residual_matmul(hidden_dim, c, dtype):
-    residual_ds = torch.randn((c,
-                               hidden_dim * c,
-                               hidden_dim),
-                              dtype=dtype,
-                              device='cuda')
-    coeff1 = torch.randn((1, 1, hidden_dim), dtype=dtype, device='cuda')
-    coeff2 = torch.randn((1, 1, hidden_dim), dtype=dtype, device='cuda')
-    out_ds = torch.randn((c, hidden_dim * c, hidden_dim), dtype=dtype, device='cuda')
+    residual_ds = torch.randn((c, hidden_dim * c, hidden_dim), dtype=dtype, device=get_accelerator().device_name())
+    coeff1 = torch.randn((1, 1, hidden_dim), dtype=dtype, device=get_accelerator().device_name())
+    coeff2 = torch.randn((1, 1, hidden_dim), dtype=dtype, device=get_accelerator().device_name())
+    out_ds = torch.randn((c, hidden_dim * c, hidden_dim), dtype=dtype, device=get_accelerator().device_name())
     coeff_ds = torch.cat((coeff1, coeff2), dim=-1)
     residual_ref = residual_ds.clone().detach()
     coeff_ref = coeff_ds.clone().detach()
