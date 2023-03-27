@@ -1685,10 +1685,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 #    bit16_partitions = self.parallel_partitioned_bit16_groups[i]
                 #    fp32_partition = self.single_partition_of_fp32_groups[i]
                 #    bit16_partitions[partition_id].data.copy_(fp32_partition.data)
-                if self.dtype == torch.half:
-                    bit16_partitions = self.parallel_partitioned_bit16_groups[i]
-                    fp32_partition = self.single_partition_of_fp32_groups[i]
-                    bit16_partitions[partition_id].data.copy_(fp32_partition.data)
+                bit16_partitions = self.parallel_partitioned_bit16_groups[i]
+                fp32_partition = self.single_partition_of_fp32_groups[i]
+                bit16_partitions[partition_id].data.copy_(fp32_partition.data)
 
                 self.stop_timers([OPTIMIZER_STEP])
             else:
