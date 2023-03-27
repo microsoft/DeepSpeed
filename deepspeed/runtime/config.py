@@ -51,7 +51,7 @@ from ..elasticity.constants import (
     NUM_GPUS_PER_NODE_DEFAULT,
 )
 
-from ..profiling.config import DeepSpeedFlopsProfilerConfig
+from ..profiling.config import get_flops_profiler_config
 from ..autotuning.config import DeepSpeedAutotuningConfig
 from ..nebula.config import DeepSpeedNebulaConfig
 
@@ -898,7 +898,7 @@ class DeepSpeedConfig(object):
         self.scheduler_name = get_scheduler_name(param_dict)
         self.scheduler_params = get_scheduler_params(param_dict)
 
-        self.flops_profiler_config = DeepSpeedFlopsProfilerConfig(param_dict)
+        self.flops_profiler_config = get_flops_profiler_config(param_dict)
         self.wall_clock_breakdown = (get_wall_clock_breakdown(param_dict)
                                      | self.flops_profiler_config.enabled)
         self.memory_breakdown = get_memory_breakdown(param_dict)

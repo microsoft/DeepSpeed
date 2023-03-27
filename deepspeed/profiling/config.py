@@ -4,47 +4,39 @@ Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
 
-from deepspeed.runtime.config_utils import get_scalar_param, DeepSpeedConfigObject
-from deepspeed.profiling.constants import *
+from pydantic import Field
+from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 
-class DeepSpeedFlopsProfilerConfig(DeepSpeedConfigObject):
-    def __init__(self, param_dict):
-        super(DeepSpeedFlopsProfilerConfig, self).__init__()
+def get_flops_profiler_config(param_dict):
+    flops_profiler_config_dict = param_dict.get("flops_profiler", {})
+    return DeepSpeedFlopsProfilerConfig(**flops_profiler_config_dict)
 
-        self.enabled = None
-        self.profile_step = None
-        self.module_depth = None
-        self.top_modules = None
 
-        if FLOPS_PROFILER in param_dict.keys():
-            flops_profiler_dict = param_dict[FLOPS_PROFILER]
-        else:
-            flops_profiler_dict = {}
+class DeepSpeedFlopsProfilerConfig(DeepSpeedConfigModel):
+    """ Sets parameters for the flops profiler. """
 
-        self._initialize(flops_profiler_dict)
+    enabled: bool = False
+    """ Enables the flops profiler. This also enables wall_clock_breakdown. """
 
-    def _initialize(self, flops_profiler_dict):
-        self.enabled = get_scalar_param(flops_profiler_dict,
-                                        FLOPS_PROFILER_ENABLED,
-                                        FLOPS_PROFILER_ENABLED_DEFAULT)
+    profile_step: int = Field(1, ge=1)
+    """
+    The global training step at which to profile. Note that warm up steps are
+    needed for accurate time measurement.
+    """
 
-        self.profile_step = get_scalar_param(flops_profiler_dict,
-                                             FLOPS_PROFILER_PROFILE_STEP,
-                                             FLOPS_PROFILER_PROFILE_STEP_DEFAULT)
+    module_depth: int = -1
+    """
+    The depth of the model at which to print the aggregated module information.
+    When set to `-1`, it prints information from the top module to the
+    innermost modules (the maximum depth).
+    """
 
-        self.module_depth = get_scalar_param(flops_profiler_dict,
-                                             FLOPS_PROFILER_MODULE_DEPTH,
-                                             FLOPS_PROFILER_MODULE_DEPTH_DEFAULT)
+    top_modules: int = 1
+    """ Limits the aggregated profile output to the number of top modules specified. """
 
-        self.top_modules = get_scalar_param(flops_profiler_dict,
-                                            FLOPS_PROFILER_TOP_MODULES,
-                                            FLOPS_PROFILER_TOP_MODULES_DEFAULT)
+    detailed: bool = True
+    """ Whether to print the detailed model profile. """
 
-        self.detailed = get_scalar_param(flops_profiler_dict,
-                                         FLOPS_PROFILER_DETAILED,
-                                         FLOPS_PROFILER_DETAILED_DEFAULT)
-
-        self.output_file = get_scalar_param(flops_profiler_dict,
-                                            FLOPS_PROFILER_OUTPUT_FILE,
-                                            FLOPS_PROFILER_OUTPUT_FILE_DEFAULT)
+    output_file: str = None
+    """ Path to the output file. If None, the profiler prints to stdout. """
