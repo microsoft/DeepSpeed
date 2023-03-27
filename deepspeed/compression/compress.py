@@ -4,7 +4,6 @@ import re
 from .helper import compression_preparation, fix_compression, recursive_getattr, is_module_compressible
 from .config import get_compression_config
 from ..runtime.config_utils import dict_raise_error_on_duplicate_keys
-from .constants import *
 import os
 import json
 
@@ -51,21 +50,20 @@ def get_module_name(group_name,
 def get_compress_methods(model, compress_methods, mpu=None):
     # extract the compression module for each method in compress_methods
     layer_added_compress_methods = []
-    for method, method_content in compress_methods.items():
-        if LAYER_REDUCTION in method:
+    for method, method_content in compress_methods:
+        if "layer_reduction" in method:
             continue
         # for loop different methods, i.e., weight quantization, activation quantization etc
         exist_module_name = set()
-        shared_parameters = method_content[
-            SHARED_PARAMETERS]  # get all the shared parameters
-        for group_name, method_parameters in method_content[DIFFERENT_GROUPS].items():
+        shared_parameters = method_content.shared_parameters  # get all the shared parameters
+        for group_name, method_parameters in method_content.different_groups.items():
             # for loop different groups, i.e., weight quantization group 1, weight quantization group 2 etc
             module_name_list = []
             related_module_name_list = []
-            if method_parameters[DIFFERENT_GROUPS_RELATED_MODULE_SCOPE]:
+            if method_parameters.related_modules:
                 # this is used for head/row/channel pruning, if users provide the related module scope, we can shrink the layer dim for them
                 # otherwise we just mask those as zeros
-                for key_word, related_key_words in zip(method_parameters[DIFFERENT_GROUPS_MODULE_SCOPE], method_parameters[DIFFERENT_GROUPS_RELATED_MODULE_SCOPE]):
+                for key_word, related_key_words in zip(method_parameters.modules, method_parameters.related_modules):
                     module_name, exist_module_name = get_module_name(group_name, model, key_word, exist_module_name, mpu=mpu)
                     module_name_list.append(module_name)
                     tmp_related_module_name_list = []
@@ -75,15 +73,15 @@ def get_compress_methods(model, compress_methods, mpu=None):
                         tmp_related_module_name_list.append(module_name)
                     related_module_name_list.append(tmp_related_module_name_list)
             else:
-                for key_word in method_parameters[DIFFERENT_GROUPS_MODULE_SCOPE]:
+                for key_word in method_parameters.modules:
                     module_name, exist_module_name = get_module_name(group_name, model, key_word, exist_module_name, mpu=mpu)
                     module_name_list.append(module_name)
 
             if module_name_list:
                 # combine shared parameters with each group
                 combined_method_parameters = {
-                    **(method_parameters.copy().pop(DIFFERENT_GROUPS_PARAMETERS)),
-                    **shared_parameters
+                    **(method_parameters.params.dict()),
+                    **shared_parameters.dict()
                 }
                 compression_item = [
                     module_name_list,
@@ -114,7 +112,7 @@ def init_compression(model, deepspeed_config, teacher_model=None, mpu=None):
         c_model = model
 
     # For layer reduction
-    if compress_methods[LAYER_REDUCTION][LAYER_REDUCTION_ENABLED]:
+    if compress_methods.layer_reduction.enabled:
         assert teacher_model is not None, "Teacher model is required for layer reduction"
         student_initialization(c_model, teacher_model, deepspeed_config)
 
@@ -148,12 +146,12 @@ def redundancy_clean(model, deepspeed_config, mpu=None):
                                                             mpu=mpu)
     # sort methods
     order_list = [
-        WEIGHT_QUANTIZATION,
-        SPARSE_PRUNING,
-        ROW_PRUNING,
-        HEAD_PRUNING,
-        CHANNEL_PRUNING,
-        ACTIVATION_QUANTIZATION
+        "weight_quantization",
+        "sparse_pruning",
+        "row_pruning",
+        "head_pruning",
+        "channel_pruning",
+        "activation_quantization"
     ]
     layer_added_compress_methods = sorted(
         layer_added_compress_methods_tmp,
@@ -193,12 +191,12 @@ def student_initialization(student_model, teacher_model, deepspeed_config):
             The path of ds_config
     '''
     config = get_compression_config(check_deepspeed_config(deepspeed_config))
-    compress_methods = config[LAYER_REDUCTION]
+    compress_methods = config.layer_reduction
 
-    module_name_prefix = compress_methods[MODULE_NAME_PREFIX]
-    teacher_layer = compress_methods[TEACHER_LAYER]
+    module_name_prefix = compress_methods.module_name_prefix
+    teacher_layer = compress_methods.teacher_layer
     student_layer = [i for i in range(len(teacher_layer))]
-    other_module_name = compress_methods[OTHER_MODULE_NAME]
+    other_module_name = compress_methods.other_module_name
     '''
         name_prefix (`str`)
             The prefix name before the layer #.

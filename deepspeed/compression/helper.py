@@ -2,7 +2,6 @@
 
 import torch
 from .basic_layer import Embedding_Compress, LinearLayer_Compress, Conv2dLayer_Compress, BNLayer_Compress, ColumnParallelLinear_Compress, RowParallelLinear_Compress
-from .constants import *
 
 
 def recursive_getattr(model, module_name):
@@ -148,38 +147,36 @@ def module_replacement(model, module_name, compression_technique=None, mpu=None)
 
     if compression_technique is not None:
         for k, v in compression_technique.items():
-            if k == SPARSE_PRUNING:
-                if v[SPARSE_PRUNING_ENABLED]:
-                    new_module.enable_sparse_pruning(v[SPARSE_PRUNING_DENSE_RATIO],
-                                                     v[SPARSE_PRUNING_METHOD])
-            elif k == ROW_PRUNING:
-                if v[ROW_PRUNING_ENABLED]:
-                    new_module.enable_row_pruning(v[ROW_PRUNING_DENSE_RATIO],
-                                                  v[ROW_PRUNING_METHOD])
-            elif k == HEAD_PRUNING:
-                if v[HEAD_PRUNING_ENABLED]:
-                    new_module.enable_head_pruning(v[HEAD_PRUNING_DENSE_RATIO],
-                                                   v[HEAD_PRUNING_METHOD],
-                                                   v[HEAD_PRUNING_NUM_HEADS])
-            elif k == ACTIVATION_QUANTIZATION:
-                if v[ACTIVATION_QUANTIZATION_ENABLED]:
-                    new_module.enable_activation_quantization(
-                        v[ACTIVATION_QUANTIZE_BITS],
-                        v[ACTIVATION_QUANTIZE_TYPE],
-                        v[ACTIVATION_QUANTIZE_RANGE])
-            elif k == WEIGHT_QUANTIZATION:
-                if v[WEIGHT_QUANTIZE_ENABLED]:
+            if k == "sparse_pruning":
+                if v.get("enabled"):
+                    new_module.enable_sparse_pruning(v.get("dense_ratio"),
+                                                     v.get("method"))
+            elif k == "row_pruning":
+                if v.get("enabled"):
+                    new_module.enable_row_pruning(v.get("dense_ratio"), v.get("method"))
+            elif k == "head_pruning":
+                if v.get("enabled"):
+                    new_module.enable_head_pruning(v.get("dense_ratio"),
+                                                   v.get("method"),
+                                                   v.get("num_heads"))
+            elif k == "activation_quantization":
+                if v.get("enabled"):
+                    new_module.enable_activation_quantization(v.get("bits"),
+                                                              v.get("quantization_type"),
+                                                              v.get("range_calibration"))
+            elif k == "weight_quantization":
+                if v.get("enabled"):
                     new_module.enable_weight_quantization(
-                        v[WEIGHT_QUANTIZE_START_BITS],
-                        v[WEIGHT_QUANTIZE_TARGET_BITS],
-                        v[WEIGHT_QUANTIZATION_PERIOD],
-                        v[WEIGHT_QUANTIZE_IN_FORWARD_ENABLED],
-                        v[WEIGHT_QUANTIZE_TYPE],
-                        v[WEIGHT_QUANTIZE_GROUPS])
-            elif k == CHANNEL_PRUNING:
-                if v[CHANNEL_PRUNING_ENABLED]:
-                    new_module.enable_channel_pruning(v[CHANNEL_PRUNING_DENSE_RATIO],
-                                                      v[CHANNEL_PRUNING_METHOD])
+                        v.get("start_bits"),
+                        v.get("target_bits"),
+                        v.get("quantization_period"),
+                        v.get("quantize_weight_in_forward"),
+                        v.get("quantization_type"),
+                        v.get("quantize_groups"))
+            elif k == "channel_pruning":
+                if v.get("enabled"):
+                    new_module.enable_channel_pruning(v.get("dense_ratio"),
+                                                      v.get("method"))
             else:
                 raise NotImplementedError(
                     'Compression technique {} is not implemented'.format(k))
@@ -243,18 +240,17 @@ def fix_compression(model,
     # Here we can make things much simpler by just replacing the module
     module = recursive_getattr(model, module_name)
     for k, v in compression_technique.items():
-        if k == WEIGHT_QUANTIZATION and v[WEIGHT_QUANTIZE_IN_FORWARD_ENABLED] and v[
-                WEIGHT_QUANTIZE_ENABLED]:
+        if k == "weight_quantization" and v.quantize_weight_in_forward and v.enabled:
             return module.fix_weight_quantization()
-        elif k == SPARSE_PRUNING and v[SPARSE_PRUNING_ENABLED]:
+        elif k == "sparse_pruning" and v.enabled:
             return module.fix_sparse_pruning_helper()
-        elif k == ROW_PRUNING and (v[ROW_PRUNING_ENABLED] or mask is not None):
+        elif k == "row_pruning" and (v.enabled or mask is not None):
             return module.fix_row_col_pruning_helper(mask, dim_reduction=dim_reduction)
-        elif k == HEAD_PRUNING and (v[HEAD_PRUNING_ENABLED] or mask is not None):
+        elif k == "head_pruning" and (v.enabled or mask is not None):
             return module.fix_head_pruning_helper(mask,
-                                                  v[HEAD_PRUNING_NUM_HEADS],
+                                                  v.num_heads,
                                                   dim_reduction=dim_reduction)
-        elif k == CHANNEL_PRUNING and (v[CHANNEL_PRUNING_ENABLED] or mask is not None):
+        elif k == "channel_pruning" and (v.enabled or mask is not None):
             return module.fix_channel_pruning_helper(mask, dim_reduction=dim_reduction)
 
 
