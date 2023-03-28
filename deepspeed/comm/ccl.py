@@ -16,20 +16,14 @@ def build_ccl_op():
 
 
 class CCLBackend(TorchBackend):
-    def __init__(self,
-                 name='ccl',
-                 rank=-1,
-                 world_size=-1,
-                 mpu=None,
-                 timeout=None,
-                 init_method=None):
-        super(CCLBackend,
-              self).__init__(backend='ccl',
-                             name='torch',
-                             rank=rank,
-                             world_size=world_size,
-                             timeout=timeout,
-                             init_method=init_method)
+
+    def __init__(self, name='ccl', rank=-1, world_size=-1, mpu=None, timeout=None, init_method=None):
+        super(CCLBackend, self).__init__(backend='ccl',
+                                         name='torch',
+                                         rank=rank,
+                                         world_size=world_size,
+                                         timeout=timeout,
+                                         init_method=init_method)
         self.name = 'ccl'
         self.ccl_comm_op = build_ccl_op()
         size = self.get_world_size()

@@ -8,6 +8,7 @@ import psutil
 
 # accelerator for Intel CPU
 class CPU_Accelerator(DeepSpeedAccelerator):
+
     def __init__(self):
         self._name = 'cpu'
         self._communication_backend_name = 'ccl'
