@@ -8,6 +8,7 @@ from deepspeed import comm as dist
 
 
 class QKVGemmOp(BaseOp):
+
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(QKVGemmOp, self).__init__(config)
         try:
@@ -35,27 +36,11 @@ class QKVGemmOp(BaseOp):
         rank = dist.get_rank() if dist.is_initialized() else 0
         q_int8 = self.config.q_int8
         if self.qkv_gemm_func != None:
-            output = self.qkv_gemm_func(input,
-                                        weight,
-                                        q_scale,
-                                        bias,
-                                        gamma,
-                                        beta,
-                                        self.config.epsilon,
-                                        add_bias,
-                                        num_layers,
-                                        external_cache,
-                                        self.config.mp_size,
-                                        rank,
-                                        q_int8)
+            output = self.qkv_gemm_func(input, weight, q_scale, bias, gamma, beta, self.config.epsilon, add_bias,
+                                        num_layers, external_cache, self.config.mp_size, rank, q_int8)
         else:
             # fallback
-            inp_norm = F.layer_norm(input,
-                                    (input.shape[2],
-                                     ),
-                                    gamma,
-                                    beta,
-                                    self.config.epsilon)
+            inp_norm = F.layer_norm(input, (input.shape[2], ), gamma, beta, self.config.epsilon)
             tmp = torch.matmul(inp_norm, weight)
             if add_bias:
                 tmp += bias

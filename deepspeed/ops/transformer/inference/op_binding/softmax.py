@@ -7,6 +7,7 @@ from .base import BaseOp
 
 
 class SoftmaxOp(BaseOp):
+
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(SoftmaxOp, self).__init__(config)
         self.num_attention_heads_per_partition = config.heads // config.mp_size
@@ -20,41 +21,19 @@ class SoftmaxOp(BaseOp):
         except AttributeError:
             self.softmax_func = None
 
-    def forward(self,
-                attn_scores: torch.Tensor,
-                attn_mask: torch.Tensor,
-                alibi: torch.Tensor,
-                triangular: bool,
-                recompute: bool,
-                local_attention: bool,
-                window_size: int,
-                async_op: bool,
-                layer_scale: float,
+    def forward(self, attn_scores: torch.Tensor, attn_mask: torch.Tensor, alibi: torch.Tensor, triangular: bool,
+                recompute: bool, local_attention: bool, window_size: int, async_op: bool, layer_scale: float,
                 head_offset: int):
         if self.softmax_func != None:
-            output = self.softmax_func(attn_scores,
-                                       attn_mask,
-                                       alibi,
-                                       triangular,
-                                       recompute,
-                                       local_attention,
-                                       window_size,
-                                       async_op,
-                                       layer_scale,
-                                       head_offset,
-                                       self.config.mp_size)
+            output = self.softmax_func(attn_scores, attn_mask, alibi, triangular, recompute, local_attention,
+                                       window_size, async_op, layer_scale, head_offset, self.config.mp_size)
         else:
             # fallback
-            alibi = alibi[head_offset:head_offset +
-                          self.num_attention_heads_per_partition]
+            alibi = alibi[head_offset:head_offset + self.num_attention_heads_per_partition]
             input_dtype = attn_scores.dtype
             if (triangular):
-                tri = ~torch.tril(
-                    torch.ones(attn_scores.size(),
-                               device=attn_scores.device)).to(bool)
-                attn_scores = torch.masked_fill(attn_scores * layer_scale,
-                                                tri,
-                                                torch.finfo(input_dtype).min)
+                tri = ~torch.tril(torch.ones(attn_scores.size(), device=attn_scores.device)).to(bool)
+                attn_scores = torch.masked_fill(attn_scores * layer_scale, tri, torch.finfo(input_dtype).min)
             if alibi is not None:
                 attn_scores += alibi
             if attn_mask is not None:

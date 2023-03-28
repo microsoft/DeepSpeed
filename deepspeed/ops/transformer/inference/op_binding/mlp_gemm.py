@@ -7,6 +7,7 @@ from .base import BaseOp
 
 
 class MLPGemmOp(BaseOp):
+
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(MLPGemmOp, self).__init__(config)
         try:
@@ -19,40 +20,19 @@ class MLPGemmOp(BaseOp):
         except AttributeError:
             self.mlp_gemm_func = None
 
-    def forward(self,
-                input: torch.Tensor,
-                residual: torch.Tensor,
-                input_bias: torch.Tensor,
-                weight_interm: torch.Tensor,
-                weight_out: torch.Tensor,
-                bias: torch.Tensor,
-                gamma: torch.Tensor,
+    def forward(self, input: torch.Tensor, residual: torch.Tensor, input_bias: torch.Tensor,
+                weight_interm: torch.Tensor, weight_out: torch.Tensor, bias: torch.Tensor, gamma: torch.Tensor,
                 beta: torch.Tensor):
         if self.mlp_gemm_func != None:
-            output, residual_add = self.mlp_gemm_func(
-                                        input,
-                                        residual,
-                                        input_bias,
-                                        weight_interm,
-                                        weight_out,
-                                        bias,
-                                        gamma,
-                                        beta,
-                                        self.config.epsilon,
-                                        self.config.pre_layer_norm,
-                                        self.config.mlp_after_attn,
-                                        weight_interm.scale,
-                                        weight_out.scale,
-                                        self.config.q_int8,
-                                        self.config.mlp_act_func_type)
+            output, residual_add = self.mlp_gemm_func(input, residual, input_bias, weight_interm, weight_out, bias,
+                                                      gamma, beta, self.config.epsilon, self.config.pre_layer_norm,
+                                                      self.config.mlp_after_attn, weight_interm.scale,
+                                                      weight_out.scale, self.config.q_int8,
+                                                      self.config.mlp_act_func_type)
         else:
             # fallback
             if self.config.mlp_after_attn:
-                residual_add = F.layer_norm(input + residual + input_bias,
-                                            (input.shape[2],
-                                             ),
-                                            gamma,
-                                            beta,
+                residual_add = F.layer_norm(input + residual + input_bias, (input.shape[2], ), gamma, beta,
                                             self.config.epsilon)
                 tmp = torch.matmul(residual_add, weight_interm)
                 tmp = F.gelu(tmp + bias)

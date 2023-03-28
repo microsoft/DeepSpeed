@@ -6,6 +6,7 @@ from .base import BaseOp
 
 
 class LinearOp(BaseOp):
+
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(LinearOp, self).__init__(config)
         try:
@@ -28,12 +29,7 @@ class LinearOp(BaseOp):
                 external_cache: bool = None,
                 num_layers: int = None):
         if self.linear_func != None:
-            qkv_out = self.linear_func(input,
-                                       weight,
-                                       bias,
-                                       add_bias,
-                                       do_flash_attn,
-                                       num_heads)
+            qkv_out = self.linear_func(input, weight, bias, add_bias, do_flash_attn, num_heads)
         else:
             # fallback
             raise NotImplementedError

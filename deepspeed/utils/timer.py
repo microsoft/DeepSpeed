@@ -18,9 +18,8 @@ except ImportError:
 
 
 class CudaEventTimer(object):
-    def __init__(self,
-                 start_event: get_accelerator().Event,
-                 end_event: get_accelerator().Event):
+
+    def __init__(self, start_event: get_accelerator().Event, end_event: get_accelerator().Event):
         self.start_event = start_event
         self.end_event = end_event
 
@@ -32,8 +31,10 @@ class CudaEventTimer(object):
 
 class SynchronizedWallClockTimer:
     """Group of timers. Borrowed from Nvidia Megatron code"""
+
     class Timer:
         """Timer."""
+
         def __init__(self, name):
             self.name_ = name
             self.started_ = False
@@ -73,9 +74,7 @@ class SynchronizedWallClockTimer:
             if get_accelerator().is_synchronized_device():
                 self.elapsed_records = [et * 1000.0 for et in self.event_timers]
             else:
-                self.elapsed_records = [
-                    et.get_elapsed_msec() for et in self.event_timers
-                ]
+                self.elapsed_records = [et.get_elapsed_msec() for et in self.event_timers]
             self.event_timers.clear()
             return sum(self.elapsed_records)
 
@@ -119,14 +118,12 @@ class SynchronizedWallClockTimer:
 
     @staticmethod
     def memory_usage():
-        alloc = "mem_allocated: {:.4f} GB".format(get_accelerator().memory_allocated() /
-                                                  (1024 * 1024 * 1024))
-        max_alloc = "max_mem_allocated: {:.4f} GB".format(
-            get_accelerator().max_memory_allocated() / (1024 * 1024 * 1024))
-        cache = "cache_allocated: {:.4f} GB".format(get_accelerator().memory_cached() /
-                                                    (1024 * 1024 * 1024))
-        max_cache = "max_cache_allocated: {:.4f} GB".format(
-            get_accelerator().max_memory_cached() / (1024 * 1024 * 1024))
+        alloc = "mem_allocated: {:.4f} GB".format(get_accelerator().memory_allocated() / (1024 * 1024 * 1024))
+        max_alloc = "max_mem_allocated: {:.4f} GB".format(get_accelerator().max_memory_allocated() /
+                                                          (1024 * 1024 * 1024))
+        cache = "cache_allocated: {:.4f} GB".format(get_accelerator().memory_cached() / (1024 * 1024 * 1024))
+        max_cache = "max_cache_allocated: {:.4f} GB".format(get_accelerator().max_memory_cached() /
+                                                            (1024 * 1024 * 1024))
         return " | {} | {} | {} | {}".format(alloc, max_alloc, cache, max_cache)
 
     def log(self, names, normalizer=1.0, reset=True, memory_breakdown=False, ranks=None):
@@ -152,6 +149,7 @@ class SynchronizedWallClockTimer:
 
 
 class ThroughputTimer:
+
     def __init__(
         self,
         batch_size,
@@ -220,23 +218,19 @@ class ThroughputTimer:
                             self.global_step_count,
                             self.avg_samples_per_sec(),
                             self.batch_size / self.step_elapsed_time,
-                            round(get_accelerator().memory_allocated() / 1024**3,
-                                  2),
-                            round(get_accelerator().max_memory_allocated() / 1024**3,
-                                  2),
+                            round(get_accelerator().memory_allocated() / 1024**3, 2),
+                            round(get_accelerator().max_memory_allocated() / 1024**3, 2),
                         ))
                     if self.monitor_memory:
                         virt_mem = psutil.virtual_memory()
                         swap = psutil.swap_memory()
-                        self.logging(
-                            "epoch={}/micro_step={}/global_step={}, vm %: {}, swap %: {}"
-                            .format(
-                                self.epoch_count,
-                                self.micro_step_count,
-                                self.global_step_count,
-                                virt_mem.percent,
-                                swap.percent,
-                            ))
+                        self.logging("epoch={}/micro_step={}/global_step={}, vm %: {}, swap %: {}".format(
+                            self.epoch_count,
+                            self.micro_step_count,
+                            self.global_step_count,
+                            virt_mem.percent,
+                            swap.percent,
+                        ))
                 self.step_elapsed_time = 0
 
     def avg_samples_per_sec(self):

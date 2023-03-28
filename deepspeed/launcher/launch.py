@@ -52,10 +52,7 @@ def parse_args():
                         help="Master node (rank 0)'s free port that needs to "
                         "be used for communication during distributed "
                         "training")
-    parser.add_argument("--world_info",
-                        default="None",
-                        type=str,
-                        help="world info base64 encoded dictionary")
+    parser.add_argument("--world_info", default="None", type=str, help="world info base64 encoded dictionary")
 
     parser.add_argument("--module",
                         action="store_true",
@@ -68,19 +65,11 @@ def parse_args():
                         help="Skip prepending the training script with "
                         "'python' - just execute it directly.")
 
-    parser.add_argument("--enable_elastic_training",
-                        action="store_true",
-                        help="Enable elastic training support.")
+    parser.add_argument("--enable_elastic_training", action="store_true", help="Enable elastic training support.")
 
-    parser.add_argument("--min_elastic_nodes",
-                        type=int,
-                        default=-1,
-                        help="Min number of nodes in elastic training.")
+    parser.add_argument("--min_elastic_nodes", type=int, default=-1, help="Min number of nodes in elastic training.")
 
-    parser.add_argument("--max_elastic_nodes",
-                        type=int,
-                        default=-1,
-                        help="Max number of nodes in elastic training.")
+    parser.add_argument("--max_elastic_nodes", type=int, default=-1, help="Max number of nodes in elastic training.")
 
     parser.add_argument("--no_local_rank",
                         action="store_true",
@@ -92,11 +81,10 @@ def parse_args():
                         default=0,
                         help="main launching process pid, for internal pid tracking")
 
-    parser.add_argument(
-        "--enable_each_rank_log",
-        default="None",
-        type=str,
-        help="redirect the stdout and stderr from each rank into different log files")
+    parser.add_argument("--enable_each_rank_log",
+                        default="None",
+                        type=str,
+                        help="redirect the stdout and stderr from each rank into different log files")
 
     parser.add_argument("--bind_cores_to_rank",
                         action="store_true",
@@ -110,10 +98,9 @@ def parse_args():
                         "numbers and range. i.e. 1,3-5,7 => [1,3,4,5,7].  When not "
                         "specified, all cores on system would be used rank binding")
 
-    parser.add_argument(
-        "--prefer_deepspeed_comm",
-        action="store_true",
-        help="Use DeepSpeed builtin communication backend instead of torch distributed")
+    parser.add_argument("--prefer_deepspeed_comm",
+                        action="store_true",
+                        help="Use DeepSpeed builtin communication backend instead of torch distributed")
     # positional
     parser.add_argument("training_script",
                         type=str,
@@ -150,16 +137,12 @@ def parse_range(rng):
         # value is not a single number
         parts = rng.split('-')
         if len(parts) != 2:
-            raise ValueError(
-                "Bad range: '%s', range must be either a number or two number separated by dash"
-                % (rng,
-                   ))
+            raise ValueError("Bad range: '%s', range must be either a number or two number separated by dash" %
+                             (rng, ))
         start = int(parts[0])
         end = int(parts[1])
         if start > end:
-            raise ValueError(
-                "Bad range: '%s', range end must larger than or equal to start" % (rng,
-                                                                                   ))
+            raise ValueError("Bad range: '%s', range end must larger than or equal to start" % (rng, ))
         return range(start, end + 1)
 
 
@@ -178,9 +161,8 @@ def parse_range_list(range_str):
         sub_number_list = parse_range(sub_range)
         if sub_number_list[0] <= last:
             raise ValueError(
-                "Bad range: '%s', sub ranges must not overlap with each other and should be in ascend order"
-                % (range_str,
-                   ))
+                "Bad range: '%s', sub ranges must not overlap with each other and should be in ascend order" %
+                (range_str, ))
         last = sub_number_list[-1]
         number_list.extend(sub_number_list)
     return number_list
@@ -227,9 +209,7 @@ def main():
     local_node = node_list[args.node_rank]
     local_gpu_ids = world_info[local_node]
     num_local_procs = len(local_gpu_ids)
-    logger.info(
-        f"nnodes={args.nnodes}, num_local_procs={num_local_procs}, node_rank={args.node_rank}"
-    )
+    logger.info(f"nnodes={args.nnodes}, num_local_procs={num_local_procs}, node_rank={args.node_rank}")
 
     global_rank_mapping = defaultdict(list)
     curr_global_rank = 0
@@ -276,8 +256,7 @@ def main():
             lines = file.readlines()
             lines = [line.rstrip() for line in lines]
             for line in lines:
-                if line.startswith('export FC_TASKROLE_NAME') or line.startswith(
-                        'export FC_TASK_INDEX'):
+                if line.startswith('export FC_TASKROLE_NAME') or line.startswith('export FC_TASK_INDEX'):
                     key_val = line.split()[1]
                     key, val = key_val.split('=')
                     current_env[key] = val
@@ -289,17 +268,13 @@ def main():
         if args.enable_each_rank_log != "None":
             # prepare the log path and the file name prefix
             if os.path.isfile(args.enable_each_rank_log):
-                raise ValueError(
-                    f"{args.enable_each_rank_log} should not be a file, it should be a directory."
-                )
+                raise ValueError(f"{args.enable_each_rank_log} should not be a file, it should be a directory.")
             if not os.path.exists(args.enable_each_rank_log):
                 try:
                     os.makedirs(args.enable_each_rank_log)
                 except Exception as e:
                     print(e)
-                    raise ValueError(
-                        f"unable to create directory {args.enable_each_rank_log} for each rank log."
-                    )
+                    raise ValueError(f"unable to create directory {args.enable_each_rank_log} for each rank log.")
             log_name_prefix = time.strftime("%Y%m%d%H%M%S", time.localtime())
 
         for local_rank in range(0, num_local_procs):
@@ -312,12 +287,11 @@ def main():
             cmd = []
             if args.bind_cores_to_rank:
                 if 'KMP_AFFINITY' in os.environ.keys():
-                    raise ValueError(
-                        "Environment variable KMP_AFFINITY conflicts with numactl "
-                        "because it interfere with how many CPU cores numactl can set. "
-                        "Unset KMP_AFFINITY before launching deepspeed.\n\n"
-                        "\t$ unset KMP_AFFINITY\n"
-                        "\t$ deepspeed <deepspeed command parameters>")
+                    raise ValueError("Environment variable KMP_AFFINITY conflicts with numactl "
+                                     "because it interfere with how many CPU cores numactl can set. "
+                                     "Unset KMP_AFFINITY before launching deepspeed.\n\n"
+                                     "\t$ unset KMP_AFFINITY\n"
+                                     "\t$ deepspeed <deepspeed command parameters>")
                 if args.bind_core_list != None:
                     core_list = parse_range_list(args.bind_core_list)
                     total_cores = len(core_list)
@@ -326,9 +300,7 @@ def main():
                     core_list = range(total_cores)
                 cores_per_rank = total_cores // num_local_procs
                 assert cores_per_rank >= 1, "At least one core needs to be assigned to each rank"
-                core_list_for_rank = core_list[cores_per_rank *
-                                               local_rank:cores_per_rank *
-                                               (local_rank + 1)]
+                core_list_for_rank = core_list[cores_per_rank * local_rank:cores_per_rank * (local_rank + 1)]
                 current_env["OMP_NUM_THREADS"] = f"{cores_per_rank}"
                 cmd.append("numactl")
 
@@ -362,13 +334,9 @@ def main():
             cmd += args.training_script_args
 
             if args.enable_each_rank_log != "None":
-                log_file = os.path.join(args.enable_each_rank_log,
-                                        f"{log_name_prefix}_rank{dist_rank}.log")
+                log_file = os.path.join(args.enable_each_rank_log, f"{log_name_prefix}_rank{dist_rank}.log")
                 log_fd = open(log_file, 'w')
-                process = subprocess.Popen(cmd,
-                                           env=current_env,
-                                           stdout=log_fd,
-                                           stderr=log_fd)
+                process = subprocess.Popen(cmd, env=current_env, stdout=log_fd, stderr=log_fd)
             else:
                 process = subprocess.Popen(cmd, env=current_env)
 
@@ -384,7 +352,7 @@ def main():
             args.min_elastic_nodes = 1
         if args.max_elastic_nodes == -1:
             args.max_elastic_nodes = args.nnodes
-        assert args.max_elastic_nodes > 0 and  args.min_elastic_nodes > 0 , "Max and Min nodes should be positive"
+        assert args.max_elastic_nodes > 0 and args.min_elastic_nodes > 0, "Max and Min nodes should be positive"
 
         current_env["NCCL_ASYNC_ERROR_HANDLING"] = str(1)
 
@@ -407,8 +375,7 @@ def main():
 
         # Creating config for rendezvous class
         rdzv_parameters = RendezvousParameters(backend='c10d',
-                                               endpoint=args.master_addr + ":" +
-                                               str(args.master_port),
+                                               endpoint=args.master_addr + ":" + str(args.master_port),
                                                run_id=run_id,
                                                min_nodes=args.min_elastic_nodes,
                                                max_nodes=args.max_elastic_nodes,
