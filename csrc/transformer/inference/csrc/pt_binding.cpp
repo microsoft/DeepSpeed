@@ -539,7 +539,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                         static_cast<unsigned>(k * Context::Instance().GetMaxTokenLenght()),
                                         k,
                                         1},
-                                       options);                                 
+                                       options);
 
     return {output, prev_key, prev_value};
 }
