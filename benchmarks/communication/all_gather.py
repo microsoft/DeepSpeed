@@ -1,16 +1,13 @@
 '''Copyright The Microsoft DeepSpeed Team'''
 
 from benchmarks.communication.utils import *
-from benchmarks.communication.constants import *
 from deepspeed.accelerator import get_accelerator
-from deepspeed.comm import TorchBackend
+import time
 
 COMMS_BENCH_DIR = os.path.join(os.path.dirname(__file__), "../")
 sys.path.append(COMMS_BENCH_DIR)
 
-from communication.utils import *
-from communication.constants import *
-from deepspeed.accelerator import get_accelerator
+from deepspeed.comm import TorchBackend
 
 
 # Run all_gather and print metrics
