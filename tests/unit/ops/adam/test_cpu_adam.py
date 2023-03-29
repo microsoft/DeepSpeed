@@ -32,20 +32,15 @@ def _compare_optimizers(model_size, param1, optimizer1, param2, optimizer2):
     for i in range(10):
 
         twoD = np.linspace(1.0, 2, param1.numel())
-        param1.grad = torch.tensor(twoD,
-                                   device=param1.device).to(param1.dtype).reshape(
-                                       param1.shape)
-        param2.grad = param1.grad.clone().detach().to(device=param2.device,
-                                                      dtype=param2.dtype)
+        param1.grad = torch.tensor(twoD, device=param1.device).to(param1.dtype).reshape(param1.shape)
+        param2.grad = param1.grad.clone().detach().to(device=param2.device, dtype=param2.dtype)
 
         optimizer1.step()
         optimizer2.step()
 
     tolerance = param1.float().norm().detach().numpy() * 1e-6
-    check_equal(param1.float().norm(),
-                param2.float().cpu().norm(),
-                atol=tolerance,
-                verbose=True)
+    check_equal(param1.float().norm(), param2.float().cpu().norm(), atol=tolerance, verbose=True)
+
 
 @pytest.mark.parametrize('dtype', [torch.half, torch.float], ids=["fp16", "fp32"])
 @pytest.mark.parametrize('model_size',
