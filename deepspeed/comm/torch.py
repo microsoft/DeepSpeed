@@ -16,13 +16,8 @@ class TorchBackend(Backend):
         so no need to wrap all the functions. We can keep adding wrappers as
         needed.
     """
-    def __init__(self,
-                 backend,
-                 timeout,
-                 init_method,
-                 rank=-1,
-                 world_size=-1,
-                 name='torch'):
+
+    def __init__(self, backend, timeout, init_method, rank=-1, world_size=-1, name='torch'):
         super(TorchBackend, self).__init__()
         self.torch_version_before_18 = older_torch()
         self.all_gather_function = self.get_all_gather_function()
@@ -66,30 +61,14 @@ class TorchBackend(Backend):
                                                  world_size=world_size)
         self.using_mpi = torch.distributed.get_backend() == 'mpi'
 
-    def all_reduce(self,
-                   tensor,
-                   op=torch.distributed.ReduceOp.SUM,
-                   group=None,
-                   async_op=False):
+    def all_reduce(self, tensor, op=torch.distributed.ReduceOp.SUM, group=None, async_op=False):
         op = self._reduce_op(op)
-        return torch.distributed.all_reduce(tensor=tensor,
-                                            op=op,
-                                            group=group,
-                                            async_op=async_op)
+        return torch.distributed.all_reduce(tensor=tensor, op=op, group=group, async_op=async_op)
 
     def reduce(self, tensor, dst, op=ReduceOp.SUM, group=None, async_op=False):
-        return torch.distributed.reduce(tensor=tensor,
-                                        dst=dst,
-                                        op=self._reduce_op(op),
-                                        group=group,
-                                        async_op=async_op)
+        return torch.distributed.reduce(tensor=tensor, dst=dst, op=self._reduce_op(op), group=group, async_op=async_op)
 
-    def reduce_scatter(self,
-                       output,
-                       input_list,
-                       op=ReduceOp.SUM,
-                       group=None,
-                       async_op=False):
+    def reduce_scatter(self, output, input_list, op=ReduceOp.SUM, group=None, async_op=False):
         return torch.distributed.reduce_scatter(output=output,
                                                 input_list=input_list,
                                                 op=self._reduce_op(op),
@@ -97,16 +76,10 @@ class TorchBackend(Backend):
                                                 async_op=async_op)
 
     def broadcast(self, tensor, src, group=None, async_op=False):
-        return torch.distributed.broadcast(tensor=tensor,
-                                           src=src,
-                                           group=group,
-                                           async_op=async_op)
+        return torch.distributed.broadcast(tensor=tensor, src=src, group=group, async_op=async_op)
 
     def all_gather(self, tensor_list, tensor, group=None, async_op=False):
-        return torch.distributed.all_gather(tensor_list=tensor_list,
-                                            tensor=tensor,
-                                            group=group,
-                                            async_op=async_op)
+        return torch.distributed.all_gather(tensor_list=tensor_list, tensor=tensor, group=group, async_op=async_op)
 
     def all_gather_into_tensor(self,
                                output_tensor,
@@ -184,25 +157,15 @@ class TorchBackend(Backend):
                                          group=group,
                                          async_op=async_op)
 
-    def barrier(self,
-                group=torch.distributed.GroupMember.WORLD,
-                async_op=False,
-                device_ids=None):
+    def barrier(self, group=torch.distributed.GroupMember.WORLD, async_op=False, device_ids=None):
         if group is None:
             group = torch.distributed.GroupMember.WORLD
-        return torch.distributed.barrier(group=group,
-                                         async_op=async_op,
-                                         device_ids=device_ids)
+        return torch.distributed.barrier(group=group, async_op=async_op, device_ids=device_ids)
 
-    def monitored_barrier(self,
-                          group=torch.distributed.GroupMember.WORLD,
-                          timeout=None,
-                          wait_all_ranks=False):
+    def monitored_barrier(self, group=torch.distributed.GroupMember.WORLD, timeout=None, wait_all_ranks=False):
         if group is None:
             group = torch.distributed.GroupMember.WORLD
-        return torch.distributed.monitored_barrier(group=group,
-                                                   timeout=timeout,
-                                                   wait_all_ranks=wait_all_ranks)
+        return torch.distributed.monitored_barrier(group=group, timeout=timeout, wait_all_ranks=wait_all_ranks)
 
     def get_rank(self, group=None):
         return torch.distributed.get_rank(group=group)

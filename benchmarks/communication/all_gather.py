@@ -5,7 +5,12 @@ from benchmarks.communication.constants import *
 from deepspeed.accelerator import get_accelerator
 from deepspeed.comm import TorchBackend
 
-import time
+COMMS_BENCH_DIR = os.path.join(os.path.dirname(__file__), "../")
+sys.path.append(COMMS_BENCH_DIR)
+
+from communication.utils import *
+from communication.constants import *
+from deepspeed.accelerator import get_accelerator
 
 
 # Run all_gather and print metrics
@@ -42,8 +47,7 @@ def timed_all_gather(input, output, args):
     if not args.raw:
         size = convert_size(size)
 
-    print_rank_0(
-        f"{size:<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}")
+    print_rank_0(f"{size:<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}")
 
 
 def run_all_gather(local_rank, args):
@@ -68,28 +72,23 @@ def run_all_gather(local_rank, args):
         for M in M_LIST:
             global_rank = dist.get_rank()
             try:
-                mat = torch.ones(world_size,
-                                 M,
-                                 dtype=getattr(
-                                     torch,
-                                     args.dtype)).to(
-                                         get_accelerator().device_name(local_rank))
+                mat = torch.ones(world_size, M,
+                                 dtype=getattr(torch, args.dtype)).to(get_accelerator().device_name(local_rank))
                 sync_all()
                 input = ((mat.mul_(float(global_rank))).view(-1))
                 # Delete original mat to avoid OOM
                 del mat
                 get_accelerator().empty_cache()
                 output = torch.zeros(input.nelement() * world_size,
-                                     dtype=getattr(
-                                         torch,
-                                         args.dtype)).to(
-                                             get_accelerator().device_name(local_rank))
+                                     dtype=getattr(torch, args.dtype)).to(get_accelerator().device_name(local_rank))
             except RuntimeError as e:
                 if 'out of memory' in str(e):
                     if dist.get_rank() == 0:
                         print('WARNING: Ran out of GPU memory. Exiting comm op.')
                     sync_all()
                     break
+                else:
+                    raise e
             sync_all()
             timed_all_gather(input, output, args)
     else:
@@ -102,33 +101,28 @@ def run_all_gather(local_rank, args):
         # Send the biggest message size our GPUs can fit. If you're facing OOM errors, reduce the mem_factor
         sync_all()
         elements_per_gpu = max_numel(comm_op='all_gather',
-                                     dtype=getattr(torch,
-                                                   args.dtype),
+                                     dtype=getattr(torch, args.dtype),
                                      mem_factor=mem_factor,
                                      local_rank=local_rank,
                                      args=args)
         try:
-            mat = torch.ones(elements_per_gpu,
-                             dtype=getattr(torch,
-                                           args.dtype)).to(
-                                               get_accelerator().device_name(local_rank))
+            mat = torch.ones(elements_per_gpu, dtype=getattr(torch,
+                                                             args.dtype)).to(get_accelerator().device_name(local_rank))
             # multiply each GPU's tensor by the rank to ease debugging
             input = ((mat.mul_(float(global_rank))).view(-1))
             # Delete original mat to avoid OOM
             del mat
             get_accelerator().empty_cache()
-            output = torch.zeros(
-                elements_per_gpu * world_size,
-                dtype=getattr(torch,
-                              args.dtype)).to(get_accelerator().device_name(local_rank))
+            output = torch.zeros(elements_per_gpu * world_size,
+                                 dtype=getattr(torch, args.dtype)).to(get_accelerator().device_name(local_rank))
         except RuntimeError as e:
             if 'out of memory' in str(e):
                 if dist.get_rank() == 0:
-                    print(
-                        'WARNING: Ran out of GPU memory. Try to reduce the --mem-factor argument!'
-                    )
+                    print('WARNING: Ran out of GPU memory. Try to reduce the --mem-factor argument!')
                 sync_all()
                 return
+            else:
+                raise e
 
         sync_all()
         timed_all_gather(input, output, args)
