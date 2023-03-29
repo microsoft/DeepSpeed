@@ -31,7 +31,9 @@ def check_equal(first, second, atol=1e-2, verbose=False):
 def _compare_optimizers(model_size, param1, optimizer1, param2, optimizer2):
     for i in range(10):
         twoD = np.linspace(1.0, 2, param1.numel())
-        param1.grad = torch.tensor(twoD, device=param1.device).to(param1.dtype).reshape(param1.shape)
+        param1.grad = torch.tensor(twoD,
+                                   device=param1.device).to(param1.dtype).reshape(
+                                       param1.shape)
         param2.grad = param1.grad.clone().detach().to(device=param2.device,
                                                       dtype=param2.dtype)
 
@@ -105,14 +107,14 @@ class TestCPUAdam(DistributedTest):
         cpu_param = torch.nn.Parameter(cpu_data)
         ref_param = torch.nn.Parameter(cpu_data.to(ref_param_device))
 
-        cpu_optimizer = DeepSpeedCPUAdam([cpu_param], adamw_mode = True)
+        cpu_optimizer = DeepSpeedCPUAdam([cpu_param], adamw_mode=True)
         ref_optimizer = torch.optim.AdamW([ref_param])
 
         _compare_optimizers(model_size=model_size,
-                                param1=cpu_param,
-                                optimizer1=cpu_optimizer,
-                                param2=ref_param,
-                                optimizer2=ref_optimizer)
+                            param1=cpu_param,
+                            optimizer1=cpu_optimizer,
+                            param2=ref_param,
+                            optimizer2=ref_optimizer)
 
 
 class TestCPUAdamGPUError(DistributedTest):
