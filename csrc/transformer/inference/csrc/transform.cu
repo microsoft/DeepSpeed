@@ -1,6 +1,7 @@
-/*
-Copyright 2022 The Microsoft DeepSpeed Team
-*/
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// Contributed by The DeepSpeed Team
 
 #ifndef __HIP_PLATFORM_HCC__
 #include <cuda_profiler_api.h>

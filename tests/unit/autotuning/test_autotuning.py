@@ -3,7 +3,6 @@
 
 # Contributed by The DeepSpeed Team
 
-
 import os
 import pytest
 from unit.simple_model import create_config_from_dict

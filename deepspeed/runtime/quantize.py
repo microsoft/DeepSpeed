@@ -3,7 +3,6 @@
 
 # Contributed by The DeepSpeed Team
 
-
 import torch
 import math
 from deepspeed.utils import logger
