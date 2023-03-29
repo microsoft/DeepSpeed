@@ -362,16 +362,12 @@ __global__ void attn_softmax_v2(float* vals,
             int data_id = i * (reduceWidth << 2) + (seq_lane);
             if (data_id < sequence_length) {
                 vals[data_id] = data[i].x / sum;
-                b.sync();
                 if ((data_id + reduceWidth) < sequence_length)
                     vals[data_id + reduceWidth] = data[i].y / sum;
-                    b.sync();
                 if ((data_id + reduceWidth*2) < sequence_length)
                     vals[data_id + reduceWidth*2] = data[i].z / sum;
-                    b.sync();
                 if ((data_id + reduceWidth*3) < sequence_length)
                     vals[data_id + reduceWidth*3] = data[i].w / sum;
-                    b.sync();
             }
         }
     }
