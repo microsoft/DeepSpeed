@@ -5,7 +5,6 @@ Licensed under the MIT license.
 
 import math
 import os
-import sys
 import types
 from typing import Callable, Iterable
 from enum import Enum
@@ -23,9 +22,10 @@ from .linear import zero3_linear_wrap
 
 import deepspeed
 from ..utils import get_only_unique_item, see_memory_usage
+from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 from deepspeed.runtime.zero.utils import assert_ints_same_as_other_ranks
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
-from deepspeed.runtime.zero.config import PARAM_PERSISTENCE_THRESHOLD_DEFAULT
+from deepspeed.runtime.config_utils import get_config_default
 from deepspeed.utils import instrument_w_nvtx, logger
 from deepspeed.comm.comm import init_distributed
 from deepspeed.utils.debug import (debug_param2name_id_shape, debug_param2name_id_shape_device, debug_module2name,
@@ -569,8 +569,8 @@ def _no_gather_coalesced(params: Iterable[Parameter]) -> AllGatherCoalescedHandl
 # Replaces all parameters in module with Scattered Parameters
 class Init(InsertPostInitMethodToModuleSubClasses):
     param_id = 0
-    param_persistence_threshold = PARAM_PERSISTENCE_THRESHOLD_DEFAULT
-    model_persistence_threshold = sys.maxsize
+    param_persistence_threshold = get_config_default(DeepSpeedZeroConfig, "param_persistence_threshold")
+    model_persistence_threshold = get_config_default(DeepSpeedZeroConfig, "model_persistence_threshold")
     num_persisted_parameters = 0
     num_persisted_elements = 0
     apply_param_persistence = False

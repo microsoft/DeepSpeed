@@ -41,7 +41,6 @@ ZeRO optimization should be enabled as:
 """
 
 ZERO_OPTIMIZATION = "zero_optimization"
-PARAM_PERSISTENCE_THRESHOLD_DEFAULT = 1e5
 
 
 def read_zero_config_deprecated(param_dict):
