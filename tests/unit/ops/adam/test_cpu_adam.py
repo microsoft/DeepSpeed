@@ -80,7 +80,7 @@ class TestCPUAdam(DistributedTest):
         #             atol=tolerance,
         #             verbose=True)
 
-        cpu_optimizer = DeepSpeedCPUAdam([cpu_param], adamw_mode=False)
+        cpu_optimizer = DeepSpeedCPUAdam([cpu_param])
         cuda_optimizer = FusedAdam([cuda_param])
 
         _compare_optimizers(model_size=model_size,
@@ -107,7 +107,7 @@ class TestCPUAdam(DistributedTest):
         cpu_param = torch.nn.Parameter(cpu_data)
         ref_param = torch.nn.Parameter(cpu_data.to(ref_param_device))
 
-        cpu_optimizer = DeepSpeedCPUAdam([cpu_param], adamw_mode=True)
+        cpu_optimizer = DeepSpeedCPUAdam([cpu_param])
         ref_optimizer = torch.optim.AdamW([ref_param])
 
         _compare_optimizers(model_size=model_size,
