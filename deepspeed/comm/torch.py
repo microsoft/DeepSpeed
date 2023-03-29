@@ -81,29 +81,19 @@ class TorchBackend(Backend):
     def all_gather(self, tensor_list, tensor, group=None, async_op=False):
         return torch.distributed.all_gather(tensor_list=tensor_list, tensor=tensor, group=group, async_op=async_op)
 
-    def all_gather_into_tensor(self,
-                               output_tensor,
-                               input_tensor,
-                               group=None,
-                               async_op=False):
+    def all_gather_into_tensor(self, output_tensor, input_tensor, group=None, async_op=False):
         if self.has_all_gather_into_tensor():
             return self.all_gather_function(output_tensor=output_tensor,
                                             input_tensor=input_tensor,
                                             group=group,
                                             async_op=async_op)
         else:
-            utils.logger.warning(
-                "unable to find torch.distributed.all_gather_into_tensor. will fall back to "
-                "torch.distributed.all_gather which will result in suboptimal performance. "
-                "please consider upgrading your pytorch installation.")
+            utils.logger.warning("unable to find torch.distributed.all_gather_into_tensor. will fall back to "
+                                 "torch.distributed.all_gather which will result in suboptimal performance. "
+                                 "please consider upgrading your pytorch installation.")
             pass
 
-    def reduce_scatter_tensor(self,
-                              output_tensor,
-                              input_tensor,
-                              op=ReduceOp.SUM,
-                              group=None,
-                              async_op=False):
+    def reduce_scatter_tensor(self, output_tensor, input_tensor, op=ReduceOp.SUM, group=None, async_op=False):
         if self.has_reduce_scatter_tensor():
             return self.reduce_scatter_function(output_tensor,
                                                 input_tensor,
@@ -111,10 +101,9 @@ class TorchBackend(Backend):
                                                 group=group,
                                                 async_op=async_op)
         else:
-            utils.logger.warning(
-                "unable to find torch.distributed.reduce_scatter_tensor. will fall back to "
-                "torch.distributed.reduce_scatter which will result in suboptimal performance. "
-                "please consider upgrading your pytorch installation.")
+            utils.logger.warning("unable to find torch.distributed.reduce_scatter_tensor. will fall back to "
+                                 "torch.distributed.reduce_scatter which will result in suboptimal performance. "
+                                 "please consider upgrading your pytorch installation.")
             pass
 
     def all_to_all_single(self,

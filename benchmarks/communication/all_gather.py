@@ -93,8 +93,7 @@ def run_all_gather(local_rank, args):
             timed_all_gather(input, output, args)
     else:
         # all_gather_into_tensor saves memory
-        if ((args.dist == 'torch' or args.dist == 'deepspeed')
-                and dist.has_all_gather_into_tensor()):
+        if ((args.dist == 'torch' or args.dist == 'deepspeed') and dist.has_all_gather_into_tensor()):
             mem_factor = args.mem_factor + 0.2
         else:
             mem_factor = args.mem_factor

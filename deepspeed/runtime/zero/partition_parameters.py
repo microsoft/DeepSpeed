@@ -674,9 +674,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         self.use_all_gather_into_tensor = dist.has_all_gather_into_tensor()
         if not self.use_all_gather_into_tensor:
-            logger.info(
-                f"all_gather_into_tensor API is not available in torch {torch.__version__}"
-            )
+            logger.info(f"all_gather_into_tensor API is not available in torch {torch.__version__}")
 
     def _convert_to_zero_parameters(self, param_list):
         for param in param_list:
@@ -1127,8 +1125,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         if self.use_all_gather_into_tensor:
             # try the all_gather_into_tensor on PyTorch master branch
             handle = dist.all_gather_into_tensor(flat_tensor,
-                                                 param.ds_tensor.to(
-                                                     get_accelerator().device_name()),
+                                                 param.ds_tensor.to(get_accelerator().device_name()),
                                                  group=self.ds_process_group,
                                                  async_op=async_op)
         else:
