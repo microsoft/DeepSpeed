@@ -765,6 +765,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
 
     replaced_module, _ = _replace_module(model, policy, state_dict=sd)
 
+    embedding_weight = None
     for n, p in replaced_module.named_parameters():
         if "word_embeddings." in n or "embed_tokens." in n or "wte." in n:
             embedding_weight = p
