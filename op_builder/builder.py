@@ -675,7 +675,6 @@ class CUDAOpBuilder(OpBuilder):
         if self.is_rocm_pytorch():
             ROCM_MAJOR, ROCM_MINOR = self.installed_rocm_version()
             args += [
-                '-lineinfo',
                 '-std=c++14',
                 '-U__HIP_NO_HALF_OPERATORS__',
                 '-U__HIP_NO_HALF_CONVERSIONS__',
@@ -686,12 +685,10 @@ class CUDAOpBuilder(OpBuilder):
         else:
             cuda_major, _ = installed_cuda_version()
             args += [
-                '-lineinfo',
                 '-allow-unsupported-compiler' if sys.platform == "win32" else '',
                 '--use_fast_math',
                 '-std=c++17'
                 if sys.platform == "win32" and cuda_major > 10 else '-std=c++14',
-                '-lineinfo',
                 '-U__CUDA_NO_HALF_OPERATORS__',
                 '-U__CUDA_NO_HALF_CONVERSIONS__',
                 '-U__CUDA_NO_HALF2_OPERATORS__'
