@@ -96,73 +96,57 @@ __global__ void attn_softmax_v2(__half* vals,
                 low_data[i].x = low_x_check
                                 ? __half2float(vals[data_id]) * layer_scale + (__half2float(alibi[data_id + alibi_offset])) + (__half2float(mask[data_id + mask_offset]))
                                 : minus_infinity;
-                b.sync();
                 low_data[i].y = low_y_check
                                 ? __half2float(vals[data_id + reduceWidth]) * layer_scale + (__half2float(alibi[data_id + alibi_offset + reduceWidth])) + (__half2float(mask[data_id + mask_offset + reduceWidth]))
                                 : minus_infinity;
-                b.sync();
                 high_data[i].x = high_x_check
                                 ? __half2float(vals[data_id + reduceWidth*2]) * layer_scale + (__half2float(alibi[data_id + alibi_offset + reduceWidth*2])) + (__half2float(mask[data_id + mask_offset + reduceWidth*2]))
                                 : minus_infinity;
-                b.sync();
                 high_data[i].y = high_y_check
                                 ? __half2float(vals[data_id + reduceWidth*3]) * layer_scale + (__half2float(alibi[data_id + alibi_offset + reduceWidth*3])) + (__half2float(mask[data_id + mask_offset + reduceWidth*3]))
                                 : minus_infinity;
-                b.sync();
             }
             else if (mask){
                 low_data[i].x = low_x_check
                                 ? __half2float(vals[data_id]) * layer_scale + (__half2float(mask[data_id + mask_offset]))
                                 : minus_infinity;
-                b.sync();
                 low_data[i].y = low_y_check
                                 ? __half2float(vals[data_id + reduceWidth]) * layer_scale + (__half2float(mask[data_id + mask_offset + reduceWidth]))
                                 : minus_infinity;
-                b.sync();
                 high_data[i].x = high_x_check
                                 ? __half2float(vals[data_id + reduceWidth*2]) * layer_scale + (__half2float(mask[data_id + mask_offset + reduceWidth*2]))
                                 : minus_infinity;
-                b.sync();
                 high_data[i].y = high_y_check
                                 ? __half2float(vals[data_id + reduceWidth*3]) * layer_scale + (__half2float(mask[data_id + mask_offset + reduceWidth*3]))
                                 : minus_infinity;
-                b.sync();
             }
             else if (alibi){
                 low_data[i].x = low_x_check
                                 ? __half2float(vals[data_id]) * layer_scale + (__half2float(alibi[data_id + alibi_offset]))
                                 : minus_infinity;
-                b.sync();
                 low_data[i].y = low_y_check
                                 ? __half2float(vals[data_id + reduceWidth]) * layer_scale + (__half2float(alibi[data_id + alibi_offset + reduceWidth]))
                                 : minus_infinity;
-                b.sync();
                 high_data[i].x = high_x_check
                                 ? __half2float(vals[data_id + reduceWidth*2]) * layer_scale + (__half2float(alibi[data_id + alibi_offset + reduceWidth*2]))
                                 : minus_infinity;
-                b.sync();
                 high_data[i].y = high_y_check
                                 ? __half2float(vals[data_id + reduceWidth*3]) * layer_scale + (__half2float(alibi[data_id + alibi_offset + reduceWidth*3]))
                                 : minus_infinity;
-                b.sync();
             }
             else {
                 low_data[i].x = low_x_check
                                 ? __half2float(vals[data_id]) * layer_scale
                                 : minus_infinity;
-                b.sync();
                 low_data[i].y = low_y_check
                                 ? __half2float(vals[data_id + reduceWidth]) * layer_scale
                                 : minus_infinity;
-                b.sync();
                 high_data[i].x = high_x_check
                                 ? __half2float(vals[data_id + reduceWidth*2]) * layer_scale
                                 : minus_infinity;
-                b.sync();
                 high_data[i].y = high_y_check
                                 ? __half2float(vals[data_id + reduceWidth*3]) * layer_scale
                                 : minus_infinity;
-                b.sync();
             }
 
             // if(lane == 0) printf("%f , %d, %d \n", low_data[i].x, data_id, seq_id);
@@ -222,16 +206,12 @@ __global__ void attn_softmax_v2(__half* vals,
             int data_id = i * (reduceWidth << 2) + (seq_lane);
             if (data_id < sequence_length) {
                 vals[data_id] = __float2half(low_data[i].x / sum);
-                b.sync();
                 if ((data_id + reduceWidth) < sequence_length)
                     vals[data_id + reduceWidth] = __float2half(low_data[i].y / sum);
-                    b.sync();
                 if ((data_id + reduceWidth*2) < sequence_length)
                     vals[data_id + reduceWidth*2] = __float2half(high_data[i].x / sum);
-                    b.sync();
                 if ((data_id + reduceWidth*3) < sequence_length)
                     vals[data_id + reduceWidth*3] = __float2half(high_data[i].y / sum);
-                    b.sync();
             }
         }
     }
@@ -299,37 +279,29 @@ __global__ void attn_softmax_v2(float* vals,
                 data[i].x = x_check
                             ? vals[data_id] + attn_mask[data_id + mask_offset]
                             : minus_infinity;
-                b.sync();
                 data[i].y = y_check
                             ? vals[data_id + reduceWidth] + attn_mask[data_id + mask_offset + reduceWidth]
                             : minus_infinity;
-                b.sync();
                 data[i].z = z_check
                             ? vals[data_id + reduceWidth*2] + attn_mask[data_id + mask_offset + reduceWidth*2]
                             : minus_infinity;
-                b.sync();
                 data[i].w = w_check
                             ? vals[data_id + reduceWidth*3] + attn_mask[data_id + mask_offset + reduceWidth*3]
                             : minus_infinity;
-                b.sync();
             }
             else {
                 data[i].x = x_check
                             ? vals[data_id]
                             : minus_infinity;
-                b.sync();
                 data[i].y = y_check
                             ? vals[data_id + reduceWidth]
                             : minus_infinity;
-                b.sync();
                 data[i].z = z_check
                             ? vals[data_id + reduceWidth*2]
                             : minus_infinity;
-                b.sync();
                 data[i].w = w_check
                             ? vals[data_id + reduceWidth*3]
                             : minus_infinity;
-                b.sync();
             }
 
             max_val = (data[i].x > max_val ? data[i].x : max_val);
