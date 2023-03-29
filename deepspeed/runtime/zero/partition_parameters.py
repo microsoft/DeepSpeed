@@ -573,6 +573,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
     model_persistence_threshold = sys.maxsize
     num_persisted_parameters = 0
     num_persisted_elements = 0
+    enable_param_persistence = False
 
     def __init__(self,
                  module=None,
@@ -740,6 +741,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             logger.info(f"_all_gather_base API is not available in torch {torch.__version__}")
 
     def _update_persist_config(self, ds_config):
+        Init.enable_param_persistence = True
         Init.param_persistence_threshold = ds_config.zero_config.param_persistence_threshold
         Init.model_persistence_threshold = ds_config.zero_config.model_persistence_threshold // self.world_size
 
@@ -812,7 +814,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         # If this flag is true, then the parameters are replicated throughput training
         # And only partitioned before the step
-        if param.ds_numel <= Init.param_persistence_threshold and Init.num_persisted_elements + param.ds_numel <= Init.model_persistence_threshold:
+        if Init.enabled_param_persistence and param.ds_numel <= Init.param_persistence_threshold and Init.num_persisted_elements + param.ds_numel <= Init.model_persistence_threshold:
             param.ds_persist = True
             Init.num_persisted_parameters += 1
             Init.num_persisted_elements += param.ds_numel
