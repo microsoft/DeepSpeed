@@ -1,5 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
-""" debug utils """
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# Contributed by The DeepSpeed Team
 
 # For lazy import with printflock()
 fcntl = None

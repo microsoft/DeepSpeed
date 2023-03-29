@@ -1,4 +1,8 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# Contributed by The DeepSpeed Team
+
 
 from .base import *
 from .features.meta_tensor import MetaTensorContainer

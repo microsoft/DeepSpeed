@@ -1,5 +1,10 @@
-'''Copyright The Microsoft DeepSpeed Team'''
-"""unit tests for coalesced collectives"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# Contributed by The DeepSpeed Team
+"""
+unit tests for coalesced collectives
+"""
 
 import torch
 import deepspeed.comm as dist

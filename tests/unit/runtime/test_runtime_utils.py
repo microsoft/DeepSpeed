@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# Contributed by The DeepSpeed Team
 
 import torch
 from torch._utils import _flatten_dense_tensors
