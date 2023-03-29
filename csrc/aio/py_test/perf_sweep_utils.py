@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
-# Contributed by The DeepSpeed Team
+# DeepSpeed Team
 
 SCRIPT_PREFIX = '_aio_bench'
 WRITE_OP_DESC = 'write'

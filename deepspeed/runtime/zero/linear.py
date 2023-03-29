@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
-# Contributed by The DeepSpeed Team
+# DeepSpeed Team
 
 #Linear Module to use with ZeRO Stage 3 to allow for parameter memory release
 #after the module execution during forward

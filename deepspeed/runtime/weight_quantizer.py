@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
-# Contributed by The DeepSpeed Team
+# DeepSpeed Team
 
 import torch
 from ..module_inject.replace_policy import HFBertLayerPolicy, replace_policies

@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
-# Contributed by The DeepSpeed Team
+# DeepSpeed Team
 """
 The file has been adapted from two fairscale files:
  (1) https://github.com/facebookresearch/fairscale/blob/master/fairscale/nn/moe/moe_layer.py

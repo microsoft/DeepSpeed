@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
-# Contributed by The DeepSpeed Team
+# DeepSpeed Team
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 # Copyright The Microsoft DeepSpeed Team

@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
-# Contributed by The DeepSpeed Team
+# DeepSpeed Team
 """
 Copyright NVIDIA/apex
 This file is adapted from FP16_Optimizer in NVIDIA/apex

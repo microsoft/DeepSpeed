@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0
 
-// Contributed by The DeepSpeed Team
+// DeepSpeed Team
 
 /* Taken from NVIDIA/apex commit 855808f3fc268e9715d613f3c2e56469d8c986d8 */
 #include <ATen/ATen.h>

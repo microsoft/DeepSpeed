@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0
 
-// Contributed by The DeepSpeed Team
+// DeepSpeed Team
 
 #include "conversion_utils.h"
 #include "ds_kernel_utils.h"

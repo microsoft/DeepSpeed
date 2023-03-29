@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
-# Contributed by The DeepSpeed Team
+# DeepSpeed Team
 """
 coding=utf-8
  Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.

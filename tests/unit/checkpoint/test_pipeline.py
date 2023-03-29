@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
-# Contributed by The DeepSpeed Team
+# DeepSpeed Team
 
 from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 from unit.common import DistributedTest

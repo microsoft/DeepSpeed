@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
-# Contributed by The DeepSpeed Team
+# DeepSpeed Team
 
 from deepspeed.runtime.config_utils import get_scalar_param
 from deepspeed.runtime.swap_tensor.constants import *

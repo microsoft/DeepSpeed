@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
-# Contributed by The DeepSpeed Team
+# DeepSpeed Team
 
 # The file has been adapted from the following Megatron-LM file:
 # https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/mpu/mappings.py
