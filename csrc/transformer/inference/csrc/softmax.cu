@@ -87,66 +87,86 @@ __global__ void attn_softmax_v2(__half* vals,
         for (int i = 0; i < iterations; i++) {
             int data_id = i * (reduceWidth << 2) + (seq_lane);
             bool check = (data_id >> 2) >= window_stride4;
-            bool low_x_check =  check && (data_id < sequence_length) && (!triangular || (data_id <= seq_id)) && (data_id > window_stride);
-            bool low_y_check =  check && ((data_id + reduceWidth) < sequence_length) && (!triangular || ((data_id + reduceWidth) <= seq_id)) && ((data_id + reduceWidth) > window_stride);
-            bool high_x_check = check && ((data_id + reduceWidth*2) < sequence_length) && (!triangular || ((data_id + reduceWidth*2) <= seq_id)) && ((data_id + reduceWidth*2) > window_stride);
-            bool high_y_check = check && ((data_id + reduceWidth*3) < sequence_length) && (!triangular || ((data_id + reduceWidth*3) <= seq_id)) && ((data_id + reduceWidth*3) > window_stride);
+            bool low_x_check = check && (data_id < sequence_length) &&
+                               (!triangular || (data_id <= seq_id)) && (data_id > window_stride);
+            bool low_y_check = check && ((data_id + reduceWidth) < sequence_length) &&
+                               (!triangular || ((data_id + reduceWidth) <= seq_id)) &&
+                               ((data_id + reduceWidth) > window_stride);
+            bool high_x_check = check && ((data_id + reduceWidth * 2) < sequence_length) &&
+                                (!triangular || ((data_id + reduceWidth * 2) <= seq_id)) &&
+                                ((data_id + reduceWidth * 2) > window_stride);
+            bool high_y_check = check && ((data_id + reduceWidth * 3) < sequence_length) &&
+                                (!triangular || ((data_id + reduceWidth * 3) <= seq_id)) &&
+                                ((data_id + reduceWidth * 3) > window_stride);
 
-            if (mask && alibi){
-                low_data[i].x = low_x_check
-                                ? __half2float(vals[data_id]) * layer_scale + (__half2float(alibi[data_id + alibi_offset])) + (__half2float(mask[data_id + mask_offset]))
+            if (mask && alibi) {
+                low_data[i].x = low_x_check ? __half2float(vals[data_id]) * layer_scale +
+                                                  (__half2float(alibi[data_id + alibi_offset])) +
+                                                  (__half2float(mask[data_id + mask_offset]))
+                                            : minus_infinity;
+                low_data[i].y =
+                    low_y_check ? __half2float(vals[data_id + reduceWidth]) * layer_scale +
+                                      (__half2float(alibi[data_id + alibi_offset + reduceWidth])) +
+                                      (__half2float(mask[data_id + mask_offset + reduceWidth]))
                                 : minus_infinity;
+                high_data[i].x =
+                    high_x_check
+                        ? __half2float(vals[data_id + reduceWidth * 2]) * layer_scale +
+                              (__half2float(alibi[data_id + alibi_offset + reduceWidth * 2])) +
+                              (__half2float(mask[data_id + mask_offset + reduceWidth * 2]))
+                        : minus_infinity;
+                high_data[i].y =
+                    high_y_check
+                        ? __half2float(vals[data_id + reduceWidth * 3]) * layer_scale +
+                              (__half2float(alibi[data_id + alibi_offset + reduceWidth * 3])) +
+                              (__half2float(mask[data_id + mask_offset + reduceWidth * 3]))
+                        : minus_infinity;
+            } else if (mask) {
+                low_data[i].x = low_x_check ? __half2float(vals[data_id]) * layer_scale +
+                                                  (__half2float(mask[data_id + mask_offset]))
+                                            : minus_infinity;
                 low_data[i].y = low_y_check
-                                ? __half2float(vals[data_id + reduceWidth]) * layer_scale + (__half2float(alibi[data_id + alibi_offset + reduceWidth])) + (__half2float(mask[data_id + mask_offset + reduceWidth]))
+                                    ? __half2float(vals[data_id + reduceWidth]) * layer_scale +
+                                          (__half2float(mask[data_id + mask_offset + reduceWidth]))
+                                    : minus_infinity;
+                high_data[i].x =
+                    high_x_check ? __half2float(vals[data_id + reduceWidth * 2]) * layer_scale +
+                                       (__half2float(mask[data_id + mask_offset + reduceWidth * 2]))
+                                 : minus_infinity;
+                high_data[i].y =
+                    high_y_check ? __half2float(vals[data_id + reduceWidth * 3]) * layer_scale +
+                                       (__half2float(mask[data_id + mask_offset + reduceWidth * 3]))
+                                 : minus_infinity;
+            } else if (alibi) {
+                low_data[i].x = low_x_check ? __half2float(vals[data_id]) * layer_scale +
+                                                  (__half2float(alibi[data_id + alibi_offset]))
+                                            : minus_infinity;
+                low_data[i].y =
+                    low_y_check ? __half2float(vals[data_id + reduceWidth]) * layer_scale +
+                                      (__half2float(alibi[data_id + alibi_offset + reduceWidth]))
                                 : minus_infinity;
-                high_data[i].x = high_x_check
-                                ? __half2float(vals[data_id + reduceWidth*2]) * layer_scale + (__half2float(alibi[data_id + alibi_offset + reduceWidth*2])) + (__half2float(mask[data_id + mask_offset + reduceWidth*2]))
-                                : minus_infinity;
-                high_data[i].y = high_y_check
-                                ? __half2float(vals[data_id + reduceWidth*3]) * layer_scale + (__half2float(alibi[data_id + alibi_offset + reduceWidth*3])) + (__half2float(mask[data_id + mask_offset + reduceWidth*3]))
-                                : minus_infinity;
-            }
-            else if (mask){
-                low_data[i].x = low_x_check
-                                ? __half2float(vals[data_id]) * layer_scale + (__half2float(mask[data_id + mask_offset]))
-                                : minus_infinity;
+                high_data[i].x =
+                    high_x_check
+                        ? __half2float(vals[data_id + reduceWidth * 2]) * layer_scale +
+                              (__half2float(alibi[data_id + alibi_offset + reduceWidth * 2]))
+                        : minus_infinity;
+                high_data[i].y =
+                    high_y_check
+                        ? __half2float(vals[data_id + reduceWidth * 3]) * layer_scale +
+                              (__half2float(alibi[data_id + alibi_offset + reduceWidth * 3]))
+                        : minus_infinity;
+            } else {
+                low_data[i].x = low_x_check ? __half2float(vals[data_id]) * layer_scale
+                                            : minus_infinity;
                 low_data[i].y = low_y_check
-                                ? __half2float(vals[data_id + reduceWidth]) * layer_scale + (__half2float(mask[data_id + mask_offset + reduceWidth]))
-                                : minus_infinity;
+                                    ? __half2float(vals[data_id + reduceWidth]) * layer_scale
+                                    : minus_infinity;
                 high_data[i].x = high_x_check
-                                ? __half2float(vals[data_id + reduceWidth*2]) * layer_scale + (__half2float(mask[data_id + mask_offset + reduceWidth*2]))
-                                : minus_infinity;
+                                     ? __half2float(vals[data_id + reduceWidth * 2]) * layer_scale
+                                     : minus_infinity;
                 high_data[i].y = high_y_check
-                                ? __half2float(vals[data_id + reduceWidth*3]) * layer_scale + (__half2float(mask[data_id + mask_offset + reduceWidth*3]))
-                                : minus_infinity;
-            }
-            else if (alibi){
-                low_data[i].x = low_x_check
-                                ? __half2float(vals[data_id]) * layer_scale + (__half2float(alibi[data_id + alibi_offset]))
-                                : minus_infinity;
-                low_data[i].y = low_y_check
-                                ? __half2float(vals[data_id + reduceWidth]) * layer_scale + (__half2float(alibi[data_id + alibi_offset + reduceWidth]))
-                                : minus_infinity;
-                high_data[i].x = high_x_check
-                                ? __half2float(vals[data_id + reduceWidth*2]) * layer_scale + (__half2float(alibi[data_id + alibi_offset + reduceWidth*2]))
-                                : minus_infinity;
-                high_data[i].y = high_y_check
-                                ? __half2float(vals[data_id + reduceWidth*3]) * layer_scale + (__half2float(alibi[data_id + alibi_offset + reduceWidth*3]))
-                                : minus_infinity;
-            }
-            else {
-                low_data[i].x = low_x_check
-                                ? __half2float(vals[data_id]) * layer_scale
-                                : minus_infinity;
-                low_data[i].y = low_y_check
-                                ? __half2float(vals[data_id + reduceWidth]) * layer_scale
-                                : minus_infinity;
-                high_data[i].x = high_x_check
-                                ? __half2float(vals[data_id + reduceWidth*2]) * layer_scale
-                                : minus_infinity;
-                high_data[i].y = high_y_check
-                                ? __half2float(vals[data_id + reduceWidth*3]) * layer_scale
-                                : minus_infinity;
+                                     ? __half2float(vals[data_id + reduceWidth * 3]) * layer_scale
+                                     : minus_infinity;
             }
 
             // if(lane == 0) printf("%f , %d, %d \n", low_data[i].x, data_id, seq_id);
@@ -154,7 +174,6 @@ __global__ void attn_softmax_v2(__half* vals,
             max_val = (low_data[i].y > max_val ? low_data[i].y : max_val);
             max_val = (high_data[i].x > max_val ? high_data[i].x : max_val);
             max_val = (high_data[i].y > max_val ? high_data[i].y : max_val);
-
         }
 
         for (int i = 1; i < WARP_SIZE; i *= 2) {
@@ -208,10 +227,10 @@ __global__ void attn_softmax_v2(__half* vals,
                 vals[data_id] = __float2half(low_data[i].x / sum);
                 if ((data_id + reduceWidth) < sequence_length)
                     vals[data_id + reduceWidth] = __float2half(low_data[i].y / sum);
-                if ((data_id + reduceWidth*2) < sequence_length)
-                    vals[data_id + reduceWidth*2] = __float2half(high_data[i].x / sum);
-                if ((data_id + reduceWidth*3) < sequence_length)
-                    vals[data_id + reduceWidth*3] = __float2half(high_data[i].y / sum);
+                if ((data_id + reduceWidth * 2) < sequence_length)
+                    vals[data_id + reduceWidth * 2] = __float2half(high_data[i].x / sum);
+                if ((data_id + reduceWidth * 3) < sequence_length)
+                    vals[data_id + reduceWidth * 3] = __float2half(high_data[i].y / sum);
             }
         }
     }
@@ -270,45 +289,41 @@ __global__ void attn_softmax_v2(float* vals,
         for (int i = 0; i < iterations; i++) {
             int data_id = i * (reduceWidth << 2) + (seq_lane);
             bool check = (data_id >> 2) >= window_stride4;
-            bool x_check = check && (data_id < sequence_length) && (!triangular || (data_id <= seq_id)) && (data_id > window_stride);
-            bool y_check = check && ((data_id + reduceWidth) < sequence_length) && (!triangular || ((data_id + reduceWidth) <= seq_id)) && ((data_id + reduceWidth) > window_stride);
-            bool z_check = check && ((data_id + reduceWidth*2) < sequence_length) && (!triangular || ((data_id + reduceWidth*2) <= seq_id)) && ((data_id + reduceWidth*2) > window_stride);
-            bool w_check = check && ((data_id + reduceWidth*3) < sequence_length) && (!triangular || ((data_id + reduceWidth*3) <= seq_id)) && ((data_id + reduceWidth*3) > window_stride);
+            bool x_check = check && (data_id < sequence_length) &&
+                           (!triangular || (data_id <= seq_id)) && (data_id > window_stride);
+            bool y_check = check && ((data_id + reduceWidth) < sequence_length) &&
+                           (!triangular || ((data_id + reduceWidth) <= seq_id)) &&
+                           ((data_id + reduceWidth) > window_stride);
+            bool z_check = check && ((data_id + reduceWidth * 2) < sequence_length) &&
+                           (!triangular || ((data_id + reduceWidth * 2) <= seq_id)) &&
+                           ((data_id + reduceWidth * 2) > window_stride);
+            bool w_check = check && ((data_id + reduceWidth * 3) < sequence_length) &&
+                           (!triangular || ((data_id + reduceWidth * 3) <= seq_id)) &&
+                           ((data_id + reduceWidth * 3) > window_stride);
 
-            if (attn_mask){
-                data[i].x = x_check
-                            ? vals[data_id] + attn_mask[data_id + mask_offset]
-                            : minus_infinity;
-                data[i].y = y_check
-                            ? vals[data_id + reduceWidth] + attn_mask[data_id + mask_offset + reduceWidth]
-                            : minus_infinity;
-                data[i].z = z_check
-                            ? vals[data_id + reduceWidth*2] + attn_mask[data_id + mask_offset + reduceWidth*2]
-                            : minus_infinity;
-                data[i].w = w_check
-                            ? vals[data_id + reduceWidth*3] + attn_mask[data_id + mask_offset + reduceWidth*3]
-                            : minus_infinity;
-            }
-            else {
-                data[i].x = x_check
-                            ? vals[data_id]
-                            : minus_infinity;
-                data[i].y = y_check
-                            ? vals[data_id + reduceWidth]
-                            : minus_infinity;
-                data[i].z = z_check
-                            ? vals[data_id + reduceWidth*2]
-                            : minus_infinity;
-                data[i].w = w_check
-                            ? vals[data_id + reduceWidth*3]
-                            : minus_infinity;
+            if (attn_mask) {
+                data[i].x = x_check ? vals[data_id] + attn_mask[data_id + mask_offset]
+                                    : minus_infinity;
+                data[i].y = y_check ? vals[data_id + reduceWidth] +
+                                          attn_mask[data_id + mask_offset + reduceWidth]
+                                    : minus_infinity;
+                data[i].z = z_check ? vals[data_id + reduceWidth * 2] +
+                                          attn_mask[data_id + mask_offset + reduceWidth * 2]
+                                    : minus_infinity;
+                data[i].w = w_check ? vals[data_id + reduceWidth * 3] +
+                                          attn_mask[data_id + mask_offset + reduceWidth * 3]
+                                    : minus_infinity;
+            } else {
+                data[i].x = x_check ? vals[data_id] : minus_infinity;
+                data[i].y = y_check ? vals[data_id + reduceWidth] : minus_infinity;
+                data[i].z = z_check ? vals[data_id + reduceWidth * 2] : minus_infinity;
+                data[i].w = w_check ? vals[data_id + reduceWidth * 3] : minus_infinity;
             }
 
             max_val = (data[i].x > max_val ? data[i].x : max_val);
             max_val = (data[i].y > max_val ? data[i].y : max_val);
             max_val = (data[i].z > max_val ? data[i].z : max_val);
             max_val = (data[i].w > max_val ? data[i].w : max_val);
-
         }
 
         for (int i = 1; i < WARP_SIZE; i *= 2) {
@@ -364,19 +379,32 @@ __global__ void attn_softmax_v2(float* vals,
                 vals[data_id] = data[i].x / sum;
                 if ((data_id + reduceWidth) < sequence_length)
                     vals[data_id + reduceWidth] = data[i].y / sum;
-                if ((data_id + reduceWidth*2) < sequence_length)
-                    vals[data_id + reduceWidth*2] = data[i].z / sum;
-                if ((data_id + reduceWidth*3) < sequence_length)
-                    vals[data_id + reduceWidth*3] = data[i].w / sum;
+                if ((data_id + reduceWidth * 2) < sequence_length)
+                    vals[data_id + reduceWidth * 2] = data[i].z / sum;
+                if ((data_id + reduceWidth * 3) < sequence_length)
+                    vals[data_id + reduceWidth * 3] = data[i].w / sum;
             }
         }
     }
 }
 
-#define LAUNCH_ATTN_SOFTMAX_V2(iterations) \
-    attn_softmax_v2<iterations><<<grid, block, 0, stream>>> \
-    (vals,mask,alibi,layer_scale,triangular,recompute,local_attention,window_size,total_count,heads, \
-    sequence_length,num_seq,head_offset,mask_stride,mp_size,reduce_width);
+#define LAUNCH_ATTN_SOFTMAX_V2(iterations)                                   \
+    attn_softmax_v2<iterations><<<grid, block, 0, stream>>>(vals,            \
+                                                            mask,            \
+                                                            alibi,           \
+                                                            layer_scale,     \
+                                                            triangular,      \
+                                                            recompute,       \
+                                                            local_attention, \
+                                                            window_size,     \
+                                                            total_count,     \
+                                                            heads,           \
+                                                            sequence_length, \
+                                                            num_seq,         \
+                                                            head_offset,     \
+                                                            mask_stride,     \
+                                                            mp_size,         \
+                                                            reduce_width);
 
 template <typename T>
 void launch_attn_softmax_v2(T* vals,
@@ -423,30 +451,23 @@ void launch_attn_softmax_v2(T* vals,
     dim3 grid((total_count + partitions - 1) / partitions);
     dim3 block(attn_threads);
 
-    if (sequence_length <= 32768){
-        if (iterations == 1){
+    if (sequence_length <= 32768) {
+        if (iterations == 1) {
             LAUNCH_ATTN_SOFTMAX_V2(1);
-        }
-        else if (iterations == 2){
+        } else if (iterations == 2) {
             LAUNCH_ATTN_SOFTMAX_V2(2);
-        }
-        else if (iterations == 4){
+        } else if (iterations == 4) {
             LAUNCH_ATTN_SOFTMAX_V2(4);
-        }
-        else if (iterations == 8){
+        } else if (iterations == 8) {
             LAUNCH_ATTN_SOFTMAX_V2(8);
-        }
-        else if (iterations == 16){
+        } else if (iterations == 16) {
             LAUNCH_ATTN_SOFTMAX_V2(16);
-        }
-        else if (iterations == 32){
+        } else if (iterations == 32) {
             LAUNCH_ATTN_SOFTMAX_V2(32);
-        }
-        else if (iterations == 64){
+        } else if (iterations == 64) {
             LAUNCH_ATTN_SOFTMAX_V2(64);
         }
-    }
-    else
+    } else
         throw std::runtime_error("Unsupport Seq_Length!");
 }
 
