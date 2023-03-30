@@ -55,7 +55,7 @@ def fetch_requirements(path):
 
 install_requires = fetch_requirements('requirements/requirements.txt')
 extras_require = {
-    '1bit': [], # add cupy based on cuda/rocm version
+    '1bit': [],  # add cupy based on cuda/rocm version
     '1bit_mpi': fetch_requirements('requirements/requirements-1bit-mpi.txt'),
     'readthedocs': fetch_requirements('requirements/requirements-readthedocs.txt'),
     'dev': fetch_requirements('requirements/requirements-dev.txt'),
@@ -92,8 +92,7 @@ cmdclass = {}
 # For any pre-installed ops force disable ninja.
 if torch_available:
     from accelerator import get_accelerator
-    cmdclass['build_ext'] = get_accelerator().build_extension().with_options(
-        use_ninja=False)
+    cmdclass['build_ext'] = get_accelerator().build_extension().with_options(use_ninja=False)
 
 if torch_available:
     TORCH_MAJOR = torch.__version__.split('.')[0]
@@ -281,24 +280,15 @@ setup(name='deepspeed',
       },
       install_requires=install_requires,
       extras_require=extras_require,
-      packages=find_packages(include=['deepspeed',
-                                      'deepspeed.*']),
+      packages=find_packages(include=['deepspeed', 'deepspeed.*']),
       include_package_data=True,
       scripts=[
-          'bin/deepspeed',
-          'bin/deepspeed.pt',
-          'bin/ds',
-          'bin/ds_ssh',
-          'bin/ds_report',
-          'bin/ds_bench',
-          'bin/dsr',
+          'bin/deepspeed', 'bin/deepspeed.pt', 'bin/ds', 'bin/ds_ssh', 'bin/ds_report', 'bin/ds_bench', 'bin/dsr',
           'bin/ds_elastic'
       ],
       classifiers=[
-          'Programming Language :: Python :: 3.6',
-          'Programming Language :: Python :: 3.7',
-          'Programming Language :: Python :: 3.8',
-          'Programming Language :: Python :: 3.9',
+          'Programming Language :: Python :: 3.6', 'Programming Language :: Python :: 3.7',
+          'Programming Language :: Python :: 3.8', 'Programming Language :: Python :: 3.9',
           'Programming Language :: Python :: 3.10'
       ],
       license='MIT',
