@@ -334,7 +334,8 @@ class InferenceEngine(Module):
         for n, p in r_module.named_parameters():
             if "word_embeddings." in n or "embed_tokens." in n or "wte." in n:
                 embedding_weight = p
-        if embedding_weight is not None and r_module.lm_head.weight.is_meta:
+        if embedding_weight is not None and hasattr(r_module, "lm_head") and hasattr(
+                r_module.lm_head, "weight") and r_module.lm_head.weight.is_meta:
             r_module.lm_head.weight = embedding_weight
 
     def _apply_injection_policy(self, config, client_module=None):
