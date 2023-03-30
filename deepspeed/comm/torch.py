@@ -7,6 +7,25 @@ from .utils import *
 from .backend import *
 from .comm import *
 
+import torch
+
+
+def is_torch_two():
+    TORCH_MAJOR = int(torch.__version__.split('.')[0])
+    if TORCH_MAJOR >= 2:
+        return True
+    else:
+        return False
+
+
+def get_coalescing_manager(group, device, reqs):
+    if is_torch_two():
+        return torch.distributed.distributed_c10d._coalescing_manager(group,
+                                                                      device=device,
+                                                                      reqs=reqs)
+    else:
+        return torch.distributed.distributed_c10d._coalescing_manager(group, reqs)
+
 
 class TorchBackend(Backend):
     """
@@ -139,7 +158,7 @@ class TorchBackend(Backend):
                 async_op=async_op)
         elif has_coalescing_manager():
             reqs = []
-            with torch.distributed.distributed_c10d._coalescing_manager(group, reqs):
+            with get_coalescing_manager(group, input_tensors[0].device, reqs):
                 for output, input in zip(output_tensors, input_tensors):
                     handle = torch.distributed.distributed_c10d._all_gather_base(
                         output,
