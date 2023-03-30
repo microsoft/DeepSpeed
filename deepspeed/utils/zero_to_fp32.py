@@ -92,8 +92,7 @@ def parse_model_state(file):
     for param in state_dict["module"]:
         if param not in [*param_names, *buffer_names]:
             for share_param in state_dict["module"]:
-                if (state_dict["module"][share_param].data_ptr()
-                        == state_dict["module"][param].data_ptr()
+                if (state_dict["module"][share_param].data_ptr() == state_dict["module"][param].data_ptr()
                         and share_param != param):
                     shared_params.append([param, share_param])
                     break
@@ -171,24 +170,14 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
     print(f'Parsing checkpoint created by deepspeed=={ds_version}')
 
     if zero_stage == 2:
-        return _get_fp32_state_dict_from_zero2_checkpoint(world_size,
-                                                          param_shapes,
-                                                          fp32_flat_groups,
-                                                          buffers,
+        return _get_fp32_state_dict_from_zero2_checkpoint(world_size, param_shapes, fp32_flat_groups, buffers,
                                                           shared_params)
     elif zero_stage == 3:
-        return _get_fp32_state_dict_from_zero3_checkpoint(world_size,
-                                                          param_shapes,
-                                                          fp32_flat_groups,
-                                                          buffers,
+        return _get_fp32_state_dict_from_zero3_checkpoint(world_size, param_shapes, fp32_flat_groups, buffers,
                                                           shared_params)
 
 
-def _get_fp32_state_dict_from_zero2_checkpoint(world_size,
-                                               param_shapes,
-                                               fp32_flat_groups,
-                                               buffers,
-                                               shared_params):
+def _get_fp32_state_dict_from_zero2_checkpoint(world_size, param_shapes, fp32_flat_groups, buffers, shared_params):
 
     # Reconstruction protocol:
     #
@@ -280,11 +269,7 @@ def zero3_partitioned_param_info(unpartitioned_numel, world_size):
     return partitioned_numel, padding_numel
 
 
-def _get_fp32_state_dict_from_zero3_checkpoint(world_size,
-                                               param_shapes,
-                                               fp32_flat_groups,
-                                               buffers,
-                                               shared_params):
+def _get_fp32_state_dict_from_zero3_checkpoint(world_size, param_shapes, fp32_flat_groups, buffers, shared_params):
 
     # Reconstruction protocol: For zero3 we need to zip the partitions together at boundary of each
     # param, re-consolidating each param, while dealing with padding if any
