@@ -474,12 +474,14 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         def _replace_module(r_module, prev_name=''):
             for name, child in r_module.named_children():
+                checking_key = prefix + '.' + prev_name + '.' + name + '.' if prev_name != "" else prefix + '.' + name + '.'
                 if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm] and state_dict != None:
-                    full_prefix = prefix + '.' + prev_name + '.' + name + '.' if prev_name != "" else prefix + '.' + name + '.'
-                    if prefix_check(full_prefix, state_dict):
-                        load(child, state_dict, full_prefix, mp_group)
+                    if any(checking_key in item for item in state_dict):
+                        load(child, state_dict, checking_key, mp_group)
                     else:
                         continue
+                if len(child._buffers) != 0 and state_dict != None:
+                    load_buffer(child, state_dict, checking_key)
                 if child.__class__ in linear_policies:
                     setattr(r_module, name, linear_policies[child.__class__](child, prev_name + '.' + name,
                                                                              conv_linear_layer))
@@ -764,13 +766,14 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
         "You can find some samples here: https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/module_inject/replace_policy.py"
 
     replaced_module, _ = _replace_module(model, policy, state_dict=sd)
-
-    embedding_weight = None
-    for n, p in replaced_module.named_parameters():
-        if "word_embeddings." in n or "embed_tokens." in n or "wte." in n:
-            embedding_weight = p
-    if embedding_weight is not None and replaced_module.lm_head.weight.is_meta:
-        replaced_module.lm_head.weight = embedding_weight
+    if checkpoint != None:
+        embedding_weight = None
+        for n, p in replaced_module.named_parameters():
+            if "word_embeddings." in n or "embed_tokens." in n or "wte." in n:
+                embedding_weight = p
+        if embedding_weight is not None and hasattr(replaced_module, "lm_head") and hasattr(
+                replaced_module.lm_head, "weight") and replaced_module.lm_head.weight.is_meta:
+            replaced_module.lm_head.weight = embedding_weight
     return replaced_module
 
 
@@ -779,12 +782,28 @@ from ..pipe import PipelineModule
 import re
 
 
-def prefix_check(name, checkpoint_dict):
-    # if keys start with 'model.', don't skip level 0 prefix
-    for key in checkpoint_dict.keys():
-        if re.match(name, key):
+def skip_level_0_prefix(model, name):
+    model = str(model)
+    key = re.search(r": (.*?)Model", model)
+    if key is None:
+        key = re.search(r": (.*?)Stack", model)
+    if key is None:
+        key = re.match(r"(.*?)Model", model)
+    if key is not None and key.group(1).lower() in "bloom":
+        # if keys start with 'model.', don't skip level 0 prefix
+        if not re.match("^model[.]", name):
             return True
     return False
+
+
+def load_buffer(module, state_dict, prefix):
+    for name in module._buffers.keys():
+        if prefix + name in state_dict.keys():
+            if module._buffers[name].data.is_meta:
+                module._buffers[name] = torch.nn.parameter.Parameter(
+                    data=torch.empty_like(module._buffers[name].data, device="cpu"),
+                    requires_grad=module._buffers[name].data.requires_grad)
+            module._buffers[name].data.copy_(state_dict[prefix + name])
 
 
 def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_dict=None):
@@ -810,18 +829,22 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
                 model.forward_funcs[model.fwd_map[name]] = replaced_module
             layer_id += 1
         else:
+            checking_key = prefix + name + '.'
             if child.__class__ in load_layers and state_dict != None:
-                if prefix_check(prefix + name + '.', state_dict):
+                if any(checking_key in item for item in state_dict):
                     load(
                         child,
                         state_dict,
-                        prefix + name + '.',
+                        checking_key,
                     )
                 else:
                     continue
+            if len(child._buffers) != 0 and state_dict != None:
+                load_buffer(child, state_dict, checking_key)
             _, layer_id = _replace_module(child,
                                           policies,
-                                          prefix if level_id == 0 else prefix + name + '.',
+                                          prefix if level_id == 0 and skip_level_0_prefix(model, name) else \
+                                          prefix + name + '.',
                                           layer_id=layer_id,
                                           level_id=level_id + 1,
                                           state_dict=state_dict)
@@ -851,17 +874,18 @@ def load(module, state_dict, prefix, mp_group=None):
                                                                   requires_grad=module.norm.weight.data.requires_grad)
             module.norm.weight = mp_replace.copy(module.norm.weight.data, state_dict[prefix + 'weight'])
 
-    if hasattr(module, 'bias'):
-        if module.bias.data.is_meta:
-            # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
-            module.bias = torch.nn.parameter.Parameter(data=torch.empty_like(module.bias.data, device="cpu"),
-                                                       requires_grad=module.bias.data.requires_grad)
-        module.bias = mp_replace.copy(module.bias, state_dict[prefix + 'bias'])
-    else:
-        if hasattr(module, 'norm') and hasattr(module.norm, 'bias'):
-            if module.norm.bias.data.is_meta:
+    if prefix + 'bias' in state_dict.keys():
+        if hasattr(module, 'bias'):
+            if module.bias.data.is_meta:
                 # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
-                module.norm.bias = torch.nn.parameter.Parameter(data=torch.empty_like(module.norm.bias.data,
-                                                                                      device="cpu"),
-                                                                requires_grad=module.norm.bias.data.requires_grad)
-            module.norm.bias = mp_replace.copy(module.norm.bias, state_dict[prefix + 'bias'])
+                module.bias = torch.nn.parameter.Parameter(data=torch.empty_like(module.bias.data, device="cpu"),
+                                                           requires_grad=module.bias.data.requires_grad)
+            module.bias = mp_replace.copy(module.bias, state_dict[prefix + 'bias'])
+        else:
+            if hasattr(module, 'norm') and hasattr(module.norm, 'bias'):
+                if module.norm.bias.data.is_meta:
+                    # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                    module.norm.bias = torch.nn.parameter.Parameter(data=torch.empty_like(module.norm.bias.data,
+                                                                                          device="cpu"),
+                                                                    requires_grad=module.norm.bias.data.requires_grad)
+                module.norm.bias = mp_replace.copy(module.norm.bias, state_dict[prefix + 'bias'])
