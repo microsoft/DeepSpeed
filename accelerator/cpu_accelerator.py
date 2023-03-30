@@ -228,16 +228,17 @@ class CPU_Accelerator(DeepSpeedAccelerator):
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
             from op_builder import __deepspeed__  # noqa: F401
-            from op_builder.cpu import InferenceBuilder, CCLCommBuilder
+            from op_builder.cpu import InferenceBuilder, CCLCommBuilder, NotImplementedBuilder
         except ImportError:
-            from deepspeed.ops.op_builder.cpu import InferenceBuilder, CCLCommBuilder
+            from deepspeed.ops.op_builder.cpu import InferenceBuilder, CCLCommBuilder, NotImplementedBuilder
 
         if class_name == "InferenceBuilder":
             return InferenceBuilder
         if class_name == "CCLCommBuilder":
             return CCLCommBuilder
         else:
-            return None
+            # return a NotImplementedBuilder to avoid get NoneType[Name] in unit tests
+            return NotImplementedBuilder
 
     def build_extension(self):
         from torch.utils.cpp_extension import BuildExtension
