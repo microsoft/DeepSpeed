@@ -279,22 +279,34 @@ DS_D_INLINE __half init<ROpType::Max>()
 template <>
 DS_D_INLINE __half2 init<ROpType::Add>()
 {
+#ifdef __HIP_PLATFORM_HCC__
+    return __half2{_Float16_2{0x0000, 0x0000}};
+#else
     constexpr __half2_raw zero = {0x0000, 0x0000};
     return __half2(zero);
+#endif
 }
 
 template <>
 DS_D_INLINE __half2 init<ROpType::Min>()
 {
+#ifdef __HIP_PLATFORM_HCC__
+    return __half2{_Float16_2{0x7C00, 0x7C00}};
+#else
     constexpr __half2_raw inf = {0x7C00, 0x7C00};
     return __half2(inf);
+#endif
 }
 
 template <>
 DS_D_INLINE __half2 init<ROpType::Max>()
 {
+#ifdef __HIP_PLATFORM_HCC__
+    return __half2{_Float16_2{0xFC00, 0xFC00}};
+#else
     constexpr __half2_raw neg_inf = {0xFC00, 0xFC00};
     return __half2(neg_inf);
+#endif
 }
 
 template <ROpType Op, typename T>
@@ -401,11 +413,11 @@ DS_D_INLINE void _block(cg::thread_block& tb,
     // Unused when `partition_size == 1` or total_warps == 1
     __shared__ float reduce_buffer[max_warps * elems];
 
-#ifdef __CUDACC__
-    const int running_warps = warp_arg.meta_group_size();
-#else
+#ifdef __HIP_PLATFORM_HCC__
     const int total_threads = blockDim.x * blockDim.y * blockDim.z;
     const int running_warps = total_threads / hw_warp_size;
+#else
+    const int running_warps = warp_arg.meta_group_size();
 #endif
 
     // Always perform warp-scope reduction
