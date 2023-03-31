@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from __future__ import annotations
 '''Copyright The Microsoft DeepSpeed Team'''
 """
@@ -21,19 +26,7 @@ def err(s: str) -> None:
 #  - unlike plain grep, which is slower and has different flags on MacOS versus
 #    Linux, git grep is always the same.
 res = subprocess.run(
-    [
-        "git",
-        "grep",
-        "-Hn",
-        "--no-index",
-        "-e",
-        r"torch\.cuda",
-        "--and",
-        "--not",
-        "-e",
-        "#ignore-cuda",
-        *sys.argv[1:]
-    ],
+    ["git", "grep", "-Hn", "--no-index", "-e", r"torch\.cuda", "--and", "--not", "-e", "#ignore-cuda", *sys.argv[1:]],
     capture_output=True,
 )
 if res.returncode == 0:
@@ -47,12 +40,7 @@ elif res.returncode == 2:
     sys.exit(2)
 
 res = subprocess.run(
-    ["git",
-     "grep",
-     "-Hn",
-     "--no-index",
-     r"\.cuda()",
-     *sys.argv[1:]],
+    ["git", "grep", "-Hn", "--no-index", r"\.cuda()", *sys.argv[1:]],
     capture_output=True,
 )
 if res.returncode == 0:

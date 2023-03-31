@@ -1,6 +1,8 @@
-'''
-Copyright 2020 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .containers import HFGPT2LayerPolicy
 from .containers import HFBertLayerPolicy
 from .containers import BLOOMLayerPolicy
@@ -16,16 +18,8 @@ from .containers import VAEPolicy
 
 # transformer-based policies
 replace_policies = [
-    HFBertLayerPolicy,
-    HFGPTNEOLayerPolicy,
-    GPTNEOXLayerPolicy,
-    HFGPTJLayerPolicy,
-    MegatronLayerPolicy,
-    HFGPT2LayerPolicy,
-    BLOOMLayerPolicy,
-    HFOPTLayerPolicy,
-    HFCLIPLayerPolicy,
-    HFDistilBertLayerPolicy
+    HFBertLayerPolicy, HFGPTNEOLayerPolicy, GPTNEOXLayerPolicy, HFGPTJLayerPolicy, MegatronLayerPolicy,
+    HFGPT2LayerPolicy, BLOOMLayerPolicy, HFOPTLayerPolicy, HFCLIPLayerPolicy, HFDistilBertLayerPolicy
 ]
 
 # non-transformer-based policies

@@ -1,11 +1,14 @@
-'''
-Copyright 2022 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 from ..features.cuda_graph import CUDAGraph
 
 
 class DSUNet(CUDAGraph, torch.nn.Module):
+
     def __init__(self, unet, enable_cuda_graph=True):
         super().__init__(enable_cuda_graph=enable_cuda_graph)
         self.unet = unet
