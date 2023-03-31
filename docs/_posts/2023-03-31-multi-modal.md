@@ -1,7 +1,7 @@
 ---
 title: "Scaling Large-Scale Generative Mixture-of-Expert Multimodal Model With VL-MoE "
 excerpt: ""
-date: 2022-03-31 00:09:00
+date: 2023-03-31 00:09:00
 tags: training
 ---
 
@@ -15,9 +15,9 @@ Scaling up the model size is one common approach to boost usability and capabili
 
 Specifically, we incorporate the MoE structure into the classical single-tower multi-modal model by comprising of the following components: (1) a shared self-attention module across modalities, (2) a pool of modality-specific experts in the feed-forward network (FFN), and (3) a sparse gated MoE extended from the dense FFN. Subsequently, under the same amount of training resources as that used in [VLMO](https://arxiv.org/abs/2111.02358) (200k training steps), we demonstrate VL-MoE's advantages over the state-of-the-art dense counterparts in the following two aspects:
 
-(1) **VL-MoE can achieve significant accuracy improvement in comparison to its dense counterparts.** Table 1 demonstrates that under the same training budget (i.e., have the same number of activated parameters for each token), VL-MoE Base with 32 experts achieves better accuracy than the VLMO-Base dense model on all four vision-language datasets. 
+(1) **VL-MoE can achieve significant accuracy improvement in comparison to its dense counterparts.** Table 1 demonstrates that under the same training budget (i.e., have the same number of activated parameters for each token), VL-MoE Base with 32 experts achieves better accuracy than the VLMO-Base dense model on all four vision-language datasets.
 
-(2) **VL-MoE achieves similar model quality with a much smaller activated number of parameters compared to its dense counterparts.** Our results show that the finetuning performance of our VL-MoE is similar to that of the 3.1X larger VLMO-Large dense model (i.e., 3.1X more activated number of parameters per token). This can directly translate to approximately 3.1X training cost reduction as the training FLOPs for transformers are proportional to the activated model size per token.  
+(2) **VL-MoE achieves similar model quality with a much smaller activated number of parameters compared to its dense counterparts.** Our results show that the finetuning performance of our VL-MoE is similar to that of the 3.1X larger VLMO-Large dense model (i.e., 3.1X more activated number of parameters per token). This can directly translate to approximately 3.1X training cost reduction as the training FLOPs for transformers are proportional to the activated model size per token.
 
 
 
@@ -32,8 +32,6 @@ Specifically, we incorporate the MoE structure into the classical single-tower m
 
 *Table 1: Comparison of finetuning accuracy results for different models used in vision-language classification tasks and image-text retrieval tasks.*
 
-A sophisticated MoE model design requires a highly efficient and scalable training system that can support multi-dimensional parallelism and efficient memory management. [DeepSpeed MoE](https://www.microsoft.com/en-us/research/blog/deepspeed-advancing-moe-inference-and-training-to-power-next-generation-ai-scale/) training system offers such advanced capabilities including easy-to-use APIs enabling flexible combinations of data, tensor, and expert parallelism. Furthermore, DeepSpeed MoE enables larger model scale than state-of-the-art systems by exploiting expert parallelism and [ZeRO optimizations](https://arxiv.org/abs/1910.02054) together. By leveraging the DeepSpeed MoE system, VL-MoE Base with 32 experts achieves similar model quality as VLMO-dense Large with about 2.5x training speedup. 
+A sophisticated MoE model design requires a highly efficient and scalable training system that can support multi-dimensional parallelism and efficient memory management. [DeepSpeed MoE](https://www.microsoft.com/en-us/research/blog/deepspeed-advancing-moe-inference-and-training-to-power-next-generation-ai-scale/) training system offers such advanced capabilities including easy-to-use APIs enabling flexible combinations of data, tensor, and expert parallelism. Furthermore, DeepSpeed MoE enables larger model scale than state-of-the-art systems by exploiting expert parallelism and [ZeRO optimizations](https://arxiv.org/abs/1910.02054) together. By leveraging the DeepSpeed MoE system, VL-MoE Base with 32 experts achieves similar model quality as VLMO-dense Large with about 2.5x training speedup.
 
-[DeepSpeed MoE](https://www.microsoft.com/en-us/research/blog/deepspeed-advancing-moe-inference-and-training-to-power-next-generation-ai-scale/) system is already open-sourced and can be easily used as plug-and-play component to achieve high-performance low-cost training for any large-scale MoE models. The tutorial of how to use DeepSpeed MoE is available [here](https://www.deepspeed.ai/tutorials/mixture-of-experts/). VL-MoE is currently in the process of being integrated as a model example of [DeepSpeed Examples](https://github.com/microsoft/DeepSpeedExamples). Please stay tuned for our upcoming updates on this thread. 
-
-
+[DeepSpeed MoE](https://www.microsoft.com/en-us/research/blog/deepspeed-advancing-moe-inference-and-training-to-power-next-generation-ai-scale/) system is already open-sourced and can be easily used as plug-and-play component to achieve high-performance low-cost training for any large-scale MoE models. The tutorial of how to use DeepSpeed MoE is available [here](https://www.deepspeed.ai/tutorials/mixture-of-experts/). VL-MoE is currently in the process of being integrated as a model example of [DeepSpeed Examples](https://github.com/microsoft/DeepSpeedExamples). Please stay tuned for our upcoming updates on this thread.
