@@ -1,7 +1,7 @@
-"""
-"Copyright 2020 The Microsoft DeepSpeed Team.
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import math
 import os
@@ -704,11 +704,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             assert isinstance(module, torch.nn.Module)
             self._convert_to_zero_parameters(module.parameters(recurse=True))
 
-        self.use_all_gather_base = False
-        if dist.has_allgather_base():
-            self.use_all_gather_base = True
-        else:
-            logger.info(f"_all_gather_base API is not available in torch {torch.__version__}")
+        self.use_all_gather_into_tensor = dist.has_all_gather_into_tensor()
+        if not self.use_all_gather_into_tensor:
+            logger.info(f"all_gather_into_tensor API is not available in torch {torch.__version__}")
 
     def _convert_to_zero_parameters(self, param_list):
         for param in param_list:
@@ -1156,12 +1154,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         #                                                   param.ds_numel).view(param.ds_shape)
         #            param.data = replicated_tensor.data
         #            return None
-        if self.use_all_gather_base:
-            # try the _all_gather_base on PyTorch master branch
-            handle = dist.all_gather_base(flat_tensor,
-                                          param.ds_tensor.to(get_accelerator().device_name()),
-                                          group=self.ds_process_group,
-                                          async_op=async_op)
+        if self.use_all_gather_into_tensor:
+            # try the all_gather_into_tensor on PyTorch master branch
+            handle = dist.all_gather_into_tensor(flat_tensor,
+                                                 param.ds_tensor.to(get_accelerator().device_name()),
+                                                 group=self.ds_process_group,
+                                                 async_op=async_op)
         else:
             partitions = []
             for i in range(self.world_size):
@@ -1204,12 +1202,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         for param_idx, param in enumerate(param_list):
             input_tensor = local_tensors[param_idx].view(-1)
 
-            if self.use_all_gather_base:
-                # try the _all_gather_base from Pytorch master
-                h = dist.all_gather_base(allgather_params[param_idx],
-                                         input_tensor,
-                                         group=self.ds_process_group,
-                                         async_op=True)
+            if self.use_all_gather_into_tensor:
+                # try the all_gather_into_tensor from Pytorch master
+                h = dist.all_gather_into_tensor(allgather_params[param_idx],
+                                                input_tensor,
+                                                group=self.ds_process_group,
+                                                async_op=True)
             else:
                 output_list = []
                 for i in range(self.world_size):
