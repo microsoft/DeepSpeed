@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import pytest
 import os
@@ -11,10 +14,7 @@ from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 class SimpleConf(DeepSpeedConfigModel):
     param_1: int = 0
-    param_2_old: str = Field(None,
-                             deprecated=True,
-                             new_param="param_2",
-                             new_param_fn=(lambda x: [x]))
+    param_2_old: str = Field(None, deprecated=True, new_param="param_2", new_param_fn=(lambda x: [x]))
     param_2: List[str] = None
     param_3: int = Field(0, alias="param_3_alias")
 
@@ -68,16 +68,7 @@ def test_config_base_aliasfield():
     assert config.param_3 == 10
 
 
-@pytest.mark.parametrize("config_dict",
-                         [{
-                             "param_1": "DS"
-                         },
-                          {
-                              "param_2": "DS"
-                          },
-                          {
-                              "param_1_typo": 0
-                          }])
+@pytest.mark.parametrize("config_dict", [{"param_1": "DS"}, {"param_2": "DS"}, {"param_1_typo": 0}])
 def test_config_base_literalfail(config_dict):
     with pytest.raises(ValidationError):
         config = SimpleConf(**config_dict)
