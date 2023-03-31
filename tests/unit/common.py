@@ -57,8 +57,7 @@ def set_accelerator_visible():
             else:
                 nvidia_smi = subprocess.check_output(['nvidia-smi', '--list-gpus'])
                 num_gpus = len(nvidia_smi.decode('utf-8').strip().split('\n'))
-        else:
-            assert get_accelerator().device_name() == 'xpu'
+        elif get_accelerator().device_name() == 'xpu':
             import re
             clinfo = subprocess.check_output(['clinfo'])
             lines = clinfo.decode('utf-8').strip().split('\n')
@@ -67,6 +66,10 @@ def set_accelerator_visible():
                 match = re.search('Device Type.*GPU', line)
                 if match:
                     num_gpus += 1
+        else:
+            assert get_accelerator().device_name() == 'cpu'
+            from deepspeed.launcher.launch import get_numa_cores
+            num_gpus = len(get_numa_cores())
 
         cuda_visible = ",".join(map(str, range(num_gpus)))
 
