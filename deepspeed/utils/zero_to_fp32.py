@@ -105,6 +105,7 @@ def parse_optim_states(files, ds_checkpoint_dir):
 
     if type(world_size) is list:
         world_size = max(world_size)
+        print("test")
 
     if world_size != total_files:
         raise ValueError(
