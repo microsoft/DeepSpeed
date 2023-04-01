@@ -192,14 +192,20 @@ class MPICHRunner(MultiNodeRunner):
         export_cmd = []
 
         for k, v in self.exports.items():
-            export_cmd += ['-x', "{}={}".format(k, v)]
+            export_cmd += ['-genv', f'{k}', f'{v}']
+
+        if self.args.prefer_deepspeed_comm:
+            export_cmd += ['-genv', 'PREFER_DEEPSPEED_COMM', str(self.args.prefer_deepspeed_comm)]
+
+        export_cmd += ['-genv', 'MASTER_ADDR', str(self.args.master_addr)]
+        export_cmd += ['-genv', 'MASTER_PORT', str(self.args.master_port)]
 
         python_exec = []
         if not self.args.no_python:
             python_exec = [sys.executable, "-u"]
             if self.args.module:
                 python_exec.append("-m")
-        return mpirun_cmd + python_exec + [self.user_script] + self.user_arguments
+        return mpirun_cmd + export_cmd + python_exec + [self.user_script] + self.user_arguments
 
 
 class SlurmRunner(MultiNodeRunner):

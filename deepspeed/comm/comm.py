@@ -212,7 +212,7 @@ def set_backend(timeout=None, init_method=None):
             prefer_deepspeed_comm = os.environ.get("PREFER_DEEPSPEED_COMM")
             # if launch from DeepSpeed launcher, prefer_deepspeed_comm would only be "False" or "True", but
             # we want to be more robust
-            if prefer_deepspeed_comm == "True" or prefer_deepspeed_comm == "true" or prefer_deepspeed_comm == "1":
+            if prefer_deepspeed_comm == True or prefer_deepspeed_comm == "True" or prefer_deepspeed_comm == "true" or prefer_deepspeed_comm == "1":
                 rank = int(os.environ["RANK"])
                 size = int(os.environ["WORLD_SIZE"])
                 ccl_backend = CCLBackend(rank=rank, world_size=size, timeout=timeout, init_method=init_method)
