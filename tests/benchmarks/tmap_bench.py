@@ -9,6 +9,7 @@ import argparse
 import gc
 import torch
 
+from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import TMapBuilder
 
 tmap_ops = TMapBuilder().load()
@@ -16,8 +17,8 @@ tensor_map = tmap_ops.TensorMap()
 
 torch.manual_seed(0)
 # Simulate random 2D input signature used to index cuda graph
-inputKey = torch.randint(1, 1000, (1000,))
-inputValue = torch.randint(1, 1000, (1000,))
+inputKey = torch.randint(1, 1000, (1000, )).to(get_accelerator().device_name())
+inputValue = torch.randint(1, 1000, (1000, )).to(get_accelerator().device_name())
 
 # Warmup and test same output is produced
 pyTestDict = {}
@@ -43,6 +44,7 @@ def cpp():
         tensor_map.insert(inputKey, inputValue)
         cppValue = tensor_map.read(inputKey)
 
+
 #### cProfile ####
 
 import cProfile
@@ -53,11 +55,11 @@ def cprofileme():
     print("py")
     cProfile.run("py()", sort=-1)
     gc.collect()
-    torch.cuda.empty_cache()
+    get_accelerator().empty_cache()
     print("cpp")
     cProfile.run("cpp()", sort=-1)
     gc.collect()
-    torch.cuda.empty_cache()
+    get_accelerator().empty_cache()
 
 
 #### timeit ####
@@ -69,10 +71,10 @@ def timeme():
     print("--------------- timeit -----------------")
     print(f'py  ={timeit.Timer("py()", globals=globals()).timeit(number=1)}')
     gc.collect()
-    torch.cuda.empty_cache()
+    get_accelerator().empty_cache()
     print(f'cpp ={timeit.Timer("cpp()", globals=globals()).timeit(number=1)}')
     gc.collect()
-    torch.cuda.empty_cache()
+    get_accelerator().empty_cache()
 
 
 #### line_profiler ####
@@ -86,11 +88,11 @@ def line_profileme():
     print("py")
     profile(py)()  # noqa: F821
     gc.collect()
-    torch.cuda.empty_cache()
+    get_accelerator().empty_cache()
     print("cpp")
     profile(cpp)()  # noqa: F821
     gc.collect()
-    torch.cuda.empty_cache()
+    get_accelerator().empty_cache()
 
 
 if __name__ == "__main__":
