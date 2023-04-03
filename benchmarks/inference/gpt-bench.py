@@ -1,33 +1,25 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import os
 import torch
 import time
 import deepspeed
 import argparse
 from transformers import pipeline
+from deepspeed.accelerator import get_accelerator
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", "-m", type=str, help="hf model name")
 parser.add_argument("--deepspeed", action="store_true", help="use deepspeed inference")
-parser.add_argument("--dtype",
-                    type=str,
-                    default="fp16",
-                    choices=["fp16",
-                             "fp32",
-                             "int8"],
-                    help="int8, fp16, or fp32")
+parser.add_argument("--dtype", type=str, default="fp16", choices=["fp16", "fp32", "int8"], help="int8, fp16, or fp32")
 parser.add_argument("--graphs", action="store_true", help="CUDA Graphs on")
 parser.add_argument("--kernel-inject", action="store_true", help="inject kernels on")
 parser.add_argument("--max-tokens", type=int, default=50, help="max new tokens")
-parser.add_argument("--local_rank",
-                    type=int,
-                    default=int(os.getenv("LOCAL_RANK",
-                                          "0")),
-                    help="local rank")
-parser.add_argument("--world_size",
-                    type=int,
-                    default=int(os.getenv("WORLD_SIZE",
-                                          "1")),
-                    help="world size")
+parser.add_argument("--local_rank", type=int, default=int(os.getenv("LOCAL_RANK", "0")), help="local rank")
+parser.add_argument("--world_size", type=int, default=int(os.getenv("WORLD_SIZE", "1")), help="world size")
 parser.add_argument("--trials", type=int, default=30, help="number of trials")
 args = parser.parse_args()
 
@@ -61,7 +53,7 @@ def print_latency(latency_set, title, warmup=3):
         print("\t999 Latency: {0:8.2f} ms".format(p999 * 1000))
 
 
-deepspeed.init_distributed("nccl")
+deepspeed.init_distributed()
 
 if args.local_rank == 0:
     print("BENCHMARK SETTINGS:")
@@ -78,10 +70,7 @@ elif args.dtype == "fp16":
 else:
     dtype = torch.float32
 
-pipe = pipeline("text-generation",
-                model=args.model,
-                framework="pt",
-                device=args.local_rank)
+pipe = pipeline("text-generation", model=args.model, framework="pt", device=args.local_rank)
 
 if dtype == torch.float16:
     pipe.model.half()
@@ -100,10 +89,10 @@ responses = []
 times = []
 mtimes = []
 for i in range(args.trials):
-    torch.cuda.synchronize()
+    get_accelerator().synchronize()
     start = time.time()
     r = pipe("DeepSpeed is", do_sample=False, max_new_tokens=args.max_tokens)
-    torch.cuda.synchronize()
+    get_accelerator().synchronize()
     end = time.time()
     responses.append(r)
     times.append(end - start)  # / (args.max_tokens - 3))
@@ -112,9 +101,7 @@ for i in range(args.trials):
 if args.local_rank == 0:
     print_latency(times, "(e2e) latency")
     print_latency(mtimes, "(model-only) latency")
-    print_latency(map(lambda t: t / (args.max_tokens - 3),
-                      times),
-                  "(e2e) per token latency")
+    print_latency(map(lambda t: t / (args.max_tokens - 3), times), "(e2e) per token latency")
     print(f"RESPONSE 0:")
     print("-" * 30)
     print(responses[0][0]["generated_text"])

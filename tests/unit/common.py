@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import os
 import time
 import inspect
@@ -7,6 +12,7 @@ from pathlib import Path
 import torch
 import torch.multiprocessing as mp
 import deepspeed
+from deepspeed.accelerator import get_accelerator
 import deepspeed.comm as dist
 from torch.multiprocessing import Process
 
@@ -37,23 +43,34 @@ def get_master_port():
     return master_port
 
 
-def set_cuda_visibile():
+def set_accelerator_visible():
     cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
     xdist_worker_id = get_xdist_worker_id()
     if xdist_worker_id is None:
         xdist_worker_id = 0
     if cuda_visible is None:
-        # CUDA_VISIBLE_DEVICES is not set, discover it from nvidia-smi instead
+        # CUDA_VISIBLE_DEVICES is not set, discover it using accelerator specific command instead
         import subprocess
-        is_rocm_pytorch = hasattr(torch.version, 'hip') and torch.version.hip is not None
-        if is_rocm_pytorch:
-            rocm_smi = subprocess.check_output(['rocm-smi', '--showid'])
-            gpu_ids = filter(lambda s: 'GPU' in s,
-                             rocm_smi.decode('utf-8').strip().split('\n'))
-            num_gpus = len(list(gpu_ids))
+        if get_accelerator().device_name() == 'cuda':
+            is_rocm_pytorch = hasattr(torch.version, 'hip') and torch.version.hip is not None
+            if is_rocm_pytorch:
+                rocm_smi = subprocess.check_output(['rocm-smi', '--showid'])
+                gpu_ids = filter(lambda s: 'GPU' in s, rocm_smi.decode('utf-8').strip().split('\n'))
+                num_gpus = len(list(gpu_ids))
+            else:
+                nvidia_smi = subprocess.check_output(['nvidia-smi', '--list-gpus'])
+                num_gpus = len(nvidia_smi.decode('utf-8').strip().split('\n'))
         else:
-            nvidia_smi = subprocess.check_output(['nvidia-smi', '--list-gpus'])
-            num_gpus = len(nvidia_smi.decode('utf-8').strip().split('\n'))
+            assert get_accelerator().device_name() == 'xpu'
+            import re
+            clinfo = subprocess.check_output(['clinfo'])
+            lines = clinfo.decode('utf-8').strip().split('\n')
+            num_gpus = 0
+            for line in lines:
+                match = re.search('Device Type.*GPU', line)
+                if match:
+                    num_gpus += 1
+
         cuda_visible = ",".join(map(str, range(num_gpus)))
 
     # rotate list based on xdist worker id, example below
@@ -72,7 +89,7 @@ class DistributedExec(ABC):
     methods needed for DistributedTest and DistributedFixture.
     """
     world_size = 2
-    backend = "nccl"
+    backend = get_accelerator().communication_backend_name()
     init_distributed = True
     set_dist_env = True
     requires_cuda_env = True
@@ -84,8 +101,8 @@ class DistributedExec(ABC):
     def __call__(self, request=None):
         self._fixture_kwargs = self._get_fixture_kwargs(request, self.run)
         world_size = self.world_size
-        if self.requires_cuda_env and not torch.cuda.is_available():
-            pytest.skip("only supported in CUDA environments.")
+        if self.requires_cuda_env and not get_accelerator().is_available():
+            pytest.skip("only supported in accelerator environments.")
 
         if isinstance(world_size, int):
             world_size = [world_size]
@@ -108,9 +125,9 @@ class DistributedExec(ABC):
         return fixture_kwargs
 
     def _launch_procs(self, num_procs):
-        if torch.cuda.is_available() and torch.cuda.device_count() < num_procs:
+        if get_accelerator().is_available() and get_accelerator().device_count() < num_procs:
             pytest.skip(
-                f"Skipping test because not enough GPUs are available: {num_procs} required, {torch.cuda.device_count()} available"
+                f"Skipping test because not enough GPUs are available: {num_procs} required, {get_accelerator().device_count()} available"
             )
         mp.set_start_method('forkserver', force=True)
         skip_msg = mp.Queue()  # Allows forked processes to share pytest.skip reason
@@ -148,11 +165,9 @@ class DistributedExec(ABC):
                 p.terminate()
                 pytest.fail(f'Worker {rank} hung.', pytrace=False)
             if p.exitcode < 0:
-                pytest.fail(f'Worker {rank} killed by signal {-p.exitcode}',
-                            pytrace=False)
+                pytest.fail(f'Worker {rank} killed by signal {-p.exitcode}', pytrace=False)
             if p.exitcode > 0:
-                pytest.fail(f'Worker {rank} exited with code {p.exitcode}',
-                            pytrace=False)
+                pytest.fail(f'Worker {rank} exited with code {p.exitcode}', pytrace=False)
 
         if not skip_msg.empty():
             # This assumed all skip messages are the same, it may be useful to
@@ -172,15 +187,15 @@ class DistributedExec(ABC):
         # turn off NCCL logging if set
         os.environ.pop('NCCL_DEBUG', None)
 
-        if torch.cuda.is_available():
-            set_cuda_visibile()
+        if get_accelerator().is_available():
+            set_accelerator_visible()
 
         if self.init_distributed:
             deepspeed.init_distributed(dist_backend=self.backend)
             dist.barrier()
 
-        if torch.cuda.is_available():
-            torch.cuda.set_device(local_rank)
+        if get_accelerator().is_available():
+            get_accelerator().set_device(local_rank)
 
         try:
             self.run(**self._fixture_kwargs)
@@ -256,9 +271,7 @@ class DistributedFixture(DistributedExec):
     def __init__(self):
         assert isinstance(self.world_size, int), "Only one world size is allowed for distributed fixtures"
         self.__name__ = type(self).__name__
-        _pytestfixturefunction = FixtureFunctionMarker(scope="function",
-                                                       params=None,
-                                                       name=self.__name__)
+        _pytestfixturefunction = FixtureFunctionMarker(scope="function", params=None, name=self.__name__)
 
 
 class DistributedTest(DistributedExec):
@@ -321,8 +334,8 @@ class DistributedTest(DistributedExec):
         self._current_test = self._get_current_test_func(request)
         self._fixture_kwargs = self._get_fixture_kwargs(request, self._current_test)
 
-        if self.requires_cuda_env and not torch.cuda.is_available():
-            pytest.skip("only supported in CUDA environments.")
+        if self.requires_cuda_env and not get_accelerator().is_available():
+            pytest.skip("only supported in accelerator environments.")
 
         # Catch world_size override pytest mark
         for mark in getattr(request.function, "pytestmark", []):

@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .base import *
 from .features.meta_tensor import MetaTensorContainer
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
@@ -10,6 +15,7 @@ from ..policy import maybe_copy_qkv
 
 
 class DS_GPTJContainer(MetaTensorContainer, BaseTransformerContainer):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -34,36 +40,20 @@ class DS_GPTJContainer(MetaTensorContainer, BaseTransformerContainer):
             'ln_1.weight', \
             'ln_1.bias'
         )
-        maybe_copy_qkv(
-            module.attention,
-            sd,
-            weight_quantizer,
-            mp_replace,
-            'attn_qkvw',
-            [prefix + param_names[0],
-             prefix + param_names[1],
-             prefix + param_names[2]],
-            split_qkv=self.split_qkv)
-        for i in range(3, 4):
-            maybe_copy(module.attention,
+        maybe_copy_qkv(module.attention,
                        sd,
                        weight_quantizer,
                        mp_replace,
-                       transformer_param_names[i - 1],
+                       'attn_qkvw', [prefix + param_names[0], prefix + param_names[1], prefix + param_names[2]],
+                       split_qkv=self.policy.split_qkv)
+        for i in range(3, 4):
+            maybe_copy(module.attention, sd, weight_quantizer, mp_replace, transformer_param_names[i - 1],
                        prefix + param_names[i])
         for i in range(4, 8):
-            maybe_copy(module.mlp,
-                       sd,
-                       weight_quantizer,
-                       mp_replace,
-                       transformer_param_names[i],
+            maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[i],
                        prefix + param_names[i])
         for i in range(8, 10):
-            maybe_copy(module,
-                       sd,
-                       weight_quantizer,
-                       mp_replace,
-                       transformer_param_names[i + 2],
+            maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[i + 2],
                        prefix + param_names[i])
 
 

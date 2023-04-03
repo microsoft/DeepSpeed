@@ -1,7 +1,13 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from abc import ABC, abstractmethod
 
 
 class MetaTensorContainer(ABC):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.is_meta = False
@@ -51,6 +57,5 @@ class MetaTensorContainer(ABC):
                 of q, k, and v are stored together and needs to split in the
                 DeepSpeed-Inference API.
         """
-        raise NotImplementedError(
-            "A load_params() function must be defined in the model container \
+        raise NotImplementedError("A load_params() function must be defined in the model container \
                                   when inheriting the MetaTensorContainer feature")

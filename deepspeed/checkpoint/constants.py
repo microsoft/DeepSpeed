@@ -1,6 +1,10 @@
-'''
-    Various symbolic constants used for model checkpointing
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+"""
+Various symbolic constants used for model checkpointing
+"""
 
 #########################################
 # Optimizer checkpoint keys

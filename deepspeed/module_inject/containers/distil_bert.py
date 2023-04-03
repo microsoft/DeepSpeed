@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .base import *
 from deepspeed.model_implementations.transformers.ds_bert import DeepSpeedBERTInference
 import torch
@@ -6,6 +11,7 @@ from ..policy import TransformerPolicy
 
 
 class DS_DistilBERTContainer(BaseTransformerContainer):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 

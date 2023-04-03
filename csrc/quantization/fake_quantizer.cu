@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #include <math.h>
 #include "custom_cuda_layers.h"
 #include "memory_access_utils.h"

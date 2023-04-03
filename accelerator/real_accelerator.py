@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 try:
     from accelerator.abstract_accelerator import DeepSpeedAccelerator as dsa1
 except ImportError as e:
@@ -21,13 +26,8 @@ def _validate_accelerator(accel_obj):
     # accelerator.abstractor_accelerator
     # or deepspeed.accelerator.abstract_accelerator, consider accel_obj
     # is a conforming object
-    if not ((dsa1 != None and isinstance(accel_obj,
-                                         dsa1)) or
-            (dsa2 != None and isinstance(accel_obj,
-                                         dsa2))):
-        raise AssertionError(
-            f'{accel_obj.__class__.__name__} accelerator is not subclass of DeepSpeedAccelerator'
-        )
+    if not ((dsa1 != None and isinstance(accel_obj, dsa1)) or (dsa2 != None and isinstance(accel_obj, dsa2))):
+        raise AssertionError(f'{accel_obj.__class__.__name__} accelerator is not subclass of DeepSpeedAccelerator')
 
     # TODO: turn off is_available test since this breaks tests
     #assert accel_obj.is_available(), \

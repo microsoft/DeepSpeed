@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .base import *
 from .base_moe import *
 from .features.megatron import MegatronContainer
@@ -8,6 +13,7 @@ from packaging import version as pkg_version
 
 
 class DS_MegatronGPTMoEContainer(MegatronContainer, BaseTransformerMoEContainer):
+
     def __init__(self, policy, config, model_config, layer_id):
         super().__init__(policy, config, model_config, layer_id)
 

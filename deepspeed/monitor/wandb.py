@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .utils import check_wandb_availability
 from .monitor import Monitor
 
@@ -5,6 +10,7 @@ import deepspeed.comm as dist
 
 
 class WandbMonitor(Monitor):
+
     def __init__(self, wandb_config):
         super().__init__(wandb_config)
         check_wandb_availability()

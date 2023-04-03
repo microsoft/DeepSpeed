@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import argparse
 import pytest
 import deepspeed
@@ -80,12 +85,7 @@ def test_no_ds_parser():
 def test_core_deepscale_arguments():
     parser = basic_parser()
     parser = deepspeed.add_config_arguments(parser)
-    args = parser.parse_args(
-        ['--num_epochs',
-         '2',
-         '--deepspeed',
-         '--deepspeed_config',
-         'foo.json'])
+    args = parser.parse_args(['--num_epochs', '2', '--deepspeed', '--deepspeed_config', 'foo.json'])
     assert args
 
     assert hasattr(args, 'num_epochs')

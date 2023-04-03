@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .base import *
 from .features.megatron import MegatronContainer
 from deepspeed.model_implementations.transformers.ds_megatron_gpt import DeepSpeedMegatronGPTInference
@@ -7,6 +12,7 @@ from packaging import version as pkg_version
 
 
 class DS_MegatronGPTContainer(MegatronContainer, BaseTransformerContainer):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -34,9 +40,7 @@ class MegatronLayerPolicy(TransformerPolicy):
     use_mup = False
 
     def __init__(self, client_module, inference=True):
-        super().__init__(inference,
-                         megatron_v2=MegatronLayerPolicy.megatron_v2,
-                         use_mup=MegatronLayerPolicy.use_mup)
+        super().__init__(inference, megatron_v2=MegatronLayerPolicy.megatron_v2, use_mup=MegatronLayerPolicy.use_mup)
         self.client_module = client_module
         # we use megatron version to differentiate between the old and new
         # megatron-lm source code
