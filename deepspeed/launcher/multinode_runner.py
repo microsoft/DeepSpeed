@@ -192,6 +192,60 @@ class MPICHRunner(MultiNodeRunner):
         export_cmd = []
 
         for k, v in self.exports.items():
+            export_cmd += ['-env', f'{k}', f'{v}']
+
+        if self.args.prefer_deepspeed_comm:
+            export_cmd += ['-env', 'PREFER_DEEPSPEED_COMM', str(self.args.prefer_deepspeed_comm)]
+
+        export_cmd += ['-env', 'MASTER_ADDR', str(self.args.master_addr)]
+        export_cmd += ['-env', 'MASTER_PORT', str(self.args.master_port)]
+
+        python_exec = []
+        if not self.args.no_python:
+            python_exec = [sys.executable, "-u"]
+            if self.args.module:
+                python_exec.append("-m")
+        return mpirun_cmd + export_cmd + python_exec + [self.user_script] + self.user_arguments
+
+
+class IMPIRunner(MultiNodeRunner):
+
+    def __init__(self, args, world_info_base64, resource_pool):
+        super().__init__(args, world_info_base64)
+        self.resource_pool = resource_pool
+
+    def backend_exists(self):
+        #TODO: if IB is available we should suggestion mpich
+        return shutil.which('mpirun')  #mpich_info
+
+    @property
+    def name(self):
+        return "impi"
+
+    def validate_args(self):
+        super().validate_args()
+        #TODO: Allow for include/exclude at node-level but not gpu-level
+        if self.args.include != "" or self.args.exclude != "":
+            raise ValueError(f"{self.name} backend does not support worker include/exclusion")
+
+        if self.args.num_nodes != -1 or self.args.num_gpus != -1:
+            raise ValueError(f"{self.name} backend does not support limiting num nodes/gpus")
+
+    def get_cmd(self, environment, active_resources):
+        devices_per_node = self.resource_pool.values()
+        total_process_count = sum(devices_per_node)
+        process_per_node = list(devices_per_node)[0]
+
+        mpirun_cmd = [
+            'mpirun',
+            '-n',
+            f'{total_process_count}',
+            '-ppn',
+            f'{process_per_node}',
+        ] + split(self.args.launcher_args)
+        export_cmd = []
+
+        for k, v in self.exports.items():
             export_cmd += ['-genv', f'{k}', f'{v}']
 
         if self.args.prefer_deepspeed_comm:
@@ -199,6 +253,15 @@ class MPICHRunner(MultiNodeRunner):
 
         export_cmd += ['-genv', 'MASTER_ADDR', str(self.args.master_addr)]
         export_cmd += ['-genv', 'MASTER_PORT', str(self.args.master_port)]
+
+        export_cmd += ['-hosts']
+        hosts = ""
+        for i, host in enumerate(self.resource_pool.keys()):
+            if i == 0:
+                hosts = f"{host}"
+            else:
+                hosts += f",{host}"
+        export_cmd += [hosts]
 
         python_exec = []
         if not self.args.no_python:
