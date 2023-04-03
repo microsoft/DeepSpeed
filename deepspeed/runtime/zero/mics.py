@@ -181,7 +181,6 @@ class MiCS_Init(Init):
 
     def _hierarchical_all_gather_params(self, params, params_buffers=None):
         """"""
-        log_dist(f"hierarachical_all_gather_params", ranks=[0])
         params, params_buffers = self._pre_all_gather(params, params_buffers)
 
         mics_comm_groups: MiCS_CommGroups = params[0].comm
