@@ -62,5 +62,5 @@ class DSUNet(CUDAGraph, torch.nn.Module):
 
         self.cuda_graph_created = True
 
-    def _forward(self, sample, timestamp, encoder_hidden_states, return_dict=True):
-        return self.unet(sample, timestamp, encoder_hidden_states, return_dict)
+    def _forward(self, sample, timestamp, encoder_hidden_states, cross_attention_kwargs, return_dict=True):
+        return self.unet(sample, timestamp, encoder_hidden_states, return_dict, cross_attention_kwargs=cross_attention_kwargs)
