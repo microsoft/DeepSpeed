@@ -52,6 +52,50 @@ def installed_cuda_version(name=""):
     return int(cuda_major), int(cuda_minor)
 
 
+@staticmethod
+def is_rocm_pytorch():
+    if OpBuilder._is_rocm_pytorch is not None:
+        return OpBuilder._is_rocm_pytorch
+
+    _is_rocm_pytorch = False
+    try:
+        import torch
+    except ImportError:
+        pass
+    else:
+        if TORCH_MAJOR > 1 or (TORCH_MAJOR == 1 and TORCH_MINOR >= 5):
+            _is_rocm_pytorch = hasattr(torch.version, 'hip') and torch.version.hip is not None
+            if _is_rocm_pytorch:
+                from torch.utils.cpp_extension import ROCM_HOME
+                _is_rocm_pytorch = ROCM_HOME is not None
+    OpBuilder._is_rocm_pytorch = _is_rocm_pytorch
+    return OpBuilder._is_rocm_pytorch
+
+
+@staticmethod
+def installed_rocm_version():
+    if OpBuilder._rocm_version:
+        return OpBuilder._rocm_version
+
+    ROCM_MAJOR = '0'
+    ROCM_MINOR = '0'
+    if OpBuilder.is_rocm_pytorch():
+        from torch.utils.cpp_extension import ROCM_HOME
+        rocm_ver_file = Path(ROCM_HOME).joinpath(".info/version-dev")
+        if rocm_ver_file.is_file():
+            with open(rocm_ver_file, 'r') as file:
+                ROCM_VERSION_DEV_RAW = file.read()
+        elif "rocm" in torch.__version__:
+            ROCM_VERSION_DEV_RAW = torch.__version__.split("rocm")[1]
+        else:
+            assert False, "Could not detect ROCm version"
+        assert ROCM_VERSION_DEV_RAW != "", "Could not detect ROCm version"
+        ROCM_MAJOR = ROCM_VERSION_DEV_RAW.split('.')[0]
+        ROCM_MINOR = ROCM_VERSION_DEV_RAW.split('.')[1]
+    OpBuilder._rocm_version = (int(ROCM_MAJOR), int(ROCM_MINOR))
+    return OpBuilder._rocm_version
+
+
 def get_default_compute_capabilities():
     compute_caps = DEFAULT_COMPUTE_CAPABILITIES
     import torch.utils.cpp_extension
@@ -81,29 +125,57 @@ cuda_minor_mismatch_ok = {
         "11.5",
         "11.6",
         "11.7",
-        "11.8"
+        "11.8",
+    ],
+}
+
+rocm_minor_mismatch_ok = {
+    5: [
+        "5.1",
+        "5.2",
+        "5.3",
+        "5.4",
+        "5.5",
     ],
 }
 
 
 def assert_no_cuda_hip_mismatch(name=""):
-    cuda_major, cuda_minor = installed_cuda_version(name)
-    if cuda_minor == 0 and cuda_major == 0:
-        return False
-    sys_cuda_version = f'{cuda_major}.{cuda_minor}'
-    torch_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
-    # This is a show-stopping error, should probably not proceed past this
-    if sys_cuda_version != torch_cuda_version:
-        if (cuda_major in cuda_minor_mismatch_ok and sys_cuda_version in cuda_minor_mismatch_ok[cuda_major]
-                and torch_cuda_version in cuda_minor_mismatch_ok[cuda_major]):
-            print(f"Installed CUDA version {sys_cuda_version} does not match the "
-                  f"version torch was compiled with {torch.version.cuda} "
-                  "but since the APIs are compatible, accepting this combination")
-            return True
-        raise Exception(f">- DeepSpeed Op Builder: Installed CUDA version {sys_cuda_version} does not match the "
-                        f"version torch was compiled with {torch.version.cuda}, unable to compile "
-                        "cuda/cpp extensions without a matching cuda version.")
-    return True
+    if not is_rocm_pytorch():
+        cuda_major, cuda_minor = installed_cuda_version(name)
+        if cuda_major == 0 and cuda_minor == 0:
+            return False
+        sys_cuda_version = f'{cuda_major}.{cuda_minor}'
+        torch_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
+        # This is a show-stopping error, should probably not proceed past this
+        if sys_cuda_version != torch_cuda_version:
+            if (cuda_major in cuda_minor_mismatch_ok and sys_cuda_version in cuda_minor_mismatch_ok[cuda_major]
+                    and torch_cuda_version in cuda_minor_mismatch_ok[cuda_major]):
+                print(f"Installed CUDA version {sys_cuda_version} does not match the "
+                      f"version torch was compiled with {torch.version.cuda} "
+                      "but since the APIs are compatible, accepting this combination")
+                return True
+            raise Exception(f">- DeepSpeed Op Builder: Installed CUDA version {sys_cuda_version} does not match the "
+                            f"version torch was compiled with {torch.version.cuda}, unable to compile "
+                            "cuda/cpp extensions without a matching CUDA version.")
+        return True
+    else:
+        rocm_major, rocm_minor = installed_rocm_version()
+        if rocm_major == 0 and rocm_minor == 0:
+            return False
+        sys_rocm_version = f'{rocm_major}.{rocm_minor}'
+        torch_rocm_version = ".".join(torch.version.hip.split('.')[:2])
+        if sys_rocm_version != torch_rocm_version:
+            if (rocm_major in rocm_minor_mismatch_ok and sys_rocm_version in rocm_minor_mismatch_ok[rocm_major]
+                    and torch_rocm_version in rocm_minor_mismatch_ok[rocm_major]):
+                print(f"Installed HIP version {sys_rocm_version} does not match the "
+                      f"version torch was compiled with {torch.version.hip} "
+                      "but since the APIs are compatible, accepting this combination")
+                return True
+            raise Exception(f">- DeepSpeed Op Builder: Installed HIP version {sys_rocm_version} does not match the "
+                            f"version torch was compiled with {torch.version.hip}, unable to compile "
+                            "cuda/cpp extensions without a matching HIP version.")
+        return True
 
 
 class OpBuilder(ABC):
@@ -165,48 +237,6 @@ class OpBuilder(ABC):
                                    f"Please re-install DeepSpeed or switch torch versions. "
                                    f"Install HIP version={install_hip_version}, "
                                    f"Runtime HIP version={current_hip_version}")
-
-    @staticmethod
-    def is_rocm_pytorch():
-        if OpBuilder._is_rocm_pytorch is not None:
-            return OpBuilder._is_rocm_pytorch
-
-        _is_rocm_pytorch = False
-        try:
-            import torch
-        except ImportError:
-            pass
-        else:
-            if TORCH_MAJOR > 1 or (TORCH_MAJOR == 1 and TORCH_MINOR >= 5):
-                _is_rocm_pytorch = hasattr(torch.version, 'hip') and torch.version.hip is not None
-                if _is_rocm_pytorch:
-                    from torch.utils.cpp_extension import ROCM_HOME
-                    _is_rocm_pytorch = ROCM_HOME is not None
-        OpBuilder._is_rocm_pytorch = _is_rocm_pytorch
-        return OpBuilder._is_rocm_pytorch
-
-    @staticmethod
-    def installed_rocm_version():
-        if OpBuilder._rocm_version:
-            return OpBuilder._rocm_version
-
-        ROCM_MAJOR = '0'
-        ROCM_MINOR = '0'
-        if OpBuilder.is_rocm_pytorch():
-            from torch.utils.cpp_extension import ROCM_HOME
-            rocm_ver_file = Path(ROCM_HOME).joinpath(".info/version-dev")
-            if rocm_ver_file.is_file():
-                with open(rocm_ver_file, 'r') as file:
-                    ROCM_VERSION_DEV_RAW = file.read()
-            elif "rocm" in torch.__version__:
-                ROCM_VERSION_DEV_RAW = torch.__version__.split("rocm")[1]
-            else:
-                assert False, "Could not detect ROCm version"
-            assert ROCM_VERSION_DEV_RAW != "", "Could not detect ROCm version"
-            ROCM_MAJOR = ROCM_VERSION_DEV_RAW.split('.')[0]
-            ROCM_MINOR = ROCM_VERSION_DEV_RAW.split('.')[1]
-        OpBuilder._rocm_version = (int(ROCM_MAJOR), int(ROCM_MINOR))
-        return OpBuilder._rocm_version
 
     def include_paths(self):
         '''
