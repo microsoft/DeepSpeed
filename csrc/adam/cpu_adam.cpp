@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0
 
-// DeepSpeed Team
+// DeepSpeed Teamddd
 
 #include "cpu_adam.h"
 #include <torch/extension.h>
