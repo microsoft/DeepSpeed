@@ -72,11 +72,21 @@ cuda_minor_mismatch_ok = {
         "10.1",
         "10.2",
     ],
-    11: ["11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8"],
+    11: [
+        "11.0",
+        "11.1",
+        "11.2",
+        "11.3",
+        "11.4",
+        "11.5",
+        "11.6",
+        "11.7",
+        "11.8"
+    ],
 }
 
 
-def assert_no_cuda_mismatch(name=""):
+def assert_no_cuda_hip_mismatch(name=""):
     cuda_major, cuda_minor = installed_cuda_version(name)
     if cuda_minor == 0 and cuda_major == 0:
         return False
@@ -458,8 +468,8 @@ class OpBuilder(ABC):
         except ImportError:
             raise RuntimeError(f"Unable to JIT load the {self.name} op due to ninja not being installed.")
 
-        if isinstance(self, CUDAOpBuilder) and not self.is_rocm_pytorch():
-            self.build_for_cpu = not assert_no_cuda_mismatch(self.name)
+        if isinstance(self, CUDAOpBuilder):
+            self.build_for_cpu = not assert_no_cuda_hip_mismatch(self.name)
 
         self.jit_mode = True
         from torch.utils.cpp_extension import load
@@ -579,7 +589,7 @@ class CUDAOpBuilder(OpBuilder):
         return super().is_compatible(verbose)
 
     def builder(self):
-        self.build_for_cpu = not assert_no_cuda_mismatch(self.name)
+        self.build_for_cpu = not assert_no_cuda_hip_mismatch(self.name)
         if self.build_for_cpu:
             from torch.utils.cpp_extension import CppExtension as ExtensionBuilder
         else:
