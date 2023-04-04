@@ -1,6 +1,8 @@
-'''
-Copyright 2022 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .builder import CUDAOpBuilder, installed_cuda_version
 
 
@@ -19,8 +21,7 @@ class SpatialInferenceBuilder(CUDAOpBuilder):
         try:
             import torch
         except ImportError:
-            self.warning(
-                "Please install torch if trying to pre-compile inference kernels")
+            self.warning("Please install torch if trying to pre-compile inference kernels")
             return False
 
         cuda_okay = True
@@ -30,8 +31,7 @@ class SpatialInferenceBuilder(CUDAOpBuilder):
             cuda_capability = torch.cuda.get_device_properties(0).major
             if cuda_capability >= 8:
                 if torch_cuda_major < 11 or sys_cuda_major < 11:
-                    self.warning(
-                        "On Ampere and higher architectures please use CUDA 11+")
+                    self.warning("On Ampere and higher architectures please use CUDA 11+")
                     cuda_okay = False
         return super().is_compatible(verbose) and cuda_okay
 

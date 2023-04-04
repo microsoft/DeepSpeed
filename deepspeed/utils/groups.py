@@ -1,6 +1,7 @@
-'''
-Copyright 2021 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 # The file has been adapted from https://github.com/NVIDIA/Megatron-LM and retains the following license from the original file
 
@@ -51,8 +52,7 @@ def initialize(ep_size=1, mpu=None):
 
 def _ensure_divisibility(numerator, denominator):
     """Ensure that numerator is divisible by the denominator."""
-    assert numerator % denominator == 0, '{} is not divisible by {}'.format(
-        numerator, denominator)
+    assert numerator % denominator == 0, '{} is not divisible by {}'.format(numerator, denominator)
 
 
 # Not currently used. Helper function to create a model (tensor) parallel group.
@@ -78,8 +78,7 @@ def _create_model_parallel(model_parallel_size_):
     with a total of 16 GPUs, rank 0 to 7 belong to the first box and
     ranks 8 to 15 belong to the second box.
     """
-    log_dist(f'Creating model parallel group with size {model_parallel_size_}',
-             ranks=[0])
+    log_dist(f'Creating model parallel group with size {model_parallel_size_}', ranks=[0])
     # Get world size and rank. Ensure some consistencies.
     assert dist.is_initialized()
     world_size = dist.get_world_size()
@@ -121,9 +120,7 @@ def _create_expert_and_data_parallel(expert_parallel_size_):
     """
     assert dist.is_initialized()
 
-    log_dist(
-        f'Creating expert and data parallel groups with size {expert_parallel_size_}',
-        ranks=[0])
+    log_dist(f'Creating expert and data parallel groups with size {expert_parallel_size_}', ranks=[0])
     world_size = dist.get_world_size()
     rank = dist.get_rank()
 
@@ -139,9 +136,7 @@ def _create_expert_and_data_parallel(expert_parallel_size_):
         for i in range(expert_parallel_size_):
             ranks = range(i, world_size, expert_parallel_size_)
             group = dist.new_group(ranks)
-            log_dist(
-                f'Creating expert data parallel process group named {group_name} with ranks: {list(ranks)}',
-                [0])
+            log_dist(f'Creating expert data parallel process group named {group_name} with ranks: {list(ranks)}', [0])
             if i == (rank % expert_parallel_size_):
                 _EXPERT_DATA_PARALLEL_GROUP[group_name] = group
 
@@ -153,9 +148,7 @@ def _create_expert_and_data_parallel(expert_parallel_size_):
         for i in range(world_size // expert_parallel_size_):
             ranks = range(i * expert_parallel_size_, (i + 1) * expert_parallel_size_)
             group = dist.new_group(ranks)
-            log_dist(
-                f'creating expert parallel process group named {group_name} with ranks: {list(ranks)}',
-                [0])
+            log_dist(f'creating expert parallel process group named {group_name} with ranks: {list(ranks)}', [0])
             if i == (rank // expert_parallel_size_):
                 _EXPERT_PARALLEL_GROUP[group_name] = group
 

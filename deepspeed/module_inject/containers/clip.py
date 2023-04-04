@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from .base import *
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
@@ -8,6 +11,7 @@ from ..policy import TransformerPolicy
 
 
 class DS_CLIPContainer(BaseTransformerContainer):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -21,6 +25,7 @@ class DS_CLIPContainer(BaseTransformerContainer):
 
 
 class HFCLIPLayerPolicy(TransformerPolicy):
+
     def __init__(self, client_module, inference=False):
         super().__init__(inference, pre_attn_norm=True, scale_attention=True)
         self.client_module = client_module
