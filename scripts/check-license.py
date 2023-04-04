@@ -18,7 +18,10 @@ def err(s: str) -> None:
     print(s, file=sys.stderr)
 
 
-COPYRIGHT = ["Copyright (c) Microsoft Corporation.", "SPDX-License-Identifier: Apache-2.0", "DeepSpeed Team"]
+COPYRIGHT = [
+    r"^\(\/\/\|#\) Copyright (c) Microsoft Corporation.$", r"^\(\/\/\|#\) SPDX-License-Identifier: Apache-2.0$",
+    r"^\(\/\/\|#\) DeepSpeed Team$"
+]
 
 success = True
 failures = []
