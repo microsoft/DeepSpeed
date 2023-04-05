@@ -134,16 +134,12 @@ def parse_range(rng):
         # value is not a single number
         parts = rng.split('-')
         if len(parts) != 2:
-            raise ValueError(
-                "Bad range: '%s', range must be either a number or two number separated by dash"
-                % (rng,
-                   ))
+            raise ValueError("Bad range: '%s', range must be either a number or two number separated by dash" %
+                             (rng, ))
         start = int(parts[0])
         end = int(parts[1])
         if start > end:
-            raise ValueError(
-                "Bad range: '%s', range end must larger than or equal to start" % (rng,
-                                                                                   ))
+            raise ValueError("Bad range: '%s', range end must larger than or equal to start" % (rng, ))
         return range(start, end + 1)
 
 
@@ -162,9 +158,8 @@ def parse_range_list(range_str):
         sub_number_list = parse_range(sub_range)
         if sub_number_list[0] <= last:
             raise ValueError(
-                "Bad range: '%s', sub ranges must not overlap with each other and should be in ascend order"
-                % (range_str,
-                   ))
+                "Bad range: '%s', sub ranges must not overlap with each other and should be in ascend order" %
+                (range_str, ))
         last = sub_number_list[-1]
         number_list.extend(sub_number_list)
     return number_list
@@ -288,12 +283,11 @@ def main():
             cmd = []
             if args.bind_cores_to_rank:
                 if 'KMP_AFFINITY' in os.environ.keys():
-                    raise ValueError(
-                        "Environment variable KMP_AFFINITY conflicts with numactl "
-                        "because it interfere with how many CPU cores numactl can set. "
-                        "Unset KMP_AFFINITY before launching deepspeed.\n\n"
-                        "\t$ unset KMP_AFFINITY\n"
-                        "\t$ deepspeed <deepspeed command parameters>")
+                    raise ValueError("Environment variable KMP_AFFINITY conflicts with numactl "
+                                     "because it interfere with how many CPU cores numactl can set. "
+                                     "Unset KMP_AFFINITY before launching deepspeed.\n\n"
+                                     "\t$ unset KMP_AFFINITY\n"
+                                     "\t$ deepspeed <deepspeed command parameters>")
                 if args.bind_core_list != None:
                     core_list = parse_range_list(args.bind_core_list)
                     total_cores = len(core_list)
@@ -302,9 +296,7 @@ def main():
                     core_list = range(total_cores)
                 cores_per_rank = total_cores // num_local_procs
                 assert cores_per_rank >= 1, "At least one core needs to be assigned to each rank"
-                core_list_for_rank = core_list[cores_per_rank *
-                                               local_rank:cores_per_rank *
-                                               (local_rank + 1)]
+                core_list_for_rank = core_list[cores_per_rank * local_rank:cores_per_rank * (local_rank + 1)]
                 current_env["OMP_NUM_THREADS"] = f"{cores_per_rank}"
                 cmd.append("numactl")
 
