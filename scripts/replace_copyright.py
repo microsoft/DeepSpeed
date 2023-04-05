@@ -3,6 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # DeepSpeed Team
+"""
+USAGE:
+$ python3 script/replace_copyright.py --repo_dir ./
+"""
 
 import os
 import argparse
