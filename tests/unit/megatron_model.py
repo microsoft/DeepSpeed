@@ -29,6 +29,9 @@ def get_gpt2_model(args_others, mp_size=1):
         'vocab_file': get_test_path('gpt2-vocab.json'),
         'merge_file': get_test_path('gpt2-merges.txt'),
         'tokenizer_type': 'GPT2BPETokenizer',
+        'micro-batch-size': 10,
+        'global-batch-size': 1,
+        'data-parallel-size': 1,
     }
 
     args_defaults.update(args_others)
@@ -56,6 +59,9 @@ class MockGPT2ModelPipe(PipelineModule):
             'vocab_file': get_test_path('gpt2-vocab.json'),
             'merge_file': get_test_path('gpt2-merges.txt'),
             'tokenizer_type': 'GPT2BPETokenizer',
+            'micro-batch-size': 1,
+            'global-batch-size': 1,
+            'data-parallel-size': 1,
         }
 
         args_defaults.update(args_others)
