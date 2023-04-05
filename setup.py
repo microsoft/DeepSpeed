@@ -1,16 +1,18 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
+# DeepSpeed Team
+"""
 DeepSpeed library
 
 To build wheel on Windows:
-    1. Install pytorch, such as pytorch 1.12 + cuda 11.6
-    2. Install visual cpp build tool
-    3. Include cuda toolkit
-    4. Launch cmd console with Administrator privilege for creating required symlink folders
+1. Install pytorch, such as pytorch 1.12 + cuda 11.6
+2. Install visual cpp build tool
+3. Include cuda toolkit
+4. Launch cmd console with Administrator privilege for creating required symlink folders
 
 Create a new wheel via the following command:
-    build_win.bat
+build_win.bat
 
 The wheel will be located at: dist/*.whl
 """
@@ -55,7 +57,7 @@ def fetch_requirements(path):
 
 install_requires = fetch_requirements('requirements/requirements.txt')
 extras_require = {
-    '1bit': [], # add cupy based on cuda/rocm version
+    '1bit': [],  # add cupy based on cuda/rocm version
     '1bit_mpi': fetch_requirements('requirements/requirements-1bit-mpi.txt'),
     'readthedocs': fetch_requirements('requirements/requirements-readthedocs.txt'),
     'dev': fetch_requirements('requirements/requirements-dev.txt'),
@@ -92,8 +94,7 @@ cmdclass = {}
 # For any pre-installed ops force disable ninja
 if torch_available:
     from accelerator import get_accelerator
-    cmdclass['build_ext'] = get_accelerator().build_extension().with_options(
-        use_ninja=False)
+    cmdclass['build_ext'] = get_accelerator().build_extension().with_options(use_ninja=False)
 
 if torch_available:
     TORCH_MAJOR = torch.__version__.split('.')[0]
@@ -104,10 +105,9 @@ else:
 
 if torch_available and not torch.cuda.is_available():
     # Fix to allow docker builds, similar to https://github.com/NVIDIA/apex/issues/486
-    print(
-        "[WARNING] Torch did not find cuda available, if cross-compiling or running with cpu only "
-        "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
-        "(compute capabilities 6.0, 6.1, 6.2)")
+    print("[WARNING] Torch did not find cuda available, if cross-compiling or running with cpu only "
+          "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
+          "(compute capabilities 6.0, 6.1, 6.2)")
     if os.environ.get("TORCH_CUDA_ARCH_LIST", None) is None:
         os.environ["TORCH_CUDA_ARCH_LIST"] = get_default_compute_capabilities()
 
@@ -273,7 +273,7 @@ setup(name='deepspeed',
       long_description=readme_text,
       long_description_content_type='text/markdown',
       author='DeepSpeed Team',
-      author_email='deepspeed@microsoft.com',
+      author_email='deepspeed-info@microsoft.com',
       url='http://deepspeed.ai',
       project_urls={
           'Documentation': 'https://deepspeed.readthedocs.io',
@@ -281,24 +281,15 @@ setup(name='deepspeed',
       },
       install_requires=install_requires,
       extras_require=extras_require,
-      packages=find_packages(include=['deepspeed',
-                                      'deepspeed.*']),
+      packages=find_packages(include=['deepspeed', 'deepspeed.*']),
       include_package_data=True,
       scripts=[
-          'bin/deepspeed',
-          'bin/deepspeed.pt',
-          'bin/ds',
-          'bin/ds_ssh',
-          'bin/ds_report',
-          'bin/ds_bench',
-          'bin/dsr',
+          'bin/deepspeed', 'bin/deepspeed.pt', 'bin/ds', 'bin/ds_ssh', 'bin/ds_report', 'bin/ds_bench', 'bin/dsr',
           'bin/ds_elastic'
       ],
       classifiers=[
-          'Programming Language :: Python :: 3.6',
-          'Programming Language :: Python :: 3.7',
-          'Programming Language :: Python :: 3.8',
-          'Programming Language :: Python :: 3.9',
+          'Programming Language :: Python :: 3.6', 'Programming Language :: Python :: 3.7',
+          'Programming Language :: Python :: 3.8', 'Programming Language :: Python :: 3.9',
           'Programming Language :: Python :: 3.10'
       ],
       license='MIT',

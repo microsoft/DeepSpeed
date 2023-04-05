@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
@@ -12,9 +15,11 @@ from enum import Enum
 class DtypeEnum(Enum):
     # The torch dtype must always be the first value (so we return torch.dtype)
     fp16 = torch.float16, "torch.float16", "fp16", "float16", "half"
-    bf16 = torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16"
     fp32 = torch.float32, "torch.float32", "fp32", "float32", "float"
     int8 = torch.int8, "torch.int8", "int8"
+
+    # bf16 not supported
+    # bf16 = torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16"
 
     # Copied from https://stackoverflow.com/a/43210118
     # Allows us to use multiple values for each Enum index and returns first
@@ -222,9 +227,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     replace_method: str = Field(
         "auto",
         deprecated=True,
-        deprecated_msg=
-        "This parameter is no longer needed, please remove from your call to DeepSpeed-inference"
-    )
+        deprecated_msg="This parameter is no longer needed, please remove from your call to DeepSpeed-inference")
 
     injection_policy: Dict = Field(None, alias="injection_dict")
     """
@@ -235,9 +238,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     injection_policy_tuple: tuple = None
     """ TODO: Add docs """
 
-    config: Dict = Field(
-        None,
-        alias="args")  # todo: really no need for this field if we can refactor
+    config: Dict = Field(None, alias="args")  # todo: really no need for this field if we can refactor
 
     max_out_tokens: int = Field(1024, alias="max_tokens")
     """
@@ -254,18 +255,10 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     """
     mpu: object = Field(None, deprecated=True, new_param="tensor_parallel.mpu")
     ep_size: int = Field(1, deprecated=True, new_param="moe.ep_size")
-    ep_group: object = Field(None,
-                             alias="expert_group",
-                             deprecated=True,
-                             new_param="moe.ep_group")
-    ep_mp_group: object = Field(None,
-                                alias="expert_mp_group",
-                                deprecated=True,
-                                new_param="moe.ep_mp_group")
+    ep_group: object = Field(None, alias="expert_group", deprecated=True, new_param="moe.ep_group")
+    ep_mp_group: object = Field(None, alias="expert_mp_group", deprecated=True, new_param="moe.ep_mp_group")
     moe_experts: list = Field([1], deprecated=True, new_param="moe.moe_experts")
-    moe_type: MoETypeEnum = Field(MoETypeEnum.standard,
-                                  deprecated=True,
-                                  new_param="moe.type")
+    moe_type: MoETypeEnum = Field(MoETypeEnum.standard, deprecated=True, new_param="moe.type")
 
     @validator("moe")
     def moe_backward_compat(cls, field_value, values):
