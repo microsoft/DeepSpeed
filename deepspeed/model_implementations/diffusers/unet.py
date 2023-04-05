@@ -64,6 +64,10 @@ class DSUNet(CUDAGraph, torch.nn.Module):
 
     def _forward(self, sample, timestamp, encoder_hidden_states, return_dict=True, cross_attention_kwargs=None):
         if cross_attention_kwargs:
-            return self.unet(sample, timestamp, encoder_hidden_states, return_dict, cross_attention_kwargs=cross_attention_kwargs)
+            return self.unet(sample,
+                             timestamp,
+                             encoder_hidden_states,
+                             return_dict,
+                             cross_attention_kwargs=cross_attention_kwargs)
         else:
             return self.unet(sample, timestamp, encoder_hidden_states, return_dict)
