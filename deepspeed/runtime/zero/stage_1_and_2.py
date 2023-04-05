@@ -1,6 +1,7 @@
-'''
-Copyright 2019 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 import os
@@ -156,6 +157,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         # ZeRO stage 1 (False) or 2 (True)
         self.partition_gradients = partition_grads
+        self.zero_stage_string = "ZeRO-2" if partition_grads else "ZeRO-1"
 
         self.timers = timers
 
@@ -218,16 +220,16 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.fp16_master_weights_and_gradients = fp16_master_weights_and_gradients
 
         if self.fp16_master_weights_and_gradients:
-            assert self.cpu_offload and type(self.optimizer) in [
-                DeepSpeedCPUAdam
-            ], f"fp16_master_and_gradients requires optimizer to support keeping fp16 master and gradients while keeping the optimizer states in fp32. Currently only supported using ZeRO-Offload with DeepSpeedCPUAdam. But current setting is ZeRO-Offload:{self.cpu_offload} and optimizer type {type(self.optimizer)}. Either disable fp16_master_weights_and_gradients or enable ZeRO-2 Offload with DeepSpeedCPUAdam"
+            assert self.cpu_offload and type(self.optimizer) in [DeepSpeedCPUAdam], \
+            f"fp16_master_and_gradients requires optimizer to support keeping fp16 master and gradients while keeping the optimizer states in fp32."\
+            f"Currently only supported using ZeRO-Offload with DeepSpeedCPUAdam. But current setting is ZeRO-Offload:{self.cpu_offload} and optimizer type {type(self.optimizer)}." \
+            f"Either disable fp16_master_weights_and_gradients or enable {self.zero_stage_string} Offload with DeepSpeedCPUAdam."
 
         if self.reduce_scatter:
-            assert self.communication_data_type in (
-                torch.float16, torch.bfloat16
-            ), f"ZeRO-2 supports only float16 or bfloat16 communication_data_type with reduce scatter enabled. Got: '{self.communication_data_type}'"
-            assert self.gradient_predivide_factor == 1.0, "gradient_predivide_factor != 1.0 is not yet supported with ZeRO-2 with reduce scatter enabled"
-            assert self.postscale_gradients, "pre-scale gradients is not yet supported with ZeRO-2 with reduce scatter enabled"
+            valid_reduce_scatter_dtypes = (torch.float16, torch.bfloat16, torch.float32)
+            assert self.communication_data_type in valid_reduce_scatter_dtypes, f"{self.zero_stage_string} supports {valid_reduce_scatter_dtypes} communication_data_type with reduce scatter enabled. Got: '{self.communication_data_type}'"
+            assert self.gradient_predivide_factor == 1.0, "gradient_predivide_factor != 1.0 is not yet supported with {self.zero_stage_string} with reduce scatter enabled"
+            assert self.postscale_gradients, "pre-scale gradients is not yet supported with {self.zero_stage_string} with reduce scatter enabled"
 
         # param flattened by groups
         self.bit16_groups = []
@@ -1622,11 +1624,13 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def _optimizer_step(self, group_no):
         original_param_groups = self.optimizer.param_groups
         self.optimizer.param_groups = [original_param_groups[group_no]]
-        from deepspeed.ops.adam import DeepSpeedCPUAdam
-        if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
-            self.optimizer.step(fp16_param_groups=[self.get_bit16_param_group(group_no)])
-        else:
-            self.optimizer.step()
+        # Disabling this as the C++ side copy & synchornize is not working correctly
+        #from deepspeed.ops.adam import DeepSpeedCPUAdam
+        #if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
+        #    self.optimizer.step(fp16_param_groups=[self.get_bit16_param_group(group_no)])
+        #else:
+        #    self.optimizer.step()
+        self.optimizer.step()
         self.optimizer.param_groups = original_param_groups
 
     def step(self, closure=None):
@@ -1677,11 +1681,15 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 self.start_timers([OPTIMIZER_STEP])
                 self._optimizer_step(i)
 
-                from deepspeed.ops.adam import DeepSpeedCPUAdam
-                if not (type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half):
-                    bit16_partitions = self.parallel_partitioned_bit16_groups[i]
-                    fp32_partition = self.single_partition_of_fp32_groups[i]
-                    bit16_partitions[partition_id].data.copy_(fp32_partition.data)
+                # Disabled, this is not currently working
+                #from deepspeed.ops.adam import DeepSpeedCPUAdam
+                #if not (type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half):
+                #    bit16_partitions = self.parallel_partitioned_bit16_groups[i]
+                #    fp32_partition = self.single_partition_of_fp32_groups[i]
+                #    bit16_partitions[partition_id].data.copy_(fp32_partition.data)
+                bit16_partitions = self.parallel_partitioned_bit16_groups[i]
+                fp32_partition = self.single_partition_of_fp32_groups[i]
+                bit16_partitions[partition_id].data.copy_(fp32_partition.data)
 
                 self.stop_timers([OPTIMIZER_STEP])
             else:
