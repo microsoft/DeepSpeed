@@ -1,10 +1,13 @@
-'''
-Copyright 2023 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from abc import ABC, abstractmethod
 
 
 class CUDAGraph(ABC):
+
     def __init__(self, enable_cuda_graph=False):
         super().__init__()
         self.enable_cuda_graph = enable_cuda_graph

@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from types import SimpleNamespace
 import torch
@@ -11,6 +14,7 @@ from unit.common import DistributedTest
 
 
 class DanglingBias(torch.nn.Linear):
+
     def forward(self, *inputs):
         out = super().forward(*inputs)
         # return the bias to trigger a dangling external param
@@ -19,18 +23,21 @@ class DanglingBias(torch.nn.Linear):
 
 class DataClass:
     """Just wraps data in an object. """
+
     def __init__(self, out=None, bias=None):
         self.out = out
         self.bias = bias
 
 
 class DanglingBiasClass(DanglingBias):
+
     def forward(self, *inputs):
         out, bias = super().forward(*inputs)
         return DataClass(out=out, bias=bias)
 
 
 class DanglingAttention(torch.nn.Linear):
+
     def __init__(self, dim=16, return_obj=False):
         super().__init__(dim, dim)
         self.dim = dim
@@ -56,6 +63,7 @@ class DanglingAttention(torch.nn.Linear):
 
 
 class ModelContainer(torch.nn.Module):
+
     def __init__(self, dim=16, return_obj=False):
         super().__init__()
         self.dim = dim
@@ -70,6 +78,7 @@ class ModelContainer(torch.nn.Module):
 
 
 class DanglingExt(torch.nn.Module):
+
     def __init__(self, dim=16):
         super().__init__()
         self.dim = dim
@@ -86,6 +95,7 @@ class DanglingExt(torch.nn.Module):
 
 
 class ModelContainerVariableOutputType(ModelContainer):
+
     def __init__(self, dim=16, output_type=dict):
         super().__init__()
         self.output_type = output_type
@@ -129,10 +139,7 @@ class TestReturnParam(DistributedTest):
         net = DanglingExt()
 
         args = SimpleNamespace(local_rank=0)
-        engine, _, _, _ = deepspeed.initialize(args=args,
-                                                model=net,
-                                                model_parameters=net.parameters(),
-                                                config=config)
+        engine, _, _, _ = deepspeed.initialize(args=args, model=net, model_parameters=net.parameters(), config=config)
 
         for _ in range(5):
             input = torch.rand(net.dim).to(engine.device).half()
@@ -148,10 +155,7 @@ class TestReturnParam(DistributedTest):
         net = ModelContainer(return_obj=True)
 
         args = SimpleNamespace(local_rank=0)
-        engine, _, _, _ = deepspeed.initialize(args=args,
-                                                model=net,
-                                                model_parameters=net.parameters(),
-                                                config=config)
+        engine, _, _, _ = deepspeed.initialize(args=args, model=net, model_parameters=net.parameters(), config=config)
 
         for _ in range(5):
             input = torch.rand(net.dim).to(engine.device).half()
@@ -169,10 +173,7 @@ class TestReturnParam(DistributedTest):
         net = ModelContainerVariableOutputType(output_type=output_type)
 
         args = SimpleNamespace(local_rank=0)
-        engine, _, _, _ = deepspeed.initialize(args=args,
-                                                model=net,
-                                                model_parameters=net.parameters(),
-                                                config=config)
+        engine, _, _, _ = deepspeed.initialize(args=args, model=net, model_parameters=net.parameters(), config=config)
 
         for _ in range(1):
             input = torch.rand(net.dim).to(engine.device).half()

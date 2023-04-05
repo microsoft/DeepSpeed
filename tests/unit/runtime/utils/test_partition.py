@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import pytest
 
@@ -164,33 +167,9 @@ def test_float_midheavy():
 def test_balance_bert():
     # Parameters per layer for a transformer model with 24 transformers and hidden dim 1024
     weights = [
-        52559872,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        0,
-        52559872
+        52559872, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224,
+        12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224,
+        12596224, 12596224, 12596224, 0, 52559872
     ]
     P = 8
     parts = partition_balanced(weights, P)
