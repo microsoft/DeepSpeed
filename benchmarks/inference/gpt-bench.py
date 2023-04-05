@@ -96,11 +96,13 @@ for i in range(args.trials):
     end = time.time()
     responses.append(r)
     times.append(end - start)  # / (args.max_tokens - 3))
-    mtimes.append(sum(pipe.model.model_times()))
+    if args.deepspeed:
+        mtimes.append(sum(pipe.model.model_times()))
 
 if args.local_rank == 0:
     print_latency(times, "(e2e) latency")
-    print_latency(mtimes, "(model-only) latency")
+    if args.deepspeed:
+        print_latency(mtimes, "(model-only) latency")
     print_latency(map(lambda t: t / (args.max_tokens - 3), times), "(e2e) per token latency")
     print(f"RESPONSE 0:")
     print("-" * 30)
