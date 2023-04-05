@@ -1,26 +1,22 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 """
-    Copyright 2021 The Microsoft DeepSpeed Team
-
     DeepSpeed Communication Package: deepspeed.comm
-
     deepspeed.comm
         -- import and use deepspeeed.ops.comm
         -- use torch.distributed directly if both this package and torch.distributed use the same NCCL version
         -- use custom collectives
             -- can either use torch.dist or ds.ops.comm?
-
         Note: the old 1-bit compressed allreduce variants that resided in deepspeed.runtime.comm will be moved here as well.
-
     deepspeed.comm API
         -- must be kept fully compatible (same signatures) as torch.dist API to ensure backward/cross-framework compatibility.
         -- e.g. if a client code used
             from deepspeed import comm as dist
-
             instead of
             import torch.distributed as dist
-
             The code should work without breaking any of the public torch.distributed functionality
-
     Future:
         -- deepspeed groups API should be brought into ds.comm
 """
@@ -193,7 +189,7 @@ def is_available() -> bool:
     return True
 
 
-def set_backend(backend):
+def set_backend(backend_name):
     if not use_ds_backend:
         utils.logger.error(
             "DeepSpeed communication backend is required. Please use deepspeed.comm.init_distributed(backend, use_deepspeed=True) to use this functionality"
@@ -233,12 +229,11 @@ def all_gather(tensor_list,
     return cdb.all_gather(tensor_list=tensor_list, tensor=tensor, group=group, async_op=async_op)
 
 
-def has_reduce_scatter_base():
+def has_reduce_scatter_tensor():
     global cdb
     assert cdb is not None and cdb.is_initialized(
     ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    assert cdb.has_reduce_scatter_base is not None, 'has_reduce_scatter_base is not yet defined'
-    return cdb.has_reduce_scatter_base
+    return cdb.has_reduce_scatter_tensor()
 
 
 def reduce_scatter_fn(output_tensor,
@@ -251,18 +246,19 @@ def reduce_scatter_fn(output_tensor,
     global cdb
     assert cdb is not None and cdb.is_initialized(
     ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    if cdb.has_reduce_scatter_base:
-        return reduce_scatter_base(output_tensor,
-                                   tensor,
-                                   op=op,
-                                   group=group,
-                                   async_op=async_op,
-                                   prof=prof,
-                                   debug=debug)
+    if cdb.has_reduce_scatter_tensor():
+        return reduce_scatter_tensor(output_tensor,
+                                     tensor,
+                                     op=op,
+                                     group=group,
+                                     async_op=async_op,
+                                     prof=prof,
+                                     debug=debug)
     else:
-        utils.logger.warning_once("unable to find torch.distributed._reduce_scatter_base. will fall back to "
-                                  "torch.distributed.all_gather which will result in suboptimal performance. "
-                                  "please consider upgrading your pytorch installation.")
+        if get_rank() == 0:
+            utils.logger.warning_once("unable to find torch.distributed.reduce_scatter_tensor. will fall back to "
+                                      "torch.distributed.all_gather which will result in suboptimal performance. "
+                                      "please consider upgrading your pytorch installation.")
         input_tensor_lst = list(torch.chunk(tensor, cdb.get_world_size(group)))
         return reduce_scatter(output_tensor,
                               input_tensor_lst,
@@ -274,51 +270,50 @@ def reduce_scatter_fn(output_tensor,
 
 
 @timed_op
-def reduce_scatter_base(output_tensor,
-                        tensor,
-                        op=ReduceOp.SUM,
-                        group=None,
-                        async_op=False,
-                        prof=False,
-                        log_name='reduce_scatter_base',
-                        debug=get_caller_func()):
+def reduce_scatter_tensor(output_tensor,
+                          tensor,
+                          op=ReduceOp.SUM,
+                          group=None,
+                          async_op=False,
+                          prof=False,
+                          log_name='reduce_scatter_tensor',
+                          debug=get_caller_func()):
     global cdb
-    return cdb.reduce_scatter_base(output_tensor=output_tensor,
-                                   input_tensor=tensor,
-                                   op=op,
-                                   group=group,
-                                   async_op=async_op)
+    return cdb.reduce_scatter_tensor(output_tensor=output_tensor,
+                                     input_tensor=tensor,
+                                     op=op,
+                                     group=group,
+                                     async_op=async_op)
 
 
 @timed_op
-def all_gather_base(output_tensor,
-                    tensor,
-                    group=None,
-                    async_op=False,
-                    prof=False,
-                    log_name='all_gather_base',
-                    debug=get_caller_func()):
+def all_gather_into_tensor(output_tensor,
+                           tensor,
+                           group=None,
+                           async_op=False,
+                           prof=False,
+                           log_name='all_gather_into_tensor',
+                           debug=get_caller_func()):
     global cdb
-    return cdb.all_gather_base(output_tensor=output_tensor, input_tensor=tensor, group=group, async_op=async_op)
+    return cdb.all_gather_into_tensor(output_tensor=output_tensor, input_tensor=tensor, group=group, async_op=async_op)
 
 
-def has_allgather_base():
+def has_all_gather_into_tensor():
     global cdb
     assert cdb is not None and cdb.is_initialized(
     ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    assert cdb.has_allgather_base is not None, 'has_allgather_base is not yet defined'
-    return cdb.has_allgather_base
+    return cdb.has_all_gather_into_tensor()
 
 
 def allgather_fn(output_tensor, input_tensor, group=None, async_op=False, debug=get_caller_func()):
     global cdb
     assert cdb is not None and cdb.is_initialized(
     ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    if cdb.has_allgather_base:
-        return all_gather_base(output_tensor, input_tensor, group=group, async_op=async_op, debug=debug)
+    if cdb.has_all_gather_into_tensor():
+        return all_gather_into_tensor(output_tensor, input_tensor, group=group, async_op=async_op, debug=debug)
     else:
         if get_rank() == 0:
-            utils.logger.warning_once("unable to find torch.distributed._all_gather_base. will fall back to "
+            utils.logger.warning_once("unable to find torch.distributed.all_gather_into_tensor. will fall back to "
                                       "torch.distributed.all_gather which will result in suboptimal performance. "
                                       "please consider upgrading your pytorch installation.")
         output_tensors = list(torch.chunk(output_tensor, cdb.get_world_size(group)))

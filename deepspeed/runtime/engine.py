@@ -1,6 +1,7 @@
-"""
-Copyright 2019 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import os
 import re
@@ -797,10 +798,9 @@ class DeepSpeedEngine(Module):
         res = self._config.communication_data_type
         if res is not None:
             return res
-        elif self.fp16_enabled() or self.zero_optimization_stage():
+
+        if self.fp16_enabled():
             return torch.float16
-        elif self.bfloat16_enabled():
-            return torch.bfloat16
 
         return torch.float32
 
