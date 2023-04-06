@@ -1,22 +1,29 @@
-# Copyright 2019 The Microsoft DeepSpeed Team
-# Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#Taken and modified for DeepSpeed from:
-#    https://github.com/NVIDIA/Megatron-LM/blob/master/fp16/loss_scaler.py
-#Commit: 93ab4bea59dc5cbf97c079d313741866af4deac9
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+"""
+Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+Taken and modified for DeepSpeed from:
+    https://github.com/NVIDIA/Megatron-LM/blob/master/fp16/loss_scaler.py
+Commit: 93ab4bea59dc5cbf97c079d313741866af4deac9
+"""
 
 import torch
+from deepspeed import comm as dist
+from deepspeed.utils import logger
 
 INITIAL_LOSS_SCALE = 'init_scale'
 SCALE_WINDOW = 'scale_window'
@@ -35,6 +42,7 @@ class LossScalerBase:
     """LossScalarBase
     Base class for a loss scaler
     """
+
     def __init__(self, cur_scale):
         self.cur_scale = cur_scale
         self.dynamic = False
@@ -65,6 +73,7 @@ class LossScaler(LossScalerBase):
     Args:
         scale (float, optional, default=1.0):  The loss scale.
     """
+
     def __init__(self, scale=1):
         super(LossScaler, self).__init__(scale)
 
@@ -102,6 +111,7 @@ class DynamicLossScaler(LossScalerBase):
         scale_factor (float, optional, default=2.0):  Factor used when adjusting the loss scale. If an overflow is encountered, the loss scale is readjusted to loss scale/``scale_factor``.  If ``scale_window`` consecutive iterations take place without an overflow, the loss scale is readjusted to loss_scale*``scale_factor``.
         scale_window (int, optional, default=1000):  Number of consecutive iterations without an overflow to wait before increasing the loss scale.
     """
+
     def __init__(self,
                  init_scale=2**32,
                  scale_factor=2.,
@@ -109,7 +119,8 @@ class DynamicLossScaler(LossScalerBase):
                  min_scale=1,
                  delayed_shift=1,
                  consecutive_hysteresis=False,
-                 raise_error_at_min_scale=True):
+                 raise_error_at_min_scale=True,
+                 dtype=torch.half):
         super(DynamicLossScaler, self).__init__(init_scale)
         self.cur_iter = 0
         self.last_overflow_iter = -1
@@ -121,6 +132,7 @@ class DynamicLossScaler(LossScalerBase):
         self.consecutive_hysteresis = consecutive_hysteresis
         self.raise_error_at_min_scale = raise_error_at_min_scale
         self.dynamic = True
+        self.dtype = dtype
 
     # `params` is a list / generator of torch.Variable
     def has_overflow_serial(self, params):
@@ -158,10 +170,21 @@ class DynamicLossScaler(LossScalerBase):
             if self.delayed_shift == 1 or self.cur_hysteresis == 1:
                 if (self.cur_scale == self.min_scale) and self.raise_error_at_min_scale:
                     raise Exception(
-                        "Current loss scale already at minimum - cannot decrease scale anymore. Exiting run."
-                    )
-                self.cur_scale = max(self.cur_scale / self.scale_factor, self.min_scale)
+                        "Current loss scale already at minimum - cannot decrease scale anymore. Exiting run.")
+                else:
+                    next_scale = max(self.cur_scale / self.scale_factor, self.min_scale)
+                    if dist.get_rank() == 0:
+                        overflow_msg = f"[deepspeed] OVERFLOW! Rank {dist.get_rank()} Skipping step."
+                        if self.dtype == torch.half:
+                            overflow_msg += f" Attempted loss scale: {int(self.cur_scale)}, reducing to {int(next_scale)}"
+                        logger.info(overflow_msg)
+                    self.cur_scale = next_scale
             else:
+                if dist.get_rank() == 0:
+                    overflow_msg = f"[deepspeed] OVERFLOW! Rank {dist.get_rank()} Skipping step."
+                    if self.dtype == torch.half:
+                        overflow_msg += f" Attempted loss scale: {int(self.cur_scale)}, but hysteresis is {self.cur_hysteresis}. Reducing hysteresis to {self.cur_hysteresis-1}"
+                    logger.info(overflow_msg)
                 self.cur_hysteresis -= 1
             self.last_overflow_iter = self.cur_iter
         else:
@@ -179,8 +202,8 @@ class DynamicLossScaler(LossScalerBase):
 def CreateLossScaler(dtype, static_loss_scale, dynamic_scaling, dynamic_loss_args):
     if dtype == torch.half and dynamic_scaling:
         if dynamic_loss_args is None:
-            return DynamicLossScaler()
-        return DynamicLossScaler(**dynamic_loss_args)
+            return DynamicLossScaler(dtype=dtype)
+        return DynamicLossScaler(dtype=dtype, **dynamic_loss_args)
 
     loss_scale_value = static_loss_scale if dtype == torch.half else 1.0
     return LossScaler(scale=loss_scale_value)

@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 import deepspeed
@@ -37,9 +40,7 @@ class TestFused(DistributedTest):
         }
         hidden_dim = 1
         model = SimpleModel(hidden_dim)
-        model, optim, _, _ = deepspeed.initialize(config=config_dict,
-                                                  model=model,
-                                                  model_parameters=model.parameters())
+        model, optim, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
         expected_loss_scale = 2**8
         expected_scale_window = 2
@@ -74,9 +75,7 @@ class TestFused(DistributedTest):
         }
         hidden_dim = 1
         model = SimpleModel(hidden_dim)
-        model, optim, _, _ = deepspeed.initialize(config=config_dict,
-                                                  model=model,
-                                                  model_parameters=model.parameters())
+        model, optim, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
         expected_loss_scale = 2**4
         # Ensure the dynamic loss scaler is correctly configured.
@@ -109,9 +108,7 @@ class TestFused(DistributedTest):
         }
         hidden_dim = 1
         model = SimpleModel(hidden_dim)
-        model, optim, _, _ = deepspeed.initialize(config=config_dict,
-                                                  model=model,
-                                                  model_parameters=model.parameters())
+        model, optim, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
         expected_loss_scale = 2**8
         expected_scale_window = 2
@@ -168,9 +165,7 @@ class TestUnfused(DistributedTest):
         }
         hidden_dim = 1
         model = SimpleModel(hidden_dim)
-        model, optim, _, _ = deepspeed.initialize(config=config_dict,
-                                                  model=model,
-                                                  model_parameters=model.parameters())
+        model, optim, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
         expected_loss_scale = 2**8
         expected_scale_window = 2
         # Ensure the dynamic loss scaler is correctly configured.
@@ -205,9 +200,7 @@ class TestUnfused(DistributedTest):
         }
         hidden_dim = 1
         model = SimpleModel(hidden_dim)
-        model, optim, _, _ = deepspeed.initialize(config=config_dict,
-                                                  model=model,
-                                                  model_parameters=model.parameters())
+        model, optim, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
         expected_loss_scale = 2**4
         expected_min_loss_scale = 0.25
@@ -242,9 +235,7 @@ class TestUnfused(DistributedTest):
         }
         hidden_dim = 1
         model = SimpleModel(hidden_dim)
-        model, optim, _, _ = deepspeed.initialize(config=config_dict,
-                                                  model=model,
-                                                  model_parameters=model.parameters())
+        model, optim, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
         expected_loss_scale = 2**8
         expected_scale_window = 2
