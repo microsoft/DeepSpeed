@@ -104,3 +104,30 @@ def test_core_deepscale_arguments():
 def test_core_binding_arguments():
     core_list = parse_range_list("0,2-4,6,8-9")
     assert core_list == [0, 2, 3, 4, 6, 8, 9]
+
+    try:
+        # negative case for range overlapping
+        core_list = parse_range_list("0,2-6,5-9")
+    except ValueError as e:
+        pass
+    else:
+        # invalid core list must fail
+        assert False
+
+    try:
+        # negative case for reverse order -- case 1
+        core_list = parse_range_list("8,2-6")
+    except ValueError as e:
+        pass
+    else:
+        # invalid core list must fail
+        assert False
+
+    try:
+        # negative case for reverse order -- case 2
+        core_list = parse_range_list("1,6-2")
+    except ValueError as e:
+        pass
+    else:
+        # invalid core list must fail
+        assert False
