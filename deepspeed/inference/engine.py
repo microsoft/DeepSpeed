@@ -144,7 +144,8 @@ class InferenceEngine(Module):
 
         if self.injection_dict or not config.replace_with_kernel_inject:
             # This is a hack to redefine the alibi func due to TP
-            self.build_alibi_tensor()
+            if config.tensor_parallel.tp_size > 1:
+                self.build_alibi_tensor()
 
         if get_accelerator().device_name() == 'cuda' and config.enable_cuda_graph:
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
