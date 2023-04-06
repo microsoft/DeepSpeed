@@ -69,10 +69,10 @@ class SparseAttnBuilder(OpBuilder):
 
         if pkg_version:
             installed_triton = pkg_version.parse(triton.__version__)
-            triton_mismatch = installed_triton != pkg_version.parse("1.0.0")
+            triton_mismatch = installed_triton != pkg_version.parse("1.0.0") and installed_triton != pkg_version.parse("2.0.0")
         else:
             installed_triton = triton.__version__
-            triton_mismatch = installed_triton != "1.0.0"
+            triton_mismatch = installed_triton != "1.0.0" or installed_triton != "2.0.0"
 
         if triton_mismatch:
             self.warning(f"using untested triton version ({installed_triton}), only 1.0.0 is known to be compatible")
