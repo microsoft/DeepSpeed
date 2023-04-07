@@ -541,10 +541,13 @@ def partition_uniform(num_items, num_parts):
         for p in range(num_parts + 1):
             parts[p] = min(p, num_items)
         return parts
-
     chunksize = floor(num_items / num_parts)
+    turn_spot = num_parts - (num_items - (chunksize * num_parts))
     for p in range(num_parts):
-        parts[p] = min(chunksize * p, num_items)
+        if p < turn_spot:
+            parts[p] = min(chunksize * p, num_items)
+        else:
+            parts[p] = min(chunksize * turn_spot + (chunksize+1)*(p-turn_spot), num_items)
     parts[num_parts] = num_items
     return parts
 
