@@ -305,17 +305,6 @@ def generic_injection(module, fp16=False, enable_cuda_graph=True):
 container_g = None
 
 
-def check_inference_tuple(model, config):
-
-    if not config.replace_with_kernel_inject:
-        layer_names = [name for name, _ in model.named_modules()]
-        policies = config.injection_policy_tuple
-
-        for policy in policies:
-            if not any(name.endswith(policy) for name in layer_names):
-                raise ValueError(f"Injection policy layer'{policy}' not valid.")
-
-
 def replace_transformer_layer(orig_layer_impl,
                               model,
                               checkpoint_dict,
@@ -550,7 +539,6 @@ def replace_transformer_layer(orig_layer_impl,
 
         return new_module
 
-    check_inference_tuple(model, config)
     replaced_module = replace_module(model=model,
                                      orig_class=orig_layer_impl,
                                      replace_fn=replace_fn,
