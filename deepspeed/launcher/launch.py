@@ -19,6 +19,7 @@ import base64
 import time
 import signal
 import psutil
+from shutil import which
 from collections import defaultdict
 from typing import Dict
 from argparse import ArgumentParser, REMAINDER
@@ -285,6 +286,9 @@ def main():
             # spawn the processes
             cmd = []
             if args.bind_cores_to_rank:
+                if which('numactl') == None:
+                    raise ValueError("No command 'numactl' detected in path. "
+                                     "numactl is needed when -bind_cores_to_rank arg is used.")
                 if 'KMP_AFFINITY' in os.environ.keys():
                     raise ValueError("Environment variable KMP_AFFINITY conflicts with numactl "
                                      "because it interfere with how many CPU cores numactl can set. "
