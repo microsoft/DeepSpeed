@@ -106,10 +106,9 @@ else:
 
 if torch_available and not torch.cuda.is_available():
     # Fix to allow docker builds, similar to https://github.com/NVIDIA/apex/issues/486.
-    print(
-        "[WARNING] Torch did not find cuda available, if cross-compiling or running with cpu only "
-        "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
-        "(compute capabilities 6.0, 6.1, 6.2)")
+    print("[WARNING] Torch did not find cuda available, if cross-compiling or running with cpu only "
+          "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
+          "(compute capabilities 6.0, 6.1, 6.2)")
     if os.environ.get("TORCH_CUDA_ARCH_LIST", None) is None:
         os.environ["TORCH_CUDA_ARCH_LIST"] = get_default_compute_capabilities()
 
