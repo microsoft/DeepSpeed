@@ -1,6 +1,7 @@
-"""
-Copyright 2019 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import os
 import re
@@ -111,7 +112,6 @@ try:
 except ImportError:
     # Fail silently so we don't spam logs unnecessarily if user isn't using amp
     APEX_INSTALLED = False
-    pass
 
 
 def split_half_float_double_sparse(tensors):
@@ -797,10 +797,9 @@ class DeepSpeedEngine(Module):
         res = self._config.communication_data_type
         if res is not None:
             return res
-        elif self.fp16_enabled() or self.zero_optimization_stage():
+
+        if self.fp16_enabled():
             return torch.float16
-        elif self.bfloat16_enabled():
-            return torch.bfloat16
 
         return torch.float32
 
@@ -1702,7 +1701,6 @@ class DeepSpeedEngine(Module):
             # we are in a forward pass.
             for module in self.module.modules():
                 module._parameters._in_forward = True
-                pass
 
         self._start_timers(self.engine_timers.forward_timers)
 
