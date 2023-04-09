@@ -501,10 +501,10 @@ def _conv_flops_compute(input, weight, bias=None, stride=1, padding=0, dilation=
         if padding == 'valid':
             paddings = (0, ) * length
         elif padding == 'same':
-            paddings = []
+            paddings = ()
             for d, w in zip(dilations,weight):
                 total_padding = d * (w-1)
-                paddings.append(total_padding // 2)
+                paddings += (total_padding // 2, )
     elif isinstance(padding, tuple):
         paddings = padding
     else:
