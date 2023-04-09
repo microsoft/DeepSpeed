@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import os
 import torch
@@ -18,20 +21,6 @@ def older_torch():
         return True
     else:
         return False
-
-
-def has_allgather_base():
-    '''
-        Helper to check if torch.distributed has _all_gather_base
-    '''
-    return hasattr(torch.distributed, "_all_gather_base")
-
-
-def has_reduce_scatter_base():
-    '''
-        Helper to check if torch.distributed has _reduce_scatter_base
-    '''
-    return hasattr(torch.distributed, "_reduce_scatter_base")
 
 
 def get_local_rank_from_launcher():
@@ -84,11 +73,7 @@ def get_world_size_from_launcher():
 
 def get_default_args(func):
     signature = inspect.signature(func)
-    return {
-        k: v.default
-        for k,
-        v in signature.parameters.items() if v.default is not inspect.Parameter.empty
-    }
+    return {k: v.default for k, v in signature.parameters.items() if v.default is not inspect.Parameter.empty}
 
 
 # We need this hacky function since torch doesn't consistently name or place the input tensor args
