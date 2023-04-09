@@ -19,7 +19,7 @@ import base64
 import time
 import signal
 import psutil
-from shutil import which
+import distutils
 from collections import defaultdict
 from typing import Dict
 from argparse import ArgumentParser, REMAINDER
@@ -191,6 +191,28 @@ def get_numa_cores():
     return ret
 
 
+def check_for_numactl_pkg():
+    libs = dict(
+        dpkg=["-l", "numactl", "apt"],
+        pacman=["-Q", "numactl", "pacman"],
+        rpm=["-q", "numactl", "yum"],
+    )
+
+    found = False
+    for pkgmgr, data in libs.items():
+        flag, lib, tool = data
+        path = distutils.spawn.find_executable(pkgmgr)
+        if path is not None:
+            cmd = f"{pkgmgr} {flag} {lib}"
+            result = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            if result.wait() == 0:
+                found = True
+            else:
+                print(f"please install the {lib} package with {tool}")
+            break
+    return found
+
+
 def main():
     args = parse_args()
     current_env = os.environ.copy()
@@ -286,9 +308,7 @@ def main():
             # spawn the processes
             cmd = []
             if args.bind_cores_to_rank:
-                if which('numactl') == None:
-                    raise ValueError("No command 'numactl' detected in path. "
-                                     "numactl is needed when -bind_cores_to_rank arg is used.")
+                check_for_numactl_pkg()
                 if 'KMP_AFFINITY' in os.environ.keys():
                     raise ValueError("Environment variable KMP_AFFINITY conflicts with numactl "
                                      "because it interfere with how many CPU cores numactl can set. "
