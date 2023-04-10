@@ -66,7 +66,7 @@ Next, we dive deeper into the three capabilities of DeepSpeed-Chat introduced ab
 
 ### Training your first ChatGPT-Style model is so easy with DeepSpeed-Chat’s RLHF examples
 
-#### 1. One single script completes all three stages of RLHF training and generates your first ChatGPT model!
+> One single script completes all three stages of RLHF training and generates your first ChatGPT model!
 
 We use an example of pretrained OPT-13B as the actor model and OPT-350M as the reward model in the following single script to generate a final 13B ChatGPT-style model:
 
@@ -87,7 +87,8 @@ In about half a day, your 13B model would be fully trained with its checkpoints 
 Table 4. E2E time breakdown for training a 13 billion parameter ChatGPT model via DeepSpeed-Chat on a single DGX node with 8 NVIDIA A100-40G GPUs.
 
 
-### 2. Test your final model with DeepSpeed-Chat’s Inference API
+> Test your final model with DeepSpeed-Chat’s Inference API
+
 Now it is time to plug-in and test your final model trained by DeepSpeed-Chat! You can play with not only Q&A sessions but also conversation-style interactions.
 
 ```
