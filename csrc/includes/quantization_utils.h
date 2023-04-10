@@ -103,7 +103,7 @@ public:
         } else {
             scale = ((1 << numBits)) / (max - min);
         }
-        offset = (max + min) / 2;
+        offset = (max + min) / 2 + 0.5 / scale;
     }
 
     DS_D_INLINE int8_t quantize(__half val)
@@ -111,7 +111,7 @@ public:
         constexpr int32_t q_min = -(1 << (numBits - 1));
         constexpr int32_t q_max = (1 << (numBits - 1)) - 1;
 
-        float val_f = (conversion::to<float>(val) - offset) * scale - 0.5;
+        float val_f = (conversion::to<float>(val) - offset) * scale;
         int32_t data_i32 = conversion::to<int32_t>(val_f);
         data_i32 = min(max(data_i32, q_min), q_max);
         return (int8_t)data_i32;
@@ -120,7 +120,7 @@ public:
     template <typename T>
     DS_D_INLINE T dequantize(int8_t val)
     {
-        const float val_deq_f = ((conversion::to<float>(val) + 0.5) * scale) + offset;
+        const float val_deq_f = ((conversion::to<float>(val)) * scale) + offset;
         return conversion::to<__half>(val_deq_f);
     }
 
