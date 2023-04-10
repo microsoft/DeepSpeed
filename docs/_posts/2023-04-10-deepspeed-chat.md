@@ -33,32 +33,34 @@ DeepSpeed-RLHF system is capable of unparalleled efficiency at scale, making com
 
 ***Efficiency and Affordability***: In terms of efficiency, DeepSpeed-HE is over 15x faster than any existing system (details here[link]), making RLHF training both fast and affordable. For instance, DeepSpeed-HE can train an OPT-13.2B in just 9 hours and OPT-30B in 18 hours on Azure Cloud for under $300 and $600, respectively.
 
-Table 1. Single-Node 8x A100: Training Time and Corresponding Cost on Azure*
 
 | GPUs        | OPT-6.7B |  OPT-13.2B     |     OPT-30B     |     OPT-66B    | 
 |-------------|:--------:|:--------------:|:-------------:|:-----------:|
 | 8x A100     | 5.7 hours | 10.8 hours |	 1.85 days |	 NA |
 | 8x A100     | 4.1 hours ($132) | 	9 hours ($290) | 	18 hours ($580) | 	 2.1 days ($1620) |
 
+Table 1. Single-Node 8x A100: Training Time and Corresponding Cost on Azure*
+
 
 ***Excellent Scalability***: DeepSpeed-HE supports models with hundreds of billions of parameters and can achieve excellent scalability on multi-node multi-GPU systems. As a result, even a 13.2B model can be trained in 1.25 hours and a massive 175B model can be trained with DeepSpeed-HE in under a day.
 
-Table 2. Multi-Node 64x A100: Training Time and Corresponding Cost on Azure*
 
 | GPUs	        | OPT-13.2B 	    | OPT-30B	      | OPT-66B	      | OPT-like-175B | 
 |---------------|:-----------------:|:---------------:|:-------------:|:-------------:|
 | 64x A100 80G	| 1.25 hours ($320)	| 4 hours ($1024) | 7.5 hours ($1920)	| 20 hours ($5120)| 
 
+Table 2. Multi-Node 64x A100: Training Time and Corresponding Cost on Azure*
 
 > ***VERY IMPORTANT DETAILS***: The numbers in both tables above are for Stage 3 of the training and based on actual measured training throughput on DeepSpeed-RLHF curated dataset and training recipe which trains for one epoch on a total of 135M tokens (6 open-sourced datasets with 40% used for RLHF training stage, i.e., Dahoas/rm-static, Dahoas/full-hh-rlhf, Dahoas/synthetic-instruct-gptj-pairwise, yitingxie/rlhf-reward-datasets, openai/webgpt_comparisons, and stanfordnlp/SHP from Huggingface Datasets. In more detail, we have in total 67.5M query tokens (131.9k queries with sequence length 256) and 67.5M generated tokens (131.9k answers with sequence length 256), and a maximum global batch size per step of 0.5M tokens (1024 query-answer pairs). The reward model size is 350M. See [here] for even more details. We urge readers to pay attention to these specifications before making any cost and e2e time comparisons with DeepSpeed-RLHF.
 
 ***Democratizing RLHF Training***: With just a single GPU, DeepSpeed-HE supports training models with over 13 billion parameters, enabling data scientists without access to multi-GPU systems to create not just toy RLHF models but large and powerful ones that can be used in real-world scenarios.
 
-Table 3. Max Model Size Supported by DeepSpeed-HE on a Single GPU
 	
 |            |	V100 32G | 	A6000 48G | A100 40G | A100 80G  |
 |------------|:---------:|:----------:|:--------:|:---------:|
 | Model Size |	OPT-2.7B | 	OPT-6.7B  | OPT-6.7B | OPT-13.2B | 
+
+Table 3. Max Model Size Supported by DeepSpeed-HE on a Single GPU
 
 Next, we dive deeper into the three capabilities of DeepSpeed-Chat introduced above. We start with the easy-to-use experience by showing how you can train OPT-13.2B and OPT-66B models with DeepSpeed-RLHF system. If you are short on time, you can even train an OPT-1.3B model on a single consumer-grade GPU in just two hours.
 
