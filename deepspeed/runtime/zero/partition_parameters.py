@@ -1,7 +1,7 @@
-"""
-"Copyright 2020 The Microsoft DeepSpeed Team.
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import math
 import os
@@ -22,8 +22,10 @@ from .linear import zero3_linear_wrap
 
 import deepspeed
 from ..utils import get_only_unique_item, see_memory_usage
+from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 from deepspeed.runtime.zero.utils import assert_ints_same_as_other_ranks
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
+from deepspeed.runtime.config_utils import get_config_default
 from deepspeed.utils import instrument_w_nvtx, logger
 from deepspeed.comm.comm import init_distributed
 from deepspeed.utils.debug import (debug_param2name_id_shape, debug_param2name_id_shape_device, debug_module2name,
@@ -34,6 +36,46 @@ from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwa
 param_count = 0
 partitioned_param_data_shape = [0]
 zero_init_enabled = False
+
+
+class NoGatherHandle:
+
+    def __init__(self, param: Parameter) -> None:
+        if param.ds_status != ZeroParamStatus.INFLIGHT:
+            raise RuntimeError(f"expected param {param.ds_summary()} to be available")
+
+        param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(),
+                                             non_blocking=True).view(param.ds_shape)
+        self.__param = param
+
+    def wait(self) -> None:
+        get_accelerator().current_stream().synchronize()
+        self.__param.ds_status = ZeroParamStatus.AVAILABLE
+
+
+class NoGatherCoalescedHandle:
+
+    def __init__(self, params: List[Parameter]) -> None:
+        self.__params = params
+        self.__complete = False
+
+        for param in self.__params:
+            if param.ds_status != ZeroParamStatus.INFLIGHT:
+                raise RuntimeError(f"expected param {param.ds_summary()} to not be available")
+            param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(),
+                                                 non_blocking=True).view(param.ds_shape)
+
+    @instrument_w_nvtx
+    def wait(self) -> None:
+        if self.__complete:
+            return
+
+        get_accelerator().current_stream().synchronize()
+        for param in self.__params:
+            assert param.ds_status == ZeroParamStatus.INFLIGHT, f"expected param {param.ds_summary()} to be inflight"
+            param.ds_status = ZeroParamStatus.AVAILABLE
+
+        self.__complete = True
 
 
 def _dist_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group=None):
@@ -500,7 +542,6 @@ class AllGatherCoalescedHandle:
                     part_to_copy = self.__partitions[rank].narrow(
                         0, param_offset, min(param.ds_numel - param_start, param.ds_tensor.ds_numel))
                     partitions.append(part_to_copy)
-
             param.data = instrument_w_nvtx(torch.cat)(partitions).view(param.ds_shape)
             param.ds_status = ZeroParamStatus.AVAILABLE
 
@@ -512,9 +553,27 @@ class AllGatherCoalescedHandle:
         self.__complete = True
 
 
+def _no_gather_coalesced(params: Iterable[Parameter]) -> AllGatherCoalescedHandle:
+    for param in params:
+        if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
+            raise RuntimeError(param.ds_summary())
+        param.ds_status = ZeroParamStatus.INFLIGHT
+
+    params = sorted(params, key=lambda p: p.ds_id)
+    if len(params) == 1:
+        param, = params
+        return NoGatherHandle(param)
+    return NoGatherCoalescedHandle(params)
+
+
 # Replaces all parameters in module with Scattered Parameters
 class Init(InsertPostInitMethodToModuleSubClasses):
     param_id = 0
+    param_persistence_threshold = get_config_default(DeepSpeedZeroConfig, "param_persistence_threshold")
+    model_persistence_threshold = get_config_default(DeepSpeedZeroConfig, "model_persistence_threshold")
+    num_persisted_parameters = 0
+    num_persisted_elements = 0
+    apply_param_persistence = False
 
     def __init__(self,
                  module=None,
@@ -649,9 +708,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         self.local_device = torch.device(get_accelerator().device_name(os.environ["LOCAL_RANK"]))
         get_accelerator().set_device(self.local_device)
 
-        if _ds_config is not None and _ds_config.zero_config.offload_param is not None:
-            remote_device = _ds_config.zero_config.offload_param.device
-            pin_memory = _ds_config.zero_config.offload_param.pin_memory
+        if _ds_config is not None:
+            self._update_persist_config(_ds_config)
+
+            if _ds_config.zero_config.offload_param is not None:
+                remote_device = _ds_config.zero_config.offload_param.device
+                pin_memory = _ds_config.zero_config.offload_param.pin_memory
 
         self._validate_remote_device(remote_device, _ds_config)
 
@@ -672,11 +734,14 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             assert isinstance(module, torch.nn.Module)
             self._convert_to_zero_parameters(module.parameters(recurse=True))
 
-        self.use_all_gather_base = False
-        if dist.has_allgather_base():
-            self.use_all_gather_base = True
-        else:
-            logger.info(f"_all_gather_base API is not available in torch {torch.__version__}")
+        self.use_all_gather_into_tensor = dist.has_all_gather_into_tensor()
+        if not self.use_all_gather_into_tensor:
+            logger.info(f"all_gather_into_tensor API is not available in torch {torch.__version__}")
+
+    def _update_persist_config(self, ds_config):
+        Init.apply_param_persistence = True
+        Init.param_persistence_threshold = ds_config.zero_config.param_persistence_threshold
+        Init.model_persistence_threshold = ds_config.zero_config.model_persistence_threshold // self.world_size
 
     def _convert_to_zero_parameters(self, param_list):
         for param in param_list:
@@ -747,7 +812,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         # If this flag is true, then the parameters are replicated throughput training
         # And only partitioned before the step
-        param.ds_persist = False
+        if Init.apply_param_persistence and param.ds_numel <= Init.param_persistence_threshold and Init.num_persisted_elements + param.ds_numel <= Init.model_persistence_threshold:
+            param.ds_persist = True
+            Init.num_persisted_parameters += 1
+            Init.num_persisted_elements += param.ds_numel
+        else:
+            param.ds_persist = False
 
         param.is_external_param = False
 
@@ -773,6 +843,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
             # fetches from nvme if the partition is not available and in nvme
             self._ensure_availability_of_partitioned_params(params)
+
+            if self.world_size == 1:
+                return _no_gather_coalesced(params)
 
             for param in params:
                 if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
@@ -1030,11 +1103,16 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     print_rank_0(f"ID {param.ds_id} Initializing partition for the first time for nvme offload.")
 
                 else:
-                    partitioned_tensor = torch.empty(partition_size,
-                                                     dtype=param.dtype,
-                                                     device=OffloadDeviceEnum.cpu if self.remote_device
-                                                     == OffloadDeviceEnum.nvme else self.remote_device)
-                    if self.pin_memory:
+                    if param.ds_persist:
+                        device = self.local_device
+                    elif self.remote_device == OffloadDeviceEnum.nvme:
+                        device = OffloadDeviceEnum.cpu
+                    else:
+                        device = self.remote_device
+
+                    partitioned_tensor = torch.empty(partition_size, dtype=param.dtype, device=device)
+
+                    if device == OffloadDeviceEnum.cpu and self.pin_memory:
                         partitioned_tensor = get_accelerator().pin_memory(partitioned_tensor)
 
                 partitioned_tensor.requires_grad = False
@@ -1124,12 +1202,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         #                                                   param.ds_numel).view(param.ds_shape)
         #            param.data = replicated_tensor.data
         #            return None
-        if self.use_all_gather_base:
-            # try the _all_gather_base on PyTorch master branch
-            handle = dist.all_gather_base(flat_tensor,
-                                          param.ds_tensor.to(get_accelerator().device_name()),
-                                          group=self.ds_process_group,
-                                          async_op=async_op)
+        if self.use_all_gather_into_tensor:
+            # try the all_gather_into_tensor on PyTorch master branch
+            handle = dist.all_gather_into_tensor(flat_tensor,
+                                                 param.ds_tensor.to(get_accelerator().device_name()),
+                                                 group=self.ds_process_group,
+                                                 async_op=async_op)
         else:
             partitions = []
             for i in range(self.world_size):
@@ -1150,6 +1228,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         """
         if len(param_list) == 0:
             return
+
+        if self.world_size == 1:
+            handle = _no_gather_coalesced(param_list)
+            handle.wait()
+            return None
+
         # collect local tensors and partition sizes
         partition_sizes = []
         local_tensors = []
@@ -1172,12 +1256,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         for param_idx, param in enumerate(param_list):
             input_tensor = local_tensors[param_idx].view(-1)
 
-            if self.use_all_gather_base:
-                # try the _all_gather_base from Pytorch master
-                h = dist.all_gather_base(allgather_params[param_idx],
-                                         input_tensor,
-                                         group=self.ds_process_group,
-                                         async_op=True)
+            if self.use_all_gather_into_tensor:
+                # try the all_gather_into_tensor from Pytorch master
+                h = dist.all_gather_into_tensor(allgather_params[param_idx],
+                                                input_tensor,
+                                                group=self.ds_process_group,
+                                                async_op=True)
             else:
                 output_list = []
                 for i in range(self.world_size):

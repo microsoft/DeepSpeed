@@ -1,8 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
-"""
-Copyright (c) Microsoft Corporation
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 """
 Collection of DeepSpeed configuration utilities
 """
@@ -109,6 +108,13 @@ class DeepSpeedConfigModel(BaseModel):
         allow_population_by_field_name = True
         extra = "forbid"
         arbitrary_types_allowed = True
+
+
+def get_config_default(config, field_name):
+    assert field_name in config.__fields__, f"'{field_name}' is not a field in {config}"
+    assert not config.__fields__.get(
+        field_name).required, f"'{field_name}' is a required field and does not have a default value"
+    return config.__fields__.get(field_name).default
 
 
 class pp_int(int):
