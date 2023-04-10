@@ -62,11 +62,11 @@ Table 3. Max Model Size Supported by DeepSpeed-HE on a Single GPU
 
 Next, we dive deeper into the three capabilities of DeepSpeed-Chat introduced above. We start with the easy-to-use experience by showing how you can train OPT-13.2B and OPT-66B models with DeepSpeed-RLHF system. If you are short on time, you can even train an OPT-1.3B model on a single consumer-grade GPU in just two hours.
 
-# Easy-to-use ChatGPT Training and Inference Experience 
+## Easy-to-use ChatGPT Training and Inference Experience 
 
-## Training your first ChatGPT-Style model is so easy with DeepSpeed-Chat’s RLHF examples
+### Training your first ChatGPT-Style model is so easy with DeepSpeed-Chat’s RLHF examples
 
-### 1. One single script completes all three stages of RLHF training and generates your first ChatGPT model!
+#### 1. One single script completes all three stages of RLHF training and generates your first ChatGPT model!
 
 We use an example of pretrained OPT-13B as the actor model and OPT-350M as the reward model in the following single script to generate a final 13B ChatGPT-style model:
 
