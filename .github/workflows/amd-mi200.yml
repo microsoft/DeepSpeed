@@ -19,7 +19,7 @@ concurrency:
 jobs:
   amd-tests:
     # The type of runner that the job will run on
-    runs-on: [self-hosted, amd]
+    runs-on: [self-hosted, amd, mi200]
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -43,6 +43,11 @@ jobs:
           # git checkout 1cc453d33
           git rev-parse --short HEAD
           pip install .
+
+      - name: Install apex
+        run: |
+          pip install ninja
+          pip install -v --install-option="--cpp_ext" --install-option="--cuda_ext" 'git+https://github.com/ROCmSoftwarePlatform/apex.git'
 
       # Runs a set of commands using the runners shell
       - name: Install deepspeed
