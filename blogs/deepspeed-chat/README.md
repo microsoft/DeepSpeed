@@ -6,7 +6,7 @@
 
 <div align="center">
 
-<img src="../assets/images/hero-figure-black.png" width="600px" alt="DeepSpeed-Chat!"/>
+<img src="../assets/images/hero-figure-black.png" width="1000px" alt="DeepSpeed-Chat!"/>
 
 </div>
 
