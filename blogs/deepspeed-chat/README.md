@@ -318,6 +318,6 @@ We are very excited to share that DeepSpeed-Chat is now open-sourced and availab
 DeepSpeed-Chat is part of the bigger DeepSpeed ecosystem comprising of a multitude of Deep Learning systems and modeling technologies. To learn more,
 
 * Please visit our [website](https://www.deepspeed.ai/) for detailed blog posts, tutorials, and helpful documentation.
-* You can also follow us on our [English Twitter](https://twitter.com/MSFTDeepSpeed) and [Japanese Twitter](https://twitter.com/MSFTDeepSpeedJP) for latest news on DeepSpeed.
+* You can also follow us on our [English Twitter](https://twitter.com/MSFTDeepSpeed) and [Japanese Twitter](https://twitter.com/MSFTDeepSpeedJP) for latest news on DeepSpeed. For Chinese users, you can follow 开源社 kaiyuanshe WeChat(微信) 公众号 where we will post our Chinese blogs.
 
 DeepSpeed welcomes your contributions! We encourage you to report issues, contribute PRs, and join discussions on the [DeepSpeed GitHub](https://github.com/microsoft/DeepSpeed/) page. Please see our [contributing guide](https://github.com/microsoft/DeepSpeed/blob/master/CONTRIBUTING.md) for more details. We are open to collaborations with universities, research labs, companies, such as those working together on deep learning research, applying DeepSpeed to empower real-world AI models and applications, and so on. For such requests (and other requests unsuitable for GitHub), please directly email to deepspeed-info@microsoft.com.
