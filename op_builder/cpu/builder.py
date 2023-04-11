@@ -1,6 +1,8 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 try:
     # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
     # if successful this also means we're doing a local install and not JIT compile path
