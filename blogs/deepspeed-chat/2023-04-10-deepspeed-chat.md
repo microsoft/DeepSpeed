@@ -2,7 +2,7 @@
 # DeepSpeed Chat: Easy, Fast and Affordable RLHF Training of ChatGPT-like Models at All Scales
 
 TODO: remove mascot and replace with Hero Figure
-[ ![Mascot](../assets/images/ds-chat/mascot.png) ](../assets/images/ds-chat/mascot.png)
+[ ![Mascot](../assets/images/mascot.png) ](../assets/images/ds-chat/mascot.png)
 
 # 1. Overview
 
