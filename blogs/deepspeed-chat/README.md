@@ -55,7 +55,7 @@ DeepSpeed-RLHF system is capable of unparalleled efficiency at scale, making com
 
 *Table 2. Multi-Node 64x A100: Training Time and Corresponding Cost on Azure.* 
 
-> See very important details about experimental setup used for Tables 1 and 2 in [^1]
+> ***Very Important Details***: The numbers in both tables above are for Stage 3 of the training and based on actual measured training throughput on DeepSpeed-RLHF curated dataset and training recipe which trains for one epoch on a total of 135M tokens (6 open-sourced datasets with 40% used for RLHF training stage, i.e., Dahoas/rm-static, Dahoas/full-hh-rlhf, Dahoas/synthetic-instruct-gptj-pairwise, yitingxie/rlhf-reward-datasets, openai/webgpt_comparisons, and stanfordnlp/SHP from Huggingface Datasets. In more detail, we have in total 67.5M query tokens (131.9k queries with sequence length 256) and 67.5M generated tokens (131.9k answers with sequence length 256), and a maximum global batch size per step of 0.5M tokens (1024 query-answer pairs). The reward model size is 350M. See [here](#benchmarking-page) for even more details. We urge readers to pay attention to these specifications before making any cost and e2e time comparisons with DeepSpeed-RLHF[^1]
 
 </div>
  
