@@ -56,7 +56,7 @@ DeepSpeed-RLHF system is capable of unparalleled efficiency at scale, making com
 *Table 2. Multi-Node 64x A100: Training Time and Corresponding Cost on Azure.* 
 </div>
 
-> ***Very Important Details***[^1]: The numbers in both tables above are for Step 3 of the training and based on actual measured training throughput on DeepSpeed-RLHF curated dataset and training recipe which trains for one epoch on a total of 135M tokens. We have in total 67.5M query tokens (131.9k queries with sequence length 256) and 67.5M generated tokens (131.9k answers with sequence length 256), and a maximum global batch size per step of 0.5M tokens (1024 query-answer pairs).  We urge readers to pay attention to these specifications before making any cost and e2e time comparisons with DeepSpeed-RLHF
+> ***Very Important Details***[^1]: The numbers in both tables above are for Step 3 of the training and based on actual measured training throughput on DeepSpeed-RLHF curated dataset and training recipe which trains for one epoch on a total of 135M tokens. We have in total 67.5M query tokens (131.9k queries with sequence length 256) and 67.5M generated tokens (131.9k answers with sequence length 256), and a maximum global batch size per step of 0.5M tokens (1024 query-answer pairs).  We urge readers to pay attention to these specifications before making any cost and e2e time comparisons with DeepSpeed-RLHF.
 
 
  
