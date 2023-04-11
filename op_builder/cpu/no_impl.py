@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from .builder import CPUOpBuilder
 
@@ -13,6 +16,9 @@ class NotImplementedBuilder(CPUOpBuilder):
 
     def absolute_name(self):
         return f'deepspeed.ops.comm.{self.NAME}_op'
+
+    def load(self, verbose=True):
+        raise ValueError("This op had not been implemented on CPU backend.")
 
     def sources(self):
         return []
