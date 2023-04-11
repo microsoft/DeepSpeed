@@ -14,13 +14,13 @@ TODO: remove mascot and replace with Hero Figure
 
 # 1. Overview
 
-ChatGPT like models have taken the AI world by a storm, and it would not be an overstatement to say that its impact on the digital world has been revolutionary. These models are incredibly versatile, capable of performing tasks like summarization, coding, and translation with results that are on-par or even exceeding the capabilities of human experts. Given the sheer power of these models, multiple efforts are underway in the AI open-source community to make ChatGPT-style models more accessible (e.g. ChatLAMA, Alpaca, Vicuna, Databricks-Dolly, etc.).
+ChatGPT like models have taken the AI world by a storm, and it would not be an overstatement to say that its impact on the digital world has been revolutionary. These models are incredibly versatile, capable of performing tasks like summarization, coding, and translation with results that are on-par or even exceeding the capabilities of human experts. Given the sheer power of these models, multiple efforts are underway in the AI open-source community to make ChatGPT-style models more accessible (e.g. ChatLLaMa, Alpaca, Vicuna, Databricks-Dolly, etc.).
 
 Despite these incredible efforts, there is still a lack of an end-to-end RLHF pipeline capable of training powerful ChatGPT like model that is easily accessible to the AI community. For instance, training a modest 6.7B ChatGPT model with existing systems typically requires expensive multi-GPU setup that is beyond the reach of many data scientists. Even with access to such computing resources, training efficiency is often less than 5% of what these machines are capable of (as illustrated [shortly](#effective-throughput-and-scalability-analysis)). And finally, existing solutions simply cannot support easy, fast and affordable training state-of-the-art ChatGPT models with hundreds of billions of parameters, even given access to multi-GPU clusters. 
 
 These limitations stem from a lack of a robust system design that is capable of effectively supporting the complex InstructGPT’s RLHF training pipeline that is quite different from the standard pre-training and fine-tuning pipelines that existing DL systems are designed for. Therefore, in the spirit of democratizing ChatGPT-like models, and making RLHF training truly accessible to the AI community, today we are releasing DeepSpeed-Chat with the following three capabilities:
 
-(i) ***Easy-to-use Training and Inference Experience for ChatGPT Like Models***: A single script capable of taking a pre-trained Huggingface model, running it though all three steps of InstructGPT training using DeepSpeed-RLHF system and producing your very own ChatGPT like model. In addition, we provide an inference API for testing conversation-style interactions after the model is trained.
+(i) ***Easy-to-use Training and Inference Experience for ChatGPT Like Models***: A single script capable of taking a pre-trained Huggingface model, running it through all three steps of InstructGPT training using DeepSpeed-RLHF system and producing your very own ChatGPT like model. In addition, we provide an inference API for testing conversation-style interactions after the model is trained.
 
 (ii) ***DeepSpeed-RLHF Pipeline***: DeepSpeed-RLHF pipeline primarily replicates the training pipeline from the InstructGPT paper with careful attention to ensure completeness and one-to-one correspondence with the three-steps that includes a) Supervised Fine-tuning (SFT), b) Reward Model Fine-tuning and c) Reinforcement Learning with Human Feedback (RLHF). Additionally, we offer data abstraction and blending capabilities to enable training with multiple data sources.
  
@@ -29,7 +29,7 @@ These limitations stem from a lack of a robust system design that is capable of 
 
 DeepSpeed-RLHF system is capable of unparalleled efficiency at scale, making complex RLHF training fast, affordable, and easily accessible to the AI community: 
 
-***Efficiency and Affordability***: In terms of efficiency, [DeepSpeed-HE is over 15x faster than any existing system](#throughput-and-model-size-scalability-comparisons-with-existing-rlhf-systems), making RLHF training both fast and affordable. For instance, DeepSpeed-HE can train an OPT-13B in just 9 hours and OPT-30B in 18 hours on Azure Cloud for under $300 and $600, respectively.
+***Efficiency and Affordability***: In terms of efficiency, [DeepSpeed-HE is over 15x faster than existing systems](#throughput-and-model-size-scalability-comparisons-with-existing-rlhf-systems), making RLHF training both fast and affordable. For instance, DeepSpeed-HE can train an OPT-13B in just 9 hours and OPT-30B in 18 hours on Azure Cloud for under $300 and $600, respectively.
 
 
 <div align="center">
@@ -115,7 +115,7 @@ Now it is time to plug-in and test your final model trained by DeepSpeed-Chat! Y
 ```
 Human:        Do you know Microsoft?
 Assistant:    Yes, I’m a big fan of Microsoft.  What about them?
-Human:        Can you explian it to a 6-year old child? I wonder how I should describe it
+Human:        Can you explain it to a 6-year old child? I wonder how I should describe it
 Assistant:    Sure, I can try.  Microsoft is a company that makes computers, and they make a program called “Windows” which 
               is the operating system that runs on the computer. It’s like the “brain” of the computer.  It’s where all the 
               programs and files are stored. It’s also where you’ll find the “start” button, which is where you’ll start to 
@@ -307,7 +307,7 @@ Furthermore, we would like to point out that our effective performance is 19x hi
 
 Figure 5 shows that DeepSeed-RLHF has achieved good scaling overall on up to 64 GPUs. However, if we look more closely, it shows that DeepSpeed-RLHF training achieves super-linear scaling at small scale, followed by near linear or sub-linear scaling at larger scales. This is due to interaction between memory availability and max global batch size. 
 
-As DeepSpeed-HE is powered by ZeRO-based technology for training, it allows model states to be partitioned across the available GPUs. As a result, the memory consumption per GPU reduces with the increase in the number of GPUs, allowing DeepSpeed-HE to support a larger batch per GPU resulting in super-linear scaling. However, at large scale, while the available memory continues to increase, the maximum global batch size limits the batch size per GPU, resulting in near-linear or sub-linear scaling. 
+As DeepSpeed-HE is powered by ZeRO-based technology for training, it allows model states to be partitioned across the available GPUs. As a result, the memory consumption per GPU reduces with the increase in the number of GPUs, allowing DeepSpeed-HE to support a larger batch per GPU resulting in super-linear scaling. However, at large scale, while the available memory continues to increase, the maximum global batch size (1024, in our case, with a sequence length of 512) limits the batch size per GPU, resulting in near-linear or sub-linear scaling. 
 As a result, for a given max global batch size, DeepSpeed-HE achieves the best throughput and cost efficiency at the boundary of super-linear and sub-linear scalability, and the exact point is mostly determined by the largest batch size that can be run per GPU as the function of available memory and global batch size. 
 
 # 6. Release: Try DeepSpeed Chat Today!
