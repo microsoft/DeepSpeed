@@ -547,7 +547,7 @@ def partition_uniform(num_items, num_parts):
         if p < turn_spot:
             parts[p] = min(chunksize * p, num_items)
         else:
-            parts[p] = min(chunksize * turn_spot + (chunksize+1)*(p-turn_spot), num_items)
+            parts[p] = min(chunksize * turn_spot + (chunksize + 1) * (p - turn_spot), num_items)
     parts[num_parts] = num_items
     return parts
 
