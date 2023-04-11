@@ -278,7 +278,7 @@ This improvement in efficiency stems from DeepSpeed-HE’s ability to accelerate
 
 <div align="center">
 
-<img src="../assets/images/figure6.png" width="600px" />
+<img src="../assets/images/Throughputs-OPT.png" width="600px" />
 
 *Figure 6. RLHF Generation, training, and effective throughput with DeepSpeed-HE for different model sizes, at the GPU count that maximizes efficiency.* 
 
