@@ -273,7 +273,7 @@ This improvement in efficiency stems from DeepSpeed-HE’s ability to accelerate
 
 <img src="../assets/images/figure5.png" width="600px" />
 
-Figure 5. Superior generation phase acceleration from DeepSpeed Chat’s Hybrid Engine: A time/sequence breakdown for training OPT-1.3B actor model + OPT-350M reward model on a single DGX node with 8 A100-40G GPUs. 
+*Figure 5. Superior generation phase acceleration from DeepSpeed Chat’s Hybrid Engine: A time/sequence breakdown for training OPT-1.3B actor model + OPT-350M reward model on a single DGX node with 8 A100-40G GPUs.* 
 
 </div>
 
