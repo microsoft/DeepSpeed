@@ -29,7 +29,7 @@ These limitations stem from a lack of a robust system design that is capable of 
 
 DeepSpeed-RLHF system is capable of unparalleled efficiency at scale, making complex RLHF training fast, affordable, and easily accessible to the AI community: 
 
-***Efficiency and Affordability***: In terms of efficiency, DeepSpeed-HE is over 15x faster than any existing system (details [here](#effective-throughput-and-scalability-analysis)), making RLHF training both fast and affordable. For instance, DeepSpeed-HE can train an OPT-13.2B in just 9 hours and OPT-30B in 18 hours on Azure Cloud for under $300 and $600, respectively.
+***Efficiency and Affordability***: In terms of efficiency, DeepSpeed-HE is over 15x faster than any existing system (details [here](#throughput-and-model-size-scalability-comparisons-with-existing-rlhf-systems)), making RLHF training both fast and affordable. For instance, DeepSpeed-HE can train an OPT-13.2B in just 9 hours and OPT-30B in 18 hours on Azure Cloud for under $300 and $600, respectively.
 
 
 <div align="center">
