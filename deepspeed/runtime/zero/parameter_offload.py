@@ -1,7 +1,7 @@
-"""
-"Copyright 2022 The Microsoft DeepSpeed Team.
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import sys
 import torch
@@ -461,7 +461,8 @@ class DeepSpeedZeRoOffload(object):
 
     @torch.no_grad()
     def pre_sub_module_backward_function(self, sub_module):
-        param_coordinator = self.get_param_coordinator(training=sub_module.training)
+        assert sub_module.training, "backward pass is invalid for module in evaluation mode"
+        param_coordinator = self.get_param_coordinator(training=True)
         param_coordinator.trace_prologue(sub_module)
         if param_coordinator.is_record_trace():
             param_coordinator.record_module(sub_module)
@@ -469,11 +470,12 @@ class DeepSpeedZeRoOffload(object):
 
     @torch.no_grad()
     def post_sub_module_backward_function(self, sub_module):
+        assert sub_module.training, "backward pass is invalid for module in evaluation mode"
         see_memory_usage(
             f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} before release",
             force=False)
 
-        self.get_param_coordinator(training=sub_module.training).release_sub_module(sub_module)
+        self.get_param_coordinator(training=True).release_sub_module(sub_module)
 
         see_memory_usage(
             f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} after release",

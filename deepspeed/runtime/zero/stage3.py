@@ -1,7 +1,7 @@
-"""
-"Copyright 2020 The Microsoft DeepSpeed Team.
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import sys
 import gc
@@ -33,7 +33,7 @@ pg_correctness_test = False
 def print_rank_0(message, debug=False, force=False):
     rank = dist.get_rank()
     if rank == 0 and (debug or force):
-        print(message)
+        logger.info(message)
     # other variations
     # - print for all ranks w/o interleaving
     # printflock(f"[{rank}] {message}")
@@ -208,9 +208,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.reduce_bucket_size = int(reduce_bucket_size)
 
         if self.reduce_scatter:
-            assert self.communication_data_type in (
-                torch.float16, torch.bfloat16, torch.float32
-            ), f"ZeRO-3 supports only float16 or bfloat16 communication_data_type with reduce scatter enabled. Got: '{self.communication_data_type}'"
+            valid_reduce_scatter_dtypes = (torch.float16, torch.bfloat16, torch.float32)
+            assert self.communication_data_type in valid_reduce_scatter_dtypes, f"ZeRO-3 supports {valid_reduce_scatter_dtypes} communication_data_type with reduce scatter enabled. Got: '{self.communication_data_type}'"
             assert self.gradient_predivide_factor == 1.0, "gradient_predivide_factor != 1.0 is not yet supported with ZeRO-3 with reduce scatter enabled"
             assert self.postscale_gradients, "pre-scale gradients is not yet supported with ZeRO-3 with reduce scatter enabled"
 
@@ -1016,6 +1015,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.__reduce_and_partition_ipg_grads()
 
         param_id = self.get_param_id(param)
+
         assert self.params_already_reduced[param_id] == False, \
             f"The parameter {param_id} has already been reduced. \
             Gradient computed twice for this partition. \
