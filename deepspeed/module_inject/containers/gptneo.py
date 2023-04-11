@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from .base import *
 from .features.meta_tensor import MetaTensorContainer
@@ -12,6 +15,7 @@ from ..policy import maybe_copy_qkv
 
 
 class DS_GPTNEOContainer(MetaTensorContainer, BaseTransformerContainer):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -39,40 +43,25 @@ class DS_GPTNEOContainer(MetaTensorContainer, BaseTransformerContainer):
             'ln_1.weight', \
             'ln_1.bias'
         )
-        maybe_copy_qkv(
-            module.attention,
-            sd,
-            weight_quantizer,
-            mp_replace,
-            'attn_qkvw',
-            [prefix + param_names[0],
-             prefix + param_names[1],
-             prefix + param_names[2]],
-            split_qkv=self.policy.split_qkv)
-        for i in range(3, 5):
-            maybe_copy(module.attention,
+        maybe_copy_qkv(module.attention,
                        sd,
                        weight_quantizer,
                        mp_replace,
-                       transformer_param_names[i - 1],
+                       'attn_qkvw', [prefix + param_names[0], prefix + param_names[1], prefix + param_names[2]],
+                       split_qkv=self.policy.split_qkv)
+        for i in range(3, 5):
+            maybe_copy(module.attention, sd, weight_quantizer, mp_replace, transformer_param_names[i - 1],
                        prefix + param_names[i])
         for i in range(5, 11):
-            maybe_copy(module.mlp,
-                       sd,
-                       weight_quantizer,
-                       mp_replace,
-                       transformer_param_names[i - 1],
+            maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[i - 1],
                        prefix + param_names[i])
         for i in range(11, 13):
-            maybe_copy(module,
-                       sd,
-                       weight_quantizer,
-                       mp_replace,
-                       transformer_param_names[i - 1],
+            maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[i - 1],
                        prefix + param_names[i])
 
 
 class HFGPTNEOLayerPolicy(TransformerPolicy):
+
     def __init__(self, client_module, inference=True):
         super().__init__(inference, scale_attention=False)
         self.client_module = client_module
@@ -84,14 +73,18 @@ class HFGPTNEOLayerPolicy(TransformerPolicy):
 
     def get_hidden_heads(self):
         return self.client_module.attn.attention.q_proj.weight.shape[1], \
-                self.client_module.attn.attention.num_heads
+                self.client_module.attn.attention.num_heads, \
+                self.client_module.ln_1.eps
 
-    def attention(self):
+    def get_q_k_v(self):
+        return None
+
+    def attention(self, enable_training=False):
         qw = self.client_module.attn.attention.q_proj.weight
         kw = self.client_module.attn.attention.k_proj.weight
         vw = self.client_module.attn.attention.v_proj.weight
 
-        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
+        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=enable_training)
 
         return qkvw, \
                None, \
@@ -109,3 +102,6 @@ class HFGPTNEOLayerPolicy(TransformerPolicy):
                self.client_module.ln_2.bias, \
                self.client_module.ln_1.weight, \
                self.client_module.ln_1.bias
+
+    def get_lora_params(self):
+        return []

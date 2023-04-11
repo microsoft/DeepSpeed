@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 from .utils import *
@@ -39,13 +42,8 @@ if older_torch():
         input_tensor_lst = list(chunk(input_tensor, get_world_size(group)))
         return reduce_scatter(output_tensor, input_tensor_lst, group=group)
 
-    def configure(deepspeed_config=None,
-                  enabled=None,
-                  prof_all=None,
-                  prof_ops=None,
-                  verbose=None):
-        utils.logger.warn(
-            "Communication logging is not supported in torch versions older than 1.8")
+    def configure(deepspeed_config=None, enabled=None, prof_all=None, prof_ops=None, verbose=None):
+        utils.logger.warn("Communication logging is not supported in torch versions older than 1.8")
 
 else:
     supported_torch_version = True
