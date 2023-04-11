@@ -14,7 +14,7 @@ tags: getting-started
   * [Implement new accelerator extension](#implement-new-accelerator-extension)
 
 # Introduction
-The DeepSpeed Accelerator Interface allows user to run large language model seamlessly on various Deep Learning acceleration hardware seamlessly with DeepSpeed.   It offers a set of accelerator runtime and accelerator op builder interface which can be implemented for different hardware.  This means user can write large language model code without hardware specific code.  With DeepSpeed Accelerator Interface, the same large language model can run on different hardware platform, without the need to rewrite model code.  This makes running large language model on different hardware easier.
+The DeepSpeed Accelerator Abstraction allows user to run large language model seamlessly on various Deep Learning acceleration hardware seamlessly with DeepSpeed.   It offers a set of accelerator runtime and accelerator op builder interface which can be implemented for different hardware.  This means user can write large language model code without hardware specific code.  With DeepSpeed Accelerator Abstraction, the same large language model can run on different hardware platform, without the need to rewrite model code.  This makes running large language model on different hardware easier.
 
 This document covers three topics related to DeepSpeed Accelerator Abstraction Interface:
 1. Write accelerator agnostic models using DeepSpeed Accelerator Abstraction Interface.
@@ -77,7 +77,7 @@ torch.distributed.init_process_group(get_accelerator().communication_backend_nam
 ```
 
 # Run DeepSpeed model on different accelerators
-Once a model is ported with DeepSpeed Accelerator Interface, we can run this model on different accelerators using extension to DeepSpeed.  DeepSpeed check whether certain extension is installed in the environment to decide whether to use the Accelerator backend in that extension.  For example if we wish to run model on Intel GPU, we can install _Intel Extension for DeepSpeed_ following the instruction in [link](https://github.com/intel/intel-extension-for-deepspeed/)
+Once a model is ported with DeepSpeed Accelerator Abstraction Interface, we can run this model on different accelerators using extension to DeepSpeed.  DeepSpeed check whether certain extension is installed in the environment to decide whether to use the Accelerator backend in that extension.  For example if we wish to run model on Intel GPU, we can install _Intel Extension for DeepSpeed_ following the instruction in [link](https://github.com/intel/intel-extension-for-deepspeed/)
 
 After the extension is installed, install DeepSpeed and run model.   The model will be running on top of DeepSpeed.   Because DeepSpeed installation is also accelerator related, it is recommended to install DeepSpeed accelerator extension before install DeepSpeed.
 
