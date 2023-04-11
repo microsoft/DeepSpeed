@@ -308,7 +308,7 @@ As a result, for a given max global batch size, DeepSpeed-HE achieves the best t
 
 # 6. Release: Try DeepSpeed Chat Today!
 
-We are very excited to share that DeepSpeed-Chat described in this blog is now open-sourced and available to the AI community.
+We are very excited to share that DeepSpeed-Chat is now open-sourced and available to the AI community.
 
 *    To get started, please visit our github page for DeepSpeed-Chat: [GitHub Landing Page](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat)
 
