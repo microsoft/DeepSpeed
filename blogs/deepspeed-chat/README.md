@@ -6,13 +6,11 @@
 
 <div align="center">
 
-<img src="../assets/images/figure7.png" width="600px" alt="DeepSpeed-Chat!"/>
-
-</div>
-
+<img src="../assets/images/mascot.png" width="600px" alt="DeepSpeed-Chat!"/>
 
 TODO: remove mascot and replace with Hero Figure
-[ ![Mascot](../assets/images/mascot.png) ](../assets/images/mascot.png)
+
+</div>
 
 # 1. Overview
 
@@ -34,16 +32,22 @@ DeepSpeed-RLHF system is capable of unparalleled efficiency at scale, making com
 ***Efficiency and Affordability***: In terms of efficiency, DeepSpeed-HE is over 15x faster than any existing system (details here[link](#eval), making RLHF training both fast and affordable. For instance, DeepSpeed-HE can train an OPT-13.2B in just 9 hours and OPT-30B in 18 hours on Azure Cloud for under $300 and $600, respectively.
 
 
+<div align="center">
+
 | GPUs        | OPT-6.7B |  OPT-13.2B     |     OPT-30B     |     OPT-66B    | 
 |-------------|:--------:|:--------------:|:-------------:|:-----------:|
 | 8x A100     | 5.7 hours | 10.8 hours |	 1.85 days |	 NA |
 | 8x A100     | 4.1 hours ($132) | 	9 hours ($290) | 	18 hours ($580) | 	 2.1 days ($1620) |
 
-Table 1. Single-Node 8x A100: Training Time and Corresponding Cost on Azure*
+Table 1. Single-Node 8x A100: Training Time and Corresponding Cost on Azure.
+
+</div>
 
 
 ***Excellent Scalability***: DeepSpeed-HE supports models with hundreds of billions of parameters and can achieve excellent scalability on multi-node multi-GPU systems. As a result, even a 13.2B model can be trained in 1.25 hours and a massive 175B model can be trained with DeepSpeed-HE in under a day.
 
+
+<div align="center">
 
 | GPUs	        | OPT-13.2B 	    | OPT-30B	      | OPT-66B	      | OPT-like-175B | 
 |---------------|:-----------------:|:---------------:|:-------------:|:-------------:|
@@ -52,17 +56,23 @@ Table 1. Single-Node 8x A100: Training Time and Corresponding Cost on Azure*
 Table 2. Multi-Node 64x A100: Training Time and Corresponding Cost on Azure. 
 
 > See very important details about experimental setup used for Tables 1 and 2 in [^1]
+
+</div>
+
   
 [^1]: ***Very Important Details***: The numbers in both tables above are for Stage 3 of the training and based on actual measured training throughput on DeepSpeed-RLHF curated dataset and training recipe which trains for one epoch on a total of 135M tokens (6 open-sourced datasets with 40% used for RLHF training stage, i.e., Dahoas/rm-static, Dahoas/full-hh-rlhf, Dahoas/synthetic-instruct-gptj-pairwise, yitingxie/rlhf-reward-datasets, openai/webgpt_comparisons, and stanfordnlp/SHP from Huggingface Datasets. In more detail, we have in total 67.5M query tokens (131.9k queries with sequence length 256) and 67.5M generated tokens (131.9k answers with sequence length 256), and a maximum global batch size per step of 0.5M tokens (1024 query-answer pairs). The reward model size is 350M. See [here](#benchmarking-page) for even more details. We urge readers to pay attention to these specifications before making any cost and e2e time comparisons with DeepSpeed-RLHF.
 
 ***Democratizing RLHF Training***: With just a single GPU, DeepSpeed-HE supports training models with over 13 billion parameters, enabling data scientists without access to multi-GPU systems to create not just toy RLHF models but large and powerful ones that can be used in real-world scenarios.
 
+<div align="center">
 	
 |            |	V100 32G | 	A6000 48G | A100 40G | A100 80G  |
 |------------|:---------:|:----------:|:--------:|:---------:|
 | Model Size |	OPT-2.7B | 	OPT-6.7B  | OPT-6.7B | OPT-13.2B | 
 
 Table 3. Max Model Size Supported by DeepSpeed-HE on a Single GPU
+
+</div>
 
 Next, we dive deeper into the three capabilities of DeepSpeed-Chat introduced above. We start with the easy-to-use experience by showing how you can train OPT-13.2B and OPT-66B models with DeepSpeed-RLHF system. If you are short on time, you can even train an OPT-1.3B model on a single consumer-grade GPU in just two hours.
 
@@ -83,6 +93,7 @@ pip install -r requirements.txt
  
 In about half a day, your 13B model would be fully trained with its checkpoints ready.  The following table demonstrates a breakdown of the training time for each of the three steps:
 
+<div align="center">
 
 | Model Sizes                      | Step 1 | Step 2 | Step 3 | Total  |
 |--------------------------------- |:------:|:------:|:------:|:------:|
@@ -90,6 +101,7 @@ In about half a day, your 13B model would be fully trained with its checkpoints 
 
 Table 4. E2E time breakdown for training a 13 billion parameter ChatGPT model via DeepSpeed-Chat on a single DGX node with 8 NVIDIA A100-40G GPUs.
 
+</div>
 
 *b) Test your final model with DeepSpeed-Chat’s Inference API*
 
@@ -99,8 +111,10 @@ Now it is time to plug-in and test your final model trained by DeepSpeed-Chat! Y
 Human:        Do you know Microsoft?
 Assistant:    Yes, I’m a big fan of Microsoft.  What about them?
 Human:        Can you explian it to a 6-year old child? I wonder how I should describe it
-Assistant:    Sure, I can try.  Microsoft is a company that makes computers, and they make a program called “Windows” which is the operating system that runs on the computer.  
-              It’s like the “brain” of the computer.  It’s where all the programs and files are stored.  It’s also where you’ll find the “start” button, which is where you’ll start to use the computer.
+Assistant:    Sure, I can try.  Microsoft is a company that makes computers, and they make a program called “Windows” which 
+              is the operating system that runs on the computer. It’s like the “brain” of the computer.  It’s where all the 
+              programs and files are stored. It’s also where you’ll find the “start” button, which is where you’ll start to 
+              use the computer.
 ```
 
 ## Want to try different model sizes and configurations? You got it! 
@@ -113,12 +127,15 @@ python train.py --step 3 --actor-model facebook/opt-66b --reward-model facebook/
 Within 9 hours, you can have your 66 billion parameters ChatGPT model ready to be served in your favorite front-end GUI:
 
 
+<div align="center">
+
 | Model Sizes                       | Step 1  | Step 2 | Step 3 | Total  |
 |---------------------------------- |:-------:|:------:|:------:|:------:|
 | Actor: OPT-66B, Reward: OPT-350M | 82 mins | 5 mins | 7.5hr  | 9hr    | 
 
 Table 5. E2E time breakdown for training a 66 billion parameter ChatGPT model via DeepSpeed-Chat on 8 DGX nodes with 8 NVIDIA A100-80G GPUs/node.
 
+</div>
 
 If you only have around 1-2 hours for coffee or lunch break, you can also try to train a small/toy model with DeepSpeed-Chat. For example, we prepared a training example for a 1.3B model with a single dataset to test our framework on your consumer-grade GPUs. The best part is that you will have your model checkpoint ready to play with when you are back from your lunch break!   
 
@@ -126,6 +143,7 @@ If you only have around 1-2 hours for coffee or lunch break, you can also try to
 python train.py --step 3 --actor-model facebook/opt-1.3b --reward-model facebook/opt-350m --num-gpus 1
 ```
 
+<div align="center">
 
 | Model Sizes                      | Step 1    | Step 2   | Step 3 | Total  |
 |--------------------------------- |:---------:|:--------:|:------:|:------:|
@@ -133,7 +151,7 @@ python train.py --step 3 --actor-model facebook/opt-1.3b --reward-model facebook
 
 Table 6. E2E time breakdown for training a 1.3 billion parameter ChatGPT model via DeepSpeed-Chat on a single commodity NVIDIA A6000 GPU with 48GB memory.
 
- 
+</div>
 
 ## Customizing your own RLHF training pipeline using DeepSpeed-Chat’s RLHF APIs 
 DeepSpeed-Chat allows users to build their very own RLHF training pipeline using our flexible APIs shown below, which users can use to reconstruct their own RLHF training strategy. This enables a general interface and backend for creating a wide range of RLHF algorithms for research exploration. 
@@ -189,10 +207,13 @@ Step 1 and Step 2 of the instruct-guided RLHF pipeline resemble regular fine-tun
 To tackle these challenges, we composed the full system capability of DeepSpeed Training and Inference into a unified infrastructure that we call **Hybrid Engine**. It leverages the original DeepSpeed engines for fast training mode while effortlessly applying DeepSpeed inference engine for generation/evaluation mode, providing a significantly faster training system for RLHF training at Stage 3. As Figure 2 shows, the transition between DeepSpeed training and inference engine is seamless: by having the typical eval and train modes enabled for the actor model, when running for inference and training pipeline, DeepSpeed selects its different optimizations to run the model faster and improve the overall system throughput. 
 
 
-[ ![Mascot](../assets/images/hybrid-engine.png) ](../assets/images/hybrid-engine.png)
+<div align="center">
+
+[ ![HE](../assets/images/hybrid-engine.png) ](../assets/images/hybrid-engine.png)
 
 Figure 2. DeepSpeed Hybrid Engine design for accelerating the most time-consuming portion of a RLHF pipeline.
 
+</div>
 
 During its inference execution for experience generation phase of RLHF training, DeepSpeed Hybrid Engine uses a light-weight memory management system to handle the KV-cache and intermediate results, together with highly optimized inference-adapted kernels and tensor parallelism implementation, to achieve significant boost in throughput (tokens-per-second) compared to the existing solutions. 
 
@@ -218,45 +239,59 @@ Compared to other RLHF systems like Colossal-AI or HuggingFace powered by native
 
 Therefore, with over an order of magnitude higher throughput, DeepSpeed-HE unlocks the ability to train significantly larger actor models under the same latency budget or train models of similar size at over 10x lower cost, compared to existing RLHF systems like Colossal-AI or HuggingFace DDP.
  
+<div align="center">
 
-[ ![Overview](../assets/images/figure3.png) ](../assets/images/figure3.png)
+<img src="../assets/images/figure3.png" width="600px" />
 
-Figure 3. Step 3 throughput comparison against two other system frameworks for accelerating RLHF training on a single NVIDIA A100-40G commodity GPU.  No icons represent OOM scenarios.  
+*Figure 3. Step 3 throughput comparison against two other system frameworks for accelerating RLHF \
+training on a single NVIDIA A100-40G commodity GPU.  No icons represent OOM scenarios.*  
 
-[ ![Overview](../assets/images/figure4.png) ](../assets/images/figure4.png)
+</div>
 
-Figure 4. End-to-end training throughput comparison for step 3 of the training pipeline (the most time consuming portion) with different model sizes on a single DGX node equipped with 8 NVIDIA A100-40G GPUs. No icons represent OOM scenarios.  
+<div align="center">
+
+<img src="../assets/images/figure4.png" width="600px" />
+
+*Figure 4. End-to-end training throughput comparison for step 3 of the training pipeline (the most time \
+consuming portion) with different model sizes on a single DGX node equipped with 8 NVIDIA A100-40G GPUs.\
+No icons represent OOM scenarios.*
+
+</div>
 
 This improvement in efficiency stems from DeepSpeed-HE’s ability to accelerate RLHF generation phase of the RLHF processing leveraging DeepSpeed inference optimizations. Figure 3 shows the time breakdown for a 1.3B parameter model at an RLHF training iteration: majority of the time goes to the generation phase. By leveraging high performance inference kernels from DeepSpeed, DeepSpeed-HE can achieve up to 9x throughput improvement during this phase over HuggingFace and 15x over Colossal-AI allowing it to achieve unparallel end-to-end efficiency.
 
+<div align="center">
 
-[ ![Overview](../assets/images/figure5.png) ](../assets/images/figure5.png)
+<img src="../assets/images/figure5.png" width="600px" />
 
 Figure 5. Superior generation phase acceleration from DeepSpeed Chat’s Hybrid Engine: A time/sequence breakdown for training OPT-1.3B actor model + OPT-350M reward model on a single DGX node with 8 A100-40G GPUs. 
 
+</div>
+
 ## Effective Throughput and Scalability Analysis
 
-[ ![Overview](../assets/images/figure6.png) ](../assets/images/figure6.png)
-
-Figure 6. RLHF Generation, training, and effective throughput with DeepSpeed-HE for different model sizes, at the GPU count that maximizes efficiency. 
-
 ***(I) Effective Throughput Analysis.*** The effective throughput of DeepSpeed-HE during Stage 3 of the RLHF training depends on the throughput that it achieves during the generation and RL training phases. In our RLHF pipeline described [here](#very-important-details), the generation phase comprises approximately 20% of the total computation while the RL training phase comprises of remaining 80%. However, despite having a small proportion, the former can take a large portion of the e2e time as it requires running the actor model once for each of the 256 generated tokens with initial prompt of 256 tokens, making it memory bandwidth bound and difficult to achieve high throughput. In contrast, the RL training phase is compute bound running the reference actor model with just a couple of forward and backward passes with full 512 tokens from both prompt and generation per sample and can achieve good throughput.
+
+<div align="center">
+
+<img src="../assets/images/figure6.png" width="600px" />
+
+*Figure 6. RLHF Generation, training, and effective throughput with DeepSpeed-HE for different model sizes, at the GPU count that maximizes efficiency.* 
+
+</div>
 
 To maximize the effective throughput, DeepSpeed-HE optimizes both phases. First, it uses the largest batch size possible to get higher efficiency on both phases. Second, during the generation phase, it leverages high-performance transformer kernels to maximize GPU memory bandwidth utilization when the model fits in single GPU memory, and leverage tensor-parallelism (TP) when it does not. Using TP in the generation phase instead of ZeRO to fit the model reduces the inter-GPU communication and maintains high GPU memory bandwidth utilization. 
 Figure 4 shows the best achievable effective throughput for DeepSpeed-HE in terms of TFlops/GPU for model sizes ranging from 1.3B to 175B. It also shows the throughput achieved by each of the generation and training phases. DeepSpeed-HE is the most efficient for models in the range 6.7B-66B. Going beyond this range to 175B, the throughput drops due to the limited memory to support larger batch sizes, while still achieving 1.2x better efficiency than the small 1.3B model. The per-GPU throughput of these gigantic models could improve further when we scale them to more GPUs with more memory available for larger batch sizes. 
 
 Furthermore, we would like to point out that our effective performance is 19x higher than existing systems, as shown in Figure 2, which suggests that they are operating at lower than 5% of the peak. This demonstrates the challenge of optimizing RLHF workloads as well as the effectiveness of our system despite the challenge.
 
-<p align="center">
-
-	<img src="../assets/images/figure7.png" alt="DeepSpeed RLHF ppo trainer!"/>
-	<img src="assets/images/figure7.png" alt="DeepSpeed RLHF ppo trainer!"/>
+<div align="center">
 	
-[ ![Overview](../assets/images/figure7.png) ](../assets/images/figure7.png)
+<img src="../assets/images/figure7.png" width="600px" />
  
-Figure 7. Scalability for training 13B (left) and 66B (right) actor model+350M reward model on an increasing number of DGX nodes with 8 A100-40/80G GPUs
+*Figure 7. Scalability for training 13B (left) and 66B (right) actor model+350M reward model on an increasing number of DGX nodes with 8 A100-40/80G GPUs*
 
-</p>
+</div>
 	
 ***(II) Scalability Analysis.*** The best effective throughput for different model sizes is achieved at different GPU count. This is in part because some of the larger model sizes require more memory to run. However, a large part of this behavior stems from DeepSpeed-HE’s scalability properties that we discuss next. 
 
