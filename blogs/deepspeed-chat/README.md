@@ -6,9 +6,7 @@
 
 <div align="center">
 
-<img src="../assets/images/mascot.png" width="600px" alt="DeepSpeed-Chat!"/>
-
-TODO: remove mascot and replace with Hero Figure
+<img src="../assets/images/hero-figure-black.png" width="600px" alt="DeepSpeed-Chat!"/>
 
 </div>
 
