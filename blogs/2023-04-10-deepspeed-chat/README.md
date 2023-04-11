@@ -2,7 +2,7 @@
 # DeepSpeed Chat: Easy, Fast and Affordable RLHF Training of ChatGPT-like Models at All Scales
 
 TODO: remove mascot and replace with Hero Figure
-[ ![Mascot](../assets/images/mascot.png) ](../assets/images/ds-chat/mascot.png)
+[ ![Mascot](../assets/images/mascot.png) ](../assets/images/mascot.png)
 
 # 1. Overview
 
@@ -148,7 +148,7 @@ for prompt_batch in prompt_train_dataloader:
 
 To provide a seamless training experience, we follow InstructGPT and include a full-fledged end-to-end training pipeline in DeepSpeed-Chat as shown in Figure 1.
 
-[ ![Overview](../assets/images/ds-chat/ds-chat-overview.png) ](../assets/images/ds-chat/ds-chat-overview.png)
+[ ![Overview](../assets/images/ds-chat-overview.png) ](../assets/images/ds-chat-overview.png)
 
 Figure 1: The illustration of DeepSpeed-Chat’s RLHF training pipeline with optional features.
 
@@ -179,7 +179,7 @@ Step 1 and Step 2 of the instruct-guided RLHF pipeline resemble regular fine-tun
 To tackle these challenges, we composed the full system capability of DeepSpeed Training and Inference into a unified infrastructure that we call **Hybrid Engine**. It leverages the original DeepSpeed engines for fast training mode while effortlessly applying DeepSpeed inference engine for generation/evaluation mode, providing a significantly faster training system for RLHF training at Stage 3. As Figure 2 shows, the transition between DeepSpeed training and inference engine is seamless: by having the typical eval and train modes enabled for the actor model, when running for inference and training pipeline, DeepSpeed selects its different optimizations to run the model faster and improve the overall system throughput. 
 
 
-[ ![Mascot](../assets/images/ds-chat/hybrid-engine.png) ](../assets/images/ds-chat/hybrid-engine.png)
+[ ![Mascot](../assets/images/hybrid-engine.png) ](../assets/images/hybrid-engine.png)
 
 Figure 2. DeepSpeed Hybrid Engine design for accelerating the most time-consuming portion of a RLHF pipeline.
 
@@ -209,24 +209,24 @@ Compared to other RLHF systems like Colossal-AI or HuggingFace powered by native
 Therefore, with over an order of magnitude higher throughput, DeepSpeed-HE unlocks the ability to train significantly larger actor models under the same latency budget or train models of similar size at over 10x lower cost, compared to existing RLHF systems like Colossal-AI or HuggingFace DDP.
  
 
-[ ![Overview](../assets/images/ds-chat/figure3.png) ](../assets/images/ds-chat/figure3.png)
+[ ![Overview](../assets/images/figure3.png) ](../assets/images/figure3.png)
 
 Figure 3. Step 3 throughput comparison against two other system frameworks for accelerating RLHF training on a single NVIDIA A100-40G commodity GPU.  No icons represent OOM scenarios.  
 
-[ ![Overview](../assets/images/ds-chat/figure4.png) ](../assets/images/ds-chat/figure4.png)
+[ ![Overview](../assets/images/figure4.png) ](../assets/images/figure4.png)
 
 Figure 4. End-to-end training throughput comparison for step 3 of the training pipeline (the most time consuming portion) with different model sizes on a single DGX node equipped with 8 NVIDIA A100-40G GPUs. No icons represent OOM scenarios.  
 
 This improvement in efficiency stems from DeepSpeed-HE’s ability to accelerate RLHF generation phase of the RLHF processing leveraging DeepSpeed inference optimizations. Figure 3 shows the time breakdown for a 1.3B parameter model at an RLHF training iteration: majority of the time goes to the generation phase. By leveraging high performance inference kernels from DeepSpeed, DeepSpeed-HE can achieve up to 9x throughput improvement during this phase over HuggingFace and 15x over Colossal-AI allowing it to achieve unparallel end-to-end efficiency.
 
 
-[ ![Overview](../assets/images/ds-chat/figure5.png) ](../assets/images/ds-chat/figure5.png)
+[ ![Overview](../assets/images/figure5.png) ](../assets/images/figure5.png)
 
 Figure 5. Superior generation phase acceleration from DeepSpeed Chat’s Hybrid Engine: A time/sequence breakdown for training OPT-1.3B actor model + OPT-350M reward model on a single DGX node with 8 A100-40G GPUs. 
 
 ## Effective Throughput and Scalability Analysis
 
-[ ![Overview](../assets/images/ds-chat/figure6.png) ](../assets/images/ds-chat/figure6.png)
+[ ![Overview](../assets/images/figure6.png) ](../assets/images/figure6.png)
 
 Figure 6. RLHF Generation, training, and effective throughput with DeepSpeed-HE for different model sizes, at the GPU count that maximizes efficiency. 
 
@@ -239,10 +239,10 @@ Furthermore, we would like to point out that our effective performance is 19x hi
 
 <p align="center">
 
-	<img src="../assets/images/ds-chat/figure7.png" alt="DeepSpeed RLHF ppo trainer!"/>
-	<img src="assets/images/ds-chat/figure7.png" alt="DeepSpeed RLHF ppo trainer!"/>
+	<img src="../assets/images/figure7.png" alt="DeepSpeed RLHF ppo trainer!"/>
+	<img src="assets/images/figure7.png" alt="DeepSpeed RLHF ppo trainer!"/>
 	
-[ ![Overview](../assets/images/ds-chat/figure7.png) ](../assets/images/ds-chat/figure7.png)
+[ ![Overview](../assets/images/figure7.png) ](../assets/images/figure7.png)
  
 Figure 7. Scalability for training 13B (left) and 66B (right) actor model+350M reward model on an increasing number of DGX nodes with 8 A100-40/80G GPUs
 
