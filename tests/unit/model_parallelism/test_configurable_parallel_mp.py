@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import os
 import torch
@@ -10,12 +13,12 @@ import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
 from unit.common import DistributedTest, DistributedFixture
 from unit.megatron_model import get_gpt2_model, get_megatron_version
+from unit.util import required_minimum_torch_version, required_maximum_torch_version
 
-TORCH_MAJOR = int(torch.__version__.split('.')[0])
-TORCH_MINOR = int(torch.__version__.split('.')[1])
-pytestmark = pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 5),
+pytestmark = pytest.mark.skipif(not required_minimum_torch_version(major_version=1, minor_version=5),
                                 reason='Megatron-LM package requires Pytorch version 1.5 or above')
-pytestmark = pytest.mark.skipif(TORCH_MAJOR > 1, reason='Megatron-LM package requires Pytorch version 1.13 or below')
+pytestmark = pytest.mark.skipif(not required_maximum_torch_version(major_version=1, minor_version=13),
+                                reason='Megatron-LM package requires Pytorch version 1.13 or below')
 
 
 def get_deepspeed_model(model):

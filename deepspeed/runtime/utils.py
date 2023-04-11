@@ -1,10 +1,12 @@
-'''
-Copyright 2019 The Microsoft DeepSpeed Team
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
+# DeepSpeed Team
+"""
 Copyright NVIDIA/Megatron
 
 Helper functions and classes from multiple sources.
-'''
+"""
 
 from collections.abc import Iterable
 from deepspeed.moe.utils import is_moe_param
@@ -763,6 +765,7 @@ def get_ma_status():
 
 def empty_cache():
     get_accelerator().empty_cache()
+    get_accelerator().reset_peak_memory_stats()
 
 
 def see_memory_usage(message, force=False):
