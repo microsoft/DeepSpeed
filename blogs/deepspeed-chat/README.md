@@ -1,5 +1,15 @@
+<div align="center">
 
 # DeepSpeed Chat: Easy, Fast and Affordable RLHF Training of ChatGPT-like Models at All Scales
+
+</div>
+
+<div align="center">
+
+<img src="../assets/images/figure7.png" width="600px" alt="DeepSpeed-Chat!"/>
+
+</div>
+
 
 TODO: remove mascot and replace with Hero Figure
 [ ![Mascot](../assets/images/mascot.png) ](../assets/images/mascot.png)
