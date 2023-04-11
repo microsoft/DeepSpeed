@@ -6,6 +6,10 @@ tags: getting-started
 # Contents
   * [Introduction](#introduction)
   * [Write accelerator agnostic models](#write-accelerator-agnostic-models)
+    * [Port accelerator runtime calls](#port-accelerator-runtime-calls)
+    * [Port accelerator device name](#port-accelerator-device-name)
+    * [Tensor operations](#tensor-operations)
+    * [Communication backend](#communication-backend)
   * [Run DeepSpeed model on different accelerators](#run-deepspeed-model-on-different-accelerators)
   * [Implement new accelerator extension](#implement-new-accelerator-extension)
 
