@@ -36,6 +36,7 @@ constexpr int hw_warp_size = 32;
 #endif  // __CUDA_ARCH__ >= 800
 
 #include <cooperative_groups.h>
+#include <cuda_fp16.h>
 
 #endif  //__HIP_PLATFORM_HCC__
 

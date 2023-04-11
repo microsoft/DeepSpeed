@@ -6,7 +6,6 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 #include "ds_kernel_utils.h"
 
-#include <cuda_fp16.h>
 #include <stdint.h>
 
 #ifdef BF16_AVAILABLE
@@ -265,7 +264,11 @@ DS_D_INLINE float2 to(__nv_bfloat162 val)
 template <>
 DS_D_INLINE __half to(double val)
 {
+#ifdef __HIP_PLATFORM_HCC__
+    return to < __half(> to < float(val));
+#else
     return __double2half(val);
+#endif
 }
 template <>
 DS_D_INLINE __half to(float val)
