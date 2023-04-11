@@ -74,11 +74,11 @@ Table 3. Max Model Size Supported by DeepSpeed-HE on a Single GPU
 
 </div>
 
-Next, we dive deeper into the three capabilities of DeepSpeed-Chat introduced above. We start with the easy-to-use experience by showing how you can train OPT-13B and OPT-66B models with DeepSpeed-RLHF system. If you are short on time, you can even train an OPT-1.3B model on a single consumer-grade GPU in just two hours.
+Next, we dive deeper into the three capabilities of DeepSpeed-Chat introduced above. 
 
 # 2. Easy-to-use ChatGPT Training and Inference Experience 
 
-In this section, we first show how you can train and use Chat-GPT style models using DeepSpeed-chat, followed by how you can change model size and configurations. We conclude by showing how you can use our DeepSpeed-chat RLHF API to develop your own custom pipelines.
+We start with the easy-to-use experience by showing how you can train OPT-13B and then OPT-66B models with DeepSpeed-RLHF system. If you are short on time, you can even train an OPT-1.3B model on a single consumer-grade GPU in just two hours.  We also demonstrate how you can use our DeepSpeed-chat RLHF API to develop your own custom pipelines.
 
 ## Training your first ChatGPT-Style model is so easy with DeepSpeed-Chat’s RLHF examples
 
@@ -191,20 +191,20 @@ To provide a seamless training experience, we follow InstructGPT and include a f
 
 Our pipeline includes three main steps:
 
-*	Step 1: Supervised finetuning (SFT), where human responses to various queries are carefully selected to finetune the pretrained language models. 
-*	Step 2: Reward model finetuning, where a separate (usually smaller than the SFT) model (RW) is trained with a dataset that has human-provided rankings of multiple answers to the same query. 
-*	Step 3: RLHF training, where the SFT model is further finetuned with the reward feedback from the RW model using the Proximal Policy Optimization (PPO) algorithm.  
+*	**Step 1: Supervised finetuning (SFT)**, where human responses to various queries are carefully selected to finetune the pretrained language models. 
+*	**Step 2: Reward model finetuning**, where a separate (usually smaller than the SFT) model (RW) is trained with a dataset that has human-provided rankings of multiple answers to the same query. 
+*	**Step 3: RLHF training**, where the SFT model is further finetuned with the reward feedback from the RW model using the Proximal Policy Optimization (PPO) algorithm.  
 
 We provide two additional features in Step 3 to help improve model quality:
 
-*	Exponential Moving Average (EMA) collection, where an EMA based checkpoint can be chosen for the final evaluation. 
-*	Mixture Training, which mixes the pretraining objective (i.e., the next word prediction) with the PPO objective to prevent regression performance on public benchmarks like SQuAD2.0.
+*	**Exponential Moving Average (EMA) collection**, where an EMA based checkpoint can be chosen for the final evaluation. 
+*	**Mixture Training**, which mixes the pretraining objective (i.e., the next word prediction) with the PPO objective to prevent regression performance on public benchmarks like SQuAD2.0.
 
 The two training features, EMA and Mixed Training, are often omitted by other recent efforts since they can be optional. However, according to InstructGPT, EMA checkpoints generally provide better response quality than conventional final trained model and Mixture Training can help the model retain the pre-training benchmark solving ability. As such, we provide them for users to fully get the training experience as described in InstructGPT and strike for higher model quality.
 
 In addition to being highly consistent with InstructGPT paper, we also provide convenient features to support researchers and practitioners to train their own RLHF model with multiple data resources:
 
-*	Data Abstraction and Blending Capabilities: DeepSpeed-Chat is able to train the model with multiple datasets for better model quality. It is equipped with (1) an abstract dataset layer to unify the format of different datasets; and (2) data splitting/blending capabilities so that the multiple datasets are properly blended then split across the 3 training stages. 
+*	***Data Abstraction and Blending Capabilities:*** DeepSpeed-Chat is able to train the model with multiple datasets for better model quality. It is equipped with (1) an abstract dataset layer to unify the format of different datasets; and (2) data splitting/blending capabilities so that the multiple datasets are properly blended then split across the 3 training stages. 
 
 To illustrate the effectiveness of our training pipeline, we demonstrate the model quality with multi-round conversation as shown in the experience section.
 
@@ -290,6 +290,7 @@ Figure 5. Superior generation phase acceleration from DeepSpeed Chat’s Hybrid 
 </div>
 
 To maximize the effective throughput, DeepSpeed-HE optimizes both phases. First, it uses the largest batch size possible to get higher efficiency on both phases. Second, during the generation phase, it leverages high-performance transformer kernels to maximize GPU memory bandwidth utilization when the model fits in single GPU memory, and leverage tensor-parallelism (TP) when it does not. Using TP in the generation phase instead of ZeRO to fit the model reduces the inter-GPU communication and maintains high GPU memory bandwidth utilization. 
+
 Figure 4 shows the best achievable effective throughput for DeepSpeed-HE in terms of TFlops/GPU for model sizes ranging from 1.3B to 175B. It also shows the throughput achieved by each of the generation and training phases. DeepSpeed-HE is the most efficient for models in the range 6.7B-66B. Going beyond this range to 175B, the throughput drops due to the limited memory to support larger batch sizes, while still achieving 1.2x better efficiency than the small 1.3B model. The per-GPU throughput of these gigantic models could improve further when we scale them to more GPUs with more memory available for larger batch sizes. 
 
 Furthermore, we would like to point out that our effective performance is 19x higher than existing systems, as shown in Figure 2, which suggests that they are operating at lower than 5% of the peak. This demonstrates the challenge of optimizing RLHF workloads as well as the effectiveness of our system despite the challenge.
@@ -313,14 +314,16 @@ As a result, for a given max global batch size, DeepSpeed-HE achieves the best t
 
 We are very excited to share that DeepSpeed-Chat is now open-sourced and available to the AI community.
 
-*    To get started, please visit our github page for DeepSpeed-Chat: [GitHub Landing Page](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat)
+* To get started, please visit our github page for DeepSpeed-Chat: [GitHub Landing Page](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat)
 
-*    We will continue to improve DeepSpeed-Chat with your feedback and support. Our [Roadmap](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat/README.md#roadmap) details all the currently supported features as well as ones that are planned for future. 
+* We will continue to improve DeepSpeed-Chat with your feedback and support. Our [Roadmap](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat/README.md#roadmap) details all the currently supported features as well as ones that are planned for future. 
 
+DeepSpeed-Chat is part of the bigger DeepSpeed ecosystem comprising of a multitude of Deep Learning systems and modeling technologies. To learn more, 
 
-DeepSpeed-Chat is part of the bigger DeepSpeed ecosystem comprising of a multitude of Deep Learning systems and modeling technologies. To learn more, please visit our [website](https://www.deepspeed.ai/). You can also follow us on [twitter](https://twitter.com/MSFTDeepSpeed) for the latest news on DeepSpeed. For Chinese users, you can also follow KAIYUANSHE WeChat(开源社微信公众号) where we will post our Chinese blogs. For Japanese users, you can also follow our [Japanese twitter account](https://twitter.com/MSFTDeepSpeedJP).
+* Please visit our [website](https://www.deepspeed.ai/) for detailed blog posts, tutorials, and helpful documentation. 
+* You can also follow us on our [English Twitter](https://twitter.com/MSFTDeepSpeed) and [Japanese Twitter](https://twitter.com/MSFTDeepSpeedJP) for latest news on DeepSpeed. 
 
-DeepSpeed welcomes your contributions! We encourage you to report issues, contribute PRs, and join discussions on the [DeepSpeed GitHub](https://github.com/microsoft/DeepSpeed/) page. Please see our [contributing guide](https://github.com/microsoft/DeepSpeed/blob/master/CONTRIBUTING.md) for more details. We are open to collaborations with universities, research labs, companies, such as those working together on deep learning research, applying DeepSpeed to empower real-world AI models and applications, and so on. For such requests (and other requests unsuitable for GitHub), please directly email to deepspeed-info@microsoft.com.
+DeepSpeed welcomes your contributions! We encourage you to report issues, contribute PRs, and join discussions on the [DeepSpeed GitHub](https://github.com/microsoft/DeepSpeed/) page. Please see our [contributing guide](https://github.com/microsoft/DeepSpeed/blob/master/CONTRIBUTING.md) for more details. We are open to collaborations with universities, research labs, companies, such as those working together on deep learning research, applying DeepSpeed to empower real-world AI models and applications, and so on. For such requests (and other requests unsuitable for GitHub), please directly email to deepspeed-info@microsoft.com.
 
 
 
