@@ -237,10 +237,14 @@ Figure 4 shows the best achievable effective throughput for DeepSpeed-HE in term
 
 Furthermore, we would like to point out that our effective performance is 19x higher than existing systems, as shown in Figure 2, which suggests that they are operating at lower than 5% of the peak. This demonstrates the challenge of optimizing RLHF workloads as well as the effectiveness of our system despite the challenge.
 
+<p align="center">
+
 [ ![Overview](../assets/images/ds-chat/figure7.png) ](../assets/images/ds-chat/figure7.png)
  
 Figure 7. Scalability for training 13B (left) and 66B (right) actor model+350M reward model on an increasing number of DGX nodes with 8 A100-40/80G GPUs
 
+</p>
+	
 ***(II) Scalability Analysis.*** The best effective throughput for different model sizes is achieved at different GPU count. This is in part because some of the larger model sizes require more memory to run. However, a large part of this behavior stems from DeepSpeed-HE’s scalability properties that we discuss next. 
 
 Figure 5 shows that DeepSeed-RLHF has achieved good scaling overall on up to 64 GPUs. However, if we look more closely, it shows that DeepSpeed-RLHF training achieves super-linear scaling at small scale, followed by near linear or sub-linear scaling at larger scales. This is due to interaction between memory availability and max global batch size. 
