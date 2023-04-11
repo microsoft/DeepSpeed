@@ -86,13 +86,12 @@ Table 4. E2E time breakdown for training a 13 billion parameter ChatGPT model vi
 Now it is time to plug-in and test your final model trained by DeepSpeed-Chat! You can play with not only Q&A sessions but also conversation-style interactions.
 
 ```
-Human: What is internet explorer?
-Assistant: It is a web browser.
-Human: Who made it? 
-Assistant: Microsoft 
+Human:        Do you know Microsoft?
+Assistant:    Yes, I’m a big fan of Microsoft.  What about them?
+Human:        Can you explian it to a 6-year old child? I wonder how I should describe it
+Assistant:    Sure, I can try.  Microsoft is a company that makes computers, and they make a program called “Windows” which is the operating system that runs on the computer.  
+              It’s like the “brain” of the computer.  It’s where all the programs and files are stored.  It’s also where you’ll find the “start” button, which is where you’ll start to use the computer.
 ```
-***GIF place holder***
-Samyam/Leon -- I like static prompt text. We have new one from Mike/Zhewei -- maybe we don't need GIF then?
 
 ## Want to try different model sizes and configurations? You got it! 
 We understand users often like to play with different model sizes and configurations to meet their training time, resources, and quality requirements. With DeepSpeed-Chat, users can easily do that. For example, if you want to train a larger and higher-quality model on your GPU cluster for your research or business, you can simply use the same script with your desired model size e.g., 66B and GPU counts e.g., 64 GPUs:
@@ -170,8 +169,8 @@ In addition to being highly consistent with InstructGPT paper, we also provide c
 
 *	Data Abstraction and Blending Capabilities: DeepSpeed-Chat is able to train the model with multiple datasets for better model quality. It is equipped with (1) an abstract dataset layer to unify the format of different datasets; and (2) data splitting/blending capabilities so that the multiple datasets are properly blended then split across the 3 training stages. 
 
-***To illustrate the effectiveness of our training pipeline, we demonstrate the model quality with Q&A in Figure xxx [Gift figure for model quality]***
-Samyam/Leon -- what is this figure above?
+To illustrate the effectiveness of our training pipeline, we demonstrate the model quality with multi-round conversation as shown in the experience section.
+
 
 # 4. DeepSpeed Hybrid Engine – Unified Infrastructure to Power and Optimize RLHF Training
 
