@@ -183,7 +183,8 @@ class InferenceEngine(Module):
             assert not config.replace_with_kernel_inject, "Cannot use both user specified injection policy and kernel injection"
             for client_module, injection_policy in self.injection_dict.items():
 
-                assert issubclass(client_module, torch.nn.Module), f"{client_module} is not a subclass of torch.nn.Module"
+                assert issubclass(client_module,
+                                  torch.nn.Module), f"{client_module} is not a subclass of torch.nn.Module"
 
                 # construct the tuple and pass that instead of a string or dict.
                 if isinstance(injection_policy, str):
