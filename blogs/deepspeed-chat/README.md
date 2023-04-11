@@ -305,21 +305,18 @@ Figure 5 shows that DeepSeed-RLHF has achieved good scaling overall on up to 64 
 As DeepSpeed-HE is powered by ZeRO-based technology for training, it allows model states to be partitioned across the available GPUs. As a result, the memory consumption per GPU reduces with the increase in the number of GPUs, allowing DeepSpeed-HE to support a larger batch per GPU resulting in super-linear scaling. However, at large scale, while the available memory continues to increase, the maximum global batch size limits the batch size per GPU, resulting in near-linear or sub-linear scaling. 
 As a result, for a given max global batch size, DeepSpeed-HE achieves the best throughput and cost efficiency at the boundary of super-linear and sub-linear scalability, and the exact point is mostly determined by the largest batch size that can be run per GPU as the function of available memory and global batch size. 
 
-# 6. Release: Try DeepSpeed Chat Today!
-DeepSpeed-Chat with our RLHF pipeline and Hybrid Engine is built to enable easy, fast affordable and scalable training for ChatGPT-style models for everyone in need. This first release focuses on enabling a full-fledged end-to-end training pipeline and a highly-efficient RLHF system on a set of models at all scales.  
+# 6. Release: Try DeepSpeed Chat Today!
 
-*	To get started, please visit our github page for DeepSpeed-Chat: [GitHub Landing Page](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat)
-*	We are taking an incremental and continuous process to bring in more features.  You can find the set of features that are currently supported in this release, as well as the working-in-progress features, in this link Roadmap 
+We are very excited to share that DeepSpeed-Chat with all its features described in this blog is now open-sourced and available to the AI community.
 
-To learn more about DeepSpeed, please visit our DeepSpeed landing page and GitHub.
+*    To get started, please visit our github page for DeepSpeed-Chat: [GitHub Landing Page](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat)
 
-We welcome all AI developers/practitioners/researchers to join this DeepSpeed Chat effort. To participate:
+*    We will continue to enhance DeepSpeed-Chat with more features in the near future with your support. You can find the currently supported features, as well as our roadmap here [Roadmap](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat/README.md#roadmap)
 
-*	Keep track of the updates and show your support by leaving a star to our DeepSpeed and DeepSpeedExamples GitHub repositories.
-*	Follow us on twitter to get notified about our latest news. For Chinese users, you can also follow 开源社 kaiyuanshe WeChat(微信) 公众号 where we will post our Chinese blogs. For Japanese users, you can also follow our Japanese twitter account.
-*	Currently we prefer to interact with open source users mainly on GitHub so that it's easier for all users to search for related information. For bug report, please submit a GitHub issue. For contribution, please submit a pull request (PR). For general question/discussion, please open a new discussion or join any existing discussions.
+DeepSpeed-Chat is released as part of the bigger DeepSpeed ecosystem comprising of a multitude of Deep Learning systems and modeling technologies. To learn more, please visit our website[link to website] and our github page[]. You can also follow us on twitter [twitter handle] for the latest news on DeepSpeed. If you are a Chinese user, please follow us or 开源社 kaiyuanshe WeChat(微信) 公众号,and if you are a Japanse user, please follow Japanese twitter account [at Japanese twitter handle]
 
-We are open to collaborations with universities, research labs, companies, such as working together on deep learning research, applying DeepSpeed to empower scientific applications, and so on. For this kind of requests (and other requests unsuitable for GitHub), please email to deepspeed-info@microsoft.com.
+DeepSpeed welcomes your contributions! We encourage you to issue bug reports or PRs on the [DeepSpeed GitHub](https://github.com/microsoft/DeepSpeed/) page. Please see our [contributing guide](https://github.com/microsoft/DeepSpeed/blob/master/CONTRIBUTING.md) for more details. We are also open to collaboration, and you can also reach out to us at deepspeed-info@microsoft.com for related questions.
+
 
 
 
