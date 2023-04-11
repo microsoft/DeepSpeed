@@ -212,7 +212,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
                     dtype=inputs[0].dtype if len(inputs) > 0 else kwargs['input_ids'].dtype,
                     device=inputs[0].device if len(inputs) > 0 else kwargs['input_ids'].device)
                 input_cont = inputs[0].contiguous() if len(inputs) > 0 else kwargs['input_ids'].contiguous()
-                dist.all_gather_base(output, input_cont, group=self.mp_group)
+                dist.all_gather_into_tensor(output, input_cont, group=self.mp_group)
 
                 if len(inputs) > 0:
                     inputs = (output, )
