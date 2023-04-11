@@ -313,9 +313,10 @@ We are very excited to share that DeepSpeed-Chat described in this blog is now o
 
 *    We will continue to improve DeepSpeed-Chat with your feedback and support. Our [Roadmap](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat/README.md#roadmap) details all the currently supported features as well as ones that are planned for future. 
 
-DeepSpeed-Chat is a part of the bigger DeepSpeed ecosystem comprising of a multitude of Deep Learning systems and modeling technologies. To learn more, please visit our website[link to website] and our github page[]. You can also follow us on twitter [twitter handle] for the latest news on DeepSpeed. If you are a Chinese user, please follow us or 开源社 kaiyuanshe WeChat(微信) 公众号,and if you are a Japanse user, please follow Japanese twitter account [at Japanese twitter handle]
 
-Last but not least, DeepSpeed welcomes your contributions! We encourage you to issue bug reports or PRs on the [DeepSpeed GitHub](https://github.com/microsoft/DeepSpeed/) page. Please see our [contributing guide](https://github.com/microsoft/DeepSpeed/blob/master/CONTRIBUTING.md) for more details on how to contribute. We are also open to collaborations, and you can also reach out to us at deepspeed-info@microsoft.com for related questions.
+DeepSpeed-Chat is released as part of the bigger DeepSpeed ecosystem comprising of a multitude of Deep Learning systems and modeling technologies. To learn more, please visit our [website](https://www.deepspeed.ai/). You can also follow us on [twitter](https://twitter.com/MSFTDeepSpeed) for the latest news on DeepSpeed. For Chinese users, you can also follow KAIYUANSHE WeChat(开源社微信公众号) where we will post our Chinese blogs. For Japanese users, you can also follow our [Japanese twitter account](https://twitter.com/MSFTDeepSpeedJP).
+
+DeepSpeed welcomes your contributions! We encourage you to report issues, contribute PRs, and join discussions on the [DeepSpeed GitHub](https://github.com/microsoft/DeepSpeed/) page. Please see our [contributing guide](https://github.com/microsoft/DeepSpeed/blob/master/CONTRIBUTING.md) for more details. We are open to collaborations with universities, research labs, companies, such as working together on deep learning research, applying DeepSpeed to empower real-world AI models and applications, and so on. For such requests (and other requests unsuitable for GitHub), please directly email to deepspeed-info@microsoft.com.
 
 
 
