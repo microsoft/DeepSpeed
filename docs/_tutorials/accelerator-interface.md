@@ -72,7 +72,7 @@ torch.distributed.init_process_group('nccl')
 torch.distributed.init_process_group(get_accelerator().communication_backend_name())
 ```
 
-# Run DeepSpeed on different accelerators
+# Run DeepSpeed model on different accelerators
 Once a model is ported with DeepSpeed Accelerator Interface, we can run this model on different accelerators using extension to DeepSpeed.  DeepSpeed check whether certain extension is installed in the environment to decide whether to use the Accelerator backend in that extension.  For example if we wish to run model on Intel GPU, we can install _Intel Extension for DeepSpeed_ following the instruction in [link](https://github.com/intel/intel-extension-for-deepspeed/)
 
 After the extension is installed, install DeepSpeed and run model.   The model will be running on top of DeepSpeed.   Because DeepSpeed installation is also accelerator related, it is recommended to install DeepSpeed accelerator extension before install DeepSpeed.
