@@ -32,7 +32,7 @@ DeepSpeed-RLHF system is capable of unparalleled efficiency at scale, making com
 ***Efficiency and Affordability***: In terms of efficiency, DeepSpeed-HE is over 15x faster than any existing system (details [here](#effective-throughput-and-scalability-analysis), making RLHF training both fast and affordable. For instance, DeepSpeed-HE can train an OPT-13.2B in just 9 hours and OPT-30B in 18 hours on Azure Cloud for under $300 and $600, respectively.
 
 
-<div align="left">
+<div align="center">
 
 | GPUs        | OPT-6.7B |  OPT-13.2B     |     OPT-30B     |     OPT-66B    | 
 |-------------|:--------:|:--------------:|:-------------:|:-----------:|
@@ -307,15 +307,15 @@ As a result, for a given max global batch size, DeepSpeed-HE achieves the best t
 
 # 6. Release: Try DeepSpeed Chat Today!
 
-We are very excited to share that DeepSpeed-Chat with all its features described in this blog is now open-sourced and available to the AI community.
+We are very excited to share that DeepSpeed-Chat described in this blog is now open-sourced and available to the AI community.
 
 *    To get started, please visit our github page for DeepSpeed-Chat: [GitHub Landing Page](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat)
 
-*    We will continue to enhance DeepSpeed-Chat with more features in the near future with your support. You can find the currently supported features, as well as our roadmap here [Roadmap](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat/README.md#roadmap)
+*    We will continue to improve DeepSpeed-Chat with your feedback and support. Our [Roadmap](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat/README.md#roadmap) details all the currently supported features as well as ones that are planned for future. 
 
-DeepSpeed-Chat is released as part of the bigger DeepSpeed ecosystem comprising of a multitude of Deep Learning systems and modeling technologies. To learn more, please visit our website[link to website] and our github page[]. You can also follow us on twitter [twitter handle] for the latest news on DeepSpeed. If you are a Chinese user, please follow us or 开源社 kaiyuanshe WeChat(微信) 公众号,and if you are a Japanse user, please follow Japanese twitter account [at Japanese twitter handle]
+DeepSpeed-Chat is a part of the bigger DeepSpeed ecosystem comprising of a multitude of Deep Learning systems and modeling technologies. To learn more, please visit our website[link to website] and our github page[]. You can also follow us on twitter [twitter handle] for the latest news on DeepSpeed. If you are a Chinese user, please follow us or 开源社 kaiyuanshe WeChat(微信) 公众号,and if you are a Japanse user, please follow Japanese twitter account [at Japanese twitter handle]
 
-DeepSpeed welcomes your contributions! We encourage you to issue bug reports or PRs on the [DeepSpeed GitHub](https://github.com/microsoft/DeepSpeed/) page. Please see our [contributing guide](https://github.com/microsoft/DeepSpeed/blob/master/CONTRIBUTING.md) for more details. We are also open to collaboration, and you can also reach out to us at deepspeed-info@microsoft.com for related questions.
+Last but not least, DeepSpeed welcomes your contributions! We encourage you to issue bug reports or PRs on the [DeepSpeed GitHub](https://github.com/microsoft/DeepSpeed/) page. Please see our [contributing guide](https://github.com/microsoft/DeepSpeed/blob/master/CONTRIBUTING.md) for more details on how to contribute. We are also open to collaborations, and you can also reach out to us at deepspeed-info@microsoft.com for related questions.
 
 
 
