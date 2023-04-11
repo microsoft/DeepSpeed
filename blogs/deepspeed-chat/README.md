@@ -16,7 +16,7 @@ TODO: remove mascot and replace with Hero Figure
 
 ChatGPT like models have taken the AI world by a storm, and it would not be an overstatement to say that its impact on the digital world has been revolutionary. These models are incredibly versatile, capable of performing tasks like summarization, coding, and translation with results that are on-par or even exceeding the capabilities of human experts. Given the sheer power of these models, multiple efforts are underway in the AI open-source community to make ChatGPT-style models more accessible (e.g. ChatLAMA, Alpaca, Vicuna, Databricks-Dolly, etc.).
 
-Despite these incredible efforts, there is still a lack of an end-to-end RLHF pipeline capable of training powerful ChatGPT like model that is easily accessible to the AI community. For instance, training a modest 6.7B ChatGPT model with existing systems typically requires expensive multi-GPU setup that is beyond the reach of many data scientists. Even with access to such computing resources, training efficiency is often less than 5% of what these machines are capable of (details [here](#effective-throughput-and-scalability-analysis)). And finally, existing solutions simply cannot support easy, fast and affordable training state-of-the-art ChatGPT models with hundreds of billions of parameters, even given access to multi-GPU clusters. 
+Despite these incredible efforts, there is still a lack of an end-to-end RLHF pipeline capable of training powerful ChatGPT like model that is easily accessible to the AI community. For instance, training a modest 6.7B ChatGPT model with existing systems typically requires expensive multi-GPU setup that is beyond the reach of many data scientists. Even with access to such computing resources, [training efficiency is often less than 5% of what these machines are capable of](#effective-throughput-and-scalability-analysis). And finally, existing solutions simply cannot support easy, fast and affordable training state-of-the-art ChatGPT models with hundreds of billions of parameters, even given access to multi-GPU clusters. 
 
 These limitations stem from a lack of a robust system design that is capable of effectively supporting the complex InstructGPT’s RLHF training pipeline that is quite different from the standard pre-training and fine-tuning pipelines that existing DL systems are designed for. Therefore, in the spirit of democratizing ChatGPT-like models, and making RLHF training truly accessible to the AI community, today we are releasing DeepSpeed-Chat with the following three capabilities:
 
@@ -29,31 +29,31 @@ These limitations stem from a lack of a robust system design that is capable of 
 
 DeepSpeed-RLHF system is capable of unparalleled efficiency at scale, making complex RLHF training fast, affordable, and easily accessible to the AI community: 
 
-***Efficiency and Affordability***: In terms of efficiency, DeepSpeed-HE is over 15x faster than any existing system (details [here](#throughput-and-model-size-scalability-comparisons-with-existing-rlhf-systems)), making RLHF training both fast and affordable. For instance, DeepSpeed-HE can train an OPT-13.2B in just 9 hours and OPT-30B in 18 hours on Azure Cloud for under $300 and $600, respectively.
+***Efficiency and Affordability***: In terms of efficiency, [DeepSpeed-HE is over 15x faster than any existing system](#throughput-and-model-size-scalability-comparisons-with-existing-rlhf-systems), making RLHF training both fast and affordable. For instance, DeepSpeed-HE can train an OPT-13B in just 9 hours and OPT-30B in 18 hours on Azure Cloud for under $300 and $600, respectively.
 
 
 <div align="center">
 
-| GPUs        | OPT-6.7B |  OPT-13.2B     |     OPT-30B     |     OPT-66B    | 
+| GPUs        | OPT-6.7B |  OPT-13B     |     OPT-30B     |     OPT-66B    | 
 |-------------|:--------:|:--------------:|:-------------:|:-----------:|
-| 8x A100     | 5.7 hours | 10.8 hours |	 1.85 days |	 NA |
-| 8x A100     | 4.1 hours ($132) | 	9 hours ($290) | 	18 hours ($580) | 	 2.1 days ($1620) |
+| 8x A100-40GB     | 5.7 hours | 10.8 hours |	 1.85 days |	 NA |
+| 8x A100-80GB     | 4.1 hours ($132) | 	9 hours ($290) | 	18 hours ($580) | 	 2.1 days ($1620) |
 
-*Table 1. Single-Node 8x A100: Training Time and Corresponding Cost on Azure.*
+*Table 1. Single-Node 8x A100: Training Time and Corresponding Approximate Cost on Azure.*
 
 </div>
 
 
-***Excellent Scalability***: DeepSpeed-HE supports models with hundreds of billions of parameters and can achieve excellent scalability on multi-node multi-GPU systems. As a result, even a 13.2B model can be trained in 1.25 hours and a massive 175B model can be trained with DeepSpeed-HE in under a day.
+***Excellent Scalability***: DeepSpeed-HE supports models with hundreds of billions of parameters and can achieve excellent scalability on multi-node multi-GPU systems. As a result, even a 13B model can be trained in 1.25 hours and a massive 175B model can be trained with DeepSpeed-HE in under a day.
 
 
 <div align="center">
 
-| GPUs	        | OPT-13.2B 	    | OPT-30B	      | OPT-66B	      | OPT-like-175B | 
+| GPUs	        | OPT-13B 	    | OPT-30B	      | OPT-66B	      | OPT-175B | 
 |---------------|:-----------------:|:---------------:|:-------------:|:-------------:|
-| 64x A100 80G	| 1.25 hours ($320)	| 4 hours ($1024) | 7.5 hours ($1920)	| 20 hours ($5120)| 
+| 64x A100-80G	| 1.25 hours ($320)	| 4 hours ($1024) | 7.5 hours ($1920)	| 20 hours ($5120)| 
 
-*Table 2. Multi-Node 64x A100: Training Time and Corresponding Cost on Azure.* 
+*Table 2. Multi-Node 64x A100-80GB: Training Time and Corresponding Approximate Cost on Azure.* 
 </div>
 
 > ***Very Important Details***: The numbers in both tables above are for Step 3 of the training and based on actual measured training throughput on DeepSpeed-RLHF curated dataset and training recipe which trains for one epoch on a total of 135M tokens. We have in total 67.5M query tokens (131.9k queries with sequence length 256) and 67.5M generated tokens (131.9k answers with sequence length 256), and a maximum global batch size per step of 0.5M tokens (1024 query-answer pairs).  We urge readers to pay attention to these specifications before making any cost and e2e time comparisons with DeepSpeed-RLHF. See [here](#benchmarking-page) for even more details.
@@ -68,13 +68,13 @@ DeepSpeed-RLHF system is capable of unparalleled efficiency at scale, making com
 	
 |            |	V100 32G | 	A6000 48G | A100 40G | A100 80G  |
 |------------|:---------:|:----------:|:--------:|:---------:|
-| Model Size |	OPT-2.7B | 	OPT-6.7B  | OPT-6.7B | OPT-13.2B | 
+| Model Size |	OPT-2.7B | 	OPT-6.7B  | OPT-6.7B | OPT-13B | 
 
 Table 3. Max Model Size Supported by DeepSpeed-HE on a Single GPU
 
 </div>
 
-Next, we dive deeper into the three capabilities of DeepSpeed-Chat introduced above. We start with the easy-to-use experience by showing how you can train OPT-13.2B and OPT-66B models with DeepSpeed-RLHF system. If you are short on time, you can even train an OPT-1.3B model on a single consumer-grade GPU in just two hours.
+Next, we dive deeper into the three capabilities of DeepSpeed-Chat introduced above. We start with the easy-to-use experience by showing how you can train OPT-13B and OPT-66B models with DeepSpeed-RLHF system. If you are short on time, you can even train an OPT-1.3B model on a single consumer-grade GPU in just two hours.
 
 # 2. Easy-to-use ChatGPT Training and Inference Experience 
 
@@ -87,7 +87,10 @@ In this section, we first show how you can train and use Chat-GPT style models u
 We use an example of pretrained OPT-13B as the actor model and OPT-350M as the reward model in the following single script to generate a final 13B ChatGPT-style model:
 
 ```python
-pip install deepspeed
+git clone https://github.com/microsoft/DeepSpeed.git
+cd DeepSpeed
+pip install .
+
 git clone https://github.com/microsoft/DeepSpeedExamples.git
 cd DeepSpeedExamples/applications/DeepSpeed-Chat/
 pip install -r requirements.txt
@@ -195,7 +198,7 @@ Our pipeline includes three main steps:
 We provide two additional features in Step 3 to help improve model quality:
 
 *	Exponential Moving Average (EMA) collection, where an EMA based checkpoint can be chosen for the final evaluation. 
-*	Mixture Training, which mixes the pretraining objective (i.e., the next word prediction) with the PPO objective to prevent regression performance on public benchmarks like SQuADV2.
+*	Mixture Training, which mixes the pretraining objective (i.e., the next word prediction) with the PPO objective to prevent regression performance on public benchmarks like SQuAD2.0.
 
 The two training features, EMA and Mixed Training, are often omitted by other recent efforts since they can be optional. However, according to InstructGPT, EMA checkpoints generally provide better response quality than conventional final trained model and Mixture Training can help the model retain the pre-training benchmark solving ability. As such, we provide them for users to fully get the training experience as described in InstructGPT and strike for higher model quality.
 
@@ -234,7 +237,7 @@ Hybrid Engine can seamlessly change model partitioning across training and infer
 
 As discussed, DeepSpeed-HE is an amalgamation of powerful system technologies for inference and training, architected to achieve excellent scale and efficiency for DeepSpeed-RLHF pipeline across a wide range of hardware, making RLHF training fast, affordable, and easily accessible to AI community. 
 
-In terms of efficiency and affordability, as shown in Table 1, DeepSpeed-HE can train OPT-13.2B in just 9 hours and OPT-30B in 18 hours on Azure Cloud for under $300 and $600, respectively. In terms of speed and scalability, as shown in Table 2, even a 13.2B model can be trained in 1.25 hours and a massive 175B model can be trained in under a day using a 64 GPU cluster. And in terms of accessibility and democratization of RLHF, DeepSpeed-HE supports training models with over 13 billion parameters on a single GPU as shown in Table 3.
+In terms of efficiency and affordability, as shown in Table 1, DeepSpeed-HE can train OPT-13B in just 9 hours and OPT-30B in 18 hours on Azure Cloud for under $300 and $600, respectively. In terms of speed and scalability, as shown in Table 2, even a 13B model can be trained in 1.25 hours and a massive 175B model can be trained in under a day using a 64 GPU cluster. And in terms of accessibility and democratization of RLHF, DeepSpeed-HE supports training models with over 13 billion parameters on a single GPU as shown in Table 3.
 
 ## Throughput and Model Size Scalability Comparisons with Existing RLHF Systems
 
