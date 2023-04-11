@@ -239,6 +239,9 @@ Furthermore, we would like to point out that our effective performance is 19x hi
 
 <p align="center">
 
+	<img src="../assets/images/ds-chat/figure7.png" alt="DeepSpeed RLHF ppo trainer!"/>
+	<img src="assets/images/ds-chat/figure7.png" alt="DeepSpeed RLHF ppo trainer!"/>
+	
 [ ![Overview](../assets/images/ds-chat/figure7.png) ](../assets/images/ds-chat/figure7.png)
  
 Figure 7. Scalability for training 13B (left) and 66B (right) actor model+350M reward model on an increasing number of DGX nodes with 8 A100-40/80G GPUs
