@@ -32,7 +32,7 @@ DeepSpeed-RLHF 系统在大规模训练中具有无与伦比的效率，使复�
 
 <div align="center">
 
-| GPUs        | OPT-6.7B |  OPT-13B     |     OPT-30B     |     OPT-66B    | 
+| GPUs        | OPT-6.7B |  OPT-13B     |     OPT-30B     |     OPT-66B    |
 |-------------|:--------:|:--------------:|:-------------:|:-----------:|
 | 8x A100-40GB     | 5.7 hours | 10.8 hours |	 1.85 days |	 NA |
 | 8x A100-80GB     | 4.1 hours ($132) | 	9 hours ($290) | 	18 hours ($580) | 	 2.1 days ($1620) |
@@ -45,11 +45,11 @@ DeepSpeed-RLHF 系统在大规模训练中具有无与伦比的效率，使复�
 
 <div align="center">
 
-| GPUs	        | OPT-13B 	    | OPT-30B	      | OPT-66B	      | OPT-175B | 
+| GPUs	        | OPT-13B 	    | OPT-30B	      | OPT-66B	      | OPT-175B |
 |---------------|:-----------------:|:---------------:|:-------------:|:-------------:|
-| 64x A100-80G	| 1.25 hours ($320)	| 4 hours ($1024) | 7.5 hours ($1920)	| 20 hours ($5120)| 
+| 64x A100-80G	| 1.25 hours ($320)	| 4 hours ($1024) | 7.5 hours ($1920)	| 20 hours ($5120)|
 
-*表 2. 多节点 64x A100-80GB：训练时长及预估的 Azure 费用。* 
+*表 2. 多节点 64x A100-80GB：训练时长及预估的 Azure 费用。*
 </div>
 
 > ***非常重要的细节***: 上述两个表格（即表一和表二）中的数据均针对 RLHF 训练的第 3 步，基于实际数据集和 DeepSpeed-RLHF 训练吞吐量的测试。该训练在总共 1.35 亿（135M）个字符（token）上进行一个时期（epoch）的训练。我们总共有 6750 万个查询（query）字符（131.9k 个 query，每个序列长度为 256）和 6750 万个生成/回答字符（131.9k 个答案，每个序列长度为 256），每步的最大全局字符批量大小约为 500 万个字符（1024 个查询-答案对）。在与 DeepSpeed-RLHF 进行任何成本和端到端时间比较之前，我们建议读者注意这些设定。想要了解更多详细信息，请参阅我们的页面 [benchmark setting](https://github.com/microsoft/DeepSpeedExamples-internal/blob/staging-deepspeed-chat-v2/applications/DeepSpeed-Chat/training/step3_rlhf_finetuning/BenckmarkSetting.md)。
@@ -57,10 +57,10 @@ DeepSpeed-RLHF 系统在大规模训练中具有无与伦比的效率，使复�
 ***实现 RLHF 训练的普及化***：仅凭单个 GPU，DeepSpeed-HE 就能支持训练超过 130 亿参数的模型。这使得那些无法使用多 GPU 系统的数据科学家和研究者不仅能够轻松创建轻量级的 RLHF 模型，还能创建大型且功能强大的模型，以应对不同的使用场景。
 
 <div align="center">
-	
+
 |            |	V100 32G | 	A6000 48G | A100 40G | A100 80G  |
 |------------|:---------:|:----------:|:--------:|:---------:|
-| Model Size |	OPT-2.7B | 	OPT-6.7B  | OPT-6.7B | OPT-13B | 
+| Model Size |	OPT-2.7B | 	OPT-6.7B  | OPT-6.7B | OPT-13B |
 
 *表 3. DeepSpeed-HE 在不同的 GPU 单卡上支持的最大模型。*
 
@@ -69,7 +69,7 @@ DeepSpeed-RLHF 系统在大规模训练中具有无与伦比的效率，使复�
 接下来，我们将深入了解上面介绍的 DeepSpeed-Chat 的三个功能。
 
 # 2. 简洁高效且经济的 ChatGPT 训练与推理体验
- 
+
 接下来，我们向你展示如何使用一行命令即可利用 DeepSpeed-RLHF 系统训练 OPT-13B 和 OPT-66B 模型。即使时间有限，你也可以在大约两小时内在单个消费级 GPU 上训练一个 OPT-1.3B 模型。此外，我们还演示了如何利用我们的 DeepSpeed-chat RLHF API 来开发你自己的模型：
 
 ## 使用 DeepSpeed-Chat 的 RLHF 示例轻松训练你的第一个 类ChatGPT 模型
@@ -96,7 +96,7 @@ python train.py --actor-model facebook/opt-13b --reward-model facebook/opt-350m 
 
 | Model Sizes                      | Step 1 | Step 2 | Step 3 | Total  |
 |--------------------------------- |:------:|:------:|:------:|:------:|
-| Actor: OPT-13B, Reward: OPT-350M | 2.5hr	| 0.25hr | 10.8hr | 13.6hr | 
+| Actor: OPT-13B, Reward: OPT-350M | 2.5hr	| 0.25hr | 10.8hr | 13.6hr |
 
 *表 4. 在单个DGX节点上（8x A100-40G），针对不同的RLHF步骤， 使用DeepSpeed-Chat训练OPT-13b所需的时间。*
 
@@ -110,9 +110,9 @@ python train.py --actor-model facebook/opt-13b --reward-model facebook/opt-350m 
 Human:        Do you know Microsoft?
 Assistant:    Yes, I’m a big fan of Microsoft.  What about them?
 Human:        Can you explian it to a 6-year old child? I wonder how I should describe it
-Assistant:    Sure, I can try.  Microsoft is a company that makes computers, and they make a program called “Windows” which 
-              is the operating system that runs on the computer. It’s like the “brain” of the computer.  It’s where all the 
-              programs and files are stored. It’s also where you’ll find the “start” button, which is where you’ll start to 
+Assistant:    Sure, I can try.  Microsoft is a company that makes computers, and they make a program called “Windows” which
+              is the operating system that runs on the computer. It’s like the “brain” of the computer.  It’s where all the
+              programs and files are stored. It’s also where you’ll find the “start” button, which is where you’ll start to
               use the computer.
 ```
 
@@ -122,14 +122,14 @@ Assistant:    Sure, I can try.  Microsoft is a company that makes computers, and
 ```python
 python train.py --actor-model facebook/opt-66b --reward-model facebook/opt-350m --num-gpus 64
 ```
- 
+
 在 接下来的9 小时内，你将拥有一个 660 亿参数的 ChatGPT 模型，并可以在你喜欢的前端 GUI 中使用：
 
 <div align="center">
 
 | Model Sizes                       | Step 1  | Step 2 | Step 3 | Total  |
 |---------------------------------- |:-------:|:------:|:------:|:------:|
-| Actor: OPT-66B, Reward: OPT-350M | 82 mins | 5 mins | 7.5hr  | 9hr    | 
+| Actor: OPT-66B, Reward: OPT-350M | 82 mins | 5 mins | 7.5hr  | 9hr    |
 
 *表 5. 在8个DGX节点上（64x A100-80G），针对不同的RLHF步骤， 使用DeepSpeed-Chat训练OPT-66b所需的时间。*
 
@@ -145,7 +145,7 @@ python train.py --actor-model facebook/opt-1.3b --reward-model facebook/opt-350m
 
 | Model Sizes                      | Step 1    | Step 2   | Step 3 | Total  |
 |--------------------------------- |:---------:|:--------:|:------:|:------:|
-| Actor: OPT-1.3B, Reward: OPT-350M | 2900 secs | 670 secs | 1.2hr | 2.2hr | 
+| Actor: OPT-1.3B, Reward: OPT-350M | 2900 secs | 670 secs | 1.2hr | 2.2hr |
 
 *表 6.  在单个消费级A6000-48G上，针对不同的RLHF步骤， 使用DeepSpeed-Chat训练OPT-1.3b所需的时间。*
 
@@ -231,7 +231,7 @@ DeepSpeed-HE可以在训练和推理之间无缝更改模型分区，以支持�
 
 与其他 RLHF 系统（如 Colossal-AI 或由原生 PyTorch 提供支持的 HuggingFace）相比，DeepSpeed-RLHF 在系统性能和模型可扩展性方面表现出色：
 
-* 就吞吐量而言，DeepSpeed 在单个 GPU 上的 RLHF 训练中实现了 10 倍以上的改进（图 3）。在多 GPU 设置中，它比 Colossal-AI 快 6 - 19 倍，比 HuggingFace DDP 快 1.4 - 10.5 倍（图 4）。 
+* 就吞吐量而言，DeepSpeed 在单个 GPU 上的 RLHF 训练中实现了 10 倍以上的改进（图 3）。在多 GPU 设置中，它比 Colossal-AI 快 6 - 19 倍，比 HuggingFace DDP 快 1.4 - 10.5 倍（图 4）。
 * 就模型可扩展性而言，Colossal-AI 可以在单个 GPU 上运行最大 1.3B 的模型，在单个 A100 40G 节点上运行 6.7B 的模型，而 DeepSpeed-HE 可以在相同的硬件上分别运行 6.5B 和 50B 的模型，实现高达 7.5 倍的提升。
 
 因此，凭借超过一个数量级的更高吞吐量，与现有的 RLHF 系统（如 Colossal-AI 或 HuggingFace DDP）相比，DeepSpeed-HE 拥有在相同时间预算下训练更大的 actor 模型的能力，或者以十分之一的成本训练类似大小的模型的能力。
@@ -241,7 +241,7 @@ DeepSpeed-HE可以在训练和推理之间无缝更改模型分区，以支持�
 
 <img src="../../assets/images/figure3.png" width="600px" />
 
-*图 3. 在单个 NVIDIA A100-40G GPU 上，将 RLHF 训练的吞吐量与另外两个系统框架在步骤 3 进行比较。没有图标表示 OOM（内存不足）的情况*  
+*图 3. 在单个 NVIDIA A100-40G GPU 上，将 RLHF 训练的吞吐量与另外两个系统框架在步骤 3 进行比较。没有图标表示 OOM（内存不足）的情况*
 
 </div>
 
@@ -259,7 +259,7 @@ DeepSpeed-HE可以在训练和推理之间无缝更改模型分区，以支持�
 
 <img src="../../assets/images/figure5.png" width="600px" />
 
-*图 5. DeepSpeed Chat 的混合引擎在生成阶段的优越加速：在单个 DGX 节点上使用 8 个 A100-40G GPU 训练 OPT-1.3B actor 模型 + OPT-350M reward 模型的时间/序列分解。* 
+*图 5. DeepSpeed Chat 的混合引擎在生成阶段的优越加速：在单个 DGX 节点上使用 8 个 A100-40G GPU 训练 OPT-1.3B actor 模型 + OPT-350M reward 模型的时间/序列分解。*
 
 </div>
 
@@ -271,7 +271,7 @@ DeepSpeed-HE可以在训练和推理之间无缝更改模型分区，以支持�
 
 <img src="../../assets/images/figure6.png" width="600px" />
 
-*图 6. 在最大效率的情况下，DeepSpeed-HE 针对不同模型大小的RLHF生成、训练和有效吞吐量。* 
+*图 6. 在最大效率的情况下，DeepSpeed-HE 针对不同模型大小的RLHF生成、训练和有效吞吐量。*
 
 </div>
 
@@ -282,13 +282,13 @@ DeepSpeed-HE可以在训练和推理之间无缝更改模型分区，以支持�
 此外，我们想指出，如图 2 所示，我们系统的有效性能比现有系统高 19 倍，这表明它们的运行速度低于峰值的 5%。这说明了优化 RLHF 工作负载的挑战以及我们的系统在面对挑战时的有效性。
 
 <div align="center">
-	
+
 <img src="../../assets/images/figure7.png" width="600px" />
- 
+
 *图 7. 在不同数量的DGX (A100-40/80G GPU) 节点上，进行13B（左）和66B（右）actor 模型 和 350M reward 模型的可扩展性训练。*
 
 </div>
-	
+
 ***(II) 可扩展性分析。*** 不同模型大小的最佳有效吞吐量取决于不同的 GPU 数量。部分原因是因为一些较大的模型大小需要更多的内存来运行。基于此，我们接下来讨论 DeepSpeed-HE 的可扩展性特性。
 
 图 7 显示 DeepSeed-RLHF 在多达 64 个 GPU的集群 上实现了良好的整体扩展。然而，如果我们仔细观察，可以发现 DeepSpeed-RLHF 训练在小规模时实现了超线性扩展，随后在较大规模时实现了接近线性或次线性扩展。这是由于内存可用性和最大全局批量大小之间的相互作用。
@@ -299,7 +299,7 @@ DeepSpeed-HE 的核心技术基于 ZeRO，用于训练过程中将模型状态�
 
 我们非常高兴地宣布，DeepSpeed-Chat现已开源并向 AI 社区开放。
 
-* 如果你发现我们的成果对你有用或者喜欢我们的开源成果，请在 [DeepSpeed](https://github.com/microsoft/DeepSpeed) 和 [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples)上点⭐。 
+* 如果你发现我们的成果对你有用或者喜欢我们的开源成果，请在 [DeepSpeed](https://github.com/microsoft/DeepSpeed) 和 [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples)上点⭐。
 
 
 * 请访问我们的DeepSpeed-Chat GitHub页面以开始使用：[GitHub 登陆页面](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat)
