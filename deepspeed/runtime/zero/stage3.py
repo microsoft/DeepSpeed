@@ -2248,7 +2248,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         # update frozen fp16 params if possible.
         if FROZEN_FP16_GROUPS in state_dict:
-            print(f'load frozen fp16 groups')
             saved_frozen_fp16_groups = state_dict[FROZEN_FP16_GROUPS]
             for curr_group, saved_group in zip(self.frozen_fp16_groups, saved_frozen_fp16_groups):
                 for curr_param, saved_param in zip(curr_group, saved_group):

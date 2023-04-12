@@ -3097,8 +3097,6 @@ class DeepSpeedEngine(Module):
         param_group_shapes = []
         cnt = 0
         numel = 0
-        if not trainable:
-            print(f'save frozen fp16 groups')
 
         bit16_groups = self.optimizer.get_bit16_param_groups(trainable)
         for bit16_group in bit16_groups:
