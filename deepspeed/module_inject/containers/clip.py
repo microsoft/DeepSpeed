@@ -42,7 +42,7 @@ class HFCLIPLayerPolicy(TransformerPolicy):
         return self.client_module.self_attn.q_proj.weight.shape[1], \
                 self.client_module.self_attn.num_heads, \
                 self.client_module.layer_norm1.eps, \
-                -1
+                DEFAULT_INTERMEDIATE_SIZE
 
     def get_q_k_v(self):
         return None

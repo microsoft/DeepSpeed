@@ -47,7 +47,7 @@ class HFDistilBertLayerPolicy(TransformerPolicy):
         return self.client_module.attention.q_lin.weight.shape[1], \
                 self.client_module.attention.n_heads, \
                 self.client_module.sa_layer_norm.eps, \
-                -1
+                DEFAULT_INTERMEDIATE_SIZE
 
     def get_q_k_v(self):
         return None

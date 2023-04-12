@@ -75,7 +75,7 @@ class HFGPTNEOLayerPolicy(TransformerPolicy):
         return self.client_module.attn.attention.q_proj.weight.shape[1], \
                 self.client_module.attn.attention.num_heads, \
                 self.client_module.ln_1.eps, \
-                -1
+                DEFAULT_INTERMEDIATE_SIZE
 
     def get_q_k_v(self):
         return None

@@ -86,7 +86,7 @@ class BLOOMLayerPolicy(TransformerPolicy):
         return self.client_module.self_attention.hidden_size, \
                 self.client_module.self_attention.num_heads, \
                 self.client_module.input_layernorm.eps, \
-                -1
+                DEFAULT_INTERMEDIATE_SIZE
 
     def get_q_k_v(self):
         return None

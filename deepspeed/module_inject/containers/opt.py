@@ -88,7 +88,7 @@ class HFOPTLayerPolicy(TransformerPolicy):
         return self.client_module.self_attn.embed_dim, \
                 self.client_module.self_attn.num_heads, \
                 self.client_module.self_attn_layer_norm.eps, \
-                -1
+                DEFAULT_INTERMEDIATE_SIZE
 
     def get_q_k_v(self):
         return self.client_module.self_attn.q_proj.weight, \

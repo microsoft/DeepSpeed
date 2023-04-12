@@ -94,7 +94,7 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
         return self.client_module.attention.query_key_value.weight.shape[1], \
                 self.client_module.attention.num_attention_heads, \
                 self.client_module.input_layernorm.eps, \
-                -1
+                DEFAULT_INTERMEDIATE_SIZE
 
     def get_q_k_v(self):
         return None

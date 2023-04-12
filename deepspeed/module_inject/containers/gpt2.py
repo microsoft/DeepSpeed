@@ -39,7 +39,7 @@ class HFGPT2LayerPolicy(TransformerPolicy):
         return self.client_module.attn.embed_dim, \
                 self.client_module.attn.num_heads, \
                 self.client_module.ln_1.eps, \
-                -1
+                DEFAULT_INTERMEDIATE_SIZE
 
     def get_q_k_v(self):
         return None

@@ -11,6 +11,8 @@ from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 from deepspeed.accelerator import get_accelerator
 from deepspeed.utils.types import GATED_ACTIVATION_TYPES
 
+DEFAULT_INTERMEDIATE_SIZE = -1
+
 
 class BaseConvolutionContainer(ABC):
     # not implemented

@@ -73,7 +73,7 @@ class HFGPTJLayerPolicy(TransformerPolicy):
         return self.client_module.attn.q_proj.weight.shape[1], \
                 self.client_module.attn.num_attention_heads, \
                 self.client_module.ln_1.eps, \
-                -1
+                DEFAULT_INTERMEDIATE_SIZE
 
     def get_q_k_v(self):
         return None
