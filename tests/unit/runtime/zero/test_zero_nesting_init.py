@@ -23,5 +23,3 @@ class TestNestingInit(DistributedTest):
         deepspeed_engine, *_ = deepspeed.initialize(model=model, config_params=ds_config)
         # ensure that zero3 processed the parameter
         assert hasattr(deepspeed_engine.weight, "ds_id")
-
-
