@@ -29,12 +29,14 @@ DeepSpeed-RLHFシステムは、大規模モデルの学習において類を見
 ***実行効率とコスト***: 実行効率において、[DeepSpeed-HEは既存システムよりも15倍以上速く](#実効スループットとスケーラビリティ)、RLHFの訓練を高速かつ低コストに行うことができます。例えば、DeepSpeed-HEは、Azure Cloud上でOPT-13Bモデルをわずか9時間で、OPT-30Bを18時間で訓練でき、それぞれのコストは300ドル以下、600ドル以下です。 
 
 <div align="center">
+
 | GPUs    |                           OPT-6.7B                           |             OPT-13B             | OPT-30B | OPT-66B |
 | ------- | :----------------------------------------------------------: | :------------------------------: | :-----: | :-----: |
 | 8x A100-40GB   |                           5.7 時間                           |            10.8 時間            | 1.85 日 |   NA   |
 | 8x A100-80GB | 4.1 時間 ($132)                         　  | 	9 時間 ($290) | 18 時間 ($580) | 2.1 日（$1620） |        |        |
 
 *表1. ノード1台（8x A100）を用いた場合の訓練時間とAzureでの概算実行コスト*
+
 </div>
 
 
@@ -68,8 +70,6 @@ DeepSpeed-RLHFシステムは、大規模モデルの学習において類を見
 # 2. ChatGPTの訓練と推論を手軽に実行 
 
 初めに、DeepSpeed-RLHFを用いた訓練の容易さを示す例として、OPT-13BとOPT-66Bのモデルを訓練できることを示します。訓練を実行できる時間が短い場合でも、コンシューマーグレードのGPU1つで、OPT-1.3Bモデルをわずか2時間で訓練することも可能です。DeepSpeed-ChatのAPIを用いて、カスタムされたパイプラインをどのように作るかも紹介していきます。 
-
-## Training your first ChatGPT-Style model is so easy with DeepSpeed-Chat’s RLHF examples
 
 ## DeepSpeed-Chatの例を用いたChatGPTスタイルのモデルの訓練 
 
@@ -267,8 +267,6 @@ DeepSpeed-RLHFは、Colossal-AIや、ネイティブのPyTorchを用いたHuggin
 *図5. DeepSpeed-HEを用いた生成フェーズの高速化（OPT-1.3Bベースのアクターモデル + OPT-350Mベースの報酬モデル、8台のA100-40Gを備えた1台のDGXノードを使用）*
 
 </div>
-
-## Effective Throughput and Scalability Analysis
 
 ## 実効スループットとスケーラビリティ 
 
