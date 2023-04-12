@@ -104,7 +104,7 @@ public:
         } else {
             scale = ((1 << numBits)) / (max - min);
         }
-        offset = (max + min) / 2 + 0.5 / scale;
+        offset = (max + min) / 2;
     }
 
     DS_D_INLINE int8_t quantize(__half val)
