@@ -82,7 +82,7 @@ class HFBertLayerPolicy(TransformerPolicy):
             self.client_module.output.dense.weight, \
             self.client_module.output.dense.bias
 
-    def get_mlp_geglu(self):
+    def get_gated_mlp(self):
         return None
 
     def layernorm(self):

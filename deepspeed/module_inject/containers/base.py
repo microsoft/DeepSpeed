@@ -122,9 +122,9 @@ class BaseTransformerContainer(ABC):
         self.q_k_v = self.policy.get_q_k_v()
         if self.q_k_v is not None:
             self.set_q_k_v(*self.q_k_v)
-        self.mlp_geglu = self.policy.get_mlp_geglu()
+        self.mlp_geglu = self.policy.get_gated_mlp()
         if self.mlp_geglu is not None:
-            self.set_inter_u_g(*self.mlp_geglu)
+            self.set_mlp_gate_params(*self.mlp_geglu)
 
     def convert_to_required_dtype(self, dtype):
         # Note: converting tensors to fp16 requires that we do it in-place using self.__dict__ and not make a list/dict copy
@@ -188,7 +188,7 @@ class BaseTransformerContainer(ABC):
         self._4hh_w = _4hh_w
         self._4hh_b = _4hh_b
 
-    def set_inter_u_g(self, inter_up_w, inter_up_b, inter_gate_w, inter_gate_b):
+    def set_mlp_gate_params(self, inter_up_w, inter_up_b, inter_gate_w, inter_gate_b):
         self.inter_up_w = inter_up_w
         self.inter_up_b = inter_up_b
         self.inter_gate_w = inter_gate_w
@@ -298,23 +298,23 @@ class BaseTransformerContainer(ABC):
     def mlp_inter_mp(self, mp_replace, reversed_dim=False):
         if self.mlp_act_func_type in GATED_ACTIVATION_TYPES:
             if reversed_dim:
-                self.module.mlp.inter_w = mp_replace.geglu_copy(self.module.mlp.inter_w[:self._h4h_w.shape[0] //
-                                                                                        mp_replace.mp_size],
-                                                                self._h4h_w,
-                                                                int8=reversed_dim,
-                                                                allocat_tensor=reversed_dim)
-                self.module.mlp.inter_b = mp_replace.geglu_copy(self.module.mlp.inter_b[:self._h4h_w.shape[0] //
-                                                                                        mp_replace.mp_size],
-                                                                self._h4h_b,
-                                                                int8=reversed_dim,
-                                                                allocat_tensor=reversed_dim)
+                self.module.mlp.inter_w = mp_replace.gated_mlp_copy(self.module.mlp.inter_w[:self._h4h_w.shape[0] //
+                                                                                            mp_replace.mp_size],
+                                                                    self._h4h_w,
+                                                                    int8=reversed_dim,
+                                                                    allocat_tensor=reversed_dim)
+                self.module.mlp.inter_b = mp_replace.gated_mlp_copy(self.module.mlp.inter_b[:self._h4h_w.shape[0] //
+                                                                                            mp_replace.mp_size],
+                                                                    self._h4h_b,
+                                                                    int8=reversed_dim,
+                                                                    allocat_tensor=reversed_dim)
             else:
-                self.module.mlp.inter_w = mp_replace.geglu_copy(self.module.mlp.inter_w,
-                                                                self._h4h_w,
-                                                                int8=reversed_dim)
-                self.module.mlp.inter_b = mp_replace.geglu_copy(self.module.mlp.inter_b,
-                                                                self._h4h_b,
-                                                                int8=reversed_dim)
+                self.module.mlp.inter_w = mp_replace.gated_mlp_copy(self.module.mlp.inter_w,
+                                                                    self._h4h_w,
+                                                                    int8=reversed_dim)
+                self.module.mlp.inter_b = mp_replace.gated_mlp_copy(self.module.mlp.inter_b,
+                                                                    self._h4h_b,
+                                                                    int8=reversed_dim)
         else:
             if reversed_dim:
                 self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w[:self._h4h_w.shape[0] //

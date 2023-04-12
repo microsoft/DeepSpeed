@@ -98,7 +98,7 @@ class HFGPTNEOLayerPolicy(TransformerPolicy):
                self.client_module.mlp.c_proj.weight, \
                self.client_module.mlp.c_proj.bias
 
-    def get_mlp_geglu(self):
+    def get_gated_mlp(self):
         return None
 
     def layernorm(self):

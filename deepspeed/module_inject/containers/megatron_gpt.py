@@ -106,7 +106,7 @@ class MegatronLayerPolicy(TransformerPolicy):
                    self.client_module.mlp.dense_4h_to_h.weight, \
                    self.client_module.mlp.dense_4h_to_h.bias
 
-    def get_mlp_geglu(self):
+    def get_gated_mlp(self):
         return None
 
     def layernorm(self):

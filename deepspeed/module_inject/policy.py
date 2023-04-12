@@ -107,7 +107,7 @@ class TransformerPolicy(DSPolicy):
         raise NotImplementedError
 
     @abstractmethod
-    def get_mlp_geglu(self):
+    def get_gated_mlp(self):
         """
         Returns GEGLU up and gate projection parameters without merging them together
         """
@@ -225,7 +225,7 @@ def maybe_copy_geglu(module, sd, weight_quantizer, mp_replace, dst_name, src_nam
         mlp1_data = torch.cat((reg_proj, gate_proj), dim=0)
         dst = getattr(module, dst_name)
 
-        dst = mp_replace.geglu_copy(dst, weight_quantizer.quantize(mlp1_data.to(get_accelerator().device_name()) if weight_quantizer.q_int8 else \
+        dst = mp_replace.gated_mlp_copy(dst, weight_quantizer.quantize(mlp1_data.to(get_accelerator().device_name()) if weight_quantizer.q_int8 else \
                                             transpose(mlp1_data)), int8=weight_quantizer.q_int8)
         setattr(module, dst_name, dst)
 

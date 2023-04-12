@@ -117,7 +117,7 @@ class LLAMALayerPolicy(TransformerPolicy):
 
         return mlp1, None, mlp2, None
 
-    def get_mlp_geglu(self):
+    def get_gated_mlp(self):
         return self.client_module.mlp.up_proj.weight, \
                None, \
                self.client_module.mlp.gate_proj.weight, \

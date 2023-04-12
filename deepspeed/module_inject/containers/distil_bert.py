@@ -75,7 +75,7 @@ class HFDistilBertLayerPolicy(TransformerPolicy):
             self.client_module.ffn.lin2.weight, \
             self.client_module.ffn.lin2.bias
 
-    def get_mlp_geglu(self):
+    def get_gated_mlp(self):
         return None
 
     def layernorm(self):

@@ -120,7 +120,7 @@ class ReplaceWithTensorSlicing:
 
         return dst
 
-    def geglu_copy(self, dst, src, int8=False):
+    def gated_mlp_copy(self, dst, src, int8=False):
         if src is None:
             return src
 

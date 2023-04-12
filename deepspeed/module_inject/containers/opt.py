@@ -121,7 +121,7 @@ class HFOPTLayerPolicy(TransformerPolicy):
                self.client_module.fc2.weight, \
                self.client_module.fc2.bias
 
-    def get_mlp_geglu(self):
+    def get_gated_mlp(self):
         return None
 
     def layernorm(self):
