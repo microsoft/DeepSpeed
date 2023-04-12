@@ -414,6 +414,42 @@ class BaseTransformerContainer(ABC):
         data.to(get_accelerator().current_device_name())
         return data
 
+    def reset_qkv_experimental(self):
+        """
+        WIP - experimental and likely to be changed/improved
+        """
+        if self.module.attention.attn_qkvw is None:
+            self.module.attention.attn_qkvw = torch.empty(self.qw.shape[0] * 3,
+                                                          self.qw.shape[0],
+                                                          dtype=self.qw.dtype,
+                                                          device=self.qw.device)
+            self.module.attention.attn_qkvb = torch.empty(self.qw.shape[0] * 3,
+                                                          dtype=self.qw.dtype,
+                                                          device=self.qw.device)
+        self.module.attention.attn_qkvw.data[:self.qw.shape[0]] = self.qw.data
+        self.module.attention.attn_qkvb.data[:self.qw.shape[0]] = self.qb.data
+        self.module.attention.attn_qkvw.data[self.qw.shape[0]:2 * self.qw.shape[0]] = self.kw.data
+        self.module.attention.attn_qkvb.data[self.qw.shape[0]:2 * self.qw.shape[0]] = self.kb.data
+        self.module.attention.attn_qkvw.data[2 * self.qw.shape[0]:] = self.vw.data
+        self.module.attention.attn_qkvb.data[2 * self.qw.shape[0]:] = self.vb.data
+
+        qkv_data = [self.qw.data, \
+                    self.qb.data, \
+                    self.kw.data, \
+                    self.kb.data, \
+                    self.vw.data, \
+                    self.vb.data]
+
+        self.qw.data = self.module.attention.attn_qkvw.data[:self.qw.shape[0]]
+        self.qb.data = self.module.attention.attn_qkvb.data[:self.qw.shape[0]]
+        self.kw.data = self.module.attention.attn_qkvw.data[self.qw.shape[0]:2 * self.qw.shape[0]]
+        self.kb.data = self.module.attention.attn_qkvb.data[self.qw.shape[0]:2 * self.qw.shape[0]]
+        self.vw.data = self.module.attention.attn_qkvw.data[2 * self.qw.shape[0]:]
+        self.vb.data = self.module.attention.attn_qkvb.data[2 * self.qw.shape[0]:]
+
+        for data in qkv_data:
+            del data
+
     def reset_qkv(self):
         self.qkvw.data[:self.qw.shape[0]] = self.qw.data
         self.qkvb.data[:self.qw.shape[0]] = self.qb.data
