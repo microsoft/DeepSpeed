@@ -1,4 +1,4 @@
-name: amd
+name: amd-mi200
 
 on:
   push:
