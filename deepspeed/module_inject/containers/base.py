@@ -9,7 +9,7 @@ import torch
 
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 from deepspeed.accelerator import get_accelerator
-from deepspeed.utils.types import ActivationFuncType
+from deepspeed.utils.types import GATED_ACTIVATION_TYPES
 
 
 class BaseConvolutionContainer(ABC):
@@ -294,7 +294,7 @@ class BaseTransformerContainer(ABC):
                                                         allocat_tensor=reversed_dim)
 
     def mlp_inter_mp(self, mp_replace, reversed_dim=False):
-        if self.mlp_act_func_type == ActivationFuncType.GEGLU:
+        if self.mlp_act_func_type in GATED_ACTIVATION_TYPES:
             if reversed_dim:
                 self.module.mlp.inter_w = mp_replace.geglu_copy(self.module.mlp.inter_w[:self._h4h_w.shape[0] //
                                                                                         mp_replace.mp_size],

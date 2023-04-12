@@ -16,7 +16,7 @@ std::array<int, 3> gemm_algos = std::array<int, 3>({99, 99, 99});
 // NOTE: This activation function type enum should be always in sync
 // with the python counterpart, otherwise the casting from python binding
 // will be incorrect.
-enum class ActivationFuncType { UNKNOWN = 0, GELU = 1, ReLU = 2, GeGLU = 3 };
+enum class ActivationFuncType { UNKNOWN = 0, GELU = 1, ReLU = 2, GATED_GELU = 3, GATED_SILU = 4 };
 
 enum class NormType { UNKNOWN = 0, LayerNorm = 1, GroupNorm = 2, RMSNorm = 3 };
 
@@ -567,11 +567,16 @@ at::Tensor ds_bias_gelu(at::Tensor& input, at::Tensor& bias)
     return input_cont;
 }
 
-at::Tensor ds_bias_geglu(at::Tensor& activation, at::Tensor& bias)
+at::Tensor ds_gated_activation(at::Tensor& activation, at::Tensor& bias, int actFun)
 {
     /*
     Used in FF of Stable diffusion
     */
+
+    const ActivationFuncType activation_type = static_cast<ActivationFuncType>(actFun);
+
+    assert(activation_type == ActivationFuncType::GATED_GELU ||
+           activation_type == ActivationFuncType::GATED_SILU);
 
     const int batch_size = activation.size(0);
     const int seq_len = activation.size(1);
@@ -584,20 +589,22 @@ at::Tensor ds_bias_geglu(at::Tensor& activation, at::Tensor& bias)
     auto output = at::empty({batch_size, seq_len, out_channels}, activation.options());
 
     if (activation.options().dtype() == torch::kFloat32) {
-        launch_fused_bias_geglu((float*)output.data_ptr(),
+        launch_gated_activation((float*)output.data_ptr(),
                                 (const float*)activation.data_ptr(),
                                 (const float*)bias.data_ptr(),
                                 rows,
                                 out_channels,
                                 channels,
+                                activation_type == ActivationFuncType::GATED_GELU,
                                 InferenceContext::Instance().GetCurrentStream());
     } else {
-        launch_fused_bias_geglu((__half*)output.data_ptr(),
+        launch_gated_activation((__half*)output.data_ptr(),
                                 (const __half*)activation.data_ptr(),
                                 (const __half*)bias.data_ptr(),
                                 rows,
                                 out_channels,
                                 channels,
+                                activation_type == ActivationFuncType::GATED_GELU,
                                 InferenceContext::Instance().GetCurrentStream());
     }
 
@@ -1626,13 +1633,23 @@ std::vector<at::Tensor> ds_rms_mlp_gemm(at::Tensor& input,
                          mlp_1_out_neurons,
                          bsz,
                          InferenceContext::Instance().GetCurrentStream());
-    } else if (act_func_type == ActivationFuncType::GeGLU) {
-        launch_fused_bias_geglu(intermediate_ptr,
+    } else if (act_func_type == ActivationFuncType::GATED_GELU) {
+        launch_gated_activation(intermediate_ptr,
                                 (const T*)intermediate_ptr,
                                 (const T*)nullptr,
                                 bsz,
                                 mlp_1_out_neurons,
                                 mlp_1_out_neurons,
+                                true,
+                                InferenceContext::Instance().GetCurrentStream());
+    } else if (act_func_type == ActivationFuncType::GATED_SILU) {
+        launch_gated_activation(intermediate_ptr,
+                                (const T*)intermediate_ptr,
+                                (const T*)nullptr,
+                                bsz,
+                                mlp_1_out_neurons,
+                                mlp_1_out_neurons,
+                                false,
                                 InferenceContext::Instance().GetCurrentStream());
     }
 
@@ -1937,7 +1954,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           "DeepSpeed attention with int8 (CUDA)");
     m.def("bias_gelu_fp32", &ds_bias_gelu<float>, "DeepSpeed Gelu with fp32 (CUDA)");
     m.def("bias_gelu_fp16", &ds_bias_gelu<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
-    m.def("bias_geglu", &ds_bias_geglu, "DeepSpeed Bias GEGLU (CUDA)");
+    m.def("gated_activation", &ds_gated_activation, "DeepSpeed Bias GEGLU (CUDA)");
     m.def("bias_add_fp32", &ds_bias_add<float>, "DeepSpeed Bias Add with fp32 (CUDA)");
     m.def("bias_add_fp16", &ds_bias_add<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
     m.def("bias_relu_fp32", &ds_bias_relu<float>, "DeepSpeed ReLU with fp32 (CUDA)");

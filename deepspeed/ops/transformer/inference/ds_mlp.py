@@ -7,7 +7,7 @@ import math
 import torch
 import torch.nn as nn
 from deepspeed import comm as dist
-from deepspeed.utils.types import ActivationFuncType
+from deepspeed.utils.types import GATED_ACTIVATION_TYPES
 from deepspeed.accelerator import get_accelerator
 from .op_binding import MLPGemmOp, VectorMatMulOp, GELUGemmOp, ResidualAddOp
 
@@ -23,7 +23,7 @@ class DeepSpeedMLP(nn.Module):
         data_type_fp = torch.half if config.fp16 else torch.float
         device = get_accelerator().current_device_name()
 
-        proj_factor = 2 if self.config.mlp_act_func_type == ActivationFuncType.GEGLU else 1
+        proj_factor = 2 if self.config.mlp_act_func_type in GATED_ACTIVATION_TYPES else 1
         self.intm_w_sz_per_partition = self.config.intermediate_size * proj_factor // self.config.mp_size
         self.intm_o_sz_per_partition = self.config.intermediate_size // self.config.mp_size
 

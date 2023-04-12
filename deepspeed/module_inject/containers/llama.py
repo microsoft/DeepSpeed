@@ -72,7 +72,7 @@ class LLAMALayerPolicy(TransformerPolicy):
     def __init__(self, client_module, inference=True):
         super().__init__(
             inference,
-            mlp_act_func_type=ActivationFuncType.GEGLU,
+            mlp_act_func_type=ActivationFuncType.GATED_SILU,
             norm_type=NormType.RMSNorm,
         )
         self.client_module = client_module

@@ -49,12 +49,13 @@ void launch_bias_gelu(T* input,
                       cudaStream_t stream);
 
 template <typename T>
-void launch_fused_bias_geglu(T* output,
+void launch_gated_activation(T* output,
                              const T* activation,
                              const T* bias,
                              int rows,
                              int output_stride,
                              int elems_per_row,
+                             bool use_gelu,
                              cudaStream_t stream);
 
 // Fused bias add with relu activation

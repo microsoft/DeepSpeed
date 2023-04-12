@@ -598,13 +598,13 @@ constexpr int granularity = 16;
 
 __device__ __forceinline__ float silu(float val) { return val / (1.0f + expf(-val)); }
 
-template <typename T>
-__global__ void fused_bias_geglu(T* output,
-                                 const T* activation,
-                                 const T* bias,
-                                 int base_channels,
-                                 int output_stride,
-                                 int total_elems)
+template <typename T, bool useGelu>
+__global__ void fused_gate_activation(T* output,
+                                      const T* activation,
+                                      const T* bias,
+                                      int base_channels,
+                                      int output_stride,
+                                      int total_elems)
 {
     constexpr int T_per_access = fused_geglu::granularity / sizeof(T);
     constexpr int T_per_step = T_per_access * fused_geglu::threads;
@@ -640,7 +640,8 @@ __global__ void fused_bias_geglu(T* output,
             for (int v = 0; v < T_per_access; v++) {
                 T hidden_state = activation_buffer_1[v] + bias_buffer_1[v];
                 T pre_gate = activation_buffer_2[v] + bias_buffer_2[v];
-                float gate_f = silu(conversion::to<float>(pre_gate));
+                float pre_gate_f = conversion::to<float>(pre_gate);
+                float gate_f = (useGelu) ? old_gelu(pre_gate_f) : silu(pre_gate_f);
                 T gate = conversion::to<T>(gate_f);
                 activation_buffer_1[v] = hidden_state * gate;
             }
@@ -652,12 +653,13 @@ __global__ void fused_bias_geglu(T* output,
 }
 
 template <typename T>
-void launch_fused_bias_geglu(T* output,
+void launch_gated_activation(T* output,
                              const T* activation,
                              const T* bias,
                              int rows,
                              int output_stride,
                              int elems_per_row,
+                             bool use_gelu,
                              cudaStream_t stream)
 {
     /*
@@ -678,11 +680,16 @@ void launch_fused_bias_geglu(T* output,
     dim3 block(fused_geglu::threads);
     dim3 grid((total_elems + T_per_block - 1) / T_per_block);
 
-    fused_bias_geglu<<<grid, block, 0, stream>>>(
-        output, activation, bias, base_channels, output_stride, total_elems);
+    if (use_gelu) {
+        fused_gate_activation<T, true><<<grid, block, 0, stream>>>(
+            output, activation, bias, base_channels, output_stride, total_elems);
+    } else {
+        fused_gate_activation<T, false><<<grid, block, 0, stream>>>(
+            output, activation, bias, base_channels, output_stride, total_elems);
+    }
 }
 
 template void
-launch_fused_bias_geglu(__half*, const __half*, const __half*, int, int, int, cudaStream_t);
+launch_gated_activation(__half*, const __half*, const __half*, int, int, int, bool, cudaStream_t);
 template void
-launch_fused_bias_geglu(float*, const float*, const float*, int, int, int, cudaStream_t);
+launch_gated_activation(float*, const float*, const float*, int, int, int, bool, cudaStream_t);

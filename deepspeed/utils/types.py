@@ -10,7 +10,14 @@ class ActivationFuncType(IntEnum):
     UNKNOWN = 0
     GELU = 1
     ReLU = 2
-    GEGLU = 3
+    GATED_GELU = 3
+    GATED_SILU = 4
+
+
+GATED_ACTIVATION_TYPES = [
+    ActivationFuncType.GATED_GELU,
+    ActivationFuncType.GATED_SILU,
+]
 
 
 class NormType(IntEnum):
