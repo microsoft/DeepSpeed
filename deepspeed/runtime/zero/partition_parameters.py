@@ -34,7 +34,7 @@ from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwa
 
 param_count = 0
 partitioned_param_data_shape = [0]
-zero_init_enabled = False
+zero_init_enabled = 0
 
 
 class NoGatherHandle:
@@ -295,7 +295,9 @@ class InsertPostInitMethodToModuleSubClasses(object):
         global zero_init_enabled
         if not self.enabled:
             return
-        zero_init_enabled = True
+        zero_init_enabled += 1
+        if zero_init_enabled > 1:
+            return
 
         def apply_with_gather(orig_module_apply_fn: Callable) -> Callable:
             """many models make use of child modules like Linear or Embedding which
@@ -397,6 +399,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
             cls.__init__ = partition_after(cls.__init__)
 
         def _init_subclass(cls, **kwargs):
+            cls._old_init = cls.__init__
             cls.__init__ = partition_after(cls.__init__)
 
         # Replace .__init__() for all existing subclasses of torch.nn.Module recursively
@@ -461,7 +464,8 @@ class InsertPostInitMethodToModuleSubClasses(object):
 def shutdown_init_context():
     global zero_init_enabled
 
-    if not zero_init_enabled:
+    zero_init_enabled -= 1
+    if not zero_init_enabled == 0:
         return
 
     def _disable_class(cls):
