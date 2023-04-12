@@ -6,7 +6,7 @@
 
 <div align="center">
 
-<img src="../assets/images/hero-figure-black-ja.png" width="1000px" alt="DeepSpeed-Chat!"/>
+<img src="../../assets/images/hero-figure-black-ja.png" width="1000px" alt="DeepSpeed-Chat!"/>
 
 </div>
 
@@ -178,7 +178,7 @@ for prompt_batch in prompt_train_dataloader:
 
 <div align="center">
 
-<img src="../assets/images/ds-chat-overview.png" width="800px" alt="DeepSpeed-Chat!"/>
+<img src="../../assets/images/ds-chat-overview.png" width="800px" alt="DeepSpeed-Chat!"/>
 
 *図1: DeepSpeed-Chatの訓練パイプラインの概要* 
 
@@ -211,7 +211,7 @@ for prompt_batch in prompt_train_dataloader:
 
 <div align="center">
 
-<img src="../assets/images/hybrid-engine.png" width="600px" alt="DeepSpeed-Chat!"/>
+<img src="../../assets/images/hybrid-engine.png" width="600px" alt="DeepSpeed-Chat!"/>
 
 *図2. RLHFで最も処理時間がかかる部分を高速化するハイブリッドエンジン（DeepSpeed-HE）*
 
@@ -244,7 +244,7 @@ DeepSpeed-RLHFは、Colossal-AIや、ネイティブのPyTorchを用いたHuggin
 
 <div align="center">
 
-<img src="../assets/images/figure3.png" width="600px" />
+<img src="../../assets/images/figure3.png" width="600px" />
 
 *図3. 他フレームワークとのStep 3のスループット比較（1台のA100-40Gを使用。バツ印はメモリ不足で実行できないことを示す）* 
 
@@ -252,7 +252,7 @@ DeepSpeed-RLHFは、Colossal-AIや、ネイティブのPyTorchを用いたHuggin
 
 <div align="center">
 
-<img src="../assets/images/figure4.png" width="600px" />
+<img src="../../assets/images/figure4.png" width="600px" />
 
 *図4.  ステップ3（全3ステップ処理時間の大半を占める）のEnd-to-endの訓練スループット比較 (8台のA100-40Gを備えた1台のDGXノードを使用。バツ印はメモリ不足で実行できないことを示す）*
 
@@ -262,7 +262,7 @@ DeepSpeed-RLHFは、Colossal-AIや、ネイティブのPyTorchを用いたHuggin
 
 <div align="center">
 
-<img src="../assets/images/figure5.png" width="600px" />
+<img src="../../assets/images/figure5.png" width="600px" />
 
 *図5. DeepSpeed-HEを用いた生成フェーズの高速化（OPT-1.3Bベースのアクターモデル + OPT-350Mベースの報酬モデル、8台のA100-40Gを備えた1台のDGXノードを使用）*
 
@@ -276,7 +276,7 @@ DeepSpeed-RLHFは、Colossal-AIや、ネイティブのPyTorchを用いたHuggin
 
 <div align="center">
 
-<img src="../assets/images/Throughputs-OPT.png" width="600px" />
+<img src="../../assets/images/Throughputs-OPT.png" width="600px" />
 
 *図6. DeepSpeed-HEを用いたRLHFにおける生成、訓練、および実効スループット（GPU数は最善の効率を得られるように設定）* 
 
@@ -290,7 +290,7 @@ DeepSpeed-RLHFは、Colossal-AIや、ネイティブのPyTorchを用いたHuggin
 
 <div align="center">
 
-<img src="../assets/images/figure7.png" width="600px" />
+<img src="../../assets/images/figure7.png" width="600px" />
 
 *図7. DGXノード（ノードあたり8台のA100-40/80G）の数を増加させた場合のスケーラビリティ（13Bおよび66Bのアクターモデルと350Mの報酬モデルを使用）*
 
