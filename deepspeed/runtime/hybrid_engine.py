@@ -99,6 +99,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
         _container.create_ds_model_config()
         _container.create_module()
         _container.set_params_wo_copy(Z3_enabled=self.Z3_enabled)
+        _container.update_merged_qkv()
         return _container
 
     def populate_all_inference_policies(self):
@@ -324,7 +325,6 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
         self.populate_all_inference_policies()
         self.all_layers_params = list(self.module.parameters())
         self.create_inference_containers(self.module)
-
         self._generate = self.module.generate
         self.module.generate = self.generate
 
