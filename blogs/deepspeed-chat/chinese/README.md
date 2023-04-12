@@ -6,7 +6,7 @@
 
 <div align="center">
 
-<img src="../assets/images/hero-figure-black.png" width="1000px" alt="DeepSpeed-Chat!"/>
+<img src="../../assets/images/hero-figure-black.png" width="1000px" alt="DeepSpeed-Chat!"/>
 
 </div>
 
@@ -175,7 +175,7 @@ for prompt_batch in prompt_train_dataloader:
 
 <div align="center">
 
-<img src="../assets/images/ds-chat-overview.png" width="800px" alt="DeepSpeed-Chat!"/>
+<img src="../../assets/images/ds-chat-overview.png" width="800px" alt="DeepSpeed-Chat!"/>
 
 *图 1: DeepSpeed-Chat 的 RLHF 训练流程图示，包含了一些可选择的功能。*
 
@@ -207,7 +207,7 @@ DeepSpeed-Chat流程的前两步与大型模型的常规微调相似，得益于
 
 <div align="center">
 
-<img src="../assets/images/hybrid-engine.png" width="600px" alt="DeepSpeed-Chat!"/>
+<img src="../../assets/images/hybrid-engine.png" width="600px" alt="DeepSpeed-Chat!"/>
 
 *Figure 2. 设计图解：DeepSpeed Hybrid Engine，用于加速 RLHF 流程中最耗时的部分。*
 
@@ -239,7 +239,7 @@ DeepSpeed-HE可以在训练和推理之间无缝更改模型分区，以支持�
 
 <div align="center">
 
-<img src="../assets/images/figure3.png" width="600px" />
+<img src="../../assets/images/figure3.png" width="600px" />
 
 *图 3. 在单个 NVIDIA A100-40G GPU 上，将 RLHF 训练的吞吐量与另外两个系统框架在步骤 3 进行比较。没有图标表示 OOM（内存不足）的情况*  
 
@@ -247,7 +247,7 @@ DeepSpeed-HE可以在训练和推理之间无缝更改模型分区，以支持�
 
 <div align="center">
 
-<img src="../assets/images/figure4.png" width="600px" />
+<img src="../../assets/images/figure4.png" width="600px" />
 
 *图 4. 在单个 DGX 节点上，使用 8 个 NVIDIA A100-40G GPU，对训练流程第 3 步（耗时最长的部分）的不同模型大小进行端到端训练吞吐量比较。没有图标表示 OOM（内存不足）的情况。*
 
@@ -257,7 +257,7 @@ DeepSpeed-HE可以在训练和推理之间无缝更改模型分区，以支持�
 
 <div align="center">
 
-<img src="../assets/images/figure5.png" width="600px" />
+<img src="../../assets/images/figure5.png" width="600px" />
 
 *图 5. DeepSpeed Chat 的混合引擎在生成阶段的优越加速：在单个 DGX 节点上使用 8 个 A100-40G GPU 训练 OPT-1.3B actor 模型 + OPT-350M reward 模型的时间/序列分解。* 
 
@@ -269,7 +269,7 @@ DeepSpeed-HE可以在训练和推理之间无缝更改模型分区，以支持�
 
 <div align="center">
 
-<img src="../assets/images/figure6.png" width="600px" />
+<img src="../../assets/images/figure6.png" width="600px" />
 
 *图 6. 在最大效率的情况下，DeepSpeed-HE 针对不同模型大小的RLHF生成、训练和有效吞吐量。* 
 
@@ -283,7 +283,7 @@ DeepSpeed-HE可以在训练和推理之间无缝更改模型分区，以支持�
 
 <div align="center">
 	
-<img src="../assets/images/figure7.png" width="600px" />
+<img src="../../assets/images/figure7.png" width="600px" />
  
 *图 7. 在不同数量的DGX (A100-40/80G GPU) 节点上，进行13B（左）和66B（右）actor 模型 和 350M reward 模型的可扩展性训练。*
 
