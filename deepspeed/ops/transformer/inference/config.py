@@ -4,7 +4,7 @@
 # DeepSpeed Team
 
 import json
-from deepspeed.utils.types import ActivationFuncType
+from deepspeed.utils.types import ActivationFuncType, NormType
 
 
 class TransformerConfig():
@@ -55,6 +55,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  fp16=False,
                  q_int8=False,
                  pre_layer_norm=True,
+                 norm_type=NormType.LayerNorm,
                  stochastic_mode=False,
                  scale_attention=True,
                  triangular_masking=True,
@@ -81,6 +82,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                              num_hidden_layers)
         self.fp16 = fp16
         self.pre_layer_norm = pre_layer_norm
+        self.norm_type = norm_type
         self.local_rank = local_rank
         self.stochastic_mode = stochastic_mode
         self.epsilon = layer_norm_eps

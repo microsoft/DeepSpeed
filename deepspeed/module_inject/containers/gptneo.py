@@ -74,7 +74,8 @@ class HFGPTNEOLayerPolicy(TransformerPolicy):
     def get_hidden_heads(self):
         return self.client_module.attn.attention.q_proj.weight.shape[1], \
                 self.client_module.attn.attention.num_heads, \
-                self.client_module.ln_1.eps
+                self.client_module.ln_1.eps, \
+                -1
 
     def get_q_k_v(self):
         return None
@@ -96,6 +97,9 @@ class HFGPTNEOLayerPolicy(TransformerPolicy):
                self.client_module.mlp.c_fc.bias, \
                self.client_module.mlp.c_proj.weight, \
                self.client_module.mlp.c_proj.bias
+
+    def get_mlp_geglu(self):
+        return None
 
     def layernorm(self):
         return self.client_module.ln_2.weight, \

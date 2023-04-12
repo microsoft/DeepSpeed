@@ -46,7 +46,8 @@ class HFDistilBertLayerPolicy(TransformerPolicy):
     def get_hidden_heads(self):
         return self.client_module.attention.q_lin.weight.shape[1], \
                 self.client_module.attention.n_heads, \
-                self.client_module.sa_layer_norm.eps
+                self.client_module.sa_layer_norm.eps, \
+                -1
 
     def get_q_k_v(self):
         return None
@@ -73,6 +74,9 @@ class HFDistilBertLayerPolicy(TransformerPolicy):
         return intermediate_ff.weight, intermediate_ff.bias, \
             self.client_module.ffn.lin2.weight, \
             self.client_module.ffn.lin2.bias
+
+    def get_mlp_geglu(self):
+        return None
 
     def layernorm(self):
         attention_layernorm = self.client_module.sa_layer_norm

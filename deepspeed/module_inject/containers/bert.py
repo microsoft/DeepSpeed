@@ -50,7 +50,8 @@ class HFBertLayerPolicy(TransformerPolicy):
             attention_layernorm = self.client_module.attention.output.LayerNorm
         return self.client_module.attention.self.query.weight.shape[1], \
                 self.client_module.attention.self.num_attention_heads, \
-                attention_layernorm.eps
+                attention_layernorm.eps, \
+                -1
 
     def get_q_k_v(self):
         return None
@@ -80,6 +81,9 @@ class HFBertLayerPolicy(TransformerPolicy):
         return intermediate_ff.weight, intermediate_ff.bias, \
             self.client_module.output.dense.weight, \
             self.client_module.output.dense.bias
+
+    def get_mlp_geglu(self):
+        return None
 
     def layernorm(self):
         if self.pre_attn_norm:

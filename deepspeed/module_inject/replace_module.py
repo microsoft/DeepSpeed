@@ -49,7 +49,6 @@ class ReplaceWithTensorSlicing:
         dst_shape = dst.shape
 
         outer_dim = 0 if int8 else -1
-        inner_dim = -1 if int8 else 0
 
         src_split = torch.split(src.data, src.shape[outer_dim] // 3, dim=outer_dim)
         if (len(src_shape) == 2 and len(dst_shape) == 2):
@@ -119,6 +118,41 @@ class ReplaceWithTensorSlicing:
         if hasattr(src, 'scale'):
             dst.scale = src.scale
 
+        return dst
+
+    def geglu_copy(self, dst, src, int8=False):
+        if src is None:
+            return src
+
+        src_shape = src.shape
+        dst_shape = dst.shape
+
+        outer_dim = 0 if int8 else -1
+
+        src_split = torch.split(src.data, src.shape[outer_dim] // 2, dim=outer_dim)
+        if src_shape[outer_dim] == dst_shape[self.out_dim]:
+            dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
+            dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
+            if hasattr(src, 'scale'):
+                dst.scale = src.scale
+            return dst
+
+        if self.out_dim == 1:
+            self.merge_assert(src_shape[outer_dim], dst_shape[self.out_dim])
+            intm_size = dst_shape[self.out_dim] // 2
+            intm_split = [torch.split(src_s, intm_size, dim=outer_dim) for src_s in src_split]
+
+            weight_split = [
+                torch.cat([intm_s[i] for intm_s in intm_split], axis=outer_dim) for i in range(len(intm_split[0]))
+            ]
+            dst = dst.reshape(-1).data.copy_(weight_split[self.gpu_index].contiguous().reshape(-1)).reshape(
+                weight_split[self.gpu_index].shape)
+        else:
+            dst.data.copy_(src_split[self.gpu_index].to(get_accelerator().current_device_name()).contiguous())
+
+        dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
+        if hasattr(src, 'scale'):
+            dst.scale = src.scale
         return dst
 
 

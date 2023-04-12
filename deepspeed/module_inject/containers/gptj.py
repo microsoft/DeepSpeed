@@ -72,7 +72,8 @@ class HFGPTJLayerPolicy(TransformerPolicy):
     def get_hidden_heads(self):
         return self.client_module.attn.q_proj.weight.shape[1], \
                 self.client_module.attn.num_attention_heads, \
-                self.client_module.ln_1.eps
+                self.client_module.ln_1.eps, \
+                -1
 
     def get_q_k_v(self):
         return None
@@ -94,6 +95,9 @@ class HFGPTJLayerPolicy(TransformerPolicy):
                self.client_module.mlp.fc_in.bias, \
                self.client_module.mlp.fc_out.weight, \
                self.client_module.mlp.fc_out.bias
+
+    def get_mlp_geglu(self):
+        return None
 
     def layernorm(self):
         return None, \

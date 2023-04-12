@@ -33,7 +33,8 @@ __global__ void fused_bias_gelu(T* input, const T* bias, int total_count, int in
         T data[values_per_access];
         T data_bias[values_per_access];
         mem_access::load_global<granularity>(data, input + offset);
-        mem_access::load_global<granularity>(data_bias, bias + (offset % intermediate_size));
+        mem_access::load_global<granularity>(
+            data_bias, bias + (offset % intermediate_size), bias != nullptr);
 
 #pragma unroll
         for (int i = 0; i < values_per_access; i++) {
@@ -83,7 +84,8 @@ __global__ void fused_bias_add(T* input, const T* bias, int total_count, int int
         T data[values_per_access];
         T data_bias[values_per_access];
         mem_access::load_global<granularity>(data, input + offset);
-        mem_access::load_global<granularity>(data_bias, bias + (offset % intermediate_size));
+        mem_access::load_global<granularity>(
+            data_bias, bias + (offset % intermediate_size), bias != nullptr);
 
 #pragma unroll
         for (int i = 0; i < values_per_access; i++) {
@@ -594,11 +596,14 @@ constexpr int steps = 2;
 constexpr int granularity = 16;
 }  // namespace fused_geglu
 
+__device__ __forceinline__ float silu(float val) { return val / (1.0f + expf(-val)); }
+
 template <typename T>
 __global__ void fused_bias_geglu(T* output,
                                  const T* activation,
                                  const T* bias,
                                  int base_channels,
+                                 int output_stride,
                                  int total_elems)
 {
     constexpr int T_per_access = fused_geglu::granularity / sizeof(T);
@@ -624,9 +629,10 @@ __global__ void fused_bias_geglu(T* output,
                                                               activation + seq_offset + channel_id);
             mem_access::load_global<fused_geglu::granularity>(
                 activation_buffer_2, activation + seq_offset + channel_id + base_channels);
-            mem_access::load_global<fused_geglu::granularity>(bias_buffer_1, bias + channel_id);
-            mem_access::load_global<fused_geglu::granularity>(bias_buffer_2,
-                                                              bias + channel_id + base_channels);
+            mem_access::load_global<fused_geglu::granularity>(
+                bias_buffer_1, bias + channel_id, bias != nullptr);
+            mem_access::load_global<fused_geglu::granularity>(
+                bias_buffer_2, bias + channel_id + base_channels, bias != nullptr);
 
             // Since the GeLU is going to happen at float, might as well
             // convert
@@ -634,13 +640,13 @@ __global__ void fused_bias_geglu(T* output,
             for (int v = 0; v < T_per_access; v++) {
                 T hidden_state = activation_buffer_1[v] + bias_buffer_1[v];
                 T pre_gate = activation_buffer_2[v] + bias_buffer_2[v];
-                float gate_f = old_gelu(conversion::to<float>(pre_gate));
+                float gate_f = silu(conversion::to<float>(pre_gate));
                 T gate = conversion::to<T>(gate_f);
                 activation_buffer_1[v] = hidden_state * gate;
             }
 
-            mem_access::store_global<fused_geglu::granularity>(output + iter_id,
-                                                               activation_buffer_1);
+            mem_access::store_global<fused_geglu::granularity>(
+                output + seq_id * output_stride + channel_id, activation_buffer_1);
         }
     }
 }
@@ -650,6 +656,7 @@ void launch_fused_bias_geglu(T* output,
                              const T* activation,
                              const T* bias,
                              int rows,
+                             int output_stride,
                              int elems_per_row,
                              cudaStream_t stream)
 {
@@ -672,13 +679,10 @@ void launch_fused_bias_geglu(T* output,
     dim3 grid((total_elems + T_per_block - 1) / T_per_block);
 
     fused_bias_geglu<<<grid, block, 0, stream>>>(
-        output, activation, bias, base_channels, total_elems);
+        output, activation, bias, base_channels, output_stride, total_elems);
 }
 
-template void launch_fused_bias_geglu(__half*,
-                                      const __half*,
-                                      const __half*,
-                                      int,
-                                      int,
-                                      cudaStream_t);
-template void launch_fused_bias_geglu(float*, const float*, const float*, int, int, cudaStream_t);
+template void
+launch_fused_bias_geglu(__half*, const __half*, const __half*, int, int, int, cudaStream_t);
+template void
+launch_fused_bias_geglu(float*, const float*, const float*, int, int, int, cudaStream_t);

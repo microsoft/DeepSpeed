@@ -46,7 +46,7 @@ __global__ void fused_ln(T* output,
                              (tb.thread_index().y * elems_per_row);
     const int thread_offset = tb.thread_index().x * T_per_load;
     const int base_offset = block_offset + thread_offset;
-    const int stride = tb.size() * T_per_load;
+    const int stride = blockDim.x * T_per_load;
 
     float sum = reduce::init<rop::Add, float>();
 
@@ -57,8 +57,6 @@ __global__ void fused_ln(T* output,
 #pragma unRoll
     for (int i = 0; i < unRoll; i++) {
         T* iteration_buffer = local_buffer + i * T_per_load;
-        T residual_buffer[T_per_load];
-        T bias_buffer[T_per_load];
 
         mem_access::load_global<ln::granularity>(
             iteration_buffer, input_base + i * stride, thread_offset + i * stride < elems_per_row);

@@ -85,7 +85,8 @@ class BLOOMLayerPolicy(TransformerPolicy):
     def get_hidden_heads(self):
         return self.client_module.self_attention.hidden_size, \
                 self.client_module.self_attention.num_heads, \
-                self.client_module.input_layernorm.eps
+                self.client_module.input_layernorm.eps, \
+                -1
 
     def get_q_k_v(self):
         return None
@@ -101,6 +102,9 @@ class BLOOMLayerPolicy(TransformerPolicy):
                self.client_module.mlp.dense_h_to_4h.bias, \
                self.client_module.mlp.dense_4h_to_h.weight, \
                self.client_module.mlp.dense_4h_to_h.bias
+
+    def get_mlp_geglu(self):
+        return None
 
     def layernorm(self):
         return self.client_module.post_attention_layernorm.weight, \

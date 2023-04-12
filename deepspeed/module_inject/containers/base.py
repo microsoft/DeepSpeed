@@ -9,6 +9,7 @@ import torch
 
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 from deepspeed.accelerator import get_accelerator
+from deepspeed.utils.types import ActivationFuncType
 
 
 class BaseConvolutionContainer(ABC):
@@ -32,6 +33,7 @@ class BaseTransformerContainer(ABC):
 
         # configuration for models. todo: can this be moved to a pydantic model config?
         self.hidden_size = None
+        self.intermediate_size = None
         self.num_attention_heads = None
         self.mp_size = self.config.tensor_parallel.tp_size
         self.pre_layer_norm = self.model_config.do_layer_norm_before if \
@@ -45,6 +47,7 @@ class BaseTransformerContainer(ABC):
             self.model_config, 'attention_layers') else False)
         self.window_size = getattr(self.model_config, "window_size", 1)
         self.mlp_act_func_type = self.policy.mlp_act_func_type
+        self.norm_type = self.policy.norm_type
         self.training_mp_size = self.config.training_mp_size
         self.bigscience_bloom = False
         self.max_out_tokens = self.config.max_out_tokens
@@ -52,9 +55,7 @@ class BaseTransformerContainer(ABC):
         self.scale_attn_by_inverse_layer_idx = getattr(self.config, "scale_attn_by_inverse_layer_idx", False)
         self.use_mup = self.policy.use_mup
         self.return_single_tuple = False
-        self.rotary_dim = self.model_config.rotary_dim if hasattr(self.model_config, 'rotary_dim') \
-                          else self.child.attention.rotary_ndims if \
-                          hasattr(self.child, 'attention') and hasattr(self.child.attention,'rotary_ndims') else -1
+        self.rotary_dim = self.get_rotary_dim()
         self.mlp_after_attn = (self.rotary_dim is None or self.rotary_dim < 0)
 
         # Attention tensors
@@ -83,10 +84,12 @@ class BaseTransformerContainer(ABC):
 
         self.ds_model_config = DeepSpeedInferenceConfig(
             hidden_size=self.hidden_size,
+            intermediate_size=self.intermediate_size,
             heads=self.num_attention_heads,
             layer_norm_eps=self.layernorm_epsilon,
             fp16=self.fp16,
             pre_layer_norm=self.pre_layer_norm,
+            norm_type=self.norm_type,
             mp_size=self.mp_size,
             q_int8=self.quantize if hasattr(self, 'quantize') else False,
             return_tuple=self.return_tuple,
@@ -117,6 +120,9 @@ class BaseTransformerContainer(ABC):
         self.q_k_v = self.policy.get_q_k_v()
         if self.q_k_v is not None:
             self.set_q_k_v(*self.q_k_v)
+        self.mlp_geglu = self.policy.get_mlp_geglu()
+        if self.mlp_geglu is not None:
+            self.set_inter_u_g(*self.mlp_geglu)
 
     def convert_to_required_dtype(self, dtype):
         # Note: converting tensors to fp16 requires that we do it in-place using self.__dict__ and not make a list/dict copy
@@ -129,6 +135,13 @@ class BaseTransformerContainer(ABC):
 
                 if isinstance(v, torch.Tensor) or isinstance(v, torch.nn.Parameter):
                     self.__dict__[k] = v.half()
+
+    def get_rotary_dim(self):
+        if hasattr(self.model_config, 'rotary_dim'):
+            return self.model_config.rotary_dim
+        if hasattr(self.child, 'attention') and hasattr(self.child.attention, 'rotary_ndims'):
+            return self.child.attention.rotary_ndims
+        return -1
 
     def set_dtype(self, fp16=False):
         self.fp16 = fp16
@@ -144,8 +157,9 @@ class BaseTransformerContainer(ABC):
         self.quantize = quantize
         self.quantizer = quantizer
 
-    def set_hidden_heads(self, hidden_size, num_attention_heads, epsilon):
+    def set_hidden_heads(self, hidden_size, num_attention_heads, epsilon, intermediate_size):
         self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
         self.num_attention_heads = num_attention_heads
         self.layernorm_epsilon = epsilon
 
@@ -171,6 +185,12 @@ class BaseTransformerContainer(ABC):
         self._h4h_b = _h4h_b
         self._4hh_w = _4hh_w
         self._4hh_b = _4hh_b
+
+    def set_inter_u_g(self, inter_up_w, inter_up_b, inter_gate_w, inter_gate_b):
+        self.inter_up_w = inter_up_w
+        self.inter_up_b = inter_up_b
+        self.inter_gate_w = inter_gate_w
+        self.inter_gate_b = inter_gate_b
 
     def set_layernorm(self, attn_nw, attn_nb, input_nw, input_nb):
         self.attn_nw = attn_nw
@@ -207,7 +227,11 @@ class BaseTransformerContainer(ABC):
         self.attention_o_mp(mp_replace, reversed_dim=reversed_dim)
 
         # setup the new MLP module
-        self.mlp_inter_mp(mp_replace, reversed_dim=reversed_dim)
+        if self.module.mlp.inter_w is None:
+            self.mlp_geglu_mp(mp_replace, reversed_dim=reversed_dim)
+        else:
+            self.mlp_inter_mp(mp_replace, reversed_dim=reversed_dim)
+
         self.mlp_output_mp(mp_replace, reversed_dim=reversed_dim)
 
         # Apply weight quantization
@@ -270,20 +294,40 @@ class BaseTransformerContainer(ABC):
                                                         allocat_tensor=reversed_dim)
 
     def mlp_inter_mp(self, mp_replace, reversed_dim=False):
-        if reversed_dim:
-            self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w[:self._h4h_w.shape[0] //
-                                                                              mp_replace.mp_size],
-                                                      self._h4h_w,
-                                                      int8=reversed_dim,
-                                                      allocat_tensor=reversed_dim)
-            self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b[:self._h4h_w.shape[0] //
-                                                                              mp_replace.mp_size],
-                                                      self._h4h_b,
-                                                      int8=reversed_dim,
-                                                      allocat_tensor=reversed_dim)
+        if self.mlp_act_func_type == ActivationFuncType.GEGLU:
+            if reversed_dim:
+                self.module.mlp.inter_w = mp_replace.geglu_copy(self.module.mlp.inter_w[:self._h4h_w.shape[0] //
+                                                                                        mp_replace.mp_size],
+                                                                self._h4h_w,
+                                                                int8=reversed_dim,
+                                                                allocat_tensor=reversed_dim)
+                self.module.mlp.inter_b = mp_replace.geglu_copy(self.module.mlp.inter_b[:self._h4h_w.shape[0] //
+                                                                                        mp_replace.mp_size],
+                                                                self._h4h_b,
+                                                                int8=reversed_dim,
+                                                                allocat_tensor=reversed_dim)
+            else:
+                self.module.mlp.inter_w = mp_replace.geglu_copy(self.module.mlp.inter_w,
+                                                                self._h4h_w,
+                                                                int8=reversed_dim)
+                self.module.mlp.inter_b = mp_replace.geglu_copy(self.module.mlp.inter_b,
+                                                                self._h4h_b,
+                                                                int8=reversed_dim)
         else:
-            self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w, self._h4h_w, int8=reversed_dim)
-            self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b, self._h4h_b, int8=reversed_dim)
+            if reversed_dim:
+                self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w[:self._h4h_w.shape[0] //
+                                                                                  mp_replace.mp_size],
+                                                          self._h4h_w,
+                                                          int8=reversed_dim,
+                                                          allocat_tensor=reversed_dim)
+                self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b[:self._h4h_w.shape[0] //
+                                                                                  mp_replace.mp_size],
+                                                          self._h4h_b,
+                                                          int8=reversed_dim,
+                                                          allocat_tensor=reversed_dim)
+            else:
+                self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w, self._h4h_w, int8=reversed_dim)
+                self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b, self._h4h_b, int8=reversed_dim)
 
     def mlp_output_mp(self, mp_replace, reversed_dim=False):
         if reversed_dim:
@@ -337,15 +381,17 @@ class BaseTransformerContainer(ABC):
         self.module.mlp.output_b = self._4hh_b
 
     def copy_data_to_new_module(self):
-        if self.attn_nw is None:
-            self.module.mlp.attn_nw = self.attn_nw
-            self.module.mlp.attn_nb = self.attn_nb
-        else:
-            self.module.mlp.attn_nw.data.copy_(self.attn_nw.to(get_accelerator().current_device_name()))
-            self.module.mlp.attn_nb.data.copy_(self.attn_nb.to(get_accelerator().current_device_name()))
-
-        self.module.norm_w.data.copy_(self.input_nw.to(get_accelerator().current_device_name()))
-        self.module.norm_b.data.copy_(self.input_nb.to(get_accelerator().current_device_name()))
+        params = {
+            self.module.mlp.attn_nw: self.attn_nw,
+            self.module.mlp.attn_nb: self.attn_nb,
+            self.module.norm_w: self.input_nw,
+            self.module.norm_b: self.input_nb
+        }
+        for dst, src in params.items():
+            if src is None:
+                dst = src
+            else:
+                dst.data.copy_(src.to(get_accelerator().current_device_name()))
 
     def transpose(self):
         self.transpose_attention()
@@ -367,39 +413,6 @@ class BaseTransformerContainer(ABC):
         data = data.reshape(data.shape[-1], data.shape[-2])
         data.to(get_accelerator().current_device_name())
         return data
-
-    def reset_qkv_experimental(self):
-        if self.module.attention.attn_qkvw is None:
-            self.module.attention.attn_qkvw = torch.empty(self.qw.shape[0] * 3,
-                                                          self.qw.shape[0],
-                                                          dtype=self.qw.dtype,
-                                                          device=self.qw.device)
-            self.module.attention.attn_qkvb = torch.empty(self.qw.shape[0] * 3,
-                                                          dtype=self.qw.dtype,
-                                                          device=self.qw.device)
-        self.module.attention.attn_qkvw.data[:self.qw.shape[0]] = self.qw.data
-        self.module.attention.attn_qkvb.data[:self.qw.shape[0]] = self.qb.data
-        self.module.attention.attn_qkvw.data[self.qw.shape[0]:2 * self.qw.shape[0]] = self.kw.data
-        self.module.attention.attn_qkvb.data[self.qw.shape[0]:2 * self.qw.shape[0]] = self.kb.data
-        self.module.attention.attn_qkvw.data[2 * self.qw.shape[0]:] = self.vw.data
-        self.module.attention.attn_qkvb.data[2 * self.qw.shape[0]:] = self.vb.data
-
-        qkv_data = [self.qw.data, \
-                    self.qb.data, \
-                    self.kw.data, \
-                    self.kb.data, \
-                    self.vw.data, \
-                    self.vb.data]
-
-        self.qw.data = self.module.attention.attn_qkvw.data[:self.qw.shape[0]]
-        self.qb.data = self.module.attention.attn_qkvb.data[:self.qw.shape[0]]
-        self.kw.data = self.module.attention.attn_qkvw.data[self.qw.shape[0]:2 * self.qw.shape[0]]
-        self.kb.data = self.module.attention.attn_qkvb.data[self.qw.shape[0]:2 * self.qw.shape[0]]
-        self.vw.data = self.module.attention.attn_qkvw.data[2 * self.qw.shape[0]:]
-        self.vb.data = self.module.attention.attn_qkvb.data[2 * self.qw.shape[0]:]
-
-        for data in qkv_data:
-            del data
 
     def reset_qkv(self):
         self.qkvw.data[:self.qw.shape[0]] = self.qw.data
@@ -431,8 +444,6 @@ class BaseTransformerContainer(ABC):
         self.module.mlp.attn_nb = self.attn_nb
         self.module.norm_w = self.input_nw
         self.module.norm_b = self.input_nb
-        self.module.mlp.inter_w = self._h4h_w
-        self.module.mlp.inter_b = self._h4h_b
         self.module.mlp.output_w = self._4hh_w
         self.module.mlp.output_b = self._4hh_b
         self.module.attention.attn_ow = self.dense_w
@@ -455,6 +466,21 @@ class BaseTransformerContainer(ABC):
                 self.kb.data = self.qkvb[self.qw.shape[0]:2 * self.qw.shape[0]]
                 self.vw.data = self.qkvw[self.qw.shape[0] * 2:, :]
                 self.vb.data = self.qkvb[self.qw.shape[0] * 2:]
+
+        if not Z3_enabled or self.mlp_geglu is None:
+            self.module.mlp.inter_w = self._h4h_w
+            self.module.mlp.inter_b = self._h4h_b
+        if self.mlp_geglu is not None:
+            if Z3_enabled:
+                self.module.inter_up_w = self.inter_up_w
+                self.module.inter_up_b = self.inter_up_b
+                self.module.inter_gate_w = self.inter_gate_w
+                self.module.inter_gate_b = self.inter_gate_b
+            else:
+                self.inter_up_w.data = self._h4h_w[:self.inter_up_w.shape[0], :]
+                self.inter_up_b.data = self._h4h_b[:self.inter_up_w.shape[0]] if self._h4h_b is not None else None
+                self.inter_gate_w.data = self._h4h_w[self.inter_up_w.shape[0]:, :]
+                self.inter_gate_b.data = self._h4h_b[self.inter_up_w.shape[0]:] if self._h4h_b is not None else None
 
     def get_lora_params(self):
         return self.lora_params

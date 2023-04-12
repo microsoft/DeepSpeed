@@ -32,4 +32,5 @@ class SoftmaxContextOp(BaseOp):
                                            self.config.rotate_every_two, heads, norm_factor,
                                            self.config.triangular_masking, self.config.local_attention,
                                            self.config.window_size, no_masking, layer_id, num_layers, alibi)
+
         return output

@@ -93,7 +93,8 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
 
         return self.client_module.attention.query_key_value.weight.shape[1], \
                 self.client_module.attention.num_attention_heads, \
-                self.client_module.input_layernorm.eps
+                self.client_module.input_layernorm.eps, \
+                -1
 
     def get_q_k_v(self):
         return None
@@ -114,6 +115,9 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
                self.client_module.mlp.dense_h_to_4h.bias, \
                self.client_module.mlp.dense_4h_to_h.weight, \
                self.client_module.mlp.dense_4h_to_h.bias
+
+    def get_mlp_geglu(self):
+        return None
 
     def layernorm(self):
         return self.client_module.post_attention_layernorm.weight, \

@@ -87,7 +87,8 @@ class HFOPTLayerPolicy(TransformerPolicy):
     def get_hidden_heads(self):
         return self.client_module.self_attn.embed_dim, \
                 self.client_module.self_attn.num_heads, \
-                self.client_module.self_attn_layer_norm.eps
+                self.client_module.self_attn_layer_norm.eps, \
+                -1
 
     def get_q_k_v(self):
         return self.client_module.self_attn.q_proj.weight, \
@@ -119,6 +120,9 @@ class HFOPTLayerPolicy(TransformerPolicy):
                self.client_module.fc1.bias, \
                self.client_module.fc2.weight, \
                self.client_module.fc2.bias
+
+    def get_mlp_geglu(self):
+        return None
 
     def layernorm(self):
         return self.client_module.final_layer_norm.weight, \
