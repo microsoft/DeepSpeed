@@ -65,6 +65,7 @@ class BF16_Optimizer(ZeROOptimizer):
         self.bf16_groups = []
         self.bf16_groups_flat = []
         self.bf16_partitioned_groups = []
+        self.frozen_bf16_groups = []
 
         self.fp32_groups_flat_partition = []
 
@@ -94,7 +95,11 @@ class BF16_Optimizer(ZeROOptimizer):
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
 
             # grab the original list
-            self.bf16_groups.append(param_group['params'])
+            trainable_parameters = [param for param in param_group['params'] if param.requires_grad]
+            self.bf16_groups.append(trainable_parameters)
+
+            frozen_parameters = [param for param in param_group['params'] if not param.requires_grad]
+            self.frozen_bf16_groups.append(frozen_parameters)
 
             # create flat bf16 params
             self.bf16_groups_flat.append(
@@ -210,6 +215,9 @@ class BF16_Optimizer(ZeROOptimizer):
         self.optimizer.step()
 
         self.clear_hp_grads()
+
+    def get_bit16_param_groups(self, trainable):
+        return self.bf16_groups if trainable else self.frozen_bf16_groups
 
     def _split_flat_tensor(self, flat_tensor, num_elem_list):
         assert sum(num_elem_list) <= flat_tensor.numel()

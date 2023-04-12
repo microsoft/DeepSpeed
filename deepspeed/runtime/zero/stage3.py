@@ -21,7 +21,7 @@ from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.runtime.swap_tensor.partitioned_optimizer_swapper import PartitionedOptimizerSwapper
 from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedOptimizerSwapper
-from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUPS, PARTITION_COUNT, ZERO_STAGE
+from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUPS, PARTITION_COUNT, ZERO_STAGE, FROZEN_FP16_GROUPS
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import UtilsBuilder
 
@@ -249,6 +249,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self.sub_group_to_group_id = {}
 
+        # Frozen parameters
+        self.frozen_fp16_groups = self._get_frozen_parameter_groups()
+
         # Trainable parameters
         self.trainable_param_groups = self._get_trainable_parameter_groups()
 
@@ -340,11 +343,21 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     def destroy(self):
         self.parameter_offload.destroy()
 
+    def get_bit16_param_groups(self, trainable):
+        return self.fp16_groups if trainable else self.frozen_fp16_groups
+
     def _get_trainable_parameter_groups(self):
         param_groups = []
         for param_group in self.optimizer.param_groups:
             trainable_params = {"params": [p for p in param_group["params"] if p.requires_grad]}
             param_groups.append(trainable_params)
+        return param_groups
+
+    def _get_frozen_parameter_groups(self):
+        param_groups = []
+        for param_group in self.optimizer.param_groups:
+            frozen_params = [p for p in param_group["params"] if not p.requires_grad]
+            param_groups.append(frozen_params)
         return param_groups
 
     def _setup_for_real_optimizer(self):
@@ -2089,6 +2102,15 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         for param_group in self.optimizer.param_groups:
             param_group['params'] = []
 
+    def _get_frozen_fp16_group_state(self):
+        frozen_fp16_groups = []
+        for group in self.frozen_fp16_groups:
+            group_state = []
+            for param in group:
+                group_state.append(param.ds_tensor.to('cpu'))
+            frozen_fp16_groups.append(group_state)
+        return frozen_fp16_groups
+
     def _rigid_state_dict(self):
         state_dict = {}
         state_dict[ZERO_STAGE] = ZeroStageEnum.weights
@@ -2100,6 +2122,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self._set_fp32_optimizer_param_groups()
         state_dict[OPTIMIZER_STATE_DICT] = self.optimizer.state_dict()
         state_dict[FP32_FLAT_GROUPS] = self.fp32_partitioned_groups_flat
+        state_dict[FROZEN_FP16_GROUPS] = self._get_frozen_fp16_group_state()
         self._clear_fp32_optimizer_param_groups()
 
         return state_dict
@@ -2222,6 +2245,14 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
             for partitioned_param, q in zip(self.fp16_partitioned_groups[sub_group_id], updated_params):
                 partitioned_param.data = q.data
+
+        # update frozen fp16 params if possible.
+        if FROZEN_FP16_GROUPS in state_dict:
+            print(f'load frozen fp16 groups')
+            saved_frozen_fp16_groups = state_dict[FROZEN_FP16_GROUPS]
+            for curr_group, saved_group in zip(self.frozen_fp16_groups, saved_frozen_fp16_groups):
+                for curr_param, saved_param in zip(curr_group, saved_group):
+                    curr_param.ds_tensor.data.copy_(saved_param.data)
 
     # TODO: Support different/changing load/save DP degree.
     def load_state_dict(self,
