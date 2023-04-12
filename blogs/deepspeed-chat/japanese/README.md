@@ -20,13 +20,13 @@ ChatGPTの訓練に用いられるInstructGPTにおいて提案されたRLHFで�
 
 (i) ***容易に実施可能なChatGPTライクなモデルの訓練と推論***: Huggingfaceレポジトリで提供されている学習済みモデルから開始して、InstructGPT学習の全3ステップを実行し、独自のChatGPTライクなモデルを生成できるスクリプトを提供します。また、学習後の会話形式のインタラクションをテストするための推論APIを提供します。
 
-(ii) ***DeepSpeed-RLHF パイプライン***: DeepSpeed-RLHFパイプラインは、InstructGPTの学習パイプラインの3つのステップ a) 教師付きファインチューニング (Supervised fine-tuning, SFT), b) 報酬モデルのファインチューニング, c) RLHF (Reinforcement Learning with Human Feedback) を、包括的に、かつ1対1の対応を保って再現するものです。また、複数のデータソースからの同時学習を可能にするために、学習データの抽象化・ブレンド機能を提供します。 
+(ii) ***DeepSpeed-RLHF パイプライン***: DeepSpeed-RLHFパイプラインは、InstructGPTの学習パイプラインの3つのステップ a) 教師付きファインチューニング (Supervised fine-tuning, SFT), b) 報酬モデルのファインチューニング, c) RLHF (Reinforcement Learning with Human Feedback) を、包括的に、かつ1対1の対応を保って再現するものです。また、複数のデータソースからの同時学習を可能にするために、学習データの抽象化・ブレンド機能を提供します。
 
 (iii) ***DeepSpeed-RLHF システム***: DeepSpeedの学習・推論機能を統合した、RLHF用のハイブリッドエンジン DeepSpeed-HE を提供します。DeepSpeed-HE は、RLHFのパイプライン内で推論モードと訓練モードをシームレスに切り替えでき、テンソル並列や高性能なTransformerカーネルなど、DeepSpeed-Inferenceのさまざまな最適化技術を推論に活用できる一方、強化学習の訓練では、ZeROやLoRAベースの多数のメモリ最適化技術を利用します。また、DeepSpeed-HEはRLHFパイプラインに完全に適合した設計となっており、RLHFのさまざまなフェーズでメモリ管理やデータ移動の面で最適な技術を適用できます。
 
 DeepSpeed-RLHFシステムは、大規模モデルの学習において類を見ない効率性を実現し、AIコミュニティが、複雑なRLHFの訓練を高速かつ安価に、そして容易に利用できるようにします：
 
-***実行効率とコスト***: 実行効率において、[DeepSpeed-HEは既存システムよりも15倍以上速く](#実効スループットとスケーラビリティ)、RLHFの訓練を高速かつ低コストに行うことができます。例えば、DeepSpeed-HEは、Azure Cloud上でOPT-13Bモデルをわずか9時間で、OPT-30Bを18時間で訓練でき、それぞれのコストは300ドル以下、600ドル以下です。 
+***実行効率とコスト***: 実行効率において、[DeepSpeed-HEは既存システムよりも15倍以上速く](#実効スループットとスケーラビリティ)、RLHFの訓練を高速かつ低コストに行うことができます。例えば、DeepSpeed-HEは、Azure Cloud上でOPT-13Bモデルをわずか9時間で、OPT-30Bを18時間で訓練でき、それぞれのコストは300ドル以下、600ドル以下です。
 
 <div align="center">
 
@@ -51,33 +51,33 @@ DeepSpeed-RLHFシステムは、大規模モデルの学習において類を見
 *表2. 複数ノード（64x A100-80GB）を用いた場合の訓練時間とAzureでの概算実行コスト*
 </div>
 
-> ***注意事項***: 上記の2つの表の数値は、訓練のステージ3のものです。DeepSpeed-RLHFが用いるデータセットと訓練の設定において、合計1.35億トークンを1エポックで訓練した際のスループットの実測値に基づいています。合計6750万のクエリートークン（配列長256の13万件のクエリー）と6750万の生成トークン（配列長256の13万件の回答）があり、ステップごとの最大グローバルバッチサイズは 50万 トークン（クエリーと回答それぞれ1024件）です。DeepSpeedRLHFを用いた場合のコストおよび実行時間の比較にあたっては、これらの詳細をよくご確認ください。さらに詳細な情報は[ベンチマーク設定](https://github.com/microsoft/DeepSpeedExamples/blob/staging-deepspeed-chat-v2/applications/DeepSpeed-Chat/training/step3_rlhf_finetuning/BenckmarkSetting.md)を参照ください。 
+> ***注意事項***: 上記の2つの表の数値は、訓練のステージ3のものです。DeepSpeed-RLHFが用いるデータセットと訓練の設定において、合計1.35億トークンを1エポックで訓練した際のスループットの実測値に基づいています。合計6750万のクエリートークン（配列長256の13万件のクエリー）と6750万の生成トークン（配列長256の13万件の回答）があり、ステップごとの最大グローバルバッチサイズは 50万 トークン（クエリーと回答それぞれ1024件）です。DeepSpeedRLHFを用いた場合のコストおよび実行時間の比較にあたっては、これらの詳細をよくご確認ください。さらに詳細な情報は[ベンチマーク設定](https://github.com/microsoft/DeepSpeedExamples/blob/staging-deepspeed-chat-v2/applications/DeepSpeed-Chat/training/step3_rlhf_finetuning/BenckmarkSetting.md)を参照ください。
 
-***RLHFを誰もが利用できるように***: DeepSpeed-HEは、1台のGPUのみで130億以上のパラメーターを持つモデルの訓練を実行できます。複数のGPUを備えた高価な計算設備を持たないデータサイエンティストも、小規模なトイモデルではなく、実際のシナリオで使用できる大規模で強力なRLHFモデルを作成できます。 
+***RLHFを誰もが利用できるように***: DeepSpeed-HEは、1台のGPUのみで130億以上のパラメーターを持つモデルの訓練を実行できます。複数のGPUを備えた高価な計算設備を持たないデータサイエンティストも、小規模なトイモデルではなく、実際のシナリオで使用できる大規模で強力なRLHFモデルを作成できます。
 
 <div align="center">
 
-|            | V100 32G | A6000 48G | A100 40G | A100 80G | 
-| ---------- | :------: | :-------: | :------: | :------: | 
-| モデルサイズ| OPT-2.7B | OPT-6.7B | OPT-6.7B | OPT-13B | 
+|            | V100 32G | A6000 48G | A100 40G | A100 80G |
+| ---------- | :------: | :-------: | :------: | :------: |
+| モデルサイズ| OPT-2.7B | OPT-6.7B | OPT-6.7B | OPT-13B |
 
-表3. DeepSpeed-HEを用いて1台のGPUで訓練できるモデルサイズ 
+表3. DeepSpeed-HEを用いて1台のGPUで訓練できるモデルサイズ
 
 </div>
 
-以降では、上記で紹介したDeepSpeed-Chatの3つの機能を深く掘り下げて紹介していきます。 
+以降では、上記で紹介したDeepSpeed-Chatの3つの機能を深く掘り下げて紹介していきます。
 
-# 2. ChatGPTの訓練と推論を手軽に実行 
+# 2. ChatGPTの訓練と推論を手軽に実行
 
-初めに、DeepSpeed-RLHFを用いた訓練の容易さを示す例として、OPT-13BとOPT-66Bのモデルを訓練できることを示します。訓練を実行できる時間が短い場合でも、コンシューマーグレードのGPU1つで、OPT-1.3Bモデルをわずか2時間で訓練することも可能です。DeepSpeed-ChatのAPIを用いて、カスタムされたパイプラインをどのように作るかも紹介していきます。 
+初めに、DeepSpeed-RLHFを用いた訓練の容易さを示す例として、OPT-13BとOPT-66Bのモデルを訓練できることを示します。訓練を実行できる時間が短い場合でも、コンシューマーグレードのGPU1つで、OPT-1.3Bモデルをわずか2時間で訓練することも可能です。DeepSpeed-ChatのAPIを用いて、カスタムされたパイプラインをどのように作るかも紹介していきます。
 
-## DeepSpeed-Chatの例を用いたChatGPTスタイルのモデルの訓練 
+## DeepSpeed-Chatの例を用いたChatGPTスタイルのモデルの訓練
 
-*a) スクリプトを一つ実行するだけで、RLHF訓練の全3ステージが実行され、ChatGPTライクなモデルを生成されるのを見てみましょう！* 
+*a) スクリプトを一つ実行するだけで、RLHF訓練の全3ステージが実行され、ChatGPTライクなモデルを生成されるのを見てみましょう！*
 
-ここではアクターモデルとして事前学習済みOPT-13B、報酬モデルとしてOPT-350MをRLHFで訓練する例を示します。 
-以下のスクリプトを実行すると、最終的に130億パラメータのChatGPTライクなモデルが生成されます。 
- 
+ここではアクターモデルとして事前学習済みOPT-13B、報酬モデルとしてOPT-350MをRLHFで訓練する例を示します。
+以下のスクリプトを実行すると、最終的に130億パラメータのChatGPTライクなモデルが生成されます。
+
 ```python
 git clone https://github.com/microsoft/DeepSpeed.git
 cd DeepSpeed
@@ -90,15 +90,15 @@ pip install -r requirements.txt
 python train.py --actor-model facebook/opt-13b --reward-model facebook/opt-350m --num-gpus 8
 ```
 
-8台のA100を備えたDGXサーバを使う場合、130億パラメータのモデルを半日で訓練できます。以下は各ステップに要する時間の内訳です。 
+8台のA100を備えたDGXサーバを使う場合、130億パラメータのモデルを半日で訓練できます。以下は各ステップに要する時間の内訳です。
 
 <div align="center">
 
-| モデルサイズ| Step 1 | Step 2 | Step 3 | Total | 
-| -------------------------------- | :----: | :----: | :----: | :----: | 
-| アクターモデル: OPT-13B, 報酬モデル: OPT-350M | 2.5時間 | 0.25時間 | 10.8時間 | 13.6時間 | 
+| モデルサイズ| Step 1 | Step 2 | Step 3 | Total |
+| -------------------------------- | :----: | :----: | :----: | :----: |
+| アクターモデル: OPT-13B, 報酬モデル: OPT-350M | 2.5時間 | 0.25時間 | 10.8時間 | 13.6時間 |
 
-表4. 8台のA100を備えたDGXサーバ1台でのend-to-end処理時間の内訳 
+表4. 8台のA100を備えたDGXサーバ1台でのend-to-end処理時間の内訳
 
 </div>
 
@@ -128,9 +128,9 @@ python train.py --actor-model facebook/opt-66b --reward-model facebook/opt-350m 
 
 <div align="center">
 
-| モデルサイズ                      | Step 1 | Step 2 | Step 3 | Total | 
-| -------------------------------- | :-----: | :----: | :----: | :---: | 
-|アクターモデル: OPT-66B, 報酬モデル: OPT-350M | 82分 | 5分 | 7.5時間 |  9時間  | 
+| モデルサイズ                      | Step 1 | Step 2 | Step 3 | Total |
+| -------------------------------- | :-----: | :----: | :----: | :---: |
+|アクターモデル: OPT-66B, 報酬モデル: OPT-350M | 82分 | 5分 | 7.5時間 |  9時間  |
 
 表5. 8台のA100(80GBメモリ)を備えたDGXサーバ8台で660億パラメータのモデルを訓練する場合のend-to-end処理時間の内訳
 
@@ -146,7 +146,7 @@ python train.py --actor-model facebook/opt-1.3b --reward-model facebook/opt-350m
 
 | モデルサイズ                       |  Step 1  |  Step 2  | Step 3 | Total |
 | --------------------------------- | :-------: | :------: | :----: | :---: |
-| Actor: OPT-1.3B, Reward: OPT-350M | 2900 秒| 670 秒 | 1.2時間 |  2.2時間  | 
+| Actor: OPT-1.3B, Reward: OPT-350M | 2900 秒| 670 秒 | 1.2時間 |  2.2時間  |
 
 *表6. コモディティグレードのGPU（A6000）1台でのend-to-end処理時間の内訳*
 
@@ -172,7 +172,7 @@ for prompt_batch in prompt_train_dataloader:
   actor_loss, critic_loss = trainer.train_rlhf(out)
 ```
 
-# 3. 完全なRLHF訓練パイプライン 
+# 3. 完全なRLHF訓練パイプライン
 
 シームレスに訓練を実行するため、DeepSpeed-Chatには、InstructGPTと同様の完全なend-to-endの訓練パイプラインが組み込まれています（図1）。
 
@@ -180,7 +180,7 @@ for prompt_batch in prompt_train_dataloader:
 
 <img src="../../assets/images/ds-chat-overview.png" width="800px" alt="DeepSpeed-Chat!"/>
 
-*図1: DeepSpeed-Chatの訓練パイプラインの概要* 
+*図1: DeepSpeed-Chatの訓練パイプラインの概要*
 
 </div>
 
@@ -202,7 +202,7 @@ for prompt_batch in prompt_train_dataloader:
 * データの抽象化・ブレンド機能: モデルの品質を向上させるため、複数のデータセットでモデルを訓練することができます。このため、DeepSpeed-Chatは、以下の二つの機能も備えています。 1）異なるデータセットの形式を統一するための抽象データセット層、（2）複数のデータセットを適切にブレンドし、3つのトレーニングステージに分割するためのデータ分割・ブレンド機能。
 
 
-# 4. DeepSpeedハイブリッドエンジン – RLHF訓練のための基盤 
+# 4. DeepSpeedハイブリッドエンジン – RLHF訓練のための基盤
 
 与えられた指示に基づいて学習するRLHFパイプラインのステップ1とステップ2は、大規模モデルの通常のファインチューニングと似ています。そのため、DeepSpeed-Chatでは、DeepSpeedのZeROの技術による最適化と、DeepSpeedの様々な並列化の柔軟な組み合わせによって、高いスケーラビリティと高速な学習を実現しています。一方、ステップ3は、パフォーマンスへの影響という点で、最も複雑な処理を行う部分です。学習の各反復で、 a)トークン/経験生成と訓練のためのインプットを生成するための推論フェーズ、b) アクターモデルと報酬モデルのパラメータ更新する訓練フェーズの２つのフェーズがあり、さらにそれらの間の相互作用とスケジューリングを効率的に処理する必要があります。 これらを実現するには、 (1) SFTと報酬モデルの複数のコピーをステージ3全体を通して利用するためのメモリ利用の最適化、 (2) ステージ3全体の速度に大きな影響を与える生成フェーズの高速化 という2つの課題があります。指数移動平均（EMA）収集と混合学習を使用する場合には、必要なメモリ量と処理時間はさらに増大します。
 
@@ -217,11 +217,11 @@ for prompt_batch in prompt_train_dataloader:
 
 </div>
 
-RLHF訓練の経験生成フェーズにおける推論では、DeepSpeed-HE は、KVキャッシュと中間結果を扱う軽量なメモリ管理システム、および推論のために高度に最適化されたカーネルと、テンソル並列機能により、既存のソフトウェアと比較してスループット（トークン/秒）を大幅に向上させています。 
+RLHF訓練の経験生成フェーズにおける推論では、DeepSpeed-HE は、KVキャッシュと中間結果を扱う軽量なメモリ管理システム、および推論のために高度に最適化されたカーネルと、テンソル並列機能により、既存のソフトウェアと比較してスループット（トークン/秒）を大幅に向上させています。
 
-また訓練では、DeepSpeedの一連のZeROの技術や、Low Rank Adaption（LoRA）などのメモリ最適化技術を利用できます。DeepSpeed-HEでは、非常に高い効率の訓練を実現するため、これらの複数の最適化技術を互いに組み合わせることが可能なように実装されています。 
+また訓練では、DeepSpeedの一連のZeROの技術や、Low Rank Adaption（LoRA）などのメモリ最適化技術を利用できます。DeepSpeed-HEでは、非常に高い効率の訓練を実現するため、これらの複数の最適化技術を互いに組み合わせることが可能なように実装されています。
 
-DeepSpeed-HEは、訓練と推論の両方で、モデルの分割をシームレスに変更し、テンソル並列を使用した推論と、DeepSpeedのZeROの技術によるシャーディング機構を使用した訓練でサポートしています。また、メモリを最大限に活用するため、これらのモードごとにメモリの割り当てを再構成します。これにより、メモリ割り当てのボトルネックを回避するとともに、大規模なバッチサイズをサポートすることでパフォーマンスを向上させることができます。DeepSpeedの訓練や推論など、さまざまなシステム技術を集約したハイブリッドエンジンは、最新のRLHF訓練の限界を超えて、RLHFを比類ない規模と効率で実行可能にします。 
+DeepSpeed-HEは、訓練と推論の両方で、モデルの分割をシームレスに変更し、テンソル並列を使用した推論と、DeepSpeedのZeROの技術によるシャーディング機構を使用した訓練でサポートしています。また、メモリを最大限に活用するため、これらのモードごとにメモリの割り当てを再構成します。これにより、メモリ割り当てのボトルネックを回避するとともに、大規模なバッチサイズをサポートすることでパフォーマンスを向上させることができます。DeepSpeedの訓練や推論など、さまざまなシステム技術を集約したハイブリッドエンジンは、最新のRLHF訓練の限界を超えて、RLHFを比類ない規模と効率で実行可能にします。
 
 
 # 5. DeepSpeed RLHF: ハイブリッドエンジン DeepSpeed-HEによる類を見ないスケールと高い効率
@@ -233,20 +233,20 @@ DeepSpeed-HEは、訓練と推論の両方で、モデルの分割をシーム�
 表1は、異なるモデルサイズとGPUでの、実行効率と費用を示しています。DeepSpeed-HEを用いると、Azure Cloud上でOPT-13Bをわずか9時間、OPT-30Bを18時間で訓練でき、必要な費用はそれぞれ300ドル、600ドル以下です。スピードとスケーラビリティの面では、表2に示すように、13Bパラメータのモデルでも1.25時間で学習でき、64GPUのクラスタを使えば175Bの巨大モデルも1日以内に学習できます。また、誰もがRLHFを利用できるようにするという観点から、DeepSpeed-HEを用いると、表3に示すように、130億以上のパラメータを持つモデルを、1つのGPUで訓練することもできるようになっています。
 
 
-## 既存のRLHFシステムとのスループットとモデルサイズのスケーラビリティ比較 
+## 既存のRLHFシステムとのスループットとモデルサイズのスケーラビリティ比較
 
-DeepSpeed-RLHFは、Colossal-AIや、ネイティブのPyTorchを用いたHuggingFaceなどの他のRLHFを訓練可能なシステムと比較して、実行速度とスケーラビリティの両方で優れています。 
+DeepSpeed-RLHFは、Colossal-AIや、ネイティブのPyTorchを用いたHuggingFaceなどの他のRLHFを訓練可能なシステムと比較して、実行速度とスケーラビリティの両方で優れています。
 
-* スループットに関しては、DeepSpeedは単一GPUでのRLHFトレーニングで10倍以上の向上を実現しています（図3）。複数GPU環境では、Colossal-AIと比較して6～19倍、HuggingFace DDPと比較して1.4～10.5倍のスピードアップを実現しています（図4）。 
-* モデルのスケーラビリティに関しては、Colossal-AIが最大で1.3Bのモデルを単一GPUで、6.7BのモデルをA100-40Gを備えた単一のノードで訓練できますが、DeepSpeed-HEは同じハードウェアでそれぞれ6.5Bと50Bのサイズのモデルを訓練できます。これは、最大で7.5倍のモデルサイズを扱えることになります。 
+* スループットに関しては、DeepSpeedは単一GPUでのRLHFトレーニングで10倍以上の向上を実現しています（図3）。複数GPU環境では、Colossal-AIと比較して6～19倍、HuggingFace DDPと比較して1.4～10.5倍のスピードアップを実現しています（図4）。
+* モデルのスケーラビリティに関しては、Colossal-AIが最大で1.3Bのモデルを単一GPUで、6.7BのモデルをA100-40Gを備えた単一のノードで訓練できますが、DeepSpeed-HEは同じハードウェアでそれぞれ6.5Bと50Bのサイズのモデルを訓練できます。これは、最大で7.5倍のモデルサイズを扱えることになります。
 
-したがって、DeepSpeed-HEは、Colossal-AIやHuggingFace DDPなどの既存のRLHFシステムと比較して、1桁以上高いスループットを実現しており、同じ実行時間ではるかに大きなアクターモデルを訓練したり、10倍以上低いコストで同様のサイズのモデルを訓練することができます。 
+したがって、DeepSpeed-HEは、Colossal-AIやHuggingFace DDPなどの既存のRLHFシステムと比較して、1桁以上高いスループットを実現しており、同じ実行時間ではるかに大きなアクターモデルを訓練したり、10倍以上低いコストで同様のサイズのモデルを訓練することができます。
 
 <div align="center">
 
 <img src="../../assets/images/figure3.png" width="600px" />
 
-*図3. 他フレームワークとのStep 3のスループット比較（1台のA100-40Gを使用。バツ印はメモリ不足で実行できないことを示す）* 
+*図3. 他フレームワークとのStep 3のスループット比較（1台のA100-40Gを使用。バツ印はメモリ不足で実行できないことを示す）*
 
 </div>
 
@@ -268,15 +268,15 @@ DeepSpeed-RLHFは、Colossal-AIや、ネイティブのPyTorchを用いたHuggin
 
 </div>
 
-## 実効スループットとスケーラビリティ 
+## 実効スループットとスケーラビリティ
 
-***(I) 実効スループット分析*** RLHFのステージ3におけるDeepSpeed-HEの実効スループットは、生成フェーズと強化学習の訓練フェーズの両方のスループットで決まります。我々の作成したRLHFのパイプラインでは、生成フェーズが全計算量の約20%を占め、強化学習の訓練フェーズが残りの80%を占めています（詳細は[ベンチマークのページ](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat/training/step3_rlhf_finetuning/BenckmarkSetting.md)を参照）。しかし、計算量で見た割合が少ないとはいえ、前者は生成された256個のトークンのそれぞれに対して、初期プロンプトの256個のトークンに対してアクターモデルによる推論をそれぞれ1回実行する必要があるため、end-to-endの時間で見ると、その大部分を占めることになり、メモリ帯域が制限されて高いスループットを得ることが難しくなります。一方、強化学習の訓練フェーズでは、1サンプルあたりプロンプトと生成の両方から512個のトークンをフルに使用して、参照アクターモデルについて、数回のフォワードパスとバックワードパスで実行できるため、高いスループットを達成できます。 
+***(I) 実効スループット分析*** RLHFのステージ3におけるDeepSpeed-HEの実効スループットは、生成フェーズと強化学習の訓練フェーズの両方のスループットで決まります。我々の作成したRLHFのパイプラインでは、生成フェーズが全計算量の約20%を占め、強化学習の訓練フェーズが残りの80%を占めています（詳細は[ベンチマークのページ](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat/training/step3_rlhf_finetuning/BenckmarkSetting.md)を参照）。しかし、計算量で見た割合が少ないとはいえ、前者は生成された256個のトークンのそれぞれに対して、初期プロンプトの256個のトークンに対してアクターモデルによる推論をそれぞれ1回実行する必要があるため、end-to-endの時間で見ると、その大部分を占めることになり、メモリ帯域が制限されて高いスループットを得ることが難しくなります。一方、強化学習の訓練フェーズでは、1サンプルあたりプロンプトと生成の両方から512個のトークンをフルに使用して、参照アクターモデルについて、数回のフォワードパスとバックワードパスで実行できるため、高いスループットを達成できます。
 
 <div align="center">
 
 <img src="../../assets/images/Throughputs-OPT.png" width="600px" />
 
-*図6. DeepSpeed-HEを用いたRLHFにおける生成、訓練、および実効スループット（GPU数は最善の効率を得られるように設定）* 
+*図6. DeepSpeed-HEを用いたRLHFにおける生成、訓練、および実効スループット（GPU数は最善の効率を得られるように設定）*
 
 </div>
 
@@ -301,37 +301,37 @@ DeepSpeed-RLHFは、Colossal-AIや、ネイティブのPyTorchを用いたHuggin
 DeepSpeed-HEはトレーニングにZeROの技術を採用しているため、利用可能なGPU間でモデルを分割することが可能です。その結果、GPUあたりのメモリ消費量はGPU数の増加とともに減少し、DeepSpeed-HEはGPUあたりでより大きなバッチサイズをサポートできるようになり、超線形のスケーリングが実現できます。しかし、より大規模になると、利用可能なメモリが増加し続ける一方で、最大グローバルバッチサイズが制限されているため、GPUあたりのバッチサイズを小さくすることになり、線形またはそれ以下のスケーリングになります。その結果、与えられた最大グローバルバッチサイズに対して、DeepSpeed-HEは、スーパーリニアとサブリニアのスケーラビリティの境界で最高のスループットとコスト効率を達成し、正確なポイントは、利用可能なメモリとグローバルバッチサイズの関数としてGPUごとに実行できる最大バッチサイズによってほぼ決定されます。
 
 
-# 6. DeepSpeed-Chatのリリース: さっそく試してみましょう！ 
+# 6. DeepSpeed-Chatのリリース: さっそく試してみましょう！
 
-DeepSpeed-ChatをオープンソースソフトウェアとしてAIコミュニティに公開できることを嬉しく思います。 
+DeepSpeed-ChatをオープンソースソフトウェアとしてAIコミュニティに公開できることを嬉しく思います。
 
 * DeepSpeed-Chatの[GitHubページ](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat)を見て、早速使い始めましょう。
 * ユーザのみなさまからのフィードバックと協力で、これからも継続的に DeepSpeed-Chat を改善していく予定です。現在サポートされている機能や、将来的にサポートされている機能については、[ロードマップ](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat/README.md#-deepspeed-chats-roadmap-)をご覧ください。
 
 
-# 7. DeepSpeedについて 
+# 7. DeepSpeedについて
 
-DeepSpeedは、きわめて大規模かつ高速な深層学習を、容易に実現するための様々な機能を持ったソフトウェアです。 
-DeepSpeed-Chatは、DeepSpeedの一連のソフトウェアエコシステムの一部です。 
-DeepSpeedは、以下のような機能を提供します。 
+DeepSpeedは、きわめて大規模かつ高速な深層学習を、容易に実現するための様々な機能を持ったソフトウェアです。
+DeepSpeed-Chatは、DeepSpeedの一連のソフトウェアエコシステムの一部です。
+DeepSpeedは、以下のような機能を提供します。
 
-* 数十億～1兆規模のパラメータを持つdenseあるいはsparseなモデルの訓練と推論 
-* 高いスループットと数千GPU規模のスケーラビリティ 
-* 限られたGPUリソース環境における訓練と推論 
-* 類のないレベルの低遅延かつ高スループットな推論 
-* 高度なモデル圧縮技術による低遅延な推論とモデルサイズ削減 
+* 数十億～1兆規模のパラメータを持つdenseあるいはsparseなモデルの訓練と推論
+* 高いスループットと数千GPU規模のスケーラビリティ
+* 限られたGPUリソース環境における訓練と推論
+* 類のないレベルの低遅延かつ高スループットな推論
+* 高度なモデル圧縮技術による低遅延な推論とモデルサイズ削減
 
-DeepSpeedは、Microsoftの[AI at Scale initiative](https://www.microsoft.com/en-us/research/project/ai-at-scale/)の一部で、次世代AIの機能の大規模な実現を進めています。詳細は[こちら](https://innovation.microsoft.com/en-us/exploring-ai-at-scale)をご覧ください。DeepSpeedは、[Megatron-Turing NLG (530B)](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/), [Jurassic-1 (178B)](https://uploads-ssl.webflow.com/60fd4503684b466578c0d307/61138924626a6981ee09caf6_jurassic_tech_paper.pdf), [BLOOM (176B)](https://huggingface.co/blog/bloom-megatron-deepspeed), [GLM (130B)](https://github.com/THUDM/GLM-130B), [YaLM (100B)](https://github.com/yandex/YaLM-100B) を含め、様々な大規模モデルを学習するのに使用されてきました。 
+DeepSpeedは、Microsoftの[AI at Scale initiative](https://www.microsoft.com/en-us/research/project/ai-at-scale/)の一部で、次世代AIの機能の大規模な実現を進めています。詳細は[こちら](https://innovation.microsoft.com/en-us/exploring-ai-at-scale)をご覧ください。DeepSpeedは、[Megatron-Turing NLG (530B)](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/), [Jurassic-1 (178B)](https://uploads-ssl.webflow.com/60fd4503684b466578c0d307/61138924626a6981ee09caf6_jurassic_tech_paper.pdf), [BLOOM (176B)](https://huggingface.co/blog/bloom-megatron-deepspeed), [GLM (130B)](https://github.com/THUDM/GLM-130B), [YaLM (100B)](https://github.com/yandex/YaLM-100B) を含め、様々な大規模モデルを学習するのに使用されてきました。
 
-またDeepSpeedは、 [Hugging Face Transformers](https://huggingface.co/docs/transformers/main/main_classes/deepspeed), [Hugging Face Accelerate](https://huggingface.co/docs/accelerate/usage_guides/deepspeed), [PyTorch Lightning](https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DeepSpeedStrategy.html), [MosaicML Composer](https://docs.mosaicml.com/en/latest/trainer/using_the_trainer.html?highlight=deepspeed#deepspeed-integration), [Determined AI](https://docs.determined.ai/latest/training/apis-howto/deepspeed/overview.html) など、多くの著名なオープンソースの深層学習フレームワークのバックエンドとして利用されています。 
+またDeepSpeedは、 [Hugging Face Transformers](https://huggingface.co/docs/transformers/main/main_classes/deepspeed), [Hugging Face Accelerate](https://huggingface.co/docs/accelerate/usage_guides/deepspeed), [PyTorch Lightning](https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DeepSpeedStrategy.html), [MosaicML Composer](https://docs.mosaicml.com/en/latest/trainer/using_the_trainer.html?highlight=deepspeed#deepspeed-integration), [Determined AI](https://docs.determined.ai/latest/training/apis-howto/deepspeed/overview.html) など、多くの著名なオープンソースの深層学習フレームワークのバックエンドとして利用されています。
 
-DeepSpeedについてのより詳しい情報は、以下をご覧ください。 
+DeepSpeedについてのより詳しい情報は、以下をご覧ください。
 
-* [DeepSpeedのWebサイト](https://www.deepspeed.ai/) には、DeepSpeedの技術に関する詳細なブログ記事、チュートリアル、ドキュメントなどが掲載されています。 
-* [DeepSpeedのTwitterアカウント (英語)](https://twitter.com/MSFTDeepSpeed) では、DeepSpeedの最新情報を発信していますので、ぜひフォローください。[日本語版のTwitterアカウント](https://twitter.com/MSFTDeepSpeedJP)もあり、最新の情報を日本語で発信しています。 
+* [DeepSpeedのWebサイト](https://www.deepspeed.ai/) には、DeepSpeedの技術に関する詳細なブログ記事、チュートリアル、ドキュメントなどが掲載されています。
+* [DeepSpeedのTwitterアカウント (英語)](https://twitter.com/MSFTDeepSpeed) では、DeepSpeedの最新情報を発信していますので、ぜひフォローください。[日本語版のTwitterアカウント](https://twitter.com/MSFTDeepSpeedJP)もあり、最新の情報を日本語で発信しています。
 
-DeepSpeedチームは、ユーザの方々からのフィードバックやご連絡を受け付けています。 
+DeepSpeedチームは、ユーザの方々からのフィードバックやご連絡を受け付けています。
 
-* ユーザのみなさまからのバグ報告、Pull request、さまざまな議論への参加は、[GitHub](https://github.com/microsoft/DeepSpeed/)で受け付けています。詳細については、[ガイドライン](https://github.com/microsoft/DeepSpeed/blob/master/CONTRIBUTING.md)を確認してください。 
-* DeepSpeedチームでは、DeepSpeedを用いた深層学習の研究や実世界へのAIモデルやアプリケーションに関して、大学、研究所、企業との方々とのコラボレーションを行っています（日本語でコミュニケーション可能な研究員も在籍しています）。こうしたコラボレーションについてのご要望（およびGitHubには適さないその他の話題）については、deepspeed-info@microsoft.com まで直接メールをお送りください。 
- 
+* ユーザのみなさまからのバグ報告、Pull request、さまざまな議論への参加は、[GitHub](https://github.com/microsoft/DeepSpeed/)で受け付けています。詳細については、[ガイドライン](https://github.com/microsoft/DeepSpeed/blob/master/CONTRIBUTING.md)を確認してください。
+* DeepSpeedチームでは、DeepSpeedを用いた深層学習の研究や実世界へのAIモデルやアプリケーションに関して、大学、研究所、企業との方々とのコラボレーションを行っています（日本語でコミュニケーション可能な研究員も在籍しています）。こうしたコラボレーションについてのご要望（およびGitHubには適さないその他の話題）については、deepspeed-info@microsoft.com まで直接メールをお送りください。
+
