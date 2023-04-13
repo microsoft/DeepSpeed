@@ -491,6 +491,7 @@ def shutdown_init_context():
 
     return True
 
+
 class AllGatherHandle:
 
     def __init__(self, handle, param: Parameter) -> None:
