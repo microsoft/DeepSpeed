@@ -349,7 +349,7 @@ class BaseTransformerContainer(ABC):
 
     def update_merged_qkv(self):
         if hasattr(self, '_update_merged_qkv'):
-            self.update_merged_qkv()
+            self._update_merged_qkv()
 
     def transpose(self):
         self.transpose_attention()
