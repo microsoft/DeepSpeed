@@ -116,15 +116,15 @@ class BaseTransformerContainer(ABC):
     def initialize_tensors(self, enable_training=False):
         # Set the tensors from policy (user module) to container (DS module)
         self.set_attention(*self.policy.attention(enable_training=enable_training))
-        self.set_mlp(*self.policy.mlp())
+        self.set_mlp(*self.policy.mlp(enable_training=enable_training))
         self.set_layernorm(*self.policy.layernorm())
         self.set_lora_params(self.policy.get_lora_params())
         self.q_k_v = self.policy.get_q_k_v()
         if self.q_k_v is not None:
             self.set_q_k_v(*self.q_k_v)
-        self.mlp_geglu = self.policy.get_gated_mlp()
-        if self.mlp_geglu is not None:
-            self.set_mlp_gate_params(*self.mlp_geglu)
+        self.gated_mlp = self.policy.get_gated_mlp()
+        if self.gated_mlp is not None:
+            self.set_mlp_gate_params(*self.gated_mlp)
 
     def convert_to_required_dtype(self, dtype):
         # Note: converting tensors to fp16 requires that we do it in-place using self.__dict__ and not make a list/dict copy
@@ -230,7 +230,7 @@ class BaseTransformerContainer(ABC):
 
         # setup the new MLP module
         if self.module.mlp.inter_w is None:
-            self.mlp_geglu_mp(mp_replace, reversed_dim=reversed_dim)
+            self.mlp_gated_mp(mp_replace, reversed_dim=reversed_dim)
         else:
             self.mlp_inter_mp(mp_replace, reversed_dim=reversed_dim)
 
@@ -330,6 +330,28 @@ class BaseTransformerContainer(ABC):
             else:
                 self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w, self._h4h_w, int8=reversed_dim)
                 self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b, self._h4h_b, int8=reversed_dim)
+
+    def mlp_gated_mp(self, mp_replace, reversed_dim=False):
+        self.module.mlp.inter_up_w = mp_replace.copy(self.module.mlp.gated_w[:self.inter_up_w.shape[0] //
+                                                                             mp_replace.mp_size],
+                                                     self.inter_up_w,
+                                                     int8=reversed_dim,
+                                                     allocat_tensor=reversed_dim)
+        self.module.mlp.inter_gate_w = mp_replace.copy(self.module.mlp.gated_w[self.inter_gate_w.shape[0] //
+                                                                               mp_replace.mp_size:],
+                                                       self.inter_gate_w,
+                                                       int8=reversed_dim,
+                                                       allocat_tensor=reversed_dim)
+        self.module.mlp.inter_up_b = mp_replace.copy(self.module.mlp.gated_b[:self.inter_up_b.shape[0] //
+                                                                             mp_replace.mp_size],
+                                                     self.inter_up_b,
+                                                     int8=reversed_dim,
+                                                     allocat_tensor=reversed_dim)
+        self.module.mlp.inter_gate_b = mp_replace.copy(self.module.mlp.gated_b[self.inter_gate_b.shape[0] //
+                                                                               mp_replace.mp_size:],
+                                                       self.inter_gate_b,
+                                                       int8=reversed_dim,
+                                                       allocat_tensor=reversed_dim)
 
     def mlp_output_mp(self, mp_replace, reversed_dim=False):
         if reversed_dim:
@@ -477,6 +499,28 @@ class BaseTransformerContainer(ABC):
         for data in qkv_data:
             del data
 
+    def reset_gated_mlp(self):
+        self._h4h_w.data[:self.inter_up_w.shape[0]] = self.inter_up_w.data
+        self._h4h_w.data[self.inter_up_w.shape[0]:] = self.inter_gate_w.data
+
+        if self.inter_up_b is not None:
+            self._h4h_b.data[:self.inter_up_b.shape[0]] = self.inter_up_b.data
+            self._h4h_b.data[self.inter_up_b.shape[0]:] = self.inter_gate_b.data
+
+        inter_data = [self.inter_up_w.data, self.inter_gate_w.data]
+        if self.inter_up_b is not None:
+            inter_data.extend([self.inter_up_b.data, self.inter_gate_b.data])
+
+        self.inter_up_w.data = self._h4h_w.data[:self.inter_up_w.shape[0]]
+        self.inter_gate_w.data = self._h4h_w.data[self.inter_up_w.shape[0]:]
+
+        if self.inter_up_b is not None:
+            self.inter_up_b.data = self._h4h_b.data[:self.inter_up_b.shape[0]]
+            self.inter_gate_b.data = self._h4h_b.data[self.inter_up_b.shape[0]:]
+
+        for data in inter_data:
+            del data
+
     def set_params_wo_copy(self, Z3_enabled=False):
         self.module.mlp.attn_nw = self.attn_nw
         self.module.mlp.attn_nb = self.attn_nb
@@ -505,10 +549,10 @@ class BaseTransformerContainer(ABC):
                 self.vw.data = self.qkvw[self.qw.shape[0] * 2:, :]
                 self.vb.data = self.qkvb[self.qw.shape[0] * 2:]
 
-        if not Z3_enabled or self.mlp_geglu is None:
+        if not Z3_enabled or self.gated_mlp is None:
             self.module.mlp.inter_w = self._h4h_w
             self.module.mlp.inter_b = self._h4h_b
-        if self.mlp_geglu is not None:
+        if self.gated_mlp is not None:
             if Z3_enabled:
                 self.module.inter_up_w = self.inter_up_w
                 self.module.inter_up_b = self.inter_up_b
@@ -524,13 +568,15 @@ class BaseTransformerContainer(ABC):
         return self.lora_params
 
     def get_all_params(self):
+        params = [
+            self.attn_nw, self.attn_nb, self.input_nw, self.input_nb, self._h4h_w, self._h4h_b, self._4hh_w,
+            self._4hh_b, self.qkvw, self.qkvb, self.dense_w, self.dense_b
+        ]
+
         if self.q_k_v is not None:
-            return [
-                self.attn_nw, self.attn_nb, self.input_nw, self.input_nb, self._h4h_w, self._h4h_b, self._4hh_w,
-                self._4hh_b, self.qw, self.qb, self.kw, self.kb, self.vw, self.vb, self.dense_w, self.dense_b
-            ]
-        else:
-            return [
-                self.attn_nw, self.attn_nb, self.input_nw, self.input_nb, self._h4h_w, self._h4h_b, self._4hh_w,
-                self._4hh_b, self.qkvw, self.qkvb, self.dense_w, self.dense_b
-            ]
+            params.extend([self.qw, self.qb, self.kw, self.kb, self.vw, self.vb])
+
+        if self.gated_mlp is not None:
+            params.extend([self.inter_up_w, self.inter_up_b, self.inter_gate_w, self.inter_gate_b])
+
+        return params

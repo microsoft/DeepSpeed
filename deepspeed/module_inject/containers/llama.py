@@ -108,12 +108,12 @@ class LLAMALayerPolicy(TransformerPolicy):
                 self.client_module.self_attn.o_proj.weight, \
                 None
 
-    def mlp(self):
+    def mlp(self, enable_training=False):
         mlp1_up = self.client_module.mlp.up_proj.weight
         mlp1_gate = self.client_module.mlp.gate_proj.weight
         mlp2 = self.client_module.mlp.down_proj.weight
 
-        mlp1 = Parameter(torch.cat((mlp1_up, mlp1_gate), dim=0), requires_grad=False)
+        mlp1 = Parameter(torch.cat((mlp1_up, mlp1_gate), dim=0), requires_grad=enable_training)
 
         return mlp1, None, mlp2, None
 
