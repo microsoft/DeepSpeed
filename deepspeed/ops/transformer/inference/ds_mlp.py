@@ -24,6 +24,7 @@ class DeepSpeedMLP(nn.Module):
         device = get_accelerator().current_device_name()
 
         proj_factor = 2 if self.config.mlp_act_func_type in GATED_ACTIVATION_TYPES else 1
+        self.config.intermediate_size = self.config.intermediate_size if self.config.intermediate_size > 0 else 4 * self.config.hidden_size
         self.intm_w_sz_per_partition = self.config.intermediate_size * proj_factor // self.config.mp_size
         self.intm_o_sz_per_partition = self.config.intermediate_size // self.config.mp_size
 
