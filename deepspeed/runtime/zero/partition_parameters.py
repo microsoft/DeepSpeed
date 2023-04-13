@@ -433,9 +433,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         if not self.enabled:
             return
 
-        shutdown_init_context()
-
-        if dist.get_rank() == 0:
+        if shutdown_init_context() and dist.get_rank() == 0:
             logger.info("finished initializing model with %.2fB parameters", param_count / 1e9)
 
         # Now that we cleaned up the metaclass injection, raise the exception.
@@ -466,7 +464,7 @@ def shutdown_init_context():
 
     zero_init_enabled -= 1
     if not zero_init_enabled == 0:
-        return
+        return False
 
     def _disable_class(cls):
         cls.__init__ = cls._old_init
@@ -491,8 +489,7 @@ def shutdown_init_context():
     #        if self.mem_efficient_linear:
     #            torch.nn.functional.linear = self.linear_bk
 
-    zero_init_enabled = False
-
+    return True
 
 class AllGatherHandle:
 
