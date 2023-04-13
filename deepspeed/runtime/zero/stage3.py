@@ -2108,7 +2108,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         for group in self.frozen_fp16_groups:
             group_state = []
             for param in group:
-                group_state.append(param.ds_tensor.to('cpu'))
+                group_state.append(param.ds_tensor.cpu())
             frozen_fp16_groups.append(group_state)
         return frozen_fp16_groups
 
