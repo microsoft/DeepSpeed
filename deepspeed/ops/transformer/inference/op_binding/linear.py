@@ -32,7 +32,8 @@ class LinearOp(BaseOp):
                 external_cache: bool = None,
                 num_layers: int = None):
         if self.linear_func != None:
-            qkv_out = self.linear_func(input, weight, bias, add_bias, do_flash_attn, num_heads)
+            qkv_out = self.linear_func(input, weight, bias, add_bias, do_flash_attn, num_heads,
+                                       self.config.transposed_mode)
         else:
             # fallback
             raise NotImplementedError

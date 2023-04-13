@@ -31,7 +31,7 @@ class GELUGemmOp(BaseOp):
         if self.fused_gemm_gelu != None:
             output = self.fused_gemm_gelu(input, weight, weight.scale, bias, weight_out, weight_out.scale,
                                           self.config.epsilon, self.config.pre_layer_norm, self.config.q_int8,
-                                          async_op)
+                                          async_op, self.config.transposed_mode)
         else:
             # fallback
             raise NotImplementedError

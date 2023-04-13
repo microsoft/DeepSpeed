@@ -23,11 +23,13 @@ class VectorMatMulOp(BaseOp):
             self.vector_matmul_func = None
 
     def forward(self, input: torch.Tensor, weight: torch.Tensor, async_op: bool = False):
-        q_scale = weight.scale
+        q_scale = weight.scale if hasattr(weight, 'scale') else torch.empty(1)
         q_int8 = self.config.q_int8
         if self.vector_matmul_func != None:
-            output = self.vector_matmul_func(input, weight, async_op, q_scale, q_int8)
-        else:
+            output = self.vector_matmul_func(input, weight, async_op, q_scale, q_int8, self.config.transposed_mode)
+        elif not self.config.transposed_mode:
             # fallback
             output = torch.matmul(input, weight)
+        else:
+            raise NotImplementedError
         return output
