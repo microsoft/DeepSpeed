@@ -433,7 +433,10 @@ class InsertPostInitMethodToModuleSubClasses(object):
         if not self.enabled:
             return
 
-        if shutdown_init_context() and dist.get_rank() == 0:
+        if not shutdown_init_context():
+            return
+
+        if dist.get_rank() == 0:
             logger.info("finished initializing model with %.2fB parameters", param_count / 1e9)
 
         # Now that we cleaned up the metaclass injection, raise the exception.
@@ -463,6 +466,12 @@ def shutdown_init_context():
     global zero_init_enabled
 
     zero_init_enabled -= 1
+    if zero_init_enabled < 0:
+        # This can happen because deepspeed.initialize calls shutdown_init_context outside an Init() context. If the
+        # deepspeed.initialize call is wrapped in an Init() context to begin with, then when that context exits this
+        # method will be called again. This happens in the HF accelerate tests, for example.
+        zero_init_enabled = 0
+        return False
     if not zero_init_enabled == 0:
         return False
 
