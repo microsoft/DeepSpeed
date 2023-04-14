@@ -8,6 +8,7 @@ import sys
 import shutil
 import subprocess
 import warnings
+import psutil
 from shlex import split
 from abc import ABC, abstractmethod
 from deepspeed.accelerator import get_accelerator
@@ -241,8 +242,6 @@ class IMPIRunner(MultiNodeRunner):
 
         mpirun_cmd = [
             'mpirun',
-            '-n',
-            f'{total_process_count}',
             '-ppn',
             f'{process_per_node}',
         ] + split(self.args.launcher_args)
@@ -253,6 +252,11 @@ class IMPIRunner(MultiNodeRunner):
 
         if self.args.prefer_deepspeed_comm:
             export_cmd += ['-genv', 'PREFER_DEEPSPEED_COMM', str(self.args.prefer_deepspeed_comm)]
+
+        if self.args.bind_cores_to_rank:
+            total_cores = psutil.cpu_count(logical=False)
+            cores_per_rank = total_cores // process_per_node
+            export_cmd += ['-genv', 'OMP_NUM_THREADS', str(cores_per_rank)]
 
         export_cmd += ['-genv', 'MASTER_ADDR', str(self.args.master_addr)]
         export_cmd += ['-genv', 'MASTER_PORT', str(self.args.master_port)]
@@ -266,12 +270,33 @@ class IMPIRunner(MultiNodeRunner):
                 hosts += f",{host}"
         export_cmd += [hosts]
 
-        python_exec = []
-        if not self.args.no_python:
-            python_exec = [sys.executable, "-u"]
-            if self.args.module:
-                python_exec.append("-m")
-        return mpirun_cmd + export_cmd + python_exec + [self.user_script] + self.user_arguments
+        per_host_cmd = []
+
+        for i in range(total_process_count):
+            local_rank = i % process_per_node
+            python_exec = []
+            if self.args.bind_cores_to_rank:
+                total_cores = psutil.cpu_count(logical=False)
+                core_list = range(total_cores)
+                cores_per_rank = total_cores // process_per_node
+                core_list_for_rank = core_list[cores_per_rank * local_rank:cores_per_rank * (local_rank + 1)]
+                python_exec.append("numactl")
+                python_exec.append("-C")
+                core_list_str = f"{core_list_for_rank[0]}"
+                for core_id in core_list_for_rank[1:]:
+                    core_list_str = f"{core_list_str},{core_id}"
+                python_exec.append(f"{core_list_str}")
+
+            if not self.args.no_python:
+                python_exec += [sys.executable, "-u"]
+                if self.args.module:
+                    python_exec.append("-m")
+            if i == 0:
+                per_host_cmd = ['-n', '1'] + python_exec + [self.user_script] + self.user_arguments
+            else:
+                per_host_cmd = per_host_cmd + [':', '-n', '1'] + python_exec + [self.user_script] + self.user_arguments
+        print (mpirun_cmd + export_cmd + per_host_cmd)
+        return mpirun_cmd + export_cmd + per_host_cmd
 
 
 class SlurmRunner(MultiNodeRunner):
