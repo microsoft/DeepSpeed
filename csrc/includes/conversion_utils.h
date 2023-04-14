@@ -266,7 +266,8 @@ DS_D_INLINE float2 to(__nv_bfloat162 val)
 template <>
 DS_D_INLINE __half to(double val)
 {
-    return __double2half(val);
+    float val_f = __double2float_rn(val);
+    return __float2half(val_f);
 }
 template <>
 DS_D_INLINE __half to(float val)
