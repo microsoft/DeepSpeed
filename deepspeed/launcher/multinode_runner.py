@@ -12,7 +12,7 @@ import psutil
 from shlex import split
 from abc import ABC, abstractmethod
 from deepspeed.accelerator import get_accelerator
-from ..utils import logger
+from ..utils import logger, get_numactl_cmd
 from .constants import PDSH_MAX_FAN_OUT, MVAPICH_TMP_HOSTFILE
 
 
@@ -185,6 +185,8 @@ class MPICHRunner(MultiNodeRunner):
         devices_per_node = self.resource_pool.values()
         total_process_count = sum(devices_per_node)
         process_per_node = list(devices_per_node)[0]
+        if not all([n == process_per_node for n in devices_per_node]):
+            raise ValueError("MPICH requires same number of devices per node")
 
         mpirun_cmd = [
             'mpirun',
@@ -239,6 +241,8 @@ class IMPIRunner(MultiNodeRunner):
         devices_per_node = self.resource_pool.values()
         total_process_count = sum(devices_per_node)
         process_per_node = list(devices_per_node)[0]
+        if not all([n == process_per_node for n in devices_per_node]):
+            raise ValueError("Intel MPI requires same number of devices per node")
 
         mpirun_cmd = [
             'mpirun',
@@ -253,9 +257,9 @@ class IMPIRunner(MultiNodeRunner):
         if self.args.prefer_deepspeed_comm:
             export_cmd += ['-genv', 'PREFER_DEEPSPEED_COMM', str(self.args.prefer_deepspeed_comm)]
 
+
         if self.args.bind_cores_to_rank:
-            total_cores = psutil.cpu_count(logical=False)
-            cores_per_rank = total_cores // process_per_node
+            cores_per_rank, _ = get_numactl_cmd(self.args.bind_core_list, process_per_node, 0)
             export_cmd += ['-genv', 'OMP_NUM_THREADS', str(cores_per_rank)]
 
         export_cmd += ['-genv', 'MASTER_ADDR', str(self.args.master_addr)]
@@ -276,16 +280,8 @@ class IMPIRunner(MultiNodeRunner):
             local_rank = i % process_per_node
             python_exec = []
             if self.args.bind_cores_to_rank:
-                total_cores = psutil.cpu_count(logical=False)
-                core_list = range(total_cores)
-                cores_per_rank = total_cores // process_per_node
-                core_list_for_rank = core_list[cores_per_rank * local_rank:cores_per_rank * (local_rank + 1)]
-                python_exec.append("numactl")
-                python_exec.append("-C")
-                core_list_str = f"{core_list_for_rank[0]}"
-                for core_id in core_list_for_rank[1:]:
-                    core_list_str = f"{core_list_str},{core_id}"
-                python_exec.append(f"{core_list_str}")
+                _, numactl_cmd = get_numactl_cmd(self.args.bind_core_list, process_per_node, local_rank)
+                python_exec += numactl_cmd
 
             if not self.args.no_python:
                 python_exec += [sys.executable, "-u"]
