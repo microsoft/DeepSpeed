@@ -22,3 +22,14 @@ class TestNestingInit(DistributedTest):
 
         # ensure that zero3 processed the parameter
         assert hasattr(model.weight, "ds_id")
+
+    def test_initialize_inside_init(self):
+        ds_config = dict(train_batch_size=1, zero_optimization=dict(stage=3))
+
+        with deepspeed.zero.Init(config_dict_or_path=ds_config):
+            assert(deepspeed.zero.partition_parameters.zero_init_enabled == 1)
+            model = torch.nn.Linear(4, 4)
+            _, *_ = deepspeed.initialize(model=model, config_params=ds_config)
+            assert(deepspeed.zero.partition_parameters.zero_init_enabled == 0)
+
+        assert(deepspeed.zero.partition_parameters.zero_init_enabled == 0)
