@@ -37,7 +37,8 @@ class AutoTP():
         # kernel_inject: False : {'injection_policy': {<class 'transformers.models.bloom.modeling_bloom.BloomBlock'>: ('self_attention.dense', 'mlp.dense_4h_to_h')}}
         # e.g. https://github.com/huggingface/transformers-bloom-inference/blob/main/bloom-inference-scripts/bloom-ds-inference.py#122
         partially_supported = ['bloom']
-        unsupported = ['codegen', 'deberta', 'flaubert', 'fsmt', 'gpt2', 'led', 'longformer', 'xlm', 'xlnet']
+        unsupported = ['codegen', 'deberta', 'flaubert',
+                       'fsmt', 'gpt2', 'led', 'longformer', 'xlm', 'xlnet']
         model = str(model)
         key = re.search(r": (.*?)Model", model)
         if key is None:
@@ -97,7 +98,7 @@ class AutoTP():
 
         module_list = AutoTP.get_module_list(model)
         assert AutoTP.supported(model), "AutoTP not supported for model. Please use kernel injection since container policy for model exists." \
-        if AutoTP.kernel_supported(module_list) else "AutoTP not supported for model. Please provide policy."
+            if AutoTP.kernel_supported(module_list) else "AutoTP not supported for model. Please provide policy."
         for module in module_list:
             for key, submodule in module._modules.items():
                 if isinstance(submodule, nn.Linear):
@@ -115,8 +116,9 @@ class AutoTP():
             layer_list = []
             if gem_list != []:
                 gem_list = list(set(gem_list))
-                policy_list = AutoTP.update_policy_list(policy_list, module, gem_list)
+                policy_list = AutoTP.update_policy_list(
+                    policy_list, module, gem_list)
                 gem_list = []
         assert len(policy_list), "AutoTP not supported for model. Please use kernel injection since container policy for model exists." \
-        if AutoTP.kernel_supported(module_list) else "Not able to determine model policy automatically. Please provide policy."
+            if AutoTP.kernel_supported(module_list) else "Not able to determine model policy automatically. Please provide policy."
         return policy_list
