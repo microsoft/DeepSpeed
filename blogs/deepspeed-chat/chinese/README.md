@@ -25,9 +25,9 @@ DeepSpeed-Chat具备如下三大核心功能：
     
     DeepSpeed-RLHF 复刻了 InstructGPT 论文中的训练模式，并确保包括
 
-        * 监督微调（SFT）
-        * 奖励模型微调
-        * 基于人类反馈的强化学习（RLHF）
+       * 监督微调（SFT）
+       * 奖励模型微调
+       * 基于人类反馈的强化学习（RLHF）
     
     在内的三个步骤与其一一对应。此外，我们还提供了数据抽象和混合功能，以支持用户使用多个不同来源的数据源进行训练。
 
@@ -63,6 +63,7 @@ DeepSpeed-RLHF 系统在大规模训练中具有无与伦比的效率，以及�
     | 64x A100-80G	| 1.25 hours ($320)	| 4 hours ($1024) | 7.5 hours ($1920)	| 20 hours ($5120)|
     
     *表 2. 多节点 64x A100-80GB：训练时长及预估的 Azure 费用。*
+    
     </div>
 
     > **非常重要的细节**: 上述两个表格（即表一和表二）中的数据均针对 RLHF 训练的第 3 步，基于实际数据集和 DeepSpeed-RLHF 训练吞吐量的测试。该训练在总共 1.35 亿（135M）个字符（token）上进行一个时期（epoch）的训练。我们总共有 6750 万个查询（query）字符（131.9k 个 query，每个序列长度为 256）和 6750 万个生成/回答字符（131.9k 个答案，每个序列长度为 256），每步的最大全局字符批量大小约为 500 万个字符（1024 个查询-答案对）。在与 DeepSpeed-RLHF 进行任何成本和端到端时间比较之前，我们建议读者注意这些设定。想要了解更多详细信息，请参阅我们的页面 [benchmark setting](https://github.com/microsoft/DeepSpeedExamples-internal/blob/staging-deepspeed-chat-v2/applications/DeepSpeed-Chat/training/step3_rlhf_finetuning/BenckmarkSetting.md)。
@@ -237,8 +238,11 @@ DeepSpeed-Chat流程的前两步与大型模型的常规微调相似，得益于
 如图2所示，DeepSpeed训练和推理引擎之间的过渡是无缝的：通过为actor模型启用典型的eval和train模式，当运行推理和训练流程时，DeepSpeed选择其不同的优化来运行模型更快并提高整个系统吞吐量。
 
 <div align="center">
+
 <img src="../../assets/images/hybrid-engine.png" width="600px" alt="DeepSpeed-Chat!"/>
+
 *Figure 2. 设计图解：DeepSpeed Hybrid Engine，用于加速 RLHF 流程中最耗时的部分。*
+
 </div>
 
 在RLHF训练的经验生成阶段的推理执行过程中，DeepSpeed混合引擎使用轻量级内存管理系统来处理KV缓存和中间结果，同时使用高度优化的推理CUDA核和张量并行计算。与现有解决方案相比，DeepSpeed-HE显著提高了吞吐量（每秒token数）。在训练执行过程中，混合引擎使用了多种内存优化技术，如DeepSpeed的ZeRO系列技术和现在流行的LoRA方法。这些技术在混合引擎中可以彼此兼容，并可以组合在一起以提供最高训练效率。
