@@ -21,7 +21,7 @@ DeepSpeed-Chat具备如下三大核心功能：
     
     只需一个脚本即可实现多个训练步骤，包括使用 Huggingface 预训练的模型、使用 DeepSpeed-RLHF 系统运行 InstructGPT 训练的所有三个步骤、甚至生成你自己的类ChatGPT模型。此外，我们还提供了一个易于使用的推理API，用于用户在模型训练后测试对话式交互。
 
-2. **DeepSpeed-RLHF 模块**：
+2. **DeepSpeed-RLHF 模块**
     
     DeepSpeed-RLHF 复刻了 InstructGPT 论文中的训练模式，并确保包括
 
