@@ -276,6 +276,7 @@ setup(name='deepspeed',
       author='DeepSpeed Team',
       author_email='deepspeed-info@microsoft.com',
       url='http://deepspeed.ai',
+      package_dir={"": "."},
       project_urls={
           'Documentation': 'https://deepspeed.readthedocs.io',
           'Source': 'https://github.com/microsoft/DeepSpeed',
