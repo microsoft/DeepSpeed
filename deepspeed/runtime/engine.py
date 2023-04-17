@@ -239,7 +239,6 @@ class DeepSpeedEngine(Module):
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
 
-        print("bing: before param_name")
         # needed for zero_to_fp32 weights reconstruction to remap nameless data to state_dict
         self.param_names = {param: name for name, param in model.named_parameters()}
 
@@ -328,7 +327,6 @@ class DeepSpeedEngine(Module):
         if not isinstance(model_parameters, list):
             model_parameters = list(model_parameters)
 
-        print(f"bing: before optimizer")
         if has_optimizer:
             self._configure_optimizer(optimizer, model_parameters)
             self._configure_lr_scheduler(lr_scheduler)
@@ -1199,11 +1197,17 @@ class DeepSpeedEngine(Module):
         self._check_for_duplicates(basic_optimizer)
 
         self.basic_optimizer = basic_optimizer
-        print(f"helllllllll")
-        print(f"bing: DeepSpeed Basic Optimizer = {basic_optimizer or 'aaa'}".format(
-            basic_optimizer.__class__.__name__),
-              ranks=[0])
-        log_dist("DeepSpeed Basic Optimizer = {}".format(basic_optimizer.__class__.__name__), ranks=[0])
+        #log_dist("Basic Optimizer = {}".format(basic_optimizer.__class__.__name__), ranks=[0])
+        provider_name = type(basic_optimizer).__module__.split('.')[0]
+        optimizer_name = basic_optimizer.__class__.__name__
+
+        if 'Fuse' or 'fuse' in optimizer_name:
+            fuse_status = 'Fused'
+        else:
+            fuse_status = 'NonFused'
+        log_dist("Optimizer Provider: {}".format(provider_name), ranks=[0])
+        log_dist("Fuse Status: {}".format(fuse_status), ranks=[0])
+        log_dist("Optimizer Name: {}".format(optimizer_name), ranks=[0])
 
         optimizer_wrapper = self._do_optimizer_sanity_check(basic_optimizer)
 
