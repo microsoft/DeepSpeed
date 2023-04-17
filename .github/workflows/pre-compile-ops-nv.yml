@@ -1,0 +1,38 @@
+name: pre-compile-ops-nv
+
+on:
+  push:
+    branches:
+      - 'staging**'
+  pull_request:
+    branches:
+      '**'
+  schedule:
+    - cron: "0 0 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ops:
+    runs-on: ubuntu-20.04
+    container:
+      image: deepspeed/gh-builder:3.10
+
+    steps:
+        - uses: actions/checkout@v2
+
+        - id: setup-venv
+          uses: ./.github/workflows/setup-venv
+
+        - name: environment
+          run: |
+            which python
+            python --version
+        - name: Install deepspeed
+          run: |
+            DS_BUILD_OPS=1 pip3 install .
+        - name: DS Report
+          run: |
+             ds_report
