@@ -18,7 +18,7 @@ jobs:
   build-ops:
     runs-on: ubuntu-20.04
     container:
-      image: deepspeed/gh-builder:3.10
+      image: deepspeed/gh-builder:py3.10
 
     steps:
         - uses: actions/checkout@v2
