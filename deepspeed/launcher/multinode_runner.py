@@ -8,7 +8,6 @@ import sys
 import shutil
 import subprocess
 import warnings
-import psutil
 from shlex import split
 from abc import ABC, abstractmethod
 from deepspeed.accelerator import get_accelerator
@@ -257,7 +256,6 @@ class IMPIRunner(MultiNodeRunner):
         if self.args.prefer_deepspeed_comm:
             export_cmd += ['-genv', 'PREFER_DEEPSPEED_COMM', str(self.args.prefer_deepspeed_comm)]
 
-
         if self.args.bind_cores_to_rank:
             cores_per_rank, _ = get_numactl_cmd(self.args.bind_core_list, process_per_node, 0)
             export_cmd += ['-genv', 'OMP_NUM_THREADS', str(cores_per_rank)]
@@ -291,7 +289,7 @@ class IMPIRunner(MultiNodeRunner):
                 per_host_cmd = ['-n', '1'] + python_exec + [self.user_script] + self.user_arguments
             else:
                 per_host_cmd = per_host_cmd + [':', '-n', '1'] + python_exec + [self.user_script] + self.user_arguments
-        print (mpirun_cmd + export_cmd + per_host_cmd)
+        print(mpirun_cmd + export_cmd + per_host_cmd)
         return mpirun_cmd + export_cmd + per_host_cmd
 
 

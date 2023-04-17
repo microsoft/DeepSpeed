@@ -19,7 +19,6 @@ import base64
 import time
 import signal
 import psutil
-import distutils
 from collections import defaultdict
 from typing import Dict
 from argparse import ArgumentParser, REMAINDER
