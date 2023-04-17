@@ -36,7 +36,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          DS_BUILD_OPS=1 DS_BUILD_SPARSE_ATTN=0 pip install .[dev,autotuning]
+          pip install .[dev,autotuning]
           ds_report
 
       - name: Python environment
