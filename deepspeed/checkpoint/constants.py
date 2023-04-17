@@ -29,6 +29,7 @@ PARAM = 'param'
 PARAM_SHAPES = 'param_shapes'
 BUFFER_NAMES = 'buffer_names'
 FROZEN_PARAM_SHAPES = 'frozen_param_shapes'
+FROZEN_PARAM_FRAGMENTS = 'frozen_param_fragments'
 
 #########################################
 # Checkpoint naming constants

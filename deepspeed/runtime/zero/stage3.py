@@ -248,7 +248,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.sub_group_size = sub_group_size
 
         self.sub_group_to_group_id = {}
-
+        # import pdb; pdb.set_trace()
         # Frozen parameters
         self.frozen_fp16_groups = self._get_frozen_parameter_groups()
 
@@ -2248,11 +2248,11 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 partitioned_param.data = q.data
 
         # update frozen fp16 params if possible.
-        if FROZEN_FP16_GROUPS in state_dict:
-            saved_frozen_fp16_groups = state_dict[FROZEN_FP16_GROUPS]
-            for curr_group, saved_group in zip(self.frozen_fp16_groups, saved_frozen_fp16_groups):
-                for curr_param, saved_param in zip(curr_group, saved_group):
-                    curr_param.ds_tensor.data.copy_(saved_param.data)
+        # if FROZEN_FP16_GROUPS in state_dict:
+        #     saved_frozen_fp16_groups = state_dict[FROZEN_FP16_GROUPS]
+        #     for curr_group, saved_group in zip(self.frozen_fp16_groups, saved_frozen_fp16_groups):
+        #         for curr_param, saved_param in zip(curr_group, saved_group):
+        #             curr_param.ds_tensor.data.copy_(saved_param.data)
 
     # TODO: Support different/changing load/save DP degree.
     def load_state_dict(self,
