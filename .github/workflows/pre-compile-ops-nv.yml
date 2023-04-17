@@ -18,7 +18,7 @@ jobs:
   build-ops:
     runs-on: ubuntu-20.04
     container:
-      image: nvidia/cuda:11.6.1-base-ubuntu20.04
+      image: nvidia/cuda:11.7.1-devel-ubuntu20.04
 
     steps:
         - uses: actions/checkout@v2
