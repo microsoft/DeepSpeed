@@ -1,4 +1,4 @@
-name: pre-compile-ops-nv
+name: nv-pre-compile-ops
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
   build-ops:
     runs-on: ubuntu-20.04
     container:
-      image: nvidia/cuda:11.7.1-devel-ubuntu20.04
+      image: deepspeed/gh-builder:ubuntu1804-py38-torch112-cu116
 
     steps:
         - uses: actions/checkout@v2
