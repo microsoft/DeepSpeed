@@ -36,6 +36,7 @@ def get_numa_cores():
                 ret.append([int(core) for core in cores])
     return ret
 
+
 def check_for_numactl_pkg():
     libs = dict(
         dpkg=["-l", "numactl", "apt"],
@@ -57,6 +58,7 @@ def check_for_numactl_pkg():
             break
     return found
 
+
 def parse_range(rng):
     try:
         value = int(rng)
@@ -72,6 +74,7 @@ def parse_range(rng):
         if start > end:
             raise ValueError("Bad range: '%s', range end must larger than or equal to start" % (rng, ))
         return range(start, end + 1)
+
 
 # parse comma and dash separated range list into list
 # i.e. "0,2-4,6" --> [0, 2, 3, 4, 6]
@@ -93,6 +96,7 @@ def parse_range_list(range_str):
         last = sub_number_list[-1]
         number_list.extend(sub_number_list)
     return number_list
+
 
 def get_numactl_cmd(bind_core_list, num_local_procs, local_rank):
     numactl_cmd = []
@@ -142,4 +146,3 @@ def get_numactl_cmd(bind_core_list, num_local_procs, local_rank):
         core_list_str = f"{core_list_str}-{last_core}"
     numactl_cmd.append(f"{core_list_str}")
     return cores_per_rank, numactl_cmd
-
