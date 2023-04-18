@@ -338,77 +338,6 @@ def _get_fp32_state_dict_from_zero2_checkpoint(world_size, fp32_flat_groups, zer
 
     _zero2_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero_model_states)
 
-    # param_shapes = zero_model_states[0].param_shapes
-
-    # # Reconstruction protocol:
-    # #
-    # # XXX: document this
-
-    # if debug:
-    #     for i in range(world_size):
-    #         for j in range(len(fp32_flat_groups[0])):
-    #             print(f"{FP32_FLAT_GROUPS}[{i}][{j}].shape={fp32_flat_groups[i][j].shape}")
-
-    # # XXX: memory usage doubles here (zero2)
-    # num_param_groups = len(fp32_flat_groups[0])
-    # merged_single_partition_of_fp32_groups = []
-    # for i in range(num_param_groups):
-    #     merged_partitions = [sd[i] for sd in fp32_flat_groups]
-    #     full_single_fp32_vector = torch.cat(merged_partitions, 0)
-    #     merged_single_partition_of_fp32_groups.append(full_single_fp32_vector)
-    # avail_numel = sum(
-    #     [full_single_fp32_vector.numel() for full_single_fp32_vector in merged_single_partition_of_fp32_groups])
-
-    # if debug:
-    #     wanted_params = sum([len(shapes) for shapes in param_shapes])
-    #     wanted_numel = sum([sum(shape.numel() for shape in shapes.values()) for shapes in param_shapes])
-    #     # not asserting if there is a mismatch due to possible padding
-    #     print(f"Have {avail_numel} numels to process.")
-    #     print(f"Need {wanted_numel} numels in {wanted_params} params.")
-
-    # # params
-    # # XXX: for huge models that can't fit into the host's RAM we will have to recode this to support
-    # # out-of-core computing solution
-    # total_numel = 0
-    # total_params = 0
-    # for shapes, full_single_fp32_vector in zip(param_shapes, merged_single_partition_of_fp32_groups):
-    #     offset = 0
-    #     avail_numel = full_single_fp32_vector.numel()
-    #     for name, shape in shapes.items():
-
-    #         unpartitioned_numel = shape.numel()
-    #         total_numel += unpartitioned_numel
-    #         total_params += 1
-
-    #         if debug:
-    #             print(f"{name} full shape: {shape} unpartitioned numel {unpartitioned_numel} ")
-    #         state_dict[name] = full_single_fp32_vector.narrow(0, offset, unpartitioned_numel).view(shape)
-    #         offset += unpartitioned_numel
-
-    #     # Z2 started to align to 2*world_size to improve nccl performance. Therefore both offset and
-    #     # avail_numel can differ by anywhere between 0..2*world_size. Due to two unrelated complex
-    #     # paddings performed in the code it's almost impossible to predict the exact numbers w/o the
-    #     # live optimizer object, so we are checking that the numbers are within the right range
-    #     align_to = 2 * world_size
-
-    #     def zero2_align(x):
-    #         return align_to * math.ceil(x / align_to)
-
-    #     if debug:
-    #         print(f"original offset={offset}, avail_numel={avail_numel}")
-
-    #     offset = zero2_align(offset)
-    #     avail_numel = zero2_align(avail_numel)
-
-    #     if debug:
-    #         print(f"aligned  offset={offset}, avail_numel={avail_numel}")
-
-    #     # Sanity check
-    #     if offset != avail_numel:
-    #         raise ValueError(f"consumed {offset} numels out of {avail_numel} - something is wrong")
-
-    # print(f"Reconstructed fp32 state dict with {total_params} params {total_numel} elements")
-
     # recover shared parameters
     for pair in zero_model_states[0].shared_params:
         state_dict[pair[0]] = state_dict[pair[1]]
@@ -514,25 +443,6 @@ def _zero3_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero
 
 
 def _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zero_model_states):
-    # param_shapes = zero_model_states[0].param_shapes
-
-    # Reconstruction protocol: For zero3 we need to zip the partitions together at boundary of each
-    # param, re-consolidating each param, while dealing with padding if any
-
-    # merge list of dicts, preserving order
-    # param_shapes = {k: v for d in param_shapes for k, v in d.items()}
-
-    # if debug:
-    #     for i in range(world_size):
-    #         print(f"{FP32_FLAT_GROUPS}[{i}].shape={fp32_flat_groups[i].shape}")
-
-    #     wanted_params = len(param_shapes)
-    #     wanted_numel = sum(shape.numel() for shape in param_shapes.values())
-    #     # not asserting if there is a mismatch due to possible padding
-    #     avail_numel = fp32_flat_groups[0].numel() * world_size
-    #     print(f"Trainable params: Have {avail_numel} numels to process.")
-    #     print(f"Trainable params: Need {wanted_numel} numels in {wanted_params} params.")
-
     state_dict = OrderedDict()
 
     # buffers
@@ -540,39 +450,6 @@ def _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zer
     state_dict.update(buffers)
     if debug:
         print(f"added {len(buffers)} buffers")
-
-    # params
-    # XXX: for huge models that can't fit into the host's RAM we will have to recode this to support
-    # out-of-core computing solution
-    # offset = 0
-    # total_numel = 0
-    # total_params = 0
-    # for name, shape in param_shapes.items():
-
-    #     unpartitioned_numel = shape.numel()
-    #     total_numel += unpartitioned_numel
-    #     total_params += 1
-
-    #     partitioned_numel, partitioned_padding_numel = zero3_partitioned_param_info(unpartitioned_numel, world_size)
-
-    #     if debug:
-    #         print(
-    #             f"{total_params} {name} full shape: {shape} partition0 numel={partitioned_numel} partitioned_padding_numel={partitioned_padding_numel}"
-    #         )
-
-    #     # XXX: memory usage doubles here
-    #     state_dict[name] = torch.cat(
-    #         tuple(fp32_flat_groups[i].narrow(0, offset, partitioned_numel) for i in range(world_size)),
-    #         0).narrow(0, 0, unpartitioned_numel).view(shape)
-    #     offset += partitioned_numel
-
-    # offset *= world_size
-
-    # # Sanity check
-    # if offset != avail_numel:
-    #     raise ValueError(f"consumed {offset} numels out of {avail_numel} - something is wrong")
-
-    # print(f"Reconstructed fp32 state dict with {total_params} params {total_numel} elements")
 
     _zero3_merge_frozen_params(state_dict, world_size, zero_model_states)
 
