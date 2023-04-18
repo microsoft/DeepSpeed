@@ -84,7 +84,7 @@ def get_checkpoint_files(checkpoint_dir, glob_pattern):
     return ckpt_files
 
 
-def get_optim_state_files(checkpoint_dir):
+def get_optim_files(checkpoint_dir):
     return get_checkpoint_files(checkpoint_dir, "*_optim_states.pt")
 
 
@@ -205,7 +205,7 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
     """
     print(f"Processing zero checkpoint '{ds_checkpoint_dir}'")
 
-    optim_files = get_optim_state_files(ds_checkpoint_dir)
+    optim_files = get_optim_files(ds_checkpoint_dir)
     zero_stage, world_size, fp32_flat_groups = parse_optim_states(optim_files, ds_checkpoint_dir)
     print(f"Detected checkpoint of type zero stage {zero_stage}, world_size: {world_size}")
 
