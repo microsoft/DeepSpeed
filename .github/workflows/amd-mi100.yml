@@ -1,4 +1,4 @@
-name: amd
+name: amd-mi100
 
 on:
   push:
@@ -6,9 +6,13 @@ on:
       - 'staging**'
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
+  schedule:
+    - cron: "0 0 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,7 +21,7 @@ concurrency:
 jobs:
   amd-tests:
     # The type of runner that the job will run on
-    runs-on: [self-hosted, amd]
+    runs-on: [self-hosted, amd, mi100]
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
