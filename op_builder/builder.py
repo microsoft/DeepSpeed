@@ -342,10 +342,8 @@ class OpBuilder(ABC):
             assert_no_cuda_mismatch(self.name)
             return '-D__ENABLE_CUDA__'
         except BaseException:
-            print(
-                f"{WARNING} {self.name} cuda is missing or is incompatible with installed torch, "
-                "only cpu ops can be compiled!"
-            )
+            print(f"{WARNING} {self.name} cuda is missing or is incompatible with installed torch, "
+                  "only cpu ops can be compiled!")
             return '-D__DISABLE_CUDA__'
         return '-D__DISABLE_CUDA__'
 
