@@ -19,12 +19,25 @@ import math
 import os
 import re
 from collections import OrderedDict
+from dataclasses import dataclass
 
 # while this script doesn't use deepspeed to recover data, since the checkpoints are pickled with
 # DeepSpeed data structures it has to be available in the current python environment.
 from deepspeed.utils import logger
 from deepspeed.checkpoint.constants import (DS_VERSION, OPTIMIZER_STATE_DICT, SINGLE_PARTITION_OF_FP32_GROUPS,
-                                            FP32_FLAT_GROUPS, ZERO_STAGE, PARTITION_COUNT, PARAM_SHAPES, BUFFER_NAMES)
+                                            FP32_FLAT_GROUPS, ZERO_STAGE, PARTITION_COUNT, PARAM_SHAPES, BUFFER_NAMES,
+                                            FROZEN_PARAM_SHAPES, FROZEN_PARAM_FRAGMENTS)
+
+
+@dataclass
+class zero_model_state:
+    buffers: dict()
+    param_shapes: dict()
+    shared_params: list
+    ds_version: int
+    frozen_param_shapes: dict()
+    frozen_param_fragments: dict()
+
 
 debug = 0
 
@@ -61,49 +74,76 @@ def get_model_state_file(checkpoint_dir, zero_stage):
     return file
 
 
-def get_optim_files(checkpoint_dir):
+def get_checkpoint_files(checkpoint_dir, glob_pattern):
     # XXX: need to test that this simple glob rule works for multi-node setup too
-    optim_files = sorted(glob.glob(os.path.join(checkpoint_dir, "*_optim_states.pt")), key=natural_keys)
+    ckpt_files = sorted(glob.glob(os.path.join(checkpoint_dir, glob_pattern)), key=natural_keys)
 
-    if len(optim_files) == 0:
-        raise FileNotFoundError(f"can't find '*_optim_states.pt' files in directory '{checkpoint_dir}'")
+    if len(ckpt_files) == 0:
+        raise FileNotFoundError(f"can't find {glob_pattern} files in directory '{checkpoint_dir}'")
 
-    return optim_files
+    return ckpt_files
 
 
-def parse_model_state(file):
-    state_dict = torch.load(file, map_location=device)
+def get_optim_state_files(checkpoint_dir):
+    return get_checkpoint_files(checkpoint_dir, "*_optim_states.pt")
 
-    if BUFFER_NAMES not in state_dict:
-        raise ValueError(f"{file} is not a model state checkpoint")
-    buffer_names = state_dict[BUFFER_NAMES]
-    if debug:
-        print("Found buffers:", buffer_names)
 
-    # recover just the buffers while restoring them to fp32 if they were saved in fp16
-    buffers = {k: v.float() for k, v in state_dict["module"].items() if k in buffer_names}
-    param_shapes = state_dict[PARAM_SHAPES]
+def get_model_state_files(checkpoint_dir):
+    return get_checkpoint_files(checkpoint_dir, "*_model_states.pt")
 
-    # collect parameters that are included in param_shapes
-    param_names = []
-    for s in param_shapes:
-        for name in s.keys():
-            param_names.append(name)
 
-    # record shared parameters so that they can be recovered based on partners
-    # this is because such parameters holding reference only are not saved by optimizer
-    shared_params = []
-    for param in state_dict["module"]:
-        if param not in [*param_names, *buffer_names]:
-            for share_param in state_dict["module"]:
-                if (state_dict["module"][share_param].data_ptr() == state_dict["module"][param].data_ptr()
-                        and share_param != param):
-                    shared_params.append([param, share_param])
-                    break
+def parse_model_states(files):
+    zero_model_states = []
+    for file in files:
+        state_dict = torch.load(file, map_location=device)
 
-    ds_version = state_dict.get(DS_VERSION, None)
+        if BUFFER_NAMES not in state_dict:
+            raise ValueError(f"{file} is not a model state checkpoint")
+        buffer_names = state_dict[BUFFER_NAMES]
+        if debug:
+            print("Found buffers:", buffer_names)
 
-    return buffers, param_shapes, shared_params, ds_version
+        # recover just the buffers while restoring them to fp32 if they were saved in fp16
+        buffers = {k: v.float() for k, v in state_dict["module"].items() if k in buffer_names}
+        param_shapes = state_dict[PARAM_SHAPES]
+
+        # collect parameters that are included in param_shapes
+        param_names = []
+        for s in param_shapes:
+            for name in s.keys():
+                param_names.append(name)
+
+        # update with frozen parameters
+        frozen_param_shapes = state_dict.get(FROZEN_PARAM_SHAPES, None)
+        if frozen_param_shapes is not None:
+            if debug:
+                print(f"Found frozen_param_shapes: {frozen_param_shapes}")
+            param_names += list(frozen_param_shapes.keys())
+
+        # record shared parameters so that they can be recovered based on partners
+        # this is because such parameters holding reference only are not saved by optimizer
+        shared_params = []
+        for param in state_dict["module"]:
+            if param not in [*param_names, *buffer_names]:
+                for share_param in state_dict["module"]:
+                    if (state_dict["module"][share_param].data_ptr() == state_dict["module"][param].data_ptr()
+                            and share_param != param):
+                        shared_params.append([param, share_param])
+                        break
+
+        ds_version = state_dict.get(DS_VERSION, None)
+
+        frozen_param_fragments = state_dict.get(FROZEN_PARAM_FRAGMENTS, None)
+
+        z_model_state = zero_model_state(buffers=buffers,
+                                         param_shapes=param_shapes,
+                                         shared_params=shared_params,
+                                         ds_version=ds_version,
+                                         frozen_param_shapes=frozen_param_shapes,
+                                         frozen_param_fragments=frozen_param_fragments)
+        zero_model_states.append(z_model_state)
+
+    return zero_model_states
 
 
 def parse_optim_states(files, ds_checkpoint_dir):
@@ -165,23 +205,55 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
     """
     print(f"Processing zero checkpoint '{ds_checkpoint_dir}'")
 
-    optim_files = get_optim_files(ds_checkpoint_dir)
+    optim_files = get_optim_state_files(ds_checkpoint_dir)
     zero_stage, world_size, fp32_flat_groups = parse_optim_states(optim_files, ds_checkpoint_dir)
     print(f"Detected checkpoint of type zero stage {zero_stage}, world_size: {world_size}")
 
-    model_file = get_model_state_file(ds_checkpoint_dir, zero_stage)
-    buffers, param_shapes, shared_params, ds_version = parse_model_state(model_file)
-    print(f'Parsing checkpoint created by deepspeed=={ds_version}')
+    model_files = get_model_state_files(ds_checkpoint_dir)
+
+    zero_model_states = parse_model_states(model_files)
+    print(f'Parsing checkpoint created by deepspeed=={zero_model_states[0].ds_version}')
 
     if zero_stage == 2:
-        return _get_fp32_state_dict_from_zero2_checkpoint(world_size, param_shapes, fp32_flat_groups, buffers,
-                                                          shared_params)
+        return _get_fp32_state_dict_from_zero2_checkpoint(world_size, fp32_flat_groups, zero_model_states)
     elif zero_stage == 3:
-        return _get_fp32_state_dict_from_zero3_checkpoint(world_size, param_shapes, fp32_flat_groups, buffers,
-                                                          shared_params)
+        return _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zero_model_states)
 
 
-def _get_fp32_state_dict_from_zero2_checkpoint(world_size, param_shapes, fp32_flat_groups, buffers, shared_params):
+def _zero2_merge_frozen_params(state_dict, zero_model_states):
+    if zero_model_states[0].frozen_param_shapes is None or len(zero_model_states[0].frozen_param_shapes) == 0:
+        return
+
+    frozen_param_shapes = zero_model_states[0].frozen_param_shapes
+    frozen_param_fragments = zero_model_states[0].frozen_param_fragments
+
+    if debug:
+        num_elem = sum(s.numel() for s in frozen_param_shapes.values())
+        print(f'rank 0: {FROZEN_PARAM_SHAPES}.numel = {num_elem}')
+
+        wanted_params = len(frozen_param_shapes)
+        wanted_numel = sum(s.numel() for s in frozen_param_shapes.values())
+        avail_numel = sum([p.numel() for p in frozen_param_fragments.values()])
+        print(f'Frozen params: Have {avail_numel} numels to process.')
+        print(f'Frozen params: Need {wanted_numel} numels in {wanted_params} params')
+
+    total_params = 0
+    total_numel = 0
+    for name, shape in frozen_param_shapes.items():
+        total_params += 1
+        unpartitioned_numel = shape.numel()
+        total_numel += unpartitioned_numel
+
+        state_dict[name] = frozen_param_fragments[name]
+
+        if debug:
+            print(f"{name} full shape: {shape} unpartitioned numel {unpartitioned_numel} ")
+
+    print(f"Reconstructed Frozen fp32 state dict with {total_params} params {total_numel} elements")
+
+
+def _zero2_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero_model_states):
+    param_shapes = zero_model_states[0].param_shapes
 
     # Reconstruction protocol:
     #
@@ -208,13 +280,6 @@ def _get_fp32_state_dict_from_zero2_checkpoint(world_size, param_shapes, fp32_fl
         # not asserting if there is a mismatch due to possible padding
         print(f"Have {avail_numel} numels to process.")
         print(f"Need {wanted_numel} numels in {wanted_params} params.")
-
-    state_dict = OrderedDict()
-
-    # buffers
-    state_dict.update(buffers)
-    if debug:
-        print(f"added {len(buffers)} buffers")
 
     # params
     # XXX: for huge models that can't fit into the host's RAM we will have to recode this to support
@@ -257,11 +322,96 @@ def _get_fp32_state_dict_from_zero2_checkpoint(world_size, param_shapes, fp32_fl
         if offset != avail_numel:
             raise ValueError(f"consumed {offset} numels out of {avail_numel} - something is wrong")
 
-    # recover shared parameters
-    for pair in shared_params:
-        state_dict[pair[0]] = state_dict[pair[1]]
-
     print(f"Reconstructed fp32 state dict with {total_params} params {total_numel} elements")
+
+
+def _get_fp32_state_dict_from_zero2_checkpoint(world_size, fp32_flat_groups, zero_model_states):
+    state_dict = OrderedDict()
+
+    # buffers
+    buffers = zero_model_states[0].buffers
+    state_dict.update(buffers)
+    if debug:
+        print(f"added {len(buffers)} buffers")
+
+    _zero2_merge_frozen_params(state_dict, zero_model_states)
+
+    _zero2_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero_model_states)
+
+    # param_shapes = zero_model_states[0].param_shapes
+
+    # # Reconstruction protocol:
+    # #
+    # # XXX: document this
+
+    # if debug:
+    #     for i in range(world_size):
+    #         for j in range(len(fp32_flat_groups[0])):
+    #             print(f"{FP32_FLAT_GROUPS}[{i}][{j}].shape={fp32_flat_groups[i][j].shape}")
+
+    # # XXX: memory usage doubles here (zero2)
+    # num_param_groups = len(fp32_flat_groups[0])
+    # merged_single_partition_of_fp32_groups = []
+    # for i in range(num_param_groups):
+    #     merged_partitions = [sd[i] for sd in fp32_flat_groups]
+    #     full_single_fp32_vector = torch.cat(merged_partitions, 0)
+    #     merged_single_partition_of_fp32_groups.append(full_single_fp32_vector)
+    # avail_numel = sum(
+    #     [full_single_fp32_vector.numel() for full_single_fp32_vector in merged_single_partition_of_fp32_groups])
+
+    # if debug:
+    #     wanted_params = sum([len(shapes) for shapes in param_shapes])
+    #     wanted_numel = sum([sum(shape.numel() for shape in shapes.values()) for shapes in param_shapes])
+    #     # not asserting if there is a mismatch due to possible padding
+    #     print(f"Have {avail_numel} numels to process.")
+    #     print(f"Need {wanted_numel} numels in {wanted_params} params.")
+
+    # # params
+    # # XXX: for huge models that can't fit into the host's RAM we will have to recode this to support
+    # # out-of-core computing solution
+    # total_numel = 0
+    # total_params = 0
+    # for shapes, full_single_fp32_vector in zip(param_shapes, merged_single_partition_of_fp32_groups):
+    #     offset = 0
+    #     avail_numel = full_single_fp32_vector.numel()
+    #     for name, shape in shapes.items():
+
+    #         unpartitioned_numel = shape.numel()
+    #         total_numel += unpartitioned_numel
+    #         total_params += 1
+
+    #         if debug:
+    #             print(f"{name} full shape: {shape} unpartitioned numel {unpartitioned_numel} ")
+    #         state_dict[name] = full_single_fp32_vector.narrow(0, offset, unpartitioned_numel).view(shape)
+    #         offset += unpartitioned_numel
+
+    #     # Z2 started to align to 2*world_size to improve nccl performance. Therefore both offset and
+    #     # avail_numel can differ by anywhere between 0..2*world_size. Due to two unrelated complex
+    #     # paddings performed in the code it's almost impossible to predict the exact numbers w/o the
+    #     # live optimizer object, so we are checking that the numbers are within the right range
+    #     align_to = 2 * world_size
+
+    #     def zero2_align(x):
+    #         return align_to * math.ceil(x / align_to)
+
+    #     if debug:
+    #         print(f"original offset={offset}, avail_numel={avail_numel}")
+
+    #     offset = zero2_align(offset)
+    #     avail_numel = zero2_align(avail_numel)
+
+    #     if debug:
+    #         print(f"aligned  offset={offset}, avail_numel={avail_numel}")
+
+    #     # Sanity check
+    #     if offset != avail_numel:
+    #         raise ValueError(f"consumed {offset} numels out of {avail_numel} - something is wrong")
+
+    # print(f"Reconstructed fp32 state dict with {total_params} params {total_numel} elements")
+
+    # recover shared parameters
+    for pair in zero_model_states[0].shared_params:
+        state_dict[pair[0]] = state_dict[pair[1]]
 
     return state_dict
 
@@ -273,12 +423,48 @@ def zero3_partitioned_param_info(unpartitioned_numel, world_size):
     return partitioned_numel, padding_numel
 
 
-def _get_fp32_state_dict_from_zero3_checkpoint(world_size, param_shapes, fp32_flat_groups, buffers, shared_params):
+def _zero3_merge_frozen_params(state_dict, world_size, zero_model_states):
+    if zero_model_states[0].frozen_param_shapes is None or len(zero_model_states[0].frozen_param_shapes) == 0:
+        return
 
+    if debug:
+        for i in range(world_size):
+            num_elem = sum(s.numel() for s in zero_model_states[i].frozen_param_fragments.values())
+            print(f'rank {i}: {FROZEN_PARAM_SHAPES}.numel = {num_elem}')
+
+        frozen_param_shapes = zero_model_states[0].frozen_param_shapes
+        wanted_params = len(frozen_param_shapes)
+        wanted_numel = sum(s.numel() for s in frozen_param_shapes.values())
+        avail_numel = sum([p.numel() for p in zero_model_states[0].frozen_param_fragments.values()]) * world_size
+        print(f'Frozen params: Have {avail_numel} numels to process.')
+        print(f'Frozen params: Need {wanted_numel} numels in {wanted_params} params')
+
+    total_params = 0
+    total_numel = 0
+    for name, shape in zero_model_states[0].frozen_param_shapes.items():
+        total_params += 1
+        unpartitioned_numel = shape.numel()
+        total_numel += unpartitioned_numel
+
+        param_frags = tuple(model_state.frozen_param_fragments[name] for model_state in zero_model_states)
+        state_dict[name] = torch.cat(param_frags, 0).narrow(0, 0, unpartitioned_numel).view(shape)
+
+        partitioned_numel, partitioned_padding_numel = zero3_partitioned_param_info(unpartitioned_numel, world_size)
+
+        if debug:
+            print(
+                f"Frozen params: {total_params} {name} full shape: {shape} partition0 numel={partitioned_numel} partitioned_padding_numel={partitioned_padding_numel}"
+            )
+
+    print(f"Reconstructed Frozen fp32 state dict with {total_params} params {total_numel} elements")
+
+
+def _zero3_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero_model_states):
+    param_shapes = zero_model_states[0].param_shapes
+    avail_numel = fp32_flat_groups[0].numel() * world_size
     # Reconstruction protocol: For zero3 we need to zip the partitions together at boundary of each
     # param, re-consolidating each param, while dealing with padding if any
 
-    avail_numel = fp32_flat_groups[0].numel() * world_size
     # merge list of dicts, preserving order
     param_shapes = {k: v for d in param_shapes for k, v in d.items()}
 
@@ -289,15 +475,9 @@ def _get_fp32_state_dict_from_zero3_checkpoint(world_size, param_shapes, fp32_fl
         wanted_params = len(param_shapes)
         wanted_numel = sum(shape.numel() for shape in param_shapes.values())
         # not asserting if there is a mismatch due to possible padding
-        print(f"Have {avail_numel} numels to process.")
-        print(f"Need {wanted_numel} numels in {wanted_params} params.")
-
-    state_dict = OrderedDict()
-
-    # buffers
-    state_dict.update(buffers)
-    if debug:
-        print(f"added {len(buffers)} buffers")
+        avail_numel = fp32_flat_groups[0].numel() * world_size
+        print(f"Trainable params: Have {avail_numel} numels to process.")
+        print(f"Trainable params: Need {wanted_numel} numels in {wanted_params} params.")
 
     # params
     # XXX: for huge models that can't fit into the host's RAM we will have to recode this to support
@@ -315,7 +495,7 @@ def _get_fp32_state_dict_from_zero3_checkpoint(world_size, param_shapes, fp32_fl
 
         if debug:
             print(
-                f"{total_params} {name} full shape: {shape} partition0 numel={partitioned_numel} partitioned_padding_numel={partitioned_padding_numel}"
+                f"Trainable params: {total_params} {name} full shape: {shape} partition0 numel={partitioned_numel} partitioned_padding_numel={partitioned_padding_numel}"
             )
 
         # XXX: memory usage doubles here
@@ -330,11 +510,77 @@ def _get_fp32_state_dict_from_zero3_checkpoint(world_size, param_shapes, fp32_fl
     if offset != avail_numel:
         raise ValueError(f"consumed {offset} numels out of {avail_numel} - something is wrong")
 
-    # recover shared parameters
-    for pair in shared_params:
-        state_dict[pair[0]] = state_dict[pair[1]]
+    print(f"Reconstructed Trainable fp32 state dict with {total_params} params {total_numel} elements")
 
-    print(f"Reconstructed fp32 state dict with {total_params} params {total_numel} elements")
+
+def _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zero_model_states):
+    # param_shapes = zero_model_states[0].param_shapes
+
+    # Reconstruction protocol: For zero3 we need to zip the partitions together at boundary of each
+    # param, re-consolidating each param, while dealing with padding if any
+
+    # merge list of dicts, preserving order
+    # param_shapes = {k: v for d in param_shapes for k, v in d.items()}
+
+    # if debug:
+    #     for i in range(world_size):
+    #         print(f"{FP32_FLAT_GROUPS}[{i}].shape={fp32_flat_groups[i].shape}")
+
+    #     wanted_params = len(param_shapes)
+    #     wanted_numel = sum(shape.numel() for shape in param_shapes.values())
+    #     # not asserting if there is a mismatch due to possible padding
+    #     avail_numel = fp32_flat_groups[0].numel() * world_size
+    #     print(f"Trainable params: Have {avail_numel} numels to process.")
+    #     print(f"Trainable params: Need {wanted_numel} numels in {wanted_params} params.")
+
+    state_dict = OrderedDict()
+
+    # buffers
+    buffers = zero_model_states[0].buffers
+    state_dict.update(buffers)
+    if debug:
+        print(f"added {len(buffers)} buffers")
+
+    # params
+    # XXX: for huge models that can't fit into the host's RAM we will have to recode this to support
+    # out-of-core computing solution
+    # offset = 0
+    # total_numel = 0
+    # total_params = 0
+    # for name, shape in param_shapes.items():
+
+    #     unpartitioned_numel = shape.numel()
+    #     total_numel += unpartitioned_numel
+    #     total_params += 1
+
+    #     partitioned_numel, partitioned_padding_numel = zero3_partitioned_param_info(unpartitioned_numel, world_size)
+
+    #     if debug:
+    #         print(
+    #             f"{total_params} {name} full shape: {shape} partition0 numel={partitioned_numel} partitioned_padding_numel={partitioned_padding_numel}"
+    #         )
+
+    #     # XXX: memory usage doubles here
+    #     state_dict[name] = torch.cat(
+    #         tuple(fp32_flat_groups[i].narrow(0, offset, partitioned_numel) for i in range(world_size)),
+    #         0).narrow(0, 0, unpartitioned_numel).view(shape)
+    #     offset += partitioned_numel
+
+    # offset *= world_size
+
+    # # Sanity check
+    # if offset != avail_numel:
+    #     raise ValueError(f"consumed {offset} numels out of {avail_numel} - something is wrong")
+
+    # print(f"Reconstructed fp32 state dict with {total_params} params {total_numel} elements")
+
+    _zero3_merge_frozen_params(state_dict, world_size, zero_model_states)
+
+    _zero3_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero_model_states)
+
+    # recover shared parameters
+    for pair in zero_model_states[0].shared_params:
+        state_dict[pair[0]] = state_dict[pair[1]]
 
     return state_dict
 

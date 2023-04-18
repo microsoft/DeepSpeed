@@ -2423,7 +2423,7 @@ class DeepSpeedEngine(Module):
                 module_state_dict,  # TODO
                 strict=strict)
 
-        if FROZEN_PARAM_FRAGMENTS in checkpoint:
+        if checkpoint.get(FROZEN_PARAM_FRAGMENTS, None) is not None:
             saved_frozen_params = checkpoint[FROZEN_PARAM_FRAGMENTS]
             for param in self.module.parameters():
                 if param.requires_grad:
@@ -3025,7 +3025,7 @@ class DeepSpeedEngine(Module):
 
         zero_optimizer_state = self.zero_optimization() or self.bfloat16_enabled()
 
-        save_frozen_param = self.zero_optimization_partition_weights()
+        save_frozen_param = self.zero_optimization_partition_gradients()
 
         # A hack to save the checkpointing directory. Pipeline parallelism overrides
         # module_state_dict() and uses this path to save the model. module_state_dict()
@@ -3035,25 +3035,26 @@ class DeepSpeedEngine(Module):
         module = self.module_state_dict()
         self._curr_ckpt_path = None
 
-        state = dict(
-            module=module,
-            buffer_names=self._get_buffer_names(),
-            optimizer=self.optimizer.state_dict() if self.optimizer and not zero_optimizer_state else None,
-            param_shapes=self._get_zero_param_shapes(True) if self.optimizer and zero_optimizer_state else None,
-            frozen_param_shapes=self._get_zero_param_shapes(False) if save_frozen_param else None,
-            frozen_param_fragments=self._get_zero_frozen_param_fragments() if save_frozen_param else None,
-            lr_scheduler=self.lr_scheduler.state_dict() if self.lr_scheduler is not None else None,
-            data_sampler=self.training_dataloader.data_sampler.state_dict() if
-            (self.training_dataloader is not None and self.curriculum_learning_enabled()) else None,
-            random_ltd=self.random_ltd_scheduler.state_dict() if self.random_ltd_enabled() else None,
-            sparse_tensor_module_names=self.sparse_tensor_module_names,
-            skipped_steps=self.skipped_steps,
-            global_steps=self.global_steps,
-            global_samples=self.global_samples,
-            dp_world_size=self.dp_world_size,
-            mp_world_size=self.mp_world_size,
-            ds_config=self.config,
-            ds_version=version)
+        state = dict(module=module,
+                     buffer_names=self._get_buffer_names(),
+                     optimizer=self.optimizer.state_dict() if self.optimizer and not zero_optimizer_state else None,
+                     param_shapes=self._get_zero_param_shapes() if self.optimizer and zero_optimizer_state else None,
+                     frozen_param_shapes=self._get_zero_frozen_param_attributes(self._get_param_shape_func)
+                     if save_frozen_param else None,
+                     frozen_param_fragments=self._get_zero_frozen_param_attributes(self._get_param_fragment_func)
+                     if save_frozen_param else None,
+                     lr_scheduler=self.lr_scheduler.state_dict() if self.lr_scheduler is not None else None,
+                     data_sampler=self.training_dataloader.data_sampler.state_dict() if
+                     (self.training_dataloader is not None and self.curriculum_learning_enabled()) else None,
+                     random_ltd=self.random_ltd_scheduler.state_dict() if self.random_ltd_enabled() else None,
+                     sparse_tensor_module_names=self.sparse_tensor_module_names,
+                     skipped_steps=self.skipped_steps,
+                     global_steps=self.global_steps,
+                     global_samples=self.global_samples,
+                     dp_world_size=self.dp_world_size,
+                     mp_world_size=self.mp_world_size,
+                     ds_config=self.config,
+                     ds_version=version)
         state.update(client_state)
 
         if self.save_non_zero_checkpoint:
@@ -3081,7 +3082,13 @@ class DeepSpeedEngine(Module):
 
         return buffer_names
 
-    def _get_zero_frozen_param_fragments(self):
+    def _get_param_shape_func(self, param):
+        return param.ds_shape if hasattr(param, 'ds_id') else param.shape
+
+    def _get_param_fragment_func(self, param):
+        return param.ds_tensor.detach().cpu() if hasattr(param, 'ds_id') else param.detach().cpu()
+
+    def _get_zero_frozen_param_attributes(self, attr_func):
         frozen_param_fragments = OrderedDict()
 
         for param in self.module.parameters():
@@ -3089,13 +3096,12 @@ class DeepSpeedEngine(Module):
                 continue
             if param not in self.param_names:
                 raise ValueError(f"failed to find frozen {param} in named params")
-            param_tensor = param.ds_tensor.detach().cpu() if hasattr(param, 'ds_id') else param.detach().cpu()
             name = self.param_names[param]
-            frozen_param_fragments[name] = param_tensor
+            frozen_param_fragments[name] = attr_func(param)
 
         return frozen_param_fragments
 
-    def _get_zero_param_shapes(self, trainable):
+    def _get_zero_param_shapes(self):
         """Returns a dict of name to shape mapping, only for the flattened fp32 weights saved by the
         optimizer. the names are exactly as in state_dict. The order is absolutely important, since
         the saved data is just flattened data with no identifiers and requires reconstruction in the
@@ -3109,15 +3115,24 @@ class DeepSpeedEngine(Module):
         cnt = 0
         numel = 0
 
-        bit16_groups = self.optimizer.get_bit16_param_groups(trainable)
+        # zero2 started using a round_robin_bit16_groups which is a shuffled version of bit16_groups -
+        # if we don't use it, we get parameters ordered incorrectly
+        if hasattr(self.optimizer, "round_robin_bit16_groups"):
+            bit16_groups = self.optimizer.round_robin_bit16_groups
+        elif self.bfloat16_enabled() and not self.zero_optimization():
+            bit16_groups = self.optimizer.bf16_groups
+        else:
+            bit16_groups = self.optimizer.bit16_groups if self.zero_optimization_stage(
+            ) == 2 else self.optimizer.fp16_groups
+
         for bit16_group in bit16_groups:
             param_shapes = OrderedDict()
             for param in bit16_group:
-                if param not in self.param_names:
-                    raise ValueError(f"failed to find optimizer {param} in named params")
                 cnt += 1
                 numel += param.ds_numel if hasattr(param, "ds_numel") else param.numel()
                 shape = param.ds_shape if hasattr(param, "ds_shape") else param.shape
+                if param not in self.param_names:
+                    raise ValueError(f"failed to find optimizer param in named params")
                 name = self.param_names[param]
                 param_shapes[name] = shape
 

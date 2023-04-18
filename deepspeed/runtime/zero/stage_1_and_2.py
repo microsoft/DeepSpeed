@@ -234,7 +234,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # param flattened by groups
         self.bit16_groups = []
         self.bit16_groups_flat = []
-        self.frozen_bit16_groups = []
 
         # param partitioned by data parallel degree
         # this will contain a list of equal sized tensors
@@ -285,9 +284,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             # TODO: Explore simplification that avoids the extra book-keeping by pushing the reordered group
             trainable_parameters = [param for param in param_group['params'] if param.requires_grad]
             self.bit16_groups.append(trainable_parameters)
-
-            frozen_parameters = [param for param in param_group['params'] if not param.requires_grad]
-            self.frozen_bit16_groups.append(frozen_parameters)
 
             # not sure why apex was cloning the weights before flattening
             # removing cloning here
@@ -535,9 +531,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                            partition_size=partition_size,
                            partition_optimizer_state=self.optimizer.state[flat_hp_partition],
                            dp_group=self.real_dp_process_group[i])
-
-    def get_bit16_param_groups(self, trainable):
-        return self.round_robin_bit16_groups if trainable else self.frozen_bit16_groups
 
     def is_moe_group(self, group):
         return 'moe' in group and group['moe']

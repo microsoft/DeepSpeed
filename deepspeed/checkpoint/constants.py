@@ -12,7 +12,6 @@ Various symbolic constants used for model checkpointing
 OPTIMIZER_STATE_DICT = "optimizer_state_dict"
 FP32_GROUPS = "fp32_groups"
 FP32_FLAT_GROUPS = 'fp32_flat_groups'
-FROZEN_FP16_GROUPS = 'frozen_fp16_groups'
 
 BASE_OPTIMIZER_STATE = 'base_optimizer_state'
 SINGLE_PARTITION_OF_FP32_GROUPS = "single_partition_of_fp32_groups"
