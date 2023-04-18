@@ -259,7 +259,8 @@ def _get_fp32_state_dict_from_zero2_checkpoint(world_size, param_shapes, fp32_fl
 
     # recover shared parameters
     for pair in shared_params:
-        state_dict[pair[0]] = state_dict[pair[1]]
+        if pair[1] in state_dict:
+            state_dict[pair[0]] = state_dict[pair[1]]
 
     print(f"Reconstructed fp32 state dict with {total_params} params {total_numel} elements")
 
@@ -332,7 +333,8 @@ def _get_fp32_state_dict_from_zero3_checkpoint(world_size, param_shapes, fp32_fl
 
     # recover shared parameters
     for pair in shared_params:
-        state_dict[pair[0]] = state_dict[pair[1]]
+        if pair[1] in state_dict:
+            state_dict[pair[0]] = state_dict[pair[1]]
 
     print(f"Reconstructed fp32 state dict with {total_params} params {total_numel} elements")
 
