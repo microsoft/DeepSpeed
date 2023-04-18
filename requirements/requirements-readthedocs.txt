@@ -4,6 +4,6 @@ hjson
 packaging
 psutil
 py-cpuinfo
-pydantic
+pydantic==2.0.0
 torch
 tqdm
