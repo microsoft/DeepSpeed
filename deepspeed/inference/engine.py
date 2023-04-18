@@ -467,9 +467,7 @@ class InferenceEngine(Module):
         static_kwargs = self._static_kwargs[shape_signature]
 
         with torch.cuda.graph(self._cuda_graphs[shape_signature]):
-            self._static_output[shape_signature] = self.module(
-                *static_inputs,
-                **static_kwargs)
+            self._static_output[shape_signature] = self.module(*static_inputs, **static_kwargs)
 
     def _graph_replay(self, *inputs, **kwargs):
         shape_signature = self._input_signature(*inputs, **kwargs)

@@ -518,10 +518,7 @@ class TestLMCorrectness(DistributedTest):
 
 
 @pytest.mark.inference
-@pytest.mark.parametrize("model_w_task",
-                         [("bert-base-cased",
-                           "fill-mask")],
-                         ids=["bert-base-cased"])
+@pytest.mark.parametrize("model_w_task", [("bert-base-cased", "fill-mask")], ids=["bert-base-cased"])
 class TestVariableBatchSizeCudaGraph(DistributedTest):
     world_size = 1
 
@@ -539,10 +536,7 @@ class TestVariableBatchSizeCudaGraph(DistributedTest):
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
-        pipe = pipeline(task,
-                        model=model,
-                        device=torch.device(f"cuda:{local_rank}"),
-                        framework="pt")
+        pipe = pipeline(task, model=model, device=torch.device(f"cuda:{local_rank}"), framework="pt")
         if dtype == torch.half:
             pipe.model.half()
 
