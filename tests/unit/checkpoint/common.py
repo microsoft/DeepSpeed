@@ -46,9 +46,6 @@ def compare_model_states(saved_model, loaded_model, compare_optimizer=True, load
                 p1 = p1.half()
                 p0 = p0.half()
             assert id(p0) != id(p1), f'Comparing fp16 model state tensor against itself : {id(p0)} <====> {id(p1)}'
-            if hasattr(p0, 'ds_id'):
-                print(f'comparing {p0.ds_id} <==================> {p1.ds_id}')
-            print(f'{float(p0.float().norm())} <======> {float(p0.float().norm())}')
             try:
                 assert torch.allclose(p0, p1,
                                       atol=1e-07), f"FP16 model state {p0} is not equal to {p1}, names:{np0}, {np1}"
