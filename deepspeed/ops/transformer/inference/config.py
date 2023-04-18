@@ -1,11 +1,14 @@
-'''
-Copyright 2022 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import json
 from deepspeed.utils.types import ActivationFuncType
 
 
 class TransformerConfig():
+
     def __init__(self, hidden_size, intermediate_size, heads, num_hidden_layers):
         self.layer_id = -1
         self.hidden_size = hidden_size
@@ -40,6 +43,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
             return_tuple: if True, returns the transformer output as a tuple, otherwise returns as a tensor
             bigscience_bloom: This flag is added temporarily for supporting the BLOOM-176B model architecture.
     """
+
     def __init__(self,
                  hidden_size=-1,
                  intermediate_size=-1,
@@ -70,11 +74,8 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  scale_attn_by_inverse_layer_idx=False,
                  return_single_tuple=False):
         super(DeepSpeedInferenceConfig,
-              self).__init__(
-                  hidden_size,
-                  (intermediate_size if intermediate_size > 0 else 4 * hidden_size),
-                  heads,
-                  num_hidden_layers)
+              self).__init__(hidden_size, (intermediate_size if intermediate_size > 0 else 4 * hidden_size), heads,
+                             num_hidden_layers)
         self.fp16 = fp16
         self.pre_layer_norm = pre_layer_norm
         self.local_rank = local_rank

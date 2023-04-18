@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from .base import *
 from .features.meta_tensor import MetaTensorContainer
@@ -11,9 +14,8 @@ from ..policy import maybe_copy
 from packaging import version as pkg_version
 
 
-class DS_GPTNEOXContainer(MetaTensorContainer,
-                          MegatronContainer,
-                          BaseTransformerContainer):
+class DS_GPTNEOXContainer(MetaTensorContainer, MegatronContainer, BaseTransformerContainer):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -53,30 +55,17 @@ class DS_GPTNEOXContainer(MetaTensorContainer,
                        transformer_param_names[i],
                        prefix + param_names[i],
                        qkv=True,
-                       megatron_v2=self.is_megatron_v2,
-                       split_qkv=self.split_qkv,
-                       heads=self.client_module.attention.num_attention_heads)
+                       megatron_v2=self.policy.is_megatron_v2,
+                       split_qkv=self.policy.split_qkv,
+                       heads=self.policy.client_module.attention.num_attention_heads)
         for i in range(2, 4):
-            maybe_copy(module.attention,
-                       sd,
-                       weight_quantizer,
-                       mp_replace,
-                       transformer_param_names[i],
+            maybe_copy(module.attention, sd, weight_quantizer, mp_replace, transformer_param_names[i],
                        prefix + param_names[i])
         for i in range(4, 10):
-            maybe_copy(module.mlp,
-                       sd,
-                       weight_quantizer,
-                       mp_replace,
-                       transformer_param_names[i],
+            maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[i],
                        prefix + param_names[i])
         for i in range(10, 12):
-            maybe_copy(module,
-                       sd,
-                       weight_quantizer,
-                       mp_replace,
-                       transformer_param_names[i],
-                       prefix + param_names[i])
+            maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[i], prefix + param_names[i])
 
 
 class GPTNEOXLayerPolicy(TransformerPolicy):

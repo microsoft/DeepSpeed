@@ -1,20 +1,67 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
-import os
+import os, sys
 import math
 import argparse
-from benchmarks.communication.constants import *
+
+COMMS_BENCH_DIR = os.path.join(os.path.dirname(__file__), "../")
+sys.path.append(COMMS_BENCH_DIR)
+from communication.constants import *
+from deepspeed.accelerator import get_accelerator
 
 global dist
+
+
+def env2int(env_list, default=-1):
+    for e in env_list:
+        val = int(os.environ.get(e, -1))
+        if val >= 0: return val
+    return default
 
 
 def init_torch_distributed(backend):
     global dist
     import torch.distributed as dist
+
+    # discover rank/size info from env
+    if 'MASTER_PORT' not in os.environ:
+        os.environ['MASTER_PORT'] = str(TORCH_DISTRIBUTED_DEFAULT_PORT)
+    if 'MASTER_ADDR' not in os.environ:
+        try:
+            from mpi4py import MPI
+        except ModuleNotFoundError:
+            print(
+                "Cannot import mpi4py and MASTER_ADDR not set. Please either install mpi4py or set the MASTER_ADDR on all ranks"
+            )
+            raise Exception
+        import subprocess
+        comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+        master_addr = None
+        if rank == 0:
+            hostname_cmd = ["hostname -I"]
+            result = subprocess.check_output(hostname_cmd, shell=True)
+            master_addr = result.decode('utf-8').split()[0]
+        master_addr = comm.bcast(master_addr, root=0)
+        os.environ['MASTER_ADDR'] = master_addr
+    local_rank = env2int(
+        ['LOCAL_RANK', 'MPI_LOCALRANKID', 'OMPI_COMM_WORLD_LOCAL_RANK', 'MV2_COMM_WORLD_LOCAL_RANK', 'SLURM_LOCALID'])
+    if 'LOCAL_RANK' not in os.environ:
+        os.environ['LOCAL_RANK'] = str(local_rank)
+    rank = env2int(['RANK', 'MPI_RANKID', 'OMPI_COMM_WORLD_RANK', 'MV2_COMM_WORLD_RANK', 'SLURM_PROCID'])
+    if 'RANK' not in os.environ:
+        os.environ['RANK'] = str(rank)
+    world_size = env2int(['WORLD_SIZE', 'OMPI_COMM_WORLD_SIZE', 'MV2_COMM_WORLD_SIZE', 'SLURM_NPROCS'])
+    if 'WORLD_SIZE' not in os.environ:
+        os.environ['WORLD_SIZE'] = str(world_size)
+
     torch.distributed.init_process_group(backend)
     local_rank = int(os.environ['LOCAL_RANK'])
-    torch.cuda.set_device(local_rank)
+    get_accelerator().set_device(local_rank)
 
 
 def init_deepspeed_comm(backend):
@@ -23,7 +70,7 @@ def init_deepspeed_comm(backend):
     import deepspeed.comm as dist
     deepspeed.init_distributed(dist_backend=backend)
     local_rank = int(os.environ['LOCAL_RANK'])
-    torch.cuda.set_device(local_rank)
+    get_accelerator().set_device(local_rank)
 
 
 def init_processes(local_rank, args):
@@ -101,14 +148,13 @@ def get_metric_strings(args, tput, busbw, duration):
 
 
 def sync_all():
-    torch.cuda.synchronize()
+    get_accelerator().synchronize()
     dist.barrier()
 
 
 def max_numel(comm_op, dtype, mem_factor, local_rank, args):
     dtype_size = _element_size(dtype)
-    max_memory_per_gpu = torch.cuda.get_device_properties(
-        local_rank).total_memory * mem_factor
+    max_memory_per_gpu = get_accelerator().total_memory(local_rank) * mem_factor
     if comm_op == 'all_reduce' or comm_op == 'pt2pt' or comm_op == 'broadcast':
         elements_per_gpu = int(max_memory_per_gpu // dtype_size)
     elif comm_op == 'all_gather':
@@ -120,8 +166,7 @@ def max_numel(comm_op, dtype, mem_factor, local_rank, args):
         # Number of elements must be divisible by world_size
         # all_to_all performance is lower for non-powers of two. Round down like all_gather.
         elements_per_gpu = int(max_memory_per_gpu // dtype_size)
-        elements_per_gpu = int(dist.get_world_size() *
-                               round(elements_per_gpu / dist.get_world_size()))
+        elements_per_gpu = int(dist.get_world_size() * round(elements_per_gpu / dist.get_world_size()))
         elements_per_gpu = int(pow(2, int(math.log(elements_per_gpu, 2))))
     else:
         print(f"This communication operation: {comm_op} is not supported yet")
@@ -162,58 +207,32 @@ def _element_size(dtype):
 def benchmark_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_rank", type=int)
-    parser.add_argument("--trials",
-                        type=int,
-                        default=DEFAULT_TRIALS,
-                        help='Number of timed iterations')
-    parser.add_argument("--warmups",
-                        type=int,
-                        default=DEFAULT_WARMUPS,
-                        help='Number of warmup (non-timed) iterations')
-    parser.add_argument("--maxsize",
-                        type=int,
-                        default=24,
-                        help='Max message size as a power of 2')
-    parser.add_argument("--async-op",
-                        action="store_true",
-                        help='Enables non-blocking communication')
-    parser.add_argument("--bw-unit",
-                        type=str,
-                        default=DEFAULT_UNIT,
-                        choices=['Gbps',
-                                 'GBps'])
+    parser.add_argument("--trials", type=int, default=DEFAULT_TRIALS, help='Number of timed iterations')
+    parser.add_argument("--warmups", type=int, default=DEFAULT_WARMUPS, help='Number of warmup (non-timed) iterations')
+    parser.add_argument("--maxsize", type=int, default=24, help='Max message size as a power of 2')
+    parser.add_argument("--async-op", action="store_true", help='Enables non-blocking communication')
+    parser.add_argument("--bw-unit", type=str, default=DEFAULT_UNIT, choices=['Gbps', 'GBps'])
     parser.add_argument("--backend",
                         type=str,
                         default=DEFAULT_BACKEND,
-                        choices=['nccl'],
+                        choices=['nccl', 'ccl', 'mpi'],
                         help='Communication library to use')
     parser.add_argument("--dist",
                         type=str,
                         default=DEFAULT_DIST,
-                        choices=['deepspeed',
-                                 'torch'],
+                        choices=['deepspeed', 'torch'],
                         help='Distributed DL framework to use')
-    parser.add_argument("--scan",
-                        action="store_true",
-                        help='Enables scanning all message sizes')
-    parser.add_argument("--raw",
-                        action="store_true",
-                        help='Print the message size and latency without units')
+    parser.add_argument("--scan", action="store_true", help='Enables scanning all message sizes')
+    parser.add_argument("--raw", action="store_true", help='Print the message size and latency without units')
     parser.add_argument("--all-reduce", action="store_true", help='Run all_reduce')
     parser.add_argument("--all-gather", action="store_true", help='Run all_gather')
     parser.add_argument("--all-to-all", action="store_true", help='Run all_to_all')
     parser.add_argument("--pt2pt", action="store_true", help='Run pt2pt')
     parser.add_argument("--broadcast", action="store_true", help='Run broadcast')
-    parser.add_argument("--dtype",
-                        type=str,
-                        default=DEFAULT_TYPE,
-                        help='PyTorch tensor dtype')
-    parser.add_argument(
-        "--mem-factor",
-        type=float,
-        default=.4,
-        help='Proportion of max available GPU memory to use for single-size evals')
-    parser.add_argument("--debug",
-                        action="store_true",
-                        help='Enables all_to_all debug prints')
+    parser.add_argument("--dtype", type=str, default=DEFAULT_TYPE, help='PyTorch tensor dtype')
+    parser.add_argument("--mem-factor",
+                        type=float,
+                        default=.4,
+                        help='Proportion of max available GPU memory to use for single-size evals')
+    parser.add_argument("--debug", action="store_true", help='Enables all_to_all debug prints')
     return parser

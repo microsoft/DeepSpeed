@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from .utils import check_tb_availability
 from .monitor import Monitor
@@ -8,6 +11,7 @@ import deepspeed.comm as dist
 
 
 class TensorBoardMonitor(Monitor):
+
     def __init__(self, tensorboard_config):
         super().__init__(tensorboard_config)
         check_tb_availability()
@@ -20,9 +24,7 @@ class TensorBoardMonitor(Monitor):
         if self.enabled and dist.get_rank() == 0:
             self.get_summary_writer()
 
-    def get_summary_writer(self,
-                           base=os.path.join(os.path.expanduser("~"),
-                                             "tensorboard")):
+    def get_summary_writer(self, base=os.path.join(os.path.expanduser("~"), "tensorboard")):
         if self.enabled and dist.get_rank() == 0:
             from torch.utils.tensorboard import SummaryWriter
             if self.output_path is not None:

@@ -1,6 +1,8 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
-import math
+# DeepSpeed Team
+
 import numpy as np
 import torch
 import pytest
@@ -10,6 +12,7 @@ from torch import nn
 from unit.modelingpreln import BertEncoder as BertEncoderPreln
 from unit.modeling import BertLayerNorm, BertConfig, BertEncoder as BertEncoderPostln
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
+from deepspeed.accelerator import get_accelerator
 from unit.common import DistributedTest
 
 
@@ -31,32 +34,27 @@ def zero_grad(variables):
         variable.grad.zero_()
 
 
-device = torch.device("cuda")
+device = torch.device(get_accelerator().device_name())
 kwargs_fp32 = {'dtype': torch.float, 'device': device, 'requires_grad': True}
 kwargs_fp16 = {'dtype': torch.half, 'device': device, 'requires_grad': True}
 
 
 class DSEncoder(nn.Module):
+
     def __init__(self, config, weights, biases):
         super(DSEncoder, self).__init__()
         self.FinalLayerNorm = BertLayerNorm(config.hidden_size, eps=1e-12)
         self.layer = nn.ModuleList([
-            copy.deepcopy(DeepSpeedTransformerLayer(config,
-                                                    weights,
-                                                    biases))
-            for _ in range(config.num_hidden_layers)
+            copy.deepcopy(DeepSpeedTransformerLayer(config, weights, biases)) for _ in range(config.num_hidden_layers)
         ])
         self.grads = []
         self.pre_or_post = config.pre_layer_norm
 
-    def forward(self,
-                hidden_states,
-                attention_mask,
-                output_all_encoded_layers=True,
-                checkpoint_activations=False):
+    def forward(self, hidden_states, attention_mask, output_all_encoded_layers=True, checkpoint_activations=False):
         all_encoder_layers = []
 
         def custom(start, end):
+
             def custom_forward(*inputs):
                 layers = self.layer[start:end]
                 x_ = inputs[0]
@@ -67,15 +65,18 @@ class DSEncoder(nn.Module):
             return custom_forward
 
         if checkpoint_activations:
-            l = 0
-            num_layers = len(self.layer)
-            chunk_length = math.ceil(math.sqrt(num_layers))
-            while l < num_layers:
-                hidden_states = checkpoint.checkpoint(custom(l,  # noqa: F821
-                                                             l + chunk_length),
-                                                      hidden_states,
-                                                      attention_mask * 1)
-                l += chunk_length
+            raise NotImplementedError("`checkpoint` below is not defined")
+            #l = 0
+            #num_layers = len(self.layer)
+            #chunk_length = math.ceil(math.sqrt(num_layers))
+            #while l < num_layers:
+            #    hidden_states = checkpoint.checkpoint(
+            #        custom(
+            #            l,  # noqa: F821
+            #            l + chunk_length),
+            #        hidden_states,
+            #        attention_mask * 1)
+            #    l += chunk_length
             # decoder layers
         else:
             for i, layer_module in enumerate(self.layer):
@@ -110,20 +111,14 @@ def create_models(ds_config):
     biases = []
 
     for i in range(4):
-        weights.append(
-            nn.Parameter(torch.Tensor(ds_config.hidden_size,
-                                      ds_config.hidden_size)))
+        weights.append(nn.Parameter(torch.Tensor(ds_config.hidden_size, ds_config.hidden_size)))
         weights[i].data.normal_(mean=0.0, std=ds_config.initializer_range)
 
     weights.append(nn.Parameter(torch.Tensor(ds_config.hidden_size)))
     weights[4].data.fill_(1.0)
-    weights.append(
-        nn.Parameter(torch.Tensor(ds_config.intermediate_size,
-                                  ds_config.hidden_size)))
+    weights.append(nn.Parameter(torch.Tensor(ds_config.intermediate_size, ds_config.hidden_size)))
     weights[5].data.normal_(mean=0.0, std=ds_config.initializer_range)
-    weights.append(
-        nn.Parameter(torch.Tensor(ds_config.hidden_size,
-                                  ds_config.intermediate_size)))
+    weights.append(nn.Parameter(torch.Tensor(ds_config.hidden_size, ds_config.intermediate_size)))
     weights[6].data.normal_(mean=0.0, std=ds_config.initializer_range)
     weights.append(nn.Parameter(torch.Tensor(ds_config.hidden_size)))
     weights[7].data.fill_(1.0)
@@ -150,8 +145,8 @@ def create_models(ds_config):
         bert_encoder.half()
         ds_encoder.half()
 
-    bert_encoder.cuda()
-    ds_encoder.cuda()
+    bert_encoder.to(get_accelerator().device_name())
+    ds_encoder.to(get_accelerator().device_name())
 
     return bert_encoder, ds_encoder
 
@@ -180,10 +175,7 @@ def run_forward(ds_config, seq_len, atol=1e-2, verbose=False, test_bsz=None):
                                 checkpoint_activations=False)
 
     # run ds
-    ds_results = ds_encoder(hidden_states,
-                            input_mask,
-                            output_all_encoded_layers=False,
-                            checkpoint_activations=False)
+    ds_results = ds_encoder(hidden_states, input_mask, output_all_encoded_layers=False, checkpoint_activations=False)
 
     # check forward evaluation
     check_equal(base_results, ds_results, atol=atol, verbose=verbose)
@@ -233,17 +225,9 @@ def run_forward(ds_config, seq_len, atol=1e-2, verbose=False, test_bsz=None):
 class TestCUDAForward(DistributedTest):
     world_size = 1
 
-    def test_forward(self,
-                     batch_size,
-                     hidden_size,
-                     seq_len,
-                     heads,
-                     num_layers,
-                     is_preln,
-                     use_fp16):
-        # Only run fp16 test cases on devices with 7+ capability.
-        major, _ = torch.cuda.get_device_capability()
-        if major < 7 and use_fp16 is True:
+    def test_forward(self, batch_size, hidden_size, seq_len, heads, num_layers, is_preln, use_fp16):
+        # Only run fp16 test cases on devices with FP16 capability.
+        if not get_accelerator().is_fp16_supported() and use_fp16 is True:
             return
 
         ds_config = DeepSpeedTransformerConfig()
@@ -272,18 +256,10 @@ class TestCUDAForward(DistributedTest):
 class TestCUDAForwardSmallBatchSize(DistributedTest):
     world_size = 1
 
-    def test_forward_with_small_bsz(self,
-                                    batch_size,
-                                    small_bsz,
-                                    hidden_size,
-                                    seq_len,
-                                    heads,
-                                    num_layers,
-                                    is_preln,
+    def test_forward_with_small_bsz(self, batch_size, small_bsz, hidden_size, seq_len, heads, num_layers, is_preln,
                                     use_fp16):
-        # Only run fp16 test cases on devices with 7+ capability.
-        major, _ = torch.cuda.get_device_capability()
-        if major < 7 and use_fp16 is True:
+        # Only run fp16 test cases on devices with FP16 capability.
+        if not get_accelerator().is_fp16_supported() and use_fp16 is True:
             return
 
         ds_config = DeepSpeedTransformerConfig()
@@ -311,17 +287,9 @@ class TestCUDAForwardSmallBatchSize(DistributedTest):
 class TestCUDAForwardStochastic(DistributedTest):
     world_size = 1
 
-    def test_forward_stochastic(self,
-                                batch_size,
-                                hidden_size,
-                                seq_len,
-                                heads,
-                                num_layers,
-                                is_preln,
-                                use_fp16):
-        # Only run fp16 test cases on devices with 7+ capability.
-        major, _ = torch.cuda.get_device_capability()
-        if major < 7 and use_fp16 is True:
+    def test_forward_stochastic(self, batch_size, hidden_size, seq_len, heads, num_layers, is_preln, use_fp16):
+        # Only run fp16 test cases on devices with FP16 capability.
+        if not get_accelerator().is_fp16_supported() and use_fp16 is True:
             return
 
         ds_config = DeepSpeedTransformerConfig()

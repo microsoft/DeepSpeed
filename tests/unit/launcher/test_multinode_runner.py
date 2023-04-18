@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from copy import deepcopy
 from deepspeed.launcher import multinode_runner as mnrunner
@@ -27,6 +30,13 @@ def test_pdsh_runner(runner_info):
 def test_openmpi_runner(runner_info):
     env, resource_pool, world_info, args = runner_info
     runner = mnrunner.OpenMPIRunner(args, world_info, resource_pool)
+    cmd = runner.get_cmd(env, resource_pool)
+    assert cmd[0] == 'mpirun'
+
+
+def test_mpich_runner(runner_info):
+    env, resource_pool, world_info, args = runner_info
+    runner = mnrunner.MPICHRunner(args, world_info, resource_pool)
     cmd = runner.get_cmd(env, resource_pool)
     assert cmd[0] == 'mpirun'
 

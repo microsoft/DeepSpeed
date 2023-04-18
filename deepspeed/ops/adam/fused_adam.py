@@ -1,9 +1,11 @@
-'''
-Copyright 2020 The Microsoft DeepSpeed Team
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
+# DeepSpeed Team
+"""
 Copyright NVIDIA/apex
 This file is adapted from fused adam in NVIDIA/apex, commit a109f85
-'''
+"""
 
 import torch
 from .multi_tensor_apply import MultiTensorApply
@@ -47,12 +49,12 @@ class FusedAdam(torch.optim.Optimizer):
     .. _On the Convergence of Adam and Beyond:
         https://openreview.net/forum?id=ryQu7f-RZ
     """
+
     def __init__(self,
                  params,
                  lr=1e-3,
                  bias_correction=True,
-                 betas=(0.9,
-                        0.999),
+                 betas=(0.9, 0.999),
                  eps=1e-8,
                  adam_w_mode=True,
                  weight_decay=0.,
@@ -61,11 +63,7 @@ class FusedAdam(torch.optim.Optimizer):
 
         if amsgrad:
             raise RuntimeError('FusedAdam does not support the AMSGrad variant.')
-        defaults = dict(lr=lr,
-                        bias_correction=bias_correction,
-                        betas=betas,
-                        eps=eps,
-                        weight_decay=weight_decay)
+        defaults = dict(lr=lr, bias_correction=bias_correction, betas=betas, eps=eps, weight_decay=weight_decay)
         super(FusedAdam, self).__init__(params, defaults)
         self.adam_w_mode = 1 if adam_w_mode else 0
         self.set_grad_none = set_grad_none
@@ -83,12 +81,7 @@ class FusedAdam(torch.optim.Optimizer):
         else:
             super(FusedAdam, self).zero_grad()
 
-    def step(self,
-             closure=None,
-             grads=None,
-             output_params=None,
-             scale=None,
-             grad_norms=None):
+    def step(self, closure=None, grads=None, output_params=None, scale=None, grad_norms=None):
         """Performs a single optimization step.
 
         Arguments:
@@ -121,8 +114,7 @@ class FusedAdam(torch.optim.Optimizer):
                     continue
                 if p.grad.data.is_sparse:
                     raise RuntimeError(
-                        'FusedAdam does not support sparse gradients, please consider SparseAdam instead'
-                    )
+                        'FusedAdam does not support sparse gradients, please consider SparseAdam instead')
 
                 state = self.state[p]
                 # State initialization
@@ -151,35 +143,13 @@ class FusedAdam(torch.optim.Optimizer):
 
             if (len(g_16) > 0):
                 state['step'] += 1
-                multi_tensor_applier(self.multi_tensor_adam,
-                                     self._dummy_overflow_buf,
-                                     [g_16,
-                                      p_16,
-                                      m_16,
-                                      v_16],
-                                     group['lr'],
-                                     beta1,
-                                     beta2,
-                                     group['eps'],
-                                     state['step'],
-                                     self.adam_w_mode,
-                                     bias_correction,
-                                     group['weight_decay'])
+                multi_tensor_applier(self.multi_tensor_adam, self._dummy_overflow_buf, [g_16, p_16, m_16, v_16],
+                                     group['lr'], beta1, beta2, group['eps'], state['step'], self.adam_w_mode,
+                                     bias_correction, group['weight_decay'])
             if (len(g_32) > 0):
                 state['step'] += 1
-                multi_tensor_applier(self.multi_tensor_adam,
-                                     self._dummy_overflow_buf,
-                                     [g_32,
-                                      p_32,
-                                      m_32,
-                                      v_32],
-                                     group['lr'],
-                                     beta1,
-                                     beta2,
-                                     group['eps'],
-                                     state['step'],
-                                     self.adam_w_mode,
-                                     bias_correction,
-                                     group['weight_decay'])
+                multi_tensor_applier(self.multi_tensor_adam, self._dummy_overflow_buf, [g_32, p_32, m_32, v_32],
+                                     group['lr'], beta1, beta2, group['eps'], state['step'], self.adam_w_mode,
+                                     bias_correction, group['weight_decay'])
 
         return loss

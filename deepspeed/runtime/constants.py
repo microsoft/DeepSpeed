@@ -1,8 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
-"""
-Copyright (c) Microsoft Corporation
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 #############################################
 # Routes
@@ -73,6 +72,8 @@ MAX_GRAD_NORM = 'max_grad_norm'
 #############################################
 ZERO_ALLOW_UNTESTED_OPTIMIZER = "zero_allow_untested_optimizer"
 ZERO_ALLOW_UNTESTED_OPTIMIZER_DEFAULT = False
+ZERO_FORCE_DS_CPU_OPTIMIZER = "zero_force_ds_cpu_optimizer"
+ZERO_FORCE_DS_CPU_OPTIMIZER_DEFAULT = True
 
 # Steps
 STEPS_PER_PRINT = "steps_per_print"
@@ -368,11 +369,7 @@ class ValidationMode:
 CHECKPOINT = "checkpoint"
 CHECKPOINT_TAG_VALIDATION = "tag_validation"
 CHECKPOINT_TAG_VALIDATION_DEFAULT = ValidationMode.WARN
-CHECKPOINT_TAG_VALIDATION_MODES = [
-    ValidationMode.WARN,
-    ValidationMode.IGNORE,
-    ValidationMode.FAIL
-]
+CHECKPOINT_TAG_VALIDATION_MODES = [ValidationMode.WARN, ValidationMode.IGNORE, ValidationMode.FAIL]
 
 LOAD_UNIVERSAL_CHECKPOINT = "load_universal"
 LOAD_UNIVERSAL_CHECKPOINT_DEFAULT = False

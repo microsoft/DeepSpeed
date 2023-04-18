@@ -1,9 +1,12 @@
-'''
-Copyright 2022 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from abc import ABC, abstractmethod
 from deepspeed.utils.types import ActivationFuncType
 import torch
+from deepspeed.accelerator import get_accelerator
 
 transformer_param_names = (
         'attn_qkvw', \
@@ -123,15 +126,10 @@ def _transpose(x, heads=1, mp_replace=None):
     (q, k, v) = torch.split(x_1, (x_1.shape[-1] // 3), dim=-1)
     if len(q.shape) > 2:
         new_shape = (q.shape[0], ) + (-1, )
-        return torch.cat((q.reshape(new_shape),
-                          k.reshape(new_shape),
-                          v.reshape(new_shape)),
+        return torch.cat((q.reshape(new_shape), k.reshape(new_shape), v.reshape(new_shape)),
                          dim=outer_dim).reshape(x.shape)
     else:
-        return torch.cat((q.reshape(-1),
-                          k.reshape(-1),
-                          v.reshape(-1)),
-                         dim=-1).reshape(x.shape)
+        return torch.cat((q.reshape(-1), k.reshape(-1), v.reshape(-1)), dim=-1).reshape(x.shape)
 
 
 # This checks if the parameter exits in the checkpoint file and maybe copies it into the corresponding destination tensor.
@@ -155,19 +153,14 @@ def maybe_copy(module,
             else:
                 dst = mp_replace.copy(dst, tmp)
             if qkv and megatron_v2:
-                dst = torch.nn.parameter.Parameter(
-                    _transpose(dst,
-                               heads=heads,
-                               mp_replace=mp_replace).contiguous())
+                dst = torch.nn.parameter.Parameter(_transpose(dst, heads=heads, mp_replace=mp_replace).contiguous())
         else:
             if split_qkv:
                 dst = mp_replace.qkv_copy(dst, weight_quantizer.quantize(tmp if weight_quantizer.q_int8 else \
                                                 (transpose(tmp).contiguous())), int8=weight_quantizer.q_int8)
             else:
                 if qkv and megatron_v2:
-                    tmp = _transpose(transpose(tmp),
-                                     heads=heads,
-                                     mp_replace=mp_replace).contiguous()
+                    tmp = _transpose(transpose(tmp), heads=heads, mp_replace=mp_replace).contiguous()
                     if weight_quantizer.q_int8:
                         tmp = transpose(tmp)
                 dst = mp_replace.copy(dst, weight_quantizer.quantize(tmp if weight_quantizer.q_int8 else \
@@ -176,13 +169,7 @@ def maybe_copy(module,
 
 
 # Extending the maybe_copy function for when the q, k, and v are in separate parameters!
-def maybe_copy_qkv(module,
-                   sd,
-                   weight_quantizer,
-                   mp_replace,
-                   dst_name,
-                   src_names,
-                   split_qkv=False):
+def maybe_copy_qkv(module, sd, weight_quantizer, mp_replace, dst_name, src_names, split_qkv=False):
     if src_names[0] in sd:
         q = sd[src_names[0]]
         k = sd[src_names[1]]
@@ -196,9 +183,9 @@ def maybe_copy_qkv(module,
                 dst = mp_replace.copy(dst, qkv_data)
         else:
             if split_qkv:
-                dst = mp_replace.qkv_copy(dst, weight_quantizer.quantize(qkv_data.cuda() if weight_quantizer.q_int8 else \
+                dst = mp_replace.qkv_copy(dst, weight_quantizer.quantize(qkv_data.to(get_accelerator().device_name()) if weight_quantizer.q_int8 else \
                                                 ((transpose(qkv_data)).contiguous())), int8=weight_quantizer.q_int8)
             else:
-                dst = mp_replace.copy(dst, weight_quantizer.quantize(qkv_data.cuda() if weight_quantizer.q_int8 else \
+                dst = mp_replace.copy(dst, weight_quantizer.quantize(qkv_data.to(get_accelerator().device_name()) if weight_quantizer.q_int8 else \
                                                 transpose(qkv_data)), int8=weight_quantizer.q_int8)
         setattr(module, dst_name, dst)
