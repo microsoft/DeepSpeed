@@ -266,7 +266,7 @@ template <>
 DS_D_INLINE __half to(double val)
 {
 #ifdef __HIP_PLATFORM_HCC__
-    return to < __half(> to < float(val));
+    return to<__half>(to<float>(val));
 #else
     return __double2half(val);
 #endif
