@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
@@ -194,6 +197,11 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     This can be passed through the json config too.
     """
 
+    set_empty_params: bool = False
+    """
+    specifying whether the inference-module is created with empty or real Tensor
+    """
+
     save_mp_checkpoint_path: str = None
     """
     The path for which we want to save the loaded model with a checkpoint. This
@@ -243,6 +251,16 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     with, including the input and output tokens. Please consider increasing it
     to the required token-length required for your use-case.
     """
+
+    min_out_tokens: int = Field(1, alias="min_tokens")
+    """
+    This argument communicates to the runtime the minimum number of tokens you
+    expect you will need to generate. This will cause the runtime to error
+    if it unable to provide this and provide context on the memory pressure
+    rather than seg-faulting or providing corrupted output.
+    """
+
+    transposed_mode: bool = Field(False, alias="transposed_mode")
 
     mp_size: int = Field(1, deprecated=True, new_param="tensor_parallel.tp_size")
     """
