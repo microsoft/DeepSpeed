@@ -6,9 +6,11 @@ on:
       - 'staging**'
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
   schedule:
     - cron: "0 0 * * *"
 
@@ -43,7 +45,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          pip install .[dev,1bit,autotuning]
+          pip install .[dev,1bit,autotuning] --no-build-isolation
           ds_report
 
       - name: Python environment

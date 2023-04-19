@@ -11,7 +11,6 @@ from enum import Enum
 import functools
 import itertools
 from typing import List
-
 import torch
 from torch import Tensor
 from deepspeed import comm as dist
@@ -22,8 +21,10 @@ from .linear import zero3_linear_wrap
 
 import deepspeed
 from ..utils import get_only_unique_item, see_memory_usage
+from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 from deepspeed.runtime.zero.utils import assert_ints_same_as_other_ranks
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
+from deepspeed.runtime.config_utils import get_config_default
 from deepspeed.utils import instrument_w_nvtx, logger
 from deepspeed.comm.comm import init_distributed
 from deepspeed.utils.debug import (debug_param2name_id_shape, debug_param2name_id_shape_device, debug_module2name,
@@ -33,7 +34,48 @@ from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwa
 
 param_count = 0
 partitioned_param_data_shape = [0]
-zero_init_enabled = False
+zero_init_context = []
+all_wrapped_classes = set()
+
+
+class NoGatherHandle:
+
+    def __init__(self, param: Parameter) -> None:
+        if param.ds_status != ZeroParamStatus.INFLIGHT:
+            raise RuntimeError(f"expected param {param.ds_summary()} to be available")
+
+        param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(),
+                                             non_blocking=True).view(param.ds_shape)
+        self.__param = param
+
+    def wait(self) -> None:
+        get_accelerator().current_stream().synchronize()
+        self.__param.ds_status = ZeroParamStatus.AVAILABLE
+
+
+class NoGatherCoalescedHandle:
+
+    def __init__(self, params: List[Parameter]) -> None:
+        self.__params = params
+        self.__complete = False
+
+        for param in self.__params:
+            if param.ds_status != ZeroParamStatus.INFLIGHT:
+                raise RuntimeError(f"expected param {param.ds_summary()} to not be available")
+            param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(),
+                                                 non_blocking=True).view(param.ds_shape)
+
+    @instrument_w_nvtx
+    def wait(self) -> None:
+        if self.__complete:
+            return
+
+        get_accelerator().current_stream().synchronize()
+        for param in self.__params:
+            assert param.ds_status == ZeroParamStatus.INFLIGHT, f"expected param {param.ds_summary()} to be inflight"
+            param.ds_status = ZeroParamStatus.AVAILABLE
+
+        self.__complete = True
 
 
 def _dist_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group=None):
@@ -249,12 +291,11 @@ class InsertPostInitMethodToModuleSubClasses(object):
         assert self.dtype in [
             torch.half, torch.bfloat16, torch.float
         ], f"Invalid data type {self.dtype}, allowed values are [torch.half, torch.bfloat16, torch.float]"
+        self.wrapped_cls = set()
 
     def __enter__(self):
-        global zero_init_enabled
         if not self.enabled:
             return
-        zero_init_enabled = True
 
         def apply_with_gather(orig_module_apply_fn: Callable) -> Callable:
             """many models make use of child modules like Linear or Embedding which
@@ -359,40 +400,58 @@ class InsertPostInitMethodToModuleSubClasses(object):
             cls.__init__ = partition_after(cls.__init__)
 
         # Replace .__init__() for all existing subclasses of torch.nn.Module recursively
+        global zero_init_context
+        self.nest_level = len(zero_init_context)
+
+        global all_wrapped_classes
         for subclass in get_all_subclasses(torch.nn.modules.module.Module):
-            # print(f"subclass={subclass.__module__}.{subclass.__qualname__}")
-            _enable_class(subclass)
+            # Only wrap classes that haven't been wrapped yet
+            if subclass not in all_wrapped_classes:
+                _enable_class(subclass)
+                self.wrapped_cls.add(subclass)
 
-        # holding onto some methods so we can put them back the way they were in __exit__
-        torch.nn.modules.module.Module._old_init_subclass = torch.nn.modules.module.Module.__init_subclass__
-        torch.nn.modules.module.Module._old_apply = torch.nn.modules.module.Module.apply
-        torch.Tensor.__old_new__ = torch.Tensor.__new__
+        all_wrapped_classes = all_wrapped_classes.union(self.wrapped_cls)
 
-        # Replace .__init__() for future subclasses of torch.nn.Module
-        torch.nn.modules.module.Module.__init_subclass__ = classmethod(_init_subclass)
-        torch.nn.modules.module.Module.apply = apply_with_gather(torch.nn.modules.module.Module._old_apply)
+        # Wrap some functions only at top level call of Init
+        if self.nest_level == 0:
+            # holding onto some methods so we can put them back the way they were in __exit__
+            torch.nn.modules.module.Module._old_init_subclass = torch.nn.modules.module.Module.__init_subclass__
+            torch.nn.modules.module.Module._old_apply = torch.nn.modules.module.Module.apply
+            torch.Tensor.__old_new__ = torch.Tensor.__new__
 
-        torch.Tensor.__new__ = get_new_tensor_fn_for_dtype(self.dtype)
-        torch.empty = zero_wrapper_for_fp_tensor_constructor(_orig_torch_empty, self.dtype)
-        torch.zeros = zero_wrapper_for_fp_tensor_constructor(_orig_torch_zeros, self.dtype)
-        torch.ones = zero_wrapper_for_fp_tensor_constructor(_orig_torch_ones, self.dtype)
-        torch.full = zero_wrapper_for_fp_tensor_constructor(_orig_torch_full, self.dtype)
+            # Replace .__init__() for future subclasses of torch.nn.Module
+            torch.nn.modules.module.Module.__init_subclass__ = classmethod(_init_subclass)
+            torch.nn.modules.module.Module.apply = apply_with_gather(torch.nn.modules.module.Module._old_apply)
 
-        if self.mem_efficient_linear:
-            print_rank_0(
-                "nn.functional.linear has been overridden with a more memory efficient version. This will persist unless manually reset.",
-                force=False)
-            self.linear_bk = torch.nn.functional.linear
-            torch.nn.functional.linear = zero3_linear_wrap
+            torch.Tensor.__new__ = get_new_tensor_fn_for_dtype(self.dtype)
+            torch.empty = zero_wrapper_for_fp_tensor_constructor(_orig_torch_empty, self.dtype)
+            torch.zeros = zero_wrapper_for_fp_tensor_constructor(_orig_torch_zeros, self.dtype)
+            torch.ones = zero_wrapper_for_fp_tensor_constructor(_orig_torch_ones, self.dtype)
+            torch.full = zero_wrapper_for_fp_tensor_constructor(_orig_torch_full, self.dtype)
+
+            if self.mem_efficient_linear:
+                print_rank_0(
+                    "nn.functional.linear has been overridden with a more memory efficient version. This will persist unless manually reset.",
+                    force=False)
+                self.linear_bk = torch.nn.functional.linear
+                torch.nn.functional.linear = zero3_linear_wrap
+
+            self.torch_func_wrapped = True
+
+        zero_init_context.append(self)
 
     def __exit__(self, exc_type, exc_value, traceback):
         if not self.enabled:
             return
 
-        shutdown_init_context()
+        self.remove_wrappers()
 
-        if dist.get_rank() == 0:
-            logger.info("finished initializing model with %.2fB parameters", param_count / 1e9)
+        # Exiting the top level context
+        global zero_init_context
+        zero_init_context.pop()
+        if self.nest_level == 0:
+            if dist.get_rank() == 0:
+                logger.info("finished initializing model with %.2fB parameters", param_count / 1e9)
 
         # Now that we cleaned up the metaclass injection, raise the exception.
         if exc_type is not None:
@@ -416,37 +475,51 @@ class InsertPostInitMethodToModuleSubClasses(object):
         else:
             self.dtype = dtype or torch.half
 
+    def remove_wrappers(self):
+
+        def _disable_class(cls):
+            cls.__init__ = cls._old_init
+
+        for subclass in self.wrapped_cls:
+            _disable_class(subclass)
+        self.wrapped_cls.clear()
+
+        # This context is the top level of nested Init
+        if self.nest_level == 0 and self.torch_func_wrapped:
+            # putting methods back the way we found them
+            torch.nn.modules.module.Module.__init_subclass__ = torch.nn.modules.module.Module._old_init_subclass
+            torch.nn.modules.module.Module.apply = torch.nn.modules.module.Module._old_apply
+
+            torch.Tensor.__new__ = torch.Tensor.__old_new__
+            torch.empty = _orig_torch_empty
+            torch.zeros = _orig_torch_zeros
+            torch.ones = _orig_torch_ones
+            torch.full = _orig_torch_full
+
+            # un doing it here will undo it during training
+            # if self.mem_efficient_linear:
+            #    torch.nn.functional.linear = self.linear_bk
+            #        if self.mem_efficient_linear:
+            #            torch.nn.functional.linear = self.linear_bk
+
+            self.torch_func_wrapped = False
+
+            global all_wrapped_classes
+            for subclass in get_all_subclasses(torch.nn.modules.module.Module):
+                if subclass not in all_wrapped_classes:
+                    msg = f"`{subclass}' was not properly set up for sharding by zero.Init(). A subclass of torch.nn.Module must be defined before zero.Init() where an instance of the class is created."
+                    raise RuntimeError(msg)
+            all_wrapped_classes.clear()
+
 
 def shutdown_init_context():
-    global zero_init_enabled
-
-    if not zero_init_enabled:
-        return
-
-    def _disable_class(cls):
-        cls.__init__ = cls._old_init
-
-    # Replace .__init__() for all existing subclasses of torch.nn.Module
-    for subclass in get_all_subclasses(torch.nn.modules.module.Module):
-        _disable_class(subclass)
-
-    # putting methods back the way we found them
-    torch.nn.modules.module.Module.__init_subclass__ = torch.nn.modules.module.Module._old_init_subclass
-    torch.nn.modules.module.Module.apply = torch.nn.modules.module.Module._old_apply
-
-    torch.Tensor.__new__ = torch.Tensor.__old_new__
-    torch.empty = _orig_torch_empty
-    torch.zeros = _orig_torch_zeros
-    torch.ones = _orig_torch_ones
-    torch.full = _orig_torch_full
-
-    # un doing it here will undo it during training
-    # if self.mem_efficient_linear:
-    #    torch.nn.functional.linear = self.linear_bk
-    #        if self.mem_efficient_linear:
-    #            torch.nn.functional.linear = self.linear_bk
-
-    zero_init_enabled = False
+    """
+    This function is used to initialize deepspeed engine inside the context of Init.
+    We need to remove the wrappers but keep the list of contexts.
+    """
+    global zero_init_context
+    for ctx in zero_init_context:
+        ctx.remove_wrappers()
 
 
 class AllGatherHandle:
@@ -505,7 +578,6 @@ class AllGatherCoalescedHandle:
                         min(param.ds_numel - param_start,
                             param.ds_tensor.ds_numel))
                     partitions.append(part_to_copy)
-
             param.data = instrument_w_nvtx(torch.cat)(partitions).view(param.ds_shape)
             param.ds_status = ZeroParamStatus.AVAILABLE
 
@@ -517,9 +589,27 @@ class AllGatherCoalescedHandle:
         self.complete = True
 
 
+def _no_gather_coalesced(params: Iterable[Parameter]) -> AllGatherCoalescedHandle:
+    for param in params:
+        if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
+            raise RuntimeError(param.ds_summary())
+        param.ds_status = ZeroParamStatus.INFLIGHT
+
+    params = sorted(params, key=lambda p: p.ds_id)
+    if len(params) == 1:
+        param, = params
+        return NoGatherHandle(param)
+    return NoGatherCoalescedHandle(params)
+
+
 # Replaces all parameters in module with Scattered Parameters
 class Init(InsertPostInitMethodToModuleSubClasses):
     param_id = 0
+    param_persistence_threshold = get_config_default(DeepSpeedZeroConfig, "param_persistence_threshold")
+    model_persistence_threshold = get_config_default(DeepSpeedZeroConfig, "model_persistence_threshold")
+    num_persisted_parameters = 0
+    num_persisted_elements = 0
+    apply_param_persistence = False
 
     def __init__(self,
                  module=None,
@@ -634,9 +724,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             config_dict_or_path = config
             logger.warning(
                 f'zero.Init: the `config` argument is deprecated. Please use `config_dict_or_path` instead.')
-
         _ds_config = deepspeed.runtime.config.DeepSpeedConfig(config_dict_or_path,
                                                               mpu) if config_dict_or_path is not None else None
+        if _ds_config is not None:
+            mem_efficient_linear = _ds_config.zero_config.memory_efficient_linear
         super().__init__(enabled=enabled, mem_efficient_linear=mem_efficient_linear, ds_config=_ds_config, dtype=dtype)
         if not dist.is_initialized():
             init_distributed()
@@ -654,9 +745,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         self.local_device = torch.device(get_accelerator().device_name(os.environ["LOCAL_RANK"]))
         get_accelerator().set_device(self.local_device)
 
-        if _ds_config is not None and _ds_config.zero_config.offload_param is not None:
-            remote_device = _ds_config.zero_config.offload_param.device
-            pin_memory = _ds_config.zero_config.offload_param.pin_memory
+        if _ds_config is not None:
+            self._update_persist_config(_ds_config)
+
+            if _ds_config.zero_config.offload_param is not None:
+                remote_device = _ds_config.zero_config.offload_param.device
+                pin_memory = _ds_config.zero_config.offload_param.pin_memory
 
         self._validate_remote_device(remote_device, _ds_config)
 
@@ -680,6 +774,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         self.use_all_gather_into_tensor = dist.has_all_gather_into_tensor()
         if not self.use_all_gather_into_tensor:
             logger.info(f"all_gather_into_tensor API is not available in torch {torch.__version__}")
+
+    def _update_persist_config(self, ds_config):
+        Init.apply_param_persistence = True
+        Init.param_persistence_threshold = ds_config.zero_config.param_persistence_threshold
+        Init.model_persistence_threshold = ds_config.zero_config.model_persistence_threshold // self.world_size
 
     def _convert_to_zero_parameters(self, param_list):
         for param in param_list:
@@ -750,7 +849,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         # If this flag is true, then the parameters are replicated throughput training
         # And only partitioned before the step
-        param.ds_persist = False
+        if Init.apply_param_persistence and param.ds_numel <= Init.param_persistence_threshold and Init.num_persisted_elements + param.ds_numel <= Init.model_persistence_threshold:
+            param.ds_persist = True
+            Init.num_persisted_parameters += 1
+            Init.num_persisted_elements += param.ds_numel
+        else:
+            param.ds_persist = False
 
         param.is_external_param = False
 
@@ -776,6 +880,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
             # fetches from nvme if the partition is not available and in nvme
             self._ensure_availability_of_partitioned_params(params)
+
+            if self.world_size == 1:
+                return _no_gather_coalesced(params)
 
             for param in params:
                 if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
@@ -1050,11 +1157,16 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     print_rank_0(f"ID {param.ds_id} Initializing partition for the first time for nvme offload.")
 
                 else:
-                    partitioned_tensor = torch.empty(partition_size,
-                                                     dtype=param.dtype,
-                                                     device=OffloadDeviceEnum.cpu if self.remote_device
-                                                     == OffloadDeviceEnum.nvme else self.remote_device)
-                    if self.pin_memory:
+                    if param.ds_persist:
+                        device = self.local_device
+                    elif self.remote_device == OffloadDeviceEnum.nvme:
+                        device = OffloadDeviceEnum.cpu
+                    else:
+                        device = self.remote_device
+
+                    partitioned_tensor = torch.empty(partition_size, dtype=param.dtype, device=device)
+
+                    if device == OffloadDeviceEnum.cpu and self.pin_memory:
                         partitioned_tensor = get_accelerator().pin_memory(partitioned_tensor)
 
                 partitioned_tensor.requires_grad = False
@@ -1176,6 +1288,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         """
         if len(param_list) == 0:
             return
+
+        if self.world_size == 1:
+            handle = _no_gather_coalesced(param_list)
+            handle.wait()
+            return None
+
         # collect local tensors and partition sizes
         partition_sizes = []
         local_tensors = []
