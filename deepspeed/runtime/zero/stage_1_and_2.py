@@ -611,7 +611,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.single_partition_of_fp32_groups[i].grad = get_accelerator().pin_memory(
                 single_grad_partition) if self.cpu_offload else single_grad_partition
 
-        self.optimizer.step()
+        if isinstance(self.optimizer, torch.optim.Adagrad):
+            self.optimizer = torch.optim.Adagrad(self.single_partition_of_fp32_groups, **self.optimizer.defaults)
+        else:
+            self.optimizer.step()
 
         if not self.cpu_offload:
             for group in self.single_partition_of_fp32_groups:
