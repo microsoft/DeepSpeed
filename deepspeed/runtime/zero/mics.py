@@ -42,11 +42,7 @@ class MiCS_AllGatherCoalescedHandle(AllGatherCoalescedHandle):
     def wait(self) -> None:
         """
         """
-
-        if self.complete:
-            return
-
-        # let the all-gather op enqueue
+        # let the current stream to op
         instrument_w_nvtx(self.allgather_handle.wait)()
         if self.complete:
             return
