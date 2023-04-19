@@ -778,7 +778,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
     def _update_persist_config(self, ds_config):
         Init.apply_param_persistence = True
         Init.param_persistence_threshold = ds_config.zero_config.param_persistence_threshold
-        Init.model_persistence_threshold = ds_config.zero_config.model_persistence_threshold // self.world_size
+        Init.model_persistence_threshold = ds_config.zero_config.model_persistence_threshold // self.num_partitions
 
     def _convert_to_zero_parameters(self, param_list):
         for param in param_list:
@@ -881,7 +881,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             # fetches from nvme if the partition is not available and in nvme
             self._ensure_availability_of_partitioned_params(params)
 
-            if self.world_size == 1:
+            if self.num_partitions == 1:
                 return _no_gather_coalesced(params)
 
             for param in params:
@@ -1289,7 +1289,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         if len(param_list) == 0:
             return
 
-        if self.world_size == 1:
+        if self.num_partitions == 1:
             handle = _no_gather_coalesced(param_list)
             handle.wait()
             return None
