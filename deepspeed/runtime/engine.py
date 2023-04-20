@@ -21,6 +21,7 @@ from typing import Callable, Dict, Union, Iterable
 
 import deepspeed
 
+from deepspeed import comm as dist
 from deepspeed.runtime.utils import see_memory_usage, DummyOptim
 from .zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
@@ -141,8 +142,6 @@ BACKWARD_REDUCE_GLOBAL_TIMER = 'backward_allreduce'
 STEP_MICRO_TIMER = 'step_microstep'
 STEP_GLOBAL_TIMER = 'step'
 
-dist = None
-
 
 class EngineTimers(object):
     r"""Wallclock timers for DeepSpeedEngine"""
@@ -230,9 +229,6 @@ class DeepSpeedEngine(Module):
         self.use_ds_comm = False  # False --> Use torch.dist, True --> Use ds.comm backend.
 
         self.checkpoint_engine = None
-
-        global dist
-        from deepspeed import comm as dist
 
         self._is_gradient_accumulation_boundary = None
         self.scale_wrt_gas = None
