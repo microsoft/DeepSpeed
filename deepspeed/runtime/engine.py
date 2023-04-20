@@ -141,6 +141,8 @@ BACKWARD_REDUCE_GLOBAL_TIMER = 'backward_allreduce'
 STEP_MICRO_TIMER = 'step_microstep'
 STEP_GLOBAL_TIMER = 'step'
 
+dist = None
+
 
 class EngineTimers(object):
     r"""Wallclock timers for DeepSpeedEngine"""
@@ -195,7 +197,6 @@ class DeepSpeedEngine(Module):
         config_class=None,
         dont_change_device=False,
     ):
-        global dist
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
         self.client_optimizer = optimizer
@@ -229,6 +230,9 @@ class DeepSpeedEngine(Module):
         self.use_ds_comm = False  # False --> Use torch.dist, True --> Use ds.comm backend.
 
         self.checkpoint_engine = None
+
+        global dist
+        from deepspeed import comm as dist
 
         self._is_gradient_accumulation_boundary = None
         self.scale_wrt_gas = None
