@@ -79,15 +79,13 @@ DeepSpeed-RLHFシステムは、大規模モデルの学習において類を見
 以下のスクリプトを実行すると、最終的に130億パラメータのChatGPTライクなモデルが生成されます。
 
 ```python
-git clone https://github.com/microsoft/DeepSpeed.git
-cd DeepSpeed
-pip install .
+pip install deepspeed>=0.9.0
 
 git clone https://github.com/microsoft/DeepSpeedExamples.git
 cd DeepSpeedExamples/applications/DeepSpeed-Chat/
 pip install -r requirements.txt
 
-python train.py --actor-model facebook/opt-13b --reward-model facebook/opt-350m --num-gpus 8
+python train.py --actor-model facebook/opt-13b --reward-model facebook/opt-350m --deployment-type single_node
 ```
 
 8台のA100を備えたDGXサーバを使う場合、130億パラメータのモデルを半日で訓練できます。以下は各ステップに要する時間の内訳です。
@@ -121,7 +119,7 @@ Assistant:    Sure, I can try.  Microsoft is a company that makes computers, a
 訓練の時間、計算機資源、および品質の要件を満たすために、さまざまなモデルのサイズや構成を試す必要があることがあります。DeepSpeed-Chatを使用すれば、簡単にそれが可能です。例えば、研究やビジネスのために、GPUクラスタでより大規模で高品質なモデルを訓練したい場合、希望するモデルサイズとGPU数を指定するだけです。以下は、アクターモデルのパラメータ数を66Bに、GPU数を64に指定する例です。
 
 ```python
-python train.py --actor-model facebook/opt-66b --reward-model facebook/opt-350m --num-gpus 64
+python train.py --actor-model facebook/opt-66b --reward-model facebook/opt-350m --deployment-type multi_node
 ```
 
 64台のA100 (80GBメモリ) GPUを使用する場合、9時間で660億パラメータのChatGPTモデルを訓練できます。
@@ -139,7 +137,7 @@ python train.py --actor-model facebook/opt-66b --reward-model facebook/opt-350m 
 1～2時間のコーヒータイムや昼休みに、DeepSpeed-Chatで小規模なトイモデルをトレーニングしてみるのも良いでしょう。例えば、コンシューマグレードのGPUでの訓練を動かしてみるため、1つのデータセットで1.3Bのモデルを訓練する例を用意しました。これなら、昼休みから戻ったときに、できあがったモデルのチェックポイントを試してみることができます。
 
 ```python
-python train.py --actor-model facebook/opt-1.3b --reward-model facebook/opt-350m --num-gpus 1
+python train.py --actor-model facebook/opt-1.3b --reward-model facebook/opt-350m --deployment-type single_gpu
 ```
 
 <div align="center">
