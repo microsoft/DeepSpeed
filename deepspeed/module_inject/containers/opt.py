@@ -80,7 +80,7 @@ class HFOPTLayerPolicy(TransformerPolicy):
         except:
             HFOPTLayerPolicy._orig_layer_class = None
 
-        if hasattr(TransformerPolicy, "hf_model_config"):
+        if hasattr(TransformerPolicy, "hf_model_config") and hasattr(TransformerPolicy.hf_model_config, "activation_function"):
             if TransformerPolicy.hf_model_config.activation_function == "relu":
                 self.mlp_act_func_type == ActivationFuncType.ReLU
             elif TransformerPolicy.hf_model_config.activation_function in ["gelu", "gelu_new"]:
