@@ -15,6 +15,7 @@ from packaging import version as pkg_version
 from . import ops
 from . import module_inject
 
+from .accelerator import get_accelerator
 from .runtime.engine import DeepSpeedEngine, DeepSpeedOptimizerCallable, DeepSpeedSchedulerCallable
 from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from .runtime.hybrid_engine import DeepSpeedHybridEngine
@@ -49,6 +50,9 @@ __version__ = version
 __version_major__, __version_minor__, __version_patch__ = _parse_version(__version__)
 __git_hash__ = git_hash
 __git_branch__ = git_branch
+
+# Set to torch's distributed package or deepspeed.comm based inside DeepSpeedEngine init
+dist = None
 
 
 def initialize(args=None,
@@ -118,6 +122,25 @@ def initialize(args=None,
     zero.partition_parameters.shutdown_init_context()
 
     assert model is not None, "deepspeed.initialize requires a model"
+
+    global dist
+    from deepspeed import comm as dist
+    from deepspeed.comm import supported_torch_version
+    # This supported_torch_version check is for torch1.2 compatibility only
+    dist_backend = get_accelerator().communication_backend_name()
+    if supported_torch_version:
+        dist.init_distributed(dist_backend=dist_backend, dist_init_required=dist_init_required)
+    else:
+        if dist_init_required is None:
+            dist_init_required = not dist.is_initialized()
+
+        if dist_init_required is False:
+            assert (
+                dist.is_initialized() is True
+            ), "Torch distributed not initialized. Please set dist_init_required to True or initialize before calling deepspeed.initialize()"
+        else:
+            if not dist.is_initialized():
+                dist.init_process_group(backend=dist_backend)
 
     # Set config using config_params for backwards compat
     if config is None and config_params is not None:
