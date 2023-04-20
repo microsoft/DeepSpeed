@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import deepspeed
 
 from unit.common import DistributedTest
@@ -44,8 +49,6 @@ class TestLatestCheckpoint(DistributedTest):
         }
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
-        model, _, _,_ = deepspeed.initialize(config=config_dict,
-                                            model=model,
-                                            model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
         # should be no-op, since latest doesn't exist
         model.load_checkpoint(tmpdir)

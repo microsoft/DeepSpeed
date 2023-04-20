@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 from torch._utils import _flatten_dense_tensors
 import deepspeed.comm as dist
@@ -5,6 +10,7 @@ import pytest
 
 import deepspeed.runtime.utils as ds_utils
 import deepspeed.utils.groups as groups
+from deepspeed.accelerator import get_accelerator
 
 from unit.common import DistributedTest
 
@@ -36,10 +42,9 @@ class TestClibGradNorm(DistributedTest):
         groups._create_expert_and_data_parallel(2)
 
         norm = ds_utils.clip_grad_norm_(parameters, max_norm=0.1)
-        norm = torch.Tensor([norm]).to(dist.get_rank())
-
+        norm = torch.Tensor([norm]).to(get_accelerator().device_name(dist.get_rank()))
         world_size = dist.get_world_size()
-        gathered_norm = [torch.zeros(1).cuda() for i in range(world_size)]
+        gathered_norm = [torch.zeros(1).to(get_accelerator().device_name()) for i in range(world_size)]
 
         dist.all_gather(gathered_norm, norm)
 

@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 try:
     #  This is populated by setup.py
     from .git_version_info_installed import *  # noqa: F401

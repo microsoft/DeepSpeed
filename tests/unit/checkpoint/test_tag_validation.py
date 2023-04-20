@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import deepspeed
 
 from unit.common import DistributedTest
@@ -27,9 +32,7 @@ class TestCheckpointValidationTag(DistributedTest):
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
 
-        model, _, _,_ = deepspeed.initialize(config=config_dict,
-                                            model=model,
-                                            model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
         if valid_mode == "FAIL":
             with pytest.raises(AssertionError):
                 model.save_checkpoint(save_dir=tmpdir, tag=f"tag-{dist.get_rank()}")
@@ -56,6 +59,4 @@ class TestCheckpointValidationTag(DistributedTest):
         model = SimpleModel(hidden_dim)
 
         with pytest.raises(deepspeed.DeepSpeedConfigError):
-            model, _, _,_ = deepspeed.initialize(config=config_dict,
-                                                model=model,
-                                                model_parameters=model.parameters())
+            model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())

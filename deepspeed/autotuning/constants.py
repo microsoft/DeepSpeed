@@ -1,7 +1,7 @@
-"""
-Copyright (c) Microsoft Corporation
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 #########################################
 # autotunner implementation constants
@@ -9,17 +9,13 @@ Licensed under the MIT license.
 
 import os
 
-DEFAULT_TEMPLATE_PATH_ZERO_0 = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                                            "config_templates",
+DEFAULT_TEMPLATE_PATH_ZERO_0 = os.path.join(os.path.dirname(os.path.realpath(__file__)), "config_templates",
                                             "template_zero0.json")
-DEFAULT_TEMPLATE_PATH_ZERO_1 = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                                            "config_templates",
+DEFAULT_TEMPLATE_PATH_ZERO_1 = os.path.join(os.path.dirname(os.path.realpath(__file__)), "config_templates",
                                             "template_zero1.json")
-DEFAULT_TEMPLATE_PATH_ZERO_2 = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                                            "config_templates",
+DEFAULT_TEMPLATE_PATH_ZERO_2 = os.path.join(os.path.dirname(os.path.realpath(__file__)), "config_templates",
                                             "template_zero2.json")
-DEFAULT_TEMPLATE_PATH_ZERO_3 = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                                            "config_templates",
+DEFAULT_TEMPLATE_PATH_ZERO_3 = os.path.join(os.path.dirname(os.path.realpath(__file__)), "config_templates",
                                             "template_zero3.json")
 
 METRIC_PERCENT_DIFF_CONST = 0.05
@@ -156,50 +152,31 @@ DEFAULT_TUNING_SPACE_ZERO_0 = {"zero_optimization": {"stage": 0}}
 DEFAULT_TUNING_SPACE_ZERO_1 = {
     "zero_optimization": {
         "stage": 1,
-        "reduce_bucket_size": [5e7,
-                               5e8,
-                               1e9],
-        "allgather_bucket_size": [5e7,
-                                  5e8,
-                                  1e9],
+        "reduce_bucket_size": [5e7, 5e8, 1e9],
+        "allgather_bucket_size": [5e7, 5e8, 1e9],
     }
 }
 
 DEFAULT_TUNING_SPACE_ZERO_2 = {
     "zero_optimization": {
         "stage": 2,
-        "overlap_comm": [True,
-                         False],
-        "reduce_scatter": [False,
-                           True],
-        "reduce_bucket_size": [5e7,
-                               5e8,
-                               1e9],
-        "allgather_bucket_size": [5e7,
-                                  5e8,
-                                  1e9],
-        "contiguous_gradients": [False,
-                                 True]
+        "overlap_comm": [True, False],
+        "reduce_scatter": [False, True],
+        "reduce_bucket_size": [5e7, 5e8, 1e9],
+        "allgather_bucket_size": [5e7, 5e8, 1e9],
+        "contiguous_gradients": [False, True]
     },
 }
 
 DEFAULT_TUNING_SPACE_ZERO_3 = {
     "zero_optimization": {
         "stage": 3,
-        "overlap_comm": [True,
-                         False],
-        "reduce_scatter": [False,
-                           True],
-        "reduce_bucket_size": [5e7,
-                               5e8,
-                               1e9],
-        "allgather_partitions": [True,
-                                 False],
-        "allgather_bucket_size": [5e7,
-                                  5e8,
-                                  1e9],
-        "contiguous_gradients": [False,
-                                 True]
+        "overlap_comm": [True, False],
+        "reduce_scatter": [False, True],
+        "reduce_bucket_size": [5e7, 5e8, 1e9],
+        "allgather_partitions": [True, False],
+        "allgather_bucket_size": [5e7, 5e8, 1e9],
+        "contiguous_gradients": [False, True]
     },
 }
 

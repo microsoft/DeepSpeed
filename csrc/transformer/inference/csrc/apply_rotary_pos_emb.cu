@@ -1,6 +1,7 @@
-/*
-Copyright 2022 The Microsoft DeepSpeed Team
-*/
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
 
 #include "inference_cuda_layers.h"
 
@@ -178,7 +179,7 @@ __global__ void apply_rotary_pos_emb1(__half* mixed_query,
         0x2000000,        0x4000000,        0x8000000,        0x10000000,       0x20000000,
         0x40000000,       0x80000000};
 
-    unsigned seq_id = (head_id / num_heads) % seq_len + seq_offset;
+    unsigned seq_id = (head_id % seq_len) + seq_offset;
     unsigned half_dim = rotary_dim >> 1;
     if (head_id < total_count) {
         while (lane < rotary_dim) {

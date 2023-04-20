@@ -1,9 +1,15 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
 
 
 class GELUGemmOp(BaseOp):
+
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(GELUGemmOp, self).__init__(config)
         if self.config.fp16:
@@ -17,14 +23,7 @@ class GELUGemmOp(BaseOp):
                 bias: torch.Tensor,
                 weight_out: torch.Tensor,
                 async_op: bool = False):
-        output = self.fused_gemm_gelu(input,
-                                      weight,
-                                      weight.scale,
-                                      bias,
-                                      weight_out,
-                                      weight_out.scale,
-                                      self.config.epsilon,
-                                      self.config.pre_layer_norm,
-                                      self.config.q_int8,
-                                      async_op)
+        output = self.fused_gemm_gelu(input, weight, weight.scale, bias, weight_out, weight_out.scale,
+                                      self.config.epsilon, self.config.pre_layer_norm, self.config.q_int8, async_op,
+                                      self.config.transposed_mode)
         return output

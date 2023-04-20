@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #include "cublas_wrappers.h"
 
 #ifdef __HIP_PLATFORM_HCC__

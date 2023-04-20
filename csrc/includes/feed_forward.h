@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #ifndef __FEEDFORWARD_H__
 #define __FEEDFORWARD_H__
 

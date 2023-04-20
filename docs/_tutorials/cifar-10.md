@@ -16,7 +16,7 @@ First we will go over how to run original CIFAR-10. Then we will proceed step-by
 
 ## Running Original CIFAR-10
 
-Original model code from [CIFAR-10 Tutorial](https://github.com/pytorch/tutorials/blob/master/beginner_source/blitz/cifar10_tutorial.py), We've copied this repo under [DeepSpeedExamples/cifar/](https://github.com/microsoft/DeepSpeedExamples/tree/master/cifar) and made it available as a submodule. To download, execute:
+Original model code from [CIFAR-10 Tutorial](https://github.com/pytorch/tutorials/blob/main/beginner_source/blitz/cifar10_tutorial.py), We've copied this repo under [DeepSpeedExamples/training/cifar/](https://github.com/microsoft/DeepSpeedExamples/tree/master/training/cifar) and made it available as a submodule. To download, execute:
 
 ```bash
 git submodule update --init --recursive
@@ -140,7 +140,8 @@ Here we initialize DeepSpeed with CIFAR-10 model (`net`), `args`, `parameters` a
 After initializing DeepSpeed, the original `device` and `optimizer` are removed:
 
 ```python
- #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+ #from deepspeed.accelerator import get_accelerator
+ #device = torch.device(get_accelerator().device_name(0) if get_accelerator().is_available() else "cpu")
  #net.to(device)
 
  #optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)

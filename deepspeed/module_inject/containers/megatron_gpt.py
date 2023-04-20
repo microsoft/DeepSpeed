@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .base import *
 from .features.megatron import MegatronContainer
 from deepspeed.model_implementations.transformers.ds_megatron_gpt import DeepSpeedMegatronGPTInference
@@ -7,13 +12,14 @@ from packaging import version as pkg_version
 
 
 class DS_MegatronGPTContainer(MegatronContainer, BaseTransformerContainer):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
         # All model specific things should be defined here instead of the base class.
 
     def create_module(self, config=None):
-        _config = config if config is not None else self.config
+        _config = config if config is not None else self.ds_model_config
         self.module = DeepSpeedMegatronGPTInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
 
@@ -34,9 +40,7 @@ class MegatronLayerPolicy(TransformerPolicy):
     use_mup = False
 
     def __init__(self, client_module, inference=True):
-        super().__init__(inference,
-                         megatron_v2=MegatronLayerPolicy.megatron_v2,
-                         use_mup=MegatronLayerPolicy.use_mup)
+        super().__init__(inference, megatron_v2=MegatronLayerPolicy.megatron_v2, use_mup=MegatronLayerPolicy.use_mup)
         self.client_module = client_module
         # we use megatron version to differentiate between the old and new
         # megatron-lm source code
@@ -52,9 +56,13 @@ class MegatronLayerPolicy(TransformerPolicy):
 
     def get_hidden_heads(self):
         return self.client_module.attention.query_key_value.weight.shape[1], \
-                self.client_module.attention.num_attention_heads
+                self.client_module.attention.num_attention_heads, \
+                self.client_module.input_layernorm.eps
 
-    def attention(self):
+    def get_q_k_v(self):
+        return None
+
+    def attention(self, enable_training=False):
         if self.inference:
             if MegatronLayerPolicy.version == 0:
                 attention = self.client_module.attention
@@ -103,5 +111,5 @@ class MegatronLayerPolicy(TransformerPolicy):
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
 
-    def get_param_names(self):
-        pass
+    def get_lora_params(self):
+        return []

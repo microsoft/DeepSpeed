@@ -105,6 +105,13 @@ Comms Logging
 
    comms-logging
 
+Monitoring
+----------
+.. toctree::
+   :maxdepth: 2
+
+   monitor
+
 Indices and tables
 ------------------
 

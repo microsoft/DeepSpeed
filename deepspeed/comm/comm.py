@@ -1,26 +1,22 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 """
-    Copyright 2021 The Microsoft DeepSpeed Team
-
     DeepSpeed Communication Package: deepspeed.comm
-
     deepspeed.comm
         -- import and use deepspeeed.ops.comm
         -- use torch.distributed directly if both this package and torch.distributed use the same NCCL version
         -- use custom collectives
             -- can either use torch.dist or ds.ops.comm?
-
         Note: the old 1-bit compressed allreduce variants that resided in deepspeed.runtime.comm will be moved here as well.
-
     deepspeed.comm API
         -- must be kept fully compatible (same signatures) as torch.dist API to ensure backward/cross-framework compatibility.
         -- e.g. if a client code used
             from deepspeed import comm as dist
-
             instead of
             import torch.distributed as dist
-
             The code should work without breaking any of the public torch.distributed functionality
-
     Future:
         -- deepspeed groups API should be brought into ds.comm
 """
@@ -62,10 +58,6 @@ timers = timer.SynchronizedWallClockTimer()
 timer_summary = {}
 
 comms_logger = CommsLogger()
-
-# Ensure we don't warn about base collectives more than once
-has_warned_all_gather = False
-has_warned_reduce_scatter = False
 
 # Maintain objects of all initialized ds backends and assign them using the API functions in this file
 nccl_backend = None
@@ -110,12 +102,13 @@ def configure(
 
 # Logging wrapper for timing ops
 def timed_op(func):
+
     def log_wrapper(*args, **kwargs):
         # Add enabled flag so that overhead to each comm op is two if conditions at most
         if comms_logger.enabled:
-            if ('prof' in kwargs and kwargs['prof']) or comms_logger.prof_all or (
-                    'log_name' in kwargs
-                    and kwargs['log_name'] in comms_logger.prof_ops):
+            if ('prof' in kwargs
+                    and kwargs['prof']) or comms_logger.prof_all or ('log_name' in kwargs
+                                                                     and kwargs['log_name'] in comms_logger.prof_ops):
                 # Need func args for their defaults
                 func_args = get_default_args(func)
                 func_args.update(kwargs)
@@ -133,8 +126,7 @@ def timed_op(func):
                 if cdb.using_mpi:
                     cdb.barrier()
                 if ('prof' in kwargs and kwargs['prof']) or comms_logger.prof_all or (
-                        'log_name' in kwargs
-                        and kwargs['log_name'] in comms_logger.prof_ops):
+                        'log_name' in kwargs and kwargs['log_name'] in comms_logger.prof_ops):
                     log_name = get_debug_log_name(func_args, comms_logger.debug)
                     raw_name = func.__name__
                     timers(log_name).stop()
@@ -182,7 +174,8 @@ def destroy_process_group(group=None):
 
 def new_group(ranks):
     global cdb
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     return cdb.new_group(ranks)
 
 
@@ -196,14 +189,12 @@ def is_available() -> bool:
     return True
 
 
-def set_backend(backend):
+def set_backend(backend_name):
     if not use_ds_backend:
         utils.logger.error(
             "DeepSpeed communication backend is required. Please use deepspeed.comm.init_distributed(backend, use_deepspeed=True) to use this functionality"
         )
-        raise RuntimeError(
-            'Error: Custom DeepSpeed backend called without initializing DeepSpeed distributed.'
-        )
+        raise RuntimeError('Error: Custom DeepSpeed backend called without initializing DeepSpeed distributed.')
 
     global cdb
     global nccl_backend
@@ -221,13 +212,7 @@ def set_backend(backend):
 
 
 @timed_op
-def broadcast(tensor,
-              src,
-              group=None,
-              async_op=False,
-              prof=False,
-              log_name='broadcast',
-              debug=get_caller_func()):
+def broadcast(tensor, src, group=None, async_op=False, prof=False, log_name='broadcast', debug=get_caller_func()):
     global cdb
     return cdb.broadcast(tensor=tensor, src=src, group=group, async_op=async_op)
 
@@ -241,17 +226,14 @@ def all_gather(tensor_list,
                log_name='all_gather',
                debug=get_caller_func()):
     global cdb
-    return cdb.all_gather(tensor_list=tensor_list,
-                          tensor=tensor,
-                          group=group,
-                          async_op=async_op)
+    return cdb.all_gather(tensor_list=tensor_list, tensor=tensor, group=group, async_op=async_op)
 
 
-def has_reduce_scatter_base():
+def has_reduce_scatter_tensor():
     global cdb
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    assert cdb.has_reduce_scatter_base is not None, 'has_reduce_scatter_base is not yet defined'
-    return cdb.has_reduce_scatter_base
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    return cdb.has_reduce_scatter_tensor()
 
 
 def reduce_scatter_fn(output_tensor,
@@ -262,23 +244,21 @@ def reduce_scatter_fn(output_tensor,
                       prof=False,
                       debug=get_caller_func()):
     global cdb
-    global has_warned_reduce_scatter
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    if cdb.has_reduce_scatter_base:
-        return reduce_scatter_base(output_tensor,
-                                   tensor,
-                                   op=op,
-                                   group=group,
-                                   async_op=async_op,
-                                   prof=prof,
-                                   debug=debug)
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    if cdb.has_reduce_scatter_tensor():
+        return reduce_scatter_tensor(output_tensor,
+                                     tensor,
+                                     op=op,
+                                     group=group,
+                                     async_op=async_op,
+                                     prof=prof,
+                                     debug=debug)
     else:
-        if not has_warned_reduce_scatter:
-            utils.logger.warning(
-                "unable to find torch.distributed._reduce_scatter_base. will fall back to "
-                "torch.distributed.all_gather which will result in suboptimal performance. "
-                "please consider upgrading your pytorch installation.")
-            has_warned_reduce_scatter = True
+        if get_rank() == 0:
+            utils.logger.warning_once("unable to find torch.distributed.reduce_scatter_tensor. will fall back to "
+                                      "torch.distributed.all_gather which will result in suboptimal performance. "
+                                      "please consider upgrading your pytorch installation.")
         input_tensor_lst = list(torch.chunk(tensor, cdb.get_world_size(group)))
         return reduce_scatter(output_tensor,
                               input_tensor_lst,
@@ -290,71 +270,54 @@ def reduce_scatter_fn(output_tensor,
 
 
 @timed_op
-def reduce_scatter_base(output_tensor,
-                        tensor,
-                        op=ReduceOp.SUM,
-                        group=None,
-                        async_op=False,
-                        prof=False,
-                        log_name='reduce_scatter_base',
-                        debug=get_caller_func()):
+def reduce_scatter_tensor(output_tensor,
+                          tensor,
+                          op=ReduceOp.SUM,
+                          group=None,
+                          async_op=False,
+                          prof=False,
+                          log_name='reduce_scatter_tensor',
+                          debug=get_caller_func()):
     global cdb
-    return cdb.reduce_scatter_base(output_tensor=output_tensor,
-                                   input_tensor=tensor,
-                                   op=op,
-                                   group=group,
-                                   async_op=async_op)
+    return cdb.reduce_scatter_tensor(output_tensor=output_tensor,
+                                     input_tensor=tensor,
+                                     op=op,
+                                     group=group,
+                                     async_op=async_op)
 
 
 @timed_op
-def all_gather_base(output_tensor,
-                    tensor,
-                    group=None,
-                    async_op=False,
-                    prof=False,
-                    log_name='all_gather_base',
-                    debug=get_caller_func()):
+def all_gather_into_tensor(output_tensor,
+                           tensor,
+                           group=None,
+                           async_op=False,
+                           prof=False,
+                           log_name='all_gather_into_tensor',
+                           debug=get_caller_func()):
     global cdb
-    return cdb.all_gather_base(output_tensor=output_tensor,
-                               input_tensor=tensor,
-                               group=group,
-                               async_op=async_op)
+    return cdb.all_gather_into_tensor(output_tensor=output_tensor, input_tensor=tensor, group=group, async_op=async_op)
 
 
-def has_allgather_base():
+def has_all_gather_into_tensor():
     global cdb
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    assert cdb.has_allgather_base is not None, 'has_allgather_base is not yet defined'
-    return cdb.has_allgather_base
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    return cdb.has_all_gather_into_tensor()
 
 
-def allgather_fn(output_tensor,
-                 input_tensor,
-                 group=None,
-                 async_op=False,
-                 debug=get_caller_func()):
+def allgather_fn(output_tensor, input_tensor, group=None, async_op=False, debug=get_caller_func()):
     global cdb
-    global has_warned_all_gather
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    if cdb.has_allgather_base:
-        return all_gather_base(output_tensor,
-                               input_tensor,
-                               group=group,
-                               async_op=async_op,
-                               debug=debug)
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    if cdb.has_all_gather_into_tensor():
+        return all_gather_into_tensor(output_tensor, input_tensor, group=group, async_op=async_op, debug=debug)
     else:
-        if not has_warned_all_gather and get_rank() == 0:
-            utils.logger.warning(
-                "unable to find torch.distributed._all_gather_base. will fall back to "
-                "torch.distributed.all_gather which will result in suboptimal performance. "
-                "please consider upgrading your pytorch installation.")
-            has_warned_all_gather = True
+        if get_rank() == 0:
+            utils.logger.warning_once("unable to find torch.distributed.all_gather_into_tensor. will fall back to "
+                                      "torch.distributed.all_gather which will result in suboptimal performance. "
+                                      "please consider upgrading your pytorch installation.")
         output_tensors = list(torch.chunk(output_tensor, cdb.get_world_size(group)))
-        return all_gather(output_tensors,
-                          input_tensor,
-                          group=group,
-                          async_op=async_op,
-                          debug=debug)
+        return all_gather(output_tensors, input_tensor, group=group, async_op=async_op, debug=debug)
 
 
 @timed_op
@@ -377,49 +340,25 @@ def all_to_all_single(output,
 
 
 @timed_op
-def send(tensor,
-         dst,
-         group=None,
-         tag=0,
-         prof=False,
-         log_name='send',
-         debug=get_caller_func()):
+def send(tensor, dst, group=None, tag=0, prof=False, log_name='send', debug=get_caller_func()):
     global cdb
     return cdb.send(tensor=tensor, dst=dst, group=group, tag=tag)
 
 
 @timed_op
-def recv(tensor,
-         src=None,
-         group=None,
-         tag=0,
-         prof=False,
-         log_name='recv',
-         debug=get_caller_func()):
+def recv(tensor, src=None, group=None, tag=0, prof=False, log_name='recv', debug=get_caller_func()):
     global cdb
     return cdb.recv(tensor=tensor, src=src, group=group, tag=tag)
 
 
 @timed_op
-def isend(tensor,
-          dst,
-          group=None,
-          tag=0,
-          prof=False,
-          log_name='isend',
-          debug=get_caller_func()):
+def isend(tensor, dst, group=None, tag=0, prof=False, log_name='isend', debug=get_caller_func()):
     global cdb
     return cdb.send(tensor=tensor, dst=dst, group=group, tag=tag)
 
 
 @timed_op
-def irecv(tensor,
-          src=None,
-          group=None,
-          tag=0,
-          prof=False,
-          log_name='irecv',
-          debug=get_caller_func()):
+def irecv(tensor, src=None, group=None, tag=0, prof=False, log_name='irecv', debug=get_caller_func()):
     global cdb
     return cdb.recv(tensor=tensor, src=src, group=group, tag=tag)
 
@@ -434,11 +373,7 @@ def gather(tensor,
            log_name='gather',
            debug=get_caller_func()):
     global cdb
-    return cdb.gather(tensor=tensor,
-                      gather_list=gather_list,
-                      dst=dst,
-                      group=group,
-                      async_op=async_op)
+    return cdb.gather(tensor=tensor, gather_list=gather_list, dst=dst, group=group, async_op=async_op)
 
 
 @timed_op
@@ -451,20 +386,11 @@ def scatter(tensor,
             log_name='scatter',
             debug=get_caller_func()):
     global cdb
-    return cdb.scatter(tensor=tensor,
-                       scatter_list=scatter_list,
-                       src=src,
-                       group=group,
-                       async_op=async_op)
+    return cdb.scatter(tensor=tensor, scatter_list=scatter_list, src=src, group=group, async_op=async_op)
 
 
 @timed_op
-def barrier(group=None,
-            async_op=False,
-            device_ids=None,
-            prof=False,
-            log_name='barrier',
-            debug=get_caller_func()):
+def barrier(group=None, async_op=False, device_ids=None, prof=False, log_name='barrier', debug=get_caller_func()):
     global cdb
     return cdb.barrier(group=group, async_op=async_op, device_ids=device_ids)
 
@@ -511,11 +437,7 @@ def reduce_scatter(output,
                    log_name='reduce_scatter',
                    debug=get_caller_func()):
     global cdb
-    return cdb.reduce_scatter(output=output,
-                              input_list=input_list,
-                              op=op,
-                              group=group,
-                              async_op=async_op)
+    return cdb.reduce_scatter(output=output, input_list=input_list, op=op, group=group, async_op=async_op)
 
 
 @timed_op
@@ -537,7 +459,8 @@ def all_reduce(tensor,
 
 def get_world_group():
     global cdb
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     return cdb.get_world_group()
 
 
@@ -553,7 +476,8 @@ def get_world_size(group=None) -> int:
     """
     global cdb
 
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     return cdb.get_world_size(group)
 
 
@@ -572,7 +496,8 @@ def get_rank(group=None):
         -1, if not part of the group
     """
     global cdb
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     return cdb.get_rank(group)
 
 
@@ -585,13 +510,15 @@ def get_local_rank():
             local rank (= GPU device ID)
     """
     global cdb
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     return get_local_rank_from_launcher()
 
 
 def get_global_rank(group=None, group_rank=0):
     global cdb
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     return cdb.get_global_rank(group, group_rank)
 
 
@@ -603,7 +530,9 @@ def init_distributed(dist_backend=None,
                      timeout=default_pg_timeout,
                      init_method=None,
                      dist_init_required=None,
-                     config=None):
+                     config=None,
+                     rank=-1,
+                     world_size=-1):
     ''' Initialize dist backend, potentially performing MPI discovery if needed
 
     Arguments:
@@ -614,6 +543,8 @@ def init_distributed(dist_backend=None,
         timeout: Optional (timedelta). Timeout for operations executed against the process group. Default value equals 30 minutes.
         init_method: Optional (string). Torch distributed, URL specifying how to initialize the process group. Default is “env://” if no init_method or store is specified.
         config: Optional (dict). DeepSpeed configuration for setting up comms options (e.g. Comms profiling)
+        rank: Optional (int). The current manually specified rank. Some init_method like “tcp://” need the rank and world_size as well (see: https://pytorch.org/docs/stable/distributed.html#tcp-initialization)
+        world_size: Optional (int). Desired world_size for the TCP or Shared file-system initialization.
     '''
     global cdb
 
@@ -636,9 +567,7 @@ def init_distributed(dist_backend=None,
         required_env = ["RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT", "LOCAL_RANK"]
         if auto_mpi_discovery and not all(map(lambda v: v in os.environ, required_env)):
             if verbose:
-                utils.logger.info(
-                    "Not using the DeepSpeed or dist launchers, attempting to detect MPI environment..."
-                )
+                utils.logger.info("Not using the DeepSpeed or dist launchers, attempting to detect MPI environment...")
             if in_aml() and not in_dlts():
                 patch_aml_env_for_torch_nccl_backend(verbose=verbose)
             elif in_aws_sm():
@@ -654,11 +583,9 @@ def init_distributed(dist_backend=None,
             if dist_backend == None:
                 dist_backend = get_accelerator().communication_backend_name()
             if int(os.getenv('RANK', '0')) == 0:
-                utils.logger.info(
-                    'Initializing TorchBackend in DeepSpeed with backend {}'.format(
-                        dist_backend))
+                utils.logger.info('Initializing TorchBackend in DeepSpeed with backend {}'.format(dist_backend))
             # Create a torch backend object, initialize torch distributed, and assign to cdb
-            cdb = TorchBackend(dist_backend, timeout, init_method)
+            cdb = TorchBackend(dist_backend, timeout, init_method, rank, world_size)
 
 
 def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True):
@@ -691,16 +618,12 @@ def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True)
 
     if verbose:
         utils.logger.info(
-            "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
-            .format(os.environ['RANK'],
-                    os.environ['LOCAL_RANK'],
-                    os.environ['WORLD_SIZE'],
-                    os.environ['MASTER_ADDR'],
-                    os.environ['MASTER_PORT']))
+            "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}".
+            format(os.environ['RANK'], os.environ['LOCAL_RANK'], os.environ['WORLD_SIZE'], os.environ['MASTER_ADDR'],
+                   os.environ['MASTER_PORT']))
 
     if cdb is not None and cdb.is_initialized():
-        assert cdb.get_rank() == rank, "MPI rank {} does not match torch rank {}".format(
-            rank, cdb.get_rank())
+        assert cdb.get_rank() == rank, "MPI rank {} does not match torch rank {}".format(rank, cdb.get_rank())
         assert cdb.get_world_size() == world_size, "MPI world size {} does not match torch world size {}".format(
             world_size, cdb.get_world_size())
 
@@ -727,8 +650,7 @@ def patch_aml_env_for_torch_nccl_backend(master_port=6105, verbose=True):
     """
     os.environ["RANK"] = os.environ["OMPI_COMM_WORLD_RANK"]
     os.environ["WORLD_SIZE"] = os.environ["OMPI_COMM_WORLD_SIZE"]
-    single_node = int(os.environ["OMPI_COMM_WORLD_LOCAL_SIZE"]) == int(
-        os.environ["WORLD_SIZE"])
+    single_node = int(os.environ["OMPI_COMM_WORLD_LOCAL_SIZE"]) == int(os.environ["WORLD_SIZE"])
 
     if not single_node:
         master_node_params = os.environ["AZ_BATCH_MASTER_NODE"].split(":")
@@ -741,8 +663,7 @@ def patch_aml_env_for_torch_nccl_backend(master_port=6105, verbose=True):
         os.environ["MASTER_PORT"] = DEFAULT_AML_MASTER_PORT
 
     if verbose:
-        utils.logger.info("NCCL_SOCKET_IFNAME original value = {}".format(
-            os.environ["NCCL_SOCKET_IFNAME"]))
+        utils.logger.info("NCCL_SOCKET_IFNAME original value = {}".format(os.environ["NCCL_SOCKET_IFNAME"]))
 
     os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_AML_NCCL_SOCKET_IFNAME
     os.environ['LOCAL_RANK'] = os.environ["OMPI_COMM_WORLD_LOCAL_RANK"]
@@ -750,10 +671,7 @@ def patch_aml_env_for_torch_nccl_backend(master_port=6105, verbose=True):
     if verbose:
         utils.logger.info(
             "Discovered AzureML settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
-            .format(os.environ['RANK'],
-                    os.environ['LOCAL_RANK'],
-                    os.environ['WORLD_SIZE'],
-                    os.environ['MASTER_ADDR'],
+            .format(os.environ['RANK'], os.environ['LOCAL_RANK'], os.environ['WORLD_SIZE'], os.environ['MASTER_ADDR'],
                     os.environ['MASTER_PORT']))
 
 
@@ -767,8 +685,5 @@ def patch_aws_sm_env_for_torch_nccl_backend(verbose=True):
     if verbose:
         utils.logger.info(
             "Discovered AWS SageMaker settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
-            .format(os.environ['RANK'],
-                    os.environ['LOCAL_RANK'],
-                    os.environ['WORLD_SIZE'],
-                    os.environ['MASTER_ADDR'],
+            .format(os.environ['RANK'], os.environ['LOCAL_RANK'], os.environ['WORLD_SIZE'], os.environ['MASTER_ADDR'],
                     os.environ['MASTER_PORT']))
