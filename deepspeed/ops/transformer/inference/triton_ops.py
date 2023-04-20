@@ -70,7 +70,7 @@ def _fwd_kernel(
         k = tl.load(k_ptrs + start_n * stride_kn)
 
         qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-        qk += tl.dot(q, k, trans_b=True)
+        qk += tl.dot(q, tl.trans(k))
         qk *= sm_scale
         # -- compute m_ij, p, l_ij
         m_ij = tl.max(qk, 1)
