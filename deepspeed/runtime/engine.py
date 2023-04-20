@@ -195,6 +195,7 @@ class DeepSpeedEngine(Module):
         config_class=None,
         dont_change_device=False,
     ):
+        global dist
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
         self.client_optimizer = optimizer
@@ -250,7 +251,6 @@ class DeepSpeedEngine(Module):
 
         self._set_distributed_vars(args)
 
-        global dist
         dist.configure(self._config)
 
         self.monitor = MonitorMaster(self._config.monitor_config)
