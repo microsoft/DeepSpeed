@@ -37,73 +37,70 @@ def _validate_accelerator(accel_obj):
 
 def get_accelerator():
     global ds_accelerator
-    if ds_accelerator is None:
-        accelerator_name = None
-        ds_set_method = None
-        # 1. Detect whether there is override of DeepSpeed accelerators from environment variable.
-        #    DS_ACCELERATOR = 'cuda'|'xpu'|'cpu'
-        if 'DS_ACCELERATOR' in os.environ.keys():
-            accelerator_name = os.environ['DS_ACCELERATOR']
-            if accelerator_name == 'xpu':
-                try:
-                    from intel_extension_for_deepspeed import XPU_Accelerator  # noqa: F401
-                except ImportError as e:
-                    raise ValueError(
-                        f'XPU_Accelerator requires intel_extension_for_deepspeed, which is not installed on this system.'
-                    )
-            elif accelerator_name == 'cpu':
-                try:
-                    import intel_extension_for_pytorch  # noqa: F401
-                except ImportError as e:
-                    raise ValueError(
-                        f'CPU_Accelerator requires intel_extension_for_pytorch, which is not installed on this system.'
-                    )
-            elif accelerator_name == 'cuda':
-                pass
-            else:
-                raise ValueError(
-                    f'DS_ACCELERATOR must be one of "cuda", "cpu", or "xpu".  Value "{accelerator_name}" is not supported'
-                )
-            ds_set_method = 'override'
+    if ds_accelerator is not None:
+        return ds_accelerator
 
-        # 2. If no override, detect which accelerator to use automatically
-        if accelerator_name == None:
+    accelerator_name = None
+    ds_set_method = None
+    # 1. Detect whether there is override of DeepSpeed accelerators from environment variable.
+    #    DS_ACCELERATOR = 'cuda'|'xpu'|'cpu'
+    if 'DS_ACCELERATOR' in os.environ.keys():
+        accelerator_name = os.environ['DS_ACCELERATOR']
+        if accelerator_name == 'xpu':
             try:
-                from intel_extension_for_deepspeed import XPU_Accelerator  # noqa: F401,F811
-                accelerator_name = 'xpu'
+                from intel_extension_for_deepspeed import XPU_Accelerator  # noqa: F401
             except ImportError as e:
-                # We need a way to choose between CUDA_Accelerator and CPU_Accelerator
-                # Currently we detect whether intel_etension_for_pytorch is installed
-                # in the environment and use CPU_Accelerator if the answewr is True.
-                # An alternative might be detect whether CUDA device is installed on
-                # the system but this comes with two pitfalls:
-                # 1. the system may not have torch pre-installed, so
-                #    get_accelerator().is_avaiable() may not work.
-                # 2. Some scenario like install on login node (without CUDA device)
-                #    and run on compute node (with CUDA device) may cause mismatch
-                #    between installation time and runtime.
-                try:
-                    import intel_extension_for_pytorch  # noqa: F401,F811
-                    accelerator_name = 'cpu'
-                except ImportError as e:
-                    accelerator_name = 'cuda'
-            ds_set_method = 'auto detect'
-
-        # 3. Set ds_accelerator accordingly
-        if accelerator_name == 'cuda':
-            from .cuda_accelerator import CUDA_Accelerator
-            ds_accelerator = CUDA_Accelerator()
+                raise ValueError(
+                    f'XPU_Accelerator requires intel_extension_for_deepspeed, which is not installed on this system.')
         elif accelerator_name == 'cpu':
-            from .cpu_accelerator import CPU_Accelerator
-            ds_accelerator = CPU_Accelerator()
-        elif accelerator_name == 'xpu':
-            # XPU_Accelerator is already imported in detection stage
-            ds_accelerator = XPU_Accelerator()
-        _validate_accelerator(ds_accelerator)
-        print(f"Setting ds_accelerator to {ds_accelerator._name} ({ds_set_method})")
-        return ds_accelerator
-    else:
-        return ds_accelerator
+            try:
+                import intel_extension_for_pytorch  # noqa: F401
+            except ImportError as e:
+                raise ValueError(
+                    f'CPU_Accelerator requires intel_extension_for_pytorch, which is not installed on this system.')
+        elif accelerator_name == 'cuda':
+            pass
+        else:
+            raise ValueError(
+                f'DS_ACCELERATOR must be one of "cuda", "cpu", or "xpu".  Value "{accelerator_name}" is not supported')
+        ds_set_method = 'override'
+
+    # 2. If no override, detect which accelerator to use automatically
+    if accelerator_name == None:
+        try:
+            from intel_extension_for_deepspeed import XPU_Accelerator  # noqa: F401,F811
+            accelerator_name = 'xpu'
+        except ImportError as e:
+            # We need a way to choose between CUDA_Accelerator and CPU_Accelerator
+            # Currently we detect whether intel_etension_for_pytorch is installed
+            # in the environment and use CPU_Accelerator if the answewr is True.
+            # An alternative might be detect whether CUDA device is installed on
+            # the system but this comes with two pitfalls:
+            # 1. the system may not have torch pre-installed, so
+            #    get_accelerator().is_avaiable() may not work.
+            # 2. Some scenario like install on login node (without CUDA device)
+            #    and run on compute node (with CUDA device) may cause mismatch
+            #    between installation time and runtime.
+            try:
+                import intel_extension_for_pytorch  # noqa: F401,F811
+                accelerator_name = 'cpu'
+            except ImportError as e:
+                accelerator_name = 'cuda'
+        ds_set_method = 'auto detect'
+
+    # 3. Set ds_accelerator accordingly
+    if accelerator_name == 'cuda':
+        from .cuda_accelerator import CUDA_Accelerator
+        ds_accelerator = CUDA_Accelerator()
+    elif accelerator_name == 'cpu':
+        from .cpu_accelerator import CPU_Accelerator
+        ds_accelerator = CPU_Accelerator()
+    elif accelerator_name == 'xpu':
+        # XPU_Accelerator is already imported in detection stage
+        ds_accelerator = XPU_Accelerator()
+    _validate_accelerator(ds_accelerator)
+    print(f"Setting ds_accelerator to {ds_accelerator._name} ({ds_set_method})")
+    return ds_accelerator
 
 
 def set_accelerator(accel_obj):
