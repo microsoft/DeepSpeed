@@ -1,4 +1,4 @@
-name: nv-pre-compile-ops
+name: pre-compile-ops
 
 on:
   push:
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-ops:
+  cuda-build-ops:
     runs-on: ubuntu-20.04
     container:
       image: deepspeed/gh-builder:ubuntu1804-py38-torch1131-cu116
@@ -32,6 +32,27 @@ jobs:
         - name: Compile DeepSpeed Ops
           run: |
             TORCH_CUDA_ARCH_LIST="7.0;7.5;8.0" DS_BUILD_OPS=1 DS_BUILD_SPARSE_ATTN=0 pip3 install .
+        - name: DS Report
+          run: |
+             ds_report
+
+  rocm-build-ops:
+    runs-on: ubuntu-20.04
+    container:
+      image: rocm/pytorch:rocm5.4_ubuntu20.04_py3.8_pytorch_1.12.1_base
+
+    steps:
+        - uses: actions/checkout@v2
+
+        - name: environment
+          run: |
+            which python
+            python --version
+            python -c "import torch; print('torch:', torch.__version__, torch)"
+            #python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+        - name: Compile DeepSpeed Ops
+          run: |
+            TORCH_CUDA_ARCH_LIST="7.0;7.5;8.0" DS_BUILD_OPS=0 DS_BUILD_SPARSE_ATTN=0 DS_BUILD_UTILS=1 pip3 install .
         - name: DS Report
           run: |
              ds_report
