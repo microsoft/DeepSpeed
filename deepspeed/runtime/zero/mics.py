@@ -55,7 +55,6 @@ class MiCS_AllGatherCoalescedHandle(AllGatherCoalescedHandle):
 
 
 class MiCS_Init(Init):
-    """"""
     def __init__(self,
                  module=None,
                  data_parallel_group=None,
@@ -67,6 +66,76 @@ class MiCS_Init(Init):
                  enabled=True,
                  dtype=None,
                  mpu=None):
+        """A context manager to partition the model parameters during the model
+        construction with MiCS partition strategy. Model states are partitioned
+        to the number of devices specified via ``mics_shard_size`` field in the
+        deepspeed config json file. The context manager also introduces
+        hierarchical communication method to reduce the cost of inter-node
+        communications, which can be enabled with
+        ``mics_hierarchical_params_gather`` field in deepspeed config.
+
+        Args:
+            module (``torch.nn.Module``, optional): If provided, partition the model as
+                if it was constructed in the context.
+            data_parallel_group (``deepspeed.comm`` process group, optional):
+                The group of processes to partition among. Defaults to all processes.
+            mem_efficient_linear (bool, optional): Replace
+                torch.nn.functional.linear with an implementation that allows
+                DeepSpeed to partition parameters. Defaults to ``True``.
+            remote_device (string, optional): The initial device to store model
+                weights e.g., ``cpu``, ``nvme``. Passing ``"cpu"`` will create the model in CPU
+                memory. The model may still be moved to GPU based on the
+                offload settings for training. Defaults to param offload device if a config is
+                defined, otherwise GPU.
+            pin_memory (bool, optional): Potentially increase performance by
+                using pinned memory for model weights. ``remote_device`` must be
+                ``"cpu"``. Defaults to pin_memory value in config, otherwise ``False``.
+            config_dict_or_path (dict or ``json file``, optional): If provided, provides configuration
+                for swapping fp16 params to NVMe.
+            config (dict or ``json file``, optional): Deprecated, use config_dict_or_path instead.
+            enabled (bool, optional): If ``False``, this context has no
+                effect. Defaults to ``True``.
+            dtype (``dtype``, optional): Can be used to change the data type of the parameters.
+                Supported options are ``torch.half`` and ``torch.float``. Defaults to ``None``
+            mpu (``object``, optional): A model parallelism unit object that implements get_{model,data}_parallel_{rank,group,world_size}.
+
+        This context follows the same logic as ``deepspeed.zero.Init()``, but
+        with the modification for partition size of each parameter.
+
+        Examples
+        --------
+
+        #. Allocate a model and partition it among all processes:
+
+            .. code-block:: python
+                # the config_dict_or_path is required to let the context manager know
+                # how partition the parameters.
+                # The configuration has to include the field ``mics_shard_size``
+                with deepspeed.zero.MiCS_Init(config_dict_or_path=ds_config):
+                    model = MyLargeModel()
+
+
+        #. Allocate a model in pinned CPU memory and partition it among a subgroup of processes:
+
+            .. code-block:: python
+
+                with deepspeed.zero.MiCS_Init(data_parallel_group=mpu.get_data_parallel_group(),
+                                              remote_device="cpu",
+                                              pin_memory=True
+                                              config_dict_or_path=ds_config):
+                    model = MyLargeModel()
+
+
+        #. Partition an already-allocated model in CPU memory:
+
+            .. code-block:: python
+
+                model = deepspeed.zero.MiCS_Init(module=model,
+                                                 config_dict_or_path=ds_config)
+        """
+
+        """
+
         assert config_dict_or_path is not None, "Must provide configuration for MiCS Initialization"
         _ds_config = DeepSpeedConfig(config_dict_or_path, mpu)
         if not dist.is_initialized():
