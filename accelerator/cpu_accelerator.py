@@ -53,7 +53,16 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return 'cpu'
 
     def device_count(self):
-        return 1
+        from deepspeed.utils.numa import get_numa_cores
+        # Count NUMA node for number of cpu accelerators. On machine with HBM
+        # In flat mode, HBM is in seperate NUMA node with no cores on this node.
+        # Ignore these NUMA nodes with no cores.
+        numa_core_lists = get_numa_cores()
+        core_count = 0
+        for core_list in numa_core_lists:
+            if len(core_list) > 0:
+                core_count += 1
+        return core_count
 
     def synchronize(self, device_index=None):
         return
