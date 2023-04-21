@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 from ..config import DeepSpeedInferenceConfig
@@ -6,6 +9,7 @@ from .base import BaseOp
 
 
 class MLPGemmOp(BaseOp):
+
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(MLPGemmOp, self).__init__(config)
         if self.config.fp16:
@@ -13,29 +17,13 @@ class MLPGemmOp(BaseOp):
         else:
             self.mlp_gemm_func = self.inference_cuda_module.mlp_gemm_fp32
 
-    def forward(self,
-                input: torch.Tensor,
-                residual: torch.Tensor,
-                input_bias: torch.Tensor,
-                weight_interm: torch.Tensor,
-                weight_out: torch.Tensor,
-                bias: torch.Tensor,
-                gamma: torch.Tensor,
+    def forward(self, input: torch.Tensor, residual: torch.Tensor, input_bias: torch.Tensor,
+                weight_interm: torch.Tensor, weight_out: torch.Tensor, bias: torch.Tensor, gamma: torch.Tensor,
                 beta: torch.Tensor):
         output, residual_add = self.mlp_gemm_func(
-                                    input,
-                                    residual,
-                                    input_bias,
-                                    weight_interm,
-                                    weight_out,
-                                    bias,
-                                    gamma,
-                                    beta,
-                                    self.config.epsilon,
-                                    self.config.pre_layer_norm,
-                                    self.config.mlp_after_attn,
-                                    weight_interm.scale,
-                                    weight_out.scale,
-                                    self.config.q_int8,
-                                    self.config.mlp_act_func_type)
+            input, residual, input_bias, weight_interm, weight_out, bias, gamma, beta, self.config.epsilon,
+            self.config.pre_layer_norm, self.config.mlp_after_attn,
+            weight_interm.scale if hasattr(weight_interm, 'scale') else torch.empty(1),
+            weight_out.scale if hasattr(weight_out, 'scale') else torch.empty(1), self.config.q_int8,
+            self.config.mlp_act_func_type, self.config.transposed_mode)
         return output, residual_add

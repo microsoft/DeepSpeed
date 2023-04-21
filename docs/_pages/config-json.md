@@ -250,7 +250,7 @@ Example of <i>**scheduler**</i>
 
 | Description                                                                                                                                                                                             | Default |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| <i>**initial_scale_power**</i> is a **fp16** parameter representing the power of the initial dynamic loss scale value. The actual loss scale is computed as 2<sup><i>**initial_scale_power**</i></sup>. | `32`    |
+| <i>**initial_scale_power**</i> is a **fp16** parameter representing the power of the initial dynamic loss scale value. The actual loss scale is computed as 2<sup><i>**initial_scale_power**</i></sup>. | `16`    |
 
 <i>**fp16:loss_scale_window**</i>: [integer]
 
@@ -692,7 +692,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 | Description                                                                                                               | Default |
 |---------------------------------------------------------------------------------------------------------------------------| ------- |
-| Whether to run autotuing experiments whose results already exist. Setting it to true would overwrite the existing result. | `false` |
+| Whether to run autotuning experiments whose results already exist. Setting it to true would overwrite the existing result. | `false` |
 
 
 <i>**metric**</i>: [string]
@@ -849,7 +849,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 | Description                                                   | Default |
 | ------------------------------------------------------------- | ------- |
-| Inserts torch.cuda.synchronize() at each checkpoint boundary. | `false` |
+| Inserts get_accelerator().synchronize() at each checkpoint boundary. | `false` |
 
 
 <i>**profile**</i>: [boolean]

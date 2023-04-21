@@ -1,6 +1,7 @@
-'''
-Copyright 2022 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from typing import Optional
 import torch
@@ -22,7 +23,4 @@ def nhwc_bias_add(activation: torch.Tensor,
     elif other_bias is None:
         return spatial_cuda_module.nhwc_bias_add_add(activation, bias, other)
     else:
-        return spatial_cuda_module.nhwc_bias_add_bias_add(activation,
-                                                          bias,
-                                                          other,
-                                                          other_bias)
+        return spatial_cuda_module.nhwc_bias_add_bias_add(activation, bias, other, other_bias)

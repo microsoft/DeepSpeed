@@ -1,4 +1,4 @@
-name: nv-torch18-p40
+name: nv-torch19-p40
 
 on:
   push:
@@ -6,9 +6,13 @@ on:
       - 'staging**'
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
+  schedule:
+    - cron: "0 0 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,7 +20,7 @@ concurrency:
 
 jobs:
   unit-tests:
-    runs-on: [self-hosted, nvidia, cu101, p40]
+    runs-on: [self-hosted, nvidia, cu111, p40]
 
     steps:
       - uses: actions/checkout@v2
@@ -26,7 +30,7 @@ jobs:
 
       - name: Install pytorch
         run: |
-          pip install torch==1.8.2 torchvision==0.9.2 --extra-index-url https://download.pytorch.org/whl/lts/1.8/cu101
+          pip install torch==1.9.0+cu111 torchvision==0.10.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -41,7 +45,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          pip install .[dev,1bit,autotuning]
+          pip install .[dev,1bit,autotuning] --no-build-isolation
           ds_report
 
       - name: Python environment
@@ -52,4 +56,4 @@ jobs:
         run: |
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --forked --verbose -n 4 unit/ --torch_ver="1.8" --cuda_ver="10.1"
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --forked -n 4 unit/ --torch_ver="1.9" --cuda_ver="11.1"

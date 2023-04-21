@@ -1,4 +1,4 @@
-name: amd
+name: amd-mi100
 
 on:
   push:
@@ -6,18 +6,22 @@ on:
       - 'staging**'
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
+  schedule:
+    - cron: "0 0 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  unit-tests:
+  amd-tests:
     # The type of runner that the job will run on
-    runs-on: [self-hosted, amd]
+    runs-on: [self-hosted, amd, mi100]
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -29,7 +33,7 @@ jobs:
 
       - name: Install pytorch
         run: |
-          pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/rocm5.1.1
+          pip install torch==1.13.1 torchvision --extra-index-url https://download.pytorch.org/whl/rocm5.1.1
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -58,5 +62,5 @@ jobs:
         run: |
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 -n 4 --verbose unit/
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose -m 'sequential' unit/
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest -n 4 --verbose unit/
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest -m 'sequential' unit/

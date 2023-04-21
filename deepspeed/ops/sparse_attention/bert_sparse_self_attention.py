@@ -1,6 +1,7 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from torch import nn
 from deepspeed.ops.sparse_attention import SparseSelfAttention, FixedSparsityConfig
@@ -13,6 +14,7 @@ class BertSparseSelfAttention(nn.Module):
 
     For usage example please see, TODO DeepSpeed Sparse Transformer Tutorial.
     """
+
     def __init__(
         self,
         config,
@@ -29,10 +31,8 @@ class BertSparseSelfAttention(nn.Module):
 
         super(BertSparseSelfAttention, self).__init__()
         if config.hidden_size % config.num_attention_heads != 0:
-            raise ValueError(
-                "The hidden size (%d) is not a multiple of the number of attention "
-                "heads (%d)" % (config.hidden_size,
-                                config.num_attention_heads))
+            raise ValueError("The hidden size (%d) is not a multiple of the number of attention "
+                             "heads (%d)" % (config.hidden_size, config.num_attention_heads))
         self.num_attention_heads = config.num_attention_heads
         self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
@@ -44,8 +44,7 @@ class BertSparseSelfAttention(nn.Module):
         self.sparse_self_attention = SparseSelfAttention(sparsity_config)
 
     def transpose_for_scores(self, x):
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads,
-                                       self.attention_head_size)
+        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(*new_x_shape)
         return x.permute(0, 2, 1, 3)
 
