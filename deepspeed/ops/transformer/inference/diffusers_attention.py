@@ -55,7 +55,7 @@ class DeepSpeedDiffusersAttentionFunction(Function):
             if config.fp16 and input.dtype == torch.float32:
                 input = input.half()
             head_size = input.shape[-1] // config.heads
-            do_flash_attn = (head_size <= 128)
+            do_flash_attn = False  #(head_size <= 128)
             scale = (1 / norm_factor) * (1 / norm_factor)
             if do_flash_attn and context == None:
                 qkv_out = linear_func(input, attn_qkvw, attn_qkvb if attn_qkvb is not None else attn_qkvw, attn_qkvb
