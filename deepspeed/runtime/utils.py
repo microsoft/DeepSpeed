@@ -950,6 +950,33 @@ def all_gather_dp_groups(partitioned_param_groups, dp_process_group, start_align
             dist.all_gather(shard_list, shard_list[partition_id], dp_process_group[group_id])
 
 
+# We pass cloned tensors to torch.save() to avoid checkpoint bloat that occurs when torch.save()
+# saves the underlying storage rather than the slice of the storage corresponding to individual tensors.
+# This is a problem in DeepSpeed because we often allocate tensors using slices of large flattened buffers.
+# Tensor cloning helps to avoid this problem because the storage of cloned tensors are closer to the true size.
+# It is expected that the garbage collector will reclaim the cloned tensor storage to avoid memory bloat.
+# See https://pytorch.org/docs/stable/notes/serialization.html#preserve-storage-sharing
+def clone_tensors_for_torch_save(item, device=torch.device('cpu')):
+    """
+    Returns a copy of input with all enclosed tensors replaced by clones on specified device.
+    Works on individual tensors, and tensors contained/nested in lists, tuples, and dicts.
+    Parameters:
+        item: tensor to clone or (possibly nested) container of tensors to clone.
+        device: target device
+    Returns:
+        copy of input with cloned tensors on target device
+    """
+    if torch.is_tensor(item):
+        return item.clone().to(device)
+    elif isinstance(item, list):
+        return [clone_tensors_for_torch_save(v, device) for v in item]
+    elif isinstance(item, tuple):
+        return tuple([clone_tensors_for_torch_save(v, device) for v in item])
+    elif isinstance(item, dict):
+        return type(item)({k: clone_tensors_for_torch_save(v, device) for k, v in item.items()})
+    else:
+        return item
+    
 class TLinear(torch.nn.Linear):
 
     def __init__(self, orig_layer, name=""):
