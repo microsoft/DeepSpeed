@@ -49,7 +49,7 @@ class AutoTP():
         for key, submodule in module._modules.items():
             if isinstance(submodule, nn.Linear):
                 layer_list = layer_list + [parent + "." + key]
-            elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm' or 'layernorm' in key:
+            elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm':
                 layer_list = layer_list + ["ln"]
             else:
                 layer_list = layer_list + AutoTP.get_layers(key, submodule)
@@ -94,7 +94,7 @@ class AutoTP():
             for key, submodule in module._modules.items():
                 if isinstance(submodule, nn.Linear):
                     layer_list = layer_list + ["." + key]
-                elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm' or 'layernorm' in key:
+                elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm':
                     layer_list = layer_list + ["ln"]
                 else:
                     layer_list = layer_list + AutoTP.get_layers(key, submodule)
@@ -102,7 +102,7 @@ class AutoTP():
                 if layer == 'ln':
                     if layer_list[i - 1] != 'ln':
                         gem_list = gem_list + [layer_list[i - 1]]
-                elif 'out_proj' in layer or 'o_proj' in layer:
+                elif 'out_proj' in layer or 'o_proj' in layer or 'down_proj' in layer:
                     gem_list = gem_list + [layer]
             layer_list = []
             if gem_list != []:
