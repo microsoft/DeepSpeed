@@ -34,6 +34,10 @@ jobs:
           make
           ./cpu_features
 
+      - name: Install numactl
+        run: |
+          sudo apt-get install -y numactl
+
       - name: Install oneCCL Bindings for PyTorch
         run: |
           #python -m pip install intel_extension_for_pytorch
