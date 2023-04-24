@@ -4,47 +4,8 @@
 # DeepSpeed Team
 
 import os
-import torch
 import inspect
 from deepspeed.utils import get_caller_func
-
-
-def older_torch():
-    '''
-        Helper to lookup torch version. For versions less than 1.8, torch.dist
-        used torch.distributed.group.WORLD as the default group argument instead of None.
-        See more details at: https://github.com/pytorch/pytorch/pull/48767
-    '''
-    TORCH_MAJOR = int(torch.__version__.split('.')[0])
-    TORCH_MINOR = int(torch.__version__.split('.')[1])
-    if TORCH_MAJOR == 1 and TORCH_MINOR < 8:
-        return True
-    else:
-        return False
-
-
-def has_allgather_base():
-    '''
-        Helper to check if torch.distributed has _all_gather_base
-    '''
-    return hasattr(torch.distributed, "_all_gather_base")
-
-
-def has_all_reduce_coalesced():
-    return hasattr(torch.distributed, "all_reduce_coalesced")
-
-
-def has_coalescing_manager():
-    has_c10d = hasattr(torch.distributed, 'distributed_c10d')
-    return has_c10d and hasattr(torch.distributed.distributed_c10d,
-                                '_coalescing_manager')
-
-
-def has_reduce_scatter_base():
-    '''
-        Helper to check if torch.distributed has _reduce_scatter_base
-    '''
-    return hasattr(torch.distributed, "_reduce_scatter_base")
 
 
 def get_local_rank_from_launcher():

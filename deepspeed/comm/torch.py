@@ -20,6 +20,16 @@ def is_torch_two():
         return False
 
 
+def has_coalescing_manager():
+    has_c10d = hasattr(torch.distributed, 'distributed_c10d')
+    return has_c10d and hasattr(torch.distributed.distributed_c10d,
+                                '_coalescing_manager')
+
+
+def has_all_reduce_coalesced():
+    return hasattr(torch.distributed, "all_reduce_coalesced")
+
+
 def get_coalescing_manager(group, device, reqs):
     if is_torch_two():
         return torch.distributed.distributed_c10d._coalescing_manager(group,
@@ -40,14 +50,8 @@ class TorchBackend(Backend):
 
     def __init__(self, backend, timeout, init_method, rank=-1, world_size=-1, name='torch'):
         super(TorchBackend, self).__init__()
-        self.torch_version_before_18 = older_torch()
-        self.has_allgather_base = has_allgather_base()
-        self.has_reduce_scatter_base = has_reduce_scatter_base()
         self.has_all_reduce_coalesced = has_all_reduce_coalesced()
         self.has_coalescing_manager = has_coalescing_manager()
-        # assume if the coalescing_manager is available
-        # we can construct the coalesced API
-        self.has_all_gather_coalesced = has_coalescing_manager()
         self.all_gather_function = self.get_all_gather_function()
         self.reduce_scatter_function = self.get_reduce_scatter_function()
         self.initialized = True

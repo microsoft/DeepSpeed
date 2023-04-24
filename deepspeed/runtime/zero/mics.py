@@ -134,8 +134,6 @@ class MiCS_Init(Init):
                                                  config_dict_or_path=ds_config)
         """
 
-        """
-
         assert config_dict_or_path is not None, "Must provide configuration for MiCS Initialization"
         _ds_config = DeepSpeedConfig(config_dict_or_path, mpu)
         if not dist.is_initialized():
