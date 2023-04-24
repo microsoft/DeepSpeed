@@ -10,6 +10,9 @@ assignees: ''
 **Describe the bug**
 A clear and concise description of what the bug is.
 
+**Log output**
+If you used `train.py` to launch the application, please include the contents of the output log file.
+
 **To Reproduce**
 Steps to reproduce the behavior:
 1. Command/Script to reproduce
