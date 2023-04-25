@@ -6,9 +6,9 @@ Licensed under the MIT license.
 import sys
 from typing import List
 
+import deepspeed
 import torch
 from deepspeed import comm as dist
-from deepspeed.runtime.config import DeepSpeedConfig
 from deepspeed.runtime.zero.mics_utils import (MiCS_CommGroups,
                                                create_mics_comm_groups,
                                                scale_tensors)
@@ -135,7 +135,7 @@ class MiCS_Init(Init):
         """
 
         assert config_dict_or_path is not None, "Must provide configuration for MiCS Initialization"
-        _ds_config = DeepSpeedConfig(config_dict_or_path, mpu)
+        _ds_config = deepspeed.runtime.config.DeepSpeedConfig(config_dict_or_path, mpu)
         if not dist.is_initialized():
             dist.init_distributed()
             assert dist.is_initialized(), "Parameters cannot be scattered without initializing deepspeed.comm"
