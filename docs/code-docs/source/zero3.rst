@@ -164,7 +164,7 @@ MiCS `mics_shard_size` and `mics_hierarchical_params_gather`. `mics_shard_size`
 controls how many devices are used for partitioning the model states.
 `mics_hierarchical_params_gather` controls whether we use a two-stage
 hierarchical way to gather parameters in the forward computation.
-`mics_hierarchical_params_gather` is usefule when model states are partitioned
+`mics_hierarchical_params_gather` is useful when model states are partitioned
 across multiple nodes and the cross-node bandwidth is slow. By default this is
 turned off.
 

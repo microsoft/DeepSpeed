@@ -22,8 +22,7 @@ def is_torch_two():
 
 def has_coalescing_manager():
     has_c10d = hasattr(torch.distributed, 'distributed_c10d')
-    return has_c10d and hasattr(torch.distributed.distributed_c10d,
-                                '_coalescing_manager')
+    return has_c10d and hasattr(torch.distributed.distributed_c10d, '_coalescing_manager')
 
 
 def has_all_reduce_coalesced():
@@ -32,9 +31,7 @@ def has_all_reduce_coalesced():
 
 def get_coalescing_manager(group, device, reqs):
     if is_torch_two():
-        return torch.distributed.distributed_c10d._coalescing_manager(group,
-                                                                      device=device,
-                                                                      reqs=reqs)
+        return torch.distributed.distributed_c10d._coalescing_manager(group, device=device, reqs=reqs)
     else:
         return torch.distributed.distributed_c10d._coalescing_manager(group, reqs)
 
@@ -97,23 +94,15 @@ class TorchBackend(Backend):
         op = self._reduce_op(op)
         return torch.distributed.all_reduce(tensor=tensor, op=op, group=group, async_op=async_op)
 
-    def all_reduce_coalesced(self,
-                             tensors,
-                             op=torch.distributed.ReduceOp.SUM,
-                             group=None,
-                             async_op=False):
+    def all_reduce_coalesced(self, tensors, op=torch.distributed.ReduceOp.SUM, group=None, async_op=False):
         """ proxy func to torch.distributed.all_reduce_coalesced,
         which is included in PyTorch 1.13 and above
         """
         if not self.has_all_reduce_coalesced:
-            raise RuntimeError(
-                f"Current torch version does not have all_reduce_coalesced "
-                f"api (torch.__version__: {torch.__version__})")
+            raise RuntimeError(f"Current torch version does not have all_reduce_coalesced "
+                               f"api (torch.__version__: {torch.__version__})")
         op = self._reduce_op(op)
-        return torch.distributed.all_reduce_coalesced(tensors=tensors,
-                                                      op=op,
-                                                      group=group,
-                                                      async_op=async_op)
+        return torch.distributed.all_reduce_coalesced(tensors=tensors, op=op, group=group, async_op=async_op)
 
     def reduce(self, tensor, dst, op=ReduceOp.SUM, group=None, async_op=False):
         return torch.distributed.reduce(tensor=tensor, dst=dst, op=self._reduce_op(op), group=group, async_op=async_op)
@@ -138,35 +127,28 @@ class TorchBackend(Backend):
                                             group=group,
                                             async_op=async_op)
         else:
-            utils.logger.warning(
-                "unable to find torch.distributed._all_gather_base. will fall back to "
-                "torch.distributed.all_gather which will result in suboptimal performance. "
-                "please consider upgrading your pytorch installation.")
+            utils.logger.warning("unable to find torch.distributed._all_gather_base. will fall back to "
+                                 "torch.distributed.all_gather which will result in suboptimal performance. "
+                                 "please consider upgrading your pytorch installation.")
             pass
 
-    def all_gather_coalesced(self,
-                             output_tensors,
-                             input_tensors,
-                             group=None,
-                             async_op=False):
+    def all_gather_coalesced(self, output_tensors, input_tensors, group=None, async_op=False):
         """"""
         assert len(output_tensors) == len(input_tensors), ""
         if hasattr(torch.distributed.distributed_c10d, '_all_gather_base_coalesced'):
             # customized PyTorch
-            return torch.distributed.distributed_c10d._all_gather_base_coalesced(
-                output_tensors,
-                input_tensors,
-                group=group,
-                async_op=async_op)
+            return torch.distributed.distributed_c10d._all_gather_base_coalesced(output_tensors,
+                                                                                 input_tensors,
+                                                                                 group=group,
+                                                                                 async_op=async_op)
         elif has_coalescing_manager():
             reqs = []
             with get_coalescing_manager(group, input_tensors[0].device, reqs):
                 for output, input in zip(output_tensors, input_tensors):
-                    handle = torch.distributed.distributed_c10d.all_gather_into_tensor(
-                        output,
-                        input,
-                        group=group,
-                        async_op=True)
+                    handle = torch.distributed.distributed_c10d.all_gather_into_tensor(output,
+                                                                                       input,
+                                                                                       group=group,
+                                                                                       async_op=True)
                     reqs.append(handle)
             if async_op:
                 return reqs[-1]

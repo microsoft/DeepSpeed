@@ -147,18 +147,17 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.params_in_nvme_and_cpu = False
         self.max_params_in_cpu = 0
 
-        self.parameter_offload = self.initialize_ds_offload(
-            module=module,
-            timers=timers,
-            ds_config=ds_config,
-            overlap_comm=overlap_comm,
-            prefetch_bucket_size=prefetch_bucket_size,
-            max_reuse_distance=max_reuse_distance,
-            max_live_parameters=max_live_parameters,
-            param_persistence_threshold=param_persistence_threshold,
-            model_persistence_threshold=model_persistence_threshold,
-            offload_optimizer_config=offload_optimizer_config,
-            mpu=mpu)
+        self.parameter_offload = self.initialize_ds_offload(module=module,
+                                                            timers=timers,
+                                                            ds_config=ds_config,
+                                                            overlap_comm=overlap_comm,
+                                                            prefetch_bucket_size=prefetch_bucket_size,
+                                                            max_reuse_distance=max_reuse_distance,
+                                                            max_live_parameters=max_live_parameters,
+                                                            param_persistence_threshold=param_persistence_threshold,
+                                                            model_persistence_threshold=model_persistence_threshold,
+                                                            offload_optimizer_config=offload_optimizer_config,
+                                                            mpu=mpu)
 
         self.persistent_parameters = self.parameter_offload.persistent_parameters
         self._configure_offloading(offload_optimizer_config, offload_param_config)
@@ -166,18 +165,17 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.module = module
         self.elastic_checkpoint = elastic_checkpoint
 
-        self.inf_or_nan_tracker: Tensor = torch.zeros(
-            1,
-            dtype=torch.bool,
-            device=get_accelerator().current_device_name(),
-            requires_grad=False)
+        self.inf_or_nan_tracker: Tensor = torch.zeros(1,
+                                                      dtype=torch.bool,
+                                                      device=get_accelerator().current_device_name(),
+                                                      requires_grad=False)
 
         self.deepspeed_adam_offload = (self.offload_optimizer and type(init_optimizer) == DeepSpeedCPUAdam)
 
         self.device = get_accelerator().current_device_name() if not self.offload_optimizer else OffloadDeviceEnum.cpu
         ### streams used for overlapping computation with communication
-        self.reduce_and_partition_stream = get_accelerator().Stream(
-        ) if overlap_comm else get_accelerator().default_stream()
+        self.reduce_and_partition_stream = get_accelerator().Stream() if overlap_comm else get_accelerator(
+        ).default_stream()
 
         ############################################################################
 
@@ -356,18 +354,17 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         offload_optimizer_config,
         mpu,
     ):
-        return DeepSpeedZeRoOffload(
-            module=module,
-            timers=timers,
-            ds_config=ds_config,
-            overlap_comm=overlap_comm,
-            prefetch_bucket_size=prefetch_bucket_size,
-            max_reuse_distance=max_reuse_distance,
-            max_live_parameters=max_live_parameters,
-            param_persistence_threshold=param_persistence_threshold,
-            model_persistence_threshold=model_persistence_threshold,
-            offload_param_config=offload_optimizer_config,
-            mpu=mpu)
+        return DeepSpeedZeRoOffload(module=module,
+                                    timers=timers,
+                                    ds_config=ds_config,
+                                    overlap_comm=overlap_comm,
+                                    prefetch_bucket_size=prefetch_bucket_size,
+                                    max_reuse_distance=max_reuse_distance,
+                                    max_live_parameters=max_live_parameters,
+                                    param_persistence_threshold=param_persistence_threshold,
+                                    model_persistence_threshold=model_persistence_threshold,
+                                    offload_param_config=offload_optimizer_config,
+                                    mpu=mpu)
 
     def _get_trainable_parameter_groups(self):
         param_groups = []
@@ -1082,8 +1079,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self.params_in_ipg_bucket.sort(key=lambda p: p.ds_id)
 
-        assert len(set(p.ds_id for p in self.params_in_ipg_bucket)) == len(
-            self.params_in_ipg_bucket)
+        assert len(set(p.ds_id for p in self.params_in_ipg_bucket)) == len(self.params_in_ipg_bucket)
 
         while self.param_reduce_events and self.param_reduce_events[0].query():
             self.param_reduce_events.popleft()
@@ -1092,8 +1088,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         with get_accelerator().stream(self.reduce_and_partition_stream):
             if safe_mode:
-                assert_ints_same_as_other_ranks(
-                    [p.ds_id for p in self.params_in_ipg_bucket])
+                assert_ints_same_as_other_ranks([p.ds_id for p in self.params_in_ipg_bucket])
 
             grad_partitions = self.__avg_scatter_grads(self.params_in_ipg_bucket)
             self.partition_grads(self.params_in_ipg_bucket, grad_partitions)
@@ -1185,9 +1180,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         return total_norm
 
     @instrument_w_nvtx
-    def partition_grads(self,
-                        params_to_release: List[Parameter],
-                        grad_partitions: List[Tensor]) -> None:
+    def partition_grads(self, params_to_release: List[Parameter], grad_partitions: List[Tensor]) -> None:
         offload_fp32_gradients = {}
         offload_fp32_offsets = {}
         buffers = []
@@ -1200,10 +1193,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 continue
 
             # move or accumulate gradient partition to target buffer
-            grad_buffer = self.__param_id_to_grad_partition[param.ds_id].narrow(
-                0,
-                0,
-                grad_partition.numel())
+            grad_buffer = self.__param_id_to_grad_partition[param.ds_id].narrow(0, 0, grad_partition.numel())
             buffers.append(grad_buffer)
             if self.micro_step_id == 0:  # don't accumulate
                 grad_buffer.copy_(grad_partition, non_blocking=True)
@@ -1256,10 +1246,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         if self.offload_optimizer and self.swap_optimizer:
             for i in offload_fp32_gradients.keys():
-                self.optimizer_swapper.swap_out_gradients(
-                    parameter=self.fp32_partitioned_groups_flat[i],
-                    gradient_offsets=offload_fp32_offsets[i],
-                    gradient_tensors=offload_fp32_gradients[i])
+                self.optimizer_swapper.swap_out_gradients(parameter=self.fp32_partitioned_groups_flat[i],
+                                                          gradient_offsets=offload_fp32_offsets[i],
+                                                          gradient_tensors=offload_fp32_gradients[i])
         return buffers
 
     def reduce_ready_partitions_and_remove_grads(self, param, i):

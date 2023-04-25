@@ -1453,8 +1453,7 @@ class DeepSpeedEngine(Module):
                 if mics_shard_size > 0:
                     return self._return_mics_optimizer(optimizer, timers)
 
-                log_dist(f'Creating {model_dtype} ZeRO stage {zero_stage} optimizer',
-                         ranks=[0])
+                log_dist(f'Creating {model_dtype} ZeRO stage {zero_stage} optimizer', ranks=[0])
                 from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
                 optimizer = DeepSpeedZeroOptimizer_Stage3(
                     self.module,
@@ -1492,34 +1491,33 @@ class DeepSpeedEngine(Module):
 
     def _return_mics_optimizer(self, basic_optimizer, timers):
         from deepspeed.runtime.zero.mics import MiCS_Optimizer
-        optimizer = MiCS_Optimizer(
-            self.module,
-            basic_optimizer,
-            timers=timers,
-            ds_config=self.config,
-            static_loss_scale=self.loss_scale(),
-            dynamic_loss_scale=self.dynamic_loss_scale(),
-            dynamic_loss_args=self.dynamic_loss_scale_args(),
-            clip_grad=self.gradient_clipping(),
-            contiguous_gradients=self.zero_contiguous_gradients(),
-            reduce_bucket_size=self.zero_reduce_bucket_size(),
-            prefetch_bucket_size=self.zero_prefetch_bucket_size(),
-            max_reuse_distance=self.zero_max_reuse_distance(),
-            max_live_parameters=self.zero_max_live_parameters(),
-            param_persistence_threshold=self.zero_param_persistence_threshold(),
-            model_persistence_threshold=self.zero_model_persistence_threshold(),
-            dp_process_group=self.data_parallel_group,
-            reduce_scatter=self.zero_reduce_scatter(),
-            overlap_comm=self.zero_overlap_comm(),
-            offload_optimizer_config=self.zero_offload_optimizer(),
-            offload_param_config=self.zero_offload_param(),
-            sub_group_size=self.zero_sub_group_size(),
-            mpu=self.mpu,
-            postscale_gradients=self.postscale_gradients(),
-            gradient_predivide_factor=self.gradient_predivide_factor(),
-            gradient_accumulation_steps=self.gradient_accumulation_steps(),
-            aio_config=self.aio_config(),
-            communication_data_type=self.communication_data_type)
+        optimizer = MiCS_Optimizer(self.module,
+                                   basic_optimizer,
+                                   timers=timers,
+                                   ds_config=self.config,
+                                   static_loss_scale=self.loss_scale(),
+                                   dynamic_loss_scale=self.dynamic_loss_scale(),
+                                   dynamic_loss_args=self.dynamic_loss_scale_args(),
+                                   clip_grad=self.gradient_clipping(),
+                                   contiguous_gradients=self.zero_contiguous_gradients(),
+                                   reduce_bucket_size=self.zero_reduce_bucket_size(),
+                                   prefetch_bucket_size=self.zero_prefetch_bucket_size(),
+                                   max_reuse_distance=self.zero_max_reuse_distance(),
+                                   max_live_parameters=self.zero_max_live_parameters(),
+                                   param_persistence_threshold=self.zero_param_persistence_threshold(),
+                                   model_persistence_threshold=self.zero_model_persistence_threshold(),
+                                   dp_process_group=self.data_parallel_group,
+                                   reduce_scatter=self.zero_reduce_scatter(),
+                                   overlap_comm=self.zero_overlap_comm(),
+                                   offload_optimizer_config=self.zero_offload_optimizer(),
+                                   offload_param_config=self.zero_offload_param(),
+                                   sub_group_size=self.zero_sub_group_size(),
+                                   mpu=self.mpu,
+                                   postscale_gradients=self.postscale_gradients(),
+                                   gradient_predivide_factor=self.gradient_predivide_factor(),
+                                   gradient_accumulation_steps=self.gradient_accumulation_steps(),
+                                   aio_config=self.aio_config(),
+                                   communication_data_type=self.communication_data_type)
         return optimizer
 
     def _configure_eigenvalue(self):

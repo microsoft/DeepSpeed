@@ -443,25 +443,25 @@ def reduce_scatter(output,
 def has_all_reduce_coalesced():
     """"""
     global cdb
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     assert cdb.has_all_reduce_coalesced is not None, 'has_all_reduce_coalesced is not yet defined'
     return cdb.has_all_reduce_coalesced
 
 
 def has_coalescing_manager():
     global cdb
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     assert cdb.has_coalescing_manager is not None, 'has_coalescing_manager is not yet defined'
     return cdb.has_coalescing_manager
 
 
 def all_gather_coalesced(output_tensors, input_tensors, group=None, async_op=False):
     global cdb
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    return cdb.all_gather_coalesced(output_tensors,
-                                    input_tensors,
-                                    group=group,
-                                    async_op=async_op)
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    return cdb.all_gather_coalesced(output_tensors, input_tensors, group=group, async_op=async_op)
 
 
 @timed_op

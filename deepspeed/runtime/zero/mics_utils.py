@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 import os
 from dataclasses import dataclass
 from typing import List
@@ -51,12 +54,8 @@ def create_mics_comm_groups(
         MiCS_CommGroups
     """
     # env var for debugging purpose
-    ndevices_per_node = int(
-        os.environ.get("NDEV_PER_NODE",
-                       get_accelerator().device_count()))
-    _log_rank0(
-        f'creating MiCS communication groups with per node device size {ndevices_per_node}'
-    )
+    ndevices_per_node = int(os.environ.get("NDEV_PER_NODE", get_accelerator().device_count()))
+    _log_rank0(f'creating MiCS communication groups with per node device size {ndevices_per_node}')
     groups = MiCS_CommGroups()
 
     if mpu is not None:
@@ -80,9 +79,9 @@ def create_mics_comm_groups(
     assert _sizes_all_same(ranks_of_shard_group), "shard groups must have the same size"
 
     assert sum([len(g) for g in ranks_of_shard_group]) == dist.get_world_size(), "all sharded ranks "
-    if len(ranks_of_shard_group
-           ) > 1:  # if only shard on one group then no need for replicate groups
-        assert len(ranks_of_shard_group) == len(ranks_of_repli_group[0]), "number of shard groups must equal to the size of each replicate group"
+    if len(ranks_of_shard_group) > 1:  # if only shard on one group then no need for replicate groups
+        assert len(ranks_of_shard_group) == len(
+            ranks_of_repli_group[0]), "number of shard groups must equal to the size of each replicate group"
 
     global_rank = dist.get_rank()
     # create shard groups
@@ -92,9 +91,8 @@ def create_mics_comm_groups(
             groups.param_shard_group = _group
             groups.param_shard_size = len(shard_ranks)
             groups.param_shard_rank = dist.get_rank(_group)
-            logger.info(
-                f'rank {global_rank}, shard group'
-                f' {groups.param_shard_rank}/{dist.get_world_size(group=_group)}')
+            logger.info(f'rank {global_rank}, shard group'
+                        f' {groups.param_shard_rank}/{dist.get_world_size(group=_group)}')
 
     # create replicate groups
     for repli_ranks in ranks_of_repli_group:
@@ -104,10 +102,8 @@ def create_mics_comm_groups(
                 groups.param_repli_group = _group
                 groups.param_repli_size = len(repli_ranks)
                 groups.param_repli_rank = dist.get_rank(group=_group)
-                logger.info(
-                    f'rank {global_rank} '
-                    f'replicate group {groups.param_repli_rank}/{dist.get_world_size(group=_group)}'
-                )
+                logger.info(f'rank {global_rank} '
+                            f'replicate group {groups.param_repli_rank}/{dist.get_world_size(group=_group)}')
         else:
             groups.param_repli_group = None
             groups.param_repli_size = 1
@@ -139,12 +135,8 @@ def create_mics_comm_groups(
             intra_node_ranks_group.append(_intra_node_ranks)
             inter_node_ranks_group.append(_inter_node_ranks)
 
-        _log_rank0(
-            f"create for hierarchy all-gather groups: intra nodes {intra_node_ranks_group}"
-        )
-        _log_rank0(
-            f"create for hierarchy all-gather groups: inter nodes {inter_node_ranks_group}"
-        )
+        _log_rank0(f"create for hierarchy all-gather groups: intra nodes {intra_node_ranks_group}")
+        _log_rank0(f"create for hierarchy all-gather groups: inter nodes {inter_node_ranks_group}")
 
         # create communicators
         for shard_group in intra_node_ranks_group:
@@ -189,12 +181,7 @@ def _generate_mics_config(world_size, ndev_per_node, shard_size, pp_size=1):
         same_shard_ranks = shard_groups[:, i].tolist()
         n_ranks = len(same_shard_ranks)
         replicate_size = n_ranks // pp_size
-        replicate_groups.extend([
-            same_shard_ranks[j:j + replicate_size]
-            for j in range(0,
-                           n_ranks,
-                           replicate_size)
-        ])
+        replicate_groups.extend([same_shard_ranks[j:j + replicate_size] for j in range(0, n_ranks, replicate_size)])
 
     config['replicate_groups'] = replicate_groups
     config['shard_groups'] = shard_groups.tolist()

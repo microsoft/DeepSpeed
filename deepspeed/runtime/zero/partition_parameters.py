@@ -573,10 +573,7 @@ class AllGatherCoalescedHandle:
                 param_start = rank * param.ds_tensor.ds_numel
                 if param_start < param.ds_numel:
                     part_to_copy = self.partitions[rank].narrow(
-                        0,
-                        param_offset,
-                        min(param.ds_numel - param_start,
-                            param.ds_tensor.ds_numel))
+                        0, param_offset, min(param.ds_numel - param_start, param.ds_tensor.ds_numel))
                     partitions.append(part_to_copy)
             param.data = instrument_w_nvtx(torch.cat)(partitions).view(param.ds_shape)
             param.ds_status = ZeroParamStatus.AVAILABLE
@@ -912,42 +909,28 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 # have an opportunity to avoid some intermediate memory allocations
                 param, = params
                 param_buffer = torch.empty(
-                    math.ceil(param.ds_numel / self.num_partitions) *
-                    self.num_partitions,
+                    math.ceil(param.ds_numel / self.num_partitions) * self.num_partitions,
                     dtype=param.dtype,
                     device=get_accelerator().current_device_name(),
                     requires_grad=False,
                 )
-                handle = _dist_allgather_fn(
-                    param.ds_tensor.to(get_accelerator().current_device_name()),
-                    param_buffer,
-                    self.get_partition_dp_group(param))
-                param.data = param_buffer.narrow(0,
-                                                 0,
-                                                 param.ds_numel).view(param.ds_shape).to(
-                                                     param.device)
+                handle = _dist_allgather_fn(param.ds_tensor.to(get_accelerator().current_device_name()), param_buffer,
+                                            self.get_partition_dp_group(param))
+                param.data = param_buffer.narrow(0, 0, param.ds_numel).view(param.ds_shape).to(param.device)
                 return AllGatherHandle(handle, param)
             else:
                 partition_sz = sum(p.ds_tensor.ds_numel for p in params)
                 flat_tensor = torch.empty(partition_sz * self.num_partitions,
-                                          dtype=get_only_unique_item(p.dtype
-                                                                     for p in params),
+                                          dtype=get_only_unique_item(p.dtype for p in params),
                                           device=get_accelerator().current_device_name(),
                                           requires_grad=False)
                 partitions: List[Parameter] = []
                 for i in range(self.num_partitions):
-                    partitions.append(
-                        flat_tensor.narrow(0,
-                                           partition_sz * i,
-                                           partition_sz))
+                    partitions.append(flat_tensor.narrow(0, partition_sz * i, partition_sz))
 
-                instrument_w_nvtx(torch.cat)([
-                    p.ds_tensor.to(get_accelerator().current_device_name())
-                    for p in params
-                ],
+                instrument_w_nvtx(torch.cat)([p.ds_tensor.to(get_accelerator().current_device_name()) for p in params],
                                              out=partitions[self.get_partition_rank()])
-                handle = _dist_allgather_fn(partitions[self.get_partition_rank()],
-                                            flat_tensor,
+                handle = _dist_allgather_fn(partitions[self.get_partition_rank()], flat_tensor,
                                             self.get_partition_dp_group(params[0]))
 
                 return AllGatherCoalescedHandle(
@@ -1009,8 +992,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 "grad_shape": tuple(slf.grad.shape) if slf.grad is not None else None,
                 "persist": slf.ds_persist,
                 "active_sub_modules": slf.ds_active_sub_modules,
-                "ds_tensor.shape":
-                slf.ds_tensor.shape if slf.ds_tensor is not None else None
+                "ds_tensor.shape": slf.ds_tensor.shape if slf.ds_tensor is not None else None
             }
 
         def convert_to_zero_parameters(param_list):
@@ -1258,17 +1240,13 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         #            return None
         if self.use_all_gather_into_tensor:
             handle = dist.all_gather_into_tensor(flat_tensor,
-                                                param.ds_tensor.to(
-                                                    get_accelerator().device_name()),
-                                                group=self.get_partition_dp_group(param),
-                                                async_op=async_op)
+                                                 param.ds_tensor.to(get_accelerator().device_name()),
+                                                 group=self.get_partition_dp_group(param),
+                                                 async_op=async_op)
         else:
             partitions = []
             for i in range(self.num_partitions):
-                partitions.append(
-                    flat_tensor.narrow(0,
-                                       partition_size * i,
-                                       partition_size))
+                partitions.append(flat_tensor.narrow(0, partition_size * i, partition_size))
 
                 if i == dist.get_rank(group=self.get_partition_dp_group(param)):
                     partitions[i].data.copy_(param.ds_tensor.data, non_blocking=True)
@@ -1305,9 +1283,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         allgather_params = []
         for psize in partition_sizes:
             tensor_size = psize * self.num_partitions
-            flat_tensor = torch.empty(tensor_size,
-                                      dtype=param_list[0].dtype,
-                                      device=self.local_device).view(-1)
+            flat_tensor = torch.empty(tensor_size, dtype=param_list[0].dtype, device=self.local_device).view(-1)
             flat_tensor.requires_grad = False
             allgather_params.append(flat_tensor)
 
@@ -1319,9 +1295,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             if self.use_all_gather_into_tensor:
                 # try the _all_gather_base from Pytorch master
                 h = dist.all_gather_into_tensor(allgather_params[param_idx],
-                                         input_tensor,
-                                         group=self.get_partition_dp_group(param),
-                                         async_op=True)
+                                                input_tensor,
+                                                group=self.get_partition_dp_group(param),
+                                                async_op=True)
             else:
                 output_list = []
                 for i in range(self.num_partitions):
@@ -1333,10 +1309,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                             f'param {param_idx}, partition {i} is not on CUDA, partition shape {partition.size()}')
 
                 # back to old all_gather function
-                h = dist.all_gather(output_list,
-                                    input_tensor,
-                                    group=self.get_partition_dp_group(param),
-                                    async_op=True)
+                h = dist.all_gather(output_list, input_tensor, group=self.get_partition_dp_group(param), async_op=True)
             launch_handles.append(h)
 
         # Wait ensures the operation is enqueued, but not necessarily complete.
@@ -1359,9 +1332,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         partition_size = sum([param.ds_tensor.ds_numel for param in param_list])
 
         tensor_size = partition_size * self.num_partitions
-        flat_tensor = torch.empty(tensor_size,
-                                  dtype=param_list[0].dtype,
-                                  device=self.local_device)
+        flat_tensor = torch.empty(tensor_size, dtype=param_list[0].dtype, device=self.local_device)
         flat_tensor.requires_grad = False
         partitions = []
         for i in range(self.num_partitions):
