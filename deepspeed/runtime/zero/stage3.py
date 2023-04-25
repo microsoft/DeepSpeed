@@ -1994,7 +1994,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if not param.requires_grad:
             return None
 
-        self.__reduce_and_partition_stream.synchronize()
+        self.reduce_and_partition_stream.synchronize()
 
         if self.offload_optimizer:
             group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
@@ -2009,7 +2009,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if not param.requires_grad:
             return None
 
-        self.__reduce_and_partition_stream.synchronize()
+        self.reduce_and_partition_stream.synchronize()
         group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
 
         if self._swappable_optimizer_subgroup(group_idx):
