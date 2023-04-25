@@ -186,6 +186,13 @@ class MPICHRunner(MultiNodeRunner):
         process_per_node = list(devices_per_node)[0]
         if not all([n == process_per_node for n in devices_per_node]):
             raise ValueError("MPICH requires same number of devices per node")
+        hosts = ""
+
+        for i, host in enumerate(self.resource_pool.keys()):
+            if i == 0:
+                hosts = f"{host}"
+            else:
+                hosts += f",{host}"
 
         mpirun_cmd = [
             'mpirun',
@@ -193,11 +200,13 @@ class MPICHRunner(MultiNodeRunner):
             f'{total_process_count}',
             '-ppn',
             f'{process_per_node}',
+            '-hosts',
+            f'{hosts}',
         ] + split(self.args.launcher_args)
         export_cmd = []
 
         for k, v in self.exports.items():
-            export_cmd += ['-env', f'{k}', f'{v}']
+            export_cmd += ['-genv', "{}={}".format(k, v)]
 
         if self.args.prefer_deepspeed_comm:
             export_cmd += ['-env', 'PREFER_DEEPSPEED_COMM', str(self.args.prefer_deepspeed_comm)]
