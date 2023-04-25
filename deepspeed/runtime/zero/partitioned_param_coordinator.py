@@ -42,6 +42,7 @@ class ZeRoTraceMode(Enum):
 
 class PartitionedParameterCoordinator:
     """Handles partitioning and gathering of parameters."""
+    __inflight_param_registry = None
 
     class __InflightParamRegistry(UserDict):
         """registry for parameters in flight"""
@@ -67,7 +68,7 @@ class PartitionedParameterCoordinator:
         prefetch_nvme: bool = False,
     ) -> None:
         # mapping of param -> handle for each param that is currently in flight
-        self.__inflight_param_registry = __class__.__InflightParamRegistry()
+        self.__inflight_param_registry = self._get_inflight_param_registry()
         # keeps track of the number of submodules invoked so far.
         self.__step_id: int = 0
         # network tracing mode
@@ -113,6 +114,11 @@ class PartitionedParameterCoordinator:
 
     Bookkeeping operations used to track where we are in the forward/backward pass
     """
+
+    def _get_inflight_param_registry(self) -> __InflightParamRegistry:
+        if __class__.__inflight_param_registry == None:
+            __class__.__inflight_param_registry = __class__.__InflightParamRegistry()
+        return __class__.__inflight_param_registry
 
     def _clear_trace_structures(self) -> None:
         self.__submodule_order = []
