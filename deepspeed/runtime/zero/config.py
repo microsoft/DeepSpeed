@@ -34,7 +34,8 @@ ZeRO optimization should be enabled as:
     "offload_param": {...},
     "offload_optimizer": {...},
     "ignore_unused_parameters": [true|false],
-    "round_robin_gradients": [true|false]
+    "round_robin_gradients": [true|false],
+    "memory_efficient_linear": [true|false]
     }
 }
 """
@@ -246,6 +247,14 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     copying to CPU memory among ranks by fine-grained gradient partitioning.
     Performance benefit grows with gradient accumulation steps (more copying
     between optimizer steps) or GPU count (increased parallelism).
+    """
+
+    mics_shard_size: int = Field(-1, new_param="mics_shard_size")
+
+    mics_hierarchical_params_gather: bool = False
+    memory_efficient_linear: bool = True
+    """
+    Use memory efficient linear implementation, for Stage 3.
     """
 
     # Validators
