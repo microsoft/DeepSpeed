@@ -2,7 +2,6 @@ clang-format==16.0.2
 docutils<0.18
 future
 importlib-metadata>=4
-six
 megatron-lm @ git+https://github.com/NVIDIA/Megatron-LM.git@3860e995269df61d234ed910d4756e104e1ab844
 pre-commit>=2.20.0
 pytest
@@ -10,6 +9,7 @@ pytest-forked
 pytest-randomly
 pytest-xdist
 recommonmark
+six
 sphinx
 sphinx-rtd-theme
 tensorboard
