@@ -37,6 +37,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
+          pip install six
           pip install .[dev,autotuning]
           ds_report
 

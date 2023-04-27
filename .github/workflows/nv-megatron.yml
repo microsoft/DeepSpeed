@@ -36,6 +36,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
+          pip install six
           pip install .[dev]
           ds_report
 

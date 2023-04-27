@@ -28,6 +28,10 @@ jobs:
           which python
           python --version
 
+      - name: Intall dependencies (megatron-lm)
+        run: |
+          pip install torch, six
+
       - name: Install deepspeed
         run: |
           pip install .[dev,autotuning]
