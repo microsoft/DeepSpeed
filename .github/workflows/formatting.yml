@@ -28,7 +28,7 @@ jobs:
           which python
           python --version
 
-      - name: Intall dependencies (megatron-lm)
+      - name: Install dependencies (megatron-lm)
         run: |
           pip install torch==1.13 numpy six regex
 
