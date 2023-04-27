@@ -225,7 +225,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return torch.LongTensor
 
     def pin_memory(self, tensor):
-        return tensor.pin_memory(device=self.current_device_name())
+        return tensor
 
     def op_builder_dir(self):
         try:
