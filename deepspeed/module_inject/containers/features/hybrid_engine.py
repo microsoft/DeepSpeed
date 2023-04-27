@@ -19,7 +19,9 @@ class HybridEngineContainer(ABC):
     def initalize_tensors(self, enable_training=False):
         """
         Same purposes as the base container, but also grabs the hooks for any LoRA
-        parameters.
+        parameters. If it's necessary to override specific sub-components of the model,
+        it's best to augment the specific `set_[component]` itself rather than modifying
+        the `initialize_tensors` method. See the `HybridSplitQKVContainer` for an example.
         """
         super().initialize_tensors(enable_training=enable_training)
         self.set_lora_params()
@@ -27,15 +29,18 @@ class HybridEngineContainer(ABC):
     @abstractmethod
     def set_lora_params(self, lora_params):
         """
-        If available, set the LoRA parameters for the module. It is unlikely this needs to be
-        modified for different models.
+        If available, set the LoRA parameters for the module.  An implementation
+        for this would iterate over all parameters of the model and use the `maybe_get_lora` helper
+        method to check if the parameter does in fact have any LoRA params.
         """
         raise NotImplementedError("A set_lora_params() function must be defined for the relevant parameters.")
 
     def apply_tensor_parallelism(self, mp_replace, reversed_dim=False):
         """
         Add support for reversed dim in tensor parallelism. If necessary, override
-        the called methods to handle partitioned weights (i.e. if qkv is split)
+        the called methods to handle partitioned weights (i.e. if qkv is split, override
+        the `attention_qkv_mp` method). If the model component is not split, it should
+        be safe to use the default implementation.
         """
         # Setup the new Attention module
         self.attention_qkv_mp(mp_replace, reversed_dim=reversed_dim)
@@ -62,12 +67,10 @@ class HybridEngineContainer(ABC):
 
     def release_memory(self):
         """
-        Delete module parameters if they exist and point them back to the container. This
-        should cover all populated params in the container, even those that may alias with
-        each other.
+        Delete module parameters if they exist and point them back to the container. The primary
+        purpose of this is for TP-inference with ZeRO-3. In this scenario, we need to delete the
+        parameters we've created for inference to free their memory.
         """
-        # Release the memory for parameters that should be universally
-        # releaseable.
         general_params = [
             (self.module.attention.attn_ow, self.dense_w),
             (self.module.attention.attn_ob, self.dense_b),
@@ -129,9 +132,7 @@ class HybridEngineContainer(ABC):
 
     def get_lora_params(self):
         """
-        Return a list of all parameters that would have LoRA for the module. This does not
-        refer to the actual LoRA weights themselves, but the parameters that would be fine-tuned
-        with LoRA.
+        Return a list of all parameters that would have LoRA for the module.
         """
         return self.lora_params
 
@@ -156,7 +157,7 @@ class HybridEngineContainer(ABC):
         self.module.attention.attn_qkvw = self.qkvw
         self.module.attention.attn_qkvb = self.qkvb
 
-    def set_mlp_params_wo_copy(self):
+    def set_mlp_params_wo_copy(self, Z3_enabled=False):
         """
         Narrower sub-method for finer grained overriding.
         """

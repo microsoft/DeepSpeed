@@ -7,6 +7,11 @@ from abc import ABC, abstractmethod
 
 
 class HybridGatedMLPContainer(ABC):
+    """
+    The HybridGatedMLPContainer supports models for which the first MLP layer
+    is represented with two separate weights, one for the activation function
+    and one for the gating function.
+    """
 
     def set_mlp(self, _h4h_w, _h4h_b, _4hh_w, _4hh_b):
         super().set_mlp(_h4h_w, _h4h_b, _4hh_w, _4hh_b)

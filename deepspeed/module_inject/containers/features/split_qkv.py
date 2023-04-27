@@ -131,9 +131,16 @@ class HybridSplitQKVContainer(HybridEngineContainer):
             del data
 
     def set_attn_parameters_wo_copy(self, Z3_enabled=False):
+        self.module.attention.attn_ow = self.dense_w
+        self.module.attention.attn_ob = self.dense_b
         if not Z3_enabled:
+            # In initialize_tensors, we create a fused qkvw with the appropriate shape
+            # and copy the qw, qb, kw, kb, vw, vb into it
             self.module.attn_qkvw = self.qkvw
             self.module.attn_qkvb = self.qkvb
+
+            # We reset the data for qw (which is the original model parameter) to point
+            # to the fused weight matrix we have created here
             self.qw.data = self.qkvw[:self.qw.shape[0], :]
             self.qb.data = self.qkvb[:self.qw.shape[0]]
             self.kw.data = self.qkvw[self.qw.shape[0]:2 * self.qw.shape[0], :]
@@ -141,6 +148,8 @@ class HybridSplitQKVContainer(HybridEngineContainer):
             self.vw.data = self.qkvw[self.qw.shape[0] * 2:, :]
             self.vb.data = self.qkvb[self.qw.shape[0] * 2:]
         else:
+            # In ZeRO-3 this will be managed by ZeRO and handled separately in the
+            # forward of ds_attention
             self.module.attention.attn_qw = self.qw
             self.module.attention.attn_qb = self.qb
             self.module.attention.attn_kw = self.kw
