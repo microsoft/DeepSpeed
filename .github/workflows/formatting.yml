@@ -30,7 +30,7 @@ jobs:
 
       - name: Intall dependencies (megatron-lm)
         run: |
-          pip install torch numpy six regex
+          pip install torch<2.0 numpy six regex
 
       - name: Install deepspeed
         run: |
