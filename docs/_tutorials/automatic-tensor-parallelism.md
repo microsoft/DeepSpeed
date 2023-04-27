@@ -128,6 +128,7 @@ The following model families have been successfully tested with automatic tensor
 - electra
 - ernie
 - esm
+- funneltransformer
 - gpt-j
 - gpt-neo
 - gpt-neox
@@ -147,6 +148,7 @@ The following model families have been successfully tested with automatic tensor
 - roformer
 - splinter
 - t5
+- transformerxl
 - xglm
 - xlm_roberta
 - yoso
