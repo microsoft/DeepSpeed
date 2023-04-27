@@ -29,7 +29,7 @@ class ResidualAddOp(BaseOp):
                 final_bias: Optional[torch.Tensor] = None):
 
         if final_bias is None:
-            residual = self._vector_add(residual, hidden_state)
+            residual = self._vector_add(residual, hidden_state, 1.0 / self.config.mp_size)
         else:
             if not self.config.pre_layer_norm and residual_add is not None:
                 # only use residual add if its set and we are not pre layer norm

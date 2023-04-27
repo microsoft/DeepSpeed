@@ -75,9 +75,6 @@ class HFGPTJLayerPolicy(TransformerPolicy):
                 self.client_module.ln_1.eps, \
                 DEFAULT_INTERMEDIATE_SIZE
 
-    def get_q_k_v(self):
-        return None
-
     def attention(self, enable_training=False):
         qw = self.client_module.attn.q_proj.weight
         kw = self.client_module.attn.k_proj.weight
@@ -90,20 +87,14 @@ class HFGPTJLayerPolicy(TransformerPolicy):
                self.client_module.attn.out_proj.weight, \
                None,
 
-    def mlp(self):
+    def mlp(self, enable_training=False):
         return self.client_module.mlp.fc_in.weight, \
                self.client_module.mlp.fc_in.bias, \
                self.client_module.mlp.fc_out.weight, \
                self.client_module.mlp.fc_out.bias
-
-    def get_gated_mlp(self):
-        return None
 
     def layernorm(self):
         return None, \
                None, \
                self.client_module.ln_1.weight, \
                self.client_module.ln_1.bias
-
-    def get_lora_params(self):
-        return []

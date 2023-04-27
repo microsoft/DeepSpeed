@@ -234,4 +234,9 @@ void launch_pad_add_transform_0213(T* output,
                                    cudaStream_t stream);
 
 template <typename T>
-void launch_vector_add(T* out, const T* a, const T* b, int num_elems, cudaStream_t stream);
+void launch_vector_add(T* out,
+                       const T* a,
+                       const T* b,
+                       float gamma,
+                       int num_elems,
+                       cudaStream_t stream);

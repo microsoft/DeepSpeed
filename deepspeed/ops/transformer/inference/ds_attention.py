@@ -210,7 +210,7 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
         return tensor_list
 
     def compute_attention(self, qkv_out, input_mask, layer_past, alibi):
-        if isinstance(qkv_out, list):
+        if isinstance(qkv_out, list) or isinstance(qkv_out, tuple):
             qkv_out = qkv_out[0]
 
         no_masking = input_mask is None

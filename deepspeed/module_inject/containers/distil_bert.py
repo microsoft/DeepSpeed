@@ -49,9 +49,6 @@ class HFDistilBertLayerPolicy(TransformerPolicy):
                 self.client_module.sa_layer_norm.eps, \
                 DEFAULT_INTERMEDIATE_SIZE
 
-    def get_q_k_v(self):
-        return None
-
     def attention(self, enable_training=False):
         qw = self.client_module.attention.q_lin.weight
         qb = self.client_module.attention.q_lin.bias
@@ -68,15 +65,12 @@ class HFDistilBertLayerPolicy(TransformerPolicy):
                self.client_module.attention.out_lin.weight, \
                self.client_module.attention.out_lin.bias
 
-    def mlp(self):
+    def mlp(self, enable_training=False):
         intermediate_ff = self.client_module.ffn.lin1
 
         return intermediate_ff.weight, intermediate_ff.bias, \
             self.client_module.ffn.lin2.weight, \
             self.client_module.ffn.lin2.bias
-
-    def get_gated_mlp(self):
-        return None
 
     def layernorm(self):
         attention_layernorm = self.client_module.sa_layer_norm
@@ -85,6 +79,3 @@ class HFDistilBertLayerPolicy(TransformerPolicy):
                attention_layernorm.bias, \
                transformer_layernorm.weight, \
                transformer_layernorm.bias
-
-    def get_lora_params(self):
-        return []

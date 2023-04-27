@@ -4,6 +4,7 @@
 // DeepSpeed Team
 
 #include <cuda_fp16.h>
+#include "conversion_utils.h"
 #include "ds_kernel_utils.h"
 #include "memory_access_utils.h"
 
@@ -14,7 +15,7 @@ constexpr int threads = 256;
 }  // namespace pwise
 
 template <typename T>
-__global__ void vector_add_kernel(T* out, const T* a, const T* b, int num_elems)
+__global__ void vector_add_kernel(T* out, const T* a, const T* b, float gamma, int num_elems)
 {
     constexpr int T_per_access = pwise::granularity / sizeof(T);
 
@@ -33,7 +34,11 @@ __global__ void vector_add_kernel(T* out, const T* a, const T* b, int num_elems)
         mem_access::load_global<pwise::granularity>(temp_buf_b, b + iter_idx, iter_idx < num_elems);
 
 #pragma unroll
-        for (int j = 0; j < T_per_access; j++) { temp_buf_a[j] += temp_buf_b[j]; }
+        for (int j = 0; j < T_per_access; j++) {
+            float up_cast_a = conversion::to<float>(temp_buf_a[j]);
+            float up_cast_b = conversion::to<float>(temp_buf_b[j]);
+            temp_buf_a[j] = conversion::to<T>((gamma * up_cast_a) + up_cast_b);
+        }
 
         if (iter_idx < num_elems) {
             mem_access::store_global<pwise::granularity>(out + iter_idx, temp_buf_a);
@@ -42,7 +47,12 @@ __global__ void vector_add_kernel(T* out, const T* a, const T* b, int num_elems)
 }
 
 template <typename T>
-void launch_vector_add(T* out, const T* a, const T* b, int num_elems, cudaStream_t stream)
+void launch_vector_add(T* out,
+                       const T* a,
+                       const T* b,
+                       float gamma,
+                       int num_elems,
+                       cudaStream_t stream)
 {
     constexpr int T_per_access = pwise::granularity / sizeof(T);
     constexpr int T_per_block = pwise::threads * T_per_access * pwise::unroll;
@@ -50,17 +60,19 @@ void launch_vector_add(T* out, const T* a, const T* b, int num_elems, cudaStream
     dim3 block(pwise::threads);
     dim3 grid((num_elems + T_per_block - 1) / T_per_block);
 
-    vector_add_kernel<<<grid, block, 0, stream>>>(out, a, b, num_elems);
+    vector_add_kernel<<<grid, block, 0, stream>>>(out, a, b, gamma, num_elems);
 }
 
 template void launch_vector_add<float>(float* out,
                                        const float* a,
                                        const float* b,
+                                       float gamma,
                                        int num_elems,
                                        cudaStream_t stream);
 
 template void launch_vector_add<__half>(__half* out,
                                         const __half* a,
                                         const __half* b,
+                                        float gamma,
                                         int num_elems,
                                         cudaStream_t stream);

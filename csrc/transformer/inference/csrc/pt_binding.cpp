@@ -1822,7 +1822,7 @@ at::Tensor& residual_add_bias(at::Tensor& hidden_state,
     return residual;
 }
 
-at::Tensor& _vector_add(at::Tensor& a, at::Tensor& b)
+at::Tensor& _vector_add(at::Tensor& a, at::Tensor& b, float gamma)
 {
     const int total_elems = a.numel();
 
@@ -1830,12 +1830,14 @@ at::Tensor& _vector_add(at::Tensor& a, at::Tensor& b)
         launch_vector_add<float>((float*)(a.data_ptr()),
                                  (const float*)(a.data_ptr()),
                                  (const float*)(b.data_ptr()),
+                                 gamma,
                                  total_elems,
                                  InferenceContext::Instance().GetCurrentStream());
     } else if (a.scalar_type() == torch::kFloat16) {
         launch_vector_add<__half>((__half*)(a.data_ptr()),
                                   (const __half*)(a.data_ptr()),
                                   (const __half*)(b.data_ptr()),
+                                  gamma,
                                   total_elems,
                                   InferenceContext::Instance().GetCurrentStream());
     } else {

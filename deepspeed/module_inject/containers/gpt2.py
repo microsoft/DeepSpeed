@@ -41,29 +41,20 @@ class HFGPT2LayerPolicy(TransformerPolicy):
                 self.client_module.ln_1.eps, \
                 DEFAULT_INTERMEDIATE_SIZE
 
-    def get_q_k_v(self):
-        return None
-
     def attention(self, enable_training=False):
         return  self.client_module.attn.c_attn.weight, \
                 self.client_module.attn.c_attn.bias, \
                 self.client_module.attn.c_proj.weight, \
                 self.client_module.attn.c_proj.bias
 
-    def mlp(self):
+    def mlp(self, enable_training=False):
         return self.client_module.mlp.c_fc.weight, \
                self.client_module.mlp.c_fc.bias, \
                self.client_module.mlp.c_proj.weight, \
                self.client_module.mlp.c_proj.bias
-
-    def get_gated_mlp(self):
-        return None
 
     def layernorm(self):
         return self.client_module.ln_2.weight, \
                self.client_module.ln_2.bias, \
                self.client_module.ln_1.weight, \
                self.client_module.ln_1.bias
-
-    def get_lora_params(self):
-        return []

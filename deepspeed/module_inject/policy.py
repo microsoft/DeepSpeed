@@ -98,7 +98,7 @@ class TransformerPolicy(DSPolicy):
         raise NotImplementedError
 
     @abstractmethod
-    def mlp(self):
+    def mlp(self, enable_training=False):
         """
         Returns mlp intermediate and output
         weight: (intermediate, hidden) and (hidden, intermediate)
@@ -109,7 +109,7 @@ class TransformerPolicy(DSPolicy):
     @abstractmethod
     def get_gated_mlp(self):
         """
-        Returns GEGLU up and gate projection parameters without merging them together
+        Returns up and gate projection parameters without merging them together
         """
         raise NotImplementedError
 
@@ -126,7 +126,6 @@ class TransformerPolicy(DSPolicy):
     def get_lora_params(self):
         """
         Returns lora parameters used in transformer layer
-
         """
         raise NotImplementedError
 
@@ -174,15 +173,15 @@ def maybe_copy(module,
         tmp = sd[src_name]
         if len(dst.shape) == 1:
             if split_qkv:
-                dst = mp_replace.qkv_copy(dst, tmp)
+                dst = mp_replace.strided_copy(dst, tmp, num_splits=3)
             else:
                 dst = mp_replace.copy(dst, tmp)
             if qkv and megatron_v2:
                 dst = torch.nn.parameter.Parameter(_transpose(dst, heads=heads, mp_replace=mp_replace).contiguous())
         else:
             if split_qkv:
-                dst = mp_replace.qkv_copy(dst, weight_quantizer.quantize(tmp if weight_quantizer.q_int8 else \
-                                                (transpose(tmp).contiguous())), int8=weight_quantizer.q_int8)
+                dst = mp_replace.strided_copy(dst, weight_quantizer.quantize(tmp if weight_quantizer.q_int8 else \
+                                                (transpose(tmp).contiguous())), num_splits=3, int8=weight_quantizer.q_int8)
             else:
                 if qkv and megatron_v2:
                     tmp = _transpose(transpose(tmp), heads=heads, mp_replace=mp_replace).contiguous()
@@ -203,13 +202,13 @@ def maybe_copy_qkv(module, sd, weight_quantizer, mp_replace, dst_name, src_names
         dst = getattr(module, dst_name)
         if len(dst.shape) == 1:
             if split_qkv:
-                dst = mp_replace.qkv_copy(dst, qkv_data.contiguous())
+                dst = mp_replace.strided_copy(dst, qkv_data.contiguous(), num_splits=3)
             else:
                 dst = mp_replace.copy(dst, qkv_data)
         else:
             if split_qkv:
-                dst = mp_replace.qkv_copy(dst, weight_quantizer.quantize(qkv_data.to(get_accelerator().device_name()) if weight_quantizer.q_int8 else \
-                                                ((transpose(qkv_data)).contiguous())), int8=weight_quantizer.q_int8)
+                dst = mp_replace.strided_copy(dst, weight_quantizer.quantize(qkv_data.to(get_accelerator().device_name()) if weight_quantizer.q_int8 else \
+                                                ((transpose(qkv_data)).contiguous())), num_splits=3, int8=weight_quantizer.q_int8)
             else:
                 dst = mp_replace.copy(dst, weight_quantizer.quantize(qkv_data.to(get_accelerator().device_name()) if weight_quantizer.q_int8 else \
                                                 transpose(qkv_data)), int8=weight_quantizer.q_int8)
@@ -225,8 +224,8 @@ def maybe_copy_geglu(module, sd, weight_quantizer, mp_replace, dst_name, src_nam
         mlp1_data = torch.cat((reg_proj, gate_proj), dim=0)
         dst = getattr(module, dst_name)
 
-        dst = mp_replace.gated_mlp_copy(dst, weight_quantizer.quantize(mlp1_data.to(get_accelerator().device_name()) if weight_quantizer.q_int8 else \
-                                            transpose(mlp1_data)), int8=weight_quantizer.q_int8)
+        dst = mp_replace.strided_copy(dst, weight_quantizer.quantize(mlp1_data.to(get_accelerator().device_name()) if weight_quantizer.q_int8 else \
+                                            transpose(mlp1_data)), num_splits=2, int8=weight_quantizer.q_int8)
         setattr(module, dst_name, dst)
 
 

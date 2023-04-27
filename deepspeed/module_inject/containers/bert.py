@@ -53,9 +53,6 @@ class HFBertLayerPolicy(TransformerPolicy):
                 attention_layernorm.eps, \
                 DEFAULT_INTERMEDIATE_SIZE
 
-    def get_q_k_v(self):
-        return None
-
     def attention(self, enable_training=False):
         qw = self.client_module.attention.self.query.weight
         qb = self.client_module.attention.self.query.bias
@@ -72,7 +69,7 @@ class HFBertLayerPolicy(TransformerPolicy):
                self.client_module.attention.output.dense.weight, \
                self.client_module.attention.output.dense.bias, \
 
-    def mlp(self):
+    def mlp(self, enable_training=False):
         if self.pre_attn_norm:
             intermediate_ff = self.client_module.intermediate.dense_act
         else:
@@ -81,9 +78,6 @@ class HFBertLayerPolicy(TransformerPolicy):
         return intermediate_ff.weight, intermediate_ff.bias, \
             self.client_module.output.dense.weight, \
             self.client_module.output.dense.bias
-
-    def get_gated_mlp(self):
-        return None
 
     def layernorm(self):
         if self.pre_attn_norm:
@@ -96,6 +90,3 @@ class HFBertLayerPolicy(TransformerPolicy):
                attention_layernorm.bias, \
                transformer_layernorm.weight, \
                transformer_layernorm.bias
-
-    def get_lora_params(self):
-        return []

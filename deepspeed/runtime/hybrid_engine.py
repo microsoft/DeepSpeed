@@ -195,8 +195,8 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
                                               min(len(self.layer_params), (lg + 1) * partition_size), 1):
                             if len(self.all_lora_params) > 0:
                                 self._fuse_lora(self.layer_params[layer_id], self.lora_params[layer_id])
-                            self._inference_containers[layer_id].apply_tensor_parallelism(
-                                mp_group=self.mp_group, tp_size=self._config.hybrid_engine.inference_tp_size)
+                            self._inference_containers[layer_id].apply_tensor_parallelism(self.mp_replace,
+                                                                                          reversed_dim=True)
 
                 # TODO(cmikeh2) Evaluate if this can be deferred when release_inference_cache
                 # is enabled.
@@ -318,9 +318,19 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
                 )
                 mp_group = dist.new_group(ranks)
                 if global_rank in ranks:
+                    # mp_group is used for broader collective
                     self.mp_group = mp_group
+
+                    # mp_replace is used for container tensor slicing
+                    from deepseed.module_inject import ReplaceWithTensorSlicing
+                    self.mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group,
+                                                               mp_size=self._config.hybrid_engine.inference_tp_size,
+                                                               out_dim=0,
+                                                               in_dim=1)
+
         else:
             self.mp_group = None
+            self.mp_replace = None
         self.populate_all_inference_policies()
         self.all_layers_params = list(self.module.parameters())
         self.create_inference_containers(self.module)
@@ -398,8 +408,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
         if(self._inference_containers[0].module.attention.attn_qkvw is not None and \
             self._inference_containers[0].q_k_v is not None):
             for inference_container in self._inference_containers:
-                inference_container.reset_qkv()
-                inference_container.reset_gated_mlp()
+                inference_container.reset_params()
         if self._training_start_time is not None:
             self._training_latency += (time.time() - self._training_start_time)
             self._training_start_time = time.time()

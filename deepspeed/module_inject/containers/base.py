@@ -5,11 +5,11 @@
 
 # Create a container object to save model-specific tensors using the policy file above.
 from abc import ABC
+
 import torch
 
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 from deepspeed.accelerator import get_accelerator
-from deepspeed.utils.types import GATED_ACTIVATION_TYPES
 
 DEFAULT_INTERMEDIATE_SIZE = -1
 
@@ -118,13 +118,6 @@ class BaseTransformerContainer(ABC):
         self.set_attention(*self.policy.attention(enable_training=enable_training))
         self.set_mlp(*self.policy.mlp(enable_training=enable_training))
         self.set_layernorm(*self.policy.layernorm())
-        self.set_lora_params(self.policy.get_lora_params())
-        self.q_k_v = self.policy.get_q_k_v()
-        if self.q_k_v is not None:
-            self.set_q_k_v(*self.q_k_v)
-        self.gated_mlp = self.policy.get_gated_mlp()
-        if self.gated_mlp is not None:
-            self.set_mlp_gate_params(*self.gated_mlp)
 
     def convert_to_required_dtype(self, dtype):
         # Note: converting tensors to fp16 requires that we do it in-place using self.__dict__ and not make a list/dict copy
@@ -171,28 +164,11 @@ class BaseTransformerContainer(ABC):
         self.dense_w = dense_w
         self.dense_b = dense_b
 
-    def set_lora_params(self, lora_params):
-        self.lora_params = lora_params
-
-    def set_q_k_v(self, qw, qb, kw, kb, vw, vb):
-        self.qw = qw
-        self.qb = qb
-        self.kw = kw
-        self.kb = kb
-        self.vw = vw
-        self.vb = vb
-
     def set_mlp(self, _h4h_w, _h4h_b, _4hh_w, _4hh_b):
         self._h4h_w = _h4h_w
         self._h4h_b = _h4h_b
         self._4hh_w = _4hh_w
         self._4hh_b = _4hh_b
-
-    def set_mlp_gate_params(self, inter_up_w, inter_up_b, inter_gate_w, inter_gate_b):
-        self.inter_up_w = inter_up_w
-        self.inter_up_b = inter_up_b
-        self.inter_gate_w = inter_gate_w
-        self.inter_gate_b = inter_gate_b
 
     def set_layernorm(self, attn_nw, attn_nb, input_nw, input_nb):
         self.attn_nw = attn_nw
@@ -215,194 +191,46 @@ class BaseTransformerContainer(ABC):
         self.module.mlp.inter_w = self.quantizer.quantize(self.module.mlp.inter_w)
         self.module.mlp.output_w = self.quantizer.quantize(self.module.mlp.output_w)
 
-    def apply_tensor_parallelism(self, mp_replace=None, mp_group=None, tp_size=None):
-        reversed_dim = False
-        if mp_replace is None:
-            from deepspeed.module_inject import ReplaceWithTensorSlicing
-            mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group, mp_size=tp_size, out_dim=0, in_dim=1)
-            reversed_dim = True
+    def apply_tensor_parallelism(self, mp_replace=None, **kwargs):
         # setup the new Attention module
-        if self.module.attention.attn_qkvw is None:
-            self.attention_q_k_v_mp(mp_replace, reversed_dim=reversed_dim)
-        else:
-            self.attention_qkv_mp(mp_replace, reversed_dim=reversed_dim)
-        self.attention_o_mp(mp_replace, reversed_dim=reversed_dim)
+        self.attention_qkv_mp(mp_replace)
+        self.attention_o_mp(mp_replace)
 
         # setup the new MLP module
-        if self.module.mlp.inter_w is None:
-            self.mlp_gated_mp(mp_replace, reversed_dim=reversed_dim)
-        else:
-            self.mlp_inter_mp(mp_replace, reversed_dim=reversed_dim)
-
-        self.mlp_output_mp(mp_replace, reversed_dim=reversed_dim)
+        self.mlp_inter_mp(mp_replace)
+        self.mlp_output_mp(mp_replace)
 
         # Apply weight quantization
+        # TODO(cmikeh2): Re-enable this once verified
         #self.apply_weight_quantization()
 
     def attention_qkv_mp(self, mp_replace, reversed_dim=False):
-        self.module.attention.attn_qkvw = mp_replace.qkv_copy(self.module.attention.attn_qkvw,
-                                                              self.qkvw,
-                                                              int8=reversed_dim)
-        self.module.attention.attn_qkvb = mp_replace.qkv_copy(self.module.attention.attn_qkvb,
-                                                              self.qkvb,
-                                                              int8=reversed_dim)
-
-    def attention_q_k_v_mp(self, mp_replace, reversed_dim=False):
-        self.module.attention.attn_qw = mp_replace.copy(self.module.attention.attn_qw[:self.qw.shape[0] //
-                                                                                      mp_replace.mp_size],
-                                                        self.qw,
-                                                        int8=reversed_dim,
-                                                        allocat_tensor=reversed_dim)
-        self.module.attention.attn_kw = mp_replace.copy(self.module.attention.attn_kw[:self.qw.shape[0] //
-                                                                                      mp_replace.mp_size],
-                                                        self.kw,
-                                                        int8=reversed_dim,
-                                                        allocat_tensor=reversed_dim)
-        self.module.attention.attn_vw = mp_replace.copy(self.module.attention.attn_vw[:self.qw.shape[0] //
-                                                                                      mp_replace.mp_size],
-                                                        self.vw,
-                                                        int8=reversed_dim,
-                                                        allocat_tensor=reversed_dim)
-        self.module.attention.attn_qb = mp_replace.copy(self.module.attention.attn_qb[:self.qw.shape[0] //
-                                                                                      mp_replace.mp_size],
-                                                        self.qb,
-                                                        int8=reversed_dim,
-                                                        allocat_tensor=reversed_dim)
-        self.module.attention.attn_kb = mp_replace.copy(self.module.attention.attn_kb[:self.qw.shape[0] //
-                                                                                      mp_replace.mp_size],
-                                                        self.kb,
-                                                        int8=reversed_dim,
-                                                        allocat_tensor=reversed_dim)
-        self.module.attention.attn_vb = mp_replace.copy(self.module.attention.attn_vb[:self.qw.shape[0] //
-                                                                                      mp_replace.mp_size],
-                                                        self.vb,
-                                                        int8=reversed_dim,
-                                                        allocat_tensor=reversed_dim)
+        self.module.attention.attn_qkvw = mp_replace.strided_copy(self.module.attention.attn_qkvw,
+                                                                  self.qkvw,
+                                                                  num_splits=3,
+                                                                  int8=reversed_dim)
+        self.module.attention.attn_qkvb = mp_replace.strided_copy(self.module.attention.attn_qkvb,
+                                                                  self.qkvb,
+                                                                  num_splits=3,
+                                                                  int8=reversed_dim)
 
     def attention_o_mp(self, mp_replace, reversed_dim=False):
-        if reversed_dim:
-            self.module.attention.attn_ow = mp_replace.copy(self.module.attention.attn_ow[:, :self.dense_w.shape[1] //
-                                                                                          mp_replace.mp_size],
-                                                            self.dense_w,
-                                                            int8=reversed_dim,
-                                                            allocat_tensor=reversed_dim)
-        else:
-            self.module.attention.attn_ow = mp_replace.copy(self.module.attention.attn_ow,
-                                                            self.dense_w,
-                                                            int8=reversed_dim)
+        self.module.attention.attn_ow = mp_replace.copy(self.module.attention.attn_ow, self.dense_w, int8=reversed_dim)
         self.module.attention.attn_ob = mp_replace.copy(self.module.attention.attn_ob,
                                                         self.dense_b,
                                                         int8=reversed_dim,
                                                         allocat_tensor=reversed_dim)
 
     def mlp_inter_mp(self, mp_replace, reversed_dim=False):
-        if self.mlp_act_func_type in GATED_ACTIVATION_TYPES:
-            if reversed_dim:
-                self.module.mlp.inter_w = mp_replace.gated_mlp_copy(self.module.mlp.inter_w[:self._h4h_w.shape[0] //
-                                                                                            mp_replace.mp_size],
-                                                                    self._h4h_w,
-                                                                    int8=reversed_dim,
-                                                                    allocat_tensor=reversed_dim)
-                self.module.mlp.inter_b = mp_replace.gated_mlp_copy(self.module.mlp.inter_b[:self._h4h_w.shape[0] //
-                                                                                            mp_replace.mp_size],
-                                                                    self._h4h_b,
-                                                                    int8=reversed_dim,
-                                                                    allocat_tensor=reversed_dim)
-            else:
-                self.module.mlp.inter_w = mp_replace.gated_mlp_copy(self.module.mlp.inter_w,
-                                                                    self._h4h_w,
-                                                                    int8=reversed_dim)
-                self.module.mlp.inter_b = mp_replace.gated_mlp_copy(self.module.mlp.inter_b,
-                                                                    self._h4h_b,
-                                                                    int8=reversed_dim)
-        else:
-            if reversed_dim:
-                self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w[:self._h4h_w.shape[0] //
-                                                                                  mp_replace.mp_size],
-                                                          self._h4h_w,
-                                                          int8=reversed_dim,
-                                                          allocat_tensor=reversed_dim)
-                self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b[:self._h4h_w.shape[0] //
-                                                                                  mp_replace.mp_size],
-                                                          self._h4h_b,
-                                                          int8=reversed_dim,
-                                                          allocat_tensor=reversed_dim)
-            else:
-                self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w, self._h4h_w, int8=reversed_dim)
-                self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b, self._h4h_b, int8=reversed_dim)
-
-    def mlp_gated_mp(self, mp_replace, reversed_dim=False):
-        self.module.mlp.inter_up_w = mp_replace.copy(self.module.mlp.gated_w[:self.inter_up_w.shape[0] //
-                                                                             mp_replace.mp_size],
-                                                     self.inter_up_w,
-                                                     int8=reversed_dim,
-                                                     allocat_tensor=reversed_dim)
-        self.module.mlp.inter_gate_w = mp_replace.copy(self.module.mlp.gated_w[self.inter_gate_w.shape[0] //
-                                                                               mp_replace.mp_size:],
-                                                       self.inter_gate_w,
-                                                       int8=reversed_dim,
-                                                       allocat_tensor=reversed_dim)
-        self.module.mlp.inter_up_b = mp_replace.copy(self.module.mlp.gated_b[:self.inter_up_b.shape[0] //
-                                                                             mp_replace.mp_size],
-                                                     self.inter_up_b,
-                                                     int8=reversed_dim,
-                                                     allocat_tensor=reversed_dim)
-        self.module.mlp.inter_gate_b = mp_replace.copy(self.module.mlp.gated_b[self.inter_gate_b.shape[0] //
-                                                                               mp_replace.mp_size:],
-                                                       self.inter_gate_b,
-                                                       int8=reversed_dim,
-                                                       allocat_tensor=reversed_dim)
+        self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w, self._h4h_w, int8=reversed_dim)
+        self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b, self._h4h_b, int8=reversed_dim)
 
     def mlp_output_mp(self, mp_replace, reversed_dim=False):
-        if reversed_dim:
-            self.module.mlp.output_w = mp_replace.copy(self.module.mlp.output_w[:, :self._4hh_w.shape[1] //
-                                                                                mp_replace.mp_size],
-                                                       self._4hh_w,
-                                                       int8=reversed_dim,
-                                                       allocat_tensor=reversed_dim)
-        else:
-            self.module.mlp.output_w = mp_replace.copy(self.module.mlp.output_w, self._4hh_w, int8=reversed_dim)
+        self.module.mlp.output_w = mp_replace.copy(self.module.mlp.output_w, self._4hh_w, int8=reversed_dim)
         self.module.mlp.output_b = mp_replace.copy(self.module.mlp.output_b,
                                                    self._4hh_b,
                                                    int8=reversed_dim,
                                                    allocat_tensor=reversed_dim)
-
-    def release_qkv(self):
-        del self.module.attention.attn_qkvw
-        del self.module.attention.attn_qkvb
-        self.module.attention.attn_qkvw = None
-        self.module.attention.attn_qkvb = None
-
-        qkv_data = [self.module.attention.attn_qw.data, \
-                    self.module.attention.attn_qb.data, \
-                    self.module.attention.attn_kw.data, \
-                    self.module.attention.attn_kb.data, \
-                    self.module.attention.attn_vw.data, \
-                    self.module.attention.attn_vb.data]
-        for data in qkv_data:
-            del data
-
-        self.module.attention.attn_qw = self.qw
-        self.module.attention.attn_qb = self.qb
-        self.module.attention.attn_kw = self.kw
-        self.module.attention.attn_kb = self.kb
-        self.module.attention.attn_vw = self.vw
-        self.module.attention.attn_vb = self.vb
-
-    def release_memory(self):
-        self.release_qkv()
-        del self.module.attention.attn_ow
-        del self.module.attention.attn_ob
-        self.module.attention.attn_ow = self.dense_w
-        self.module.attention.attn_ob = self.dense_b
-        del self.module.mlp.inter_w
-        del self.module.mlp.inter_b
-        del self.module.mlp.output_w
-        del self.module.mlp.output_b
-        self.module.mlp.inter_w = self._h4h_w
-        self.module.mlp.inter_b = self._h4h_b
-        self.module.mlp.output_w = self._4hh_w
-        self.module.mlp.output_b = self._4hh_b
 
     def copy_data_to_new_module(self):
         params = {
@@ -438,145 +266,21 @@ class BaseTransformerContainer(ABC):
         data.to(get_accelerator().current_device_name())
         return data
 
-    def reset_qkv_experimental(self):
-        """
-        WIP - experimental and likely to be changed/improved
-        """
-        if self.module.attention.attn_qkvw is None:
-            self.module.attention.attn_qkvw = torch.empty(self.qw.shape[0] * 3,
-                                                          self.qw.shape[0],
-                                                          dtype=self.qw.dtype,
-                                                          device=self.qw.device)
-            self.module.attention.attn_qkvb = torch.empty(self.qw.shape[0] * 3,
-                                                          dtype=self.qw.dtype,
-                                                          device=self.qw.device)
-        self.module.attention.attn_qkvw.data[:self.qw.shape[0]] = self.qw.data
-        self.module.attention.attn_qkvb.data[:self.qw.shape[0]] = self.qb.data
-        self.module.attention.attn_qkvw.data[self.qw.shape[0]:2 * self.qw.shape[0]] = self.kw.data
-        self.module.attention.attn_qkvb.data[self.qw.shape[0]:2 * self.qw.shape[0]] = self.kb.data
-        self.module.attention.attn_qkvw.data[2 * self.qw.shape[0]:] = self.vw.data
-        self.module.attention.attn_qkvb.data[2 * self.qw.shape[0]:] = self.vb.data
-
-        qkv_data = [self.qw.data, \
-                    self.qb.data, \
-                    self.kw.data, \
-                    self.kb.data, \
-                    self.vw.data, \
-                    self.vb.data]
-
-        self.qw.data = self.module.attention.attn_qkvw.data[:self.qw.shape[0]]
-        self.qb.data = self.module.attention.attn_qkvb.data[:self.qw.shape[0]]
-        self.kw.data = self.module.attention.attn_qkvw.data[self.qw.shape[0]:2 * self.qw.shape[0]]
-        self.kb.data = self.module.attention.attn_qkvb.data[self.qw.shape[0]:2 * self.qw.shape[0]]
-        self.vw.data = self.module.attention.attn_qkvw.data[2 * self.qw.shape[0]:]
-        self.vb.data = self.module.attention.attn_qkvb.data[2 * self.qw.shape[0]:]
-
-        for data in qkv_data:
-            del data
-
-    def reset_qkv(self):
-        self.qkvw.data[:self.qw.shape[0]] = self.qw.data
-        self.qkvb.data[:self.qw.shape[0]] = self.qb.data
-        self.qkvw.data[self.qw.shape[0]:2 * self.qw.shape[0]] = self.kw.data
-        self.qkvb.data[self.qw.shape[0]:2 * self.qw.shape[0]] = self.kb.data
-        self.qkvw.data[2 * self.qw.shape[0]:] = self.vw.data
-        self.qkvb.data[2 * self.qw.shape[0]:] = self.vb.data
-
-        qkv_data = [self.qw.data, \
-                    self.qb.data, \
-                    self.kw.data, \
-                    self.kb.data, \
-                    self.vw.data, \
-                    self.vb.data]
-
-        self.qw.data = self.qkvw.data[:self.qw.shape[0]]
-        self.qb.data = self.qkvb.data[:self.qw.shape[0]]
-        self.kw.data = self.qkvw.data[self.qw.shape[0]:2 * self.qw.shape[0]]
-        self.kb.data = self.qkvb.data[self.qw.shape[0]:2 * self.qw.shape[0]]
-        self.vw.data = self.qkvw.data[2 * self.qw.shape[0]:]
-        self.vb.data = self.qkvb.data[2 * self.qw.shape[0]:]
-
-        for data in qkv_data:
-            del data
-
-    def reset_gated_mlp(self):
-        self._h4h_w.data[:self.inter_up_w.shape[0]] = self.inter_up_w.data
-        self._h4h_w.data[self.inter_up_w.shape[0]:] = self.inter_gate_w.data
-
-        if self.inter_up_b is not None:
-            self._h4h_b.data[:self.inter_up_b.shape[0]] = self.inter_up_b.data
-            self._h4h_b.data[self.inter_up_b.shape[0]:] = self.inter_gate_b.data
-
-        inter_data = [self.inter_up_w.data, self.inter_gate_w.data]
-        if self.inter_up_b is not None:
-            inter_data.extend([self.inter_up_b.data, self.inter_gate_b.data])
-
-        self.inter_up_w.data = self._h4h_w.data[:self.inter_up_w.shape[0]]
-        self.inter_gate_w.data = self._h4h_w.data[self.inter_up_w.shape[0]:]
-
-        if self.inter_up_b is not None:
-            self.inter_up_b.data = self._h4h_b.data[:self.inter_up_b.shape[0]]
-            self.inter_gate_b.data = self._h4h_b.data[self.inter_up_b.shape[0]:]
-
-        for data in inter_data:
-            del data
-
-    def set_params_wo_copy(self, Z3_enabled=False):
-        self.module.mlp.attn_nw = self.attn_nw
-        self.module.mlp.attn_nb = self.attn_nb
-        self.module.norm_w = self.input_nw
-        self.module.norm_b = self.input_nb
-        self.module.mlp.output_w = self._4hh_w
-        self.module.mlp.output_b = self._4hh_b
-        self.module.attention.attn_ow = self.dense_w
-        self.module.attention.attn_ob = self.dense_b
-        if not Z3_enabled or self.q_k_v is None:
-            self.module.attention.attn_qkvw = self.qkvw
-            self.module.attention.attn_qkvb = self.qkvb
-        if self.q_k_v is not None:
-            if Z3_enabled:
-                self.module.attention.attn_qw = self.qw
-                self.module.attention.attn_qb = self.qb
-                self.module.attention.attn_kw = self.kw
-                self.module.attention.attn_kb = self.kb
-                self.module.attention.attn_vw = self.vw
-                self.module.attention.attn_vb = self.vb
-            else:
-                self.qw.data = self.qkvw[:self.qw.shape[0], :]
-                self.qb.data = self.qkvb[:self.qw.shape[0]]
-                self.kw.data = self.qkvw[self.qw.shape[0]:2 * self.qw.shape[0], :]
-                self.kb.data = self.qkvb[self.qw.shape[0]:2 * self.qw.shape[0]]
-                self.vw.data = self.qkvw[self.qw.shape[0] * 2:, :]
-                self.vb.data = self.qkvb[self.qw.shape[0] * 2:]
-
-        if not Z3_enabled or self.gated_mlp is None:
-            self.module.mlp.inter_w = self._h4h_w
-            self.module.mlp.inter_b = self._h4h_b
-        if self.gated_mlp is not None:
-            if Z3_enabled:
-                self.module.inter_up_w = self.inter_up_w
-                self.module.inter_up_b = self.inter_up_b
-                self.module.inter_gate_w = self.inter_gate_w
-                self.module.inter_gate_b = self.inter_gate_b
-            else:
-                self.inter_up_w.data = self._h4h_w[:self.inter_up_w.shape[0], :]
-                self.inter_up_b.data = self._h4h_b[:self.inter_up_w.shape[0]] if self._h4h_b is not None else None
-                self.inter_gate_w.data = self._h4h_w[self.inter_up_w.shape[0]:, :]
-                self.inter_gate_b.data = self._h4h_b[self.inter_up_w.shape[0]:] if self._h4h_b is not None else None
-
-    def get_lora_params(self):
-        return self.lora_params
-
     def get_all_params(self):
         params = [
-            self.attn_nw, self.attn_nb, self.input_nw, self.input_nb, self._h4h_w, self._h4h_b, self._4hh_w,
-            self._4hh_b, self.qkvw, self.qkvb, self.dense_w, self.dense_b
+            self.attn_nw,
+            self.attn_nb,
+            self.input_nw,
+            self.input_nb,
         ]
 
-        if self.q_k_v is not None:
-            params.extend([self.qw, self.qb, self.kw, self.kb, self.vw, self.vb])
-
-        if self.gated_mlp is not None:
-            params.extend([self.inter_up_w, self.inter_up_b, self.inter_gate_w, self.inter_gate_b])
+        params.extend(self.get_attn_params(params))
+        params.extend(self.get_mlp_params(params))
 
         return params
+
+    def get_attn_params(self, params):
+        return [self.qkvw, self.qkvb, self.dense_w, self.dense_b]
+
+    def get_mlp_params(self, params):
+        return [self._h4h_w, self._h4h_b, self._4hh_w, self._4hh_b]

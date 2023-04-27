@@ -60,9 +60,6 @@ class MegatronLayerPolicy(TransformerPolicy):
                 self.client_module.input_layernorm.eps, \
                 DEFAULT_INTERMEDIATE_SIZE
 
-    def get_q_k_v(self):
-        return None
-
     def attention(self, enable_training=False):
         if self.inference:
             if MegatronLayerPolicy.version == 0:
@@ -106,14 +103,8 @@ class MegatronLayerPolicy(TransformerPolicy):
                    self.client_module.mlp.dense_4h_to_h.weight, \
                    self.client_module.mlp.dense_4h_to_h.bias
 
-    def get_gated_mlp(self):
-        return None
-
     def layernorm(self):
         return self.client_module.post_attention_layernorm.weight, \
                self.client_module.post_attention_layernorm.bias, \
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
-
-    def get_lora_params(self):
-        return []
