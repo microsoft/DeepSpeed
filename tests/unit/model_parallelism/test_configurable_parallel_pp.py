@@ -249,7 +249,7 @@ class TestConfigurableResizePP(ConfigurablePP):
 
     @pytest.mark.world_size(2)
     @pytest.mark.parametrize("mp_size, pp_size, mp_resize, pp_resize", [(2, 2, 2, 1)])
-     @pytest.mark.skip(reason="megatron-lm is currently broken so this test cannot be run.")
+    @pytest.mark.skip(reason="megatron-lm is currently broken so this test cannot be run.")
     def test_world_size_4to2(self, inputs, class_tmpdir, checkpoint_tag, baseline_ws4, mp_size, pp_size, mp_resize,
                              pp_resize):
         self._test(inputs, class_tmpdir, checkpoint_tag, mp_size, pp_size, mp_resize, pp_resize)
