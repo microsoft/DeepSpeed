@@ -18,18 +18,6 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         self._communication_backend_name = 'ccl'
         self.max_mem = psutil.Process().memory_info().rss
 
-        def _check_and_mapping_mpich_env():
-            # Workaround when using Intel MPI launcher
-            # Model can check "RANK" and "WORLD_SIZE" for rank and world size
-            if "RANK" not in os.environ and "PMI_RANK" in os.environ:
-                os.environ['RANK'] = os.environ.get('PMI_RANK')
-                print("mapping environment variable PMI_RANK to RANK")
-            if "LOCAL_RANK" not in os.environ and "MPI_LOCALRANKID" in os.environ:
-                os.environ['LOCAL_RANK'] = os.environ.get('MPI_LOCALRANKID')
-                print("mapping environment variable MPI_LOCALRANKID to LOCAL_RANK")
-
-        _check_and_mapping_mpich_env()
-
     def is_synchronized_device(self):
         return True
 

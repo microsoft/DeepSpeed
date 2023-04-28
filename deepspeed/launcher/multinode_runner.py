@@ -296,10 +296,12 @@ class IMPIRunner(MultiNodeRunner):
                 python_exec += [sys.executable, "-u"]
                 if self.args.module:
                     python_exec.append("-m")
+            env_mapping = ['-env', 'RANK', str(i)]
+            env_mapping += ['-env', 'LOCAL_RANK', str(local_rank)]
             if i == 0:
-                per_host_cmd = ['-n', '1'] + python_exec + [self.user_script] + self.user_arguments
+                per_host_cmd = ['-n', '1'] + env_mapping + python_exec + [self.user_script] + self.user_arguments
             else:
-                per_host_cmd = per_host_cmd + [':', '-n', '1'] + python_exec + [self.user_script] + self.user_arguments
+                per_host_cmd = per_host_cmd + [':', '-n', '1'] + env_mapping + python_exec + [self.user_script] + self.user_arguments
         print(mpirun_cmd + export_cmd + per_host_cmd)
         return mpirun_cmd + export_cmd + per_host_cmd
 
