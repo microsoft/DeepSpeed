@@ -131,10 +131,10 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
 
         all_lora_params = []
         for p in [
-            self.client_module.dense_h_to_4h, \
-            self.client_module.dense_4h_to_h, \
+            self.client_module.mlp.dense_h_to_4h, \
+            self.client_module.mlp.dense_4h_to_h, \
             attention.query_key_value, \
-            sattention.dense
+            attention.dense
             ]:
             all_lora_params.append(maybe_get_lora(p))
         return all_lora_params

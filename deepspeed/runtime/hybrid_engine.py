@@ -99,7 +99,6 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
         _container.create_ds_model_config()
         _container.create_module()
         _container.set_params_wo_copy(Z3_enabled=self.Z3_enabled)
-        _container.update_merged_qkv()
         return _container
 
     def populate_all_inference_policies(self):
@@ -325,8 +324,10 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
         self.populate_all_inference_policies()
         self.all_layers_params = list(self.module.parameters())
         self.create_inference_containers(self.module)
-        self._generate = self.module.generate
-        self.module.generate = self.generate
+
+        if len(self._inference_containers) > 0:
+            self._generate = self.module.generate
+            self.module.generate = self.generate
 
         self._t0 = time.time()
 
@@ -385,7 +386,8 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
 
     def train(self, mode=True):
         if mode and len(self._orig_modules) > 0:
-            for orig_module, orig_fwd in zip(self._orig_modules, self._orig_fwds):
+            for inference_container, orig_module, orig_fwd in zip(self._inference_containers, self._orig_modules, self._orig_fwds):
+                inference_container.partition_merged_qkv()
                 orig_module.forward = orig_fwd
             for orig_module, orig_fwd in zip(self._orig_modules_others, self._orig_fwds_others):
                 orig_module.forward = orig_fwd
@@ -395,10 +397,14 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
 
     def step(self, lr_kwargs=None):
         super().step(lr_kwargs=lr_kwargs)
-        if(self._inference_containers[0].module.attention.attn_qkvw is not None and \
-            self._inference_containers[0].q_k_v is not None):
-            for inference_container in self._inference_containers:
-                inference_container.reset_qkv()
+
+        if len(self._inference_containers) > 0:
+            if(self._inference_containers[0].module.attention.attn_qkvw is not None and \
+                self._inference_containers[0].q_k_v is not None):
+                for inference_container in self._inference_containers:
+                    inference_container.reset_qkv()
+                    inference_container.align_merged_qkv()
+
         if self._training_start_time is not None:
             self._training_latency += (time.time() - self._training_start_time)
             self._training_start_time = time.time()
