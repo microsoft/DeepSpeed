@@ -34,7 +34,7 @@ def get_gpt2_model(args_others, mp_size=1):
     args_defaults.update(args_others)
 
     # setting "make-vocab-size-divisible-by" to avoid word-embedding size change in resizing testing.
-    sys.argv.extend(['--model-parallel-size', str(mp_size), '--make-vocab-size-divisible-by', str(1)])
+    sys.argv.extend(['--tensor-model-parallel-size', str(mp_size), '--make-vocab-size-divisible-by', str(1)])
 
     initialize_megatron(args_defaults=args_defaults, ignore_unknown_args=True)
     model = GPTModel(num_tokentypes=0, parallel_output=False)
