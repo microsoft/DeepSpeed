@@ -63,16 +63,12 @@ void launch_vector_add(T* out,
     vector_add_kernel<<<grid, block, 0, stream>>>(out, a, b, gamma, num_elems);
 }
 
-template void launch_vector_add<float>(float* out,
-                                       const float* a,
-                                       const float* b,
-                                       float gamma,
-                                       int num_elems,
-                                       cudaStream_t stream);
+#define INSTANTIATE_VECTOR_ADD(T)       \
+    template void launch_vector_add<T>( \
+        T * out, const T* a, const T* b, float gamma, int num_elems, cudaStream_t stream);
 
-template void launch_vector_add<__half>(__half* out,
-                                        const __half* a,
-                                        const __half* b,
-                                        float gamma,
-                                        int num_elems,
-                                        cudaStream_t stream);
+INSTANTIATE_VECTOR_ADD(float)
+INSTANTIATE_VECTOR_ADD(__half)
+#ifdef BF16_AVAILABLE
+INSTANTIATE_VECTOR_ADD(__nv_bfloat16)
+#endif

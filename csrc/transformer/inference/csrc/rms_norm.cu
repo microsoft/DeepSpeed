@@ -3,7 +3,6 @@
 
 // DeepSpeed Team
 
-#include <cstdio>
 #include "conversion_utils.h"
 #include "ds_kernel_utils.h"
 #include "inference_cuda_layers.h"
@@ -56,9 +55,7 @@ __global__ void rms_norm(T* output, const T* vals, const T* gamma, float epsilon
 
     reduce::partitioned_block<rop::Add, threadsPerGroup>(tb, warp, var_sum);
     const float var = var_sum / elems_per_row;
-    const float denom = __frsqrt_rn(var + epsilon);
-
-    const T var_compute = conversion::to<T>(var);
+    const T denom = conversion::to<T>(__frsqrt_rn(var + epsilon));
 
     T* block_output = output + block_offset;
 
@@ -141,9 +138,7 @@ __global__ void pre_rms_norm(T* output,
 
     reduce::partitioned_block<rop::Add, threadsPerGroup>(tb, warp, var_sum);
     const float var = var_sum / elems_per_row;
-    const float denom = __frsqrt_rn(var + epsilon);
-
-    const T var_compute = conversion::to<T>(var);
+    const T denom = conversion::to<T>(__frsqrt_rn(var + epsilon));
 
     T* block_output = output + block_offset;
 
@@ -263,3 +258,6 @@ void launch_rms_norm(T* norm_output,
 
 INSTANTIATE_LAUNCH_RMS_NORM(float)
 INSTANTIATE_LAUNCH_RMS_NORM(__half)
+#ifdef BF16_AVAILABLE
+INSTANTIATE_LAUNCH_RMS_NORM(__nv_bfloat16)
+#endif

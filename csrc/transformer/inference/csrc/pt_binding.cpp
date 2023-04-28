@@ -464,9 +464,9 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
 
     T* workspace = (T*)InferenceContext::Instance().GetWorkSpace();
     size_t buf_size = bsz * seq_len * hidden_dim;
-    auto output = torch::from_blob(workspace + 3 * buf_size, {bsz, seq_len, hidden_dim}, options);
+    auto output = torch::from_blob(workspace + 4 * buf_size, {bsz, seq_len, hidden_dim}, options);
 
-    auto query_cont = workspace + 4 * buf_size;
+    auto query_cont = workspace + 5 * buf_size;
     size_t offset =
         10 * (hidden_dim * bsz * InferenceContext::Instance().GetMaxTokenLenght()) +
         layer_id * 2 * bsz * InferenceContext::Instance().GetMaxTokenLenght() * hidden_dim;
@@ -567,6 +567,18 @@ at::Tensor ds_bias_gelu(at::Tensor& input, at::Tensor& bias)
     return input_cont;
 }
 
+#define DISPATCH_GATED_ACT(T_TYPE, C_TYPE)                                         \
+    if (activation.options().dtype() == torch::T_TYPE) {                           \
+        launch_gated_activation((C_TYPE*)output.data_ptr(),                        \
+                                (const C_TYPE*)activation.data_ptr(),              \
+                                (const C_TYPE*)bias.data_ptr(),                    \
+                                rows,                                              \
+                                out_channels,                                      \
+                                channels,                                          \
+                                activation_type == ActivationFuncType::GATED_GELU, \
+                                InferenceContext::Instance().GetCurrentStream());  \
+    }
+
 at::Tensor ds_gated_activation(at::Tensor& activation, at::Tensor& bias, int actFun)
 {
     /*
@@ -588,25 +600,11 @@ at::Tensor ds_gated_activation(at::Tensor& activation, at::Tensor& bias, int act
 
     auto output = at::empty({batch_size, seq_len, out_channels}, activation.options());
 
-    if (activation.options().dtype() == torch::kFloat32) {
-        launch_gated_activation((float*)output.data_ptr(),
-                                (const float*)activation.data_ptr(),
-                                (const float*)bias.data_ptr(),
-                                rows,
-                                out_channels,
-                                channels,
-                                activation_type == ActivationFuncType::GATED_GELU,
-                                InferenceContext::Instance().GetCurrentStream());
-    } else {
-        launch_gated_activation((__half*)output.data_ptr(),
-                                (const __half*)activation.data_ptr(),
-                                (const __half*)bias.data_ptr(),
-                                rows,
-                                out_channels,
-                                channels,
-                                activation_type == ActivationFuncType::GATED_GELU,
-                                InferenceContext::Instance().GetCurrentStream());
-    }
+    DISPATCH_GATED_ACT(kFloat, float);
+    DISPATCH_GATED_ACT(kHalf, __half);
+#ifdef BF16_AVAILABLE
+    DISPATCH_GATED_ACT(kBFloat16, __nv_bfloat16);
+#endif
 
     return output;
 }
@@ -660,45 +658,45 @@ at::Tensor ds_bias_residual(at::Tensor& input, at::Tensor& residual, at::Tensor&
     return input_cont;
 }
 
+#define DISPATCH_LAYER_NORM(T_TYPE, C_TYPE)                               \
+    if (input.options().dtype() == torch::T_TYPE) {                       \
+        launch_fused_ln((C_TYPE*)output.data_ptr(),                       \
+                        (const C_TYPE*)input.data_ptr(),                  \
+                        (const C_TYPE*)gamma.data_ptr(),                  \
+                        (const C_TYPE*)beta.data_ptr(),                   \
+                        epsilon,                                          \
+                        rows,                                             \
+                        elems_per_row,                                    \
+                        InferenceContext::Instance().GetCurrentStream()); \
+    }
+
 at::Tensor ds_layer_norm(at::Tensor& input, at::Tensor& gamma, at::Tensor& beta, float epsilon)
 {
     const int rows = input.size(0) * input.size(1);
     const int elems_per_row = input.size(2);
     auto output = at::empty_like(input);
 
-    if (input.options().dtype() == torch::kFloat16) {
-        launch_fused_ln((__half*)output.data_ptr(),
-                        (const __half*)input.data_ptr(),
-                        (const __half*)gamma.data_ptr(),
-                        (const __half*)beta.data_ptr(),
-                        epsilon,
-                        rows,
-                        elems_per_row,
-                        InferenceContext::Instance().GetCurrentStream());
-    } else {
-        launch_fused_ln((float*)output.data_ptr(),
-                        (const float*)input.data_ptr(),
-                        (const float*)gamma.data_ptr(),
-                        (const float*)beta.data_ptr(),
-                        epsilon,
-                        rows,
-                        elems_per_row,
-                        InferenceContext::Instance().GetCurrentStream());
-    }
+    DISPATCH_LAYER_NORM(kFloat, float);
+    DISPATCH_LAYER_NORM(kHalf, __half);
+#ifdef BF16_AVAILABLE
+    DISPATCH_LAYER_NORM(kBFloat16, __nv_bfloat16);
+#endif
 
     return output;
 }
 
-#define DISPATCH_RMS_NORM(T)                    \
-    launch_rms_norm((T*)output.data_ptr(),      \
-                    (T*)nullptr,                \
-                    (const T*)input.data_ptr(), \
-                    (const T*)nullptr,          \
-                    (const T*)gamma.data_ptr(), \
-                    epsilon,                    \
-                    rows,                       \
-                    elems_per_row,              \
-                    InferenceContext::Instance().GetCurrentStream());
+#define DISPATCH_RMS_NORM(T_TYPE, C_TYPE)                                 \
+    if (input.options().dtype() == torch::T_TYPE) {                       \
+        launch_rms_norm((C_TYPE*)output.data_ptr(),                       \
+                        (C_TYPE*)nullptr,                                 \
+                        (const C_TYPE*)input.data_ptr(),                  \
+                        (const C_TYPE*)nullptr,                           \
+                        (const C_TYPE*)gamma.data_ptr(),                  \
+                        epsilon,                                          \
+                        rows,                                             \
+                        elems_per_row,                                    \
+                        InferenceContext::Instance().GetCurrentStream()); \
+    }
 
 at::Tensor ds_rms_norm(at::Tensor& input, at::Tensor& gamma, float epsilon)
 {
@@ -709,25 +707,29 @@ at::Tensor ds_rms_norm(at::Tensor& input, at::Tensor& gamma, float epsilon)
 
     auto output = at::empty_like(input);
 
-    if (input.options().dtype() == torch::kFloat16) {
-        DISPATCH_RMS_NORM(__half);
-    } else {
-        DISPATCH_RMS_NORM(float);
-    }
+    DISPATCH_RMS_NORM(kFloat, float);
+    DISPATCH_RMS_NORM(kHalf, __half);
+#ifdef BF16_AVAILABLE
+    DISPATCH_RMS_NORM(kBFloat16, __nv_bfloat16);
+#else
+    assert(false);
+#endif
 
     return output;
 }
 
-#define DISPATCH_PRE_RMS_NORM(T)                   \
-    launch_rms_norm((T*)output.data_ptr(),         \
-                    (T*)res_out.data_ptr(),        \
-                    (const T*)input.data_ptr(),    \
-                    (const T*)residual.data_ptr(), \
-                    (const T*)gamma.data_ptr(),    \
-                    epsilon,                       \
-                    rows,                          \
-                    elems_per_row,                 \
-                    InferenceContext::Instance().GetCurrentStream());
+#define DISPATCH_PRE_RMS_NORM(T_TYPE, C_TYPE)                             \
+    if (input.options().dtype() == torch::T_TYPE) {                       \
+        launch_rms_norm((C_TYPE*)output.data_ptr(),                       \
+                        (C_TYPE*)res_out.data_ptr(),                      \
+                        (const C_TYPE*)input.data_ptr(),                  \
+                        (const C_TYPE*)residual.data_ptr(),               \
+                        (const C_TYPE*)gamma.data_ptr(),                  \
+                        epsilon,                                          \
+                        rows,                                             \
+                        elems_per_row,                                    \
+                        InferenceContext::Instance().GetCurrentStream()); \
+    }
 
 std::vector<at::Tensor> ds_pre_rms_norm(at::Tensor& input,
                                         at::Tensor& residual,
@@ -742,11 +744,11 @@ std::vector<at::Tensor> ds_pre_rms_norm(at::Tensor& input,
     auto output = at::empty_like(input);
     auto res_out = at::empty_like(residual);
 
-    if (input.options().dtype() == torch::kFloat16) {
-        DISPATCH_PRE_RMS_NORM(__half);
-    } else {
-        DISPATCH_PRE_RMS_NORM(float);
-    }
+    DISPATCH_PRE_RMS_NORM(kFloat, float);
+    DISPATCH_PRE_RMS_NORM(kHalf, __half);
+#ifdef BF16_AVAILABLE
+    DISPATCH_PRE_RMS_NORM(kBFloat16, __nv_bfloat16);
+#endif
 
     return {output, res_out};
 }
@@ -769,6 +771,20 @@ void ds_layer_norm_internal(T* workspace,
                     InferenceContext::Instance().GetCurrentStream());
 }
 
+#define DISPATCH_LAYER_NORM_RESIDUAL(T_TYPE, C_TYPE)                               \
+    if (input.options().dtype() == torch::T_TYPE) {                                \
+        launch_fused_residual_ln((C_TYPE*)output.data_ptr(),                       \
+                                 (const C_TYPE*)input.data_ptr(),                  \
+                                 (const C_TYPE*)residual.data_ptr(),               \
+                                 (const C_TYPE*)bias.data_ptr(),                   \
+                                 (const C_TYPE*)gamma.data_ptr(),                  \
+                                 (const C_TYPE*)beta.data_ptr(),                   \
+                                 epsilon,                                          \
+                                 rows,                                             \
+                                 elems_per_row,                                    \
+                                 InferenceContext::Instance().GetCurrentStream()); \
+    }
+
 /* Currently only used in unit testing */
 at::Tensor ds_layer_norm_residual(at::Tensor& input,
                                   at::Tensor& bias,
@@ -781,32 +797,30 @@ at::Tensor ds_layer_norm_residual(at::Tensor& input,
     const int elems_per_row = input.size(2);
     auto output = at::empty_like(input);
 
-    if (input.options().dtype() == torch::kFloat16) {
-        launch_fused_residual_ln((__half*)output.data_ptr(),
-                                 (const __half*)input.data_ptr(),
-                                 (const __half*)residual.data_ptr(),
-                                 (const __half*)bias.data_ptr(),
-                                 (const __half*)gamma.data_ptr(),
-                                 (const __half*)beta.data_ptr(),
-                                 epsilon,
-                                 rows,
-                                 elems_per_row,
-                                 InferenceContext::Instance().GetCurrentStream());
-    } else {
-        launch_fused_residual_ln((float*)output.data_ptr(),
-                                 (const float*)input.data_ptr(),
-                                 (const float*)residual.data_ptr(),
-                                 (const float*)bias.data_ptr(),
-                                 (const float*)gamma.data_ptr(),
-                                 (const float*)beta.data_ptr(),
-                                 epsilon,
-                                 rows,
-                                 elems_per_row,
-                                 InferenceContext::Instance().GetCurrentStream());
-    }
+    DISPATCH_LAYER_NORM_RESIDUAL(kFloat, float);
+    DISPATCH_LAYER_NORM_RESIDUAL(kHalf, __half);
+#ifdef BF16_AVAILABLE
+    DISPATCH_LAYER_NORM_RESIDUAL(kBFloat16, __nv_bfloat16);
+#endif
 
     return output;
 }
+
+#define DISPATCH_PRE_LAYER_NORM_RESIDUAL(T_TYPE, C_TYPE)      \
+    if (input.options().dtype() == torch::T_TYPE) {           \
+        launch_fused_residual_ln_store_pre_ln_res(            \
+            (C_TYPE*)norm_output.data_ptr(),                  \
+            (C_TYPE*)res_output.data_ptr(),                   \
+            (const C_TYPE*)input.data_ptr(),                  \
+            (const C_TYPE*)residual.data_ptr(),               \
+            (const C_TYPE*)bias.data_ptr(),                   \
+            (const C_TYPE*)gamma.data_ptr(),                  \
+            (const C_TYPE*)beta.data_ptr(),                   \
+            epsilon,                                          \
+            rows,                                             \
+            elems_per_row,                                    \
+            InferenceContext::Instance().GetCurrentStream()); \
+    }
 
 /* Currently only used in unit testing */
 std::vector<at::Tensor> ds_layer_norm_residual_store_pre_ln_res(at::Tensor& input,
@@ -821,31 +835,11 @@ std::vector<at::Tensor> ds_layer_norm_residual_store_pre_ln_res(at::Tensor& inpu
     auto norm_output = at::empty_like(input);
     auto res_output = at::empty_like(input);
 
-    if (input.options().dtype() == torch::kFloat16) {
-        launch_fused_residual_ln_store_pre_ln_res((__half*)norm_output.data_ptr(),
-                                                  (__half*)res_output.data_ptr(),
-                                                  (const __half*)input.data_ptr(),
-                                                  (const __half*)residual.data_ptr(),
-                                                  (const __half*)bias.data_ptr(),
-                                                  (const __half*)gamma.data_ptr(),
-                                                  (const __half*)beta.data_ptr(),
-                                                  epsilon,
-                                                  rows,
-                                                  elems_per_row,
-                                                  InferenceContext::Instance().GetCurrentStream());
-    } else {
-        launch_fused_residual_ln_store_pre_ln_res((float*)norm_output.data_ptr(),
-                                                  (float*)res_output.data_ptr(),
-                                                  (const float*)input.data_ptr(),
-                                                  (const float*)residual.data_ptr(),
-                                                  (const float*)bias.data_ptr(),
-                                                  (const float*)gamma.data_ptr(),
-                                                  (const float*)beta.data_ptr(),
-                                                  epsilon,
-                                                  rows,
-                                                  elems_per_row,
-                                                  InferenceContext::Instance().GetCurrentStream());
-    }
+    DISPATCH_PRE_LAYER_NORM_RESIDUAL(kFloat, float);
+    DISPATCH_PRE_LAYER_NORM_RESIDUAL(kHalf, __half);
+#ifdef BF16_AVAILABLE
+    DISPATCH_PRE_LAYER_NORM_RESIDUAL(kBFloat16, __nv_bfloat16);
+#endif
 
     return {norm_output, res_output};
 }
@@ -1822,27 +1816,26 @@ at::Tensor& residual_add_bias(at::Tensor& hidden_state,
     return residual;
 }
 
+#define DISPATCH_VECTOR_ADD(T_TYPE, C_TYPE)                                         \
+    if (a.scalar_type() == at::k##T_TYPE) {                                         \
+        launch_vector_add<C_TYPE>((C_TYPE*)(a.data_ptr()),                          \
+                                  (const C_TYPE*)(a.data_ptr()),                    \
+                                  (const C_TYPE*)(b.data_ptr()),                    \
+                                  gamma,                                            \
+                                  total_elems,                                      \
+                                  InferenceContext::Instance().GetCurrentStream()); \
+    }
+
 at::Tensor& _vector_add(at::Tensor& a, at::Tensor& b, float gamma)
 {
     const int total_elems = a.numel();
 
-    if (a.scalar_type() == at::kFloat) {
-        launch_vector_add<float>((float*)(a.data_ptr()),
-                                 (const float*)(a.data_ptr()),
-                                 (const float*)(b.data_ptr()),
-                                 gamma,
-                                 total_elems,
-                                 InferenceContext::Instance().GetCurrentStream());
-    } else if (a.scalar_type() == torch::kFloat16) {
-        launch_vector_add<__half>((__half*)(a.data_ptr()),
-                                  (const __half*)(a.data_ptr()),
-                                  (const __half*)(b.data_ptr()),
-                                  gamma,
-                                  total_elems,
-                                  InferenceContext::Instance().GetCurrentStream());
-    } else {
-        throw std::runtime_error("Unsupported data type");
-    }
+    DISPATCH_VECTOR_ADD(Float, float)
+    DISPATCH_VECTOR_ADD(Half, __half)
+#ifdef BF16_AVAILABLE
+    DISPATCH_VECTOR_ADD(BFloat16, __nv_bfloat16)
+#endif
+
     return a;
 }
 
@@ -1885,56 +1878,28 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
     return {query_cont, key_cont};
 }
 
-template <typename T>
-at::Tensor fused_gemm_gelu_int8(at::Tensor& input,
-                                at::Tensor& weight,
-                                at::Tensor& bias,
-                                const float epsilon,
-                                at::Tensor& q_scale,
-                                int groups,
-                                bool preLayerNorm)
-{
-    auto input_cont = input.contiguous();
-    auto options = at::TensorOptions()
-                       .dtype(input_cont.options().dtype())
-                       .layout(at::kStrided)
-                       .device(at::kCUDA)
-                       .requires_grad(false);
-
-    auto output = at::empty({input_cont.size(0), input_cont.size(1), weight.size(1)}, options);
-
-    int bsz = input_cont.size(0) * input_cont.size(1);
-
-    quantized_gemm<T>(output, input_cont, weight, q_scale, groups, 0);
-    launch_bias_gelu((T*)output.data_ptr(),
-                     (T*)bias.data_ptr(),
-                     weight.size(1),
-                     bsz,
-                     InferenceContext::Instance().GetCurrentStream());
-
-    return output;
-}
+#define DISPATCH_MOE_RESIDUAL(T_TYPE, C_TYPE)                                           \
+    if (moe_res.scalar_type() == torch::T_TYPE) {                                       \
+        launch_moe_res_matmul<C_TYPE>((C_TYPE*)moe_res.data_ptr(),                      \
+                                      (C_TYPE*)coef.data_ptr(),                         \
+                                      (C_TYPE*)output.data_ptr(),                       \
+                                      M,                                                \
+                                      N,                                                \
+                                      InferenceContext::Instance().GetCurrentStream()); \
+    }
 
 at::Tensor moe_res_matmul(at::Tensor& moe_res, at::Tensor& coef, at::Tensor& output)
 {
     int M = moe_res.size(0) * moe_res.size(1);
     int N = moe_res.size(2);
     InferenceContext::Instance().SynchComm();
-    if (moe_res.scalar_type() == at::kFloat) {
-        launch_moe_res_matmul<float>((float*)moe_res.data_ptr(),
-                                     (float*)coef.data_ptr(),
-                                     (float*)output.data_ptr(),
-                                     M,
-                                     N,
-                                     at::cuda::getCurrentCUDAStream());
-    } else {
-        launch_moe_res_matmul<__half>((__half*)moe_res.data_ptr(),
-                                      (__half*)coef.data_ptr(),
-                                      (__half*)output.data_ptr(),
-                                      M,
-                                      N,
-                                      at::cuda::getCurrentCUDAStream());
-    }
+
+    DISPATCH_MOE_RESIDUAL(kFloat, float)
+    DISPATCH_MOE_RESIDUAL(kHalf, __half)
+#ifdef BF16_AVAILABLE
+    DISPATCH_MOE_RESIDUAL(kBFloat16, __nv_bfloat16)
+#endif
+
     return output;
 }
 
@@ -1944,29 +1909,12 @@ bool ds_retake_workspace() { return InferenceContext::Instance().retake_workspac
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("softmax_fp32", &ds_softmax<float>, "DeepSpeed SoftMax with fp32 (CUDA)");
-    m.def("softmax_fp16", &ds_softmax<__half>, "DeepSpeed SoftMax with fp16 (CUDA)");
-    m.def(
-        "softmax_context_fp32", &ds_softmax_context<float>, "DeepSpeed attention with fp32 (CUDA)");
-    m.def("softmax_context_fp16",
-          &ds_softmax_context<__half>,
-          "DeepSpeed attention with fp16 (CUDA)");
     m.def("softmax_context_int8",
           &ds_softmax_context1<__half>,
           "DeepSpeed attention with int8 (CUDA)");
-    m.def("bias_gelu_fp32", &ds_bias_gelu<float>, "DeepSpeed Gelu with fp32 (CUDA)");
-    m.def("bias_gelu_fp16", &ds_bias_gelu<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
+
+    // The following functions handle type dispatching internally
     m.def("gated_activation", &ds_gated_activation, "DeepSpeed Bias GEGLU (CUDA)");
-    m.def("bias_add_fp32", &ds_bias_add<float>, "DeepSpeed Bias Add with fp32 (CUDA)");
-    m.def("bias_add_fp16", &ds_bias_add<__half>, "DeepSpeed Gelu with fp16 (CUDA)");
-    m.def("bias_relu_fp32", &ds_bias_relu<float>, "DeepSpeed ReLU with fp32 (CUDA)");
-    m.def("bias_relu_fp16", &ds_bias_relu<__half>, "DeepSpeed ReLU with fp16 (CUDA)");
-    m.def("bias_residual_fp32",
-          &ds_bias_residual<float>,
-          "DeepSpeed residual-bias add with fp32 (CUDA)");
-    m.def("bias_residual_fp16",
-          &ds_bias_residual<__half>,
-          "DeepSpeed residual-bias add with fp16 (CUDA)");
     m.def("layer_norm", &ds_layer_norm, "DeepSpeed layer norm (CUDA)");
     m.def(
         "_layer_norm_residual", &ds_layer_norm_residual, "DeepSpeed layer norm + residual (CUDA)");
@@ -1975,54 +1923,61 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           "DeepSpeed layer norm + store pre Layernorm residual (CUDA)");
     m.def("rms_norm", &ds_rms_norm, "DeepSpeed rms norm (CUDA)");
     m.def("pre_rms_norm", &ds_pre_rms_norm, "DeepSpeed pre rms norm (CUDA)");
-    m.def("qkv_gemm_fp32", &ds_qkv_gemm<float>, "DeepSpeed qkv gemm with fp32 (CUDA)");
-    m.def("qkv_gemm_fp16", &ds_qkv_gemm<__half>, "DeepSpeed qkv gemm with fp16 (CUDA)");
-    m.def("rms_qkv_gemm_fp32", &ds_rms_qkv<float>, "DeepSpeed rms qkv gemm with fp32 (CUDA)");
-    m.def("rms_qkv_gemm_fp16", &ds_rms_qkv<__half>, "DeepSpeed rms qkv gemm with fp16 (CUDA)");
-    m.def("mlp_gemm_fp32", &ds_mlp_gemm<float>, "DeepSpeed mlp with fp32 (CUDA)");
-    m.def("mlp_gemm_fp16", &ds_mlp_gemm<__half>, "DeepSpeed mlp with fp16 (CUDA)");
-    m.def("rms_mlp_gemm_fp32", &ds_rms_mlp_gemm<float>, "DeepSpeed rms mlp with fp32 (CUDA)");
-    m.def("rms_mlp_gemm_fp16", &ds_rms_mlp_gemm<__half>, "DeepSpeed rms mlp with fp16 (CUDA)");
-    m.def("vector_matmul_fp32", &ds_vector_matmul<float>, "DeepSpeed vector-MM with fp32 (CUDA)");
-    m.def("vector_matmul_fp16", &ds_vector_matmul<__half>, "DeepSpeed vector-MM with fp16 (CUDA)");
-    m.def("vector_matmul_int8",
-          &ds_vector_matmul_int8<__half>,
-          "DeepSpeed vector-MM with int8 (CUDA)");
-    m.def("linear_layer_fp32", &ds_linear_layer<float>, "DeepSpeed linear_layer with fp32 (CUDA)");
-    m.def("linear_layer_fp16", &ds_linear_layer<__half>, "DeepSpeed linear_layer with fp16 (CUDA)");
-    m.def("fused_gemm_gelu_fp32", &fused_gemm_gelu<float>, "DeepSpeed mlp with fp32 (CUDA)");
-    m.def("fused_gemm_gelu_fp16", &fused_gemm_gelu<__half>, "DeepSpeed mlp with fp16 (CUDA)");
-    m.def("residual_add_bias_fp32",
-          &residual_add_bias<float>,
-          "DeepSpeed residual add with fp32 (CUDA)");
-    m.def("residual_add_bias_fp16",
-          &residual_add_bias<__half>,
-          "DeepSpeed residual add with fp16 (CUDA)");
     m.def("apply_rotary_pos_emb", &apply_rotary_pos_emb, "DeepSpeed mlp with fp16 (CUDA)");
-    m.def("_vector_add", &_vector_add, "DeepSpeed vector add (CUDA)");
-    m.def("einsum_sec_sm_ecm_fp32",
-          &einsum_sec_sm_ecm<float>,
-          "DeepSpeed vector-MM with fp32 (CUDA)");
-
-    m.def("einsum_sec_sm_ecm_fp16",
-          &einsum_sec_sm_ecm<__half>,
-          "DeepSpeed vector-MM with fp16 (CUDA)");
     m.def("moe_res_matmul", &moe_res_matmul, "DeepSpeed moe residual matmul (CUDA)");
-    m.def("add_padding_fp32", &add_padding<float>, "DeepSpeed residual add with fp32 (CUDA)");
-    m.def("add_padding_fp16", &add_padding<__half>, "DeepSpeed residual add with fp16 (CUDA)");
-    m.def("pad_transform_fp32",
-          &padd_add_transform<float>,
-          "DeepSpeed residual add with fp32 (CUDA)");
-    m.def("pad_transform_fp16",
-          &padd_add_transform<__half>,
-          "DeepSpeed residual add with fp16 (CUDA)");
-    m.def("allocate_workspace_fp32",
-          &allocate_workspace<float>,
-          "DeepSpeed memory allocation for GPT inference with fp32 (CUDA)");
-    m.def("allocate_workspace_fp16",
-          &allocate_workspace<__half>,
-          "DeepSpeed memory allocation for GPT inference with fp16 (CUDA)");
     m.def("reset_cache", &reset_cache, "Reset Cache for generation tasks");
     m.def("release_workspace", &ds_release_workspace, "DeepSpeed Release Workspace");
     m.def("retake_workspace", &ds_retake_workspace, "DeepSpeed Retake Workspace");
+
+    // The following functions are templated and need to be explicitly instantiated and bound
+    // to different python methods
+#define DEF_OPS(_name, _dtype)                                                                    \
+    m.def("softmax_" #_name, &ds_softmax<_dtype>, "DeepSpeed SoftMax with " #_name " (CUDA)");    \
+    m.def("softmax_context_" #_name,                                                              \
+          &ds_softmax_context<_dtype>,                                                            \
+          "DeepSpeed attention with _name (CUDA)");                                               \
+    m.def("bias_gelu_" #_name, &ds_bias_gelu<_dtype>, "DeepSpeed Gelu with " #_name " (CUDA)");   \
+    m.def("bias_add_" #_name, &ds_bias_add<_dtype>, "DeepSpeed Bias Add with " #_name " (CUDA)"); \
+    m.def("bias_relu_" #_name, &ds_bias_relu<_dtype>, "DeepSpeed ReLU with " #_name " (CUDA)");   \
+    m.def("bias_residual_" #_name,                                                                \
+          &ds_bias_residual<_dtype>,                                                              \
+          "DeepSpeed residual-bias add with " #_name " (CUDA)");                                  \
+    m.def("qkv_gemm_" #_name, &ds_qkv_gemm<_dtype>, "DeepSpeed qkv gemm with " #_name " (CUDA)"); \
+    m.def("rms_qkv_gemm_" #_name,                                                                 \
+          &ds_rms_qkv<_dtype>,                                                                    \
+          "DeepSpeed rms qkv gemm with " #_name " (CUDA)");                                       \
+    m.def("mlp_gemm_" #_name, &ds_mlp_gemm<_dtype>, "DeepSpeed mlp with " #_name " (CUDA)");      \
+    m.def("rms_mlp_gemm_" #_name,                                                                 \
+          &ds_rms_mlp_gemm<_dtype>,                                                               \
+          "DeepSpeed rms mlp gemm with " #_name " (CUDA)");                                       \
+    m.def("vector_matmul_" #_name,                                                                \
+          &ds_vector_matmul<_dtype>,                                                              \
+          "DeepSpeed vector-MM with " #_name " (CUDA)");                                          \
+    m.def("linear_layer_" #_name,                                                                 \
+          &ds_linear_layer<_dtype>,                                                               \
+          "DeepSpeed linear_layer with " #_name " (CUDA)");                                       \
+    m.def("fused_gemm_gelu_" #_name,                                                              \
+          &fused_gemm_gelu<_dtype>,                                                               \
+          "DeepSpeed mlp with " #_name " (CUDA)");                                                \
+    m.def("residual_add_bias_" #_name,                                                            \
+          &residual_add_bias<_dtype>,                                                             \
+          "DeepSpeed residual add with " #_name " (CUDA)");                                       \
+    m.def("einsum_sec_sm_ecm_" #_name,                                                            \
+          &einsum_sec_sm_ecm<_dtype>,                                                             \
+          "DeepSpeed vector-MM with " #_name " (CUDA)");                                          \
+    m.def("add_padding_" #_name,                                                                  \
+          &add_padding<_dtype>,                                                                   \
+          "DeepSpeed residual add with " #_name " (CUDA)");                                       \
+    m.def("pad_transform_" #_name,                                                                \
+          &padd_add_transform<_dtype>,                                                            \
+          "DeepSpeed residual add with " #_name " (CUDA)");                                       \
+    m.def("allocate_workspace_" #_name,                                                           \
+          &allocate_workspace<_dtype>,                                                            \
+          "DeepSpeed memory allocation for GPT inference with " #_name " (CUDA)")
+
+    DEF_OPS(fp32, float);
+    DEF_OPS(fp16, __half);
+#ifdef BF16_AVAILABLE
+    DEF_OPS(bf16, __nv_bfloat16);
+#endif
 }

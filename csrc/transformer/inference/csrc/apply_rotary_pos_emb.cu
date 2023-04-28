@@ -172,23 +172,12 @@ void launch_apply_rotary_pos_emb(T* mixed_query,
     }
 }
 
-template void launch_apply_rotary_pos_emb<float>(float*,
-                                                 float*,
-                                                 unsigned,
-                                                 unsigned,
-                                                 unsigned,
-                                                 unsigned,
-                                                 unsigned,
-                                                 unsigned,
-                                                 cudaStream_t,
-                                                 int);
-template void launch_apply_rotary_pos_emb<__half>(__half*,
-                                                  __half*,
-                                                  unsigned,
-                                                  unsigned,
-                                                  unsigned,
-                                                  unsigned,
-                                                  unsigned,
-                                                  unsigned,
-                                                  cudaStream_t,
-                                                  int);
+#define INSTANTIATE_LAUNCH_ROTARY_POS_EMB(T)      \
+    template void launch_apply_rotary_pos_emb<T>( \
+        T*, T*, unsigned, unsigned, unsigned, unsigned, unsigned, unsigned, cudaStream_t, int);
+
+INSTANTIATE_LAUNCH_ROTARY_POS_EMB(float);
+#ifdef BF16_AVAILABLE
+INSTANTIATE_LAUNCH_ROTARY_POS_EMB(__nv_bfloat16);
+#endif
+INSTANTIATE_LAUNCH_ROTARY_POS_EMB(__half);

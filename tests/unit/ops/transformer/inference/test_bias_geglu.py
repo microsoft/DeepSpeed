@@ -9,18 +9,13 @@ import deepspeed
 from deepspeed.ops.op_builder import InferenceBuilder
 from deepspeed.accelerator import get_accelerator
 from deepspeed.utils.types import ActivationFuncType
+from .inference_test_utils import allclose, DTYPES
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system", allow_module_level=True)
 
 inference_module = None
 torch_minor_version = None
-
-
-def allclose(x, y):
-    assert x.dtype == y.dtype
-    rtol, atol = {torch.float32: (5e-3, 5e-4), torch.float16: (3e-2, 2e-3), torch.int8: (0, 0)}[x.dtype]
-    return torch.allclose(x, y, rtol=rtol, atol=atol)
 
 
 def run_bias_geglu_reference(activations, bias):
@@ -42,7 +37,7 @@ def run_bias_geglu_ds(activation, bias):
 @pytest.mark.parametrize("batch", [1, 2])
 @pytest.mark.parametrize("sequence", [1, 128, 255])
 @pytest.mark.parametrize("channels", [512, 1232, 4096])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", DTYPES)
 def test_bias_geglu(batch, sequence, channels, dtype):
     activation = torch.randn((batch, sequence, channels * 2), dtype=dtype, device=get_accelerator().device_name())
     bias = torch.randn((channels * 2), dtype=dtype, device=get_accelerator().device_name())
