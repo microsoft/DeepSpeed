@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 # Automatic Tensor Parallelism
 import re
@@ -8,6 +11,7 @@ from .replace_policy import replace_policies
 
 
 class AutoTP():
+
     def in_module_list(module, module_list):
         for item in module_list:
             if type(item).__name__ == type(module).__name__:
@@ -28,18 +32,7 @@ class AutoTP():
         return mlist
 
     def supported(model):
-        unsupported = [
-            'bloom',
-            'codegen',
-            'deberta',
-            'flaubert',
-            'fsmt',
-            'gpt2',
-            'led',
-            'longformer',
-            'xlm',
-            'xlnet'
-        ]
+        unsupported = ['codegen', 'deberta', 'flaubert', 'fsmt', 'gpt2', 'led', 'longformer', 'xlm', 'xlnet']
         model = str(model)
         key = re.search(r": (.*?)Model", model)
         if key is None:
@@ -56,8 +49,7 @@ class AutoTP():
         for key, submodule in module._modules.items():
             if isinstance(submodule, nn.Linear):
                 layer_list = layer_list + [parent + "." + key]
-            elif isinstance(submodule,
-                            nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm':
+            elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm':
                 layer_list = layer_list + ["ln"]
             else:
                 layer_list = layer_list + AutoTP.get_layers(key, submodule)
@@ -102,9 +94,7 @@ class AutoTP():
             for key, submodule in module._modules.items():
                 if isinstance(submodule, nn.Linear):
                     layer_list = layer_list + ["." + key]
-                elif isinstance(
-                        submodule,
-                        nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm':
+                elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm':
                     layer_list = layer_list + ["ln"]
                 else:
                     layer_list = layer_list + AutoTP.get_layers(key, submodule)

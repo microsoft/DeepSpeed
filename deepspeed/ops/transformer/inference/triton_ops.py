@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 """
 Inspired by original Triton implementation:
 https://github.com/openai/triton/blob/b244db06da24a87453a40ad35b085ee37dac3705/python/tutorials/06-fused-attention.py
@@ -102,6 +105,7 @@ def _fwd_kernel(
 
 
 class triton_flash_attn(torch.nn.Module):
+
     def __init__(self, ):
         super(triton_flash_attn, self).__init__()
 
@@ -111,10 +115,7 @@ class triton_flash_attn(torch.nn.Module):
         Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
         o = torch.empty_like(q)
         grid = (triton.cdiv(q.shape[2], BLOCK), q.shape[0] * q.shape[1])
-        tmp = torch.empty((q.shape[0] * q.shape[1],
-                           q.shape[2]),
-                          device=q.device,
-                          dtype=torch.float32)
+        tmp = torch.empty((q.shape[0] * q.shape[1], q.shape[2]), device=q.device, dtype=torch.float32)
         num_warps = 4 if Lk <= 64 else 8
 
         _fwd_kernel[grid](

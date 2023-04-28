@@ -1,6 +1,7 @@
-/*
-Copyright 2022 The Microsoft DeepSpeed Team
-*/
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
 
 #include "conversion_utils.h"
 #include "ds_kernel_utils.h"
@@ -196,6 +197,16 @@ template void launch_fused_ln(__half*,
                               int,
                               int,
                               cudaStream_t);
+#ifdef BF16_AVAILABLE
+template void launch_fused_ln(__nv_bfloat16*,
+                              const __nv_bfloat16*,
+                              const __nv_bfloat16*,
+                              const __nv_bfloat16*,
+                              float,
+                              int,
+                              int,
+                              cudaStream_t);
+#endif
 template void
 launch_fused_ln(float*, const float*, const float*, const float*, float, int, int, cudaStream_t);
 
@@ -492,6 +503,19 @@ template void launch_fused_residual_ln(__half*,
                                        int,
                                        cudaStream_t);
 
+#ifdef BF16_AVAILABLE
+template void launch_fused_residual_ln(__nv_bfloat16*,
+                                       const __nv_bfloat16*,
+                                       const __nv_bfloat16*,
+                                       const __nv_bfloat16*,
+                                       const __nv_bfloat16*,
+                                       const __nv_bfloat16*,
+                                       float,
+                                       int,
+                                       int,
+                                       cudaStream_t);
+#endif
+
 template void launch_fused_residual_ln(float*,
                                        const float*,
                                        const float*,
@@ -515,6 +539,20 @@ template void launch_fused_residual_ln_store_pre_ln_res(__half*,
                                                         int,
                                                         int,
                                                         cudaStream_t);
+
+#ifdef BF16_AVAILABLE
+template void launch_fused_residual_ln_store_pre_ln_res(__nv_bfloat16*,
+                                                        __nv_bfloat16*,
+                                                        const __nv_bfloat16*,
+                                                        const __nv_bfloat16*,
+                                                        const __nv_bfloat16*,
+                                                        const __nv_bfloat16*,
+                                                        const __nv_bfloat16*,
+                                                        float,
+                                                        int,
+                                                        int,
+                                                        cudaStream_t);
+#endif
 
 template void launch_fused_residual_ln_store_pre_ln_res(float*,
                                                         float*,

@@ -1,12 +1,16 @@
-/*
-Copyright 2022 The Microsoft DeepSpeed Team
-*/
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
 
 #pragma once
 
 #include "ds_kernel_utils.h"
 
 #include <cuda.h>
+#ifdef BF16_AVAILABLE
+#include <cuda_bf16.h>
+#endif
 #include <cuda_fp16.h>
 #include <stdio.h>
 #include <stdlib.h>
