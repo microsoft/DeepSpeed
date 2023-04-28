@@ -15,6 +15,7 @@ from deepspeed.accelerator import get_accelerator
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
 from ..utils import PartitionedTensor
 from ..dataloader import RepeatingLoader
+from ..zero.config import ZeroStageEnum
 
 from .module import PipelineModule, PipelineError
 from . import p2p
@@ -241,7 +242,7 @@ class PipelineEngine(DeepSpeedEngine):
         self._force_grad_boundary = True
         if self.pipeline_enable_backward_allreduce:
             if self.bfloat16_enabled():
-                if self.zero_optimization_stage() < 2:
+                if self.zero_optimization_stage() < ZeroStageEnum().gradients:
                     self._bf16_reduce_grads()
                 else:
                     raise NotImplementedError("PP+BF16 only work for ZeRO Stage 1")
