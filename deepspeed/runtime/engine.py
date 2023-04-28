@@ -3172,7 +3172,11 @@ class DeepSpeedEngine(Module):
         return param_group_shapes
 
     def _get_shared_params(self):
-
+        """
+        Returns a dict of shared params, which can later be used to reconstruct the original state dict,
+        e.g. in `zero_to_fp32`. Each dict entry is a pair of param names, where the key is the name
+        of the variable that isn't stored and the value is the actual param holding data.
+        """
         state_dict = OrderedDict() if dist.get_rank() == 0 else None
         shared_params = {}
         shared_map = {}
@@ -3188,11 +3192,10 @@ class DeepSpeedEngine(Module):
                 # (and shared params will have the same param.ds_id)
                 if param.ds_id in shared_params:
                     # shared weights
-                    print(f"`{key}` is shared with `{shared_params[param.ds_id]}`")
+                    #print(f"`{key}` is shared with `{shared_params[param.ds_id]}`")
                     shared_map[key] = shared_params[param.ds_id]
                 else:
                     shared_params[param.ds_id] = key
-                #print(f"param {param.ds_id} {param.shape} {key} ")
 
             for name, child in module.named_children():
                 if child is not None:
@@ -3200,9 +3203,6 @@ class DeepSpeedEngine(Module):
 
         if dist.get_rank() == 0:
             get_layer_state_dict(self.module, prefix="")
-
-        print(shared_map)
-        #die
 
         return shared_map
 
