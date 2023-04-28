@@ -3068,6 +3068,7 @@ class DeepSpeedEngine(Module):
                      param_shapes=self._get_zero_param_shapes() if self.optimizer and zero_optimizer_state else None,
                      frozen_param_shapes=self._get_zero_frozen_param_attributes(self._get_param_shape_func)
                      if save_frozen_param else None,
+                     shared_params=self._get_shared_params() if self.optimizer and zero_optimizer_state else None,
                      frozen_param_fragments=self._get_zero_frozen_param_attributes(self._get_param_fragment_func)
                      if save_frozen_param else None,
                      lr_scheduler=self.lr_scheduler.state_dict() if self.lr_scheduler is not None else None,
@@ -3169,6 +3170,41 @@ class DeepSpeedEngine(Module):
         # if self.global_rank == 0: print(f"Total saved {numel} numels in {cnt} params")
 
         return param_group_shapes
+
+    def _get_shared_params(self):
+
+        state_dict = OrderedDict() if dist.get_rank() == 0 else None
+        shared_params = {}
+        shared_map = {}
+
+        def get_layer_state_dict(module, prefix=""):
+            # handle params
+            for name, param in module.named_parameters(recurse=False):
+                if param is None:
+                    continue
+                key = prefix + name
+                # can't rely on param.data_ptr() as it will be reused as weights gets
+                # gathered and reduced, but param.ds_id is unique across all zero weights
+                # (and shared params will have the same param.ds_id)
+                if param.ds_id in shared_params:
+                    # shared weights
+                    print(f"`{key}` is shared with `{shared_params[param.ds_id]}`")
+                    shared_map[key] = shared_params[param.ds_id]
+                else:
+                    shared_params[param.ds_id] = key
+                #print(f"param {param.ds_id} {param.shape} {key} ")
+
+            for name, child in module.named_children():
+                if child is not None:
+                    get_layer_state_dict(child, prefix + name + ".")
+
+        if dist.get_rank() == 0:
+            get_layer_state_dict(self.module, prefix="")
+
+        print(shared_map)
+        #die
+
+        return shared_map
 
     def _copy_recovery_script(self, save_path):
         base_dir = os.path.dirname(os.path.dirname(__file__))
