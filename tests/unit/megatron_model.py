@@ -22,7 +22,7 @@ def get_megatron_version():
 
 
 def get_gpt2_model(args_others, mp_size=1):
-    from megatron.model import GPT2Model
+    from megatron.model import GPTModel
     from megatron.initialize import initialize_megatron
 
     args_defaults = {
@@ -37,7 +37,7 @@ def get_gpt2_model(args_others, mp_size=1):
     sys.argv.extend(['--model-parallel-size', str(mp_size), '--make-vocab-size-divisible-by', str(1)])
 
     initialize_megatron(args_defaults=args_defaults, ignore_unknown_args=True)
-    model = GPT2Model(num_tokentypes=0, parallel_output=False)
+    model = GPTModel(num_tokentypes=0, parallel_output=False)
     model.to(get_accelerator().device_name())
     from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
     from megatron import mpu
@@ -61,7 +61,7 @@ class MockGPT2ModelPipe(PipelineModule):
         args_defaults.update(args_others)
 
         # setting "make-vocab-size-divisible-by" to avoid word-embedding size change in resizing testing.
-        sys.argv.extend(['--model-parallel-size', str(mp_size), '--make-vocab-size-divisible-by', str(1)])
+        sys.argv.extend(['--tensor-model-parallel-size', str(mp_size), '--make-vocab-size-divisible-by', str(1)])
 
         initialize_megatron(args_defaults=args_defaults, ignore_unknown_args=True)
 
