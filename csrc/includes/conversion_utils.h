@@ -266,7 +266,12 @@ DS_D_INLINE float2 to(__nv_bfloat162 val)
 template <>
 DS_D_INLINE __half to(double val)
 {
+#ifdef __HIP_PLATFORM_HCC__
+    float val_f = __double2float_rn(val);
+    return __float2half(val_f);
+#else
     return __double2half(val);
+#endif
 }
 template <>
 DS_D_INLINE __half to(float val)
@@ -328,6 +333,11 @@ template <>
 DS_D_INLINE __half2 to(float2 val)
 {
     return __float22half2_rn(val);
+}
+template <>
+DS_D_INLINE __half2 to(float val)
+{
+    return __float2half2_rn(val);
 }
 
 #ifdef BF16_AVAILABLE
@@ -399,6 +409,11 @@ template <>
 DS_D_INLINE __nv_bfloat162 to(float2 val)
 {
     return __float22bfloat162_rn(val);
+}
+template <>
+DS_D_INLINE __nv_bfloat162 to(float val)
+{
+    return __float2bfloat162_rn(val);
 }
 template <>
 DS_D_INLINE __nv_bfloat162 to(__half2 val)
