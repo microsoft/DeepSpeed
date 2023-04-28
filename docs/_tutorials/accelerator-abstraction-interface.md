@@ -14,7 +14,7 @@ tags: getting-started
   * [Implement new accelerator extension](#implement-new-accelerator-extension)
 
 # Introduction
-The DeepSpeed Accelerator Abstraction allows user to run large language model seamlessly on various Deep Learning acceleration hardware seamlessly with DeepSpeed.   It offers a set of accelerator runtime and accelerator op builder interface which can be implemented for different hardware.  This means user can write large language model code without hardware specific code.  With DeepSpeed Accelerator Abstraction, the same large language model can run on different hardware platform, without the need to rewrite model code.  This makes running large language model on different hardware easier.
+The DeepSpeed Accelerator Abstraction allows user to run large language model seamlessly on various Deep Learning acceleration hardware with DeepSpeed.   It offers a set of accelerator runtime and accelerator op builder interface which can be implemented for different hardware.  This means user can write large language model code without hardware specific code.  With DeepSpeed Accelerator Abstraction, the same large language model can run on different hardware platform, without the need to rewrite model code.  This makes running large language model on different hardware easier.
 
 This document covers three topics related to DeepSpeed Accelerator Abstraction Interface:
 1. Write accelerator agnostic models using DeepSpeed Accelerator Abstraction Interface.
