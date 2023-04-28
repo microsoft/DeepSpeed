@@ -3177,7 +3177,6 @@ class DeepSpeedEngine(Module):
         e.g. in `zero_to_fp32`. Each dict entry is a pair of param names, where the key is the name
         of the variable that isn't stored and the value is the actual param holding data.
         """
-        state_dict = OrderedDict() if dist.get_rank() == 0 else None
         shared_params = {}
         shared_map = {}
 
