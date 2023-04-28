@@ -271,6 +271,8 @@ class IMPIRunner(MultiNodeRunner):
 
         export_cmd += ['-genv', 'MASTER_ADDR', str(self.args.master_addr)]
         export_cmd += ['-genv', 'MASTER_PORT', str(self.args.master_port)]
+        export_cmd += ['-genv', 'WORLD_SIZE', str(total_process_count)]
+        export_cmd += ['-genv', 'LOCAL_SIZE', str(process_per_node)]
 
         export_cmd += ['-hosts']
         hosts = ""

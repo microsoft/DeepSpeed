@@ -7,6 +7,7 @@ import torch
 from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
 import oneccl_bindings_for_pytorch  # noqa: F401
 import psutil
+import os
 
 
 # accelerator for Intel CPU
@@ -20,13 +21,9 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         def _check_and_mapping_mpich_env():
             # Workaround when using Intel MPI launcher
             # Model can check "RANK" and "WORLD_SIZE" for rank and world size
-            import os
             if "RANK" not in os.environ and "PMI_RANK" in os.environ:
                 os.environ['RANK'] = os.environ.get('PMI_RANK')
                 print("mapping environment variable PMI_RANK to RANK")
-            if "WORLD_SIZE" not in os.environ and "PMI_SIZE" in os.environ:
-                os.environ['WORLD_SIZE'] = os.environ.get('PMI_SIZE')
-                print("mapping environment variable PMI_SIZE to WORLD_SIZE")
             if "LOCAL_RANK" not in os.environ and "MPI_LOCALRANKID" in os.environ:
                 os.environ['LOCAL_RANK'] = os.environ.get('MPI_LOCALRANKID')
                 print("mapping environment variable MPI_LOCALRANKID to LOCAL_RANK")
@@ -47,22 +44,26 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return
 
     def current_device(self):
-        return 0
+        return os.environ.get('LOCAL_RANK', 0)
 
     def current_device_name(self):
         return 'cpu'
 
     def device_count(self):
-        from deepspeed.utils.numa import get_numa_cores
-        # Count NUMA node for number of cpu accelerators. On machine with HBM
-        # In flat mode, HBM is in separate NUMA node with no cores on this node.
-        # Ignore these NUMA nodes with no cores.
-        numa_core_lists = get_numa_cores()
-        core_count = 0
-        for core_list in numa_core_lists:
-            if len(core_list) > 0:
-                core_count += 1
-        return core_count
+        device_count = int(os.environ.get('LOCAL_SIZE', 0))
+        if device_count > 0:
+            return os.environ.get('LOCAL_SIZE')
+        else:
+            from deepspeed.utils.numa import get_numa_cores
+            # Count NUMA node for number of cpu accelerators. On machine with HBM
+            # In flat mode, HBM is in separate NUMA node with no cores on this node.
+            # Ignore these NUMA nodes with no cores.
+            numa_core_lists = get_numa_cores()
+            numa_count = 0
+            for core_list in numa_core_lists:
+                if len(core_list) > 0:
+                    numa_count += 1
+            return numa_count
 
     def synchronize(self, device_index=None):
         return
