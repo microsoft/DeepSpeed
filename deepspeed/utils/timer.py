@@ -40,6 +40,7 @@ class SynchronizedWallClockTimer:
             self.name_ = name
             self.started_ = False
             self.event_timers = []
+            self.use_host_timer = get_accelerator().is_synchronized_device()
             self.start_event = None
             self.elapsed_records = None
             self.start_time = 0.0
@@ -48,7 +49,7 @@ class SynchronizedWallClockTimer:
         def start(self):
             """Start the timer."""
             assert not self.started_, f"{self.name_} timer has already been started"
-            if get_accelerator().is_synchronized_device():
+            if self.use_host_timer:
                 self.start_time = time.time()
             else:
                 event_class = get_accelerator().Event
@@ -60,7 +61,7 @@ class SynchronizedWallClockTimer:
             """Stop the timer."""
             assert self.started_, "timer is not started"
             event_class = get_accelerator().Event
-            if get_accelerator().is_synchronized_device():
+            if self.use_host_timer:
                 self.end_time = time.time()
                 self.event_timers.append(self.end_time - self.start_time)
             else:
@@ -72,7 +73,7 @@ class SynchronizedWallClockTimer:
             self.started_ = False
 
         def _get_elapsed_msec(self):
-            if get_accelerator().is_synchronized_device():
+            if self.use_host_timer:
                 self.elapsed_records = [et * 1000.0 for et in self.event_timers]
             else:
                 self.elapsed_records = [et.get_elapsed_msec() for et in self.event_timers]
