@@ -214,10 +214,12 @@ class BaseTransformerContainer(ABC):
         #self.apply_weight_quantization()
 
     def attention_qkv_mp(self, mp_replace, reversed_dim=False):
-        self.module.attention.attn_qkvw = mp_replace.qkv_copy(self.module.attention.attn_qkvw,
+        self.module.attention.attn_qkvw = mp_replace.qkv_copy(self.module.attention.attn_qkvw[:self.qkvw.shape[0] //
+                                                                                      mp_replace.mp_size],
                                                               self.qkvw,
                                                               int8=reversed_dim)
-        self.module.attention.attn_qkvb = mp_replace.qkv_copy(self.module.attention.attn_qkvb,
+        self.module.attention.attn_qkvb = mp_replace.qkv_copy(self.module.attention.attn_qkvb[:self.qkvw.shape[0] //
+                                                                                      mp_replace.mp_size],
                                                               self.qkvb,
                                                               int8=reversed_dim)
 
@@ -302,24 +304,24 @@ class BaseTransformerContainer(ABC):
     def release_qkv(self):
         del self.module.attention.attn_qkvw
         del self.module.attention.attn_qkvb
-        self.module.attention.attn_qkvw = None
-        self.module.attention.attn_qkvb = None
+        self.module.attention.attn_qkvw = self.qkvw
+        self.module.attention.attn_qkvb = self.qkvb
+        if self.module.attention.attn_qw is not None:
+            qkv_data = [self.module.attention.attn_qw.data, \
+                        self.module.attention.attn_qb.data if self.module.attention.attn_qb is not None else None, \
+                        self.module.attention.attn_kw.data, \
+                        self.module.attention.attn_kb.data if self.module.attention.attn_kb is not None else None, \
+                        self.module.attention.attn_vw.data, \
+                        self.module.attention.attn_vb.data if self.module.attention.attn_vb is not None else None]
+            for data in qkv_data:
+                del data
 
-        qkv_data = [self.module.attention.attn_qw.data, \
-                    self.module.attention.attn_qb.data if self.module.attention.attn_qb is not None else None, \
-                    self.module.attention.attn_kw.data, \
-                    self.module.attention.attn_kb.data if self.module.attention.attn_kb is not None else None, \
-                    self.module.attention.attn_vw.data, \
-                    self.module.attention.attn_vb.data if self.module.attention.attn_vb is not None else None]
-        for data in qkv_data:
-            del data
-
-        self.module.attention.attn_qw = self.qw
-        self.module.attention.attn_qb = self.qb
-        self.module.attention.attn_kw = self.kw
-        self.module.attention.attn_kb = self.kb
-        self.module.attention.attn_vw = self.vw
-        self.module.attention.attn_vb = self.vb
+            self.module.attention.attn_qw = self.qw
+            self.module.attention.attn_qb = self.qb
+            self.module.attention.attn_kw = self.kw
+            self.module.attention.attn_kb = self.kb
+            self.module.attention.attn_vw = self.vw
+            self.module.attention.attn_vb = self.vb
 
     def release_memory(self):
         self.release_qkv()

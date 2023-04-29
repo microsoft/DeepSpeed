@@ -12,7 +12,7 @@ from .utils import TLinear, get_inactive_params
 from deepspeed.runtime.zero import GatheredParameters
 import time
 import gc
-
+import math
 from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
 from torch import nn
@@ -181,7 +181,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
 
                 partition_size = self._config.hybrid_engine.tp_gather_partition_size
 
-                layer_groups = len(self.layer_params) // partition_size
+                layer_groups = math.ceil(len(self.layer_params) / partition_size)
                 for lg in range(layer_groups):
                     non_active_params = []
                     non_active_lora_params = []
@@ -374,6 +374,8 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
                     orig_module.forward = self._zero3_forward(i)
                 else:
                     orig_module.forward = inference_container.module.forward
+                
+                inference_container.align_merged_qkv()
 
             if not self.Z3_enabled or self.gather_all_layers:
                 for orig_module, inference_layer in zip(self._orig_modules_others, self._other_layers):
@@ -403,7 +405,6 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
                 self._inference_containers[0].q_k_v is not None):
                 for inference_container in self._inference_containers:
                     inference_container.reset_qkv()
-                    inference_container.align_merged_qkv()
 
         if self._training_start_time is not None:
             self._training_latency += (time.time() - self._training_start_time)

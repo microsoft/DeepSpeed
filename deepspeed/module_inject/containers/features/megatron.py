@@ -37,13 +37,13 @@ class MegatronContainer(ABC):
             x.data.copy_(torch.cat((q.reshape(-1), k.reshape(-1), v.reshape(-1)), dim=-1).reshape(x.shape))
 
     def _align_merged_qkv(self):
-        if hasattr(x, 'ds_id'):
+        if hasattr(self.qkvw, 'ds_id'):
             from deepspeed.runtime.zero import GatheredParameters
             from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
             param_list = [self.qkvw, self.qkvb]
             non_active_params = [param for param in param_list if (hasattr(param, 'ds_id') and \
                             param.ds_status == ZeroParamStatus.NOT_AVAILABLE)]
-            with GatheredParameters():
+            with GatheredParameters(non_active_params):
                 self._align_qkv(self.qkvw)
                 self._align_qkv(self.qkvb)
         else:
@@ -51,7 +51,7 @@ class MegatronContainer(ABC):
             self._align_qkv(self.qkvb)
 
     def _partition_qkv(self, x):
-        q_k_v = torch.split(x, (x_1.shape[0] // 3), dim=0)
+        q_k_v = torch.split(x, (x.shape[0] // 3), dim=0)
         attention_head_size = q_k_v[0].shape[0] // self.num_attention_heads
         new_x_shape = (self.num_attention_heads, attention_head_size) + x.size()[1:]
         q, k, v = [data.view(*new_x_shape) for data in q_k_v]
@@ -61,13 +61,13 @@ class MegatronContainer(ABC):
             x.data.copy_(torch.cat((q, k, v), dim=-1).reshape(-1))
 
     def _partition_merged_qkv(self):
-        if hasattr(x, 'ds_id'):
+        if hasattr(self.qkvw, 'ds_id'):
             from deepspeed.runtime.zero import GatheredParameters
             from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
             param_list = [self.qkvw, self.qkvb]
             non_active_params = [param for param in param_list if (hasattr(param, 'ds_id') and \
                             param.ds_status == ZeroParamStatus.NOT_AVAILABLE)]
-            with GatheredParameters():
+            with GatheredParameters(non_active_params):
                 self._partition_qkv(self.qkvw)
                 self._partition_qkv(self.qkvb)
         else:
