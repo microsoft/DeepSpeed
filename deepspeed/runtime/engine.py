@@ -3177,8 +3177,8 @@ class DeepSpeedEngine(Module):
         e.g. in `zero_to_fp32`. Each dict entry is a pair of param names, where the key is the name
         of the variable that isn't stored and the value is the actual param holding data.
         """
-        shared_params = {}
-        shared_map = {}
+        shared_ds_ids = {}
+        shared_params_by_full_name = {}
 
         def get_layer_state_dict(module, prefix=""):
             # handle params
@@ -3189,12 +3189,12 @@ class DeepSpeedEngine(Module):
                 # can't rely on param.data_ptr() as it will be reused as weights gets
                 # gathered and reduced, but param.ds_id is unique across all zero weights
                 # (and shared params will have the same param.ds_id)
-                if param.ds_id in shared_params:
+                if param.ds_id in shared_ds_ids:
                     # shared weights
-                    #print(f"`{key}` is shared with `{shared_params[param.ds_id]}`")
-                    shared_map[key] = shared_params[param.ds_id]
+                    #print(f"`{key}` is shared with `{shared_ds_ids[param.ds_id]}`")
+                    shared_params_by_full_name[key] = shared_ds_ids[param.ds_id]
                 else:
-                    shared_params[param.ds_id] = key
+                    shared_ds_ids[param.ds_id] = key
 
             for name, child in module.named_children():
                 if child is not None:
@@ -3203,7 +3203,7 @@ class DeepSpeedEngine(Module):
         if dist.get_rank() == 0:
             get_layer_state_dict(self.module, prefix="")
 
-        return shared_map
+        return shared_params_by_full_name
 
     def _copy_recovery_script(self, save_path):
         base_dir = os.path.dirname(os.path.dirname(__file__))
