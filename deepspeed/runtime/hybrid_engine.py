@@ -94,7 +94,19 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
             child=orig_layer)
         _container.set_dtype(self._config.fp16_enabled)
 
-        _container.set_tensor_parallel_config(self._config.hybrid_engine.inference_tp_size, self.mp_group)
+        if self.mpu is not None:
+            if hasattr(self.mpu, 'get_model_parallel_world_size'):
+                _container.set_tensor_parallel_config(
+                    self.mpu.get_model_parallel_world_size(), 
+                    self.mpu.get_model_parallel_group()
+                )
+            else:
+                _container.set_tensor_parallel_config(
+                    self.mpu.get_tensor_model_parallel_world_size(),
+                    self.mpu.get_tensor_model_parallel_group()
+                )
+        else:
+            _container.set_tensor_parallel_config(self._config.hybrid_engine.inference_tp_size, self.mp_group)
         _container.initialize_tensors(enable_training=True)
         _container.create_ds_model_config()
         _container.create_module()
@@ -195,8 +207,10 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
                                               min(len(self.layer_params), (lg + 1) * partition_size), 1):
                             if len(self.all_lora_params) > 0:
                                 self._fuse_lora(self.layer_params[layer_id], self.lora_params[layer_id])
-                            self._inference_containers[layer_id].apply_tensor_parallelism(
-                                mp_group=self.mp_group, tp_size=self._config.hybrid_engine.inference_tp_size)
+
+                            if self.mpu is not None:
+                                self._inference_containers[layer_id].apply_tensor_parallelism(
+                                    mp_group=self.mp_group, tp_size=self._config.hybrid_engine.inference_tp_size)
 
                 # TODO(cmikeh2) Evaluate if this can be deferred when release_inference_cache
                 # is enabled.
@@ -306,19 +320,23 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
         self._orig_fwds_others = []
 
         if self._config.hybrid_engine.inference_tp_size > 1:
-            global_rank = dist.get_rank()
-            world_size = dist.get_world_size()
-            mp_group_id = global_rank // self._config.hybrid_engine.inference_tp_size
-            num_mp_groups = world_size // self._config.hybrid_engine.inference_tp_size
-            for mp_group_id in range(num_mp_groups):
-                ranks = list(
-                    range(mp_group_id * self._config.hybrid_engine.inference_tp_size, \
-                          (mp_group_id + 1) * self._config.hybrid_engine.inference_tp_size, \
-                          1)
-                )
-                mp_group = dist.new_group(ranks)
-                if global_rank in ranks:
-                    self.mp_group = mp_group
+            if self.mpu is not None:
+                global_rank = dist.get_rank()
+                world_size = dist.get_world_size()
+                mp_group_id = global_rank // self._config.hybrid_engine.inference_tp_size
+                num_mp_groups = world_size // self._config.hybrid_engine.inference_tp_size
+                for mp_group_id in range(num_mp_groups):
+                    ranks = list(
+                        range(mp_group_id * self._config.hybrid_engine.inference_tp_size, \
+                            (mp_group_id + 1) * self._config.hybrid_engine.inference_tp_size, \
+                            1)
+                    )
+                    mp_group = dist.new_group(ranks)
+                    if global_rank in ranks:
+                        self.mp_group = mp_group
+            else:
+                self.mp_group = self.mpu.get_model_parallel_group() if hasattr(self.mpu, 'get_model_parallel_group') else \
+                    self.mpu.get_tensor_model_parallel_group()
         else:
             self.mp_group = None
         self.populate_all_inference_policies()
