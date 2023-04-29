@@ -49,7 +49,6 @@ def get_data_loader(model, total_samples, hidden_dim, device):
 
 def get_args(tmpdir, config_dict):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local_rank", type=int, default=0)
     parser.add_argument('--zero', type=int, default=3)
     args = parser.parse_args()  #args=''
 
