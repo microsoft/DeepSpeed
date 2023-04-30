@@ -17,6 +17,6 @@ For AzureML v1 examples, please take a look at easy-to-use examples for Megatron
 
 # DeepSpeed on Azure VMs
 
-If you don't have access to AzureML or if want to build a custom environments using [Azure virtual machines](https://azure.microsoft.com/en-us/services/virtual-machines/) or Azure VM Scale-Sets ([VMSS](https://docs.microsoft.com/en-us/azure/virtual-machine-scale-sets/overview)), we are working on easy-to-use cluster setup scripts that will be published in the next few weeks.
+If you don't have access to AzureML or if you want to build  custom environments using [Azure virtual machines](https://azure.microsoft.com/en-us/services/virtual-machines/) or Azure VM Scale-Sets ([VMSS](https://docs.microsoft.com/en-us/azure/virtual-machine-scale-sets/overview)), we are working on easy-to-use cluster setup scripts that will be published in the next few weeks.
 
 If you already have a cluster setup, you can use the [azure recipes](https://github.com/microsoft/Megatron-DeepSpeed/tree/main/examples/azure) that can easily be modified to train various model configurations.

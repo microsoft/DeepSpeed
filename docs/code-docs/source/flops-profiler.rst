@@ -1,5 +1,4 @@
 Flops Profiler
-
 ==============
 
 The flops profiler in DeepSpeed profiles the forward pass of a model and measures its parameters, latency, and floating point operations. The DeepSpeed flops profiler can be used with the DeepSpeed runtime or as a standalone package.
