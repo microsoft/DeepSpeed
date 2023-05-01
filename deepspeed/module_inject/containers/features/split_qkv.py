@@ -31,29 +31,22 @@ class HybridSplitQKVContainer(HybridEngineContainer):
                                     in order to set the unfused q, k, and v tensors.")
 
     def attention_qkv_mp(self, mp_replace, reversed_dim=False):
+        # Only need to alter
         if self.module.attention.attn_qkvw is None:
             params = [
-                (self.module.attention.attn_qw.self.qw),
-                (self.module.attention.attn_qb.self.qb),
-                (self.module.attention.attn_kw.self.kw),
-                (self.module.attention.attn_kb.self.kb),
-                (self.module.attention.attn_vw.self.vw),
-                (self.module.attention.attn_vb.self.vb),
+                (self.module.attention.attn_qw, self.qw),
+                (self.module.attention.attn_qb, self.qb),
+                (self.module.attention.attn_kw, self.kw),
+                (self.module.attention.attn_kb, self.kb),
+                (self.module.attention.attn_vw, self.vw),
+                (self.module.attention.attn_vb, self.vb),
             ]
             for dst, src in params:
-                dst = mp_replace.copy(dst[:self.qw.shape[0] // mp_replace.mp_size],
-                                      src,
-                                      int8=reversed_dim,
-                                      allocat_tensor=reversed_dim)
+                dst = mp_replace.copy(
+                    dst[:self.qw.shape[0] // mp_replace.mp_size], src, int8=reversed_dim,
+                    allocate_tensor=reversed_dim) if src is not None else None
         else:
-            self.module.attention.attn_qkvw = mp_replace.strided_copy(self.module.attention.attn_qkvw,
-                                                                      self.qkvw,
-                                                                      num_splits=3,
-                                                                      int8=reversed_dim)
-            self.module.attention.attn_qkvb = mp_replace.strided_copy(self.module.attention.attn_qkvb,
-                                                                      self.qkvb,
-                                                                      num_splits=3,
-                                                                      int8=reversed_dim)
+            super().attention_qkv_mp(mp_replace)
 
     def release_qkv(self):
         super().release_qkv()
@@ -70,25 +63,25 @@ class HybridSplitQKVContainer(HybridEngineContainer):
 
     def reset_qkv(self):
         self.qkvw.data[:self.qw.shape[0]] = self.qw.data
-        self.qkvb.data[:self.qw.shape[0]] = self.qb.data
         self.qkvw.data[self.qw.shape[0]:2 * self.qw.shape[0]] = self.kw.data
-        self.qkvb.data[self.qw.shape[0]:2 * self.qw.shape[0]] = self.kb.data
         self.qkvw.data[2 * self.qw.shape[0]:] = self.vw.data
-        self.qkvb.data[2 * self.qw.shape[0]:] = self.vb.data
 
-        qkv_data = [self.qw.data, \
-                    self.qb.data, \
-                    self.kw.data, \
-                    self.kb.data, \
-                    self.vw.data, \
-                    self.vb.data]
+        qkv_data = [self.qw.data, self.kw.data, self.vw.data]
 
         self.qw.data = self.qkvw.data[:self.qw.shape[0]]
-        self.qb.data = self.qkvb.data[:self.qw.shape[0]]
         self.kw.data = self.qkvw.data[self.qw.shape[0]:2 * self.qw.shape[0]]
-        self.kb.data = self.qkvb.data[self.qw.shape[0]:2 * self.qw.shape[0]]
         self.vw.data = self.qkvw.data[2 * self.qw.shape[0]:]
-        self.vb.data = self.qkvb.data[2 * self.qw.shape[0]:]
+
+        if self.qkvb is not None:
+            self.qkvb.data[:self.qw.shape[0]] = self.qb.data
+            self.qkvb.data[self.qw.shape[0]:2 * self.qw.shape[0]] = self.kb.data
+            self.qkvb.data[2 * self.qw.shape[0]:] = self.vb.data
+
+            qkv_data.extend([self.qb.data, self.kb.data, self.vb.data])
+
+            self.qb.data = self.qkvb.data[:self.qw.shape[0]]
+            self.kb.data = self.qkvb.data[self.qw.shape[0]:2 * self.qw.shape[0]]
+            self.vb.data = self.qkvb.data[2 * self.qw.shape[0]:]
 
         for data in qkv_data:
             del data

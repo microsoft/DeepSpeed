@@ -88,11 +88,11 @@ class ReplaceWithTensorSlicing:
             dst.scale = src.scale
         return dst
 
-    def copy(self, dst, src, int8=False, allocat_tensor=False):
+    def copy(self, dst, src, int8=False, allocate_tensor=False):
         if src is None:
             return src
         assert not dst.data.is_meta  # the torch.Tensor.copy_ method used below will silently fail on meta tensors
-        if allocat_tensor:
+        if allocate_tensor:
             dst = torch.empty_like(dst)
         outer_dim = 0 if int8 else 1
         inner_dim = 1 if int8 else 0

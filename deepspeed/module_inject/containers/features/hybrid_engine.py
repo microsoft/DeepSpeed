@@ -26,6 +26,22 @@ class HybridEngineContainer(ABC):
         super().initialize_tensors(enable_training=enable_training)
         self.set_lora_params()
 
+    def transform_for_training(self):
+        """
+        If the views on certain parameters are largely incompatible, it may be necessary to do
+        more substantial transformations to the parameters. This method should be overridden to
+        transform the inference format to what is necessary for training.
+        """
+        pass
+
+    def transform_for_inference(self):
+        """
+        If the views on certain parameters are largely incompatible, it may be necessary to do
+        more substantial transformations to the parameters. This method should be overridden to
+        transform the training format to what is necessary for inference.
+        """
+        pass
+
     @abstractmethod
     def set_lora_params(self, lora_params):
         """

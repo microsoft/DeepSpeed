@@ -219,7 +219,7 @@ class BaseTransformerContainer(ABC):
         self.module.attention.attn_ob = mp_replace.copy(self.module.attention.attn_ob,
                                                         self.dense_b,
                                                         int8=reversed_dim,
-                                                        allocat_tensor=reversed_dim)
+                                                        allocate_tensor=reversed_dim)
 
     def mlp_inter_mp(self, mp_replace, reversed_dim=False):
         self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w, self._h4h_w, int8=reversed_dim)
@@ -230,7 +230,7 @@ class BaseTransformerContainer(ABC):
         self.module.mlp.output_b = mp_replace.copy(self.module.mlp.output_b,
                                                    self._4hh_b,
                                                    int8=reversed_dim,
-                                                   allocat_tensor=reversed_dim)
+                                                   allocate_tensor=reversed_dim)
 
     def copy_data_to_new_module(self):
         params = {

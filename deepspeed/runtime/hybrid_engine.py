@@ -406,7 +406,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
                 else:
                     orig_module.forward = inference_container.module.forward
 
-                inference_container.align_merged_qkv()
+                inference_container.transform_for_inference()
 
             if not self.Z3_enabled or self.gather_all_layers:
                 for orig_module, inference_layer in zip(self._orig_modules_others, self._other_layers):
@@ -421,7 +421,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
         if mode and len(self._orig_modules) > 0:
             for inference_container, orig_module, orig_fwd in zip(self._inference_containers, self._orig_modules,
                                                                   self._orig_fwds):
-                inference_container.partition_merged_qkv()
+                inference_container.transform_for_training()
                 orig_module.forward = orig_fwd
             for orig_module, orig_fwd in zip(self._orig_modules_others, self._orig_fwds_others):
                 orig_module.forward = orig_fwd

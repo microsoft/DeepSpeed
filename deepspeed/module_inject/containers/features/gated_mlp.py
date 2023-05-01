@@ -32,6 +32,7 @@ class HybridGatedMLPContainer(ABC):
                                     in order to set the unfused inter up and gate tensors.")
 
     def mlp_inter_mp(self, mp_replace, reversed_dim=False):
+        # Only need to alter behavior if we can't do the normal destructive copy
         if self.module.mlp.inter_w is None:
             params = [
                 (self.module.mlp.inter_up_w, self.inter_up_w),
@@ -43,16 +44,9 @@ class HybridGatedMLPContainer(ABC):
                 dst = mp_replace.copy(dst[:self.inter_up_w.shape[0] // mp_replace.mp_size],
                                       src,
                                       int8=reversed_dim,
-                                      allocat_tensor=reversed_dim)
+                                      allocate_tensor=reversed_dim) if src is not None else None
         else:
-            self.module.mlp.inter_w = mp_replace.strided_copy(self.module.mlp.inter_w,
-                                                              self._h4h_w,
-                                                              num_splits=2,
-                                                              int8=reversed_dim)
-            self.module.mlp.inter_b = mp_replace.strided_copy(self.module.mlp.inter_b,
-                                                              self._h4h_b,
-                                                              num_splits=2,
-                                                              int8=reversed_dim)
+            super().mlp_inter_mp(mp_replace)
 
     def release_mlp(self):
         super().release_mlp()
