@@ -31,8 +31,9 @@ class MegatronContainer(ABC):
         div_dim = len(x_1.size()) - 2 if len(x.shape) == 2 else -1
         (q, k, v) = torch.split(x_1, (x_1.shape[div_dim] // 3), dim=div_dim)
         if len(q.shape) > 2:
-            x.data.copy_(torch.cat((q.reshape(-1, q.shape[-1]), k.reshape(-1, q.shape[-1]), v.reshape(-1, q.shape[-1])),
-                             dim=0).reshape(x.shape))
+            x.data.copy_(
+                torch.cat((q.reshape(-1, q.shape[-1]), k.reshape(-1, q.shape[-1]), v.reshape(-1, q.shape[-1])),
+                          dim=0).reshape(x.shape))
         else:
             x.data.copy_(torch.cat((q.reshape(-1), k.reshape(-1), v.reshape(-1)), dim=-1).reshape(x.shape))
 

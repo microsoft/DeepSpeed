@@ -215,14 +215,14 @@ class BaseTransformerContainer(ABC):
 
     def attention_qkv_mp(self, mp_replace, reversed_dim=False):
         if reversed_dim:
-            self.module.attention.attn_qkvw = mp_replace.qkv_copy(self.module.attention.attn_qkvw[:self.qkvw.shape[0] //
-                                                                                          mp_replace.mp_size],
-                                                                  self.qkvw,
-                                                                  int8=reversed_dim)
-            self.module.attention.attn_qkvb = mp_replace.qkv_copy(self.module.attention.attn_qkvb[:self.qkvw.shape[0] //
-                                                                                          mp_replace.mp_size],
-                                                                  self.qkvb,
-                                                                  int8=reversed_dim)
+            self.module.attention.attn_qkvw = mp_replace.qkv_copy(
+                self.module.attention.attn_qkvw[:self.qkvw.shape[0] // mp_replace.mp_size],
+                self.qkvw,
+                int8=reversed_dim)
+            self.module.attention.attn_qkvb = mp_replace.qkv_copy(
+                self.module.attention.attn_qkvb[:self.qkvw.shape[0] // mp_replace.mp_size],
+                self.qkvb,
+                int8=reversed_dim)
         else:
             self.module.attention.attn_qkvw = mp_replace.qkv_copy(self.module.attention.attn_qkvw,
                                                                   self.qkvw,
@@ -230,7 +230,6 @@ class BaseTransformerContainer(ABC):
             self.module.attention.attn_qkvb = mp_replace.qkv_copy(self.module.attention.attn_qkvb,
                                                                   self.qkvb,
                                                                   int8=reversed_dim)
-
 
     def attention_q_k_v_mp(self, mp_replace, reversed_dim=False):
         self.module.attention.attn_qw = mp_replace.copy(self.module.attention.attn_qw[:self.qw.shape[0] //
@@ -365,7 +364,6 @@ class BaseTransformerContainer(ABC):
     def partition_merged_qkv(self):
         if hasattr(self, '_partition_merged_qkv'):
             self._partition_merged_qkv()
-
 
     def transpose(self):
         self.transpose_attention()

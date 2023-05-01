@@ -96,15 +96,11 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
 
         if self.mpu is not None:
             if hasattr(self.mpu, 'get_model_parallel_world_size'):
-                _container.set_tensor_parallel_config(
-                    self.mpu.get_model_parallel_world_size(), 
-                    self.mpu.get_model_parallel_group()
-                )
+                _container.set_tensor_parallel_config(self.mpu.get_model_parallel_world_size(),
+                                                      self.mpu.get_model_parallel_group())
             else:
-                _container.set_tensor_parallel_config(
-                    self.mpu.get_tensor_model_parallel_world_size(),
-                    self.mpu.get_tensor_model_parallel_group()
-                )
+                _container.set_tensor_parallel_config(self.mpu.get_tensor_model_parallel_world_size(),
+                                                      self.mpu.get_tensor_model_parallel_group())
         else:
             _container.set_tensor_parallel_config(self._config.hybrid_engine.inference_tp_size, self.mp_group)
         _container.initialize_tensors(enable_training=True)
@@ -392,7 +388,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
                     orig_module.forward = self._zero3_forward(i)
                 else:
                     orig_module.forward = inference_container.module.forward
-                
+
                 inference_container.align_merged_qkv()
 
             if not self.Z3_enabled or self.gather_all_layers:
@@ -406,7 +402,8 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
 
     def train(self, mode=True):
         if mode and len(self._orig_modules) > 0:
-            for inference_container, orig_module, orig_fwd in zip(self._inference_containers, self._orig_modules, self._orig_fwds):
+            for inference_container, orig_module, orig_fwd in zip(self._inference_containers, self._orig_modules,
+                                                                  self._orig_fwds):
                 inference_container.partition_merged_qkv()
                 orig_module.forward = orig_fwd
             for orig_module, orig_fwd in zip(self._orig_modules_others, self._orig_fwds_others):

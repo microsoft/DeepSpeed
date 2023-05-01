@@ -53,7 +53,7 @@ class ReplaceWithTensorSlicing:
 
         if allocat_tensor:
             dst = torch.empty_like(dst)
-                
+
         src_split = torch.split(src.data, src.shape[outer_dim] // 3, dim=outer_dim)
         if (len(src_shape) == 2 and len(dst_shape) == 2):
             if src_shape[outer_dim] == dst_shape[self.out_dim]:
