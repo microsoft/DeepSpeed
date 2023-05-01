@@ -84,13 +84,6 @@ class TransformerPolicy(DSPolicy):
         raise NotImplementedError
 
     @abstractmethod
-    def get_q_k_v(self):
-        """
-        return all q,k,v parameters without merging them together
-        """
-        raise NotImplementedError
-
-    @abstractmethod
     def get_hidden_heads(self):
         """
         return hidden_size and number of heads
@@ -107,25 +100,11 @@ class TransformerPolicy(DSPolicy):
         raise NotImplementedError
 
     @abstractmethod
-    def get_gated_mlp(self):
-        """
-        Returns up and gate projection parameters without merging them together
-        """
-        raise NotImplementedError
-
-    @abstractmethod
     def layernorm(self):
         """
         Returns LayerNorms used in transformer layer
         Post-Attention and pre/post layer norm
         gamma and beta with shape: (hidden)
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def get_lora_params(self):
-        """
-        Returns lora parameters used in transformer layer
         """
         raise NotImplementedError
 
