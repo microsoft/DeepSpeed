@@ -113,8 +113,8 @@ class BLOOMLayerPolicy(TransformerPolicy):
     def get_lora_params(self):
         all_lora_params = []
         for p in [
-            self.client_module.dense_h_to_4h, \
-            self.client_module.dense_4h_to_h, \
+            self.client_module.mlp.dense_h_to_4h, \
+            self.client_module.mlp.dense_4h_to_h, \
             self.client_module.self_attention.query_key_value, \
             self.client_module.self_attention.dense
             ]:
