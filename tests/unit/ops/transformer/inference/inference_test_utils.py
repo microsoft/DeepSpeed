@@ -27,8 +27,11 @@ def get_dtypes():
     global DTYPES
     if DTYPES is None:
         DTYPES = [torch.float16, torch.float32]
-        if get_accelerator().is_bf16_supported():
-            DTYPES.append(torch.bfloat16)
+        try:
+            if get_accelerator().is_bf16_supported():
+                DTYPES.append(torch.bfloat16)
+        except AssertionError:
+            pass
     return DTYPES
 
 
