@@ -245,6 +245,14 @@ class BaseTransformerContainer(ABC):
             else:
                 dst.data.copy_(src.to(get_accelerator().current_device_name()))
 
+    def align_merged_qkv(self):
+        if hasattr(self, '_align_merged_qkv'):
+            self._align_merged_qkv()
+
+    def partition_merged_qkv(self):
+        if hasattr(self, '_partition_merged_qkv'):
+            self._partition_merged_qkv()
+
     def transpose(self):
         self.transpose_attention()
         self.transpose_mlp()
