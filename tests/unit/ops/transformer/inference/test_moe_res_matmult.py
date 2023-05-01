@@ -8,7 +8,7 @@ import torch
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
-from .inference_test_utils import allclose, DTYPES
+from .inference_test_utils import allclose, get_dtypes
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system", allow_module_level=True)
@@ -31,7 +31,7 @@ def run_moe_res_matmul_ds(residual, coef, output):
 @pytest.mark.inference_ops
 @pytest.mark.parametrize("hidden_dim", [16, 64])
 @pytest.mark.parametrize("c", [1, 4])
-@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("dtype", get_dtypes())
 def test_moe_residual_matmul(hidden_dim, c, dtype):
     residual_ds = torch.randn((c, hidden_dim * c, hidden_dim), dtype=dtype, device=get_accelerator().device_name())
     coeff1 = torch.randn((1, 1, hidden_dim), dtype=dtype, device=get_accelerator().device_name())

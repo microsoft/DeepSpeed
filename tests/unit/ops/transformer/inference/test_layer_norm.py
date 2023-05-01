@@ -8,7 +8,7 @@ import torch
 import pytest
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
-from .inference_test_utils import allclose, DTYPES
+from .inference_test_utils import allclose, get_dtypes
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system", allow_module_level=True)
@@ -34,7 +34,7 @@ def ds_implementation(vals, gamma, beta, epsilon):
 @pytest.mark.parametrize("batch", [1, 32])
 @pytest.mark.parametrize("seq_len", [1, 128])
 @pytest.mark.parametrize("channels", [384, 512, 768, 1024, 2048, 8192, 14432])
-@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("dtype", get_dtypes())
 def test_layer_norm(batch, seq_len, channels, dtype):
     vals = torch.randn((batch, seq_len, channels), dtype=dtype, device=get_accelerator().current_device_name())
     gamma = torch.randn((channels), dtype=dtype, device=get_accelerator().current_device_name())
@@ -69,7 +69,7 @@ def residual_ds_implementation(vals, bias, res, gamma, beta, epsilon):
 @pytest.mark.parametrize("batch", [1, 32])
 @pytest.mark.parametrize("seq_len", [1, 128])
 @pytest.mark.parametrize("channels", [384, 512, 768, 1024, 2048, 8192, 14432])
-@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("dtype", get_dtypes())
 def test_layer_norm_residual(batch, seq_len, channels, dtype):
     vals = torch.randn((batch, seq_len, channels), dtype=dtype, device=get_accelerator().current_device_name())
     residual = torch.randn((batch, seq_len, channels), dtype=dtype, device=get_accelerator().current_device_name())
@@ -108,7 +108,7 @@ def residual_store_ds_implementation(vals, bias, res, gamma, beta, epsilon):
 @pytest.mark.parametrize("batch", [1, 32])
 @pytest.mark.parametrize("seq_len", [1, 128])
 @pytest.mark.parametrize("channels", [384, 512, 768, 1024, 2048, 8192, 14432])
-@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("dtype", get_dtypes())
 def test_layer_norm_residual_store_pre_ln_res(batch, seq_len, channels, dtype):
     vals = torch.randn((batch, seq_len, channels), dtype=dtype, device=get_accelerator().current_device_name())
     residual = torch.randn((batch, seq_len, channels), dtype=dtype, device=get_accelerator().current_device_name())

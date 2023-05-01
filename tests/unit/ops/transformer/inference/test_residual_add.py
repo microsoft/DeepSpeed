@@ -8,7 +8,7 @@ import torch
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
-from .inference_test_utils import DTYPES
+from .inference_test_utils import get_dtypes
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system", allow_module_level=True)
@@ -62,7 +62,7 @@ def run_residual_add_reference(hidden_state, residual, attn_output, attn_bias, f
 @pytest.mark.parametrize("batch", [1, 2])
 @pytest.mark.parametrize("sequence", [1, 128, 255])
 @pytest.mark.parametrize("hidden_dim", [512, 1232, 4096])
-@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("dtype", get_dtypes())
 @pytest.mark.parametrize("mlp_after_attn", [True, False])
 @pytest.mark.parametrize("add_bias", [True, False])
 @pytest.mark.parametrize("mp_size", [1, 2])

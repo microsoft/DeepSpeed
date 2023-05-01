@@ -8,7 +8,7 @@ import torch
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
-from .inference_test_utils import allclose, DTYPES
+from .inference_test_utils import allclose, get_dtypes
 from packaging import version as pkg_version
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
@@ -40,7 +40,7 @@ def run_bias_gelu_ds(activations, bias):
 @pytest.mark.parametrize("batch", [1, 2])
 @pytest.mark.parametrize("sequence", [1, 128, 255])
 @pytest.mark.parametrize("channels", [512, 1232, 4096])
-@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("dtype", get_dtypes())
 def test_bias_gelu(batch, sequence, channels, dtype):
     if pkg_version.parse(torch.__version__) < pkg_version.parse("1.12"):
         pytest.skip("gelu implementation matches only after torch 1.12")

@@ -8,7 +8,7 @@ import torch
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
-from .inference_test_utils import allclose, DTYPES
+from .inference_test_utils import allclose, get_dtypes
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
     pytest.skip("Inference ops are not available on this system", allow_module_level=True)
@@ -38,7 +38,7 @@ def run_bias_relu_ds(activations, bias):
 @pytest.mark.parametrize("batch", [1, 2])
 @pytest.mark.parametrize("sequence", [1, 128, 255])
 @pytest.mark.parametrize("channels", [512, 1232, 4096])
-@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("dtype", get_dtypes())
 def test_bias_relu(batch, sequence, channels, dtype):
     activations_ds = torch.randn((batch, sequence, channels), dtype=dtype, device=get_accelerator().device_name())
     bias_ds = torch.randn((channels), dtype=dtype, device=get_accelerator().device_name())
