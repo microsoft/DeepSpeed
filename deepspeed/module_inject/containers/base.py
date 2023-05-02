@@ -11,6 +11,8 @@ import torch
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 from deepspeed.accelerator import get_accelerator
 
+# If the intermediate size attribute is set DEFAULT_INTERMEDIATE_SIZE
+# it is assumed the interemediate size is 4x the embedding dimension
 DEFAULT_INTERMEDIATE_SIZE = -1
 
 
@@ -148,8 +150,19 @@ class BaseTransformerContainer(ABC):
         self.quantizer = quantizer
 
     def set_hidden_heads(self, hidden_size, num_attention_heads, epsilon, intermediate_size):
+        """
+        Args:
+            hidden_size: embedding dimension of the model
+            num_attention_heads: number of attention heads in the model
+            epsilon: epsilon value for layer norm (same value used for all norms)
+            intermediate_size: Size of MLP projection. If `DEFAUL_INTERMEDIATE_SIZE` is passed
+                it is assumed to be `4 * hidden_size`
+        """
         self.hidden_size = hidden_size
-        self.intermediate_size = intermediate_size
+        if intermediate_size == DEFAULT_INTERMEDIATE_SIZE:
+            self.intermediate_size = 4 * hidden_size
+        else:
+            self.intermediate_size = intermediate_size
         self.num_attention_heads = num_attention_heads
         self.layernorm_epsilon = epsilon
 
@@ -186,7 +199,7 @@ class BaseTransformerContainer(ABC):
         self.module.mlp.inter_w = self.quantizer.quantize(self.module.mlp.inter_w)
         self.module.mlp.output_w = self.quantizer.quantize(self.module.mlp.output_w)
 
-    def apply_tensor_parallelism(self, mp_replace=None, **kwargs):
+    def apply_tensor_parallelism(self, mp_replace):
         # setup the new Attention module
         self.attention_qkv_mp(mp_replace)
         self.attention_o_mp(mp_replace)
@@ -239,14 +252,6 @@ class BaseTransformerContainer(ABC):
                 dst = src
             else:
                 dst.data.copy_(src.to(get_accelerator().current_device_name()))
-
-    def align_merged_qkv(self):
-        if hasattr(self, '_align_merged_qkv'):
-            self._align_merged_qkv()
-
-    def partition_merged_qkv(self):
-        if hasattr(self, '_partition_merged_qkv'):
-            self._partition_merged_qkv()
 
     def transpose(self):
         self.transpose_attention()

@@ -75,7 +75,7 @@ class TransformerPolicy(DSPolicy):
         self.norm_type = norm_type
 
     @abstractmethod
-    def attention(self, enable_training=False):
+    def attention(self):
         """
         Returns attention qkv and dense parameters
         weight: (3*hidden, hidden) and (hidden, hidden)
@@ -91,7 +91,7 @@ class TransformerPolicy(DSPolicy):
         raise NotImplementedError
 
     @abstractmethod
-    def mlp(self, enable_training=False):
+    def mlp(self):
         """
         Returns mlp intermediate and output
         weight: (intermediate, hidden) and (hidden, intermediate)

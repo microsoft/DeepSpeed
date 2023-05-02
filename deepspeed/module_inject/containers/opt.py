@@ -31,7 +31,7 @@ class DS_OPTContainer(MetaTensorContainer, HybridSplitQKVContainer, BaseTransfor
 
     def set_lora_params(self):
         """
-        Necessry to implement for `HybridEngineContainer`
+        Necessary to implement for `HybridEngineContainer`
         """
         self.lora_params = [
             maybe_get_lora(p) for p in [
