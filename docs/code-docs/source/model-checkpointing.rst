@@ -27,7 +27,7 @@ DeepSpeed provides routines for extracting fp32 weights from the saved ZeRO chec
 Avoiding ZeRO Checkpoint Bloat
 ------------------------------
 ZeRO stage 1 and 2 checkpoints created using ``torch.save()`` can sometimes be larger than expected. This bloat
-is caused by the interaction of ZeRO's tensor flattening and torch's tensor `storage management <https://pytorch.org/docs/stable/notes/serialization.html#preserve-storage-sharing>`.
+is caused by the interaction of ZeRO's tensor flattening and torch's tensor `storage management <https://pytorch.org/docs/stable/notes/serialization.html#preserve-storage-sharing>`_ .
 You can avoid this problem by using the ``clone_tensors_for_torch_save`` utility of DeepSpeed as illustrated below.
 
 .. autofunction:: deepspeed.checkpoint.utils.clone_tensors_for_torch_save
