@@ -42,11 +42,11 @@ def clone_tensors_for_torch_save(item, device=torch.device('cpu')):
     """
     Returns a copy of ``item`` with all enclosed tensors replaced by clones on a specified device.
     Works on individual tensors, and tensors contained/nested in lists, tuples, and dicts.
-    
+
     Parameters:
         - ``item``: tensor to clone or (possibly nested) container of tensors to clone.
         - ``device``: target device (defaults to 'cpu')
-        
+
     Returns:
         - copy of ``item`` with cloned tensors on target device
     """
