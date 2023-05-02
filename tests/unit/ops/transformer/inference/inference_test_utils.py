@@ -30,7 +30,7 @@ def get_dtypes():
         try:
             if get_accelerator().is_bf16_supported():
                 DTYPES.append(torch.bfloat16)
-        except AssertionError:
+        except (AssertionError, AttributeError):
             pass
     return DTYPES
 
