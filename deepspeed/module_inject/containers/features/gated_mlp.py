@@ -3,10 +3,12 @@
 
 # DeepSpeed Team
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
+
+from .hybrid_engine import HybridEngineContainer
 
 
-class HybridGatedMLPContainer(ABC):
+class HybridGatedMLPContainer(HybridEngineContainer):
     """
     The HybridGatedMLPContainer supports models for which the first MLP layer
     is represented with two separate weights, one for the activation function
