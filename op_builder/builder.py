@@ -562,7 +562,7 @@ class CUDAOpBuilder(OpBuilder):
             if cc.endswith('+PTX'):
                 args.append(f'-gencode=arch=compute_{num},code=compute_{num}')
 
-            if int(cc[0]) < 7:
+            if int(cc[0]) <= 7:
                 self.enable_bf16 = False
 
         return args
