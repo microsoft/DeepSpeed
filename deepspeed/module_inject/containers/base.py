@@ -40,7 +40,7 @@ class BaseTransformerContainer(ABC):
         self.mp_size = self.config.tensor_parallel.tp_size
         self.pre_layer_norm = self.model_config.do_layer_norm_before if \
             hasattr(self.model_config, 'do_layer_norm_before') else self.policy.pre_attn_norm
-        self.fp16 = False
+        self.dtype = self.config.dtype
         self.attn_linear_layer = self.policy.linear_layer
         self.mlp_linear_layer = self.policy.linear_layer
         self.return_tuple = self.config.return_tuple
@@ -89,11 +89,10 @@ class BaseTransformerContainer(ABC):
             intermediate_size=self.intermediate_size,
             heads=self.num_attention_heads,
             layer_norm_eps=self.layernorm_epsilon,
-            fp16=self.fp16,
+            dtype=self.dtype,
             pre_layer_norm=self.pre_layer_norm,
             norm_type=self.norm_type,
             mp_size=self.mp_size,
-            q_int8=self.quantize if hasattr(self, 'quantize') else False,
             return_tuple=self.return_tuple,
             triangular_masking=self.triangular_masking,
             local_attention=self.local_attention,
@@ -119,17 +118,17 @@ class BaseTransformerContainer(ABC):
         self.set_mlp(*self.policy.mlp(enable_training=enable_training))
         self.set_layernorm(*self.policy.layernorm())
 
-    def convert_to_required_dtype(self, dtype):
+    def convert_to_required_dtype(self):
         # Note: converting tensors to fp16 requires that we do it in-place using self.__dict__ and not make a list/dict copy
-        if dtype == torch.half:
+        if self.dtype in [torch.half, torch.bfloat16]:
             for k, v in self.__dict__.items():
                 # The list comprehension is used for MoE tensor lists
                 if isinstance(v, list) and all((isinstance(tensor, torch.Tensor) \
                    or isinstance(tensor, torch.nn.Parameter)) for tensor in v):
-                    self.__dict__[k] = [moe_tensor.half() for moe_tensor in v]
+                    self.__dict__[k] = [moe_tensor.to(self.dtype) for moe_tensor in v]
 
                 if isinstance(v, torch.Tensor) or isinstance(v, torch.nn.Parameter):
-                    self.__dict__[k] = v.half()
+                    self.__dict__[k] = v.to(self.dtype)
 
     def get_rotary_dim(self):
         if hasattr(self.model_config, 'rotary_dim'):
@@ -138,9 +137,6 @@ class BaseTransformerContainer(ABC):
             return self.child.attention.rotary_ndims
         return -1
 
-    def set_dtype(self, fp16=False):
-        self.fp16 = fp16
-
     def set_moe(self, moe=False):
         self.moe = moe
 
@@ -148,8 +144,7 @@ class BaseTransformerContainer(ABC):
         self.mp_size = mp_size
         self.mp_group = mp_group
 
-    def set_quantization_config(self, quantize, quantizer):
-        self.quantize = quantize
+    def set_quantization_config(self, quantizer):
         self.quantizer = quantizer
 
     def set_hidden_heads(self, hidden_size, num_attention_heads, epsilon, intermediate_size):

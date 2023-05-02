@@ -13,8 +13,10 @@ class ResidualAddOp(BaseOp):
 
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(ResidualAddOp, self).__init__(config)
-        if self.config.fp16 or self.config.q_int8:
+        if self.config.dtype in [torch.float16, torch.int8]:
             self.residual_add_func = self.inference_cuda_module.residual_add_bias_fp16
+        elif self.config.dtype == torch.bfloat16:
+            self.residual_add_func = self.inference_cuda_module.residual_add_bias_bf16
         else:
             self.residual_add_func = self.inference_cuda_module.residual_add_bias_fp32
         self._vector_add = self.inference_cuda_module._vector_add

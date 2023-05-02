@@ -20,8 +20,8 @@ class DeepSpeedSelfAttention(nn.Module):
     def __init__(self, config, mp_group=None, q_scales=None, q_groups=1, merge_count=1):
         super(DeepSpeedSelfAttention, self).__init__()
         self.config = config
-        data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.float
-        data_type_fp = torch.half if config.fp16 else torch.float
+        data_type = self.config.dtype
+        data_type_fp = torch.half if self.config.dtype == torch.int8 else self.config.dtype
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
         device = get_accelerator().current_device_name()  #if config.bigscience_bloom else 'cpu'
@@ -246,8 +246,9 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
         attention_scores = matmul_result.view(output_size[0], output_size[1], output_size[2], -1)
 
         offset = dist.get_rank() * self.num_attention_heads_per_partition if dist.is_initialized() else 0
+        target_dtype = torch.float16 if self.config.dtype == torch.int8 else self.config.dtype
         attention_probs = self.softmax_func(attn_scores=attention_scores,
-                                            attn_mask=((1 - input_mask).half() * minus_inf),
+                                            attn_mask=((1 - input_mask).to(target_dtype) * minus_inf),
                                             alibi=alibi,
                                             triangular=(self.config.triangular_masking
                                                         and (attention_scores.shape[-2] > 1)),

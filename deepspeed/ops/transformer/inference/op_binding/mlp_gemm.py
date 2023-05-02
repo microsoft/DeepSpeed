@@ -17,13 +17,17 @@ class MLPGemmOp(BaseOp):
         super(MLPGemmOp, self).__init__(config)
 
         if self.config.norm_type == NormType.LayerNorm:
-            if self.config.fp16:
+            if self.config.dtype in [torch.float16, torch.int8]:
                 self.mlp_gemm_func = self.inference_cuda_module.mlp_gemm_fp16  # type: ignore
+            elif self.config.dtype == torch.bfloat16:
+                self.mlp_gemm_func = self.inference_cuda_module.mlp_gemm_bf16
             else:
                 self.mlp_gemm_func = self.inference_cuda_module.mlp_gemm_fp32  # type: ignore
         elif self.config.norm_type == NormType.RMSNorm:
-            if self.config.fp16:
+            if self.config.dtype in [torch.float16, torch.int8]:
                 self.mlp_gemm_func = self.inference_cuda_module.rms_mlp_gemm_fp16  # type: ignore
+            elif self.config.dtype == torch.bfloat16:
+                self.mlp_gemm_func = self.inference_cuda_module.rms_mlp_gemm_bf16
             else:
                 self.mlp_gemm_func = self.inference_cuda_module.rms_mlp_gemm_fp32  # type: ignore
 
@@ -51,7 +55,7 @@ class MLPGemmOp(BaseOp):
                 self.config.mlp_after_attn,
                 weight_interm.scale if hasattr(weight_interm, 'scale') else torch.empty(1),  # type: ignore
                 weight_out.scale if hasattr(weight_out, 'scale') else torch.empty(1),  # type: ignore
-                self.config.q_int8,
+                self.config.dtype == torch.int8,
                 self.config.mlp_act_func_type,
                 self.config.transposed_mode)
         else:
@@ -64,7 +68,7 @@ class MLPGemmOp(BaseOp):
                 self.config.epsilon,
                 weight_interm.scale if hasattr(weight_interm, 'scale') else torch.empty(1),  # type: ignore
                 weight_out.scale if hasattr(weight_out, 'scale') else torch.empty(1),  # type: ignore
-                self.config.q_int8,
+                self.config.dtype == torch.int8,
                 self.config.mlp_act_func_type,
                 self.config.transposed_mode)
         return output, residual_add

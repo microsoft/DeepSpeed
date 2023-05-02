@@ -290,7 +290,6 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         Updated nn.module with replaced transformer layers
     """
     # defining globals as internally defined functions inherit these everywhere
-    fp16 = (config.dtype == torch.float16 or config.dtype == torch.int8)
     quantize = (config.dtype == torch.int8)
     # todo: Refactor later. In future, let's minimize the style used above and use config.** instead
 
@@ -323,7 +322,6 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                             model_config=model_config,
                                             layer_id=layer_id,
                                             child=child)
-        _container.set_dtype(fp16)
         _container.set_moe(moe)
 
         # 2. Set the tensor parallelism config
@@ -333,12 +331,13 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         _container.initialize_tensors()
 
         # 4. deal with data types -- needs refactor to use dtype instead of fp16
-        if fp16:
-            _container.convert_to_required_dtype(dtype=torch.half)
+        if config.dtype in [torch.float16, torch.bfloat16, torch.int8]:
+            print(f"**** setting dtype to {config.dtype}")
+            _container.convert_to_required_dtype()
 
         # 5. Set the quantization config
         quantizer = GroupQuantizer(q_int8=quantize)
-        _container.set_quantization_config(quantize, quantizer)
+        _container.set_quantization_config(quantizer)
 
         # 6. create a DS Inference config object
         _container.create_ds_model_config()
@@ -603,6 +602,14 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 OrderedDict({k: v
                              for k, v in dict(replaced_module.state_dict()).items()
                              if transformer_name not in k}), f'{config.save_mp_checkpoint_path}/{non_tp_ckpt_name}')
+
+            dtype_reprs = {
+                torch.float32: 'float32',
+                torch.float16: 'float16',
+                torch.int8: 'int8',
+                torch.bfloat16: 'bfloat16'
+            }
+
             ckpt_config = json.dumps({
                 'type': ckpt_name,
                 'base_dir': f'{config.save_mp_checkpoint_path}',
@@ -613,7 +620,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 'version': 1.0,
                 'parallelization': 'tp',
                 'tp_size': world_size,
-                'dtype': 'int8' if quantize else ('float16' if fp16 else 'float32')
+                'dtype': dtype_reprs[config.dtype]
             })
             with open(f"{config.save_mp_checkpoint_path}/ds_inference_config.json", "w") as cfg:
                 cfg.write(ckpt_config)

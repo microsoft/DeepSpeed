@@ -85,14 +85,16 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
         policy = policy_cls(orig_layer, inference=True)
         _container = policy_to_ds_container(
             policy=policy,
-            config=DeepSpeedInferenceConfig(set_empty_params=True,
-                                            max_out_tokens=self._config.hybrid_engine.max_out_tokens,
-                                            min_out_tokens=self._config.hybrid_engine.max_out_tokens,
-                                            transposed_mode=True),
+            config=DeepSpeedInferenceConfig(
+                set_empty_params=True,
+                dtype=torch.float16 if self._config.fp16_enabled else torch.float32,
+                max_out_tokens=self._config.hybrid_engine.max_out_tokens,
+                min_out_tokens=self._config.hybrid_engine.max_out_tokens,
+                transposed_mode=True,
+            ),
             model_config=self.module.config if hasattr(self.module, 'config') else None,
             layer_id=layer_id,
             child=orig_layer)
-        _container.set_dtype(self._config.fp16_enabled)
 
         if self.mpu is not None:
             if hasattr(self.mpu, 'get_model_parallel_world_size'):
