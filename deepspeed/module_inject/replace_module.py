@@ -332,7 +332,6 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         # 4. deal with data types -- needs refactor to use dtype instead of fp16
         if config.dtype in [torch.float16, torch.bfloat16, torch.int8]:
-            print(f"**** setting dtype to {config.dtype}")
             _container.convert_to_required_dtype()
 
         # 5. Set the quantization config
