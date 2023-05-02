@@ -32,10 +32,10 @@ You can avoid this problem by using the ``clone_tensors_for_torch_save`` utility
 
 .. autofunction:: deepspeed.checkpoint.utils.clone_tensors_for_torch_save
 
-The following code snippet illustrates this functionality.
+The following code snippet illustrates this functionality:
 
 .. code-block:: python
-    ...
+
     ds_config = {
      ...
     }
