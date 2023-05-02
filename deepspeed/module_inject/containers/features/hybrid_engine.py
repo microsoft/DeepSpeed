@@ -14,6 +14,10 @@ class HybridEngineContainer(ABC):
     This container identifies which methods need to be overridden in addition to
     the base container to enable use in the RLHF pipeline. These methods are not
     necessary for inference alone.
+
+    NOTE: If you are using this feature with a container that
+    also inherits from `MetaTensorContainer`, ensure that `MetaTensorContainer`
+    is inherited before `HybridEngineContainer` in the class definition.
     """
 
     def initalize_tensors(self, enable_training=False):

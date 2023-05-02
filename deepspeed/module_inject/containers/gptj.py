@@ -17,7 +17,7 @@ from ..policy import maybe_copy_qkv
 from ..policy import maybe_get_lora
 
 
-class DS_GPTJContainer(HybridSplitQKVContainer, MetaTensorContainer, BaseTransformerContainer):
+class DS_GPTJContainer(MetaTensorContainer, HybridSplitQKVContainer, BaseTransformerContainer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

@@ -16,7 +16,7 @@ from packaging import version as pkg_version
 from ..policy import maybe_get_lora
 
 
-class DS_GPTNEOXContainer(HybridMegatronContainer, MetaTensorContainer, BaseTransformerContainer):
+class DS_GPTNEOXContainer(MetaTensorContainer, HybridMegatronContainer, BaseTransformerContainer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

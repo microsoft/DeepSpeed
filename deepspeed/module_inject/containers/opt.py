@@ -16,7 +16,7 @@ from ..policy import maybe_get_lora
 from deepspeed.utils.types import ActivationFuncType
 
 
-class DS_OPTContainer(HybridSplitQKVContainer, MetaTensorContainer, BaseTransformerContainer):
+class DS_OPTContainer(MetaTensorContainer, HybridSplitQKVContainer, BaseTransformerContainer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

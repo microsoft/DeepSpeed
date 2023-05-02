@@ -17,7 +17,7 @@ from ..policy import maybe_copy_qkv
 from ..policy import maybe_get_lora
 
 
-class DS_GPTNEOContainer(HybridEngineContainer, MetaTensorContainer, BaseTransformerContainer):
+class DS_GPTNEOContainer(MetaTensorContainer, HybridEngineContainer, BaseTransformerContainer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

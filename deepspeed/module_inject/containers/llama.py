@@ -20,7 +20,7 @@ from ..policy import (
 )
 
 
-class DS_LLAMAContainer(HybridGatedMLPContainer, HybridSplitQKVContainer, MetaTensorContainer,
+class DS_LLAMAContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSplitQKVContainer,
                         BaseTransformerContainer):
 
     def __init__(self, **kwargs):
