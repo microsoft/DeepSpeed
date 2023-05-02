@@ -40,13 +40,15 @@ def get_layer_ckpt_name_for_rank(base_folder, layer_id, tp_rank):
 # See https://pytorch.org/docs/stable/notes/serialization.html#preserve-storage-sharing
 def clone_tensors_for_torch_save(item, device=torch.device('cpu')):
     """
-    Returns a copy of input with all enclosed tensors replaced by clones on specified device.
+    Returns a copy of ``item`` with all enclosed tensors replaced by clones on a specified device.
     Works on individual tensors, and tensors contained/nested in lists, tuples, and dicts.
+    
     Parameters:
-        item: tensor to clone or (possibly nested) container of tensors to clone.
-        device: target device
+        - ``item``: tensor to clone or (possibly nested) container of tensors to clone.
+        - ``device``: target device (defaults to 'cpu')
+        
     Returns:
-        copy of input with cloned tensors on target device
+        - copy of ``item`` with cloned tensors on target device
     """
     if torch.is_tensor(item):
         return item.clone().to(device)
