@@ -72,7 +72,7 @@ class MegatronLayerPolicy(TransformerPolicy):
                attention.dense.weight, \
                attention.dense.bias
 
-    def mlp(self, moe_type='standard'):
+    def mlp(self, moe_type='standard', enable_training=False):
         from deepspeed.moe.utils import has_moe_layers
         moe, _ = has_moe_layers(self.client_module)
 
