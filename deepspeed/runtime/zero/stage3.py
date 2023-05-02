@@ -1199,7 +1199,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 grad_buffer.copy_(grad_partition, non_blocking=True)
                 # ensure grad buffer is a CUDA buffer to speed up the next few
                 # operations and so it can be used asynchronously
-                grad_buffer = grad_buffer.to(grad_partition.device, non_blocking=True)
+                grad_buffer = grad_partition.clone()
             elif get_accelerator().on_accelerator(grad_buffer):
                 grad_buffer.add_(grad_partition)
             else:
