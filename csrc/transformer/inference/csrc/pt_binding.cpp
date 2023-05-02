@@ -711,8 +711,6 @@ at::Tensor ds_rms_norm(at::Tensor& input, at::Tensor& gamma, float epsilon)
     DISPATCH_RMS_NORM(kHalf, __half);
 #ifdef BF16_AVAILABLE
     DISPATCH_RMS_NORM(kBFloat16, __nv_bfloat16);
-#else
-    assert(false);
 #endif
 
     return output;
