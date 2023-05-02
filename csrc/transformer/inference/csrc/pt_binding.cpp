@@ -1923,6 +1923,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           "DeepSpeed layer norm + store pre Layernorm residual (CUDA)");
     m.def("rms_norm", &ds_rms_norm, "DeepSpeed rms norm (CUDA)");
     m.def("pre_rms_norm", &ds_pre_rms_norm, "DeepSpeed pre rms norm (CUDA)");
+    m.def("_vector_add", &_vector_add, "DeepSpeed vector add (CUDA)");
     m.def("apply_rotary_pos_emb", &apply_rotary_pos_emb, "DeepSpeed mlp with fp16 (CUDA)");
     m.def("moe_res_matmul", &moe_res_matmul, "DeepSpeed moe residual matmul (CUDA)");
     m.def("reset_cache", &reset_cache, "Reset Cache for generation tasks");
