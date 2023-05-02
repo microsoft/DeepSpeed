@@ -32,7 +32,7 @@ You can avoid this problem by using the ``clone_tensors_for_torch_save`` utility
 
 .. autofunction:: deepspeed.checkpoint.utils.clone_tensors_for_torch_save
 
-The following code snippet illustrates this functionality:
+The following code snippet illustrates this functionality for creating a HuggingFace model checkpoint:
 
 .. code-block:: python
 
