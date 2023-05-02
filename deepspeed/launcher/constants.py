@@ -4,6 +4,7 @@ PDSH_LAUNCHER = 'pdsh'
 PDSH_MAX_FAN_OUT = 1024
 
 OPENMPI_LAUNCHER = 'openmpi'
+JSRUN_LAUNCHER = 'jsrun'
 MPICH_LAUNCHER = 'mpich'
 SLURM_LAUNCHER = 'slurm'
 MVAPICH_LAUNCHER = 'mvapich'

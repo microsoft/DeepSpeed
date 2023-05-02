@@ -451,11 +451,8 @@ class Autotuner:
             f"The model requires at least {memory_to_string(self.activation_mem, postfix='B')} activation memory for micro batch size 1."
         )
 
-        #TODO: FIX THIS
-        stage = self.user_config.get(ZERO_OPTIMIZATION,
-                                     {}).get(ZERO_OPTIMIZATION_STAGE,
-                                             "all")
-        stage = "all"
+        zero = self.user_config.get('zero_optimization', {})
+        stage = zero.get("stage", "all")
         user_zero_stages = [stage] if not isinstance(stage, list) else stage
         logger.info(f"User-defined zero stages are {stage}.")
 
@@ -556,9 +553,12 @@ class Autotuner:
 
         # calculate max micro batch size using gpu memory, model instantiation memory and activation memory
         # calculated_max_micro_batch_size = (memory_per_gpu - instantiation_memory) // activation_memory_micro_batch_size_1
+        logger.info(f'GPU memory: {self.gpu_mem}')
+        logger.info(f'Instantiation mem required for stage {stage}: {self.get_instantiation_memory_required_per_gpu(stage)}')
+        logger.info(f'Activation mem: {self.activation_mem}')
         calculated_max_micro_batch_size = int(
-            self.gpu_mem -
-            self.get_instantiation_memory_required_per_gpu(stage)) // self.activation_mem
+            (self.gpu_mem -
+            self.get_instantiation_memory_required_per_gpu(stage))) // self.activation_mem
         logger.info(
             f"Start tuning for space {tuning_space_name}, calculated_max_micro_batch_size = {calculated_max_micro_batch_size}"
         )
@@ -756,6 +756,8 @@ class Autotuner:
             with open(model_info_path, 'r') as f:
                 model_info = hjson.load(f)
                 return model_info
+        else:
+            print(f'Could not find model_info at {model_info_path}')
 
     def update_records(self, space_name, exp, metric_val, num_exps):
         if space_name not in self.records:

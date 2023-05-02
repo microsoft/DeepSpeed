@@ -15,6 +15,8 @@ import hjson
 from tqdm import tqdm
 
 from ..utils import logger
+from ..launcher.constants import MVAPICH_LAUNCHER, PDSH_LAUNCHER, OPENMPI_LAUNCHER, SLURM_LAUNCHER
+from .constants import *
 from .constants import AUTOTUNING, AUTOTUNING_METRIC_PATH
 from .utils import get_val_by_key, search_error, was_interruptted
 """
@@ -97,8 +99,14 @@ class ResourceManager:
 
     def run_job(self, exp: dict, reservations):
         exp_id = exp["exp_id"]
+        exp["master_addr"] = self.args.master_addr
         exp["master_port"] = self.args.master_port + exp_id
         exp["result_dir"] = os.path.join(self.results_dir, exp['name'])
+        exp["hostfile"] = self.args.hostfile
+        exp["launcher"] = self.args.launcher
+        exp["no_ssh_check"] = self.args.no_ssh_check
+        if self.args.launcher == 'slurm' and hasattr(self.args, 'comment'):
+            exp["comment"] = self.args.comment
         user_script = self.args.user_script
         user_args = self.args.user_args
 
@@ -325,13 +333,26 @@ def run_experiment(exp: dict, reservations, user_script, user_args):
         slots = ",".join(map(str, reservation.slots))
         include_str += f"{reservation.node.host}:{slots}@"
     include_str = include_str[:-1]
+    master_addr = exp["master_addr"]
     master_port = exp["master_port"]
-    exp["launcher_args"] = [
-        "--include",
-        f"{include_str}",
-        "--master_port",
-        str(master_port),
-    ]
+    hostfile = exp["hostfile"]
+    launcher_args = ["--launcher", exp["launcher"]]
+    if master_addr:
+        launcher_args += ["--master_addr", master_addr]
+    if exp["launcher"] not in (MVAPICH_LAUNCHER, OPENMPI_LAUNCHER, SLURM_LAUNCHER):
+        launcher_args += [
+            "--include",
+            f"{include_str}",
+            "--master_port",
+            str(master_port),
+        ]
+    if hostfile != '':
+        launcher_args += ["--hostfile", hostfile]
+    if 'comment' in exp:
+        launcher_args += ["--comment", exp["comment"]]
+    if exp['no_ssh_check']:
+        launcher_args += ["--no_ssh_check"]
+    exp["launcher_args"] = launcher_args
     logger.debug(f'launcher args={exp["launcher_args"]}')
 
     exp["user"] = get_user()
@@ -398,7 +419,7 @@ def run_experiment(exp: dict, reservations, user_script, user_args):
         err.flush()
         os.fsync(out)
         os.fsync(err)
-
+    
     clean_up(exp, reservations)
 
     logger.info(
@@ -420,16 +441,22 @@ def clean_up(exp: dict, reservations):
     logger.debug(
         f"Cleaning up exp_id = {exp['exp_id']} on the following workers: {nodes_str}")
 
-    # PDSH flags for max node fan out and specific hosts to launch on
-    # See https://linux.die.net/man/1/pdsh for flag details
-    pdsh_cmd = ['pdsh', '-f', str(PDSH_MAX_FAN_OUT), '-w', nodes_str]
+
+    if exp['launcher'] == 'slurm':
+        runner_cmd = ['srun', '-w', nodes_str]
+        if 'comment' in exp:
+            runner_cmd += ['--comment', exp['comment']]
+    else:
+        # PDSH flags for max node fan out and specific hosts to launch on
+        # See https://linux.die.net/man/1/pdsh for flag details
+        runner_cmd = ['pdsh', '-f', str(PDSH_MAX_FAN_OUT), '-w', nodes_str]
 
     kill_cmd = [
         'pkill',
         '-f',
         exp['name'],
     ]
-    cmd = pdsh_cmd + kill_cmd
+    cmd = runner_cmd + kill_cmd
     logger.debug("cmd = {}".format(' '.join(cmd)))
 
     result = subprocess.Popen(cmd, env=env)

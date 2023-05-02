@@ -1,5 +1,7 @@
+
 '''Copyright The Microsoft DeepSpeed Team'''
 
+import json
 import os
 import sys
 import shutil
@@ -170,6 +172,61 @@ class OpenMPIRunner(MultiNodeRunner):
                                                         ] + self.user_arguments
 
 
+class JSRunner(MultiNodeRunner):
+    def __init__(self, args, world_info_base64, resource_pool):
+        super().__init__(args, world_info_base64)
+        self.resource_pool = resource_pool
+        self.add_export('CUDA_VISIBLE_DEVICES', '0,1,2,3,4,5')
+
+    def backend_exists(self):
+        #TODO: if IB is available we should suggestion mvapich
+        #This ompi check will still work for jsrun since spectrum-mpi is based on ompi
+        return shutil.which('ompi_info')
+
+    @property
+    def name(self):
+        return "jsrun"
+
+    def validate_args(self):
+        super().validate_args()
+        #TODO: Allow for include/exclude at node-level but not gpu-level
+        if self.args.include != "" or self.args.exclude != "":
+            raise ValueError(
+                f"{self.name} backend does not support worker include/exclusion")
+        if self.args.num_nodes != -1 or self.args.num_gpus != -1:
+            raise ValueError(
+                f"{self.name} backend does not support limiting num nodes/gpus")
+
+    def get_cmd(self, environment, active_resources):
+        total_process_count = sum(self.resource_pool.values())
+
+        jsrun_cmd = [
+            'jsrun',
+            '-n',
+            f'{total_process_count}',
+            '-c',
+            f'{7}',
+            '-g',
+            f'{1}',
+            '-a',
+            f'{1}',
+
+        ] + split(self.args.launcher_args)
+
+        export_cmd = []
+        for k, v in self.exports.items():
+            export_cmd += ['-E', "{}={}".format(k, v)]
+
+        python_exec = []
+        if not self.args.no_python:
+            python_exec = [sys.executable, "-u"]
+            if self.args.module:
+                python_exec.append("-m")
+
+        return jsrun_cmd + export_cmd + python_exec + [self.user_script
+                                                        ] + self.user_arguments
+
+
 class MPICHRunner(MultiNodeRunner):
     def __init__(self, args, world_info_base64, resource_pool):
         super().__init__(args, world_info_base64)
@@ -227,6 +284,35 @@ class SlurmRunner(MultiNodeRunner):
     def backend_exists(self):
         return shutil.which('sinfo')
 
+    def parse_user_args(self):
+        user_args = []
+        for arg in self.args.user_args:
+            if arg.startswith('{') and arg.endswith('}'):
+                try:
+                    arg_dict = json.loads(arg)
+                    if 'config_files' in arg_dict:
+                        config_files = {}
+                        for k, v in arg_dict.get('config_files', {}).items():
+                            config_files[k] = json.loads(v)
+                        arg_dict['config_files'] = config_files
+                except json.JSONDecodeError as jde:
+                    raise ValueError(
+                        'SLURM is picky and needs you to use plain json for your configs. Check for comments and lowercase trues'
+                    ) from jde
+                arg = json.dumps(arg_dict, separators=(',', ':'))
+            user_args.append(arg)
+        return user_args
+
+    @staticmethod
+    def _pdsh_include_to_nodelist(include_string: str):
+        """If an `--include` string of the form `node1@node2` has been passed in, transforms it to a format SLURM will accept."""
+        NODE_SEP = '@'
+        SLOT_LIST_START = ':'
+        if NODE_SEP not in include_string:
+            return include_string
+        if SLOT_LIST_START in include_string:
+            raise NotImplementedError('Currently only allocating whole nodes is supported while using the SLURM launcher.')
+        return include_string.replace(NODE_SEP, ',')
     @property
     def name(self):
         return 'slurm'
@@ -240,15 +326,14 @@ class SlurmRunner(MultiNodeRunner):
             f'{total_process_count}',
         ] + split(self.args.launcher_args)
 
-        if getattr(self.args, 'slurm_comment', ''):
-            srun_cmd += ['--comment', self.args.slurm_comment]
+        if getattr(self.args, 'comment', ''):
+            srun_cmd += ['--comment', self.args.comment]
 
         if self.args.include != "":
-            srun_cmd.append('--include')
-            srun_cmd.append(f'{self.args.include}')
-        if self.args.exclude != "":
-            srun_cmd.append('--exclude')
-            srun_cmd.append(f'{self.args.exclude}')
+            srun_cmd.append('--nodelist')
+            srun_cmd.append(self._pdsh_include_to_nodelist(self.args.include)) 
+            srun_cmd += ['--comment', self.args.slurm_comment]
+
         if self.args.num_nodes > 0:
             srun_cmd.append('--nodes')
             srun_cmd.append(f'{self.args.num_nodes}')

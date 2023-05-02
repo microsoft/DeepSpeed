@@ -18,8 +18,8 @@ from copy import deepcopy
 import signal
 import time
 
-from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner, SlurmRunner, MPICHRunner
-from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER, SLURM_LAUNCHER, MPICH_LAUNCHER
+from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner, SlurmRunner, MPICHRunner, JSRunner
+from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER, SLURM_LAUNCHER, MPICH_LAUNCHER, JSRUN_LAUNCHER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..nebula.constants import NEBULA_EXPORT_ENVS
 from ..utils import logger
@@ -168,6 +168,13 @@ def parse_args(args=None):
         type=str,
         help="Run DeepSpeed autotuner to discover optimal configuration parameters "
         "before running job.")
+
+    parser.add_argument(
+        "--comment",
+        default="",
+        type=str,
+        help="A comment that can be used for metadata."
+    )
 
     parser.add_argument("--elastic_training",
                         action="store_true",
@@ -511,6 +518,8 @@ def main(args=None):
             runner = PDSHRunner(args, world_info_base64)
         elif args.launcher == OPENMPI_LAUNCHER:
             runner = OpenMPIRunner(args, world_info_base64, resource_pool)
+        elif args.launcher == JSRUN_LAUNCHER:
+            runner = JSRunner(args, world_info_base64, resource_pool)
         elif args.launcher == MPICH_LAUNCHER:
             runner = MPICHRunner(args, world_info_base64, resource_pool)
         elif args.launcher == MVAPICH_LAUNCHER:
@@ -548,6 +557,7 @@ def main(args=None):
             cmd = runner.get_cmd(env, active_resources)
 
     logger.info(f"cmd = {' '.join(cmd)}")
+
     result = subprocess.Popen(cmd, env=env)
 
     def sigkill_handler(signum, frame):
