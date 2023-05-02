@@ -3183,7 +3183,7 @@ class DeepSpeedEngine(Module):
         def get_layer_state_dict(module, prefix=""):
             # handle params
             for name, param in module.named_parameters(recurse=False):
-                if param is None:
+                if param is None or not hasattr(param, "ds_id"):
                     continue
                 key = prefix + name
                 # can't rely on param.data_ptr() as it will be reused as weights gets
