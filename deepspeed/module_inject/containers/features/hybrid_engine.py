@@ -60,7 +60,7 @@ class HybridEngineContainer(ABC):
         """
         # Setup the new Attention module
         self.attention_qkv_mp(mp_replace, reversed_dim=reversed_dim)
-        self.attention_out_mp(mp_replace, reversed_dim=reversed_dim)
+        self.attention_o_mp(mp_replace, reversed_dim=reversed_dim)
 
         # Setup the new MLP module
         self.mlp_inter_mp(mp_replace, reversed_dim=reversed_dim)
