@@ -282,13 +282,13 @@ class BaseTransformerContainer(ABC):
             self.input_nb,
         ]
 
-        params.extend(self.get_attn_params(params))
-        params.extend(self.get_mlp_params(params))
+        params.extend(self.get_attn_params())
+        params.extend(self.get_mlp_params())
 
         return params
 
-    def get_attn_params(self, params):
+    def get_attn_params(self):
         return [self.qkvw, self.qkvb, self.dense_w, self.dense_b]
 
-    def get_mlp_params(self, params):
+    def get_mlp_params(self):
         return [self._h4h_w, self._h4h_b, self._4hh_w, self._4hh_b]
