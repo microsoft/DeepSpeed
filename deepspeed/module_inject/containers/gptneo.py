@@ -36,9 +36,9 @@ class DS_GPTNEOContainer(MetaTensorContainer, HybridEngineContainer, BaseTransfo
         """
         self.lora_params = [
             maybe_get_lora(p) for p in [
-                self.client_module.mlp.c_fc, self.client_module.mlp.c_proj, self.client_module.attn.attention.q_proj,
-                self.client_module.attn.attention.k_proj, self.client_module.attn.attention.v_proj,
-                self.client_module.attn.attention.out_proj
+                self.policy.client_module.mlp.c_fc, self.policy.client_module.mlp.c_proj,
+                self.policy.client_module.attn.attention.q_proj, self.policy.client_module.attn.attention.k_proj,
+                self.policy.client_module.attn.attention.v_proj, self.policy.client_module.attn.attention.out_proj
             ]
         ]
 

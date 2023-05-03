@@ -36,8 +36,9 @@ class DS_GPTJContainer(MetaTensorContainer, HybridSplitQKVContainer, BaseTransfo
         """
         self.lora_params = [
             maybe_get_lora(p) for p in [
-                self.client_module.mlp.fc_in, self.client_module.mlp.fc_out, self.client_module.attn.q_proj,
-                self.client_module.attn.k_proj, self.client_module.attn.v_proj, self.client_module.attn.out_proj
+                self.policy.client_module.mlp.fc_in, self.policy.client_module.mlp.fc_out,
+                self.policy.client_module.attn.q_proj, self.policy.client_module.attn.k_proj,
+                self.policy.client_module.attn.v_proj, self.policy.client_module.attn.out_proj
             ]
         ]
 

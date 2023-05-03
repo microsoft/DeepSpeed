@@ -20,7 +20,7 @@ class HybridEngineContainer(ABC):
     is inherited before `HybridEngineContainer` in the class definition.
     """
 
-    def initalize_tensors(self, enable_training=False):
+    def initialize_tensors(self, enable_training=False):
         """
         Same purposes as the base container, but also grabs the hooks for any LoRA
         parameters. If it's necessary to override specific sub-components of the model,

@@ -39,14 +39,14 @@ class DS_GPTNEOXContainer(MetaTensorContainer, HybridMegatronContainer, BaseTran
         Necessary to implement for `HybridEngineContainer`
         """
         if GPTNEOXLayerPolicy.version == 0:
-            attention = self.client_module.attention
+            attention = self.policy.client_module.attention
         else:
-            attention = self.client_module.self_attention
+            attention = self.policy.client_module.self_attention
 
         self.lora_params = [
             maybe_get_lora(p) for p in [
-                self.client_module.mlp.dense_h_to_4h, self.client_module.mlp.dense_4h_to_h, attention.query_key_value,
-                attention.dense
+                self.policy.client_module.mlp.dense_h_to_4h, self.policy.client_module.mlp.dense_4h_to_h,
+                attention.query_key_value, attention.dense
             ]
         ]
 
