@@ -301,7 +301,8 @@ class IMPIRunner(MultiNodeRunner):
             if i == 0:
                 per_host_cmd = ['-n', '1'] + env_mapping + python_exec + [self.user_script] + self.user_arguments
             else:
-                per_host_cmd = per_host_cmd + [':', '-n', '1'] + env_mapping + python_exec + [self.user_script] + self.user_arguments
+                per_host_cmd = per_host_cmd + [':', '-n', '1'] + env_mapping + python_exec + [self.user_script
+                                                                                              ] + self.user_arguments
         print(mpirun_cmd + export_cmd + per_host_cmd)
         return mpirun_cmd + export_cmd + per_host_cmd
 
