@@ -14,9 +14,9 @@ class SoftmaxContextOp(BaseOp):
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(SoftmaxContextOp, self).__init__(config)
         try:
-            if self.config.fp16:
+            if self.config.dtype in [torch.float16, torch.int8]:
                 self.softmax_context_func = self.inference_module.softmax_context_fp16
-            elif self.config.bf16:
+            elif self.config.dtype == torch.bfloat16:
                 self.softmax_context_func = self.inference_module.softmax_context_bf16
             else:
                 self.softmax_context_func = self.inference_module.softmax_context_fp32

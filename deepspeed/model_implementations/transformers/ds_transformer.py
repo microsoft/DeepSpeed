@@ -47,7 +47,7 @@ class DeepSpeedTransformerInference(nn.Module):
         self.config.layer_id = DeepSpeedTransformerInference.layer_id
         DeepSpeedTransformerInference.layer_id += 1
 
-        data_type = torch.half if config.fp16 else torch.bfloat16 if config.bf16 else torch.float
+        data_type = torch.half if self.config.dtype == torch.int8 else self.config.dtype
         global inference_module
         if inference_module is None:
             builder = InferenceBuilder()
@@ -75,9 +75,9 @@ class DeepSpeedTransformerInference(nn.Module):
                                        requires_grad=False)
         self.layer_past = None
         try:
-            if config.fp16:
-                self.allocate_workspace = inference_module.allocate_workspace_fp16
-            elif config.bf16:
+            if config.dtype == torch.float32:
+                self.allocate_workspace = inference_module.allocate_workspace_fp32
+            elif config.dtype == torch.bfloat16:
                 self.allocate_workspace = inference_module.allocate_workspace_bf16
             else:
                 self.allocate_workspace = inference_module.allocate_workspace_fp32
@@ -147,9 +147,11 @@ class DeepSpeedTransformerInference(nn.Module):
             input = input[0]
         input_type = input.dtype
 
-        if (self.config.fp16 or self.config.q_int8) \
+        if (self.config.dtype in [torch.float16, torch.bfloat16, torch.int8]) \
             and input.dtype == torch.float:
-            input = input.half()
+            target_dtype = torch.half if self.dtype == torch.int8 else self.dtype
+            input = input.to(target_dtype)
+
         with torch.no_grad():
             attention_output, key, value, context_outputtn_ctx, inp_norm = \
                                      self.attention(input,

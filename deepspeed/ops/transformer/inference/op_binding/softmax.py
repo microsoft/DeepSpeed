@@ -15,9 +15,9 @@ class SoftmaxOp(BaseOp):
         super(SoftmaxOp, self).__init__(config)
         self.num_attention_heads_per_partition = config.heads // config.mp_size
         try:
-            if self.config.fp16:
+            if self.config.dtype in [torch.float16, torch.int8]:
                 self.softmax_func = self.inference_module.softmax_fp16
-            elif self.config.bf16:
+            elif self.config.dtype == torch.bfloat16:
                 self.softmax_func = self.inference_module.softmax_bf16
             else:
                 self.softmax_func = self.inference_module.softmax_fp32

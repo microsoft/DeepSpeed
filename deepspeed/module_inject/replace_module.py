@@ -4,6 +4,7 @@
 # DeepSpeed Team
 
 import os
+from typing import Optional
 import torch
 import tqdm
 import deepspeed
@@ -44,16 +45,23 @@ class ReplaceWithTensorSlicing:
             for merging your checkpoints before replacing the transformer layer with\
             inference-kernels'
 
-    def qkv_copy(self, dst, src, int8=False):
+    def strided_copy(self,
+                     dst: Optional[torch.Tensor],
+                     src: Optional[torch.Tensor],
+                     num_splits: int,
+                     int8: bool = False,
+                     allocate_tensor: bool = False):
         if src is None:
             return src
         src_shape = src.shape
         dst_shape = dst.shape
 
         outer_dim = 0 if int8 else -1
-        inner_dim = -1 if int8 else 0
 
-        src_split = torch.split(src.data, src.shape[outer_dim] // 3, dim=outer_dim)
+        if allocate_tensor:
+            dst = torch.empty_like(dst)
+
+        src_split = torch.split(src.data, src.shape[outer_dim] // num_splits, dim=outer_dim)
         if (len(src_shape) == 2 and len(dst_shape) == 2):
             if src_shape[outer_dim] == dst_shape[self.out_dim]:
                 dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
@@ -61,39 +69,32 @@ class ReplaceWithTensorSlicing:
                 if hasattr(src, 'scale'):
                     dst.scale = src.scale
                 return dst
-            if self.out_dim == 1:
-                self.merge_assert(src_shape[outer_dim], dst_shape[self.out_dim])
-                qkv_size = dst_shape[self.out_dim] // 3
-                qkv_split = [torch.split(src_s, qkv_size, dim=outer_dim) for src_s in src_split]
-
-                weight_split = [
-                    torch.cat([qkv_s[i] for qkv_s in qkv_split], axis=outer_dim) for i in range(len(qkv_split[0]))
-                ]
-                dst = dst.reshape(-1).data.copy_(weight_split[self.gpu_index].contiguous().reshape(-1)).reshape(
-                    weight_split[self.gpu_index].shape)
-            else:
-                dst.data.copy_(src_split[self.gpu_index].to(get_accelerator().current_device_name()).contiguous())
+            self.merge_assert(src_shape[outer_dim], dst_shape[self.out_dim])
+            qkv_size = dst_shape[self.out_dim] // num_splits
+            qkv_split = [torch.split(src_s, qkv_size, dim=outer_dim) for src_s in src_split]
+            weight_split = [
+                torch.cat([qkv_s[i] for qkv_s in qkv_split], axis=outer_dim) for i in range(len(qkv_split[0]))
+            ]
+            dst = dst.reshape(-1).data.copy_(weight_split[self.gpu_index].contiguous().reshape(-1)).reshape(
+                weight_split[self.gpu_index].shape)
         else:
             if src_shape[0] == dst_shape[0]:
                 return torch.nn.parameter.Parameter(src)
-            if self.out_dim == 1:
-                qkv_size = dst_shape[0] // 3
-                qkv_split = [torch.split(src_s, qkv_size, dim=0) for src_s in src_split]
-                bias_split = [torch.cat([qkv_s[i] for qkv_s in qkv_split], axis=0) for i in range(len(qkv_split[0]))]
-                dst.data.copy_(bias_split[self.gpu_index].contiguous())
-            else:
-                dst.data.copy_(src_split[self.gpu_index].contiguous())
+            qkv_size = dst_shape[0] // num_splits
+            qkv_split = [torch.split(src_s, qkv_size, dim=0) for src_s in src_split]
+            bias_split = [torch.cat([qkv_s[i] for qkv_s in qkv_split], axis=0) for i in range(len(qkv_split[0]))]
+            dst.data.copy_(bias_split[self.gpu_index].contiguous())
 
         dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
         if hasattr(src, 'scale'):
             dst.scale = src.scale
         return dst
 
-    def copy(self, dst, src, int8=False, allocat_tensor=False):
+    def copy(self, dst, src, int8=False, allocate_tensor=False):
         if src is None:
             return src
         assert not dst.data.is_meta  # the torch.Tensor.copy_ method used below will silently fail on meta tensors
-        if allocat_tensor:
+        if allocate_tensor:
             dst = torch.empty_like(dst)
         outer_dim = 0 if int8 else 1
         inner_dim = 1 if int8 else 0
@@ -292,8 +293,6 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         Updated nn.module with replaced transformer layers
     """
     # defining globals as internally defined functions inherit these everywhere
-    fp16 = (config.dtype == torch.float16 or config.dtype == torch.int8)
-    bf16 = (config.dtype == torch.bfloat16)
     quantize = (config.dtype == torch.int8)
     # todo: Refactor later. In future, let's minimize the style used above and use config.** instead
 
@@ -326,7 +325,6 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                             model_config=model_config,
                                             layer_id=layer_id,
                                             child=child)
-        _container.set_dtype(fp16, bf16)
         _container.set_moe(moe)
 
         # 2. Set the tensor parallelism config
@@ -336,14 +334,12 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         _container.initialize_tensors()
 
         # 4. deal with data types -- needs refactor to use dtype instead of fp16
-        if fp16:
-            _container.convert_to_required_dtype(dtype=torch.half)
-        if bf16:
-            _container.convert_to_required_dtype(dtype=torch.bfloat16)
+        if config.dtype in [torch.float16, torch.bfloat16, torch.int8]:
+            _container.convert_to_required_dtype()
 
         # 5. Set the quantization config
         quantizer = GroupQuantizer(q_int8=quantize)
-        _container.set_quantization_config(quantize, quantizer)
+        _container.set_quantization_config(quantizer)
 
         # 6. create a DS Inference config object
         _container.create_ds_model_config()
@@ -638,23 +634,25 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 OrderedDict({k: v
                              for k, v in dict(replaced_module.state_dict()).items()
                              if transformer_name not in k}), f'{config.save_mp_checkpoint_path}/{non_tp_ckpt_name}')
+
+            dtype_reprs = {
+                torch.float32: 'float32',
+                torch.float16: 'float16',
+                torch.int8: 'int8',
+                torch.bfloat16: 'bfloat16'
+            }
+
             ckpt_config = json.dumps({
-                'type':
-                ckpt_name,
-                'base_dir':
-                f'{config.save_mp_checkpoint_path}',
+                'type': ckpt_name,
+                'base_dir': f'{config.save_mp_checkpoint_path}',
                 'checkpoints': {
                     "non_tp": ckpt_files,
                     "tp": [f'tp_{r:0>2d}_{m:0>2d}.pt' for m in range(num_partitions) for r in range(world_size)]
                 },
-                'version':
-                1.0,
-                'parallelization':
-                'tp',
-                'tp_size':
-                world_size,
-                'dtype':
-                'int8' if quantize else ('float16' if fp16 else 'bfloat16' if bf16 else 'float32')
+                'version': 1.0,
+                'parallelization': 'tp',
+                'tp_size': world_size,
+                'dtype': dtype_reprs[config.dtype]
             })
             with open(f"{config.save_mp_checkpoint_path}/ds_inference_config.json", "w") as cfg:
                 cfg.write(ckpt_config)

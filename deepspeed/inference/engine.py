@@ -342,7 +342,9 @@ class InferenceEngine(Module):
                                                                                        device="cpu"),
                                                                  requires_grad=module.weight.data.requires_grad)
                 if 'query_key_value' in prefix:
-                    module.weight = self.mp_replace.qkv_copy(module.weight.data, state_dict[prefix + 'weight'])
+                    module.weight = self.mp_replace.strided_copy(module.weight.data,
+                                                                 state_dict[prefix + 'weight'],
+                                                                 num_splits=3)
                 else:
                     module.weight = self.mp_replace.copy(module.weight.data, state_dict[prefix + 'weight'])
             else:
