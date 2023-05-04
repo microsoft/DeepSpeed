@@ -34,7 +34,19 @@ from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwa
 
 param_count = 0
 partitioned_param_data_shape = [0]
-zero_init_enabled = 0
+_zero_init_nesting_depth = 0
+_cls_excluded_from_partitioning = set()
+
+
+class NoPartitioningDecorator:
+    def __call__(self, cls):
+        global _cls_excluded_from_partitioning
+        _cls_excluded_from_partitioning.add(cls)
+        return cls
+
+
+def is_zero_init_enabled():
+    return _zero_init_nesting_depth > 0
 
 
 class NoGatherHandle:
@@ -292,11 +304,11 @@ class InsertPostInitMethodToModuleSubClasses(object):
         ], f"Invalid data type {self.dtype}, allowed values are [torch.half, torch.bfloat16, torch.float]"
 
     def __enter__(self):
-        global zero_init_enabled
+        global _zero_init_nesting_depth
         if not self.enabled:
             return
-        zero_init_enabled += 1
-        if zero_init_enabled > 1:
+        _zero_init_nesting_depth += 1
+        if _zero_init_nesting_depth > 1:
             return
 
         def apply_with_gather(orig_module_apply_fn: Callable) -> Callable:
@@ -395,10 +407,14 @@ class InsertPostInitMethodToModuleSubClasses(object):
             return wrapper
 
         def _enable_class(cls):
+            if cls in _cls_excluded_from_partitioning:
+                return
             cls._old_init = cls.__init__
             cls.__init__ = partition_after(cls.__init__)
 
         def _init_subclass(cls, **kwargs):
+            if cls in _cls_excluded_from_partitioning:
+                return
             cls._old_init = cls.__init__
             cls.__init__ = partition_after(cls.__init__)
 
@@ -463,19 +479,20 @@ class InsertPostInitMethodToModuleSubClasses(object):
 
 
 def shutdown_init_context():
-    global zero_init_enabled
+    global _zero_init_nesting_depth
 
-    zero_init_enabled -= 1
-    if zero_init_enabled < 0:
-        # This can happen because deepspeed.initialize calls shutdown_init_context outside an Init() context. If the
-        # deepspeed.initialize call is wrapped in an Init() context to begin with, then when that context exits this
-        # method will be called again. This happens in the HF accelerate tests, for example.
-        zero_init_enabled = 0
+    _zero_init_nesting_depth -= 1
+    if _zero_init_nesting_depth < 0:
+        # This can happen if someone calls shutdown_init_context() explicitly, and not as an exit from an Init()
+        #   context. This used to happen in deepspeed.initialize() before NoPartitioningDecorator was implemented.
+        _zero_init_nesting_depth = 0
         return False
-    if not zero_init_enabled == 0:
+    if not _zero_init_nesting_depth == 0:
         return False
 
     def _disable_class(cls):
+        if cls in _cls_excluded_from_partitioning:
+            return
         cls.__init__ = cls._old_init
 
     # Replace .__init__() for all existing subclasses of torch.nn.Module

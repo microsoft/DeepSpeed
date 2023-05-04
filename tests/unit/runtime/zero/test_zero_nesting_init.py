@@ -27,9 +27,23 @@ class TestNestingInit(DistributedTest):
         ds_config = dict(train_batch_size=1, zero_optimization=dict(stage=3))
 
         with deepspeed.zero.Init(config_dict_or_path=ds_config):
-            assert (deepspeed.zero.partition_parameters.zero_init_enabled == 1)
+            assert (deepspeed.zero.partition_parameters._zero_init_nesting_depth == 1)
             model = torch.nn.Linear(4, 4)
             _, *_ = deepspeed.initialize(model=model, config_params=ds_config)
-            assert (deepspeed.zero.partition_parameters.zero_init_enabled == 0)
+            assert (deepspeed.zero.partition_parameters._zero_init_nesting_depth == 1)
 
-        assert (deepspeed.zero.partition_parameters.zero_init_enabled == 0)
+        assert (deepspeed.zero.partition_parameters._zero_init_nesting_depth == 0)
+
+    def test_initialize_inside_nested_init(self):
+        ds_config = dict(train_batch_size=1, zero_optimization=dict(stage=3))
+
+        with deepspeed.zero.Init(config_dict_or_path=ds_config):
+            with deepspeed.zero.Init(config_dict_or_path=ds_config):
+                model = torch.nn.Linear(4, 4)
+                assert (deepspeed.zero.partition_parameters._zero_init_nesting_depth == 2)
+                _, *_ = deepspeed.initialize(model=model, config_params=ds_config)
+                assert (deepspeed.zero.partition_parameters._zero_init_nesting_depth == 2)
+
+            assert (deepspeed.zero.partition_parameters._zero_init_nesting_depth == 1)
+
+        assert (deepspeed.zero.partition_parameters._zero_init_nesting_depth == 0)

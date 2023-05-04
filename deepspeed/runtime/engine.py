@@ -25,7 +25,7 @@ from deepspeed import comm as dist
 from deepspeed.runtime.utils import see_memory_usage, DummyOptim
 from .zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
-from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus, NoPartitioningDecorator
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
 from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION
@@ -177,7 +177,7 @@ class EngineTimers(object):
                 STEP_GLOBAL_TIMER
             ]
 
-
+@NoPartitioningDecorator()
 class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training."""
 
