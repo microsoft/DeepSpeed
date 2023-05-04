@@ -440,14 +440,13 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
                 grad_buff.view(-1).copy_(aggregated_buffer.narrow(0, offset, grad_buff.numel()))
                 offset += grad_buff.numel()
 
-    # TODO: Support different/changing load/save DP degree.
     def load_state_dict(self,
                         state_dict_list,
                         load_optimizer_states=True,
                         load_from_fp32_weights=False,
                         checkpoint_folder=None):
-        r""" Loading the MiCS checkpoints
-
-        TODO: move the implementation from zhen/merged_ds_master branch
+        r""" Loading the ZeRO-3/MiCS partitioned checkpoints
+        Because the self.dp_process_group is replaced with the communicator for
+        partition group we can call the load_state_dict logic from ZeRO-3.
         """
-        raise NotImplementedError("Not implemented for loading MiCS checkpoints")
+        super().load_state_dict(state_dict_list, load_optimizer_states, load_from_fp32_weights, checkpoint_folder)
