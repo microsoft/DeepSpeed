@@ -18,8 +18,6 @@ class DtypeEnum(Enum):
     fp32 = torch.float32, "torch.float32", "fp32", "float32", "float"
     bf16 = torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16", "bfloat"
     int8 = torch.int8, "torch.int8", "int8"
-    # BFloat16 is primary 16 bit datatype for CPU
-    bf16 = torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16"
 
     # Copied from https://stackoverflow.com/a/43210118
     # Allows us to use multiple values for each Enum index and returns first
