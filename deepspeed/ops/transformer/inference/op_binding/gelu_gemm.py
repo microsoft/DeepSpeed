@@ -20,7 +20,10 @@ class GELUGemmOp(BaseOp):
             else:
                 self.fused_gemm_gelu = self.inference_module.fused_gemm_gelu_fp32  # type: ignore
         except AttributeError:
-            self.fused_gemm_gelu = None
+            self.fused_gemm_gelu = self.gelu_gemm_fallback
+
+    def gelu_gemm_fallback(self, input, weight, scale, bias, out, out_scale, dtype, transpose):
+        raise NotImplementedError
 
     def forward(self, input: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor, weight_out: torch.Tensor):
 

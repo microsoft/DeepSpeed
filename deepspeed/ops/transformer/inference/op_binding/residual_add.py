@@ -22,31 +22,11 @@ class ResidualAddOp(BaseOp):
                 self.residual_add_func = self.inference_module.residual_add_bias_fp32
             self._vector_add = self.inference_module._vector_add
         except AttributeError:
-            self.residual_add_func = None
-            self._vector_add = None
+            self.residual_add_func = self.residual_add_fallback
+            self._vector_add = self._vector_add_fallback
 
-    def forward(self,
-                hidden_state: torch.Tensor,
-                residual: torch.Tensor,
-                add_bias: bool,
-                attention_output: Optional[torch.Tensor] = None,
-                residual_add: Optional[torch.Tensor] = None,
-                attention_bias: Optional[torch.Tensor] = None,
-                final_bias: Optional[torch.Tensor] = None):
-
-        if self.residual_add_func != None:
-            if final_bias is None:
-                residual = self._vector_add(residual, hidden_state, 1.0 / self.config.mp_size)
-            else:
-                if not self.config.pre_layer_norm and residual_add is not None:
-                    # only use residual add if its set and we are not pre layer norm
-                    residual = residual_add
-
-                self.residual_add_func(hidden_state, residual, attention_output, attention_bias, final_bias,
-                                       self.config.mp_size, self.config.mlp_after_attn, add_bias,
-                                       self.config.pre_layer_norm)
-        else:
-            # fallback
+    def residual_add_fallback(self, hidden_state, residual, attention_output, attention_bias, final_bias, mp_size, mlp_after_attn, add_bias, pre_layer_norm):
+        if os.environ.get('DS_KI_FALLBACK') == 'True':
             if self.config.mlp_after_attn:
                 if self.config.pre_layer_norm:
                     tmp = (residual.float() + attention_output.float() + attention_bias.float() +
@@ -58,4 +38,32 @@ class ResidualAddOp(BaseOp):
                 residual = tmp.to(input_dtype)
             else:
                 raise NotImplementedError
+        else:
+            raise NotImplementedError
+
+    def _vector_add_fallback(self, residual, hidden_state, inv_mp_size):
+        if os.environ.get('DS_KI_FALLBACK') == 'True':
+            return (residual.float() * inv_mp_size + hidden_state.float()).to(hidden_state.dtype)
+        else:
+            raise NotImplementedError
+
+    def forward(self,
+                hidden_state: torch.Tensor,
+                residual: torch.Tensor,
+                add_bias: bool,
+                attention_output: Optional[torch.Tensor] = None,
+                residual_add: Optional[torch.Tensor] = None,
+                attention_bias: Optional[torch.Tensor] = None,
+                final_bias: Optional[torch.Tensor] = None):
+
+        if final_bias is None:
+            residual = self._vector_add(residual, hidden_state, 1.0 / self.config.mp_size)
+        else:
+            if not self.config.pre_layer_norm and residual_add is not None:
+                # only use residual add if its set and we are not pre layer norm
+                residual = residual_add
+
+            self.residual_add_func(hidden_state, residual, attention_output, attention_bias, final_bias,
+                                   self.config.mp_size, self.config.mlp_after_attn, add_bias,
+                                   self.config.pre_layer_norm)
         return residual

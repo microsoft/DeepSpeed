@@ -20,7 +20,10 @@ class LinearOp(BaseOp):
             else:
                 self.linear_func = self.inference_module.linear_layer_fp32
         except AttributeError:
-            self.linear_func = None
+            self.linear_func = self.linear_fallback
+
+    def linear_fallback(self, input, weight, bias, add_bias, do_flash_attn, num_heads, transpose):
+        raise NotImplementedError
 
     def forward(self,
                 input: torch.Tensor,
@@ -31,10 +34,6 @@ class LinearOp(BaseOp):
                 num_heads: int,
                 external_cache: bool = None,
                 num_layers: int = None):
-        if self.linear_func != None:
-            qkv_out = self.linear_func(input, weight, bias, add_bias, do_flash_attn, num_heads,
-                                       self.config.transposed_mode)
-        else:
-            # fallback
-            raise NotImplementedError
+        qkv_out = self.linear_func(input, weight, bias, add_bias, do_flash_attn, num_heads,
+                                   self.config.transposed_mode)
         return qkv_out

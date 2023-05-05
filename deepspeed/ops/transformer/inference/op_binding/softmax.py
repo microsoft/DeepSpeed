@@ -22,16 +22,10 @@ class SoftmaxOp(BaseOp):
             else:
                 self.softmax_func = self.inference_module.softmax_fp32
         except AttributeError:
-            self.softmax_func = None
+            self.softmax_func = self.softmax_fallback
 
-    def forward(self, attn_scores: torch.Tensor, attn_mask: torch.Tensor, alibi: torch.Tensor, triangular: bool,
-                recompute: bool, local_attention: bool, window_size: int, async_op: bool, layer_scale: float,
-                head_offset: int):
-        if self.softmax_func != None:
-            output = self.softmax_func(attn_scores, attn_mask, alibi, triangular, recompute, local_attention,
-                                       window_size, async_op, layer_scale, head_offset, self.config.mp_size)
-        else:
-            # fallback
+    def softmax_fallback(self, attn_scores, attn_mask, alibi, triangular, recompute, local_attention, window_size, async_op, layer_scale, head_offset, mp_size):
+        if os.environ.get('DS_KI_FALLBACK') == 'True':
             alibi = alibi[head_offset:head_offset + self.num_attention_heads_per_partition]
             input_dtype = attn_scores.dtype
             if (triangular):
@@ -44,5 +38,14 @@ class SoftmaxOp(BaseOp):
                 attn_mask = attn_mask[:, None, None, :]
                 attn_scores += attn_mask
             output = F.softmax(attn_scores, dim=-1, dtype=torch.float32).to(input_dtype)
+            return output
+        else:
+            raise NotImplementedError
+
+    def forward(self, attn_scores: torch.Tensor, attn_mask: torch.Tensor, alibi: torch.Tensor, triangular: bool,
+                recompute: bool, local_attention: bool, window_size: int, async_op: bool, layer_scale: float,
+                head_offset: int):
+        output = self.softmax_func(attn_scores, attn_mask, alibi, triangular, recompute, local_attention,
+                                   window_size, async_op, layer_scale, head_offset, self.config.mp_size)
 
         return output

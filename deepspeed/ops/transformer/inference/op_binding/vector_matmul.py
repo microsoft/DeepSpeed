@@ -22,14 +22,14 @@ class VectorMatMulOp(BaseOp):
         except AttributeError:
             self.vector_matmul_func = None
 
+    def vector_matmul_fallback(self, input, weight, async_op, q_scale, q_int8, transpose):
+        if os.environ.get('DS_KI_FALLBACK') == 'True' and not transpose:
+            return torch.matmul(input, weight)
+        else:
+            raise NotImplementedError
+
     def forward(self, input: torch.Tensor, weight: torch.Tensor, async_op: bool = False):
         q_scale = weight.scale if hasattr(weight, 'scale') else torch.empty(1)
         q_int8 = self.config.dtype == torch.int8
-        if self.vector_matmul_func != None:
-            output = self.vector_matmul_func(input, weight, async_op, q_scale, q_int8, self.config.transposed_mode)
-        elif not self.config.transposed_mode:
-            # fallback
-            output = torch.matmul(input, weight)
-        else:
-            raise NotImplementedError
+        output = self.vector_matmul_func(input, weight, async_op, q_scale, q_int8, self.config.transposed_mode)
         return output

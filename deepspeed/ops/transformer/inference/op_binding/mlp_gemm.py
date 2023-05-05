@@ -32,7 +32,26 @@ class MLPGemmOp(BaseOp):
                 else:
                     self.mlp_gemm_func = self.inference_module.rms_mlp_gemm_fp32  # type: ignore
         except AttributeError:
+            if self.config.norm_type == NormType.LayerNorm:
+                self.mlp_gemm_func = self.mlp_gemm_fallback
+            elif self.config.norm_type == NormType.RMSNorm:
+                self.mlp_gemm_func = self.rms_mlp_gemm_fallback
+
             self.mlp_gemm_func = None
+
+    def mlp_gemm_fallback(self, input, residual, input_bias, weight_interm, weight_out, bias, gamma, beta, eps, pre_layer_norm, mlp_after_attn, interm_scale, out_scale, dtype, mlp_act_func_type, transpose):
+        if mlp_after_attn and not transpose:
+            residual_add = F.layer_norm(input + residual + input_bias, (input.shape[2], ), gamma, beta,
+                                        self.config.epsilon)
+            tmp = torch.matmul(residual_add, weight_interm)
+            tmp = F.gelu(tmp + bias)
+            output = torch.matmul(tmp, weight_out)
+            return output
+        else:
+            raise NotImplementedError
+
+    def rms_mlp_gemm_fallback(self, input, residual, weight_interm, weight_out, gamma, eps, interm_scale, out_scale, dtype, mlp_act_func_type, transpose):
+        raise NotImplementedError
 
     def forward(self,
                 input: torch.Tensor,
@@ -43,46 +62,35 @@ class MLPGemmOp(BaseOp):
                 bias: Optional[torch.Tensor] = None,
                 gamma: Optional[torch.Tensor] = None,
                 beta: Optional[torch.Tensor] = None):
-        if self.mlp_gemm_func != None:
-            if self.config.norm_type == NormType.LayerNorm:
-                output, residual_add = self.mlp_gemm_func(
-                    input,
-                    residual,
-                    input_bias,
-                    weight_interm,
-                    weight_out,
-                    bias,
-                    gamma,
-                    beta,
-                    self.config.epsilon,
-                    self.config.pre_layer_norm,
-                    self.config.mlp_after_attn,
-                    weight_interm.scale if hasattr(weight_interm, 'scale') else torch.empty(1),  # type: ignore
-                    weight_out.scale if hasattr(weight_out, 'scale') else torch.empty(1),  # type: ignore
-                    self.config.dtype == torch.int8,
-                    self.config.mlp_act_func_type,
-                    self.config.transposed_mode)
-            else:
-                output, residual_add = self.mlp_gemm_func(
-                    input,
-                    residual,
-                    weight_interm,
-                    weight_out,
-                    gamma,
-                    self.config.epsilon,
-                    weight_interm.scale if hasattr(weight_interm, 'scale') else torch.empty(1),  # type: ignore
-                    weight_out.scale if hasattr(weight_out, 'scale') else torch.empty(1),  # type: ignore
-                    self.config.dtype == torch.int8,
-                    self.config.mlp_act_func_type,
-                    self.config.transposed_mode)
+        if self.config.norm_type == NormType.LayerNorm:
+            output, residual_add = self.mlp_gemm_func(
+                input,
+                residual,
+                input_bias,
+                weight_interm,
+                weight_out,
+                bias,
+                gamma,
+                beta,
+                self.config.epsilon,
+                self.config.pre_layer_norm,
+                self.config.mlp_after_attn,
+                weight_interm.scale if hasattr(weight_interm, 'scale') else torch.empty(1),  # type: ignore
+                weight_out.scale if hasattr(weight_out, 'scale') else torch.empty(1),  # type: ignore
+                self.config.dtype == torch.int8,
+                self.config.mlp_act_func_type,
+                self.config.transposed_mode)
         else:
-            # fallback
-            if self.config.mlp_after_attn and not self.config.transposed_mode:
-                residual_add = F.layer_norm(input + residual + input_bias, (input.shape[2], ), gamma, beta,
-                                            self.config.epsilon)
-                tmp = torch.matmul(residual_add, weight_interm)
-                tmp = F.gelu(tmp + bias)
-                output = torch.matmul(tmp, weight_out)
-            else:
-                raise NotImplementedError
+            output, residual_add = self.mlp_gemm_func(
+                input,
+                residual,
+                weight_interm,
+                weight_out,
+                gamma,
+                self.config.epsilon,
+                weight_interm.scale if hasattr(weight_interm, 'scale') else torch.empty(1),  # type: ignore
+                weight_out.scale if hasattr(weight_out, 'scale') else torch.empty(1),  # type: ignore
+                self.config.dtype == torch.int8,
+                self.config.mlp_act_func_type,
+                self.config.transposed_mode)
         return output, residual_add
