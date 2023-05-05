@@ -36,6 +36,10 @@ class CCLBackend(TorchBackend):
         main_kvs = torch.tensor(main_kvs).to(torch.uint8)
         super(CCLBackend, self).broadcast(main_kvs, 0)
         self.ccl_comm_op.initialize(size, rank, main_kvs)
+        self.initialized = True
+
+    def is_initialized(self):
+        return self.initialized
 
     def broadcast(self, tensor, src, group=None, async_op=False):
         self.ccl_comm_op.broadcast(tensor, src, group, async_op)
