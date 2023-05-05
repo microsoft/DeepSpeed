@@ -64,10 +64,11 @@ class PartitionedParameterCoordinator:
         max_reuse_distance_in_numel: int,
         max_available_parameters_in_numel: int,
         allgather_stream: get_accelerator().Stream,
+        inflight_param_registry: __InflightParamRegistry,
         prefetch_nvme: bool = False,
     ) -> None:
         # mapping of param -> handle for each param that is currently in flight
-        self.__inflight_param_registry = __class__.__InflightParamRegistry()
+        self.__inflight_param_registry = inflight_param_registry
         # keeps track of the number of submodules invoked so far.
         self.__step_id: int = 0
         # network tracing mode

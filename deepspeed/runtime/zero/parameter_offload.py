@@ -243,6 +243,7 @@ class DeepSpeedZeRoOffload(object):
         self._max_reuse_distance_in_numel = int(max_reuse_distance)
         self._max_available_parameters_in_numel = int(max_live_parameters)
         self.__allgather_stream = get_accelerator().Stream() if overlap_comm else get_accelerator().default_stream()
+        self.__inflight_param_registry = PartitionedParameterCoordinator.__InflightParamRegistry()
 
         self.forward_hooks = []
         self.backward_hooks = []
@@ -270,6 +271,7 @@ class DeepSpeedZeRoOffload(object):
                 max_reuse_distance_in_numel=self._max_reuse_distance_in_numel,
                 max_available_parameters_in_numel=self._max_available_parameters_in_numel,
                 allgather_stream=self.__allgather_stream,
+                inflight_param_registry=self.__inflight_param_registry,
                 prefetch_nvme=self.offload_device == OffloadDeviceEnum.nvme,
             )
 
