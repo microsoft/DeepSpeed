@@ -97,7 +97,7 @@ class DS_LLAMAContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSpli
                          [prefix + param_names[4], prefix + param_names[5]])
         maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, 'output_w', prefix + param_names[6])
 
-        maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[8], prefix + param_names[7])
+        maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[8], prefix + param_names[7])
         maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[10], prefix + param_names[8])
 
 
