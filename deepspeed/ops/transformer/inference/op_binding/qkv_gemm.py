@@ -3,12 +3,12 @@
 
 # DeepSpeed Team
 
+import os
 import torch
 import torch.nn.functional as F
 from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
 from deepspeed.utils.types import NormType
-import os
 
 
 class QKVGemmOp(BaseOp):
@@ -37,7 +37,7 @@ class QKVGemmOp(BaseOp):
                 self.qkv_gemm_func = self.rms_qkv_gemm_fallback
 
     def qkv_gemm_fallback(self, input, weight, q_scale, bias, gamma, beta, eps, add_bias, q_int8, transpose):
-        if os.environ.get('DS_KI_FALLBACK') == 'True' and not transposed_mode:
+        if os.environ.get('DS_KI_FALLBACK') == 'True' and not transpose:
             inp_norm = F.layer_norm(input, (input.shape[2], ), gamma, beta, eps)
             tmp = torch.matmul(inp_norm, weight)
             if add_bias:

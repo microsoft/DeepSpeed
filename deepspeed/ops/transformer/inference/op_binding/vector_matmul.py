@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 
+import os
 import torch
 from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
@@ -20,7 +21,7 @@ class VectorMatMulOp(BaseOp):
             else:
                 self.vector_matmul_func = self.inference_module.vector_matmul_fp32
         except AttributeError:
-            self.vector_matmul_func = None
+            self.vector_matmul_func = self.vector_matmul_fallback
 
     def vector_matmul_fallback(self, input, weight, async_op, q_scale, q_int8, transpose):
         if os.environ.get('DS_KI_FALLBACK') == 'True' and not transpose:

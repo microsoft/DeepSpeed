@@ -5,6 +5,7 @@
 
 from typing import Optional
 
+import os
 import torch
 import torch.nn.functional as F
 from ..config import DeepSpeedInferenceConfig
@@ -37,16 +38,14 @@ class MLPGemmOp(BaseOp):
             elif self.config.norm_type == NormType.RMSNorm:
                 self.mlp_gemm_func = self.rms_mlp_gemm_fallback
 
-            self.mlp_gemm_func = None
-
     def mlp_gemm_fallback(self, input, residual, input_bias, weight_interm, weight_out, bias, gamma, beta, eps, pre_layer_norm, mlp_after_attn, interm_scale, out_scale, dtype, mlp_act_func_type, transpose):
-        if mlp_after_attn and not transpose:
+        if os.environ.get('DS_KI_FALLBACK') == 'True' and mlp_after_attn and not transpose:
             residual_add = F.layer_norm(input + residual + input_bias, (input.shape[2], ), gamma, beta,
                                         self.config.epsilon)
             tmp = torch.matmul(residual_add, weight_interm)
             tmp = F.gelu(tmp + bias)
             output = torch.matmul(tmp, weight_out)
-            return output
+            return (output, residual_add)
         else:
             raise NotImplementedError
 

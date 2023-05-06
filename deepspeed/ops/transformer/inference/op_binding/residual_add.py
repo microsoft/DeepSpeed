@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 
+import os
 import torch
 from typing import Optional
 from ..config import DeepSpeedInferenceConfig
