@@ -268,9 +268,6 @@ class IMPIRunner(MultiNodeRunner):
         for k, v in self.exports.items():
             export_cmd += ['-genv', f'{k}', f'{v}']
 
-        if self.args.prefer_deepspeed_comm:
-            export_cmd += ['-genv', 'PREFER_DEEPSPEED_COMM', str(self.args.prefer_deepspeed_comm)]
-
         if self.args.bind_cores_to_rank:
             cores_per_rank, _ = get_numactl_cmd(self.args.bind_core_list, process_per_node, 0)
             export_cmd += ['-genv', 'OMP_NUM_THREADS', str(cores_per_rank)]

@@ -101,10 +101,6 @@ def parse_args():
                         "numbers and range. i.e. 1,3-5,7 => [1,3,4,5,7].  When not "
                         "specified, all cores on system would be used rank binding")
 
-    parser.add_argument("--prefer_deepspeed_comm",
-                        action="store_true",
-                        help="Use DeepSpeed builtin communication backend instead of torch distributed")
-
     # positional
     parser.add_argument("training_script",
                         type=str,
@@ -175,7 +171,6 @@ def main():
     current_env["CROSS_RANK"] = str(args.node_rank)
     current_env["CROSS_SIZE"] = str(args.nnodes)
     current_env["LOCAL_SIZE"] = str(num_local_procs)
-    current_env["PREFER_DEEPSPEED_COMM"] = str(args.prefer_deepspeed_comm)
 
     if args.save_pid:
         print(f"launcher pid: {os.getpid()}")

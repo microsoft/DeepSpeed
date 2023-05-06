@@ -589,13 +589,8 @@ def init_distributed(dist_backend=None,
         dist_init_required = cdb is None or not cdb.is_initialized()
 
     if cdb is None:
-        # if user specific --prefer_deepspeed_comm when launching deepspeed, will load cdb to
-        # DeepSpeed backend, otherwise fallback to torch distributed backend
-
-        prefer_deepspeed_comm = os.environ.get("PREFER_DEEPSPEED_COMM")
-        if prefer_deepspeed_comm == "True":
-            init_deepspeed_backend(get_accelerator().communication_backend_name(), timeout, init_method)
-            set_backend()
+        init_deepspeed_backend(get_accelerator().communication_backend_name(), timeout, init_method)
+        set_backend()
         utils.logger.info(f'cdb={cdb}')
     if cdb is None and torch.distributed.is_initialized():
         # The user initialized torch.dist themselves, create cdb and short-circuit

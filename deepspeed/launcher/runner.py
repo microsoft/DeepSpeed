@@ -184,9 +184,6 @@ def parse_args(args=None):
                         help="List of cores to bind to with comma separated list of "
                         "numbers and range. i.e. 1,3-5,7 => [1,3,4,5,7].  When not "
                         "specified, all cores on system would be used rank binding")
-    parser.add_argument("--prefer_deepspeed_comm",
-                        action="store_true",
-                        help="Use DeepSpeed builtin communication backend instead of torch distributed")
     return parser.parse_args(args=args)
 
 
@@ -499,8 +496,6 @@ def main(args=None):
             deepspeed_launch.append("--bind_cores_to_rank")
         if args.bind_core_list != None:
             deepspeed_launch.append(f"--bind_core_list={args.bind_core_list}")
-        if args.prefer_deepspeed_comm:
-            deepspeed_launch.append(f"--prefer_deepspeed_comm")
         cmd = deepspeed_launch + [args.user_script] + args.user_args
     else:
         args.launcher = args.launcher.lower()
