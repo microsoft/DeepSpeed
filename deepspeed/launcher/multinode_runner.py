@@ -186,40 +186,46 @@ class MPICHRunner(MultiNodeRunner):
         process_per_node = list(devices_per_node)[0]
         if not all([n == process_per_node for n in devices_per_node]):
             raise ValueError("MPICH requires same number of devices per node")
-        hosts = ""
-
-        for i, host in enumerate(self.resource_pool.keys()):
-            if i == 0:
-                hosts = f"{host}"
-            else:
-                hosts += f",{host}"
 
         mpirun_cmd = [
             'mpirun',
-            '-n',
-            f'{total_process_count}',
-            '-ppn',
-            f'{process_per_node}',
-            '-hosts',
-            f'{hosts}',
         ] + split(self.args.launcher_args)
         export_cmd = []
 
         for k, v in self.exports.items():
             export_cmd += ['-genv', "{}={}".format(k, v)]
 
-        if self.args.prefer_deepspeed_comm:
-            export_cmd += ['-env', 'PREFER_DEEPSPEED_COMM', str(self.args.prefer_deepspeed_comm)]
+        export_cmd += ['-genv', 'MASTER_ADDR', str(self.args.master_addr)]
+        export_cmd += ['-genv', 'MASTER_PORT', str(self.args.master_port)]
+        export_cmd += ['-genv', 'WORLD_SIZE', str(total_process_count)]
+        export_cmd += ['-genv', 'LOCAL_SIZE', str(process_per_node)]
 
-        export_cmd += ['-env', 'MASTER_ADDR', str(self.args.master_addr)]
-        export_cmd += ['-env', 'MASTER_PORT', str(self.args.master_port)]
+        hosts = list(self.resource_pool.keys())
 
-        python_exec = []
-        if not self.args.no_python:
-            python_exec = [sys.executable, "-u"]
-            if self.args.module:
-                python_exec.append("-m")
-        return mpirun_cmd + export_cmd + python_exec + [self.user_script] + self.user_arguments
+        per_host_cmd = []
+        host_id = 0
+        host_count = 0
+        for i in range(total_process_count):
+            local_rank = i % process_per_node
+            python_exec = []
+            if not self.args.no_python:
+                python_exec += [sys.executable, "-u"]
+                if self.args.module:
+                    python_exec.append("-m")
+            env_mapping = ['-env', 'RANK', str(i)]
+            env_mapping += ['-env', 'LOCAL_RANK', str(local_rank)]
+            if i == 0:
+                per_host_cmd = ['-n', '1', '-host', hosts[host_id]
+                                ] + env_mapping + python_exec + [self.user_script] + self.user_arguments
+            else:
+                per_host_cmd = per_host_cmd + [':', '-n', '1', '-host', hosts[host_id]
+                                               ] + env_mapping + python_exec + [self.user_script] + self.user_arguments
+            host_count = host_count + 1
+            if host_count == process_per_node:
+                host_id = host_id + 1
+                host_count = 0
+
+        return mpirun_cmd + export_cmd + per_host_cmd
 
 
 class IMPIRunner(MultiNodeRunner):
