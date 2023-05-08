@@ -34,23 +34,22 @@ class DS_T5Container(BaseTransformerContainer):
         self._4hh_w = _4hh_w
         self._4hh_b = _4hh_b
 
-    def set_hidden_heads(self, hidden_size, num_attention_heads,intermediate_size):
-        self.hidden_size = hidden_size
-        self.num_attention_heads = num_attention_heads
-        self.intermediate_size = intermediate_size
+    # def set_hidden_heads(self, hidden_size, num_attention_heads,intermediate_size):
+    #     self.hidden_size = hidden_size
+    #     self.num_attention_heads = num_attention_heads
+    #     self.intermediate_size = intermediate_size
 
-    def apply_tensor_parallelism(self, module):
-        pass
+    # def apply_tensor_parallelism(self, module):
+    #     pass
 
-    def copy_data_to_new_module(self,):
-        pass
+    # def copy_data_to_new_module(self,):
+    #     pass
 
 
 class HFT5LayerPolicy(TransformerPolicy):
     _orig_layer_class = None
 
     def __init__(self, client_module, inference=True):
-        # HuggingFace GPT2 uses convolutional layer instead of linear layer
         super().__init__(inference, scale_attention=False)
         self.client_module = client_module
         try:
@@ -108,4 +107,4 @@ class HFT5LayerPolicy(TransformerPolicy):
                 self.scale_attention, \
                 self.client_module.layer[1].layer_norm.weight.data, \
                 self.client_module.layer[1].EncDecAttention.relative_attention_bias if \
-                    self.client_module.layer[1].EncDecAttention.has_relative_attention_bias else None
+                self.client_module.layer[1].EncDecAttention.has_relative_attention_bias else None

@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class DeepSpeedT5Inference(DeepSpeedTransformerInference):
-    """Initialize the DeepSpeed OPT Transformer Layer.
+    """Initialize the DeepSpeed T5 Transformer Layer.
     """
     def __init__(self,
                  config,
