@@ -155,7 +155,39 @@ Example ZeRO-3 Configurations
             ...
         }
 
+MiCS Configurations
+===================
 
+All MiCS configurations are set with `DeepSpeedZeroConfig`. MiCS assumes ZeRO
+stage 3 optimization is enabled. For now, there are two configuration fields of
+MiCS `mics_shard_size` and `mics_hierarchical_params_gather`. `mics_shard_size`
+controls how many devices are used for partitioning the model states.
+`mics_hierarchical_params_gather` controls whether we use a two-stage
+hierarchical way to gather parameters in the forward computation.
+`mics_hierarchical_params_gather` is useful when model states are partitioned
+across multiple nodes and the cross-node bandwidth is slow. By default this is
+turned off.
+
+
+Example MiCS Configurations
+===========================
+
+#. Use MiCS to partition the model states (including optimizer states,
+   gradients, and parameters). The following config example partitions the model
+   states to eight devices, and assumes the eight devices are located within a
+   single node (`mics_hierarchical_params_gather` is `False`).
+
+    .. code-block:: python
+        :emphasize-lines: 3
+
+        {
+            "zero_optimization": {
+                "stage": 3,
+                "mics_shard_size": 8,
+                "mics_hierarchical_params_gather": False,
+            },
+            ...
+        }
 
 Assumptions
 ===========
@@ -331,3 +363,29 @@ These routines can be used in a training loop as shown in the following snippet.
 
     [...]
     optimizer.step()
+
+
+GPU Memory Management
+---------------------
+
+By default at the end of training with ZeRO stage 3 some parameters could remain unpartitioned and use up some gpu memory.
+This is done on purpose as an optimization should you resume training again. If you'd like to clear out the cached
+parameters that use up gpu memory, you can call ``empty_partition_cache`` method of a DeepSpeed engine.
+
+.. autofunction::deepspeed.DeepSpeedEngine.empty_partition_cache
+
+The following code snippet illustrates this functionality.
+
+.. code-block:: python
+
+    with zero.Init():
+        model = MyLargeModel()
+
+    ds_engine, _, _, _ = deepspeed.initialize(model, ...)
+    for batch in ...:
+        loss = ds_engine(batch)
+        ds_engine.backward(batch)
+        ds_engine.step()
+
+    # Free GPU memory consumed by model parameters
+    ds_engine.empty_partition_cache()

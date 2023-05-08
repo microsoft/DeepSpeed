@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 from ..config import DeepSpeedInferenceConfig
@@ -6,10 +9,13 @@ from .base import BaseOp
 
 
 class LinearOp(BaseOp):
+
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(LinearOp, self).__init__(config)
-        if self.config.fp16:
+        if self.config.dtype in [torch.float16, torch.int8]:
             self.linear_func = self.inference_cuda_module.linear_layer_fp16
+        elif self.config.dtype == torch.bfloat16:
+            self.linear_func = self.inference_cuda_module.linear_layer_bf16
         else:
             self.linear_func = self.inference_cuda_module.linear_layer_fp32
 
@@ -22,10 +28,6 @@ class LinearOp(BaseOp):
                 num_heads: int,
                 external_cache: bool = None,
                 num_layers: int = None):
-        qkv_out = self.linear_func(input,
-                                   weight,
-                                   bias,
-                                   add_bias,
-                                   do_flash_attn,
-                                   num_heads)
+        qkv_out = self.linear_func(input, weight, bias, add_bias, do_flash_attn, num_heads,
+                                   self.config.transposed_mode)
         return qkv_out

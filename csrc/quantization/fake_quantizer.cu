@@ -1,6 +1,7 @@
-/*
-Copyright The Microsoft DeepSpeed Team
-*/
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
 
 #include <math.h>
 #include "custom_cuda_layers.h"
@@ -456,7 +457,7 @@ void launch_sr_fake_quantize_kernel(T* vals,
     dim3 grid_dim(group_num);
 
     uint64_t inc = total_count / grid_dim.x / block_dim.x;
-    std::pair<uint64_t, uint64_t> seed = Context::Instance().IncrementOffset(inc);
+    std::pair<uint64_t, uint64_t> seed = TrainingContext::Instance().IncrementOffset(inc);
 
     sr_fake_quantize_kernel<<<grid_dim, block_dim, 0, stream>>>(
         vals, (total_count / group_num) / 4, group_num, num_bits, seed);
@@ -1010,7 +1011,7 @@ void launch_sr_fake_quantize_kernel_asym(T* vals,
     dim3 grid_dim(group_num);
 
     uint64_t inc = total_count / grid_dim.x / block_dim.x;
-    std::pair<uint64_t, uint64_t> seed = Context::Instance().IncrementOffset(inc);
+    std::pair<uint64_t, uint64_t> seed = TrainingContext::Instance().IncrementOffset(inc);
 
     sr_fake_quantize_kernel<<<grid_dim, block_dim, 0, stream>>>(
         vals, (total_count / group_num) / 4, group_num, num_bits, seed);

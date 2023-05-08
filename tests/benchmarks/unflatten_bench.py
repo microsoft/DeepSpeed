@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 #!/usr/bin/env python
 
@@ -26,12 +29,9 @@ unflatten = util_ops.unflatten
 torch.manual_seed(0)
 # emulate a small typical model weights
 x = [
-    torch.rand((512,
-                512)).to(get_accelerator().device_name()),
-    torch.rand((512,
-                1024)).to(get_accelerator().device_name()),
-    torch.rand((512,
-                30000)).to(get_accelerator().device_name())
+    torch.rand((512, 512)).to(get_accelerator().device_name()),
+    torch.rand((512, 1024)).to(get_accelerator().device_name()),
+    torch.rand((512, 30000)).to(get_accelerator().device_name())
 ]
 unflat_t = x * 30
 

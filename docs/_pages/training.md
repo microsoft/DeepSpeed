@@ -364,7 +364,7 @@ They offer the same convergence as Adam/LAMB, incur up to 26x less communication
 up to 6.6x higher throughput for BERT-Large pretraining and up to 2.7x higher throughput
 for SQuAD fine-tuning on bandwidth-limited clusters. For more details on usage and performance,
 please refer to the [1-bit Adam tutorial](https://www.deepspeed.ai/tutorials/onebit-adam),
-[1-bit Adam blog post](https://www.deepspeed.ai/news/2020/09/09/onebit-adam-blog-post.md),
+[1-bit Adam blog post](https://www.deepspeed.ai/2020/09/08/onebit-adam-blog-post.html),
 [0/1 Adam tutorial](https://www.deepspeed.ai/tutorials/zero-one-adam)
 and [1-bit LAMB tutorial](https://www.deepspeed.ai/tutorials/onebit-lamb/). For technical details,
 please refer to the [1-bit Adam paper](https://arxiv.org/abs/2102.02888), [0/1 Adam paper](https://arxiv.org/abs/2202.06009) and
@@ -484,7 +484,7 @@ The flops profiler can also be used as a standalone package. Please refer to the
 
 ### Autotuning
 
-The DeepSpeed Autotuner  uses model information, system information, and heuristics to efficiently tune Zero stage, micro batch size, and other Zero configurations. Using the autotuning feature requires no code change from DeepSpeed users. While `"autotuning": {"enabled": true}` is the minimal required to enable auotuning, there are other parameters users can define to configure the autotuning process. Below shows major parameters and their default values in the autotuning configuration. Please refer to the [Autotuning](/tutorials/autotuning) tutorial for more details.
+The DeepSpeed Autotuner  uses model information, system information, and heuristics to efficiently tune Zero stage, micro batch size, and other Zero configurations. Using the autotuning feature requires no code change from DeepSpeed users. While `"autotuning": {"enabled": true}` is the minimal required to enable autotuning, there are other parameters users can define to configure the autotuning process. Below shows major parameters and their default values in the autotuning configuration. Please refer to the [Autotuning](/tutorials/autotuning) tutorial for more details.
 
 ```json
 {

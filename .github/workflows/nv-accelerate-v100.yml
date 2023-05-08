@@ -6,9 +6,13 @@ on:
       - 'staging**'
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
+  schedule:
+    - cron: "0 0 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -26,7 +30,7 @@ jobs:
 
       - name: Install pytorch
         run: |
-          pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu111
+          pip install --no-cache-dir torch torchvision --extra-index-url https://download.pytorch.org/whl/cu111
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -44,8 +48,6 @@ jobs:
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           git clone https://github.com/huggingface/accelerate
           cd accelerate
-          # tmp fix
-          git checkout 5f4ba04628eeea14f9d248ab0e54399899503532
           git rev-parse --short HEAD
           # installing dependencies
           pip install .[testing]

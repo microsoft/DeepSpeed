@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 from ..config import DeepSpeedInferenceConfig
@@ -6,36 +9,22 @@ from .base import BaseOp
 
 
 class SoftmaxOp(BaseOp):
+
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(SoftmaxOp, self).__init__(config)
-        if self.config.fp16:
+        if self.config.dtype in [torch.float16, torch.int8]:
             self.softmax_func = self.inference_cuda_module.softmax_fp16
+        elif self.config.dtype == torch.bfloat16:
+            self.softmax_func = self.inference_cuda_module.softmax_bf16
         else:
-            self.softmax_func = self._not_implemented
+            self.softmax_func = self.inference_cuda_module.softmax_fp32
 
     def _not_implemented(self, *args, **kwargs):
         raise NotImplementedError
 
-    def forward(self,
-                attn_scores: torch.Tensor,
-                attn_mask: torch.Tensor,
-                alibi: torch.Tensor,
-                triangular: bool,
-                recompute: bool,
-                local_attention: bool,
-                window_size: int,
-                async_op: bool,
-                layer_scale: float,
+    def forward(self, attn_scores: torch.Tensor, attn_mask: torch.Tensor, alibi: torch.Tensor, triangular: bool,
+                recompute: bool, local_attention: bool, window_size: int, async_op: bool, layer_scale: float,
                 head_offset: int):
-        output = self.softmax_func(attn_scores,
-                                   attn_mask,
-                                   alibi,
-                                   triangular,
-                                   recompute,
-                                   local_attention,
-                                   window_size,
-                                   async_op,
-                                   layer_scale,
-                                   head_offset,
-                                   self.config.mp_size)
+        output = self.softmax_func(attn_scores, attn_mask, alibi, triangular, recompute, local_attention, window_size,
+                                   async_op, layer_scale, head_offset, self.config.mp_size)
         return output
