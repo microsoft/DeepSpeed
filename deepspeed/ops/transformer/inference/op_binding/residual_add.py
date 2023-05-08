@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 
+import os
 import torch
 from typing import Optional
 from ..config import DeepSpeedInferenceConfig
@@ -47,7 +48,7 @@ class ResidualAddOp(BaseOp):
                                        self.config.pre_layer_norm)
         else:
             # fallback
-            if self.config.mlp_after_attn:
+            if os.environ.get('DS_KI_FALLBACK') == 'True' and self.config.mlp_after_attn:
                 if self.config.pre_layer_norm:
                     tmp = (residual.float() + attention_output.float() + attention_bias.float() +
                            final_bias.float()) / self.config.mp_size + hidden_state.float()
