@@ -133,6 +133,7 @@ The following model families have been successfully tested with automatic tensor
 - gpt-neox
 - longt5
 - luke
+- llama
 - m2m_100
 - marian
 - mvp
@@ -150,12 +151,12 @@ The following model families have been successfully tested with automatic tensor
 - xglm
 - xlm_roberta
 - yoso
+- bloom
 
 # Unsupported Models
 
 The following models are not currently supported with automatic tensor parallelism. They may still be compatible with other DeepSpeed features (e.g., kernel injection for Bloom):
 
-- bloom
 - codegen
 - deberta
 - flaubert
