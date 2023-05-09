@@ -153,9 +153,12 @@ class InferenceEngine(Module):
 
         # Check if model passed to engine is loaded w/ meta tensors, in which case
         # checkpoint data will be loaded at a later stage of inference initialization.
-        self.is_meta = self.module.device.type == 'meta' if hasattr(self.module, "device") else False
+        self.model_meta_device = self.module.device.type == 'meta' if hasattr(self.module, "device") else False
 
-        if config.checkpoint and not self.is_meta:
+        if self.model_meta_device:
+            assert config.replace_with_kernel_inject, "Meta tensor support is only available when kernel injection is enabled"
+
+        if config.checkpoint and not self.model_meta_device:
             self._load_checkpoint(config.checkpoint)
 
         # convert model to intended dtype

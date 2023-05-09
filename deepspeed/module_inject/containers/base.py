@@ -33,7 +33,7 @@ class BaseTransformerContainer(ABC):
 
         self.megatron_v2 = self.policy.is_megatron_v2
         self.scale_attention = self.policy.scale_attention
-        self.is_meta = False
+        self.ckpt_load_enabled = False
 
         # configuration for models. todo: can this be moved to a pydantic model config?
         self.hidden_size = None
@@ -119,6 +119,8 @@ class BaseTransformerContainer(ABC):
         self.set_attention(*self.policy.attention(enable_training=enable_training))
         self.set_mlp(*self.policy.mlp(enable_training=enable_training))
         self.set_layernorm(*self.policy.layernorm())
+        if self.qkvw.is_meta:
+            assert self.ckpt_load_enabled, "Meta tensors are not supported for this model currently."
 
     def convert_to_required_dtype(self):
         # Note: converting tensors to fp16 requires that we do it in-place using self.__dict__ and not make a list/dict copy
