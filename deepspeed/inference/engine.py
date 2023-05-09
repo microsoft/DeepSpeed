@@ -34,6 +34,58 @@ from torch import nn
 INFERENCE_MODEL_TIMER = "model-forward-inference"
 
 
+def build_bloom_alibi_tensor(attention_mask: torch.Tensor, num_heads: int, dtype: torch.dtype) -> torch.Tensor:
+    """
+    Link to paper: https://arxiv.org/abs/2108.12409 Alibi tensor is not causal as the original paper mentions, it
+    relies on a translation invariance of softmax for quick implementation: with l being a tensor, and a fixed value
+    `softmax(l+a) = softmax(l)`. Based on
+    https://github.com/ofirpress/attention_with_linear_biases/blob/a35aaca144e0eb6b789dfcb46784c4b8e31b7983/fairseq/models/transformer.py#L742
+    TODO @thomasw21 this doesn't work as nicely due to the masking strategy, and so masking varies slightly.
+
+    Args:
+    Returns tensor shaped (batch_size * num_heads, 1, max_seq_len)
+        attention_mask (`torch.Tensor`):
+            Token-wise attention mask, this should be of shape (batch_size, max_seq_len).
+        num_heads (`int`, *required*):
+            number of heads
+        dtype (`torch.dtype`, *optional*, default=`torch.bfloat16`):
+            dtype of the output tensor
+    """
+    import math
+    batch_size, seq_length = attention_mask.shape
+    closest_power_of_2 = 2**math.floor(math.log2(num_heads))
+    base = torch.tensor(2**(-(2**-(math.log2(closest_power_of_2) - 3))),
+                        device=attention_mask.device,
+                        dtype=torch.float32)
+    powers = torch.arange(1, 1 + closest_power_of_2, device=attention_mask.device, dtype=torch.int32)
+    slopes = torch.pow(base, powers)
+
+    if closest_power_of_2 != num_heads:
+        extra_base = torch.tensor(2**(-(2**-(math.log2(2 * closest_power_of_2) - 3))),
+                                  device=attention_mask.device,
+                                  dtype=torch.float32)
+        num_remaining_heads = min(closest_power_of_2, num_heads - closest_power_of_2)
+        extra_powers = torch.arange(1, 1 + 2 * num_remaining_heads, 2, device=attention_mask.device, dtype=torch.int32)
+        slopes = torch.cat([slopes, torch.pow(extra_base, extra_powers)], dim=0)
+
+    # Note: alibi will added to the attention bias that will be applied to the query, key product of attention
+    # => therefore alibi will have to be of shape (batch_size, num_heads, query_length, key_length)
+    # => here we set (batch_size=1, num_heads=num_heads, query_length=1, key_length=max_length)
+    # => the query_length dimension will then be broadcasted correctly
+    # This is more or less identical to T5's relative position bias:
+    # https://github.com/huggingface/transformers/blob/f681437203baa7671de3174b0fa583c349d9d5e1/src/transformers/models/t5/modeling_t5.py#L527
+    arange_tensor = ((attention_mask.cumsum(dim=-1) - 1) * attention_mask)[:, None, :]
+    alibi = slopes[..., None] * arange_tensor
+    if dist.is_initialized():
+        num_heads_per_rank = int(num_heads / dist.get_world_size())
+        offset = dist.get_rank() * num_heads_per_rank
+        alibi = alibi.view(batch_size, num_heads, 1, seq_length)
+        alibi = alibi[:, offset:num_heads_per_rank + offset, :, :]
+        return alibi.reshape(batch_size * num_heads_per_rank, 1, seq_length).to(dtype)
+    else:
+        return alibi.reshape(batch_size * num_heads, 1, seq_length).to(dtype)
+
+
 class InferenceEngine(Module):
     inference_mp_group = None
     inference_ep_group = None
@@ -85,8 +137,14 @@ class InferenceEngine(Module):
         self.model_profile_enabled = False
         self._model_times = []
 
-        # This is a hack to remove the prepare_mask function on HF side for BLOOM architecture
-        self.remove_mask_prepare_for_bloom()
+        if not self.injection_dict and config.replace_with_kernel_inject:
+            # This is a hack to remove the prepare_mask function on HF side for BLOOM architecture
+            self.remove_mask_prepare_for_bloom()
+
+        if self.injection_dict or not config.replace_with_kernel_inject:
+            # This is a hack to redefine the alibi func due to TP
+            if config.tensor_parallel.tp_size > 1:
+                self.build_alibi_tensor()
 
         if get_accelerator().device_name() == 'cuda' and config.enable_cuda_graph:
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
@@ -96,9 +154,6 @@ class InferenceEngine(Module):
             self._static_kwargs = {}
             self._static_output = {}
             self.max_prev_batch_size = None
-
-        if config.checkpoint and not config.replace_with_kernel_inject:
-            self._load_checkpoint(config.checkpoint)
 
         # convert model to intended dtype
         if config.dtype:
@@ -118,10 +173,6 @@ class InferenceEngine(Module):
 
         if moe and dist.get_world_size() > 1:
             self._create_ep_parallel_group(config.moe.moe_experts)
-
-        # retain this from the old conditional argument being passed to apply_injection_policy()
-        if not config.replace_with_kernel_inject:
-            config.checkpoint = None
 
         # We only support three modes: 1) user specified policy for tensor-parallelism, 2) kernel injection (replace_with_kernel_inject), and 3) automatic tensor parallelism.
         if self.injection_dict:
@@ -181,6 +232,11 @@ class InferenceEngine(Module):
         if hasattr(self.module, 'transformer'):
             if hasattr(self.module.transformer, '_prepare_attn_mask'):
                 self.module.transformer._prepare_attn_mask = lambda attention_mask, *args, **kwargs: attention_mask
+
+    def build_alibi_tensor(self):
+        if hasattr(self.module, 'transformer'):
+            if hasattr(self.module.transformer, 'build_alibi_tensor'):
+                self.module.transformer.build_alibi_tensor = build_bloom_alibi_tensor
 
     def _pre_forward_hook(self, module, *inputs, **kwargs):
         if self.use_cuda_events:
@@ -284,16 +340,38 @@ class InferenceEngine(Module):
         def load(module, state_dict, prefix):
             args = (state_dict, prefix, {}, True, [], [], error_msgs)
             if hasattr(module, 'weight'):
+                if module.weight.data.is_meta:
+                    # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                    module.weight = torch.nn.parameter.Parameter(data=torch.empty_like(module.weight.data,
+                                                                                       device="cpu"),
+                                                                 requires_grad=module.weight.data.requires_grad)
                 if 'query_key_value' in prefix:
-                    module.weight = self.mp_replace.qkv_copy(module.weight.data, state_dict[prefix + 'weight'])
+                    module.weight = self.mp_replace.strided_copy(module.weight.data,
+                                                                 state_dict[prefix + 'weight'],
+                                                                 num_splits=3)
                 else:
                     module.weight = self.mp_replace.copy(module.weight.data, state_dict[prefix + 'weight'])
             else:
+                if module.norm.weight.data.is_meta:
+                    # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                    module.norm.weight = torch.nn.parameter.Parameter(
+                        data=torch.empty_like(module.norm.weight.data, device="cpu"),
+                        requires_grad=module.norm.weight.data.requires_grad)
                 module.norm.weight = self.mp_replace.copy(module.norm.weight.data, state_dict[prefix + 'weight'])
             if prefix + 'bias' in self.key_list:
                 if hasattr(module, 'norm'):
+                    if module.norm.bias.data.is_meta:
+                        # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                        module.norm.bias = torch.nn.parameter.Parameter(
+                            data=torch.empty_like(module.norm.bias.data, device="cpu"),
+                            requires_grad=module.norm.bias.data.requires_grad)
                     module.norm.bias = self.mp_replace.copy(module.norm.bias, state_dict[prefix + 'bias'])
                 else:
+                    if module.bias.data.is_meta:
+                        # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                        module.bias = torch.nn.parameter.Parameter(data=torch.empty_like(module.bias.data,
+                                                                                         device="cpu"),
+                                                                   requires_grad=module.bias.data.requires_grad)
                     data = state_dict[prefix + 'bias']
                     data = data.to(get_accelerator().current_device_name())
                     module.bias = self.mp_replace.copy(module.bias, data)
@@ -321,6 +399,15 @@ class InferenceEngine(Module):
                     load_module_recursive(child, prefix if level == 0 else prefix + name + '.', level + 1)
 
         load_module_recursive(r_module)
+
+        embedding_weight = None
+
+        for n, p in r_module.named_parameters():
+            if "word_embeddings." in n or "embed_tokens." in n or "wte." in n:
+                embedding_weight = p
+        if embedding_weight is not None and hasattr(r_module, "lm_head") and hasattr(
+                r_module.lm_head, "weight") and r_module.lm_head.weight.is_meta:
+            r_module.lm_head.weight = embedding_weight
 
     def _apply_injection_policy(self, config, client_module=None):
         # client_module is only passed when using the injection_dict method.
@@ -373,16 +460,18 @@ class InferenceEngine(Module):
         else:
             sd_loader = SDLoaderFactory.get_sd_loader_json(load_dir, self.checkpoint_engine)
 
-        if type(sd_loader) is list:
-            self.sd = torch.load(sd_loader[0], map_location='cpu')
+        checkpoint = sd_loader['checkpoints']
+
+        if type(checkpoint) is list:
+            self.sd = torch.load(checkpoint[0], map_location='cpu')
             self.key_list = list(self.sd.keys())
 
             self.load_model_with_checkpoint(self.module)
 
-            for i in range(1, len(sd_loader)):
+            for i in range(1, len(checkpoint)):
                 if not dist.is_initialized() or dist.get_rank() == 0:
                     print(f"loading checkpoint ({i})")
-                self.sd = torch.load(sd_loader[i], map_location=get_accelerator().device_name())
+                self.sd = torch.load(checkpoint[i], map_location=get_accelerator().device_name())
                 self.key_list = list(self.sd.keys())
                 self.load_model_with_checkpoint(self.module)
         else:

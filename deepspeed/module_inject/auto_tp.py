@@ -32,7 +32,7 @@ class AutoTP():
         return mlist
 
     def supported(model):
-        unsupported = ['bloom', 'codegen', 'deberta', 'flaubert', 'fsmt', 'gpt2', 'led', 'longformer', 'xlm', 'xlnet']
+        unsupported = ['codegen', 'deberta', 'flaubert', 'fsmt', 'gpt2', 'led', 'longformer', 'xlm', 'xlnet']
         model = str(model)
         key = re.search(r": (.*?)Model", model)
         if key is None:
@@ -103,6 +103,10 @@ class AutoTP():
                     if layer_list[i - 1] != 'ln':
                         gem_list = gem_list + [layer_list[i - 1]]
                 elif 'out_proj' in layer:
+                    gem_list = gem_list + [layer]
+                elif 'o_proj' in layer:
+                    gem_list = gem_list + [layer]
+                elif 'down_proj' in layer:
                     gem_list = gem_list + [layer]
             layer_list = []
             if gem_list != []:

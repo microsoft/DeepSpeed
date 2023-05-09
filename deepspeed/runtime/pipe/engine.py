@@ -15,6 +15,8 @@ from deepspeed.accelerator import get_accelerator
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
 from ..utils import PartitionedTensor
 from ..dataloader import RepeatingLoader
+from ..zero.config import ZeroStageEnum
+from ..activation_checkpointing import checkpointing as ds_checkpointing
 
 from .module import PipelineModule, PipelineError
 from . import p2p
@@ -241,11 +243,10 @@ class PipelineEngine(DeepSpeedEngine):
         self._force_grad_boundary = True
         if self.pipeline_enable_backward_allreduce:
             if self.bfloat16_enabled():
-                if self.zero_optimization_stage() == 0:
+                if self.zero_optimization_stage() < ZeroStageEnum.gradients:
                     self._bf16_reduce_grads()
                 else:
-                    assert self.zero_optimization_stage() == 1, "only bf16 + z1 are supported"
-                    raise NotImplementedError()
+                    raise NotImplementedError("PP+BF16 only work for ZeRO Stage 1")
             else:
                 self.allreduce_gradients(bucket_size=MEMORY_OPT_ALLREDUCE_SIZE)
         self._force_grad_boundary = False
@@ -500,7 +501,7 @@ class PipelineEngine(DeepSpeedEngine):
         assert src_rank in self.grid.pp_group
 
         if self.global_rank == src_rank:
-            result = data.clone().detach()
+            result = data.clone().detach().type(dtype).to(self.device)
         else:
             result = torch.Tensor([0.]).type(dtype).to(self.device)
 
@@ -624,6 +625,11 @@ class PipelineEngine(DeepSpeedEngine):
         self._zero_grads(inputs)
 
         outputs = super().forward(inputs)
+
+        # Reset activation checkpointing buffers.
+        # Need to call this between evaluation iterations
+        if not self.module.training:
+            ds_checkpointing.reset()
 
         # Partition the outputs if we are not the last stage
         if self.is_pipe_partitioned and not self.is_last_stage():
@@ -1248,7 +1254,7 @@ class PipelineEngine(DeepSpeedEngine):
         self.module.save_state_dict(self._curr_ckpt_path, checkpoint_engine=self.checkpoint_engine)
         return None
 
-    def load_module_state_dict(self, state_dict, strict=True, custom_load_fn=None):
+    def load_module_state_dict(self, checkpoint, strict=True, custom_load_fn=None):
         """Override hack to instead use a directory path.
 
         This is important because pipeline models checkpoint by layer instead of rank.
@@ -1260,6 +1266,7 @@ class PipelineEngine(DeepSpeedEngine):
             strict (bool, optional): Strict state loading. Defaults to True.
         """
         assert custom_load_fn is None, "custom_load_fn not supported w. pipeline parallelism"
+        state_dict = checkpoint['module']
         if (state_dict is not None) and (not isinstance(state_dict, str)):
             super().load_module_state_dict(state_dict, strict)
             return
