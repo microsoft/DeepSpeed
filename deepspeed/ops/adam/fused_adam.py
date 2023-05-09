@@ -4,7 +4,7 @@
 # DeepSpeed Team
 """
 Copyright NVIDIA/apex
-This file is adapted from fused adam in NVIDIA/apex, commit a109f85
+This file is adapted from fused adam in NVIDIA/apex, commit 6bd01c4
 """
 
 import torch
@@ -129,10 +129,8 @@ class FusedAdam(torch.optim.Optimizer):
 
             # assume same step across group now to simplify things
             # per parameter step can be easily support by making it tensor, or pass list into kernel
-            if 'step' in group:
-                group['step'] += 1
-            else:
-                group['step'] = 1
+            if 'step' not in group:
+                group['step'] = 0
 
             # create lists for multi-tensor apply
             g_16, p_16, m_16, v_16 = [], [], [], []
@@ -154,9 +152,9 @@ class FusedAdam(torch.optim.Optimizer):
                     # In order to keep backward compatibility for the existing checkpoints, we use group['state'] to initialize state['step'] if it exists.
                     state['step'] = group.get('step', 0)
                     # Exponential moving average of gradient values
-                    state['exp_avg'] = torch.zeros_like(p.data).float()
+                    state['exp_avg'] = torch.zeros_like(p.data)
                     # Exponential moving average of squared gradient values
-                    state['exp_avg_sq'] = torch.zeros_like(p.data).float()
+                    state['exp_avg_sq'] = torch.zeros_like(p.data)
 
                 if p.dtype == torch.float16:
                     g_16.append(p.grad.data)
