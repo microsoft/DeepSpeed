@@ -95,6 +95,7 @@ class InferenceEngine(Module):
             self._static_inputs = {}
             self._static_kwargs = {}
             self._static_output = {}
+            self.max_prev_batch_size = None
 
         if config.checkpoint and not config.replace_with_kernel_inject:
             self._load_checkpoint(config.checkpoint)
@@ -515,6 +516,14 @@ class InferenceEngine(Module):
 
             return sub_module_cuda_graph
 
+    def _check_for_workspace_invalidation(self, input_signature):
+        batch_size = input_signature[1][0][0]
+        if self.max_prev_batch_size is None:
+            self.max_prev_batch_size = batch_size
+        elif batch_size > self.max_prev_batch_size:
+            self.max_prev_batch_size = batch_size
+            self._cuda_graphs.clear()
+
     def forward(self, *inputs, **kwargs):
         """Execute forward propagation
 
@@ -528,7 +537,9 @@ class InferenceEngine(Module):
             start = time.time()
 
         if get_accelerator().device_name() == 'cuda' and self._config.enable_cuda_graph and not self.local_cuda_graph:
-            if self._input_signature(*inputs, **kwargs) not in self._cuda_graphs:
+            signature = self._input_signature(*inputs, **kwargs)
+            self._check_for_workspace_invalidation(signature)
+            if signature not in self._cuda_graphs:
                 self._create_cuda_graph(*inputs, **kwargs)
             outputs = self._graph_replay(*inputs, **kwargs)
         else:

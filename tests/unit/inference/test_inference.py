@@ -20,6 +20,7 @@ from huggingface_hub import HfApi
 from deepspeed.model_implementations import DeepSpeedTransformerInference
 from torch import nn
 from deepspeed.accelerator import get_accelerator
+import traceback
 
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
@@ -519,19 +520,15 @@ class TestLMCorrectness(DistributedTest):
 
 @pytest.mark.inference
 @pytest.mark.parametrize("model_w_task", [("bert-base-cased", "fill-mask")], ids=["bert-base-cased"])
+@pytest.mark.parametrize("enable_cuda_graph", [True], ids=["CG"])
 class TestVariableBatchSizeCudaGraph(DistributedTest):
     world_size = 1
 
-    def test(
-        self,
-        model_w_task,
-        dtype,
-        query,
-        inf_kwargs,
-        invalid_model_task_config,
-    ):
+    def test(self, model_w_task, dtype, query, inf_kwargs, invalid_model_task_config, enable_cuda_graph):
         if invalid_model_task_config:
             pytest.skip(invalid_model_task_config)
+
+        deepspeed.init_distributed()
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -544,18 +541,19 @@ class TestVariableBatchSizeCudaGraph(DistributedTest):
                                               mp_size=1,
                                               dtype=dtype,
                                               replace_with_kernel_inject=True,
-                                              replace_method='auto',
-                                              enable_cuda_graph=True)
+                                              enable_cuda_graph=enable_cuda_graph)
 
         # Run pipe test with increasing and then decreasing batch size
         success = True
         try:
-            pipe(query, batch_size=1)
-            pipe([query] * 4, batch_size=4)
-            pipe(query, batch_size=1)
+            print(pipe([query] * 1, batch_size=1))
+            print(pipe([query] * 4, batch_size=4))
+            print(pipe([query] * 1, batch_size=1))
+            print(pipe([query] * 4, batch_size=4))
+            get_accelerator().synchronize()
         except Exception as e:
             success = False
-            print(f"Exception in TestVariableBatchSizeCudaGraph caught: {e}")
+            print(f"Exception in TestVariableBatchSizeCudaGraph caught: {e}, {traceback.format_exc()}")
 
         # Assert operation succeeded w/o exception
-        assert (success)
+        assert success == True
