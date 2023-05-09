@@ -158,6 +158,9 @@ class InferenceEngine(Module):
         if self.model_meta_device:
             assert config.replace_with_kernel_inject, "Meta tensor support is only available when kernel injection is enabled"
 
+        if config.checkpoint and not self.model_meta_device:
+            self._load_checkpoint(config.checkpoint)
+
         # convert model to intended dtype
         if config.dtype:
             self._convert_to_dtype(config)
