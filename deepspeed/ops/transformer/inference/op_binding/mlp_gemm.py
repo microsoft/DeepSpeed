@@ -38,7 +38,9 @@ class MLPGemmOp(BaseOp):
             elif self.config.norm_type == NormType.RMSNorm:
                 self.mlp_gemm_func = self.rms_mlp_gemm_fallback
 
-    def mlp_gemm_fallback(self, input, residual, input_bias, weight_interm, weight_out, bias, gamma, beta, eps, pre_layer_norm, mlp_after_attn, interm_scale, out_scale, dtype, mlp_act_func_type, transpose):
+    def mlp_gemm_fallback(self, input, residual, input_bias, weight_interm, weight_out, bias, gamma, beta, eps,
+                          pre_layer_norm, mlp_after_attn, interm_scale, out_scale, dtype, mlp_act_func_type,
+                          transpose):
         if os.environ.get('DS_KI_FALLBACK') == 'True' and mlp_after_attn and not transpose:
             residual_add = F.layer_norm(input + residual + input_bias, (input.shape[2], ), gamma, beta,
                                         self.config.epsilon)
@@ -49,7 +51,8 @@ class MLPGemmOp(BaseOp):
         else:
             raise NotImplementedError
 
-    def rms_mlp_gemm_fallback(self, input, residual, weight_interm, weight_out, gamma, eps, interm_scale, out_scale, dtype, mlp_act_func_type, transpose):
+    def rms_mlp_gemm_fallback(self, input, residual, weight_interm, weight_out, gamma, eps, interm_scale, out_scale,
+                              dtype, mlp_act_func_type, transpose):
         raise NotImplementedError
 
     def forward(self,
