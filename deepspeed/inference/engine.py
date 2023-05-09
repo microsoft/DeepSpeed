@@ -152,14 +152,11 @@ class InferenceEngine(Module):
                 "If you want to use cuda graph, please upgrade torch to at least v1.10"
 
         # Check if model passed to engine is loaded w/ meta tensors, in which case
-        # checkpoint data will be loaded at a later stage of inference initialization.
+        # kernel injection must be enabled.
         self.model_meta_device = self.module.device.type == 'meta' if hasattr(self.module, "device") else False
 
         if self.model_meta_device:
             assert config.replace_with_kernel_inject, "Meta tensor support is only available when kernel injection is enabled"
-
-        if config.checkpoint and not self.model_meta_device:
-            self._load_checkpoint(config.checkpoint)
 
         # convert model to intended dtype
         if config.dtype:
