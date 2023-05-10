@@ -153,6 +153,7 @@ class InferenceEngine(Module):
 
         # Check if model passed to engine is loaded w/ meta tensors, in which case
         # kernel injection must be enabled.
+        # NOTE: This check assumes a Hugging Face hierarchy for the device type i.e. module.device.type
         self.model_meta_device = self.module.device.type == 'meta' if hasattr(self.module, "device") else False
 
         if self.model_meta_device:
