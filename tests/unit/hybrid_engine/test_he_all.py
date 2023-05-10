@@ -46,7 +46,7 @@ class TestHybridEngineTextGen(DistributedTest):
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         tokenizer.pad_token = tokenizer.eos_token
         return tokenizer
-    
+
     def get_prompt(self, batch_size):
         if batch_size == 1:
             prompt = ["Microsoft is in Washington"]
@@ -55,7 +55,7 @@ class TestHybridEngineTextGen(DistributedTest):
         else:
             raise NotImplementedError(f"batch_size {batch_size} not implemented")
         return prompt
-    
+
     def test_correctness(self, batch_size, model_name):
         pytest.skip("skip test for now, will fix in follow-up PR")
         model = self.get_model(model_name)
@@ -75,8 +75,8 @@ class TestHybridEngineTextGen(DistributedTest):
         model.eval()
         ds2_out = self._generate(model, tokenizer, prompt)
         assert base_out == ds2_out
-    
-    def test_functionality(self, batch_size, model_name):        
+
+    def test_functionality(self, batch_size, model_name):
         model = self.get_model(model_name)
         tokenizer = self.get_tokenizer(model_name)
         prompt = self.get_prompt(batch_size)
@@ -86,9 +86,9 @@ class TestHybridEngineTextGen(DistributedTest):
 
         model.eval()
         ds1_out = self._generate(model, tokenizer, prompt)
-        
+
         model.train()
         model.eval()
         ds2_out = self._generate(model, tokenizer, prompt)
-        
+
         assert ds1_out == ds2_out, f"ds1_out: {ds1_out}, ds2_out: {ds2_out}"

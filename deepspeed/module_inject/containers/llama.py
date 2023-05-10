@@ -4,7 +4,7 @@
 # DeepSpeed Team
 
 from .base import *
-from .features import MetaTensorContainer, HybridSplitQKVContainer, HybridGatedMLPContainer
+from .features import HybridSplitQKVContainer, HybridGatedMLPContainer
 from deepspeed.utils.types import ActivationFuncType, NormType
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
 import torch
@@ -20,8 +20,7 @@ from ..policy import (
 )
 
 
-class DS_LLAMAContainer(HybridGatedMLPContainer, HybridSplitQKVContainer,
-                        BaseTransformerContainer):
+class DS_LLAMAContainer(HybridGatedMLPContainer, HybridSplitQKVContainer, BaseTransformerContainer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
