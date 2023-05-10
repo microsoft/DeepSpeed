@@ -314,6 +314,12 @@ class DeepSpeedEngine(Module):
         elif self.bfloat16_enabled():
             self.optimizer = self._configure_bf16_optimizer(optimizer=None)
 
+        # Hook optimizer for snip_momentum pruning
+        if hasattr(model, 'pruners'):
+            from ..compression.helper import rewrite_optimizer_step
+            self.optimizer.pruners = model.pruners
+            rewrite_optimizer_step(self.optimizer)
+
         # Bookkeeping for sparse support
         self.sparse_tensor_module_names = set()
         # if self.sparse_gradients_enabled():
@@ -1200,7 +1206,7 @@ class DeepSpeedEngine(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
 
-        if self.optimizer_name() in [ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER]:
+        if self.optimizer_name() in [ADAM_OPTIMIZER, ADAMW_OPTIMIZER]:
             torch_adam = optimizer_parameters.pop(TORCH_ADAM_PARAM, False)
             adam_w_mode = optimizer_parameters.pop(ADAM_W_MODE, ADAM_W_MODE_DEFAULT)
 
@@ -1214,14 +1220,10 @@ class DeepSpeedEngine(Module):
                     optimizer = torch.optim.AdamW(model_parameters, **optimizer_parameters)
             else:
                 if self.zero_use_cpu_optimizer():
-                    if self.optimizer_name() == ADAGRAD_OPTIMIZER:
-                        from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
-                        optimizer = DeepSpeedCPUAdagrad(model_parameters, **optimizer_parameters)
-                    else:
-                        from deepspeed.ops.adam import DeepSpeedCPUAdam
-                        optimizer = DeepSpeedCPUAdam(model_parameters,
-                                                     **optimizer_parameters,
-                                                     adamw_mode=effective_adam_w_mode)
+                    from deepspeed.ops.adam import DeepSpeedCPUAdam
+                    optimizer = DeepSpeedCPUAdam(model_parameters,
+                                                 **optimizer_parameters,
+                                                 adamw_mode=effective_adam_w_mode)
                 else:
                     from deepspeed.ops.adam import FusedAdam
 
@@ -1231,6 +1233,12 @@ class DeepSpeedEngine(Module):
                         adam_w_mode=effective_adam_w_mode,
                     )
 
+        elif self.optimizer_name() == ADAGRAD_OPTIMIZER:
+            if self.zero_use_cpu_optimizer():
+                from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
+                optimizer = DeepSpeedCPUAdagrad(model_parameters, **optimizer_parameters)
+            else:
+                optimizer = torch.optim.Adagrad(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             from deepspeed.ops.lamb import FusedLamb
 
@@ -3068,6 +3076,7 @@ class DeepSpeedEngine(Module):
                      param_shapes=self._get_zero_param_shapes() if self.optimizer and zero_optimizer_state else None,
                      frozen_param_shapes=self._get_zero_frozen_param_attributes(self._get_param_shape_func)
                      if save_frozen_param else None,
+                     shared_params=self._get_shared_params() if self.optimizer and zero_optimizer_state else None,
                      frozen_param_fragments=self._get_zero_frozen_param_attributes(self._get_param_fragment_func)
                      if save_frozen_param else None,
                      lr_scheduler=self.lr_scheduler.state_dict() if self.lr_scheduler is not None else None,
@@ -3169,6 +3178,40 @@ class DeepSpeedEngine(Module):
         # if self.global_rank == 0: print(f"Total saved {numel} numels in {cnt} params")
 
         return param_group_shapes
+
+    def _get_shared_params(self):
+        """
+        Returns a dict of shared params, which can later be used to reconstruct the original state dict,
+        e.g. in `zero_to_fp32`. Each dict entry is a pair of param names, where the key is the name
+        of the variable that isn't stored and the value is the actual param holding data.
+        """
+        shared_ds_ids = {}
+        shared_params_by_full_name = {}
+
+        def get_layer_state_dict(module, prefix=""):
+            # handle params
+            for name, param in module.named_parameters(recurse=False):
+                if param is None or not hasattr(param, "ds_id"):
+                    continue
+                key = prefix + name
+                # can't rely on param.data_ptr() as it will be reused as weights gets
+                # gathered and reduced, but param.ds_id is unique across all zero weights
+                # (and shared params will have the same param.ds_id)
+                if param.ds_id in shared_ds_ids:
+                    # shared weights
+                    #print(f"`{key}` is shared with `{shared_ds_ids[param.ds_id]}`")
+                    shared_params_by_full_name[key] = shared_ds_ids[param.ds_id]
+                else:
+                    shared_ds_ids[param.ds_id] = key
+
+            for name, child in module.named_children():
+                if child is not None:
+                    get_layer_state_dict(child, prefix + name + ".")
+
+        if dist.get_rank() == 0:
+            get_layer_state_dict(self.module, prefix="")
+
+        return shared_params_by_full_name
 
     def _copy_recovery_script(self, save_path):
         base_dir = os.path.dirname(os.path.dirname(__file__))
