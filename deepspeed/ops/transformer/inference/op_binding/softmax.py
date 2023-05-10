@@ -25,7 +25,8 @@ class SoftmaxOp(BaseOp):
         except AttributeError:
             self.softmax_func = self.softmax_fallback
 
-    def softmax_fallback(self, attn_scores, attn_mask, alibi, triangular, recompute, local_attention, window_size, async_op, layer_scale, head_offset, mp_size):
+    def softmax_fallback(self, attn_scores, attn_mask, alibi, triangular, recompute, local_attention, window_size,
+                         async_op, layer_scale, head_offset, mp_size):
         if os.environ.get('DS_KI_FALLBACK') == 'True':
             alibi = alibi[head_offset:head_offset + self.num_attention_heads_per_partition]
             input_dtype = attn_scores.dtype
@@ -46,7 +47,7 @@ class SoftmaxOp(BaseOp):
     def forward(self, attn_scores: torch.Tensor, attn_mask: torch.Tensor, alibi: torch.Tensor, triangular: bool,
                 recompute: bool, local_attention: bool, window_size: int, async_op: bool, layer_scale: float,
                 head_offset: int):
-        output = self.softmax_func(attn_scores, attn_mask, alibi, triangular, recompute, local_attention,
-                                   window_size, async_op, layer_scale, head_offset, self.config.mp_size)
+        output = self.softmax_func(attn_scores, attn_mask, alibi, triangular, recompute, local_attention, window_size,
+                                   async_op, layer_scale, head_offset, self.config.mp_size)
 
         return output
