@@ -17,7 +17,7 @@ if rocm_version != (0, 0):
     pytest.skip("skip inference tests on rocm for now", allow_module_level=True)
 
 
-@pytest.mark.inference
+@pytest.mark.seq_inference
 @pytest.mark.parametrize("batch_size", [1, 2], ids=["bsz=1", "bsz=2"])
 @pytest.mark.parametrize("model_name", ["huggyllama/llama-7b"])
 class TestHybridEngineLlama(DistributedTest):
