@@ -12,7 +12,7 @@ from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 from deepspeed.accelerator import get_accelerator
 
 # If the intermediate size attribute is set DEFAULT_INTERMEDIATE_SIZE
-# it is assumed the interemediate size is 4x the embedding dimension
+# it is assumed the intermediate size is 4x the embedding dimension
 DEFAULT_INTERMEDIATE_SIZE = -1
 
 
@@ -114,11 +114,19 @@ class BaseTransformerContainer(ABC):
 
         return self.ds_model_config
 
+    def check_meta_tensor_support(self):
+        if hasattr(self.qkvw, 'is_meta'):
+            if self.qkvw.is_meta:
+                assert self.ckpt_load_enabled, "Meta tensors are not supported for this model currently."
+        else:
+            raise NotImplementedError("Meta tensor support is not available, please upgrade to torch 1.10+")
+
     def initialize_tensors(self, enable_training=False):
         # Set the tensors from policy (user module) to container (DS module)
         self.set_attention(*self.policy.attention(enable_training=enable_training))
         self.set_mlp(*self.policy.mlp(enable_training=enable_training))
         self.set_layernorm(*self.policy.layernorm())
+        self.check_meta_tensor_support()
 
     def convert_to_required_dtype(self):
         # Note: converting tensors to fp16 requires that we do it in-place using self.__dict__ and not make a list/dict copy
@@ -155,7 +163,7 @@ class BaseTransformerContainer(ABC):
             hidden_size: embedding dimension of the model
             num_attention_heads: number of attention heads in the model
             epsilon: epsilon value for layer norm (same value used for all norms)
-            intermediate_size: Size of MLP projection. If `DEFAUL_INTERMEDIATE_SIZE` is passed
+            intermediate_size: Size of MLP projection. If `DEFAULT_INTERMEDIATE_SIZE` is passed
                 it is assumed to be `4 * hidden_size`
         """
         self.hidden_size = hidden_size
