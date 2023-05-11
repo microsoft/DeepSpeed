@@ -13,7 +13,7 @@ class MegatronContainer(ABC):
         super().__init__(**kwargs)
         self.megatron_v2 = self.policy.is_megatron_v2
 
-    def transpose_qkv_alignment(self, x):
+    def _align_qkv_transposed(self, x):
         attention_head_size = x.shape[-1] // self.num_attention_heads
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, attention_head_size)
         x_1 = x.view(*new_x_shape)
@@ -27,5 +27,5 @@ class MegatronContainer(ABC):
     def transpose(self):
         super().transpose()
         if self.megatron_v2:
-            self.qkvw = torch.nn.parameter.Parameter(self.transpose_qkv_alignment(self.qkvw).contiguous())
-            self.qkvb = torch.nn.parameter.Parameter(self.transpose_qkv_alignment(self.qkvb).contiguous())
+            self.qkvw = torch.nn.parameter.Parameter(self._align_qkv_transposed(self.qkvw).contiguous())
+            self.qkvb = torch.nn.parameter.Parameter(self._align_qkv_transposed(self.qkvb).contiguous())
