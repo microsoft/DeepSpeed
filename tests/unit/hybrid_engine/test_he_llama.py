@@ -40,9 +40,9 @@ class TestHybridEngineLlama(DistributedTest):
         model_config.dropout = 0.0
         model = AutoModelForCausalLM.from_pretrained(model_name, config=model_config)
         # Make the model smaller so we can run it on a single GPU in CI
-        [model.model.layers.pop(-1) for _ in range(8)]
-        model = model.to(f'cuda:{local_rank}')
+        _ = [model.model.layers.pop(-1) for _ in range(8)]
         model = model.half()
+        model = model.to(f'cuda:{local_rank}')
         return model
 
     def get_tokenizer(self, model_name):
