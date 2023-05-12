@@ -683,7 +683,7 @@ void launch_transform4d_0213<float>(float* out,
 }
 
 template <typename T>
-void launch_transform4d_0213<T>(T* out,
+void launch_transform4d_0213(T* out,
                                 const T* in,
                                 int batch_size,
                                 int heads,
