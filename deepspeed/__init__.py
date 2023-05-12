@@ -331,7 +331,7 @@ def init_inference(model, config=None, **kwargs):
     # Set the number of weight quantization groups if an optional 'quantize_groups' argument is given
     if "quantize_groups" in config_dict:
         if not ("dtype", torch.int8) in config_dict.items():
-            raise ValueError(f"'dtype' argument expected int8 when 'quantize_groups' argument is provided")
+            raise ValueError("'dtype' argument expected int8 when 'quantize_groups' argument is provided")
         quant = QuantizationConfig()
         quant.weight.q_groups = config_dict.pop("quantize_groups")
         config_dict["quant"] = quant
