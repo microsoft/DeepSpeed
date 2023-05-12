@@ -46,8 +46,8 @@ from ..elasticity.constants import (
     ELASTICITY,
     IGNORE_NON_ELASTIC_BATCH_INFO,
     IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT,
-    MODEL_PARLLEL_SIZE,
-    MODEL_PARLLEL_SIZE_DEFAULT,
+    MODEL_PARALLEL_SIZE,
+    MODEL_PARALLEL_SIZE_DEFAULT,
     NUM_GPUS_PER_NODE,
     NUM_GPUS_PER_NODE_DEFAULT,
 )
@@ -712,7 +712,7 @@ class DeepSpeedConfig(object):
             # Ensure the resource scheduler saw the same elastic config we are using at runtime
             ensure_immutable_elastic_config(runtime_elastic_config_dict=elastic_dict)
 
-            self.elastic_model_parallel_size = elastic_dict.get(MODEL_PARLLEL_SIZE, MODEL_PARLLEL_SIZE_DEFAULT)
+            self.elastic_model_parallel_size = elastic_dict.get(MODEL_PARALLEL_SIZE, MODEL_PARALLEL_SIZE_DEFAULT)
             if self.elastic_model_parallel_size < 1:
                 raise ElasticityConfigError("Model-Parallel size cannot be less than 1, "
                                             f"given model-parallel size: {self.elastic_model_parallel_size}")
@@ -779,6 +779,8 @@ class DeepSpeedConfig(object):
         self.sparse_gradients_enabled = get_sparse_gradients_enabled(param_dict)
 
         self.zero_config = get_zero_config(param_dict)
+        self.mics_shard_size = self.zero_config.mics_shard_size
+        self.mics_hierarchial_params_gather = self.zero_config.mics_hierarchical_params_gather
         self.zero_optimization_stage = self.zero_config.stage
         self.zero_enabled = self.zero_optimization_stage > 0
 
