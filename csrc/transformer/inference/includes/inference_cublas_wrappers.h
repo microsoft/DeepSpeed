@@ -8,12 +8,10 @@
 #include <assert.h>
 #include <cublas_v2.h>
 #include <cuda.h>
-#ifndef __HIP_PLATFORM_HCC__
-#include <cuda_bf16.h>
-#endif
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #ifndef __HIP_PLATFORM_HCC__
+#include <cuda_bf16.h>
 #include <mma.h>
 #endif
 #include <stdio.h>
