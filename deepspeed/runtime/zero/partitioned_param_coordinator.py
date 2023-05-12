@@ -39,6 +39,7 @@ class ZeRoTraceMode(Enum):
     # Recorded trace does not match current forward+backward or forward pass.
     INVALID = 3
 
+
 class InflightParamRegistry(UserDict):
     """registry for parameters in flight"""
 
@@ -48,6 +49,7 @@ class InflightParamRegistry(UserDict):
         if param.ds_status != ZeroParamStatus.INFLIGHT:
             raise RuntimeError(f"attempted to add non-inflight parameter to registry {param.ds_summary()}")
         self.data[param] = handle
+
 
 class PartitionedParameterCoordinator:
     """Handles partitioning and gathering of parameters."""
