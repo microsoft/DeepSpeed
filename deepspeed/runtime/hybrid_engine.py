@@ -167,7 +167,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
             retake_success = inference_cuda_module.retake_workspace()
 
             if not retake_success:
-                logger.warning("Unable to acquire workspace on first attempt, emtpying cache and retrying.")
+                logger.warning("Unable to acquire workspace on first attempt, emptying cache and retrying.")
                 gc.collect()
                 get_accelerator().empty_cache()
                 retake_success = inference_cuda_module.retake_workspace()
@@ -318,7 +318,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
         self._orig_fwds_others = []
 
         if self._config.hybrid_engine.inference_tp_size > 1:
-            if self.mpu is not None:
+            if self.mpu is None:
                 global_rank = dist.get_rank()
                 world_size = dist.get_world_size()
                 mp_group_id = global_rank // self._config.hybrid_engine.inference_tp_size
@@ -335,7 +335,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
                         self.mp_group = mp_group
 
                         # mp_replace is used for container tensor slicing
-                        from deepseed.module_inject import ReplaceWithTensorSlicing
+                        from deepspeed.module_inject import ReplaceWithTensorSlicing
                         self.mp_replace = ReplaceWithTensorSlicing(
                             mp_group=self.mp_group,
                             mp_size=self._config.hybrid_engine.inference_tp_size,
@@ -346,7 +346,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
                 self.mp_group = self.mpu.get_model_parallel_group() if hasattr(self.mpu, 'get_model_parallel_group') else \
                     self.mpu.get_tensor_model_parallel_group()
 
-                from deepseed.module_inject import ReplaceWithTensorSlicing
+                from deepspeed.module_inject import ReplaceWithTensorSlicing
                 self.mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group,
                                                            mp_size=self._config.hybrid_engine.inference_tp_size,
                                                            out_dim=0,
@@ -435,10 +435,8 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
         super().step(lr_kwargs=lr_kwargs)
 
         if len(self._inference_containers) > 0:
-            if(self._inference_containers[0].module.attention.attn_qkvw is not None and \
-                self._inference_containers[0].q_k_v is not None):
-                for inference_container in self._inference_containers:
-                    inference_container.reset_params()
+            for inference_container in self._inference_containers:
+                inference_container.reset_params()
 
         if self._training_start_time is not None:
             self._training_latency += (time.time() - self._training_start_time)

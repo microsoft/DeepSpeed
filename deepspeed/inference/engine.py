@@ -151,6 +151,11 @@ class InferenceEngine(Module):
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
                 "If you want to use cuda graph, please upgrade torch to at least v1.10"
 
+        # Check if model passed to engine is loaded w/ meta tensors, in which case
+        # kernel injection must be enabled.
+        # NOTE: This check assumes a Hugging Face hierarchy for the device type i.e. module.device.type
+        self.model_meta_device = self.module.device.type == 'meta' if hasattr(self.module, "device") else False
+
         # convert model to intended dtype
         if config.dtype:
             self._convert_to_dtype(config)
@@ -170,7 +175,7 @@ class InferenceEngine(Module):
         if moe and dist.get_world_size() > 1:
             self._create_ep_parallel_group(config.moe.moe_experts)
 
-        # We only support three modes: 1) user specified policy for tensor-parallelism, 2) kernel injection (replace_with_kernel_inject), and 3) automatic tensor parallelism.
+        # We only support three modes: 1) user specified policy for tensor-parallelism, 2) kernel injection (replace_with_kernel_inject), and 3) automatic tensor parallelism if tp_size > 1.
         if self.injection_dict:
             # 1. User specified Tensor Parallelism
             assert not config.replace_with_kernel_inject, "Cannot use both user specified injection policy and kernel injection"
@@ -185,7 +190,7 @@ class InferenceEngine(Module):
             if config.replace_with_kernel_inject:
                 # 2. DeepSpeed Kernel Injection
                 self._apply_injection_policy(config)
-            else:
+            elif config.tensor_parallel.tp_size > 1:
                 # 3. Automatic Tensor Parallelism
                 parser_dict = AutoTP.tp_parser(model)
                 print("AutoTP: ", parser_dict)
