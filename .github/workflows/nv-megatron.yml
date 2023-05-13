@@ -6,9 +6,11 @@ on:
       - 'staging**'
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
   schedule:
     - cron: "0 0 * * *"
 
@@ -21,14 +23,14 @@ jobs:
     runs-on: [self-hosted, nvidia, cu116, v100]
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
 
       - name: Install pytorch
         run: |
-          pip install torch==1.13.1 torchvision --extra-index-url https://download.pytorch.org/whl/cu116
+          pip install --no-cache-dir torch==1.13.1 torchvision --extra-index-url https://download.pytorch.org/whl/cu116
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 

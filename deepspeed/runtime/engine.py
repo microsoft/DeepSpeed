@@ -21,6 +21,7 @@ from typing import Callable, Dict, Union, Iterable
 
 import deepspeed
 
+from deepspeed import comm as dist
 from deepspeed.runtime.utils import see_memory_usage, DummyOptim
 from .zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
@@ -55,7 +56,7 @@ from deepspeed.compression.constants import \
     WEIGHT_QUANTIZE_ROUNDING, \
     WEIGHT_QUANTIZE_VERBOSE, \
     WEIGHT_QUANTIZE_KERNEL
-from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
+from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FROZEN_PARAM_FRAGMENTS
 from deepspeed.runtime.sparse_tensor import SparseTensor
 
 from deepspeed.runtime import lr_schedules
@@ -95,9 +96,6 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import UtilsBuilder
 
 from deepspeed.runtime.config import DtypeEnum
-
-# Set to torch's distributed package or deepspeed.comm based inside DeepSpeedEngine init
-dist = None
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
@@ -232,32 +230,15 @@ class DeepSpeedEngine(Module):
 
         self.checkpoint_engine = None
 
-        global dist
-        from deepspeed import comm as dist
         self._is_gradient_accumulation_boundary = None
         self.scale_wrt_gas = None
+        self.losses = []
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
 
         # needed for zero_to_fp32 weights reconstruction to remap nameless data to state_dict
         self.param_names = {param: name for name, param in model.named_parameters()}
-
-        from deepspeed.comm import supported_torch_version
-        # This supported_torch_version check is for torch1.2 compatibility only
-        if supported_torch_version:
-            dist.init_distributed(dist_backend=self.dist_backend, dist_init_required=dist_init_required)
-        else:
-            if dist_init_required is None:
-                dist_init_required = not dist.is_initialized()
-
-            if dist_init_required is False:
-                assert (
-                    dist.is_initialized() is True
-                ), "Torch distributed not initialized. Please set dist_init_required to True or initialize before calling deepspeed.initialize()"
-            else:
-                if not dist.is_initialized():
-                    dist.init_process_group(backend=self.dist_backend)
 
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
@@ -335,6 +316,12 @@ class DeepSpeedEngine(Module):
         elif self.bfloat16_enabled():
             self.optimizer = self._configure_bf16_optimizer(optimizer=None)
 
+        # Hook optimizer for snip_momentum pruning
+        if hasattr(model, 'pruners'):
+            from ..compression.helper import rewrite_optimizer_step
+            self.optimizer.pruners = model.pruners
+            rewrite_optimizer_step(self.optimizer)
+
         # Bookkeeping for sparse support
         self.sparse_tensor_module_names = set()
         # if self.sparse_gradients_enabled():
@@ -390,7 +377,7 @@ class DeepSpeedEngine(Module):
             trainable_num_params = 0
 
             for p in self.module.parameters():
-                # since user code might call deepspeed.zero.Init() before deepspeed.initialize(), need to check the attrbuite to check if the parameter is partitioned in zero 3 already or not
+                # since user code might call deepspeed.zero.Init() before deepspeed.initialize(), need to check the attribute to check if the parameter is partitioned in zero 3 already or not
                 n = 0
                 if hasattr(p, "ds_tensor"):  # if the parameter is partitioned in zero 3
                     n += p.ds_numel
@@ -712,6 +699,9 @@ class DeepSpeedEngine(Module):
     def zero_optimization_stage(self):
         return self._config.zero_optimization_stage
 
+    def mics_shard_size(self):
+        return self._config.mics_shard_size
+
     def zero_reduce_bucket_size(self):
         return self._config.zero_config.reduce_bucket_size
 
@@ -798,6 +788,9 @@ class DeepSpeedEngine(Module):
 
         if self.fp16_enabled():
             return torch.float16
+
+        if self.bfloat16_enabled():
+            return torch.bfloat16
 
         return torch.float32
 
@@ -1099,7 +1092,7 @@ class DeepSpeedEngine(Module):
                 ids_list(group['params']).count(param_id) if param_id in ids_list(group['params']) else 0
                 for group in optimizer.param_groups
             ])
-            assert occurrence <= 1, f"Parameter with name: {name} occurs multiple times in optimizer.param_groups. Make sure it only appears once to prevent undefined behaviour."
+            assert occurrence <= 1, f"Parameter with name: {name} occurs multiple times in optimizer.param_groups. Make sure it only appears once to prevent undefined behavior."
 
     def _do_optimizer_sanity_check(self, basic_optimizer):
         model_dtype, grad_accum_dtype = self.get_data_types()
@@ -1150,7 +1143,7 @@ class DeepSpeedEngine(Module):
         elif model_dtype == torch.bfloat16 and grad_accum_dtype == torch.float32:
             return BFLOAT16
         else:
-            raise NotImplementedError("unsupported mix of model dtype and gradient accummulation type")
+            raise NotImplementedError("unsupported mix of model dtype and gradient accumulation type")
 
         return None
 
@@ -1224,7 +1217,7 @@ class DeepSpeedEngine(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
 
-        if self.optimizer_name() in [ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER]:
+        if self.optimizer_name() in [ADAM_OPTIMIZER, ADAMW_OPTIMIZER]:
             torch_adam = optimizer_parameters.pop(TORCH_ADAM_PARAM, False)
             adam_w_mode = optimizer_parameters.pop(ADAM_W_MODE, ADAM_W_MODE_DEFAULT)
 
@@ -1238,14 +1231,10 @@ class DeepSpeedEngine(Module):
                     optimizer = torch.optim.AdamW(model_parameters, **optimizer_parameters)
             else:
                 if self.zero_use_cpu_optimizer():
-                    if self.optimizer_name() == ADAGRAD_OPTIMIZER:
-                        from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
-                        optimizer = DeepSpeedCPUAdagrad(model_parameters, **optimizer_parameters)
-                    else:
-                        from deepspeed.ops.adam import DeepSpeedCPUAdam
-                        optimizer = DeepSpeedCPUAdam(model_parameters,
-                                                     **optimizer_parameters,
-                                                     adamw_mode=effective_adam_w_mode)
+                    from deepspeed.ops.adam import DeepSpeedCPUAdam
+                    optimizer = DeepSpeedCPUAdam(model_parameters,
+                                                 **optimizer_parameters,
+                                                 adamw_mode=effective_adam_w_mode)
                 else:
                     from deepspeed.ops.adam import FusedAdam
 
@@ -1255,6 +1244,12 @@ class DeepSpeedEngine(Module):
                         adam_w_mode=effective_adam_w_mode,
                     )
 
+        elif self.optimizer_name() == ADAGRAD_OPTIMIZER:
+            if self.zero_use_cpu_optimizer():
+                from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
+                optimizer = DeepSpeedCPUAdagrad(model_parameters, **optimizer_parameters)
+            else:
+                optimizer = torch.optim.Adagrad(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             from deepspeed.ops.lamb import FusedLamb
 
@@ -1395,6 +1390,8 @@ class DeepSpeedEngine(Module):
 
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
+        mics_shard_size = self.mics_shard_size()
+
         model_dtype, grad_accum_dtype = self.get_data_types()
         timers = self.timers if self.wall_clock_breakdown() else None
 
@@ -1470,6 +1467,14 @@ class DeepSpeedEngine(Module):
                                                  offload_param_config=self.zero_offload_param(),
                                                  mpu=self.mpu)
             else:
+                log_dist(
+                    f'Creating fp16 ZeRO stage {zero_stage} optimizer,'
+                    f' MiCS is enabled {mics_shard_size>0},'
+                    f' Hierarchical params gather {self._config.mics_hierarchial_params_gather}',
+                    ranks=[0])
+                if mics_shard_size > 0:
+                    return self._return_mics_optimizer(optimizer, timers)
+
                 log_dist(f'Creating {model_dtype} ZeRO stage {zero_stage} optimizer', ranks=[0])
                 from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
                 optimizer = DeepSpeedZeroOptimizer_Stage3(
@@ -1504,6 +1509,37 @@ class DeepSpeedEngine(Module):
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
 
+        return optimizer
+
+    def _return_mics_optimizer(self, basic_optimizer, timers):
+        from deepspeed.runtime.zero.mics import MiCS_Optimizer
+        optimizer = MiCS_Optimizer(self.module,
+                                   basic_optimizer,
+                                   timers=timers,
+                                   ds_config=self.config,
+                                   static_loss_scale=self.loss_scale(),
+                                   dynamic_loss_scale=self.dynamic_loss_scale(),
+                                   dynamic_loss_args=self.dynamic_loss_scale_args(),
+                                   clip_grad=self.gradient_clipping(),
+                                   contiguous_gradients=self.zero_contiguous_gradients(),
+                                   reduce_bucket_size=self.zero_reduce_bucket_size(),
+                                   prefetch_bucket_size=self.zero_prefetch_bucket_size(),
+                                   max_reuse_distance=self.zero_max_reuse_distance(),
+                                   max_live_parameters=self.zero_max_live_parameters(),
+                                   param_persistence_threshold=self.zero_param_persistence_threshold(),
+                                   model_persistence_threshold=self.zero_model_persistence_threshold(),
+                                   dp_process_group=self.data_parallel_group,
+                                   reduce_scatter=self.zero_reduce_scatter(),
+                                   overlap_comm=self.zero_overlap_comm(),
+                                   offload_optimizer_config=self.zero_offload_optimizer(),
+                                   offload_param_config=self.zero_offload_param(),
+                                   sub_group_size=self.zero_sub_group_size(),
+                                   mpu=self.mpu,
+                                   postscale_gradients=self.postscale_gradients(),
+                                   gradient_predivide_factor=self.gradient_predivide_factor(),
+                                   gradient_accumulation_steps=self.gradient_accumulation_steps(),
+                                   aio_config=self.aio_config(),
+                                   communication_data_type=self.communication_data_type)
         return optimizer
 
     def _configure_eigenvalue(self):
@@ -1809,10 +1845,15 @@ class DeepSpeedEngine(Module):
                 if self.global_rank == 0:
                     self.summary_events = [(
                         f"Train/Samples/train_loss",
-                        loss.mean().item() * self.gradient_accumulation_steps(),
+                        sum(self.losses) / self.gradient_accumulation_steps(),
                         self.global_samples,
                     )]
                     self.monitor.write_events(self.summary_events)
+
+        if self.is_gradient_accumulation_boundary():
+            self.losses = []
+        else:
+            self.losses.append(loss.mean().item())
 
         self._start_timers(self.engine_timers.backward_timers)
 
@@ -1939,7 +1980,7 @@ class DeepSpeedEngine(Module):
                     block_eigenvalue,
                 )
         # zero grad in basic optimizer could be unreliable and may not exhibit
-        # the behaviour that we want
+        # the behavior that we want
         if self.bfloat16_enabled():
             # TODO: Temporary until bf16_optimizer and zero_optimizer are integrated
             if self.zero_optimization() and hasattr(self.optimizer, "zero_grad"):
@@ -2424,13 +2465,27 @@ class DeepSpeedEngine(Module):
                         state_dict.update(expert_state_dict)
                     moe_layer_id += 1
 
-    def load_module_state_dict(self, state_dict, strict=True, custom_load_fn=None):
+    def load_module_state_dict(self, checkpoint, strict=True, custom_load_fn=None):
+        module_state_dict = checkpoint['module']
         if custom_load_fn:
-            custom_load_fn(src=state_dict, dst=self.module)
+            custom_load_fn(src=module_state_dict, dst=self.module)
         else:
             self.module.load_state_dict(
-                state_dict,  # TODO
+                module_state_dict,  # TODO
                 strict=strict)
+
+        if checkpoint.get(FROZEN_PARAM_FRAGMENTS, None) is not None:
+            saved_frozen_params = checkpoint[FROZEN_PARAM_FRAGMENTS]
+            for param in self.module.parameters():
+                if param.requires_grad:
+                    continue
+                if param not in self.param_names:
+                    raise ValueError(f"failed to find frozen {param} in named params")
+                name = self.param_names[param]
+                if hasattr(param, 'ds_id'):
+                    param.ds_tensor.data.copy_(saved_frozen_params[name].data)
+                else:
+                    param.data.copy_(saved_frozen_params[name].data)
 
     def _get_zero_ckpt_prefix(self, dp_rank, bf16_mode):
         return f'{"bf16_" if bf16_mode else ""}zero_pp_rank_{dp_rank}'
@@ -2611,7 +2666,7 @@ class DeepSpeedEngine(Module):
                                                 num_experts=self.num_experts,
                                                 checkpoint_engine=self.checkpoint_engine)
         if not self.load_universal_checkpoint():
-            self.load_module_state_dict(state_dict=checkpoint['module'],
+            self.load_module_state_dict(checkpoint=checkpoint,
                                         strict=load_module_strict,
                                         custom_load_fn=custom_load_fn)
 
@@ -3021,6 +3076,8 @@ class DeepSpeedEngine(Module):
 
         zero_optimizer_state = self.zero_optimization() or self.bfloat16_enabled()
 
+        save_frozen_param = self.zero_optimization_partition_gradients()
+
         # A hack to save the checkpointing directory. Pipeline parallelism overrides
         # module_state_dict() and uses this path to save the model. module_state_dict()
         # then instead just returns None.  The module_state_dict() implementation in
@@ -3033,6 +3090,11 @@ class DeepSpeedEngine(Module):
                      buffer_names=self._get_buffer_names(),
                      optimizer=self.optimizer.state_dict() if self.optimizer and not zero_optimizer_state else None,
                      param_shapes=self._get_zero_param_shapes() if self.optimizer and zero_optimizer_state else None,
+                     frozen_param_shapes=self._get_zero_frozen_param_attributes(self._get_param_shape_func)
+                     if save_frozen_param else None,
+                     shared_params=self._get_shared_params() if self.optimizer and zero_optimizer_state else None,
+                     frozen_param_fragments=self._get_zero_frozen_param_attributes(self._get_param_fragment_func)
+                     if save_frozen_param else None,
                      lr_scheduler=self.lr_scheduler.state_dict() if self.lr_scheduler is not None else None,
                      data_sampler=self.training_dataloader.data_sampler.state_dict() if
                      (self.training_dataloader is not None and self.curriculum_learning_enabled()) else None,
@@ -3071,6 +3133,25 @@ class DeepSpeedEngine(Module):
         get_layer_named_buffers(self.module, prefix="")
 
         return buffer_names
+
+    def _get_param_shape_func(self, param):
+        return param.ds_shape if hasattr(param, 'ds_id') else param.shape
+
+    def _get_param_fragment_func(self, param):
+        return param.ds_tensor.detach().cpu() if hasattr(param, 'ds_id') else param.detach().cpu()
+
+    def _get_zero_frozen_param_attributes(self, attr_func):
+        frozen_param_fragments = OrderedDict()
+
+        for param in self.module.parameters():
+            if param.requires_grad:
+                continue
+            if param not in self.param_names:
+                raise ValueError(f"failed to find frozen {param} in named params")
+            name = self.param_names[param]
+            frozen_param_fragments[name] = attr_func(param)
+
+        return frozen_param_fragments
 
     def _get_zero_param_shapes(self):
         """Returns a dict of name to shape mapping, only for the flattened fp32 weights saved by the
@@ -3113,6 +3194,40 @@ class DeepSpeedEngine(Module):
         # if self.global_rank == 0: print(f"Total saved {numel} numels in {cnt} params")
 
         return param_group_shapes
+
+    def _get_shared_params(self):
+        """
+        Returns a dict of shared params, which can later be used to reconstruct the original state dict,
+        e.g. in `zero_to_fp32`. Each dict entry is a pair of param names, where the key is the name
+        of the variable that isn't stored and the value is the actual param holding data.
+        """
+        shared_ds_ids = {}
+        shared_params_by_full_name = {}
+
+        def get_layer_state_dict(module, prefix=""):
+            # handle params
+            for name, param in module.named_parameters(recurse=False):
+                if param is None or not hasattr(param, "ds_id"):
+                    continue
+                key = prefix + name
+                # can't rely on param.data_ptr() as it will be reused as weights gets
+                # gathered and reduced, but param.ds_id is unique across all zero weights
+                # (and shared params will have the same param.ds_id)
+                if param.ds_id in shared_ds_ids:
+                    # shared weights
+                    #print(f"`{key}` is shared with `{shared_ds_ids[param.ds_id]}`")
+                    shared_params_by_full_name[key] = shared_ds_ids[param.ds_id]
+                else:
+                    shared_ds_ids[param.ds_id] = key
+
+            for name, child in module.named_children():
+                if child is not None:
+                    get_layer_state_dict(child, prefix + name + ".")
+
+        if dist.get_rank() == 0:
+            get_layer_state_dict(self.module, prefix="")
+
+        return shared_params_by_full_name
 
     def _copy_recovery_script(self, save_path):
         base_dir = os.path.dirname(os.path.dirname(__file__))

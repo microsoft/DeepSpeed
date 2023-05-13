@@ -65,6 +65,7 @@ extras_require = {
     'autotuning': fetch_requirements('requirements/requirements-autotuning.txt'),
     'autotuning_ml': fetch_requirements('requirements/requirements-autotuning-ml.txt'),
     'sparse_attn': fetch_requirements('requirements/requirements-sparse_attn.txt'),
+    'sparse': fetch_requirements('requirements/requirements-sparse_pruning.txt'),
     'inf': fetch_requirements('requirements/requirements-inf.txt'),
     'sd': fetch_requirements('requirements/requirements-sd.txt')
 }
@@ -78,7 +79,12 @@ if torch_available and torch.cuda.is_available():
         if rocm_major <= 4:
             cupy = f"cupy-rocm-{rocm_major}-{rocm_minor}"
     else:
-        cupy = f"cupy-cuda{''.join(map(str,installed_cuda_version()))}"
+        cuda_major_ver, cuda_minor_ver = installed_cuda_version()
+        if (cuda_major_ver < 11) or ((cuda_major_ver == 11) and (cuda_minor_ver < 3)):
+            cupy = f"cupy-cuda{cuda_major_ver}{cuda_minor_ver}"
+        else:
+            cupy = f"cupy-cuda{cuda_major_ver}x"
+
     if cupy:
         extras_require['1bit'].append(cupy)
         extras_require['1bit_mpi'].append(cupy)
@@ -293,7 +299,7 @@ setup(name='deepspeed',
           'Programming Language :: Python :: 3.8', 'Programming Language :: Python :: 3.9',
           'Programming Language :: Python :: 3.10'
       ],
-      license='MIT',
+      license='Apache Software License 2.0',
       ext_modules=ext_modules,
       cmdclass=cmdclass)
 
