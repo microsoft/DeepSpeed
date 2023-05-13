@@ -10,21 +10,13 @@ from unit.common import DistributedTest
 from unit.simple_model import SimpleModel
 
 # yapf: disable
-#'optimizer,  torch_adam, adam_w_mode
+#optimizer,  torch_adam, adam_w_mode
 adam_configs = [["AdamW", False, False],
                 ["AdamW", True,  False],
                 ["AdamW", False, True ],
                 ["AdamW", True,  True ],
-                ["AdamW", False, True ],
-                ["AdamW", True,  True ],
-                ["AdamW", False, True ],
-                ["AdamW", True,  True ],
                 ["Adam",  False, False],
                 ["Adam",  True,  False],
-                ["Adam",  False, False],
-                ["Adam",  True,  False],
-                ["Adam",  False, True ],
-                ["Adam",  True,  True ],
                 ["Adam",  False, True ],
                 ["Adam",  True,  True ]]
 

@@ -311,6 +311,7 @@ class DeepSpeedEngine(Module):
         # Configure optimizer and scheduler
         self.optimizer = None
         self.basic_optimizer = None
+        self.full_basic_optimizer = None
         self.lr_scheduler = None
         has_optimizer = False
 
@@ -1187,9 +1188,8 @@ class DeepSpeedEngine(Module):
             fuse_status = 'Fused'
         else:
             fuse_status = 'NonFused'
-        log_dist("Optimizer Provider: {}".format(provider_name), ranks=[0])
-        log_dist("Fuse Status: {}".format(fuse_status), ranks=[0])
-        log_dist("Optimizer Name: {}".format(optimizer_name), ranks=[0])
+        self.full_basic_optimizer = f'{provider_name}_{optimizer_name}_{fuse_status}'
+        log_dist("Detailed Optimizer Information: {}".format(self.full_basic_optimizer), ranks=[0])
 
         optimizer_wrapper = self._do_optimizer_sanity_check(basic_optimizer)
 
