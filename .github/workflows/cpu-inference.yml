@@ -52,7 +52,7 @@ jobs:
           cmake ..
           make
           make install
-          source ./env/setvars.sh
+          source ./_install/env/setvars.sh
           # test whether oneCCL is correctly installed
           #mpirun -n 2 ./examples/benchmark/benchmark
 
