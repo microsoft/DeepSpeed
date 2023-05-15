@@ -52,7 +52,7 @@ jobs:
           cmake ..
           make
           make install
-          source ./_install/env/setvars.sh
+          #source ./_install/env/setvars.sh
           # test whether oneCCL is correctly installed
           #mpirun -n 2 ./examples/benchmark/benchmark
 
@@ -75,6 +75,7 @@ jobs:
 
       - name: Unit tests
         run: |
+          source oneCCL/build/_install/env/setvars.sh
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
