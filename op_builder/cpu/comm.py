@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 
+import os
 from .builder import CPUOpBuilder
 
 
@@ -30,4 +31,9 @@ class CCLCommBuilder(CPUOpBuilder):
         return super().is_compatible(verbose)
 
     def extra_ldflags(self):
-        return ['-lccl']
+        ccl_root_path = os.environ.get("CCL_ROOT")
+        if ccl_root_path == None:
+            raise ValueError("Didn't find CCL_ROOT, install oneCCL and source its environment variable")
+            return []
+        else:
+            return ['-lccl', f'-L{ccl_root_path}/lib']
