@@ -7,6 +7,7 @@ import os
 import sys
 import shutil
 import subprocess
+import socket
 import warnings
 from shlex import split
 from abc import ABC, abstractmethod
@@ -129,6 +130,7 @@ class OpenMPIRunner(MultiNodeRunner):
 
     def get_cmd(self, environment, active_resources):
         total_process_count = sum(self.resource_pool.values())
+        network_interface = [j for i, j in socket.if_nameindex() if j.startswith("e") & j.endswith("0")][0]
 
         mpirun_cmd = [
             'mpirun',
@@ -141,7 +143,7 @@ class OpenMPIRunner(MultiNodeRunner):
             '^openib',
             '--mca',
             'btl_tcp_if_include',
-            'eth0',
+            f'{network_interface}',
         ] + split(self.args.launcher_args)
 
         export_cmd = []
