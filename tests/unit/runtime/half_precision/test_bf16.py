@@ -259,7 +259,7 @@ class TestZeroEmptyGrad(DistributedTest):
             )
 
         config_dict = {
-            "train_batch_size": 1,
+            "train_micro_batch_size_per_gpu": 1,
             "steps_per_print": 1,
             "fp16": {
                 "enabled": False
