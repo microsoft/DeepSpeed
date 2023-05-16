@@ -7,7 +7,7 @@ import torch
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 from pydantic import Field
-from pydantic import validator
+from pydantic import field_validator
 from typing import Dict, Union
 from enum import Enum
 
@@ -273,7 +273,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     moe_experts: list = Field([1], deprecated=True, new_param="moe.moe_experts")
     moe_type: MoETypeEnum = Field(MoETypeEnum.standard, deprecated=True, new_param="moe.type")
 
-    @validator("moe")
+    @field_validator("moe")
     def moe_backward_compat(cls, field_value, values):
         if isinstance(field_value, bool):
             return DeepSpeedMoEConfig(moe=field_value)
