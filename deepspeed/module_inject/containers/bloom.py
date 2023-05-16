@@ -10,6 +10,8 @@ from ..policy import TransformerPolicy
 from ..policy import transformer_param_names
 from ..policy import maybe_copy
 
+from ..policy import maybe_get_lora
+
 supported_models = {None}
 
 
@@ -85,10 +87,8 @@ class BLOOMLayerPolicy(TransformerPolicy):
     def get_hidden_heads(self):
         return self.client_module.self_attention.hidden_size, \
                 self.client_module.self_attention.num_heads, \
-                self.client_module.input_layernorm.eps
-
-    def get_q_k_v(self):
-        return None
+                self.client_module.input_layernorm.eps, \
+                DEFAULT_INTERMEDIATE_SIZE
 
     def attention(self, enable_training=False):
         return self.client_module.self_attention.query_key_value.weight, \
@@ -96,7 +96,7 @@ class BLOOMLayerPolicy(TransformerPolicy):
                 self.client_module.self_attention.dense.weight, \
                 self.client_module.self_attention.dense.bias,
 
-    def mlp(self):
+    def mlp(self, enable_training=False):
         return self.client_module.mlp.dense_h_to_4h.weight, \
                self.client_module.mlp.dense_h_to_4h.bias, \
                self.client_module.mlp.dense_4h_to_h.weight, \
@@ -109,4 +109,12 @@ class BLOOMLayerPolicy(TransformerPolicy):
                self.client_module.input_layernorm.bias
 
     def get_lora_params(self):
-        return []
+        all_lora_params = []
+        for p in [
+            self.client_module.mlp.dense_h_to_4h, \
+            self.client_module.mlp.dense_4h_to_h, \
+            self.client_module.self_attention.query_key_value, \
+            self.client_module.self_attention.dense
+            ]:
+            all_lora_params.append(maybe_get_lora(p))
+        return all_lora_params
