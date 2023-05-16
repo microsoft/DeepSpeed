@@ -27,6 +27,7 @@ class TestAdamBF16ZeroOneCycleCompatibility(DistributedTest):
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
+            "train_batch_size": 4,
             "steps_per_print": 1,
             "optimizer": {
                 "type": "Adam",
