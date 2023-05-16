@@ -156,7 +156,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                                             max_live_parameters=max_live_parameters,
                                                             param_persistence_threshold=param_persistence_threshold,
                                                             model_persistence_threshold=model_persistence_threshold,
-                                                            offload_optimizer_config=offload_optimizer_config,
+                                                            offload_param_config=offload_param_config,
                                                             mpu=mpu)
 
         self.persistent_parameters = self.parameter_offload.persistent_parameters
@@ -351,7 +351,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         max_live_parameters,
         param_persistence_threshold,
         model_persistence_threshold,
-        offload_optimizer_config,
+        offload_param_config,
         mpu,
     ):
         return DeepSpeedZeRoOffload(module=module,
@@ -363,7 +363,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                     max_live_parameters=max_live_parameters,
                                     param_persistence_threshold=param_persistence_threshold,
                                     model_persistence_threshold=model_persistence_threshold,
-                                    offload_param_config=offload_optimizer_config,
+                                    offload_param_config=offload_param_config,
                                     mpu=mpu)
 
     def _get_trainable_parameter_groups(self):
@@ -1036,7 +1036,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             f"{tag}: elems in_bucket {self.elements_in_ipg_bucket} param {param_elems} max_percent {percent_of_bucket_size}",
             force=False)
 
-    ###############Idependent Partition Gradient ########################
+    ###############Independent Partition Gradient ########################
     def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):
         #print_rank_0(f"Inside reduce ipg buckets. {debug_param2name_id_shape(param)}, ipg elements {self.elements_in_ipg_bucket}, reduce bucket size {self.reduce_bucket_size}", force=True)
 
