@@ -191,6 +191,8 @@ class DynamicLossScaler(LossScalerBase):
             self.last_overflow_iter = self.cur_iter
         else:
             if self.consecutive_hysteresis:
+                hysteresis_msg = f"Consecutive hysteresis is enabled. Restoring hysteresis to {self.delayed_shift}"
+                logger.info(hysteresis_msg)
                 self.cur_hysteresis = self.delayed_shift
             if (self.cur_iter - self.last_overflow_iter) % self.scale_window == 0:
                 if not self.consecutive_hysteresis:
