@@ -210,7 +210,7 @@ def get_dynamic_loss_scale_args(param_dict):
             init_scale = get_scalar_param(fp16_dict, FP16_INITIAL_SCALE_POWER, FP16_INITIAL_SCALE_POWER_DEFAULT)
             scale_window = get_scalar_param(fp16_dict, FP16_LOSS_SCALE_WINDOW, FP16_LOSS_SCALE_WINDOW_DEFAULT)
             delayed_shift = get_scalar_param(fp16_dict, FP16_HYSTERESIS, FP16_HYSTERESIS_DEFAULT)
-            is_consecutive = get_scalar_param(fp16_dict, FP16_CONSECUTIVE_HYSTERESIS, FP16_CONSECUTIVE_HYSTERESIS_DEFAULT)
+            consecutive_hysteresis = get_scalar_param(fp16_dict, FP16_CONSECUTIVE_HYSTERESIS, FP16_CONSECUTIVE_HYSTERESIS_DEFAULT)
             min_loss_scale = get_scalar_param(fp16_dict, FP16_MIN_LOSS_SCALE, FP16_MIN_LOSS_SCALE_DEFAULT)
             loss_scale_args = {
                 INITIAL_LOSS_SCALE: 2**init_scale,
