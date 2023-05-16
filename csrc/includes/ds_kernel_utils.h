@@ -35,7 +35,6 @@ constexpr int hw_warp_size = 32;
 
 #if __CUDA_ARCH__ >= 800
 #define ASYNC_COPY_AVAILABLE
-#define BF16_AVAILABLE
 #endif  // __CUDA_ARCH__ >= 800
 
 #include <cooperative_groups.h>
