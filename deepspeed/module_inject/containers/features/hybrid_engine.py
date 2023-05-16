@@ -63,7 +63,7 @@ class HybridEngineContainer(ABC):
     
     def fuse_lora(self):
         """Fuse the LoRA parameters for the inference mode."""
-        for maybe_lora_param, param in self.get_lora_params_matched_pair():
+        for maybe_lora_param, param in self.get_lora_matched_pair():
             if len(maybe_lora_param) == 3:
                 lora_right_weight, \
                 lora_left_weight, \
@@ -73,7 +73,7 @@ class HybridEngineContainer(ABC):
     
     def unfuse_lora(self):
         """Unfuse the LoRA parameters for the training mode."""
-        for maybe_lora_param, param in self.get_lora_params_matched_pair():
+        for maybe_lora_param, param in self.get_lora_matched_pair():
             if len(maybe_lora_param) == 3:
                 lora_right_weight, \
                 lora_left_weight, \
