@@ -88,7 +88,7 @@ class DeepSpeedZeroOffloadOptimizerConfig(DeepSpeedConfigModel):
     fast_init: bool = False
     """ Enable fast optimizer initialization when offloading to NVMe. """
 
-    @field_validator("pipeline_read", "pipeline_write", always=True)
+    @field_validator("pipeline_read", "pipeline_write")
     def set_pipeline(cls, field_value, values):
         values["pipeline"] = field_value or values.get("pipeline", False)
         return field_value
