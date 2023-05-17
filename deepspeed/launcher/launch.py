@@ -55,6 +55,10 @@ def parse_args():
                         help="Master node (rank 0)'s free port that needs to "
                         "be used for communication during distributed "
                         "training")
+    parser.add_argument("--net_interface",
+                        default="eth0,
+                        type=str,
+                        help="Master node network interface (specified when launching with OpenMPI)")
     parser.add_argument("--world_info", default="None", type=str, help="world info base64 encoded dictionary")
 
     parser.add_argument("--module",
