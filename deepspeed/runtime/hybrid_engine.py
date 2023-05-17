@@ -371,7 +371,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
                 if len(self.all_lora_params) > 0:
                     # Use the is_lora_fused flag to prevent multiple fusion in Z3 with non-pinned memory
                     if not self.is_lora_fused:
-                        self._fuse_lora(layer_id)
+                        self._fuse_lora_layer(layer_id)
                     # Set the is_lora_fused to true when reaching the last layer
                     if layer_id == len(self.layer_params) - 1:
                         self.is_lora_fused = True
