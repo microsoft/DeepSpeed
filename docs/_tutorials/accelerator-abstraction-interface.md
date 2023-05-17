@@ -116,7 +116,7 @@ deepspeed --bind_cores_to_rank <deepspeed-model-script>
 
 This command would launch number of workers equal to number of CPU sockets on the system.  Currently DeepSpeed support running inference model with AutoTP on top of CPU.  The argument `--bind_cores_to_rank` distribute CPU cores on the system evently among workers, to allow each worker running on a dedicated set of CPU cores.
 
-On CPU system, there might by daemon process that periodically activate which would increase variance of each worker.  One practice is leave a couple of cores for daemon process using `--bind-core-list` argument:
+On CPU system, there might be daemon process that periodically activate which would increase variance of each worker.  One practice is leave a couple of cores for daemon process using `--bind-core-list` argument:
 
 ```
 deepspeed --bind_cores_to_rank --bind_core_list 0-51,56-107 <deepspeed-model-script>
@@ -130,7 +130,7 @@ We can also set an arbitrary number of workers.  Unlike GPU, CPU cores on host c
 deepspeed --num_accelerators 4 --bind_cores_to_rank <deepspeed-model-script>
 ```
 
-Launching DeepSpeed model on multiple CPU nodes is similar to other accelerators.  We need to specify `impi` as launcher and specify `--bind_cores_to_rank` for better core binding.  Also specify `slot` number according to number of CPU sockets in host file.
+Launching DeepSpeed model on multiple CPU nodes is similar to other accelerators.  We need to specify `impi` as launcher and specify `--bind_cores_to_rank` for better core binding.  Also specify `slots` number according to number of CPU sockets in host file.
 
 ```
 # hostfile content should follow the format
