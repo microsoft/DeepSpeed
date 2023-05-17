@@ -88,7 +88,7 @@ When run a model on different accelerator in a cloud environment, the recommende
 Note that different accelerator may have different 'flavor' of float16 or bfloat16.   So it is recommended to make the model configurable for both float16 and bfloat16, in that way model code does not need to be changed when running on different accelerators.
 
 # Run DeepSpeed model on CPU
-DeepSpeed support use CPU as accelerator.  DeepSpeed model using DeepSpeed Accelerator Abstraction Interface could run on CPU without change to model code.   DeepSpeed decide whether _Intel Extension for PyTorch_ is installed in the environment.  If this packaged is installed, DeepSpeed will use CPU as accelerator.  Otherwise CUDA device will be used as accelerator.
+DeepSpeed support using CPU as accelerator.  DeepSpeed model using DeepSpeed Accelerator Abstraction Interface could run on CPU without change to model code.   DeepSpeed decide whether _Intel Extension for PyTorch_ is installed in the environment.  If this packaged is installed, DeepSpeed will use CPU as accelerator.  Otherwise CUDA device will be used as accelerator.
 
 To run DeepSpeed model on CPU, use the following steps to prepare environment:
 
