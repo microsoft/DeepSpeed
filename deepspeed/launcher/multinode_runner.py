@@ -141,7 +141,7 @@ class OpenMPIRunner(MultiNodeRunner):
             '^openib',
             '--mca',
             'btl_tcp_if_include',
-            f'{[j for i,j in socket.if_nameindex() if j.startswith('e') & j.endswith('0')][0]}',
+            f'{self.args.net_interface}',
         ] + split(self.args.launcher_args)
 
         export_cmd = []
