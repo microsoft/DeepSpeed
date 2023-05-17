@@ -8,7 +8,7 @@ import torch
 from torch import nn
 from torch import Tensor
 from torch.nn import functional as F
-from .utils import Quantizer, DeQuantizer
+from .utils import Quantizer, DeQuantizer, concat_to_compat_param
 from typing import Tuple, Callable, Dict
 from deepspeed.runtime.zero import register_external_parameter
 
@@ -16,37 +16,8 @@ quantized_weight_registry = {}
 is_zero3_enabled = False
 
 
-def concat_to_compat_param(quantized_weight: Tensor, quant_scale: Tensor, quant_min: Tensor) -> nn.Parameter:
-    shape_wieght = quantized_weight.shape
-    shape_scale = quant_scale.shape
-    shape_min = quant_min.shape
-
-    quantized_weight = torch.flatten(quantized_weight)
-    quant_scale = torch.flatten(quant_scale)
-    quant_min = torch.flatten(quant_min)
-
-    def deconcat_individual_tensors(shape_wieght: torch.Size, shape_scale: torch.Size,
-                                    shape_min: torch.Size) -> Callable:
-
-        def fn(compat_tensor: nn.Parameter) -> Tuple[Tensor, Tensor, Tensor]:
-            weight = torch.narrow(compat_tensor, 0, 0, shape_wieght.numel()).view(shape_wieght)
-            scale = torch.narrow(compat_tensor, 0, shape_wieght.numel(), shape_scale.numel()).view(shape_scale)
-            min_val = torch.narrow(compat_tensor, 0,
-                                   shape_wieght.numel() + shape_scale.numel(), shape_min.numel()).view(shape_min)
-
-            return weight, scale, min_val
-
-        return fn
-
-    compat_tensor = nn.Parameter(torch.concat([quantized_weight, quant_scale, quant_min]), requires_grad=False)
-    compat_tensor.deconcat = deconcat_individual_tensors(shape_wieght, shape_scale, shape_min)
-
-    return compat_tensor
-
-
 # deal with weight sharing
-def get_quantized_weight_wrapper(model, pre_quant_weight: nn.Parameter,
-                                 quantize_weight_fn: Callable) -> Tuple[nn.Parameter, Tensor, Tensor]:
+def get_quantized_weight_wrapper(model, pre_quant_weight: nn.Parameter, quantize_weight_fn: Callable) -> nn.Parameter:
     if id(pre_quant_weight) in quantized_weight_registry:
         compat_tensor = quantized_weight_registry[id(pre_quant_weight)]
         if is_zero3_enabled:
@@ -68,7 +39,6 @@ def get_quantize_weight_fn(quantizer: Quantizer, pre_quant_weight: nn.Parameter)
         quantized_weights = quantized_weights.view(pre_quant_weight.dtype)
         quant_scale = quant_scale.type(pre_quant_weight.dtype)
         quant_min = quant_min.type(pre_quant_weight.dtype)
-        quantized_weights = nn.Parameter(quantized_weights, requires_grad=False)
         return quantized_weights, quant_scale, quant_min
 
     return func

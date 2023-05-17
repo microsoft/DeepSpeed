@@ -31,6 +31,7 @@ from deepspeed.utils.debug import (debug_param2name_id_shape, debug_param2name_i
                                    debug_param2name_id, debug_param2name_id_shape_status)
 from deepspeed.accelerator import get_accelerator
 from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwapper, PartitionedParamStatus
+from deepspeed.compression.inference.utils import _quantize_param, WEIGHT_QUANTIZATION_LAYERS, wrap_quantized_functional, wrap_load_from_state_dict
 
 param_count = 0
 partitioned_param_data_shape = [0]
@@ -293,6 +294,10 @@ class InsertPostInitMethodToModuleSubClasses(object):
         ], f"Invalid data type {self.dtype}, allowed values are [torch.half, torch.bfloat16, torch.float]"
         self.wrapped_cls = set()
 
+        self.quantized_initialization = None
+        if ds_config is not None and ds_config.weight_quantization_config.quantized_initialization:
+            self.quantized_initialization = ds_config.weight_quantization_config.quantized_initialization
+
     def __enter__(self):
         if not self.enabled:
             return
@@ -429,12 +434,21 @@ class InsertPostInitMethodToModuleSubClasses(object):
             torch.ones = zero_wrapper_for_fp_tensor_constructor(_orig_torch_ones, self.dtype)
             torch.full = zero_wrapper_for_fp_tensor_constructor(_orig_torch_full, self.dtype)
 
-            if self.mem_efficient_linear:
+            if self.mem_efficient_linear and self.quantized_initialization is None:
                 print_rank_0(
                     "nn.functional.linear has been overridden with a more memory efficient version. This will persist unless manually reset.",
                     force=False)
                 self.linear_bk = torch.nn.functional.linear
                 torch.nn.functional.linear = zero3_linear_wrap
+
+            if self.quantized_initialization:
+                print_rank_0("nn.functional.linear has been overridden with quantized linear version.", force=False)
+                torch.nn.functional.linear = wrap_quantized_functional(torch.nn.functional.linear)
+                torch.nn.functional.embedding = wrap_quantized_functional(torch.nn.functional.embedding)
+                for cls in WEIGHT_QUANTIZATION_LAYERS:
+                    cls._load_from_state_dict = wrap_load_from_state_dict(cls._load_from_state_dict)
+
+                logger.info("Enable Zero3 engine with INT4 quantization.")
 
             self.torch_func_wrapped = True
 
@@ -811,7 +825,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         for name, param in module.named_parameters(recurse=False):
             param_count += param.numel()
             if not is_zero_param(param):
+                if name == 'weight' and self.quantized_initialization and type(module) in WEIGHT_QUANTIZATION_LAYERS:
+                    _quantize_param(param, self.quantized_initialization)
+
                 self._convert_to_deepspeed_param(param)
+
                 print_rank_0(
                     f"Partitioning param {debug_param2name_id_shape(param)} module={debug_module2name(module)}")
 

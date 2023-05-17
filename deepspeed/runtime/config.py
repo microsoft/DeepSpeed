@@ -29,6 +29,7 @@ from .zero.config import get_zero_config, ZeroStageEnum
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
 from ..comm.config import DeepSpeedCommsConfig
 from ..monitor.config import get_monitor_config
+from ..compression.inference.config import WeightQuantizationConfig
 
 from deepspeed import comm as dist
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
@@ -869,6 +870,8 @@ class DeepSpeedConfig(object):
         self.dataloader_drop_last = get_dataloader_drop_last(param_dict)
 
         self.nebula_config = DeepSpeedNebulaConfig(param_dict)
+
+        self.weight_quantization_config = WeightQuantizationConfig(param_dict)
 
     def _batch_assertion(self):
 

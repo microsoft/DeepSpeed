@@ -4,12 +4,24 @@
 # DeepSpeed Team
 
 import torch
+import deepspeed
 from torch import Tensor
 from typing import Tuple
 import torch.nn as nn
-from typing import Dict
+from typing import Dict, Callable, Union
+from deepspeed.accelerator import get_accelerator
+import functools
 
-# quantizer_cuda_module = deepspeed.ops.op_builder.QuantizerBuilder().load()
+device = get_accelerator().device_name() if get_accelerator().is_available() else 'cpu'
+
+quantizer_cuda_module = None
+
+
+def get_quantizer_cuda_module():
+    global quantizer_cuda_module
+    if quantizer_cuda_module is None:
+        quantizer_cuda_module = deepspeed.ops.op_builder.QuantizerBuilder().load()
+    return quantizer_cuda_module
 
 
 def tensor_clamp(tensor: Tensor, min, max) -> Tensor:
@@ -108,22 +120,38 @@ class DeQuantizer:
 
     def dequantize(self, tensor: Tensor, quant_scale: Tensor, quant_min: Tensor) -> Tensor:
         # Use customized CUDA quantization kernel if possible.
-        # TODO: Current ZERO++ INT4 asymmetric kernel has numeric issue.
-        # Uncomment this code block when Heyang's fix is merged.
-        # if self.config.group_size % 8 == 0 and \
-        #         self.config.group_dim == len(tensor.shape) - 1 and \
-        #         self.config.num_bits == 4:
-        #     shape = list(tensor.shape)
-        #     shape[-1] = shape[-1] * 2
+        if self.config['group_size'] % 8 == 0 and \
+                self.config['num_bits'] == 4 and \
+                self.config['group_dim'] == len(tensor.shape) - 1 and \
+                    self.dtype == torch.float16 and device == 'cuda':
 
-        #     quantized_tensor = quantizer_cuda_module.dequantize(
-        #         tensor.reshape(-1, self.config.group_size // 2),
-        #         torch.concat([quant_scale, quant_min], dim=-1),
-        #         tensor.numel() // (self.config.group_size // 2),
-        #         self.config.num_bits,
-        #         quantizer_cuda_module.Asymmetric
-        #     )
-        #     return quantized_tensor.reshape(shape)
+            last_dimension_size = self.config['group_size']
+            if self.config['num_bits'] == 4:
+                last_dimension_size = last_dimension_size // 2
+
+            quantized_tensor = get_quantizer_cuda_module().dequantize_int4_to_half_experimental(
+                tensor.reshape(-1, last_dimension_size), quant_scale, quant_min,
+                tensor.numel() // last_dimension_size, self.config['group_size'])
+
+            shape = list(tensor.shape)
+            if self.config['num_bits'] == 4:
+                shape[-1] = shape[-1] * 2
+
+            return quantized_tensor.reshape(shape)
+
+            # quantized_tensor = quantizer_cuda_module.dequantize(
+            #     tensor.reshape(-1, last_dimension_size),
+            #     torch.concat([quant_scale, quant_min], dim=-1),
+            #     tensor.numel() // last_dimension_size,
+            #     self.config['num_bits'],
+            #     quantizer_cuda_module.Asymmetric
+            # )
+
+            # shape = list(tensor.shape)
+            # if self.config['num_bits'] == 4:
+            #     shape[-1] = shape[-1] * 2
+
+            # return quantized_tensor.reshape(shape)
 
         if self.config['num_bits'] == 4:
             tensor = self._decompress_uint4_to_uint8(tensor)
@@ -162,3 +190,108 @@ def get_AsyncPartitionedParameterSwapper(model: nn.Module):
         if hasattr(param, 'nvme_swapper') and param.nvme_swapper is not None:
             return param.nvme_swapper
     return None
+
+
+def concat_to_compat_param(quantized_weight: Tensor,
+                           quant_scale: Tensor,
+                           quant_min: Tensor,
+                           return_param: bool = True) -> Union[nn.Parameter, Tensor]:
+    shape_wieght = quantized_weight.shape
+    shape_scale = quant_scale.shape
+    shape_min = quant_min.shape
+
+    quantized_weight = torch.flatten(quantized_weight)
+    quant_scale = torch.flatten(quant_scale)
+    quant_min = torch.flatten(quant_min)
+
+    def deconcat_individual_tensors(shape_wieght: torch.Size, shape_scale: torch.Size,
+                                    shape_min: torch.Size) -> Callable:
+
+        def fn(compat_tensor: nn.Parameter) -> Tuple[Tensor, Tensor, Tensor]:
+            weight = torch.narrow(compat_tensor, 0, 0, shape_wieght.numel()).view(shape_wieght)
+            scale = torch.narrow(compat_tensor, 0, shape_wieght.numel(), shape_scale.numel()).view(shape_scale)
+            min_val = torch.narrow(compat_tensor, 0,
+                                   shape_wieght.numel() + shape_scale.numel(), shape_min.numel()).view(shape_min)
+
+            return weight, scale, min_val
+
+        return fn
+
+    compat_tensor = torch.concat([quantized_weight, quant_scale, quant_min])
+    if return_param:
+        compat_tensor = nn.Parameter(compat_tensor, requires_grad=False)
+    compat_tensor.deconcat = deconcat_individual_tensors(shape_wieght, shape_scale, shape_min)
+
+    return compat_tensor
+
+
+def _quantize_param(param: nn.Parameter, quant_config: Dict):
+    assert not hasattr(param, 'weight_quantized'), 'Parameter has already been quantized.'
+    quantizer = Quantizer(quant_config)
+    dequantizer = DeQuantizer(quant_config, param.dtype)
+
+    quantized_weight, quant_scale, quant_min = quantizer.quantize(param.data)
+
+    quantized_weight = quantized_weight.view(param.dtype)
+    quant_scale = quant_scale.view(param.dtype)
+    quant_min = quant_min.view(param.dtype)
+
+    quantized_compat_tensor = concat_to_compat_param(quantized_weight, quant_scale, quant_min)
+    param.data = quantized_compat_tensor
+    param.deconcat = quantized_compat_tensor.deconcat
+
+    param.quantizer = quantizer
+    param.dequantizer = dequantizer
+    setattr(param, 'weight_quantized', True)
+
+
+def wrap_quantized_functional(f):
+
+    @functools.wraps(f)
+    def wrapper(input: Tensor, weight: nn.Parameter, *args, **kwargs) -> Tensor:
+        if hasattr(weight, 'weight_quantized') and getattr(weight, 'weight_quantized'):
+            quantized_weight, quant_scale, quant_min = weight.deconcat(weight)
+            temp_dequantized_weight = weight.dequantizer.dequantize(quantized_weight.view(torch.uint8), quant_scale,
+                                                                    quant_min)
+            return f(input, temp_dequantized_weight, *args, **kwargs)
+        else:
+            return f(input, weight, *args, **kwargs)
+
+    return wrapper
+
+
+def wrap_load_from_state_dict(f):
+
+    @functools.wraps(f)
+    def wrapper(model, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+        replaced_old_value = None
+        key = None
+        # We may have nested wrappers if we launch multiple initialization context.
+        # Use state_dict_quantized flag to quantize state_dict only once
+        if hasattr(model.weight, 'weight_quantized') and getattr(
+                model.weight, 'weight_quantized') and not hasattr(model.weight, 'state_dict_quantized'):
+            setattr(model.weight, 'state_dict_quantized', True)
+            key = prefix + 'weight'
+            if key in state_dict:
+                quantized_weight, quant_scale, quant_min = model.weight.quantizer.quantize(state_dict[key])
+                quantized_weight = quantized_weight.view(model.weight.dtype)
+                quant_scale = quant_scale.view(model.weight.dtype)
+                quant_min = quant_min.view(model.weight.dtype)
+
+                replaced_old_value = state_dict[key]
+
+                state_dict[key] = concat_to_compat_param(quantized_weight, quant_scale, quant_min)
+
+        f(model, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
+
+        if replaced_old_value is not None:
+            state_dict[key] = replaced_old_value
+            delattr(model.weight, 'state_dict_quantized')
+
+    return wrapper
+
+
+WEIGHT_QUANTIZATION_LAYERS = (
+    nn.Linear,
+    nn.Embedding,
+)
