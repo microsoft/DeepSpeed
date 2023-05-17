@@ -22,7 +22,7 @@ class LinearAllreduce(nn.Module):
         self.mp_group = mp_group
 
     def forward(self, input):
-        output = torch.matmul(input, self.weight.transpose(-1, -2))
+        output = F.linear(input, self.weight)
         if self.mp_group is not None:
             dist.inference_all_reduce(output, group=self.mp_group)
         if self.bias is not None:
@@ -50,8 +50,7 @@ class LmHeadLinearAllreduce(nn.Module):
     def forward(self, input):
         input_shard_size = get_shard_size(input.shape[-1], self.world_size)
         input_shard_offset = sum(get_shard_size_list(input.shape[-1], self.world_size)[0:self.rank])
-        output = torch.matmul(input[:, :, input_shard_offset:input_shard_offset + input_shard_size],
-                              self.weight.transpose(-1, -2))
+        output = F.linear(input[:, :, input_shard_offset:input_shard_offset + input_shard_size], self.weight)
         if self.mp_group is not None:
             dist.inference_all_reduce(output, group=self.mp_group)
         if self.bias is not None:
@@ -77,10 +76,7 @@ class LinearLayer(nn.Module):
                 if bias is not None else None
 
     def forward(self, input):
-        output = torch.matmul(input, self.weight.transpose(-1, -2))
-        if self.bias is not None:
-            output += self.bias
-        return output
+        return F.linear(input, self.weight, self.bias)
 
 
 class Normalize(nn.Module):
