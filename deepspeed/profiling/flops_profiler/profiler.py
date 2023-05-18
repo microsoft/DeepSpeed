@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from functools import partial
 from typing import List, Optional
-from collections import OrderedDict
+from collections import OrderedDict, Counter
 import numpy as np
 from deepspeed.accelerator import get_accelerator
 
@@ -18,6 +18,8 @@ Tensor = torch.Tensor
 module_flop_count = []
 module_mac_count = []
 old_functions = {}
+
+DEFAULT_PRECISION = 2
 
 
 class FlopsProfiler(object):
@@ -159,7 +161,16 @@ class FlopsProfiler(object):
         def add_or_reset_attrs(module):
             module.__flops__ = 0
             module.__macs__ = 0
-            module.__params__ = sum(p.numel() for p in module.parameters())
+            module.__params__ = 0
+            module.__memory__ = 0
+            module.__params_by_dtype__ = Counter()
+            module.__memory_by_dtype__ = Counter()
+            for p in module.parameters():
+                num_params, param_type, per_param_size = p.numel(), p.dtype, p.element_size()
+                module.__params__ += num_params
+                module.__memory__ += num_params * per_param_size
+                module.__params_by_dtype__[param_type] += num_params
+                module.__memory_by_dtype__[param_type] += num_params * per_param_size
             module.__start_time__ = 0
             module.__duration__ = 0
 
@@ -199,7 +210,7 @@ class FlopsProfiler(object):
             The number of multiply-accumulate operations of the model forward pass.
         """
         total_flops = get_module_flops(self.model)
-        return num_to_string(total_flops) if as_string else total_flops
+        return number_to_string(total_flops) if as_string else total_flops
 
     def get_total_macs(self, as_string=False):
         """Returns the total MACs of the model.
@@ -287,11 +298,11 @@ class FlopsProfiler(object):
 
         print('{:<60}  {:<8}'.format('fwd MACs per GPU: ', macs_to_string(total_macs)))
 
-        print('{:<60}  {:<8}'.format('fwd flops per GPU: ', num_to_string(total_flops)))
+        print('{:<60}  {:<8}'.format('fwd flops per GPU: ', number_to_string(total_flops)))
 
         print('{:<60}  {:<8}'.format(
             'fwd flops of model = fwd flops per GPU * mp_size: ',
-            num_to_string(total_flops * ((self.ds_engine.mp_world_size) if self.ds_engine else 1))))
+            number_to_string(total_flops * ((self.ds_engine.mp_world_size) if self.ds_engine else 1))))
 
         fwd_latency = self.get_total_duration()
         if self.ds_engine and self.ds_engine.wall_clock_breakdown():
@@ -323,18 +334,30 @@ class FlopsProfiler(object):
             params = module.__params__
             flops = get_module_flops(module)
             macs = get_module_macs(module)
-            items = [
-                params_to_string(params),
-                "{:.2%} Params".format(params / total_params if total_params else 0),
-                macs_to_string(macs),
-                "{:.2%} MACs".format(0.0 if total_macs == 0 else macs / total_macs),
-            ]
+            params_by_dtype = " = {}".format(" + ".join(
+                "{} {}".format(params_to_string(c), dtype_to_string(t))
+                for t, c in module.__params_by_dtype__.items())) if params else ""
+            memory_by_dtype = " = {}".format(" + ".join(
+                "{} {}".format(bytes_to_string(m), dtype_to_string(t))
+                for t, m in module.__memory_by_dtype__.items())) if params else ""
             duration = get_module_duration(module)
-
-            items.append(duration_to_string(duration))
-            items.append("{:.2%} latency".format(0.0 if total_duration == 0 else duration / total_duration))
-            items.append(flops_to_string(0.0 if duration == 0 else flops / duration))
-            items.append(module.original_extra_repr())
+            items = [
+                "{}{} = {:g}% Params".format(
+                    params_to_string(params), params_by_dtype,
+                    round(100 * params / total_params, DEFAULT_PRECISION) if total_params else 0),
+                "{} = {:g}% MACs".format(macs_to_string(macs),
+                                         round(100 * macs / total_macs, DEFAULT_PRECISION) if total_macs else 0),
+                "{}{} = {:g}% Memory".format(bytes_to_string(module.__memory__), memory_by_dtype,
+                                             round(100 * module.__memory__ / self.model.__memory__,
+                                                   DEFAULT_PRECISION)),
+                "{} = {:g}% latency".format(
+                    duration_to_string(duration),
+                    round(100 * duration / total_duration, DEFAULT_PRECISION) if total_duration else 0),
+                flops_to_string(round(flops / duration, DEFAULT_PRECISION) if duration else 0),
+            ]
+            original_extra_repr = module.original_extra_repr()
+            if original_extra_repr:
+                items.append(original_extra_repr)
             return ", ".join(items)
 
         def add_extra_repr(module):
@@ -969,118 +992,69 @@ MODULE_HOOK_MAPPING = {
 }
 
 
-def num_to_string(num, precision=2):
-    if num // 10**9 > 0:
-        return str(round(num / 10.0**9, precision)) + " G"
-    elif num // 10**6 > 0:
-        return str(round(num / 10.0**6, precision)) + " M"
-    elif num // 10**3 > 0:
-        return str(round(num / 10.0**3, precision)) + " K"
-    else:
-        return str(num)
+def macs_to_string(macs, units=None, precision=DEFAULT_PRECISION):
+    return f"{number_to_string(macs, units=units, precision=precision)}MACs"
 
 
-def macs_to_string(macs, units=None, precision=2):
+def dtype_to_string(tp):
+    if tp == torch.float32:
+        return "fp32"
+    if tp == torch.float16:
+        return "fp16"
+    if tp == torch.bfloat16:
+        return "bfp16"
+    return str(tp)
+
+
+def number_to_string(num, units=None, precision=DEFAULT_PRECISION):
     if units is None:
-        if macs // 10**9 > 0:
-            return str(round(macs / 10.0**9, precision)) + " GMACs"
-        elif macs // 10**6 > 0:
-            return str(round(macs / 10.0**6, precision)) + " MMACs"
-        elif macs // 10**3 > 0:
-            return str(round(macs / 10.0**3, precision)) + " KMACs"
+        if num >= 1e12:
+            magnitude, units = 1e12, "T"
+        elif num >= 1e9:
+            magnitude, units = 1e9, "G"
+        elif num >= 1e6:
+            magnitude, units = 1e6, "M"
+        elif num >= 1e3:
+            magnitude, units = 1e3, "K"
+        elif num >= 1 or num == 0:
+            magnitude, units = 1, ""
+        elif num >= 1e-3:
+            magnitude, units = 1e-3, "m"
         else:
-            return str(macs) + " MACs"
+            magnitude, units = 1e-6, "μ"
     else:
-        if units == "GMACs":
-            return str(round(macs / 10.0**9, precision)) + " " + units
-        elif units == "MMACs":
-            return str(round(macs / 10.0**6, precision)) + " " + units
-        elif units == "KMACs":
-            return str(round(macs / 10.0**3, precision)) + " " + units
-        else:
-            return str(macs) + " MACs"
-
-
-def number_to_string(num, units=None, precision=2):
-    if units is None:
-        if num // 10**9 > 0:
-            return str(round(num / 10.0**9, precision)) + " G"
-        elif num // 10**6 > 0:
-            return str(round(num / 10.0**6, precision)) + " M"
-        elif num // 10**3 > 0:
-            return str(round(num / 10.0**3, precision)) + " K"
-        else:
-            return str(num) + " "
-    else:
-        if units == "G":
-            return str(round(num / 10.0**9, precision)) + " " + units
+        if units == "T":
+            magnitude = 1e12
+        elif units == "G":
+            magnitude = 1e9
         elif units == "M":
-            return str(round(num / 10.0**6, precision)) + " " + units
+            magnitude = 1e6
         elif units == "K":
-            return str(round(num / 10.0**3, precision)) + " " + units
+            magnitude = 1e3
+        elif units == "m":
+            magnitude = 1e-3
+        elif units == "us" or units == "μs":
+            magnitude = 1e-6
         else:
-            return str(num) + " "
+            magnitude = 1
+    return f"{round(num / magnitude, precision):g} {units}"
 
 
-def flops_to_string(flops, units=None, precision=2):
-    if units is None:
-        if flops // 10**12 > 0:
-            return str(round(flops / 10.0**12, precision)) + " TFLOPS"
-        if flops // 10**9 > 0:
-            return str(round(flops / 10.0**9, precision)) + " GFLOPS"
-        elif flops // 10**6 > 0:
-            return str(round(flops / 10.0**6, precision)) + " MFLOPS"
-        elif flops // 10**3 > 0:
-            return str(round(flops / 10.0**3, precision)) + " KFLOPS"
-        else:
-            return str(flops) + " FLOPS"
-    else:
-        if units == "TFLOPS":
-            return str(round(flops / 10.0**12, precision)) + " " + units
-        if units == "GFLOPS":
-            return str(round(flops / 10.0**9, precision)) + " " + units
-        elif units == "MFLOPS":
-            return str(round(flops / 10.0**6, precision)) + " " + units
-        elif units == "KFLOPS":
-            return str(round(flops / 10.0**3, precision)) + " " + units
-        else:
-            return str(flops) + " FLOPS"
+def flops_to_string(flops, units=None, precision=DEFAULT_PRECISION):
+    return f"{number_to_string(flops, units=units, precision=precision)}FLOPS"
 
 
-def params_to_string(params_num, units=None, precision=2):
-    if units is None:
-        if params_num // 10**6 > 0:
-            return str(round(params_num / 10**6, 2)) + " M"
-        elif params_num // 10**3:
-            return str(round(params_num / 10**3, 2)) + " k"
-        else:
-            return str(params_num)
-    else:
-        if units == "M":
-            return str(round(params_num / 10.0**6, precision)) + " " + units
-        elif units == "K":
-            return str(round(params_num / 10.0**3, precision)) + " " + units
-        else:
-            return str(params_num)
+def bytes_to_string(b, units=None, precision=DEFAULT_PRECISION):
+    return f"{number_to_string(b, units=units, precision=precision)}B"
 
 
-def duration_to_string(duration, units=None, precision=2):
-    if units is None:
-        if duration > 1:
-            return str(round(duration, precision)) + " s"
-        elif duration * 10**3 > 1:
-            return str(round(duration * 10**3, precision)) + " ms"
-        elif duration * 10**6 > 1:
-            return str(round(duration * 10**6, precision)) + " us"
-        else:
-            return str(duration)
-    else:
-        if units == "us":
-            return str(round(duration * 10.0**6, precision)) + " " + units
-        elif units == "ms":
-            return str(round(duration * 10.0**3, precision)) + " " + units
-        else:
-            return str(round(duration, precision)) + " s"
+def params_to_string(params_num, units=None, precision=DEFAULT_PRECISION):
+    units = units.replace("B", "G") if units else units
+    return number_to_string(params_num, units=units, precision=precision).replace("G", "B").strip()
+
+
+def duration_to_string(duration, units=None, precision=DEFAULT_PRECISION):
+    return f"{number_to_string(duration, units=units, precision=precision)}s"
 
 
     # can not iterate over all submodules using self.model.modules()
