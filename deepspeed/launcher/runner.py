@@ -1,4 +1,7 @@
-# Copyright 2020 The Microsoft DeepSpeed Team
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 """
 DeepSpeed runner is the main front-end to launching multi-worker
 training jobs with DeepSpeed. By default this uses pdsh to parallel
@@ -18,8 +21,8 @@ from copy import deepcopy
 import signal
 import time
 
-from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner, SlurmRunner, MPICHRunner, JSRunner
-from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER, SLURM_LAUNCHER, MPICH_LAUNCHER, JSRUN_LAUNCHER
+from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner, SlurmRunner, MPICHRunner, JSRunner IMPIRunner
+from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER, SLURM_LAUNCHER, MPICH_LAUNCHER, JSRUN_LAUNCHER, IMPI_LAUNCHER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..nebula.constants import NEBULA_EXPORT_ENVS
 from ..utils import logger
@@ -36,9 +39,9 @@ PDSH_MAX_FAN_OUT = 1024
 
 
 def parse_args(args=None):
-    parser = argparse.ArgumentParser(
-        description="DeepSpeed runner to help launch distributed "
-        "multi-node/multi-gpu training jobs.")
+    parser = argparse.ArgumentParser(description="DeepSpeed runner to help launch distributed "
+                                     "multi-node/multi-gpu training jobs.",
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument("-H",
                         "--hostfile",
@@ -92,6 +95,7 @@ def parse_args(args=None):
                         "Default is num_nodes when elastic training is enabled")
 
     parser.add_argument("--num_gpus",
+                        "--num_accelerators",
                         type=int,
                         default=-1,
                         help="Max number of GPUs to use on each node, will use "
@@ -109,12 +113,11 @@ def parse_args(args=None):
                         help="(optional) IP address of node 0, will be "
                         "inferred via 'hostname -I' if not specified.")
 
-    parser.add_argument(
-        "--launcher",
-        default=PDSH_LAUNCHER,
-        type=str,
-        help="(optional) choose launcher backend for multi-node "
-        "training. Options currently include PDSH, OpenMPI, MVAPICH, SLURM, MPICH.")
+    parser.add_argument("--launcher",
+                        default=PDSH_LAUNCHER,
+                        type=str,
+                        help="(optional) choose launcher backend for multi-node "
+                        "training. Options currently include PDSH, OpenMPI, MVAPICH, SLURM, MPICH, IMPI.")
 
     parser.add_argument("--launcher_args",
                         default="",
@@ -147,27 +150,23 @@ def parse_args(args=None):
                         help="Force multi-node launcher mode, helps in cases where user "
                         "wants to launch on single remote node.")
 
-    parser.add_argument(
-        "--save_pid",
-        action="store_true",
-        help="Save file containing launcher process id (pid) at /tmp/<main-pid>.ds, "
-        "where <main-pid> is the pid of the first process that invoked `deepspeed`. "
-        "Useful when launching deepspeed processes programmatically.")
+    parser.add_argument("--save_pid",
+                        action="store_true",
+                        help="Save file containing launcher process id (pid) at /tmp/<main-pid>.ds, "
+                        "where <main-pid> is the pid of the first process that invoked `deepspeed`. "
+                        "Useful when launching deepspeed processes programmatically.")
 
-    parser.add_argument(
-        "--enable_each_rank_log",
-        default="None",
-        type=str,
-        help="redirect the stdout and stderr from each rank into different log files")
+    parser.add_argument("--enable_each_rank_log",
+                        default="None",
+                        type=str,
+                        help="redirect the stdout and stderr from each rank into different log files")
 
-    parser.add_argument(
-        "--autotuning",
-        default="",
-        choices=["tune",
-                 "run"],
-        type=str,
-        help="Run DeepSpeed autotuner to discover optimal configuration parameters "
-        "before running job.")
+    parser.add_argument("--autotuning",
+                        default="",
+                        choices=["tune", "run"],
+                        type=str,
+                        help="Run DeepSpeed autotuner to discover optimal configuration parameters "
+                        "before running job.")
 
     parser.add_argument(
         "--comment",
@@ -180,11 +179,18 @@ def parse_args(args=None):
                         action="store_true",
                         help="Enable elastic training support in DeepSpeed.")
 
-    parser.add_argument("user_script",
-                        type=str,
-                        help="User script to launch, followed by any required "
+    parser.add_argument("user_script", type=str, help="User script to launch, followed by any required "
                         "arguments.")
     parser.add_argument('user_args', nargs=argparse.REMAINDER)
+    parser.add_argument("--bind_cores_to_rank",
+                        action="store_true",
+                        help="Bind each rank to different cores of the host")
+    parser.add_argument("--bind_core_list",
+                        type=str,
+                        default=None,
+                        help="List of cores to bind to with comma separated list of "
+                        "numbers and range. i.e. 1,3-5,7 => [1,3,4,5,7].  When not "
+                        "specified, all cores on system would be used rank binding")
     return parser.parse_args(args=args)
 
 
@@ -220,21 +226,15 @@ def _parse_hostfile(hostfile_lines):
             num_slots = int(match.group(2))
             if host in resource_pool:
                 logger.error(f"Bad hostfile text: {hostfile_lines}")
-                raise ValueError(
-                    f"Hostfile contains multiple entries for {host}, unable to proceed with launching"
-                )
+                raise ValueError(f"Hostfile contains multiple entries for {host}, unable to proceed with launching")
             resource_pool[host] = num_slots
         else:
             logger.error(f"Bad hostfile text: {hostfile_lines}")
-            raise ValueError(
-                "Hostfile contains a bad entry: {line}, unable to proceed with launching"
-            )
+            raise ValueError("Hostfile contains a bad entry: {line}, unable to proceed with launching")
 
     if len(resource_pool) == 0:
         logger.error(f"Bad hostfile text: {hostfile_lines}")
-        raise ValueError(
-            "Hostfile is empty or not formatted correctly, unable to proceed with launching."
-        )
+        raise ValueError("Hostfile is empty or not formatted correctly, unable to proceed with launching.")
 
     return resource_pool
 
@@ -344,9 +344,7 @@ def parse_inclusion_exclusion(resource_pool, inclusion, exclusion):
     for hostname, slots in resource_pool.items():
         active_resources[hostname] = list(range(slots))
 
-    return parse_resource_filter(active_resources,
-                                 include_str=inclusion,
-                                 exclude_str=exclusion)
+    return parse_resource_filter(active_resources, include_str=inclusion, exclude_str=exclusion)
 
 
 def encode_world_info(world_info):
@@ -396,8 +394,7 @@ def main(args=None):
     cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
     if not resource_pool and len(cuda_visible_devices):
         detected_str = f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices}"
-        if len(args.include) or len(
-                args.exclude) or args.num_nodes > 1 or args.num_gpus > 0:
+        if len(args.include) or len(args.exclude) or args.num_nodes > 1 or args.num_gpus > 0:
             print(
                 f"{detected_str} but ignoring it because one or several of --include/--exclude/--num_gpus/--num_nodes cl args were used. If you want to use CUDA_VISIBLE_DEVICES don't pass any of these arguments to deepspeed."
             )
@@ -423,20 +420,17 @@ def main(args=None):
     if not multi_node_exec and args.num_nodes > 1:
         raise ValueError("Num nodes is >1 but no extra nodes available via hostfile")
 
-    active_resources = parse_inclusion_exclusion(resource_pool,
-                                                 args.include,
-                                                 args.exclude)
+    active_resources = parse_inclusion_exclusion(resource_pool, args.include, args.exclude)
     env = os.environ.copy()
 
     # validate that passwordless-ssh is workly properly with this hostfile
     if multi_node_exec and not args.no_ssh_check:
         first_host = list(active_resources.keys())[0]
         try:
-            subprocess.check_call(
-                f'ssh -o PasswordAuthentication=no {first_host} hostname',
-                stderr=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                shell=True)
+            subprocess.check_call(f'ssh -o PasswordAuthentication=no {first_host} hostname',
+                                  stderr=subprocess.DEVNULL,
+                                  stdout=subprocess.DEVNULL,
+                                  shell=True)
         except subprocess.CalledProcessError:
             raise RuntimeError(
                 f"Using hostfile at {args.hostfile} but host={first_host} was not reachable via ssh. If you are running with a single node please remove {args.hostfile} or setup passwordless ssh."
@@ -488,13 +482,8 @@ def main(args=None):
 
     if not multi_node_exec:
         deepspeed_launch = [
-            sys.executable,
-            "-u",
-            "-m",
-            "deepspeed.launcher.launch",
-            f"--world_info={world_info_base64}",
-            f"--master_addr={args.master_addr}",
-            f"--master_port={args.master_port}"
+            sys.executable, "-u", "-m", "deepspeed.launcher.launch", f"--world_info={world_info_base64}",
+            f"--master_addr={args.master_addr}", f"--master_port={args.master_port}"
         ]
         if args.no_python:
             deepspeed_launch.append("--no_python")
@@ -505,12 +494,15 @@ def main(args=None):
         if args.save_pid:
             deepspeed_launch += ["--save_pid", f"{os.getpid()}"]
         if args.enable_each_rank_log:
-            deepspeed_launch.append(
-                f"--enable_each_rank_log={args.enable_each_rank_log}")
+            deepspeed_launch.append(f"--enable_each_rank_log={args.enable_each_rank_log}")
         if args.elastic_training:
             deepspeed_launch.append("--enable_elastic_training")
             deepspeed_launch.append(f"--max_elastic_nodes={args.max_elastic_nodes}")
             deepspeed_launch.append(f"--min_elastic_nodes={args.min_elastic_nodes}")
+        if args.bind_cores_to_rank:
+            deepspeed_launch.append("--bind_cores_to_rank")
+        if args.bind_core_list != None:
+            deepspeed_launch.append(f"--bind_core_list={args.bind_core_list}")
         cmd = deepspeed_launch + [args.user_script] + args.user_args
     else:
         args.launcher = args.launcher.lower()
@@ -522,6 +514,8 @@ def main(args=None):
             runner = JSRunner(args, world_info_base64, resource_pool)
         elif args.launcher == MPICH_LAUNCHER:
             runner = MPICHRunner(args, world_info_base64, resource_pool)
+        elif args.launcher == IMPI_LAUNCHER:
+            runner = IMPIRunner(args, world_info_base64, resource_pool)
         elif args.launcher == MVAPICH_LAUNCHER:
             runner = MVAPICHRunner(args, world_info_base64, resource_pool)
         elif args.launcher == SLURM_LAUNCHER:

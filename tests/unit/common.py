@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import os
 import time
@@ -49,28 +52,30 @@ def set_accelerator_visible():
         # CUDA_VISIBLE_DEVICES is not set, discover it using accelerator specific command instead
         import subprocess
         if get_accelerator().device_name() == 'cuda':
-            is_rocm_pytorch = hasattr(torch.version,
-                                      'hip') and torch.version.hip is not None
+            is_rocm_pytorch = hasattr(torch.version, 'hip') and torch.version.hip is not None
             if is_rocm_pytorch:
                 rocm_smi = subprocess.check_output(['rocm-smi', '--showid'])
-                gpu_ids = filter(lambda s: 'GPU' in s,
-                                 rocm_smi.decode('utf-8').strip().split('\n'))
-                num_gpus = len(list(gpu_ids))
+                gpu_ids = filter(lambda s: 'GPU' in s, rocm_smi.decode('utf-8').strip().split('\n'))
+                num_accelerators = len(list(gpu_ids))
             else:
                 nvidia_smi = subprocess.check_output(['nvidia-smi', '--list-gpus'])
-                num_gpus = len(nvidia_smi.decode('utf-8').strip().split('\n'))
-        else:
-            assert get_accelerator().device_name() == 'xpu'
+                num_accelerators = len(nvidia_smi.decode('utf-8').strip().split('\n'))
+        elif get_accelerator().device_name() == 'xpu':
             import re
             clinfo = subprocess.check_output(['clinfo'])
             lines = clinfo.decode('utf-8').strip().split('\n')
-            num_gpus = 0
+            num_accelerators = 0
             for line in lines:
                 match = re.search('Device Type.*GPU', line)
                 if match:
-                    num_gpus += 1
+                    num_accelerators += 1
+        else:
+            assert get_accelerator().device_name() == 'cpu'
+            cpu_sockets = int(
+                subprocess.check_output('cat /proc/cpuinfo | grep "physical id" | sort -u | wc -l', shell=True))
+            num_accelerators = cpu_sockets
 
-        cuda_visible = ",".join(map(str, range(num_gpus)))
+        cuda_visible = ",".join(map(str, range(num_accelerators)))
 
     # rotate list based on xdist worker id, example below
     # wid=0 -> ['0', '1', '2', '3']
@@ -124,9 +129,9 @@ class DistributedExec(ABC):
         return fixture_kwargs
 
     def _launch_procs(self, num_procs):
-        if torch.cuda.is_available() and torch.cuda.device_count() < num_procs:
+        if get_accelerator().is_available() and get_accelerator().device_count() < num_procs:
             pytest.skip(
-                f"Skipping test because not enough GPUs are available: {num_procs} required, {torch.cuda.device_count()} available"
+                f"Skipping test because not enough GPUs are available: {num_procs} required, {get_accelerator().device_count()} available"
             )
         mp.set_start_method('forkserver', force=True)
         skip_msg = mp.Queue()  # Allows forked processes to share pytest.skip reason
@@ -164,11 +169,9 @@ class DistributedExec(ABC):
                 p.terminate()
                 pytest.fail(f'Worker {rank} hung.', pytrace=False)
             if p.exitcode < 0:
-                pytest.fail(f'Worker {rank} killed by signal {-p.exitcode}',
-                            pytrace=False)
+                pytest.fail(f'Worker {rank} killed by signal {-p.exitcode}', pytrace=False)
             if p.exitcode > 0:
-                pytest.fail(f'Worker {rank} exited with code {p.exitcode}',
-                            pytrace=False)
+                pytest.fail(f'Worker {rank} exited with code {p.exitcode}', pytrace=False)
 
         if not skip_msg.empty():
             # This assumed all skip messages are the same, it may be useful to
@@ -272,9 +275,7 @@ class DistributedFixture(DistributedExec):
     def __init__(self):
         assert isinstance(self.world_size, int), "Only one world size is allowed for distributed fixtures"
         self.__name__ = type(self).__name__
-        _pytestfixturefunction = FixtureFunctionMarker(scope="function",
-                                                       params=None,
-                                                       name=self.__name__)
+        _pytestfixturefunction = FixtureFunctionMarker(scope="function", params=None, name=self.__name__)
 
 
 class DistributedTest(DistributedExec):

@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 import deepspeed.comm as dist
@@ -16,8 +19,7 @@ try:
     _amp_available = True
 except ImportError:
     _amp_available = False
-amp_available = pytest.mark.skipif(not _amp_available,
-                                   reason="apex/amp is not installed")
+amp_available = pytest.mark.skipif(not _amp_available, reason="apex/amp is not installed")
 
 
 class TestLambFP32GradClip(DistributedTest):
@@ -38,9 +40,7 @@ class TestLambFP32GradClip(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -73,13 +73,8 @@ class TestLambFP16(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -103,13 +98,8 @@ class TestLambFP16(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim, empty_grad=True)
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -137,9 +127,7 @@ class TestAdamFP32EmptyGrad(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim, empty_grad=True)
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -155,24 +143,13 @@ class TestAdamwFP16Basic(DistributedTest):
     world_size = 1
 
     def test(self):
-        config_dict = {
-            "train_batch_size": 1,
-            "steps_per_print": 1,
-            "fp16": {
-                "enabled": True
-            }
-        }
+        config_dict = {"train_batch_size": 1, "steps_per_print": 1, "fp16": {"enabled": True}}
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
         optimizer = torch.optim.AdamW(params=model.parameters())
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              optimizer=optimizer)
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, optimizer=optimizer)
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -186,20 +163,12 @@ class TestFP16OptimizerForMoE(DistributedTest):
         if not required_torch_version():
             pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
-        config_dict = {
-            "train_batch_size": 2,
-            "steps_per_print": 1,
-            "fp16": {
-                "enabled": True
-            }
-        }
+        config_dict = {"train_batch_size": 2, "steps_per_print": 1, "fp16": {"enabled": True}}
         hidden_dim = 10
 
         def mock_unscale_and_clip_grads(total_norm, apply_scale=True):
             torch_norm_tensor = get_accelerator().FloatTensor([total_norm])
-            all_gather_results = [
-                torch.zeros_like(torch_norm_tensor) for _ in range(dist.get_world_size())
-            ]
+            all_gather_results = [torch.zeros_like(torch_norm_tensor) for _ in range(dist.get_world_size())]
             dist.all_gather(all_gather_results, torch_norm_tensor)
             assert len(set([x.item() for x in all_gather_results])) == 1
             return 1.0
@@ -208,16 +177,11 @@ class TestFP16OptimizerForMoE(DistributedTest):
         model = SimpleMoEModel(hidden_dim, ep_size=2)
         optimizer = torch.optim.AdamW(params=model.parameters())
         engine, optimizer, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              optimizer=optimizer,
-                                              dist_init_required=False)
-        monkeypatch.setattr(optimizer,
-                            'unscale_and_clip_grads',
-                            mock_unscale_and_clip_grads)
-        data_loader = sequence_dataloader(model=engine,
-                                          total_samples=50,
-                                          hidden_dim=hidden_dim,
-                                          device=engine.device)
+                                                       model=model,
+                                                       optimizer=optimizer,
+                                                       dist_init_required=False)
+        monkeypatch.setattr(optimizer, 'unscale_and_clip_grads', mock_unscale_and_clip_grads)
+        data_loader = sequence_dataloader(model=engine, total_samples=50, hidden_dim=hidden_dim, device=engine.device)
         for n, batch in enumerate(data_loader):
             loss = engine(batch[0], batch[1])
             engine.backward(loss)
@@ -227,20 +191,12 @@ class TestFP16OptimizerForMoE(DistributedTest):
         if not required_torch_version():
             pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
-        config_dict = {
-            "train_batch_size": 2,
-            "steps_per_print": 1,
-            "fp16": {
-                "enabled": True
-            }
-        }
+        config_dict = {"train_batch_size": 2, "steps_per_print": 1, "fp16": {"enabled": True}}
         hidden_dim = 10
 
         def mock_unscale_and_clip_grads(grads_groups_flat, total_norm, apply_scale=True):
             torch_norm_tensor = get_accelerator().FloatTensor([total_norm])
-            all_gather_results = [
-                torch.zeros_like(torch_norm_tensor) for _ in range(dist.get_world_size())
-            ]
+            all_gather_results = [torch.zeros_like(torch_norm_tensor) for _ in range(dist.get_world_size())]
             dist.all_gather(all_gather_results, torch_norm_tensor)
             assert len(set([x.item() for x in all_gather_results])) == 1
             return 1.0
@@ -250,16 +206,11 @@ class TestFP16OptimizerForMoE(DistributedTest):
         # optimizer = torch.optim.AdamW(params=model.parameters())
         optimizer = FusedAdam(params=model.parameters())
         engine, optimizer, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              optimizer=optimizer,
-                                              dist_init_required=False)
-        monkeypatch.setattr(optimizer,
-                            'unscale_and_clip_grads',
-                            mock_unscale_and_clip_grads)
-        data_loader = sequence_dataloader(model=engine,
-                                          total_samples=50,
-                                          hidden_dim=hidden_dim,
-                                          device=engine.device)
+                                                       model=model,
+                                                       optimizer=optimizer,
+                                                       dist_init_required=False)
+        monkeypatch.setattr(optimizer, 'unscale_and_clip_grads', mock_unscale_and_clip_grads)
+        data_loader = sequence_dataloader(model=engine, total_samples=50, hidden_dim=hidden_dim, device=engine.device)
         for n, batch in enumerate(data_loader):
             loss = engine(batch[0], batch[1])
             engine.backward(loss)
@@ -287,9 +238,7 @@ class TestFP16OptimizerForMoE(DistributedTest):
 
         def mock_unscale_and_clip_grads(total_norm, apply_scale=True):
             torch_norm_tensor = get_accelerator().FloatTensor([total_norm])
-            all_gather_results = [
-                torch.zeros_like(torch_norm_tensor) for _ in range(dist.get_world_size())
-            ]
+            all_gather_results = [torch.zeros_like(torch_norm_tensor) for _ in range(dist.get_world_size())]
             dist.all_gather(all_gather_results, torch_norm_tensor)
             assert len(set([x.item() for x in all_gather_results])) == 1
             return 1.0
@@ -297,17 +246,12 @@ class TestFP16OptimizerForMoE(DistributedTest):
         # initialize MoE
         model = SimpleMoEModel(hidden_dim, ep_size=2)
         engine, optimizer, _, _ = deepspeed.initialize(config=config_dict,
-                                               model=model,
-                                               model_parameters=model.parameters(),
-                                               dist_init_required=False)
-        monkeypatch.setattr(optimizer,
-                            'unscale_and_clip_grads',
-                            mock_unscale_and_clip_grads)
+                                                       model=model,
+                                                       model_parameters=model.parameters(),
+                                                       dist_init_required=False)
+        monkeypatch.setattr(optimizer, 'unscale_and_clip_grads', mock_unscale_and_clip_grads)
         optimizer.fused_lamb_legacy = fused_lamb_legacy
-        data_loader = sequence_dataloader(model=engine,
-                                          total_samples=50,
-                                          hidden_dim=hidden_dim,
-                                          device=engine.device)
+        data_loader = sequence_dataloader(model=engine, total_samples=50, hidden_dim=hidden_dim, device=engine.device)
         for n, batch in enumerate(data_loader):
             loss = engine(batch[0], batch[1])
             engine.backward(loss)
@@ -318,24 +262,13 @@ class TestAdamwFP16EmptyGrad(DistributedTest):
     world_size = 1
 
     def test(self):
-        config_dict = {
-            "train_batch_size": 1,
-            "steps_per_print": 1,
-            "fp16": {
-                "enabled": True
-            }
-        }
+        config_dict = {"train_batch_size": 1, "steps_per_print": 1, "fp16": {"enabled": True}}
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
         optimizer = torch.optim.AdamW(params=model.parameters())
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              optimizer=optimizer)
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, optimizer=optimizer)
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -385,13 +318,8 @@ class TestAdamFP16ZeroOneCycleCompatibility(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
-        model, _, _,_ = deepspeed.initialize(config=config_dict,
-                                             model=model,
-                                             model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -428,19 +356,14 @@ class TestZeroStaticScale(DistributedTest):
         }
 
         model = SimpleModel(hidden_dim)
-        model, optim, _, _ = deepspeed.initialize(config=config_dict,
-                                            model=model,
-                                            model_parameters=model.parameters())
+        model, optim, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
         # Ensure the static scaler is configured.
         assert optim.dynamic_loss_scale == False
         assert optim.loss_scaler.loss_scale == 138.
 
         # Now make sure things work..
-        data_loader = random_dataloader(model=model,
-                                        total_samples=10,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(model=model, total_samples=10, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -517,15 +440,10 @@ class TestZeroEmptyPartition(DistributedTest):
 
         # Ensure model has 2 parameters, to cause empty partition with DP=3
         assert len(list(model.parameters())) == 2
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
         # Now make sure things work..
-        data_loader = random_dataloader(model=model,
-                                        total_samples=1,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(model=model, total_samples=1, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -537,24 +455,13 @@ class TestAmp(DistributedTest):
     world_size = 2
 
     def test_adam_basic(self):
-        config_dict = {
-            "train_batch_size": 2,
-            "steps_per_print": 1,
-            "amp": {
-                "enabled": True
-            }
-        }
+        config_dict = {"train_batch_size": 2, "steps_per_print": 1, "amp": {"enabled": True}}
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
         optimizer = torch.optim.Adam(params=model.parameters())
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              optimizer=optimizer)
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, optimizer=optimizer)
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -578,13 +485,8 @@ class TestAmp(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -609,13 +511,8 @@ class TestAmp(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -640,13 +537,8 @@ class TestAmp(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -673,9 +565,7 @@ class TestZeroSupportedClientOptimizer(DistributedTest):
 
         model = SimpleModel(hidden_dim)
         client_optimizer = optimizer_constructor(params=model.parameters())
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              optimizer=client_optimizer)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, optimizer=client_optimizer)
 
 
 class TestZero2ReduceScatterOff(DistributedTest):
@@ -707,13 +597,8 @@ class TestZero2ReduceScatterOff(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -744,14 +629,9 @@ class TestFP16AdamTypes(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
-        data_loader = random_dataloader(model=model,
-                                        total_samples=10,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(model=model, total_samples=10, hidden_dim=hidden_dim, device=model.device)
 
         for _, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -783,14 +663,9 @@ class TestZero3LazyScatter(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
-        data_loader = random_dataloader(model=model,
-                                        total_samples=10,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(model=model, total_samples=10, hidden_dim=hidden_dim, device=model.device)
 
         for _, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -817,13 +692,8 @@ class TestZeroEmptyGrad(DistributedTest):
 
         model = SimpleModel(hidden_dim)
         optimizer = torch.optim.Adam(model.parameters())
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              optimizer=optimizer)
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, optimizer=optimizer)
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
