@@ -161,7 +161,7 @@ class TestHybridEngineLoRA(DistributedTest):
         ]
 
         model.train()
-        batch = tokenizer(train_sentences, max_length=128, padding="max_length", truncation=True, return_tensors="pt")
+        batch = tokenizer(train_sentences, max_length=32, padding="max_length", truncation=True, return_tensors="pt")
         batch = to_device(batch, f'cuda:{local_rank}')
         batch["labels"] = batch["input_ids"]
         outputs = model(**batch, use_cache=False)
