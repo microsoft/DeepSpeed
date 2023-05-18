@@ -32,11 +32,7 @@ def to_device(batch, device):
     return output
 
 
-def convert_linear_layer_to_lora(model,
-                                 part_module_name,
-                                 lora_dim=0,
-                                 lora_scaling=1,
-                                 lora_droppout=0):
+def convert_linear_layer_to_lora(model, part_module_name, lora_dim=0, lora_scaling=1, lora_droppout=0):
     from deepspeed.compression.helper import recursive_getattr, recursive_setattr
 
     repalce_name = []
@@ -45,9 +41,8 @@ def convert_linear_layer_to_lora(model,
             repalce_name.append(name)
     for name in repalce_name:
         module = recursive_getattr(model, name)
-        tmp = LinearLayer_LoRA(
-            module.weight, lora_dim, lora_scaling, lora_droppout,
-            module.bias).to(module.weight.device).to(module.weight.dtype)
+        tmp = LinearLayer_LoRA(module.weight, lora_dim, lora_scaling, lora_droppout,
+                               module.bias).to(module.weight.device).to(module.weight.dtype)
         recursive_setattr(model, name, tmp)
     return model
 
@@ -55,20 +50,13 @@ def convert_linear_layer_to_lora(model,
 class LinearLayer_LoRA(torch.nn.Module):
     # an simple implementation of LoRA
     # for now only support Linear Layer
-    def __init__(self,
-                 weight,
-                 lora_dim=0,
-                 lora_scaling=1,
-                 lora_droppout=0,
-                 bias=None):
+    def __init__(self, weight, lora_dim=0, lora_scaling=1, lora_droppout=0, bias=None):
         super(LinearLayer_LoRA, self).__init__()
         self.weight = weight
         self.bias = bias
 
         if lora_dim <= 0:
-            raise ValueError(
-                "You are training to use LoRA, whose reduced dim should be larger than 1"
-            )
+            raise ValueError("You are training to use LoRA, whose reduced dim should be larger than 1")
 
         try:
             # for zero stage 3
@@ -76,8 +64,7 @@ class LinearLayer_LoRA(torch.nn.Module):
         except:
             rows, columns = weight.shape
         self.lora_right_weight = torch.nn.Parameter(torch.zeros(
-            columns,
-            lora_dim))  # apply transpose so in forward we do not need to transpose again
+            columns, lora_dim))  # apply transpose so in forward we do not need to transpose again
         self.lora_left_weight = torch.nn.Parameter(torch.zeros(lora_dim, rows))
         self.lora_scaling = lora_scaling / lora_dim
 
@@ -106,10 +93,8 @@ class LinearLayer_LoRA(torch.nn.Module):
         if self.fuse_lora:
             return F.linear(input, self.weight, self.bias)
         else:
-            return F.linear(
-                input, self.weight,
-                self.bias) + (self.lora_dropout(input) @ self.lora_right_weight
-                              @ self.lora_left_weight) * self.lora_scaling
+            return F.linear(input, self.weight, self.bias) + (
+                self.lora_dropout(input) @ self.lora_right_weight @ self.lora_left_weight) * self.lora_scaling
 
 
 def only_optimize_lora_parameters(model):
@@ -170,7 +155,10 @@ class TestHybridEngineLoRA(DistributedTest):
         model, *_ = deepspeed.initialize(model=model, optimizer=optim, config=ds_config)
 
         # Verify gradient norm is larger than 0
-        before_grad_update_layer0_params = [ele.detach().cpu().float().numpy() for ele in model.layer_params[0] if ele is not None and len(ele.shape) > 1]
+        before_grad_update_layer0_params = [
+            ele.detach().cpu().float().numpy() for ele in model.layer_params[0]
+            if ele is not None and len(ele.shape) > 1
+        ]
 
         model.train()
         batch = tokenizer(train_sentences, max_length=128, padding="max_length", truncation=True, return_tensors="pt")
@@ -179,7 +167,7 @@ class TestHybridEngineLoRA(DistributedTest):
         outputs = model(**batch, use_cache=False)
         loss = outputs.loss
         model.backward(loss)
-        
+
         grad_norm_dict = dict()
         for name, param in model.named_parameters():
             if param.requires_grad is True:
@@ -190,14 +178,20 @@ class TestHybridEngineLoRA(DistributedTest):
         assert grad_norm > 1E-5
 
         # Verify parameter remains the same
-        after_grad_update_layer0_params = [ele.detach().cpu().float().numpy() for ele in model.layer_params[0] if ele is not None and len(ele.shape) > 1]
+        after_grad_update_layer0_params = [
+            ele.detach().cpu().float().numpy() for ele in model.layer_params[0]
+            if ele is not None and len(ele.shape) > 1
+        ]
         for lhs, rhs in zip(before_grad_update_layer0_params, after_grad_update_layer0_params):
             npt.assert_allclose(lhs, rhs, 1E-5, 1E-5)
-        
+
         # Verify fuse will mutate layer_params
         model.eval()
         model.fuse_lora_weight()
-        after_grad_update_layer0_params_lora_fused = [ele.detach().cpu().float().numpy() for ele in model.layer_params[0] if ele is not None and len(ele.shape) > 1]
+        after_grad_update_layer0_params_lora_fused = [
+            ele.detach().cpu().float().numpy() for ele in model.layer_params[0]
+            if ele is not None and len(ele.shape) > 1
+        ]
 
         for lhs, rhs in zip(before_grad_update_layer0_params, after_grad_update_layer0_params_lora_fused):
             with pytest.raises(AssertionError):
