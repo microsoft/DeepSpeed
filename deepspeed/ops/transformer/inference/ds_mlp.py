@@ -74,18 +74,18 @@ class DeepSpeedMLP(nn.Module):
 
         if len(DeepSpeedMLP._inter_w_buffers) == 0:
             DeepSpeedMLP._inter_w_buffers = [
-                torch.empty(self.config.hidden_size, self.intm_w_sz_per_partition, dtype=data_type, device=device),
+                torch.empty(self.intm_w_sz_per_partition, self.config.hidden_size, dtype=data_type, device=device),
                 torch.empty(self.intm_w_sz_per_partition, dtype=data_type_fp, device=device)
             ]
 
     def _merge_inter_w(self):
         inter_w = DeepSpeedMLP._inter_w_buffers[0]
-        inter_w[:self.intm_w_sz_per_partition, :] = self.inter_up_w  # type: ignore
-        inter_w[self.intm_w_sz_per_partition:, :] = self.inter_gate_w  # type: ignore
+        inter_w[:self.inter_up_w.shape[0], :] = self.inter_up_w  # type: ignore
+        inter_w[self.inter_up_w.shape[0]:] = self.inter_gate_w  # type: ignore
         if self.inter_up_b is not None:
             inter_b = DeepSpeedMLP._inter_w_buffers[1]
-            inter_b[:self.intm_w_sz_per_partition] = self.inter_up_b  # type: ignore
-            inter_b[self.intm_w_sz_per_partition:] = self.inter_gate_b  # type: ignore
+            inter_b[:self.inter_up_b.shape[0]] = self.inter_up_b  # type: ignore
+            inter_b[self.inter_up_b.shape[0]:] = self.inter_gate_b  # type: ignore
         return DeepSpeedMLP._inter_w_buffers
 
     def forward(self, input, residual, residual_norm, bias):
@@ -99,16 +99,16 @@ class DeepSpeedMLP(nn.Module):
         residual_add = None
         if self.attn_nw is None:
             output = self.fused_gemm_gelu(input=residual_norm,
-                                          weight=self.inter_w,
-                                          bias=self.inter_b,
+                                          weight=self._inter_w,
+                                          bias=self._inter_b,
                                           weight_out=self.output_w)
         else:
             output, residual_add = self.mlp_gemm_func(input=input,
                                                       residual=residual,
-                                                      weight_interm=self.inter_w,
+                                                      weight_interm=self._inter_w,
                                                       weight_out=self.output_w,
                                                       input_bias=bias,
-                                                      bias=self.inter_b,
+                                                      bias=self._inter_b,
                                                       gamma=self.attn_nw,
                                                       beta=self.attn_nb)
 
