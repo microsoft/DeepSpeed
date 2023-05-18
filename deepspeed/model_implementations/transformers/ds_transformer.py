@@ -152,6 +152,8 @@ class DeepSpeedTransformerInference(nn.Module):
             target_dtype = torch.half if self.dtype == torch.int8 else self.dtype
             input = input.to(target_dtype)
 
+        print(f'input norm b4 attn: {torch.norm(input)}')
+        
         with torch.no_grad():
             attention_output, key, value, context_outputtn_ctx, inp_norm = \
                                      self.attention(input,
@@ -166,13 +168,17 @@ class DeepSpeedTransformerInference(nn.Module):
                                               self.norm_b,
                                               alibi)
 
+            print(f'output norm, key, value a4 attn: {torch.norm(attention_output)}, {torch.norm(key)}, {torch.norm(value)}')
             presents = (key, value)
             self.layer_past = presents if layer_past is None else None
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
 
+            print(f"after mlp: {torch.norm(output)}")
+            #exit(0)
             if not self.config.pre_layer_norm:
                 output = inference_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
-
+            print(f"after layernorm: {torch.norm(output)}")
+            #exit(0)
             output = output.to(input_type)
         if get_present:
             output = (output, presents)

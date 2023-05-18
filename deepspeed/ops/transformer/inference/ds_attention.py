@@ -155,6 +155,10 @@ class DeepSpeedSelfAttention(nn.Module):
                                     gamma=norm_w,
                                     beta=norm_b)
 
+        if isinstance(qkv_out, list) or isinstance(qkv_out, tuple):
+            #qkv_out = qkv_out[0]
+            print(f"input norm after ln: {qkv_out[0].norm()}")
+        #exit(0)
         context_layer, key_layer, value_layer = self.compute_attention(qkv_out=qkv_out,
                                                                        input_mask=input_mask,
                                                                        layer_past=layer_past,
