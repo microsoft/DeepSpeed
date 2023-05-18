@@ -88,6 +88,18 @@ class DeepSpeedCheckpoint(object):
             FINAL_LAYER_NORM_INDEX)
         self._build_global_state()
 
+    @property
+    def original_tp_degree(self):
+        return self.zero_checkpoint.get_src_tp_degree()
+
+    @property
+    def original_pp_degree(self):
+        return self.zero_checkpoint.get_src_pp_degree()
+
+    @property
+    def zero_files(self):
+        return self.zero_checkpoint.file_list
+
     def is_change_tp_degree(self):
         return self.tp_degree != self.zero_checkpoint.get_src_tp_degree()
 
@@ -312,6 +324,21 @@ class DeepSpeedCheckpoint(object):
                 MODEL_FILE_PREFIX,
                 LAYER_FILE_PREFIX,
                 f'{LAYER_FILE_PREFIX}01'
+        ]:
+            ckpt_files = get_files_with_prefix(file_list, file_prefix)
+            assert len(ckpt_files) > 0, f'{dir} seems a bogus DeepSpeed checkpoint folder: Cannot find {file_prefix}* files in there.'
+
+
+class NeoxCheckpoint(DeepSpeedCheckpoint):
+
+    def _validate_folder(self, dir):
+        basic_folder_validation(dir)
+
+        file_list = get_files(dir)
+
+        for file_prefix in [
+                MODEL_FILE_PREFIX,
+                LAYER_FILE_PREFIX
         ]:
             ckpt_files = get_files_with_prefix(file_list, file_prefix)
             assert len(ckpt_files) > 0, f'{dir} seems a bogus DeepSpeed checkpoint folder: Cannot find {file_prefix}* files in there.'

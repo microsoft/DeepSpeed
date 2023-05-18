@@ -135,14 +135,17 @@ class ZeROCheckpoint(object):
             return None
 
         base_optimizer_state = optimizer_state.get(BASE_OPTIMIZER_STATE, None)
-        if base_optimizer_state is None:
+        if base_optimizer_state is None or isinstance(base_optimizer_state, list):
             return None
 
         return base_optimizer_state.get(GROUP_STATE_KEY, None)
 
     def _update_partition_count(self, sd):
         partition_counts = self._get_optimizer_state(sd, PARTITION_COUNT)
-        if partition_counts:
-            num_groups = len(partition_counts)
+        if isinstance(partition_counts, int):
+            partition_counts = [partition_counts]
+        num_partitions = len(partition_counts)
+        if num_partitions:
+            # num_groups = len(partition_counts)
             sd[OPTIMIZER_STATE_DICT][PARTITION_COUNT] = [self.target_3d.dp_degree
-                                                         ] * num_groups
+                                                         ] * num_partitions
