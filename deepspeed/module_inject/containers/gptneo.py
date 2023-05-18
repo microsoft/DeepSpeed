@@ -5,7 +5,7 @@
 
 from .base import *
 from .features.meta_tensor import MetaTensorContainer
-from .features.hybrid_engine import HybridEngineContainer
+from .features.split_qkv import HybridSplitQKVContainer
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
 import torch
 from torch.nn.parameter import Parameter
@@ -17,7 +17,7 @@ from ..policy import maybe_copy_qkv
 from ..policy import maybe_get_lora
 
 
-class DS_GPTNEOContainer(MetaTensorContainer, HybridEngineContainer, BaseTransformerContainer):
+class DS_GPTNEOContainer(MetaTensorContainer, HybridSplitQKVContainer, BaseTransformerContainer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -42,7 +42,21 @@ class DS_GPTNEOContainer(MetaTensorContainer, HybridEngineContainer, BaseTransfo
             ]
         ]
 
+    def set_q_k_v(self):
+        """
+        Necessary to implement for `HybridSplitQKVContainer`
+        """
+        self.qw = self.policy.client_module.attn.attention.q_proj.weight
+        self.qb = None
+        self.kw = self.policy.client_module.attn.attention.k_proj.weight
+        self.kb = None
+        self.vw = self.policy.client_module.attn.attention.v_proj.weight
+        self.vb = None
+
     def get_lora_matched_pair(self):
+        """
+        Necessary to implement for `HybridEngineContainer`
+        """
         fc1_lora, fc2_lora, q_lora, k_lora, v_lora, out_lora = self.get_lora_params()
         ret = [
             (fc1_lora, self._h4h_w),
