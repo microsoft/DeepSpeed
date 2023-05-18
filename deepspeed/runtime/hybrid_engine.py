@@ -434,7 +434,8 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
     def step(self, lr_kwargs=None):
         super().step(lr_kwargs=lr_kwargs)
 
-        if len(self._inference_containers) > 0:
+        if len(self._inference_containers) > 0 and not self.Z3_enabled:
+            # In ZeRO-3 params will be managed by ZeRO
             for inference_container in self._inference_containers:
                 inference_container.reset_params()
 
