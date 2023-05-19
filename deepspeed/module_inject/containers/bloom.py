@@ -5,6 +5,7 @@
 
 from .base import *
 from .features.meta_tensor import MetaTensorContainer
+from .features.hybrid_engine import HybridEngineContainer
 from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
 from ..policy import TransformerPolicy
 from ..policy import transformer_param_names
