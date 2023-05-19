@@ -141,7 +141,7 @@ class OpenMPIRunner(MultiNodeRunner):
             '^openib',
             '--mca',
             'btl_tcp_if_include',
-            'eth0',
+            f'{self.args.net_interface}',
         ] + split(self.args.launcher_args)
 
         export_cmd = []
