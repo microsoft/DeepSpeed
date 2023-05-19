@@ -122,23 +122,38 @@ class CommsLogger:
             log_dist(log_str, [0])
 
     # Print summary at end of iteration, epoch, or training
-    def log_all(self):
+    def log_all(self, print_log=True, show_straggler=False):
+        import torch
         from deepspeed.utils.timer import trim_mean
-        print(
-            f"{'Comm. Op': <20}{'Message Size': <20}{'Count': <20}{'Total Latency(ms)': <20}{'Avg Latency(ms)': <20}{'tput_avg (Gbps)': <20}{'busbw_avg (Gbps)': <20}"
-        )
+        import deepspeed.comm as dist
+        from deepspeed.comm.reduce_op import ReduceOp
+        if print_log:
+            msg = f"{'Comm. Op': <20}{'Message Size': <20}{'Count': <20}{'Total Latency(ms)': <20}"
+            if show_straggler:
+                msg += f"{'Total straggler(ms)': <20}"
+            msg += f"{'Avg Latency(ms)': <20}{'tput_avg (Gbps)': <20}{'busbw_avg (Gbps)': <20}"
+            print(msg)
         for record_name in self.comms_dict.keys():
-            print(record_name)
+            if print_log:
+                print(record_name)
             for msg_size, vals in sorted(self.comms_dict[record_name].items()):
                 # vals[0] is the count for each msg size
                 count = vals[0]
                 # vals[1] is a list of latency records for each msg size
                 total_lat = sum(vals[1])
+                lats = torch.tensor(vals[1])
+                min_lats = torch.tensor(vals[1])
+                dist.all_reduce(min_lats, op=ReduceOp.MIN)
+                delta_lats = lats - min_lats
+                total_straggler = (lats - min_lats).sum().item()
                 # vals[2] and vals[3] are the lists of algbw and busbw, respectively
                 # Get rid of outliers when we print
                 avg_lat = trim_mean(vals[1], 0.1)
                 avg_algbw = trim_mean(vals[2], 0.1)
                 avg_busbw = trim_mean(vals[3], 0.1)
-                print(
-                    f"{' ': <20}{convert_size(msg_size): <20}{count: <20}{total_lat: <20.2f}{avg_lat: <20.2f}{avg_algbw: <20.2f}{avg_busbw: <20.2f}"
-                )
+                if print_log:
+                    msg = f"{' ': <20}{convert_size(msg_size): <20}{count: <20}{total_lat: <20.2f}"
+                    if show_straggler:
+                        msg += f"{total_straggler: <20.2f}"
+                    msg += f"{avg_lat: <20.2f}{avg_algbw: <20.2f}{avg_busbw: <20.2f}"
+                    print(msg)
