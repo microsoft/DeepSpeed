@@ -730,7 +730,13 @@ class PipelineEngine(DeepSpeedEngine):
         if isinstance(outputs, tuple):
             out_tensors = [t for t in outputs if t.is_floating_point()]
             assert len(out_tensors) == len(grad_tensors)
-            torch.autograd.backward(tensors=out_tensors, grad_tensors=grad_tensors)
+            filtered_out_tensors = []
+            filtered_grad_tensors = []
+            for t, g in zip(out_tensors, grad_tensors):
+                if t.requires_grad:
+                    filtered_out_tensors.append(t)
+                    filtered_grad_tensors.append(g)
+            torch.autograd.backward(tensors=filtered_out_tensors, grad_tensors=filtered_grad_tensors)
         else:
             torch.autograd.backward(tensors=(outputs, ), grad_tensors=(grad_tensors, ))
 
