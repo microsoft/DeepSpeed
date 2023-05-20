@@ -128,7 +128,9 @@ class CommsLogger:
         import deepspeed.comm as dist
         from deepspeed.comm.reduce_op import ReduceOp
         if print_log:
-            print(f"{'Comm. Op': <20}{'Message Size': <20}{'Count': <20}{'Total Latency(ms)': <20}{'Avg Latency(ms)': <20}{'tput_avg (Gbps)': <20}{'busbw_avg (Gbps)': <20}")
+            print(
+                f"{'Comm. Op': <20}{'Message Size': <20}{'Count': <20}{'Total Latency(ms)': <20}{'Avg Latency(ms)': <20}{'tput_avg (Gbps)': <20}{'busbw_avg (Gbps)': <20}"
+            )
         for record_name in self.comms_dict.keys():
             if print_log:
                 print(record_name)
@@ -143,14 +145,18 @@ class CommsLogger:
                 avg_algbw = trim_mean(vals[2], 0.1)
                 avg_busbw = trim_mean(vals[3], 0.1)
                 if print_log:
-                    print(f"{' ': <20}{convert_size(msg_size): <20}{count: <20}{total_lat: <20.2f}{avg_lat: <20.2f}{avg_algbw: <20.2f}{avg_busbw: <20.2f}")
+                    print(
+                        f"{' ': <20}{convert_size(msg_size): <20}{count: <20}{total_lat: <20.2f}{avg_lat: <20.2f}{avg_algbw: <20.2f}{avg_busbw: <20.2f}"
+                    )
 
         if show_straggler:
             if print_log:
                 print("_______________________________")
                 print("Breakdown with straggler effect")
                 print("-------------------------------")
-                print(f"{'Comm. Op': <20}{'Message Size': <20}{'Count': <20}{'Total comm lat(ms)': <20}{'Total straggler(ms)': <20}{'Avg comm lat(ms)': <20}{'Avg straggler(ms)': <20}")
+                print(
+                    f"{'Comm. Op': <20}{'Message Size': <20}{'Count': <20}{'Total comm lat(ms)': <20}{'Total straggler(ms)': <20}{'Avg comm lat(ms)': <20}{'Avg straggler(ms)': <20}"
+                )
             for record_name in self.comms_dict.keys():
                 if print_log:
                     print(record_name)
@@ -166,4 +172,6 @@ class CommsLogger:
                     avg_lat = trim_mean(min_lats.tolist(), 0.1)
                     avg_straggler = trim_mean((lats - min_lats).tolist(), 0.1)
                     if print_log:
-                        print(f"{' ': <20}{convert_size(msg_size): <20}{count: <20}{total_lat: <20.2f}{total_straggler: <20.2f}{avg_lat: <20.2f}{avg_straggler: <20.2f}")
+                        print(
+                            f"{' ': <20}{convert_size(msg_size): <20}{count: <20}{total_lat: <20.2f}{total_straggler: <20.2f}{avg_lat: <20.2f}{avg_straggler: <20.2f}"
+                        )
