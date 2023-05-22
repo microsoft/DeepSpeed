@@ -95,7 +95,7 @@ class DeepSpeedSelfAttention(nn.Module):
 
         if no_masking:
             input_mask = torch.empty(1)
-
+        #import pdb; pdb.set_trace()
         attn_key_value = self.score_context_func(
             query_key_value=qkv_out,
             attn_mask=((1 - input_mask).to(qkv_out.dtype) *
@@ -140,6 +140,13 @@ class DeepSpeedSelfAttention(nn.Module):
             self._attn_qkvw = self.attn_qkvw
             self._attn_qkvb = self.attn_qkvb
 
+        # ofile = open("ds-log.txt","a")
+
+        # ofile.write("\n----- _attn_qkvw -----\n")
+        # ofile.write(str(self._attn_qkvw))
+        # ofile.write("\n----- _attn_qkvb -----\n")
+        # ofile.write(str(self._attn_qkvb))
+
         if not self.config.pre_layer_norm:
             qkv_out = self.linear_func(input=input,
                                        weight=self._attn_qkvw,
@@ -159,11 +166,27 @@ class DeepSpeedSelfAttention(nn.Module):
                                                                        input_mask=input_mask,
                                                                        layer_past=layer_past,
                                                                        alibi=alibi)
+
+        # ofile.write("\n----- context_layer -----\n") #same as hf attn_output after reshape
+        # ofile.write(str(context_layer))
+        # ofile.write("\n----- key_layer -----\n")
+        # ofile.write(str(key_layer))
+        # ofile.write("\n----- value_layer -----\n")
+        # ofile.write(str(value_layer))
+
         output = self.vector_matmul_func(input=context_layer, weight=self.attn_ow)
         inp_norm = qkv_out[-1]
 
+        # ofile.write("\n----- output -----\n")
+        # ofile.write(str(output))
+        # ofile.write("\n----- inp_norm -----\n")
+        # ofile.write(str(inp_norm))
+
         if self.config.mlp_after_attn and self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
             dist.all_reduce(output, group=self.mp_group)
+
+        # ofile.write("\n----- output final -----\n")
+        # ofile.write(str(output))
 
         return (output, key_layer, value_layer, context_layer, inp_norm)
 

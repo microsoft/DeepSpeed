@@ -162,13 +162,30 @@ class DeepSpeedTransformerInference(nn.Module):
             self.layer_past = presents if layer_past is None else None
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
 
+            ofile = open("ds-log.txt","a")
+            ofile.write("\n----- context_outputtn_ctx-----\n") #same as hf attn_output after reshape
+            ofile.write(str(context_outputtn_ctx))
+            ofile.write("\n----- output after mlp-----\n") #equivalent to hf hidden states after view
+            ofile.write(str(output))
+
             if not self.config.pre_layer_norm:
                 output = inference_cuda_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
 
+            # ofile.write("\n----- output after pre layer norm-----\n")
+            # ofile.write(str(output))
+
             output = output.to(input_type)
+
+            # ofile.write("\n----- output after cast-----\n")
+            # ofile.write(str(output))
         if get_present:
             output = (output, presents)
+        ofile.write("\n----- output after present-----\n") #equivalent to hf outputs
+        ofile.write(str(output))
 
+        # torch.save(output, 'ds-output.pt')
+        # import pdb; pdb.set_trace()
+    
         if self.config.return_single_tuple:
             return (output, )
         elif self.config.return_tuple:
