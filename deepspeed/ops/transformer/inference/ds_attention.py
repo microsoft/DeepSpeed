@@ -154,7 +154,7 @@ class DeepSpeedSelfAttention(nn.Module):
                                     bias=self._attn_qkvb,
                                     gamma=norm_w,
                                     beta=norm_b)
-
+                                    
         context_layer, key_layer, value_layer = self.compute_attention(qkv_out=qkv_out,
                                                                        input_mask=input_mask,
                                                                        layer_past=layer_past,

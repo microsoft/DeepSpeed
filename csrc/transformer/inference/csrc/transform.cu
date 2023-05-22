@@ -26,6 +26,7 @@ __global__ void bias_add_transform_0213(float* output,
                                         int seq_length,
                                         unsigned seq_offset,
                                         int heads,
+                                        float norm_factor,
                                         int rotary_dim,
                                         bool rotate_half,
                                         bool rotate_every_two,
@@ -61,9 +62,15 @@ __global__ void bias_add_transform_0213(float* output,
     unsigned seq_id = d1 + seq_offset;
     float4 inputs = vals_vec[d3];
     int lane = d3 & 0x1f;
+    if (cnt < 2)
+    {
+        inputs.x *= norm_factor;
+        inputs.y *= norm_factor;
+        inputs.z *= norm_factor;
+        inputs.w *= norm_factor;
+    }
     if (cnt < 2 && rotary_dim > 0 && d3 < rotary_dim) {
-        float4 q = vals_vec[d3];
-        float2* q_f = reinterpret_cast<float2*>(&q);
+        float2* q_f = reinterpret_cast<float2*>(&inputs);
         if (rotate_every_two) {
 #pragma unroll
             for (int o = 0; o < 2; o++) {
@@ -73,7 +80,7 @@ __global__ void bias_add_transform_0213(float* output,
                 q_f[o].y = (q_f[o].x * sinf(inv_freq) + q_f[o].y * cosf(inv_freq));
             }
         }
-        output_vec[d3] = q;
+        output_vec[d3] = inputs;
     } else
         output_vec[d3] = inputs;
 }
@@ -92,6 +99,7 @@ __global__ void bias_add_transform_0213(T* output,  // q
                                         unsigned seq_offset,
                                         int all_tokens,
                                         int heads,
+                                        float norm_factor,
                                         int rotary_dim,
                                         bool rotate_half,
                                         bool rotate_every_two,
@@ -136,9 +144,20 @@ __global__ void bias_add_transform_0213(T* output,  // q
     unsigned seq_id = d1 + seq_offset;
 
     int lane = d3 & 0x1f;
+    
+    float4 inputs = vals_vec[d3];
+    if (cnt < 2)
+    {   
+        T2 norm_factor_h = conversion::to<T2>(norm_factor);
+        T2* inputs_h = reinterpret_cast<T2*>(&inputs);
+        inputs_h[0] = inputs_h[0] * norm_factor_h;
+        inputs_h[1] = inputs_h[1] * norm_factor_h;
+        inputs_h[2] = inputs_h[2] * norm_factor_h;
+        inputs_h[3] = inputs_h[3] * norm_factor_h;
+    }
+    
     if (cnt < 2 && rotary_dim > 0 && d3 < rotary_dim) {
-        float4 q = vals_vec[d3];
-        T2* q_h = reinterpret_cast<T2*>(&q);
+        T2* q_h = reinterpret_cast<T2*>(&inputs);
         if (rotate_every_two) {
 #pragma unroll
             for (int o = 0; o < 4; o++) {
@@ -153,9 +172,9 @@ __global__ void bias_add_transform_0213(T* output,  // q
                     conversion::to<T>(q_data[0] * sinf(inv_freq) + q_data[1] * cosf(inv_freq));
             }
         }
-        output_vec[d3] = q;
+        output_vec[d3] = inputs;
     } else
-        output_vec[d3] = vals_vec[d3];
+        output_vec[d3] = inputs;
 }
 
 // [B S C*H] - > C * [B A S N]
@@ -171,6 +190,7 @@ void launch_bias_add_transform_0213<float>(float* output,
                                            int all_tokens,
                                            int hidden_dim,
                                            int heads,
+                                           float norm_factor,
                                            int rotary_dim,
                                            bool rotate_half,
                                            bool rotate_every_two,
@@ -193,6 +213,7 @@ void launch_bias_add_transform_0213<float>(float* output,
                                                                 seq_length,
                                                                 seq_offset,
                                                                 heads,
+                                                                norm_factor,
                                                                 rotary_dim >> 2,
                                                                 rotate_half,
                                                                 rotate_every_two,
@@ -212,6 +233,7 @@ void launch_bias_add_transform_0213(T* output,
                                     int all_tokens,
                                     int hidden_dim,
                                     int heads,
+                                    float norm_factor,
                                     int rotary_dim,
                                     bool rotate_half,
                                     bool rotate_every_two,
@@ -233,6 +255,7 @@ void launch_bias_add_transform_0213(T* output,
                                                                 seq_offset,
                                                                 all_tokens,
                                                                 heads,
+                                                                norm_factor,
                                                                 rotary_dim >> 3,
                                                                 rotate_half,
                                                                 rotate_every_two,
@@ -252,6 +275,7 @@ void launch_bias_add_transform_0213(T* output,
                                                     int,          \
                                                     int,          \
                                                     int,          \
+                                                    float,        \
                                                     int,          \
                                                     bool,         \
                                                     bool,         \

@@ -15,5 +15,8 @@
   },
   "gradient_clipping": 1.0,
   "prescale_gradients": false,
-  "wall_clock_breakdown" : false
+  "wall_clock_breakdown" : false,
+  "hybrid_engine": {
+    "enabled": false
+  }
 }

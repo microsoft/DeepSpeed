@@ -367,7 +367,7 @@ void attention_unfused(T* prev_key_cont,
                        int layer_id)
 {
     float layer_scale = alibi.sizes().size() > 1 ? std::max(1, layer_id) : 1.0;
-    float alpha = norm_factor * norm_factor / layer_scale;
+    float alpha = 1.0 / layer_scale;
     float gemm_beta = 0.0;
     T* workspace = (T*)InferenceContext::Instance().GetAttentionUnfusedWorkspace();
 
@@ -486,6 +486,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                       soft_len,
                                       hidden_dim,
                                       heads,
+                                      norm_factor,
                                       rotary_dim,
                                       rotate_half,
                                       rotate_every_two,
@@ -1165,6 +1166,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                 input.size(1),
                 (num_heads * padded_head_size),
                 num_heads,
+                1.0,
                 -1,
                 false,
                 false,
@@ -1190,6 +1192,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                 input.size(1),
                 input_cont.size(2),
                 num_heads,
+                1.0,
                 -1,
                 false,
                 false,
