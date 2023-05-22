@@ -5,7 +5,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import torch
 import os
 from deepspeed import comm as dist
-from torch._six import inf
+#from torch._six import inf
 from packaging import version as pkg_version
 from collections import OrderedDict
 
