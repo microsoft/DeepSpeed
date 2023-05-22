@@ -277,7 +277,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.grads_in_ipg_bucket = []
         self.params_in_ipg_bucket = []
 
-        self.params_already_reduced = []
         self.is_gradient_accumulation_boundary = True
         self._release_ipg_buffers()
         self.previous_reduced_grads = None
@@ -291,7 +290,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 unique_id = id(param)
                 self.param_id[unique_id] = count
                 self.param_dict[count] = param
-                self.params_already_reduced.append(False)
                 count = count + 1
 
         #Largest partitioned param
@@ -966,11 +964,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self.reduce_and_partition_stream.synchronize()
 
-        # if dist.get_rank() == 0:
-        #    logger.info("Params already reduced %s", self.params_already_reduced)
-        for i in range(len(self.params_already_reduced)):
-            self.params_already_reduced[i] = False
-
         #in case of cpu offload, averaged gradients are already in fp32_partitioned_groups_flat.grad
         #TODO: use a similar code path for both cpu_offload and non-cpu offload
         if not self.offload_optimizer:
@@ -1045,17 +1038,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # 0). Otherwise if the incoming param.ds_numel is large, this branch may get triggered on a
         # garbage data and `self.average_tensor()` will crash because its params_to_reduce will be
         # empty, while reduction_list will have that garbage data.
-        if self.elements_in_ipg_bucket > 0 and self.elements_in_ipg_bucket + param.ds_numel > self.reduce_bucket_size:
+        if self.elements_in_ipg_bucket + param.ds_numel > self.reduce_bucket_size and self.elements_in_ipg_bucket > 0:
             self.report_ipg_memory_usage("In ipg_remove_grads before reduce_ipg_grads", param.ds_numel)
 
             self.__reduce_and_partition_ipg_grads()
-
-        param_id = self.get_param_id(param)
-
-        assert self.params_already_reduced[param_id] == False, \
-            f"The parameter {param_id} has already been reduced. \
-            Gradient computed twice for this partition. \
-            Multiple gradient reduction is currently not supported"
 
         self.__add_grad_to_ipg_bucket(param)
 
