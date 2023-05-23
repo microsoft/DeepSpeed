@@ -1158,7 +1158,10 @@ class DeepSpeedEngine(Module):
                 basic_optimizer = client_optimizer
                 log_dist('Using client Optimizer as basic optimizer', ranks=[0])
             else:
-                basic_optimizer = client_optimizer(model_parameters)
+                optimizer_parameters = self.optimizer_params()
+                if optimizer_parameters is None:
+                    optimizer_parameters = {}
+                basic_optimizer = client_optimizer(model_parameters, **optimizer_parameters)
                 log_dist('Using client callable to create basic optimizer', ranks=[0])
 
             if self.zero_use_cpu_optimizer() and not isinstance(basic_optimizer, deepspeed.ops.adam.DeepSpeedCPUAdam):
