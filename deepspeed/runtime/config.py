@@ -18,6 +18,7 @@ from .fp16.loss_scaler import (
     INITIAL_LOSS_SCALE,
     SCALE_WINDOW,
     DELAYED_SHIFT,
+    CONSECUTIVE_HYSTERESIS,
     MIN_LOSS_SCALE,
 )
 from .config_utils import (
@@ -217,6 +218,7 @@ def get_dynamic_loss_scale_args(param_dict):
                 INITIAL_LOSS_SCALE: 2**init_scale,
                 SCALE_WINDOW: scale_window,
                 DELAYED_SHIFT: delayed_shift,
+                CONSECUTIVE_HYSTERESIS: consecutive_hysteresis,
                 MIN_LOSS_SCALE: min_loss_scale,
             }
 

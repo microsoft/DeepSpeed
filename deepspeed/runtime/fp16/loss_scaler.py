@@ -28,6 +28,7 @@ from deepspeed.utils import logger
 INITIAL_LOSS_SCALE = 'init_scale'
 SCALE_WINDOW = 'scale_window'
 DELAYED_SHIFT = 'delayed_shift'
+CONSECUTIVE_HYSTERESIS = 'consecutive_hysteresis'
 MIN_LOSS_SCALE = 'min_scale'
 
 
