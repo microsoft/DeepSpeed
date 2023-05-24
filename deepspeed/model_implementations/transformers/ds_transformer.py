@@ -152,7 +152,7 @@ class DeepSpeedTransformerInference(nn.Module):
             target_dtype = torch.half if self.dtype == torch.int8 else self.dtype
             input = input.to(target_dtype)
 
-        print(f'input norm b4 attn: {torch.norm(input)}')
+        print(f'ds b4 attn: norm = {torch.norm(input)}, tensor = {input}')
         
         with torch.no_grad():
             attention_output, key, value, context_outputtn_ctx, inp_norm = \
@@ -167,14 +167,24 @@ class DeepSpeedTransformerInference(nn.Module):
                                               self.norm_w,
                                               self.norm_b,
                                               alibi)
+            print(f'ds a4 attn + ln: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
 
-            print(f'output norm, key, value a4 attn: {torch.norm(attention_output)}, {torch.norm(key)}, {torch.norm(value)}')
             presents = (key, value)
             self.layer_past = presents if layer_past is None else None
-            output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
+                      
+            # pytorch baseline to do add bias.
+            attention_output = attention_output + self.attention.attn_ob
+            print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
+
+            # pytorch baseline to do add residual (residual=input)
+            attention_output = attention_output + input
+            print(f'ds a4 attn + ln + bias-add + residual-add: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
+
+            # the attention_output in DS now matches the hidden_states from HF side. 
+            output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob, self.attention.attn_ow)
 
             print(f"after mlp: {torch.norm(output)}")
-            #exit(0)
+            exit(0)
             if not self.config.pre_layer_norm:
                 output = inference_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
             print(f"after layernorm: {torch.norm(output)}")

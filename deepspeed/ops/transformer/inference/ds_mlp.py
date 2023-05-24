@@ -28,6 +28,11 @@ class DeepSpeedMLP(nn.Module):
         self.config.intermediate_size = self.config.intermediate_size if self.config.intermediate_size > 0 else 4 * self.config.hidden_size
         self.intm_w_sz_per_partition = self.config.intermediate_size * proj_factor // self.config.mp_size
         self.intm_o_sz_per_partition = self.config.intermediate_size // self.config.mp_size
+        
+        self.fc1 = nn.Linear(self.config.hidden_size, self.config.intermediate_size, bias=True, dtype=data_type)
+        self.fc2 = nn.Linear(self.config.intermediate_size, self.config.hidden_size, bias=True, dtype=data_type)
+        self.activation_fn = nn.ReLU()
+        self.final_layer_norm = nn.LayerNorm(self.config.hidden_size, elementwise_affine=False)
 
         if self.config.set_empty_params:
             self.attn_nw = None
@@ -88,7 +93,7 @@ class DeepSpeedMLP(nn.Module):
             inter_b[self.intm_w_sz_per_partition:] = self.inter_gate_b  # type: ignore
         return DeepSpeedMLP._inter_w_buffers
 
-    def forward(self, input, residual, residual_norm, bias):
+    def forward(self, input, residual, residual_norm, bias, weight):
 
         if self.inter_w is None:
             self._inter_w, self._inter_b = self._merge_inter_w()
@@ -103,14 +108,41 @@ class DeepSpeedMLP(nn.Module):
                                           bias=self.inter_b,
                                           weight_out=self.output_w)
         else:
-            output, residual_add = self.mlp_gemm_func(input=input,
-                                                      residual=residual,
-                                                      weight_interm=self.inter_w,
-                                                      weight_out=self.output_w,
-                                                      input_bias=bias,
-                                                      bias=self.inter_b,
-                                                      gamma=self.attn_nw,
-                                                      beta=self.attn_nb)
+            # copy the weight and bias to fc1
+            self.fc1.weight.data.copy_(self.inter_w.transpose(0, 1))
+            self.fc1.bias.data.copy_(self.inter_b)
+
+            print(f"inside ds mlp: b4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
+            print(f"inside ds mlp: b4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
+            print(f"inside ds mlp: b4 ln input  = {input.shape}, {input.norm()}")
+            
+            # do the layernorm
+            input = self.final_layer_norm(input)
+
+            print(f"inside ds mlp: a4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
+            print(f"inside ds mlp: a4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
+            print(f"inside ds mlp: a4 ln input  = {input.shape}, {input.norm()}")
+            
+            print(input)
+
+            input = self.fc1(input)
+
+            print(f"inside ds mlp: a4 fc1: {input.norm()}")
+
+            output = self.activation_fn(input)
+            output = self.fc2(output)
+            output = self.activation_fn(output)
+        
+            # mlp_gemm_func ~= gemm(relu(layernorm(input) + bias)) 
+            #output, residual_add = self.mlp_gemm_func(input=input,
+            #                                          residual=residual,
+            #                                          weight_interm=self.inter_w,
+            #                                          weight_out=self.output_w,
+            #                                          input_bias=bias,
+            #                                          bias=self.inter_b,
+            #                                          gamma=self.attn_nw,
+            #                                          beta=self.attn_nb)
+        print(f"inside ds mlp, before residual_add_func: {output.norm()} ")
 
         residual = self.residual_add_func(hidden_state=output,
                                           residual=residual,
@@ -121,5 +153,7 @@ class DeepSpeedMLP(nn.Module):
                                           residual_add=residual_add)
         if self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
             dist.all_reduce(residual, group=self.mp_group)
+
+        print(f"inside ds mlp, end of mlp: {residual.norm()} ")
 
         return residual
