@@ -182,8 +182,32 @@ class PartitionedParameterCoordinator:
     def reset_step(self) -> None:
         """indicate that we have completed one fwd+bwd for the model"""
         if self.__inflight_param_registry:
-            raise RuntimeError(f"still have inflight params "
-                               f"{[p.ds_summary for p in self.__inflight_param_registry.keys()]}")
+            # raise RuntimeError(f"still have inflight params "
+            #                    f"{[p.ds_summary for p in self.__inflight_param_registry.keys()]}")
+            # wait for parameters in the immediately needed submodule to become available
+            current_inflight_params = list(self.__inflight_param_registry.keys())
+            for param in current_inflight_params:
+                debug_rank0(f"-wait: {param.ds_summary()}")
+                if param in self.__inflight_param_registry:
+                    with get_accelerator().stream(self.__allgather_stream):
+                        while self.__ongoing_fetch_events and self.__ongoing_fetch_events[0].query():
+                            self.__ongoing_fetch_events.popleft()
+                        if len(self.__ongoing_fetch_events) > self.__max_ongoing_fetch_events:
+                            self.__ongoing_fetch_events.popleft().synchronize()
+
+                        self.__inflight_param_registry.pop(param).wait()
+
+                        event = get_accelerator().Event()
+                        event.record()
+                        self.__ongoing_fetch_events.append(event)
+
+                assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
+            get_accelerator().current_stream().wait_stream(self.__allgather_stream)
+            for param in current_inflight_params:
+                if not param.is_external_param:
+                    self.__release_param(param)
+            assert not self.__inflight_param_registry
+
 
         if not self.is_complete_trace():  # not self.trace_complete:
             # Make sure that recorded submodule orders are identical across ranks

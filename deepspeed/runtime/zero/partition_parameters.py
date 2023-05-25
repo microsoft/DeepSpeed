@@ -1157,6 +1157,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
                 partitioned_tensor.requires_grad = False
                 param.ds_tensor = partitioned_tensor
+                print_rank_0(f"ID {param.ds_id} Initializing ds_tensor with the object id {id(param.ds_tensor.data)} for numel {param.ds_tensor.numel()} on device {param.ds_tensor.data.device}", force=True)
                 param.ds_tensor.ds_numel = partition_size
                 param.ds_tensor.status = PartitionedParamStatus.AVAILABLE
                 param.ds_tensor.final_location = final_location
