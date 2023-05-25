@@ -51,16 +51,16 @@ class TestAdamConfigs(DistributedTest):
                                               model=model,
                                               model_parameters=model.parameters())
         # get basic optimizer and full basic optimizer
-        basic_optimizer = model.basic_optimizer
-        full_basic_optimizer = model.full_basic_optimizer
+        basic_optimizer_name = model.basic_optimizer
+        full_basic_optimizer_name = model.full_basic_optimizer_name
 
-        provider_name = type(basic_optimizer).__module__.split('.')[0]
-        optimizer_name = basic_optimizer.__class__.__name__
+        provider_name = type(basic_optimizer_name).__module__.split('.')[0]
+        optimizer_name = basic_optimizer_name.__class__.__name__
         fuse_status = None
         if 'Fuse' or 'fuse' in optimizer_name:
             fuse_status = 'Fused'
         else:
             fuse_status = 'NonFused'
-        target_optimizer = f'{provider_name}_{optimizer_name}_{fuse_status}'
+        target_optimizer_name = f'{provider_name}_{optimizer_name}_{fuse_status}'
 
-        assert full_basic_optimizer == target_optimizer
+        assert full_basic_optimizer_name == target_optimizer_name
