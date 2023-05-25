@@ -180,11 +180,11 @@ class DeepSpeedTransformerInference(nn.Module):
             attention_output = attention_output + input
             print(f'ds a4 attn + ln + bias-add + residual-add: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
 
-            # the attention_output in DS now matches the hidden_states from HF side. 
+            # the attention_output in DS now matches the hidden_states from HF side.
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob, self.attention.attn_ow)
 
             print(f"after mlp: {torch.norm(output)}")
-            exit(0)
+            #exit(0)
             if not self.config.pre_layer_norm:
                 output = inference_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
             print(f"after layernorm: {torch.norm(output)}")

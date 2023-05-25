@@ -32,7 +32,7 @@ class DeepSpeedMLP(nn.Module):
         self.fc1 = nn.Linear(self.config.hidden_size, self.config.intermediate_size, bias=True, dtype=data_type)
         self.fc2 = nn.Linear(self.config.intermediate_size, self.config.hidden_size, bias=True, dtype=data_type)
         self.activation_fn = nn.ReLU()
-        self.final_layer_norm = nn.LayerNorm(self.config.hidden_size, elementwise_affine=False)
+        self.final_layer_norm = nn.LayerNorm(self.config.hidden_size, elementwise_affine=True, dtype=data_type, device=device)
 
         if self.config.set_empty_params:
             self.attn_nw = None
@@ -111,27 +111,51 @@ class DeepSpeedMLP(nn.Module):
             # copy the weight and bias to fc1
             self.fc1.weight.data.copy_(self.inter_w.transpose(0, 1))
             self.fc1.bias.data.copy_(self.inter_b)
+            
+            # copy the weight and bias to fc2
+            self.fc2.weight.data.copy_(self.output_w.transpose(0, 1))
+            self.fc2.bias.data.copy_(self.output_b)
 
             print(f"inside ds mlp: b4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
             print(f"inside ds mlp: b4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
             print(f"inside ds mlp: b4 ln input  = {input.shape}, {input.norm()}")
-            
-            # do the layernorm
-            input = self.final_layer_norm(input)
+            print(f"inside ds mlp: b4 ln input tensor = {input}")
 
+            # do the layernorm
+            print(f"self.final_layer_norm w norm = {self.final_layer_norm.weight.norm()}")
+            print(f"self.final_layer_norm b norm = {self.final_layer_norm.bias.norm()}")
+            print(f"self.attn_nb = {self.attn_nb}")
+            self.final_layer_norm.bias.data.copy_(self.attn_nb)
+            # probably need a cuda sync - because it was giving wrong output without the next prints
+            print(f"self.final_layer_norm b norm = {self.final_layer_norm.bias.norm()}")
+
+            #print(f"self.final_layer_norm b norm = {self.output_b.norm()}")
+            #print(f"self.final_layer_norm b norm = {self.attn_nb.norm()}")
+            # bias here is 0 but HF has a really bias.
+            residual = input
+
+            input = self.final_layer_norm(input)
+            
             print(f"inside ds mlp: a4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
             print(f"inside ds mlp: a4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
             print(f"inside ds mlp: a4 ln input  = {input.shape}, {input.norm()}")
+            print(f"inside ds mlp: a4 ln input tensor = {input}")
             
-            print(input)
-
+            
             input = self.fc1(input)
 
             print(f"inside ds mlp: a4 fc1: {input.norm()}")
 
             output = self.activation_fn(input)
+
+            print(f"inside ds mlp: a4 ac: {output.norm()}")
+
             output = self.fc2(output)
-            output = self.activation_fn(output)
+
+            print(f"inside ds mlp: a4 fc2: {output.norm()}")
+
+            
+            #output = self.activation_fn(output)
         
             # mlp_gemm_func ~= gemm(relu(layernorm(input) + bias)) 
             #output, residual_add = self.mlp_gemm_func(input=input,
@@ -144,16 +168,18 @@ class DeepSpeedMLP(nn.Module):
             #                                          beta=self.attn_nb)
         print(f"inside ds mlp, before residual_add_func: {output.norm()} ")
 
-        residual = self.residual_add_func(hidden_state=output,
-                                          residual=residual,
-                                          add_bias=bias is not None,
-                                          attention_output=input,
-                                          attention_bias=bias if bias is not None else self.output_b,
-                                          final_bias=self.output_b,
-                                          residual_add=residual_add)
+        res2 = output + residual
+        print(f"res2 = {res2.norm()}")
+
+        #residual = self.residual_add_func(hidden_state=output,
+        #                                  residual=residual,
+        #                                  add_bias=bias is not None,
+        #                                  attention_output=input,
+        #                                  attention_bias=bias if bias is not None else self.output_b,
+        #                                  final_bias=self.output_b,
+        #                                  residual_add=residual_add)
         if self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
             dist.all_reduce(residual, group=self.mp_group)
 
-        print(f"inside ds mlp, end of mlp: {residual.norm()} ")
-
-        return residual
+        #print(f"inside ds mlp, end of mlp: {residual.norm()} ")
+        return res2 #residual
