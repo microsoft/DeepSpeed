@@ -128,6 +128,34 @@ def get_curriculum_params_legacy(param_dict):
     else:
         return False
 
+def get_batch_scheduling(param_dict):
+    output = {}
+    output[BATCH_SCHEDULING_ENABLED] = get_batch_scheduling_enabled(param_dict)
+    if BATCH_SCHEDULING not in param_dict.keys():
+        param_dict[BATCH_SCHEDULING] = {}
+    sub_param_dict = param_dict[BATCH_SCHEDULING]
+    if output[BATCH_SCHEDULING_ENABLED]:
+        #assert CURRICULUM_LEARNING_METRICS in sub_param_dict.keys(), f"Curriculum learning is enabled, {CURRICULUM_LEARNING_METRICS} must be specified"
+        for key, val in get_batch_scheduling_params(param_dict).items():
+            output[key] = val
+    return output
+
+
+def get_batch_scheduling_enabled(param_dict):
+    if BATCH_SCHEDULING in param_dict.keys():
+        return get_scalar_param(param_dict[BATCH_SCHEDULING],
+                                BATCH_SCHEDULING_ENABLED,
+                                BATCH_SCHEDULING_ENABLED_DEFAULT)
+    else:
+        return False
+
+def get_batch_scheduling_params(param_dict):
+    if BATCH_SCHEDULING in param_dict.keys():
+        batch_scheduling_params = copy.copy(param_dict[BATCH_SCHEDULING])
+        batch_scheduling_params.pop(BATCH_SCHEDULING_ENABLED)
+        return batch_scheduling_params
+    else:
+        return {}
 
 def get_data_routing(param_dict):
     output = {}

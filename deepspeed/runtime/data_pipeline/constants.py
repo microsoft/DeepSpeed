@@ -70,6 +70,27 @@ CURRICULUM_ENABLED_LEGACY = "enabled"
 CURRICULUM_ENABLED_DEFAULT_LEGACY = False
 
 #########################################
+# Data efficiency - Data Sampling - Batch Schedule
+#########################################
+BATCH_SCHEDULING = "batch_scheduling"
+BATCH_SCHEDULING_ENABLED = "enabled"
+BATCH_SCHEDULING_ENABLED_DEFAULT = False
+BATCH_SCHEDULING_MIN = "min"
+BATCH_SCHEDULING_MAX = "max"
+BATCH_SCHEDULING_TYPE = "schedule_type"
+BATCH_SCHEDULING_CONFIG = "schedule_config"
+BATCH_SCHEDULING_SIZES = "sizes"
+BATCH_SCHEDULING_MAX_STEP = "max_step"
+BATCH_SCHEDULING_TOTAL_STEP = "total_batch_step"
+BATCH_SCHEDULING_SIZE_STEP = "size_step"
+BATCH_SCHEDULING_ROOT_DEGREE = "root_degree"
+BATCH_SCHEDULING_FIXED_DISCRETE = "fixed_discrete"
+BATCH_SCHEDULING_FIXED_ROOT = "fixed_root"
+BATCH_SCHEDULING_FIXED_LINEAR = "fixed_linear"
+BATCH_SCHEDULING_CUSTOM = "custom"
+BATCH_SCHEDULING_CURRENT_SIZE = "current_size"
+
+#########################################
 # Data efficiency - Data Routing
 #########################################
 DATA_ROUTING = "data_routing"
