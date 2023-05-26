@@ -232,6 +232,7 @@ class DeepSpeedEngine(Module):
 
         self._is_gradient_accumulation_boundary = None
         self.scale_wrt_gas = None
+        self.losses = []
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
@@ -375,7 +376,7 @@ class DeepSpeedEngine(Module):
             trainable_num_params = 0
 
             for p in self.module.parameters():
-                # since user code might call deepspeed.zero.Init() before deepspeed.initialize(), need to check the attrbuite to check if the parameter is partitioned in zero 3 already or not
+                # since user code might call deepspeed.zero.Init() before deepspeed.initialize(), need to check the attribute to check if the parameter is partitioned in zero 3 already or not
                 n = 0
                 if hasattr(p, "ds_tensor"):  # if the parameter is partitioned in zero 3
                     n += p.ds_numel
@@ -1026,20 +1027,22 @@ class DeepSpeedEngine(Module):
     def _configure_distributed_model(self, model):
         self._set_client_model(model)
 
+        is_zero3_model = self.zero_optimization_partition_weights() and any(
+            [hasattr(param, "ds_id") for param in self.module.parameters()])
+
         if self.fp16_enabled():
-            if self.zero_optimization_partition_weights() and any(
-                [hasattr(param, "ds_id") for param in self.module.parameters()]):
+            if is_zero3_model:
                 self.__check_params(self.module, torch.half)
             self.module.half()
         elif self.bfloat16_enabled():
-            if self.zero_optimization_partition_weights() and any(
-                    hasattr(param, 'ds_id') for param in self.module.parameters()):
+            if is_zero3_model:
                 self.__check_params(self.module, torch.bfloat16)
             self.module.bfloat16()
         else:
             self.__check_params(self.module, torch.float)
 
-        if not self.dont_change_device:
+        # zero.Init() handles device placement of model
+        if not (self.dont_change_device or is_zero3_model):
             self.module.to(self.device)
 
         # MoE related initialization
@@ -1075,7 +1078,7 @@ class DeepSpeedEngine(Module):
         self.expert_parallel_group = groups._get_expert_parallel_group_dict()
         self.expert_data_parallel_group = groups._get_expert_data_parallel_group_dict()
 
-        if not self.amp_enabled():
+        if not (self.amp_enabled() or is_zero3_model):
             self._broadcast_model()
 
     # check if parameters are duplicated in optimizer param_groups
@@ -1090,7 +1093,7 @@ class DeepSpeedEngine(Module):
                 ids_list(group['params']).count(param_id) if param_id in ids_list(group['params']) else 0
                 for group in optimizer.param_groups
             ])
-            assert occurrence <= 1, f"Parameter with name: {name} occurs multiple times in optimizer.param_groups. Make sure it only appears once to prevent undefined behaviour."
+            assert occurrence <= 1, f"Parameter with name: {name} occurs multiple times in optimizer.param_groups. Make sure it only appears once to prevent undefined behavior."
 
     def _do_optimizer_sanity_check(self, basic_optimizer):
         model_dtype, grad_accum_dtype = self.get_data_types()
@@ -1141,7 +1144,7 @@ class DeepSpeedEngine(Module):
         elif model_dtype == torch.bfloat16 and grad_accum_dtype == torch.float32:
             return BFLOAT16
         else:
-            raise NotImplementedError("unsupported mix of model dtype and gradient accummulation type")
+            raise NotImplementedError("unsupported mix of model dtype and gradient accumulation type")
 
         return None
 
@@ -1834,10 +1837,15 @@ class DeepSpeedEngine(Module):
                 if self.global_rank == 0:
                     self.summary_events = [(
                         f"Train/Samples/train_loss",
-                        loss.mean().item() * self.gradient_accumulation_steps(),
+                        sum(self.losses) / self.gradient_accumulation_steps(),
                         self.global_samples,
                     )]
                     self.monitor.write_events(self.summary_events)
+
+        if self.is_gradient_accumulation_boundary():
+            self.losses = []
+        else:
+            self.losses.append(loss.mean().item())
 
         self._start_timers(self.engine_timers.backward_timers)
 
@@ -1964,7 +1972,7 @@ class DeepSpeedEngine(Module):
                     block_eigenvalue,
                 )
         # zero grad in basic optimizer could be unreliable and may not exhibit
-        # the behaviour that we want
+        # the behavior that we want
         if self.bfloat16_enabled():
             # TODO: Temporary until bf16_optimizer and zero_optimizer are integrated
             if self.zero_optimization() and hasattr(self.optimizer, "zero_grad"):
