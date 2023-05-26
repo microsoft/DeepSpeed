@@ -31,8 +31,9 @@ from ..autotuning import Autotuner
 from deepspeed.accelerator import get_accelerator
 
 DLTS_HOSTFILE = "/job/hostfile"
-EXPORT_ENVS = [] #['MLFLOW', 'NCCL', 'PYTHON', 'MV2', 'UCX']
+EXPORT_ENVS = ['MLFLOW', 'NCCL', 'PYTHON', 'MV2', 'UCX']
 EXPORT_ENVS += NEBULA_EXPORT_ENVS
+EXCLUDE_ENVS = {'AISC_JOB_NAME': ['NCCL_IB_HCA', 'UCX_NET_DEVICES']}
 DEEPSPEED_ENVIRONMENT_NAME = ".deepspeed_env"
 DEEPSPEED_ENVIRONMENT_PATHS = [os.path.expanduser("~"), '.']
 PDSH_MAX_FAN_OUT = 1024
@@ -523,10 +524,17 @@ def main(args=None):
         else:
             env['PYTHONPATH'] = curr_path
 
+        excluded_vars = []
+        for exclude_key, var_list in EXCLUDE_ENVS.items():
+            if exclude_key in env.keys():
+                # key exists in launcher env -> var list should be used
+                excluded_vars += var_list
+
         exports = ""
         for var in env.keys():
             if any([var.startswith(name) for name in EXPORT_ENVS]):
-                runner.add_export(var, env[var])
+                if not any([var == name for name in excluded_vars]):
+                    runner.add_export(var, env[var])
 
         for environ_path in DEEPSPEED_ENVIRONMENT_PATHS:
             environ_file = os.path.join(environ_path, DEEPSPEED_ENVIRONMENT_NAME)
