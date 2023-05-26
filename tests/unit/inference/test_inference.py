@@ -49,7 +49,7 @@ _gpt_models = [
     "gpt2",
     "distilgpt2",
     "Norod78/hebrew-bad_wiki-gpt_neo-tiny",
-    #"EleutherAI/gpt-j-6B", # Removed as this is causing OOM errors randomly
+    #"EleutherAI/gpt-j-6b", # Removed as this is causing OOM errors randomly
     "bigscience/bloom-560m",
 ]
 _opt_models = [
@@ -112,7 +112,7 @@ def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
         msg = "CUDA not detected, cannot use CUDA Graph"
     elif enable_cuda_graph and pkg_version.parse(torch.__version__) < pkg_version.parse("1.10"):
         msg = "CUDA Graph is only available in torch versions >= 1.10"
-    elif "gpt-j-6B" in model:
+    elif "gpt-j-6b" in model:
         if dtype != torch.half:
             msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
         elif enable_cuda_graph:
@@ -167,7 +167,7 @@ def query(model_w_task):
 def inf_kwargs(model_w_task):
     model, task = model_w_task
     if task == "text-generation":
-        if model == "EleutherAI/gpt-j-6B":
+        if model == "EleutherAI/gpt-j-6b":
             # This model on V100 is hitting memory problems that limit the number of output tokens
             return {"do_sample": False, "max_length": 12}
         return {"do_sample": False, "max_length": 20}
@@ -316,10 +316,10 @@ class TestModelTask(DistributedTest):
 @pytest.mark.parametrize("model_w_task", [("EleutherAI/gpt-neo-1.3B", "text-generation"),
                                           ("EleutherAI/gpt-neox-20b", "text-generation"),
                                           ("bigscience/bloom-3b", "text-generation"),
-                                          ("EleutherAI/gpt-j-6B", "text-generation")],
+                                          ("EleutherAI/gpt-j-6b", "text-generation")],
                          ids=["gpt-neo", "gpt-neox", "bloom", "gpt-j"])
 class TestMPSize(DistributedTest):
-    world_size = 4
+    world_size = 2
 
     def test(
         self,
@@ -461,7 +461,7 @@ class TestAutoTensorParallelism(DistributedTest):
     "model_family, model_name",
     (
         ["gpt2", "EleutherAI/gpt-neo-2.7B"],
-        ["gpt2", "EleutherAI/gpt-j-6B"],
+        ["gpt2", "EleutherAI/gpt-j-6b"],
         ["gpt2", "gpt2-xl"],
     ),
 )
@@ -481,7 +481,7 @@ class TestLMCorrectness(DistributedTest):
         dtype = torch.float
         task_dict = lm_eval.tasks.get_task_dict([task])
 
-        if 'gpt-j-6B' in model_name:
+        if 'gpt-j-6b' in model_name:
             dtype = torch.half
             lm = lm_eval.models.get_model(model_family).create_from_arg_string(f"pretrained={model_name}",
                                                                                {"device": "cpu"})
