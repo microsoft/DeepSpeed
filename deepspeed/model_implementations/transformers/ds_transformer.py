@@ -152,7 +152,7 @@ class DeepSpeedTransformerInference(nn.Module):
             target_dtype = torch.half if self.dtype == torch.int8 else self.dtype
             input = input.to(target_dtype)
 
-        debug = True
+        debug = False
 
         if debug: print(f'ds b4 attn: norm = {torch.norm(input)}, tensor = {input}')
         
