@@ -31,7 +31,7 @@ from ..autotuning import Autotuner
 from deepspeed.accelerator import get_accelerator
 
 DLTS_HOSTFILE = "/job/hostfile"
-EXPORT_ENVS = ['MLFLOW', 'NCCL', 'PYTHON', 'MV2', 'UCX']
+EXPORT_ENVS = [] #['MLFLOW', 'NCCL', 'PYTHON', 'MV2', 'UCX']
 EXPORT_ENVS += NEBULA_EXPORT_ENVS
 DEEPSPEED_ENVIRONMENT_NAME = ".deepspeed_env"
 DEEPSPEED_ENVIRONMENT_PATHS = [os.path.expanduser("~"), '.']
