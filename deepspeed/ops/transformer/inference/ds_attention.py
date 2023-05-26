@@ -167,7 +167,9 @@ class DeepSpeedSelfAttention(nn.Module):
         if debug: print(f"inside ds attn: qkv_out[0] = {qkv_out[0].norm()}")
         if debug: print(f"inside ds attn: qkv_out[1] = {qkv_out[1].norm()}")
         if debug: print(f"inside ds attn: input_mask   = {input_mask.norm()}")
-        if debug and layer_past: print(f"inside ds attn: layer_past  = {layer_past.norm()}")
+        if debug and layer_past: 
+            print(f"inside ds attn: layer_past[0]  = {layer_past[0].norm()}")
+            print(f"inside ds attn: layer_past[1]  = {layer_past[1].norm()}")
         if debug and alibi: print(f"inside ds attn: alibi  = {alibi.norm()}")
 
         context_layer, key_layer, value_layer = self.compute_attention(qkv_out=qkv_out,
