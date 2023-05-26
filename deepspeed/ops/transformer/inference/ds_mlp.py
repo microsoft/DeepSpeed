@@ -93,22 +93,8 @@ class DeepSpeedMLP(nn.Module):
             inter_b[self.intm_w_sz_per_partition:] = self.inter_gate_b  # type: ignore
         return DeepSpeedMLP._inter_w_buffers
 
-    def forward(self, input, residual, residual_norm, bias, weight):
-        debug = False
-
-        if self.inter_w is None:
-            self._inter_w, self._inter_b = self._merge_inter_w()
-        else:
-            self._inter_w = self.inter_w
-            self._inter_b = self.inter_b
-
-        residual_add = None
-        if self.attn_nw is None:
-            output = self.fused_gemm_gelu(input=residual_norm,
-                                          weight=self.inter_w,
-                                          bias=self.inter_b,
-                                          weight_out=self.output_w)
-        else:
+    def mlp_baseline(self, input, residual, residual_norm, bias, weight):
+            debug = False
             # copy the weight and bias to fc1
             self.fc1.weight.data.copy_(self.inter_w.transpose(0, 1))
             self.fc1.bias.data.copy_(self.inter_b)
@@ -146,7 +132,6 @@ class DeepSpeedMLP(nn.Module):
             if debug: print(f"inside ds mlp: a4 ln input  = {input.shape}, {input.norm()}")
             if debug: print(f"inside ds mlp: a4 ln input tensor = {input}")
             
-            
             input = self.fc1(input)
 
             if debug: print(f"inside ds mlp: a4 fc1: {input.norm()}")
@@ -159,32 +144,52 @@ class DeepSpeedMLP(nn.Module):
 
             if debug: print(f"inside ds mlp: a4 fc2: {output.norm()}")
 
-            
-            #output = self.activation_fn(output)
+            # pytorch baseline residual add
+            residual = output + residual
+            if debug: print(f"residual = {residual.norm()}")
+
+            return residual
+    
+    def forward(self, input, residual, residual_norm, bias, weight):
+        if self.inter_w is None:
+            self._inter_w, self._inter_b = self._merge_inter_w()
+        else:
+            self._inter_w = self.inter_w
+            self._inter_b = self.inter_b
+
+        residual_add = None
         
-            # mlp_gemm_func ~= gemm(relu(layernorm(input) + bias)) 
-            #output, residual_add = self.mlp_gemm_func(input=input,
-            #                                          residual=residual,
-            #                                          weight_interm=self.inter_w,
-            #                                          weight_out=self.output_w,
-            #                                          input_bias=bias,
-            #                                          bias=self.inter_b,
-            #                                          gamma=self.attn_nw,
-            #                                          beta=self.attn_nb)
-        if debug: print(f"inside ds mlp, before residual_add_func: {output.norm()} ")
+        # mlp_base = True  => calls a pytorch baseline mlp
+        # mlp_base = False => calls the DS mlp
+        mlp_base = False
+        
+        if mlp_base:
+            residual = self.mlp_baseline(input, residual, residual_norm, bias, weight)
+        else:        
+            if self.attn_nw is None:
+                output = self.fused_gemm_gelu(input=residual_norm,
+                                                weight=self.inter_w,
+                                                bias=self.inter_b,
+                                                weight_out=self.output_w)
+            else:
+                # mlp_gemm_func ~= gemm(relu(layernorm(input) + bias)) 
+                output, residual_add = self.mlp_gemm_func(input=input,
+                                                            residual=residual,
+                                                            weight_interm=self.inter_w,
+                                                            weight_out=self.output_w,
+                                                            input_bias=bias,
+                                                            bias=self.inter_b,
+                                                            gamma=self.attn_nw,
+                                                            beta=self.attn_nb)
 
-        res2 = output + residual
-        if debug: print(f"res2 = {res2.norm()}")
-
-        #residual = self.residual_add_func(hidden_state=output,
-        #                                  residual=residual,
-        #                                  add_bias=bias is not None,
-        #                                  attention_output=input,
-        #                                  attention_bias=bias if bias is not None else self.output_b,
-        #                                  final_bias=self.output_b,
-        #                                  residual_add=residual_add)
-        #if self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
-        #    dist.all_reduce(residual, group=self.mp_group)
-
-        #print(f"inside ds mlp, end of mlp: {residual.norm()} ")
-        return res2 #residual
+            residual = self.residual_add_func(hidden_state=output,
+                                                residual=residual,
+                                                add_bias=bias is not None,
+                                                attention_output=input,
+                                                attention_bias=bias if bias is not None else self.output_b,
+                                                final_bias=self.output_b,
+                                                residual_add=residual_add)
+            if self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
+                dist.all_reduce(residual, group=self.mp_group)
+    
+        return residual

@@ -152,7 +152,7 @@ class DeepSpeedTransformerInference(nn.Module):
             target_dtype = torch.half if self.dtype == torch.int8 else self.dtype
             input = input.to(target_dtype)
 
-        debug = False
+        debug = True
 
         if debug: print(f'ds b4 attn: norm = {torch.norm(input)}, tensor = {input}')
         
@@ -173,14 +173,19 @@ class DeepSpeedTransformerInference(nn.Module):
 
             presents = (key, value)
             self.layer_past = presents if layer_past is None else None
-                      
-            # pytorch baseline to do add bias.
-            attention_output = attention_output + self.attention.attn_ob
-            if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
 
-            # pytorch baseline to do add residual (residual=input)
-            attention_output = attention_output + input
-            if debug: print(f'ds a4 attn + ln + bias-add + residual-add: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
+            # mlp_base = True  => calls a pytorch baseline mlp
+            # mlp_base = False => calls the DS mlp
+            mlp_base = False
+        
+            if mlp_base:
+                # pytorch baseline to do add bias.
+                attention_output = attention_output + self.attention.attn_ob
+                if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
+
+                # pytorch baseline to do add residual (residual=input)
+                attention_output = attention_output + input
+                if debug: print(f'ds a4 attn + ln + bias-add + residual-add: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
 
             # the attention_output in DS now matches the hidden_states from HF side.
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob, self.attention.attn_ow)
