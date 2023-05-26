@@ -71,10 +71,8 @@ class DeepSpeedMonitorConfig(DeepSpeedConfigModel):
 
     csv_monitor: CSVConfig = {}
     """ Local CSV output of monitoring data. """
-
+    
     @root_validator
     def check_enabled(cls, values):
-        values["enabled"] = False
-        if (values.get("tensorboard").enabled or values.get("wandb").enabled or values.get("csv_monitor").enabled):
-            values["enabled"] = True
+        values["enabled"] = values.get("tensorboard").enabled or values.get("wandb").enabled or values.get("csv_monitor").enabled
         return values
