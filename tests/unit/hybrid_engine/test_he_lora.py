@@ -147,7 +147,7 @@ class TestHybridEngineLoRA(DistributedTest):
         train_sentences = self.get_train_sentences(batch_size)
 
         # Inject LoRA
-        model = convert_linear_layer_to_lora(model, "", 32)
+        model = convert_linear_layer_to_lora(model, "", 8)
         model = only_optimize_lora_parameters(model)
         optim = FusedAdam(model.parameters(), lr=1.0, betas=(0.9, 0.95))
         ds_config = {"train_batch_size": batch_size, "bfp16": {"enabled": True}, "hybrid_engine": {"enabled": True}}
@@ -161,7 +161,7 @@ class TestHybridEngineLoRA(DistributedTest):
         ]
 
         model.train()
-        batch = tokenizer(train_sentences, max_length=32, padding="max_length", truncation=True, return_tensors="pt")
+        batch = tokenizer(train_sentences, max_length=16, padding="max_length", truncation=True, return_tensors="pt")
         batch = to_device(batch, f'cuda:{local_rank}')
         batch["labels"] = batch["input_ids"]
         outputs = model(**batch, use_cache=False)
