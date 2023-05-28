@@ -304,7 +304,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         if self.offload_optimizer:
             self.norm_for_param_grads = {}
-            self.local_overflow = False
 
         # stores if a partition has been reduced in this step
         self.is_partition_reduced = {}
@@ -394,20 +393,20 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                                                 dtype=self.dtype,
                                                                 device=get_accelerator().current_device_name())
 
-        grad_partitions_flat_buffer = None
+        self.grad_partitions_flat_buffer = None
         self.__param_id_to_grad_partition: Dict[int, Tensor] = {}
 
         all_params = list(itertools.chain.from_iterable(self.fp16_groups))
 
-        grad_partitions_flat_buffer: Tensor = torch.zeros(sum(p.partition_numel() for p in all_params),
-                                                          dtype=self.dtype,
-                                                          device=self.device)
+        self.grad_partitions_flat_buffer: Tensor = torch.zeros(sum(p.partition_numel() for p in all_params),
+                                                               dtype=self.dtype,
+                                                               device=self.device)
         if self.offload_optimizer_pin_memory:
-            grad_partitions_flat_buffer = get_accelerator().pin_memory(grad_partitions_flat_buffer)
+            self.grad_partitions_flat_buffer = get_accelerator().pin_memory(self.grad_partitions_flat_buffer)
 
         offset = 0
         for param in all_params:
-            self.__param_id_to_grad_partition[param.ds_id] = grad_partitions_flat_buffer.narrow(
+            self.__param_id_to_grad_partition[param.ds_id] = self.grad_partitions_flat_buffer.narrow(
                 0, offset, param.partition_numel())
             offset += param.partition_numel()
 
@@ -1252,15 +1251,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 # operations and so it can be used asynchronously
                 grad_buffer = cuda_grad_buffer
 
-            if hasattr(self.inf_or_nan_tracker, "logical_or_"):
-                self.inf_or_nan_tracker.logical_or_(torch.isinf(grad_buffer).any())
-                self.inf_or_nan_tracker.logical_or_(torch.isnan(grad_buffer).any())
-            else:
-                # logical_or_ not available in older versions of pytorch
-                self.inf_or_nan_tracker += torch.isinf(grad_buffer).any()
-                self.inf_or_nan_tracker += torch.isnan(grad_buffer).any()
-                self.inf_or_nan_tracker = self.inf_or_nan_tracker > 0
-
             # offload the gradient partition if applicable
             if self.offload_optimizer:
                 i, dest_offset, _ = self.grad_position[self.get_param_id(param)]
@@ -1591,7 +1581,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def reset_cpu_buffers(self):
         self.norm_for_param_grads = {}
-        self.local_overflow = False
 
     def log_timers(self, timer_names):
         if self.timers is None:
@@ -1925,12 +1914,19 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     def has_overflow(self, partition_gradients=True):
         if partition_gradients:
             with get_accelerator().stream(self.reduce_and_partition_stream):
-                self.local_overflow = bool(self.inf_or_nan_tracker.item())
+                if hasattr(self.inf_or_nan_tracker, "logical_or_"):
+                    self.inf_or_nan_tracker.logical_or_(torch.isinf(self.grad_partitions_flat_buffer).any())
+                    self.inf_or_nan_tracker.logical_or_(torch.isnan(self.grad_partitions_flat_buffer).any())
+                else:
+                    # logical_or_ not available in older versions of pytorch
+                    self.inf_or_nan_tracker += torch.isinf(self.grad_partitions_flat_buffer).any()
+                    self.inf_or_nan_tracker += torch.isnan(self.grad_partitions_flat_buffer).any()
+                    self.inf_or_nan_tracker = self.inf_or_nan_tracker > 0
+
+                overflow_gpu = self.inf_or_nan_tracker.clone().to(torch.uint8)
                 self.inf_or_nan_tracker.zero_()
 
-            overflow = self.local_overflow
-            #overflow = self.has_overflow_partitioned_grads_serial()
-            overflow_gpu = get_accelerator().ByteTensor([overflow])
+            get_accelerator().default_stream().wait_stream(self.reduce_and_partition_stream)
             dist.all_reduce(overflow_gpu, op=dist.ReduceOp.MAX, group=self.dp_process_group)
 
         else:
