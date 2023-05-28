@@ -261,7 +261,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if self.swap_optimizer:
             self._configure_tensor_swapping(offload_optimizer_config, aio_config)
 
-        self.params_in_ipg_bucket = []
         self.is_gradient_accumulation_boundary: bool = True
 
         self.param_reduce_events: Deque[get_accelerator().Event] = collections.deque()
@@ -1073,8 +1072,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 raise RuntimeError(f"{param.grad.numel()} != {param.ds_numel} Cannot reduce scatter "
                                    f"gradients whose size is not same as the params")
 
-        self.params_in_ipg_bucket.sort(key=lambda p: p.ds_id)
-
         assert len(set(p.ds_id for p in self.params_in_ipg_bucket)) == len(self.params_in_ipg_bucket)
 
         while self.param_reduce_events and self.param_reduce_events[0].query():
@@ -1086,7 +1083,13 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             if safe_mode:
                 assert_ints_same_as_other_ranks([p.ds_id for p in self.params_in_ipg_bucket])
 
-            grad_partitions = self.__avg_scatter_grads(self.params_in_ipg_bucket)
+            if self.contiguous_gradients and not self.reduce_scatter:
+                grad_bucket = self.__ipg_bucket_flat_buffer.narrow(0, 0, self.elements_in_ipg_bucket)
+                grad_partitions = self.__avg_scatter_contiguous_grads(grad_bucket)
+            else:
+                self.params_in_ipg_bucket.sort(key=lambda p: p.ds_id)
+                grad_partitions = self.__avg_scatter_grads(self.params_in_ipg_bucket)
+
             self.partition_grads(self.params_in_ipg_bucket, grad_partitions)
 
             self.params_in_ipg_bucket.clear()
@@ -1094,6 +1097,47 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             event = get_accelerator().Event()
             event.record()
             self.param_reduce_events.append(event)
+
+    @instrument_w_nvtx
+    def __avg_scatter_contiguous_grads(self, buffer_to_reduce: Tensor) -> List[Tensor]:
+        dtype = buffer_to_reduce.dtype
+        if self.communication_data_type == self.dtype:
+            buffer_to_reduce = buffer_to_reduce.to(self.communication_data_type)
+        if self.postscale_gradients and self.gradient_predivide_factor != 1.0:
+            buffer_to_reduce = buffer_to_reduce.div_(self.gradient_predivide_factor)
+
+        world_sz = dist.get_world_size(self.dp_process_group)
+        rank = dist.get_rank(self.dp_process_group)
+        buffer_to_reduce.div_(world_sz)
+
+        dist.all_reduce(buffer_to_reduce, group=self.dp_process_group)
+
+        if self.postscale_gradients and self.gradient_predivide_factor != world_sz:
+            buffer_to_reduce = buffer_to_reduce.mul(self.gradient_predivide_factor)
+
+        if self.communication_data_type != self.dtype:
+            buffer_to_reduce = buffer_to_reduce.to(self.dtype)
+
+        grad_partitions = []
+        grad_offset_in_buffer = 0
+        for param in self.params_in_ipg_bucket:
+            grad = param.grad
+            chunk_sz = math.ceil(grad.numel() / world_sz)
+
+            start_offset = grad_offset_in_buffer + min(rank * chunk_sz, grad.numel())
+            end_offset = grad_offset_in_buffer + min(rank * chunk_sz + chunk_sz, grad.numel())
+
+            partition = buffer_to_reduce[start_offset:end_offset]
+            if param.partition_numel() != partition.numel():
+                padded_partition = torch.empty(param.partition_numel(), device=grad.device, dtype=grad.dtype)
+                if partition.numel() > 0:
+                    padded_partition[:partition.numel()] = partition
+                grad_partitions.append(padded_partition)
+            else:
+                grad_partitions.append(partition)
+            grad_offset_in_buffer += grad.numel()
+
+        return grad_partitions
 
     @instrument_w_nvtx
     def __avg_scatter_grads(self, params_to_reduce: List[Parameter]) -> List[Tensor]:
