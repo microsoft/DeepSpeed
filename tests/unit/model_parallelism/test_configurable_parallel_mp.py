@@ -21,6 +21,7 @@ pytestmark = pytest.mark.skipif(not required_maximum_torch_version(major_version
                                 reason='Megatron-LM package requires Pytorch version 1.13 or below')
 
 
+# TODO: integrated testing of TP and ZeRO 1/2/3
 def get_deepspeed_model(model):
     ds_config_dict = {
         "train_micro_batch_size_per_gpu": 1,
@@ -60,6 +61,7 @@ class ConfigurableMP(DistributedTest):
 class TestConfigurableMP(ConfigurableMP):
 
     @pytest.mark.world_size(1)
+    @pytest.mark.skip(reason="megatron-lm is currently broken so this test cannot be run.")
     def test_gpt2_basic(self, tmpdir, inputs):
         args_defaults = {
             'num_layers': 2,
@@ -87,6 +89,7 @@ class TestConfigurableMP(ConfigurableMP):
                               atol=1e-07), f"Baseline output {baseline} is not equal to save-then-load output {test}"
 
     @pytest.mark.world_size(2)
+    @pytest.mark.skip(reason="megatron-lm is currently broken so this test cannot be run.")
     def test_gpt2_mp2_no_resize(self, tmpdir, inputs):
         args_defaults = {
             'num_layers': 2,
@@ -148,6 +151,7 @@ class baseline_mp2(DistributedFixture):
 class TestConfigurableResizeMP(ConfigurableMP):
     world_size = [1, 4]
 
+    @pytest.mark.skip(reason="megatron-lm is currently broken so this test cannot be run.")
     def test(self, baseline_mp2, inputs, class_tmpdir):
         args_defaults = {
             'num_layers': 2,

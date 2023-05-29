@@ -13,7 +13,7 @@ from deepspeed.ops.transformer.inference.ds_attention import DeepSpeedSelfAttent
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
 
-inference_cuda_module = None
+inference_module = None
 
 
 class DeepSpeedTransformerInference(nn.Module):
@@ -47,11 +47,11 @@ class DeepSpeedTransformerInference(nn.Module):
         self.config.layer_id = DeepSpeedTransformerInference.layer_id
         DeepSpeedTransformerInference.layer_id += 1
 
-        data_type = torch.half if config.fp16 else torch.float
-        global inference_cuda_module
-        if inference_cuda_module is None:
+        data_type = torch.half if self.config.dtype == torch.int8 else self.config.dtype
+        global inference_module
+        if inference_module is None:
             builder = InferenceBuilder()
-            inference_cuda_module = builder.load()
+            inference_module = builder.load()
 
         if DeepSpeedTransformerInference.layer_id == 1:
             log_dist(f"DeepSpeed-Inference config: {self.config.__dict__}", [0])
@@ -74,14 +74,22 @@ class DeepSpeedTransformerInference(nn.Module):
             self.norm_b = nn.Parameter(torch.empty(self.config.hidden_size, dtype=data_type, device=device),
                                        requires_grad=False)
         self.layer_past = None
-        self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if (not config.fp16) else \
-                                inference_cuda_module.allocate_workspace_fp16
-        self._alloc_workspace = True
+        try:
+            if config.dtype == torch.float32:
+                self.allocate_workspace = inference_module.allocate_workspace_fp32
+            elif config.dtype == torch.bfloat16:
+                self.allocate_workspace = inference_module.allocate_workspace_bf16
+            else:
+                self.allocate_workspace = inference_module.allocate_workspace_fp32
+            self._alloc_workspace = True
+        except AttributeError:
+            self.allocate_workspace = None
+            self._alloc_workspace = False
 
     @classmethod
     def reset_cache(cls):
-        if inference_cuda_module is not None:
-            inference_cuda_module.reset_cache()
+        if inference_module is not None:
+            inference_module.reset_cache()
 
     def forward(
             self,
@@ -139,9 +147,11 @@ class DeepSpeedTransformerInference(nn.Module):
             input = input[0]
         input_type = input.dtype
 
-        if (self.config.fp16 or self.config.q_int8) \
+        if (self.config.dtype in [torch.float16, torch.bfloat16, torch.int8]) \
             and input.dtype == torch.float:
-            input = input.half()
+            target_dtype = torch.half if self.dtype == torch.int8 else self.dtype
+            input = input.to(target_dtype)
+
         with torch.no_grad():
             attention_output, key, value, context_outputtn_ctx, inp_norm = \
                                      self.attention(input,
@@ -161,7 +171,7 @@ class DeepSpeedTransformerInference(nn.Module):
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
 
             if not self.config.pre_layer_norm:
-                output = inference_cuda_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
+                output = inference_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
 
             output = output.to(input_type)
         if get_present:
