@@ -109,7 +109,7 @@ def only_optimize_lora_parameters(model):
 
 @pytest.mark.seq_inference
 @pytest.mark.parametrize("batch_size", [1], ids=["bsz=1"])
-@pytest.mark.parametrize("model_name", ["EleutherAI/gpt-neo-125m", "facebook/opt-350m"])
+@pytest.mark.parametrize("model_name", ["EleutherAI/gpt-neo-125m", "facebook/opt-350m", "bigscience/bloom-560m"])
 class TestHybridEngineLoRA(DistributedTest):
     world_size = 1
 
