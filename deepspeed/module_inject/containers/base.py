@@ -10,6 +10,7 @@ import torch
 
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 from deepspeed.accelerator import get_accelerator
+from deepspeed.utils.types import GATED_ACTIVATION_TYPES
 
 # If the intermediate size attribute is set DEFAULT_INTERMEDIATE_SIZE
 # it is assumed the intermediate size is 4x the embedding dimension
@@ -238,8 +239,19 @@ class BaseTransformerContainer(ABC):
                                                         allocate_tensor=reversed_dim)
 
     def mlp_inter_mp(self, mp_replace, reversed_dim=False):
-        self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w, self._h4h_w, int8=reversed_dim)
-        self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b, self._h4h_b, int8=reversed_dim)
+        gated_mlp = self.mlp_act_func_type in GATED_ACTIVATION_TYPES
+        if gated_mlp:
+            self.module.mlp.inter_w = mp_replace.strided_copy(self.module.mlp.inter_w,
+                                                             self._h4h_w,
+                                                             num_splits=2,
+                                                             int8=reversed_dim)
+            self.module.mlp.inter_b = mp_replace.strided_copy(self.module.mlp.inter_b,
+                                                             self._h4h_b,
+                                                             num_splits=2,
+                                                             int8=reversed_dim)
+        else:
+            self.module.mlp.inter_w = mp_replace.copy(self.module.mlp.inter_w, self._h4h_w, int8=reversed_dim)
+            self.module.mlp.inter_b = mp_replace.copy(self.module.mlp.inter_b, self._h4h_b, int8=reversed_dim)
 
     def mlp_output_mp(self, mp_replace, reversed_dim=False):
         self.module.mlp.output_w = mp_replace.copy(self.module.mlp.output_w, self._4hh_w, int8=reversed_dim)
