@@ -438,6 +438,10 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 assert child.num_heads % mp_size == 0, "num_heads ({}) must be divisible by mp_size ({})".format(
                     child.num_heads, mp_size)
                 child.num_heads = child.num_heads // mp_size
+            if hasattr(child, 'num_kv'):
+                assert child.num_kv % mp_size == 0, "num_kv ({}) must be divisible by mp_size ({})".format(
+                    child.num_kv, mp_size)
+                child.num_kv = child.num_kv // mp_size
             if hasattr(child, 'num_attention_heads'):
                 assert child.num_attention_heads % mp_size == 0, "num_attention_heads ({}) must be divisible by mp_size ({})".format(
                     child.num_attention_heads, mp_size)
@@ -492,9 +496,17 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                         continue
                 if len(child._buffers) != 0 and state_dict != None:
                     load_buffer(child, state_dict, checking_key)
-                if child.__class__ in linear_policies:
-                    setattr(r_module, name, linear_policies[child.__class__](child, prev_name + '.' + name,
-                                                                             conv_linear_layer))
+                if any(isinstance(child, lp) for lp in linear_policies):
+                    if child.__class__ in linear_policies:
+                        setattr(r_module, name, linear_policies[child.__class__](child, prev_name + '.' + name,
+                                                                                 conv_linear_layer))
+                    else:
+                        key = None
+                        for lp in linear_policies:
+                            if isinstance(child, lp):
+                                key = lp
+                        assert key is not None
+                        setattr(r_module, name, linear_policies[key](child, prev_name + '.' + name, conv_linear_layer))
                 else:
                     update_mp_params(child)
                     _replace_module(child, name, class_name)
@@ -522,6 +534,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         return new_module
 
     if checkpoint_dict != None and not config.replace_with_kernel_inject:
+
         # AutoTP shard loading
         checkpoint = checkpoint_dict["checkpoints"]
         pbar = tqdm.tqdm(total=len(checkpoint), desc=f"Loading {len(checkpoint)} checkpoint shards")
