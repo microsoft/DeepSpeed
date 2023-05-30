@@ -249,17 +249,19 @@ class BaseTransformerContainer(ABC):
                                                    allocate_tensor=reversed_dim)
 
     def copy_data_to_new_module(self):
-        params = {
-            self.module.mlp.attn_nw: self.attn_nw,
-            self.module.mlp.attn_nb: self.attn_nb,
-            self.module.norm_w: self.input_nw,
-            self.module.norm_b: self.input_nb
-        }
-        for dst, src in params.items():
-            if src is None:
-                dst = src
-            else:
-                dst.data.copy_(src.to(get_accelerator().current_device_name()))
+        def maybe_copy(module, param_list):
+            for name, data in param_list:
+                if data is None:
+                    setattr(module, name, data)
+                else:
+                    getattr(module, name).data.copy_(data.to(get_accelerator().current_device_name()))
+        module_list = [self.module, self.module.mlp]
+        module_param_list = [
+            [('norm_w', self.input_nw), ('norm_b', self.input_nb)], \
+            [('attn_nw', self.attn_nw), ('attn_nb', self.attn_nw)],
+        ]
+        for module, param_list in zip(module_list, module_param_list):
+            maybe_copy(module, param_list)
 
     def transpose(self):
         self.transpose_attention()
