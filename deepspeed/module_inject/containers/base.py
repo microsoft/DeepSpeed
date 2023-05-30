@@ -249,12 +249,14 @@ class BaseTransformerContainer(ABC):
                                                    allocate_tensor=reversed_dim)
 
     def copy_data_to_new_module(self):
+
         def maybe_copy(module, param_list):
             for name, data in param_list:
                 if data is None:
                     setattr(module, name, data)
                 else:
                     getattr(module, name).data.copy_(data.to(get_accelerator().current_device_name()))
+
         module_list = [self.module, self.module.mlp]
         module_param_list = [
             [('norm_w', self.input_nw), ('norm_b', self.input_nb)], \
