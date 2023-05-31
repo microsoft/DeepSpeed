@@ -122,6 +122,10 @@ class DeepSpeedTransformerInference(nn.Module):
 
         input_mask = (input_mask if attn_mask is None else attn_mask) if attention_mask is None else attention_mask
 
+        debug = False
+        if debug: print(f'ds b4 attn: input = {torch.norm(input)}')
+        if debug: print(f'ds b4 attn: input_mask = {torch.norm(input_mask)}')
+
         # Allocate memory only on first layer forward
         if self.config.layer_id == 0 and self._alloc_workspace:
             self.allocate_workspace(self.config.hidden_size, self.config.heads,
@@ -151,8 +155,6 @@ class DeepSpeedTransformerInference(nn.Module):
             and input.dtype == torch.float:
             target_dtype = torch.half if self.dtype == torch.int8 else self.dtype
             input = input.to(target_dtype)
-
-        debug = False
 
         if debug: print(f'ds b4 attn: norm = {torch.norm(input)}, tensor = {input}')
         
