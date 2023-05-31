@@ -25,6 +25,13 @@ class DeepSpeedSelfAttention(nn.Module):
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
         device = get_accelerator().current_device_name()  #if config.bigscience_bloom else 'cpu'
+
+        self.self_attn_layer_norm = nn.LayerNorm(self.config.hidden_size, elementwise_affine=True, dtype=data_type, device=device)
+        self.k_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, dtype=data_type)
+        self.v_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, dtype=data_type)
+        self.q_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, dtype=data_type)
+        self.out_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, dtype=data_type)
+
         if self.config.set_empty_params:
             self.attn_qw = None
             self.attn_qb = None
@@ -122,6 +129,98 @@ class DeepSpeedSelfAttention(nn.Module):
             qvkb[2 * self.hidden_size_per_partition:] = self.attn_vb  # type: ignore
         return DeepSpeedSelfAttention._qkv_buffers
 
+    def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
+        head_dim = self.hidden_size_per_partition // self.num_attention_heads_per_partition
+        return tensor.view(bsz, seq_len, self.num_attention_heads_per_partition, head_dim).transpose(1, 2).contiguous()
+
+    def attn_baseline(self,
+                input,
+                input_mask,
+                # head_mask=None,
+                # layer_past=None,
+                # get_present=False,
+                # encoder_hidden_states=None,
+                # encoder_attention_mask=None,
+                # output_attentions=False,
+                norm_w=None,
+                norm_b=None,
+                # alibi=None
+                ):
+        debug = True
+        qkvw =  self._attn_qkvw.split(2048,1)
+        qkvb = self._attn_qkvb.split(2048,0)
+
+        self.k_proj.weight.data.copy_(qkvw[1].transpose(0, 1))
+        self.k_proj.bias.data.copy_(qkvb[1])
+        self.v_proj.weight.data.copy_(qkvw[2].transpose(0, 1))
+        self.v_proj.bias.data.copy_(qkvb[2])
+        self.out_proj.weight.data.copy_(self.attn_ow.transpose(0, 1))
+        self.out_proj.bias.data.copy_(self.attn_ob)
+
+        self.self_attn_layer_norm.weight.data.copy_(norm_w)
+        self.self_attn_layer_norm.bias.data.copy_(norm_b)
+
+        hidden_states = self.self_attn_layer_norm(input)
+        bsz, tgt_len, _ = hidden_states.size()
+        key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
+        value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+        past_key_value = (key_states, value_states)
+        if debug: print(f"inside ds attn: hidden_states = {hidden_states.norm()}")
+        if debug: print(f"inside ds attn: key_states   = {key_states.norm()}")
+        if debug: print(f"inside ds attn: value_states  = {value_states.norm()}")
+
+        #same as qkv_func return
+        #return (hidden_states, hidden_states.norm())
+
+        key_layer = key_states
+        value_layer = value_states
+
+        head_dim = self.hidden_size_per_partition // self.num_attention_heads_per_partition
+        scaling = head_dim**-0.5
+        self.q_proj.weight.data.copy_(qkvw[0].transpose(0, 1))
+        self.q_proj.bias.data.copy_(qkvb[0])
+        query_states = self.q_proj(hidden_states) * scaling
+
+        proj_shape = (bsz * self.num_attention_heads_per_partition, -1, head_dim)
+        query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
+        key_states = key_states.view(*proj_shape)
+        attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
+
+        if debug: print(f"ds attn: a4 bmm attn_weights = {attn_weights.norm()}")
+
+        if input_mask is not None:
+            src_len = key_states.size(1)
+            attn_weights = attn_weights.view(bsz, self.num_attention_heads_per_partition, tgt_len, src_len) + input_mask
+            attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
+            attn_weights = attn_weights.view(bsz * self.num_attention_heads_per_partition, tgt_len, src_len)
+            if debug: print(f"ds attn: a4 attn_mask attn_weights = {attn_weights.norm()}")
+
+        if attn_weights.dtype == torch.float16:
+            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(torch.float16)
+        else:
+            attn_weights = nn.functional.softmax(attn_weights, dim=-1)
+        if debug: print(f"ds attn: a4 softmax attn_weights = {attn_weights.norm()}")
+
+        value_states = value_states.view(*proj_shape)
+        attn_output = torch.bmm(attn_weights, value_states)
+        if debug: print(f"ds attn: a4 bmm attn_output = {attn_output.norm()}")
+        context_layer = attn_output
+
+        # same as compute_attention return
+        #return context_layer, key_layer, value_layer
+
+        attn_output = attn_output.view(bsz, self.num_attention_heads_per_partition, tgt_len, head_dim)
+        attn_output = attn_output.transpose(1, 2)
+        attn_output = attn_output.reshape(bsz, tgt_len, self.config.hidden_size)
+        attn_output = self.out_proj(attn_output)
+        if debug: print(f"hf attn: return attn_output = {attn_output.norm()}")
+
+        output = attn_output
+        inp_norm = hidden_states.norm()
+
+        return (output, key_layer, value_layer, context_layer, inp_norm)
+
+
     def forward(self,
                 input,
                 input_mask,
@@ -140,6 +239,9 @@ class DeepSpeedSelfAttention(nn.Module):
             self._attn_qkvw = self.attn_qkvw
             self._attn_qkvb = self.attn_qkvb
 
+        attn_base = False
+        if attn_base:
+            self.attn_baseline(input, input_mask, norm_w, norm_b)
         debug = False
 
         if debug: print(f"inside ds attn: b4 ln weight = {self._attn_qkvw.norm()}")
@@ -236,7 +338,6 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
         # Note: torch.split does not create contiguous tensors by default.
         if contiguous_split_chunks:
             return tuple(chunk.contiguous() for chunk in tensor_list)
-
         return tensor_list
 
     def compute_attention(self, qkv_out, input_mask, layer_past, alibi):
