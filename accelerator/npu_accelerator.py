@@ -3,16 +3,11 @@
 
 # DeepSpeed Team
 
-import os
-import pkgutil
-import importlib
-
 from .abstract_accelerator import DeepSpeedAccelerator
 # During setup stage torch may not be installed, pass on no torch will
 # allow op builder related API to be executed.
 try:
-    import torch
-    import torch_npu
+    import torch.npu
 except ImportError:
     pass
 
