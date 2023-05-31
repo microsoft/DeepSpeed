@@ -13,11 +13,13 @@ from unit.simple_model import *
 
 from unit.checkpoint.common import *
 
+import pytest
+
 
 class TestMiCSCheckpoint(DistributedTest):
     world_size = 4
 
-    def _toy_model_config(self):
+    def _toy_model_config(self, shard_size):
 
         config_dict = {
             "train_micro_batch_size_per_gpu": 2,
@@ -38,7 +40,7 @@ class TestMiCSCheckpoint(DistributedTest):
             "wall_clock_breakdown": True,
             "zero_optimization": {
                 "stage": 3,
-                "mics_shard_size": 2
+                "mics_shard_size": shard_size
             }
         }
 
@@ -48,14 +50,17 @@ class TestMiCSCheckpoint(DistributedTest):
 
         return config_dict, hidden_dim, models
 
-    def test_load_optimizer_state(self, tmpdir):
-        config_dict, hidden_dim, models = self._toy_model_config()
+    @pytest.mark.parametrize('shard_size', [1, 2, 4])
+    def test_load_optimizer_state(self, tmpdir, shard_size):
+        config_dict, hidden_dim, models = self._toy_model_config(shard_size)
         checkpoint_correctness_verification(config_dict, models, hidden_dim, tmpdir, load_optimizer_states=True)
 
-    def test_not_load_optimizer_state(self, tmpdir):
-        config_dict, hidden_dim, models = self._toy_model_config()
+    @pytest.mark.parametrize('shard_size', [1, 2, 4])
+    def test_not_load_optimizer_state(self, tmpdir, shard_size):
+        config_dict, hidden_dim, models = self._toy_model_config(shard_size)
         checkpoint_correctness_verification(config_dict, models, hidden_dim, tmpdir, load_optimizer_states=False)
 
-    def test_load_module_only(self, tmpdir):
-        config_dict, hidden_dim, models = self._toy_model_config()
+    @pytest.mark.parametrize('shard_size', [1, 2, 4])
+    def test_load_module_only(self, tmpdir, shard_size):
+        config_dict, hidden_dim, models = self._toy_model_config(shard_size)
         checkpoint_correctness_verification(config_dict, models, hidden_dim, tmpdir, load_module_only=True)
