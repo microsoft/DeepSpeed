@@ -93,8 +93,17 @@ class DeepSpeedMLP(nn.Module):
             inter_b[self.intm_w_sz_per_partition:] = self.inter_gate_b  # type: ignore
         return DeepSpeedMLP._inter_w_buffers
 
-    def mlp_baseline(self, input, residual, residual_norm, bias, weight):
+    def mlp_baseline(self, input, residual, bias):
             debug = False
+
+            # pytorch baseline to do add bias.
+            input = input + bias
+            if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}, tensor = {input}')
+
+            # pytorch baseline to do add residual (residual=input)
+            input = input + residual
+            if debug: print(f'ds a4 attn + ln + bias-add + residual-add: norm = {torch.norm(input)}, tensor = {input}')
+            
             # copy the weight and bias to fc1
             self.fc1.weight.data.copy_(self.inter_w.transpose(0, 1))
             self.fc1.bias.data.copy_(self.inter_b)
@@ -164,7 +173,7 @@ class DeepSpeedMLP(nn.Module):
         mlp_base = False
         
         if mlp_base:
-            residual = self.mlp_baseline(input, residual, residual_norm, bias, weight)
+            residual = self.mlp_baseline(input, residual, bias)
         else:        
             if self.attn_nw is None:
                 output = self.fused_gemm_gelu(input=residual_norm,

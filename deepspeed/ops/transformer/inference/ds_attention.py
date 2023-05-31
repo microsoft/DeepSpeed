@@ -140,7 +140,7 @@ class DeepSpeedSelfAttention(nn.Module):
             self._attn_qkvw = self.attn_qkvw
             self._attn_qkvb = self.attn_qkvb
 
-        debug = True
+        debug = False
 
         if debug: print(f"inside ds attn: b4 ln weight = {self._attn_qkvw.norm()}")
         if debug: print(f"inside ds attn: b4 ln bias   = {self._attn_qkvb.norm()}")
