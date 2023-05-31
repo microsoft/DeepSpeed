@@ -156,8 +156,10 @@ class DeepSpeedTransformerInference(nn.Module):
             target_dtype = torch.half if self.dtype == torch.int8 else self.dtype
             input = input.to(target_dtype)
 
+        if debug: print(f'layer_id = {self.config.layer_id}')
+
         if debug: print(f'ds b4 attn: norm = {torch.norm(input)}, tensor = {input}')
-        
+
         with torch.no_grad():
             attention_output, key, value, context_outputtn_ctx, inp_norm = \
                                      self.attention(input,
@@ -176,14 +178,30 @@ class DeepSpeedTransformerInference(nn.Module):
             presents = (key, value)
             self.layer_past = presents if layer_past is None else None
 
+            # mlp_base = True  => calls a pytorch baseline mlp
+            # mlp_base = False => calls the DS mlp
+            mlp_base = False
+
+            if mlp_base:
+                # pytorch baseline to do add bias.
+                attention_output = attention_output + self.attention.attn_ob
+                if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
+
+                # pytorch baseline to do add residual (residual=input)
+                attention_output = attention_output + input
+                if debug: print(f'ds a4 attn + ln + bias-add + residual-add: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
+
+            # the attention_output in DS now matches the hidden_states from HF side.
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob, self.attention.attn_ow)
 
-            if debug: print(f"after mlp: {torch.norm(output)}")
+            print(f"layer_id ({self.config.layer_id}), after mlp: {torch.norm(output)}")
+            #if debug: print(f'layer_id = {self.config.layer_id}')
             #exit(0)
             if not self.config.pre_layer_norm:
                 output = inference_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
             if debug: print(f"after layernorm: {torch.norm(output)}")
             #exit(0)
+            if self.config.layer_id == 23: exit(0)
             output = output.to(input_type)
         if get_present:
             output = (output, presents)
