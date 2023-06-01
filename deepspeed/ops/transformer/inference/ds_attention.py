@@ -265,7 +265,7 @@ class DeepSpeedSelfAttention(nn.Module):
         attn_output = self.out_proj(attn_output)
         if debug: print(f"inside ds attn: key_states   = {key_layer}, {key_layer.norm()}, {key_states.size()}")
         if debug: print(f"inside ds attn: value_states  = {value_layer}, {value_layer.norm()}")
-        if debug: print(f"hf attn: return attn_output = {attn_output}, {attn_output.norm()}")
+        if debug: print(f"ds attn: return attn_output = {attn_output}, {attn_output.norm()}")
 
         output = attn_output
         inp_norm = hidden_states.norm()

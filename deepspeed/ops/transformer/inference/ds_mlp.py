@@ -97,7 +97,7 @@ class DeepSpeedMLP(nn.Module):
             debug = False
 
             # pytorch baseline to do add bias.
-            #input = input + bias
+            input = input + bias
             if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}, tensor = {input}')
 
             # pytorch baseline to do add residual (residual=input)
