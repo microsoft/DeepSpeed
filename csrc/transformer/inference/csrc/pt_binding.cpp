@@ -432,38 +432,6 @@ void attention_unfused(T* prev_key_cont,
 void reset_cache() { InferenceContext::Instance().reset_tokens(); }
 
 template <typename T>
-std::vector<at::Tensor> ds_transform_multi_query(at::Tensor& query_key_value, int heads, int num_kv)
-{
-    unsigned bsz = query_key_value.size(0);
-    unsigned seq_len = query_key_value.size(1);
-    unsigned shared_kv_heads_size = query_key_value.size(2) / (num_kv * 2 + heads);
-    unsigned hidden_dim = query_key_value.size(2) - (num_kv * 2 * shared_kv_heads_size);
-    auto options = at::TensorOptions()
-                       .dtype(query_key_value.options().dtype())
-                       .layout(at::kStrided)
-                       .device(at::kCUDA)
-                       .requires_grad(false);
-    auto query_cont = torch::empty({bsz, seq_len, hidden_dim}, options);
-    auto key_cont = torch::empty({bsz, seq_len, hidden_dim}, options);
-    auto value_cont = torch::empty({bsz, seq_len, hidden_dim}, options);
-    launch_transform_multi_query((T*)query_cont.data_ptr(),
-                                 (T*)key_cont.data_ptr(),
-                                 (T*)value_cont.data_ptr(),
-                                 (T*)nullptr,
-                                 (T*)nullptr,
-                                 (T*)query_key_value.data_ptr(),
-                                 bsz,
-                                 seq_len,
-                                 seq_len,
-                                 hidden_dim,
-                                 heads,
-                                 num_kv,
-                                 InferenceContext::Instance().GetCurrentStream(),
-                                 seq_len);
-    return {query_cont, key_cont, value_cont};
-}
-
-template <typename T>
 std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                            at::Tensor& attn_mask,
                                            int rotary_dim,
@@ -2045,5 +2013,4 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 #ifdef BF16_AVAILABLE
     DEF_OPS(bf16, __nv_bfloat16);
 #endif
-    m.def("transform_multi_query", ds_transform_multi_query<__nv_bfloat16>, "");
 }
