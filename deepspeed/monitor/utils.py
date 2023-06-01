@@ -1,3 +1,9 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
+
 def check_tb_availability():
     try:
         # torch.utils.tensorboard will fail if `tensorboard` is not available,

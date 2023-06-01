@@ -1,6 +1,7 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 #########################################
 # Elasticity
@@ -49,8 +50,8 @@ MAX_GPUS_DEFAULT = 10000
 NUM_GPUS_PER_NODE = 'num_gpus_per_node'
 NUM_GPUS_PER_NODE_DEFAULT = 1
 
-MODEL_PARLLEL_SIZE = "model_parallel_size"
-MODEL_PARLLEL_SIZE_DEFAULT = 1
+MODEL_PARALLEL_SIZE = "model_parallel_size"
+MODEL_PARALLEL_SIZE_DEFAULT = 1
 
 # Minimum running time (minutes) before the scheduler will scale us, 0 implies it's unknown
 MIN_TIME = "min_time"

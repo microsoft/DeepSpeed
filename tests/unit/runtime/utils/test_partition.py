@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import pytest
 
 import torch
@@ -7,6 +12,7 @@ from deepspeed.runtime.utils import partition_uniform
 from deepspeed.runtime.utils import partition_balanced
 from deepspeed.runtime.utils import prefix_sum_inc
 from deepspeed.runtime.utils import PartitionedTensor
+from deepspeed.accelerator import get_accelerator
 
 from unit.common import DistributedTest
 
@@ -23,7 +29,7 @@ class TestPartitionedTensor(DistributedTest):
         rows = world * 4
         cols = 3
 
-        full = torch.rand(rows, cols).cuda()
+        full = torch.rand(rows, cols).to(get_accelerator().device_name())
         dist.broadcast(full, src=0, group=group)
         part = PartitionedTensor(full, group=group)
 
@@ -46,7 +52,7 @@ class TestPartitionedTensorMeta(DistributedTest):
         rows = world * 7
         cols = 3
 
-        full = torch.rand(rows, cols).cuda()
+        full = torch.rand(rows, cols).to(get_accelerator().device_name())
         dist.broadcast(full, src=0, group=group)
         part = PartitionedTensor(full, group=group)
 
@@ -161,33 +167,9 @@ def test_float_midheavy():
 def test_balance_bert():
     # Parameters per layer for a transformer model with 24 transformers and hidden dim 1024
     weights = [
-        52559872,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        12596224,
-        0,
-        52559872
+        52559872, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224,
+        12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224, 12596224,
+        12596224, 12596224, 12596224, 0, 52559872
     ]
     P = 8
     parts = partition_balanced(weights, P)

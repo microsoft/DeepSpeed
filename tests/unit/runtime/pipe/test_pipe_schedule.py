@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import pytest
 import deepspeed.runtime.pipe.schedule as schedule
 
@@ -36,9 +41,7 @@ def test_pipe_train_schedule_singlestage():
 
 @pytest.mark.parametrize('micro_batches', [1, 3, 8, 10])
 def test_pipe_inference_schedule_firststage(micro_batches, stages=3):
-    sched = schedule.InferenceSchedule(micro_batches=micro_batches,
-                                       stages=stages,
-                                       stage_id=0)
+    sched = schedule.InferenceSchedule(micro_batches=micro_batches, stages=stages, stage_id=0)
     assert sched.num_micro_batches == micro_batches
     full = list(iter(sched))
     for idx, cmds in enumerate(full):
@@ -71,9 +74,7 @@ def test_pipe_inference_schedule_firststage(micro_batches, stages=3):
 
 @pytest.mark.parametrize('micro_batches', [1, 3, 8, 10])
 def test_pipe_inference_schedule_midstage(micro_batches, stages=3):
-    sched = schedule.InferenceSchedule(micro_batches=micro_batches,
-                                       stages=stages,
-                                       stage_id=1)
+    sched = schedule.InferenceSchedule(micro_batches=micro_batches, stages=stages, stage_id=1)
 
     full = list(iter(sched))
     for idx, cmds in enumerate(full):
@@ -97,9 +98,7 @@ def test_pipe_inference_schedule_midstage(micro_batches, stages=3):
 
 @pytest.mark.parametrize('micro_batches', [1, 3, 8, 10])
 def test_pipe_inference_schedule_laststage(micro_batches, stages=3):
-    sched = schedule.InferenceSchedule(micro_batches=micro_batches,
-                                       stages=stages,
-                                       stage_id=2)
+    sched = schedule.InferenceSchedule(micro_batches=micro_batches, stages=stages, stage_id=2)
     full = list(iter(sched))
     for idx, cmds in enumerate(full):
         if idx < sched.stage or idx > sched.stage + sched.num_micro_batches:

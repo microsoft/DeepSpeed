@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import os
 import time
 import torch
@@ -14,6 +19,7 @@ from transformers.models.roberta.modeling_roberta import RobertaLayer
 from huggingface_hub import HfApi
 from deepspeed.model_implementations import DeepSpeedTransformerInference
 from torch import nn
+from deepspeed.accelerator import get_accelerator
 
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
@@ -47,26 +53,17 @@ _gpt_models = [
     "bigscience/bloom-560m",
 ]
 _opt_models = [
-    "facebook/opt-125m",        # 125m, 1.7B, ..., 175B variants have the same model architecture.
-    "facebook/opt-350m",        # 350m applies layer norm after attnention layer which is different than other variants.
+    "facebook/opt-125m",  # 125m, 1.7B, ..., 175B variants have the same model architecture.
+    "facebook/opt-350m",  # 350m applies layer norm after attention layer which is different than other variants.
 ]
 _all_models = HfApi().list_models()
 
 test_models = set(_bert_models + _roberta_models + _gpt_models + _opt_models)
 test_tasks = [
-    "fill-mask",
-    "question-answering",
-    "text-classification",
-    "token-classification",
-    "text-generation",
-    "text2text-generation",
-    "summarization",
-    "translation"
+    "fill-mask", "question-answering", "text-classification", "token-classification", "text-generation",
+    "text2text-generation", "summarization", "translation"
 ]
-pytest.all_models = {
-    task: [m.modelId for m in _all_models if m.pipeline_tag == task]
-    for task in test_tasks
-}
+pytest.all_models = {task: [m.modelId for m in _all_models if m.pipeline_tag == task] for task in test_tasks}
 
 _model_w_tasks = itertools.product(*[test_models, test_tasks])
 
@@ -113,8 +110,7 @@ def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
         msg = f"Not a valid model / task combination: {model} / {task}"
     elif enable_cuda_graph and (torch_info["cuda_version"] == "0.0"):
         msg = "CUDA not detected, cannot use CUDA Graph"
-    elif enable_cuda_graph and pkg_version.parse(
-            torch.__version__) < pkg_version.parse("1.10"):
+    elif enable_cuda_graph and pkg_version.parse(torch.__version__) < pkg_version.parse("1.10"):
         msg = "CUDA Graph is only available in torch versions >= 1.10"
     elif "gpt-j-6B" in model:
         if dtype != torch.half:
@@ -141,16 +137,7 @@ statement for each combination of model /task
 @pytest.fixture
 def query(model_w_task):
     model, task = model_w_task
-    angle_bracket_mask_models = [
-        "roberta",
-        "camembert",
-        "esm",
-        "ibert",
-        "luke",
-        "mpnet",
-        "yoso",
-        "mpnet"
-    ]
+    angle_bracket_mask_models = ["roberta", "camembert", "esm", "ibert", "luke", "mpnet", "yoso", "mpnet"]
 
     if task == "fill-mask":
         if any(map(lambda x: x in model, angle_bracket_mask_models)):
@@ -205,18 +192,15 @@ def token_classification_assert(x, y):
 
 
 def text_generation_assert(x, y):
-    return set(res["generated_text"] for res in x) == set(res["generated_text"]
-                                                          for res in y)
+    return set(res["generated_text"] for res in x) == set(res["generated_text"] for res in y)
 
 
 def text2text_generation_assert(x, y):
-    return set(res["generated_text"] for res in x) == set(res["generated_text"]
-                                                          for res in y)
+    return set(res["generated_text"] for res in x) == set(res["generated_text"] for res in y)
 
 
 def translation_assert(x, y):
-    return set(res["translation_text"] for res in x) == set(res["translation_text"]
-                                                            for res in y)
+    return set(res["translation_text"] for res in x) == set(res["translation_text"] for res in y)
 
 
 def summarization_assert(x, y):
@@ -243,6 +227,7 @@ def assert_fn(model_w_task):
 
 
 def check_injection(model):
+
     def verify_injection(module):
         for child in module.children():
             if isinstance(child, nn.ModuleList):
@@ -286,17 +271,17 @@ class TestModelTask(DistributedTest):
             pipe.model.half()
 
         # Switch device to GPU after converting to half
-        device = torch.device(f"cuda:{local_rank}")
+        device = torch.device(get_accelerator().device_name(local_rank))
         pipe.device = device
         pipe.model.to(device)
 
         # Warm-up queries for perf measurement
         #for i in range(10):
         #    _ = pipe(query, **inf_kwargs)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         start = time.time()
         bs_output = pipe(query, **inf_kwargs)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         bs_time = time.time() - start
 
         pipe.model = deepspeed.init_inference(
@@ -310,10 +295,10 @@ class TestModelTask(DistributedTest):
         # Warm-up queries for perf measurement
         #for i in range(10):
         #    _ = pipe(query, **inf_kwargs)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         start = time.time()
         ds_output = pipe(query, **inf_kwargs)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         ds_time = time.time() - start
 
         # facebook/opt* and some bigscient/bloom* models are not matching
@@ -328,19 +313,11 @@ class TestModelTask(DistributedTest):
 
 
 @pytest.mark.seq_inference
-@pytest.mark.parametrize("model_w_task",
-                         [("EleutherAI/gpt-neo-1.3B",
-                           "text-generation"),
-                          ("EleutherAI/gpt-neox-20b",
-                           "text-generation"),
-                          ("bigscience/bloom-3b",
-                           "text-generation"),
-                          ("EleutherAI/gpt-j-6B",
-                           "text-generation")],
-                         ids=["gpt-neo",
-                              "gpt-neox",
-                              "bloom",
-                              "gpt-j"])
+@pytest.mark.parametrize("model_w_task", [("EleutherAI/gpt-neo-1.3B", "text-generation"),
+                                          ("EleutherAI/gpt-neox-20b", "text-generation"),
+                                          ("bigscience/bloom-3b", "text-generation"),
+                                          ("EleutherAI/gpt-j-6B", "text-generation")],
+                         ids=["gpt-neo", "gpt-neox", "bloom", "gpt-j"])
 class TestMPSize(DistributedTest):
     world_size = 4
 
@@ -370,7 +347,7 @@ class TestMPSize(DistributedTest):
                                               replace_with_kernel_inject=True)
         check_injection(pipe.model)
         # Switch device to GPU so that input tensors are not on CPU
-        pipe.device = torch.device(f"cuda:{local_rank}")
+        pipe.device = torch.device(get_accelerator().device_name(local_rank))
         ds_output = pipe(query, **inf_kwargs)
 
         print(local_rank, "baseline", bs_output)
@@ -382,21 +359,14 @@ class TestMPSize(DistributedTest):
 @pytest.mark.parametrize(
     "model_w_task, injection_policy",
     [
-        (("google/t5-v1_1-small",
-          "text2text-generation"),
-         {
-             T5Block: ('SelfAttention.o',
-                       'EncDecAttention.o',
-                       'DenseReluDense.wo')
-         }),
-        (("roberta-large",
-          "fill-mask"),
-         {
-             RobertaLayer: ('output.dense')
-         }),
+        (("google/t5-v1_1-small", "text2text-generation"), {
+            T5Block: ('SelfAttention.o', 'EncDecAttention.o', 'DenseReluDense.wo')
+        }),
+        (("roberta-large", "fill-mask"), {
+            RobertaLayer: ('output.dense')
+        }),
     ],
-    ids=["t5",
-         "roberta"],
+    ids=["t5", "roberta"],
 )
 @pytest.mark.parametrize("dtype", [torch.float], ids=["fp32"])
 @pytest.mark.parametrize("enable_cuda_graph", [False], ids=["noCG"])
@@ -431,7 +401,7 @@ class TestInjectionPolicy(DistributedTest):
                                               dtype=dtype,
                                               injection_policy=injection_policy)
         # Switch device to GPU so that input tensors are not on CPU
-        pipe.device = torch.device(f"cuda:{local_rank}")
+        pipe.device = torch.device(get_accelerator().device_name(local_rank))
         ds_output = pipe(query, **inf_kwargs)
 
         print(local_rank, "baseline", bs_output)
@@ -443,8 +413,7 @@ class TestInjectionPolicy(DistributedTest):
 @pytest.mark.parametrize(
     "model_w_task",
     [
-        ("Helsinki-NLP/opus-mt-en-de",
-         "translation"),
+        ("Helsinki-NLP/opus-mt-en-de", "translation"),
     ],
     ids=[
         "marian",
@@ -477,11 +446,9 @@ class TestAutoTensorParallelism(DistributedTest):
         pipe = pipeline(task, model=model, device=torch.device("cpu"), framework="pt")
         bs_output = pipe(query, **inf_kwargs)
 
-        pipe.model = deepspeed.init_inference(pipe.model,
-                                              mp_size=world_size,
-                                              dtype=dtype)
+        pipe.model = deepspeed.init_inference(pipe.model, mp_size=world_size, dtype=dtype)
         # Switch device to GPU so that input tensors are not on CPU
-        pipe.device = torch.device(f"cuda:{local_rank}")
+        pipe.device = torch.device(get_accelerator().device_name(local_rank))
         ds_output = pipe(query, **inf_kwargs)
 
         print(local_rank, "baseline", bs_output)
@@ -493,12 +460,9 @@ class TestAutoTensorParallelism(DistributedTest):
 @pytest.mark.parametrize(
     "model_family, model_name",
     (
-        ["gpt2",
-         "EleutherAI/gpt-neo-2.7B"],
-        ["gpt2",
-         "EleutherAI/gpt-j-6B"],
-        ["gpt2",
-         "gpt2-xl"],
+        ["gpt2", "EleutherAI/gpt-neo-2.7B"],
+        ["gpt2", "EleutherAI/gpt-j-6B"],
+        ["gpt2", "gpt2-xl"],
     ),
 )
 @pytest.mark.parametrize("task", ["lambada_standard"])
@@ -513,31 +477,28 @@ class TestLMCorrectness(DistributedTest):
         import lm_eval.evaluator
 
         local_rank = os.getenv("LOCAL_RANK", "0")
-        device = torch.device(f"cuda:{local_rank}")
+        device = torch.device(get_accelerator().device_name(local_rank))
         dtype = torch.float
         task_dict = lm_eval.tasks.get_task_dict([task])
 
         if 'gpt-j-6B' in model_name:
             dtype = torch.half
-            lm = lm_eval.models.get_model(model_family).create_from_arg_string(
-                f"pretrained={model_name}",
-                {"device": "cpu"})
+            lm = lm_eval.models.get_model(model_family).create_from_arg_string(f"pretrained={model_name}",
+                                                                               {"device": "cpu"})
             setattr(lm, model_family, getattr(lm, model_family).half().to(device))
             lm._device = device
         else:
             lm = lm_eval.models.get_model(model_family).create_from_arg_string(
-                f"pretrained={model_name}",
-                {"device": "cuda"})
+                f"pretrained={model_name}", {"device": get_accelerator().device_name()})
 
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         start = time.time()
         bs_output = lm_eval.evaluator.evaluate(lm=lm, task_dict=task_dict)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         bs_time = time.time() - start
 
         ds_model = deepspeed.init_inference(
-            getattr(lm,
-                    model_family),
+            getattr(lm, model_family),
             mp_size=1,
             dtype=dtype,
             replace_with_kernel_inject=True,
@@ -545,13 +506,12 @@ class TestLMCorrectness(DistributedTest):
         )
         check_injection(ds_model)
         setattr(lm, model_family, ds_model)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         start = time.time()
         ds_output = lm_eval.evaluator.evaluate(lm=lm, task_dict=task_dict)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         ds_time = time.time() - start
 
-        ppl_diff = abs(bs_output["results"][task]["ppl"] -
-                       ds_output["results"][task]["ppl"])
+        ppl_diff = abs(bs_output["results"][task]["ppl"] - ds_output["results"][task]["ppl"])
         #assert ds_time <= bs_time
         assert ppl_diff < 0.01
