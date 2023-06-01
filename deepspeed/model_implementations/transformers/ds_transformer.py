@@ -174,7 +174,8 @@ class DeepSpeedTransformerInference(nn.Module):
             if debug: print(f'ds a4 attn + ln: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
 
             presents = (key, value)
-            self.layer_past = presents if layer_past is None else None
+            # Bug? Setting layer past to presents every pass fixes key states issue
+            self.layer_past = presents #if layer_past is None else None
 
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob, self.attention.attn_ow)
 
@@ -183,8 +184,8 @@ class DeepSpeedTransformerInference(nn.Module):
             if not self.config.pre_layer_norm:
                 output = inference_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
             if debug: print(f"after layernorm: {torch.norm(output)}")
-            # if self.config.layer_id == 2:
-            #     exit(0)
+            # if self.config.layer_id == 1:
+            #   exit(0)
             #import pdb; pdb.set_trace()
             output = output.to(input_type)
         if get_present:

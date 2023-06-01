@@ -167,6 +167,8 @@ class DeepSpeedSelfAttention(nn.Module):
         bsz, tgt_len, _ = hidden_states.size()
 
         if layer_past is not None:
+            if debug: print(f"ds attn: layer_past key   = {layer_past[0]}, {layer_past[0].norm()}, {layer_past[0].size()}")
+            if debug: print(f"ds attn: layer_past value  = {layer_past[1]}, {layer_past[1].norm()}")
             # reuse k, v, self_attention
             key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
@@ -177,15 +179,15 @@ class DeepSpeedSelfAttention(nn.Module):
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
 
         past_key_value = (key_states, value_states)
-        if debug: print(f"inside ds attn: hidden_states = {hidden_states}, {hidden_states.norm()}")
-        if debug: print(f"inside ds attn: key_states   = {key_states}, {key_states.norm()}, {key_states.size()}")
-        if debug: print(f"inside ds attn: value_states  = {value_states}, {value_states.norm()}")
+        key_layer = key_states
+        value_layer = value_states
+        if debug: print(f"ds attn: key_states   = {key_states}, {key_states.norm()}, {key_states.size()}")
+        if debug: print(f"ds attn: value_states  = {value_states}, {value_states.norm()}")
+        if debug: print(f"ds attn: hidden_states = {hidden_states}, {hidden_states.norm()}")
+
 
         #same as qkv_func return
         #return (hidden_states, hidden_states.norm())
-
-        key_layer = key_states
-        value_layer = value_states
 
         head_dim = self.hidden_size_per_partition // self.num_attention_heads_per_partition
         scaling = head_dim**-0.5
@@ -197,7 +199,7 @@ class DeepSpeedSelfAttention(nn.Module):
         proj_shape = (bsz * self.num_attention_heads_per_partition, -1, head_dim)
         query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
         key_states = key_states.view(*proj_shape)
-        if debug: print(f"ds attn: key_states = {key_states}, {key_states.norm()}, {key_states.size()}")
+        if debug: print(f"ds attn: a4 view key_states = {key_states}, {key_states.norm()}, {key_states.size()}")
         if debug: print(f"ds attn: query_states = {query_states}, {query_states.norm()}")
         attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
 
