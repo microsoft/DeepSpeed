@@ -111,7 +111,6 @@ class DeepSpeedMLP(nn.Module):
                                                       bias=self.inter_b,
                                                       gamma=self.attn_nw,
                                                       beta=self.attn_nb)
-
         residual = self.residual_add_func(hidden_state=output,
                                           residual=residual,
                                           add_bias=bias is not None,
@@ -119,6 +118,7 @@ class DeepSpeedMLP(nn.Module):
                                           attention_bias=bias if bias is not None else self.output_b,
                                           final_bias=self.output_b,
                                           residual_add=residual_add)
+        #print(f'mlp_out: {}')
         if self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
             dist.all_reduce(residual, group=self.mp_group)
 

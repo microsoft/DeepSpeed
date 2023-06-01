@@ -28,14 +28,22 @@ __global__ void fused_bias_relu(T* input, const T* bias, int total_count, int in
         T data[values_per_access];
         T data_bias[values_per_access];
         mem_access::load_global<granularity>(data, input + offset);
-        mem_access::load_global<granularity>(
-            data_bias, bias + (offset % intermediate_size), bias != nullptr);
+        if (bias) {
+            mem_access::load_global<granularity>(
+                data_bias, bias + (offset % intermediate_size), bias != nullptr);
 
 #pragma unroll
-        for (int i = 0; i < values_per_access; i++) {
-            float data_f = conversion::to<float>(data[i]);
-            float bias_f = conversion::to<float>(data_bias[i]);
-            data[i] = conversion::to<T>(relu(data_f + bias_f));
+            for (int i = 0; i < values_per_access; i++) {
+                float data_f = conversion::to<float>(data[i]);
+                float bias_f = conversion::to<float>(data_bias[i]);
+                data[i] = conversion::to<T>(relu(data_f + bias_f));
+            }
+        } else {
+#pragma unroll
+            for (int i = 0; i < values_per_access; i++) {
+                float data_f = conversion::to<float>(data[i]);
+                data[i] = conversion::to<T>(relu(data_f));
+            }
         }
 
         mem_access::store_global<granularity>(input + offset, data);

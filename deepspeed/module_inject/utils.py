@@ -18,6 +18,7 @@ def policy_to_ds_container(**kwargs):
     from .containers import MegatronLayerPolicy, DS_MegatronGPTContainer
     from .containers import HFDistilBertLayerPolicy, DS_DistilBERTContainer
     from .containers import LLAMALayerPolicy, DS_LLAMAContainer
+    from .containers import FALCONLayerPolicy, DS_FALCONContainer
 
     policy_to_container = {
         HFGPT2LayerPolicy: DS_GPT2Container,
@@ -30,6 +31,7 @@ def policy_to_ds_container(**kwargs):
         MegatronLayerPolicy: DS_MegatronGPTContainer,
         HFDistilBertLayerPolicy: DS_DistilBERTContainer,
         LLAMALayerPolicy: DS_LLAMAContainer,
+        FALCONLayerPolicy: DS_FALCONContainer,
     }
 
     container = None

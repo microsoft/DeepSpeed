@@ -37,7 +37,11 @@ class DeepSpeedSelfAttention(nn.Module):
             self.attn_ow = None
             self.attn_ob = None
         else:
-            qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
+            if self.config.multi_query:
+                qkv_size_per_partition = (self.config.hidden_size // self.config.heads) * (
+                    self.config.num_kv * 2 + self.config.heads) // self.config.mp_size
+            else:
+                qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
             self.attn_qkvw = nn.Parameter(torch.empty(self.config.hidden_size,
                                                       qkv_size_per_partition,
                                                       dtype=data_type,

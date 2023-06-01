@@ -38,14 +38,22 @@ __global__ void fused_bias_gelu(T* input, const T* bias, int total_count, int in
         T data[values_per_access];
         T data_bias[values_per_access];
         mem_access::load_global<granularity>(data, input + offset);
-        mem_access::load_global<granularity>(
-            data_bias, bias + (offset % intermediate_size), bias != nullptr);
+        if (bias) {
+            mem_access::load_global<granularity>(
+                data_bias, bias + (offset % intermediate_size), bias != nullptr);
 
 #pragma unroll
-        for (int i = 0; i < values_per_access; i++) {
-            float data_f = conversion::to<float>(data[i]);
-            float bias_f = conversion::to<float>(data_bias[i]);
-            data[i] = conversion::to<T>(gelu(data_f + bias_f));
+            for (int i = 0; i < values_per_access; i++) {
+                float data_f = conversion::to<float>(data[i]);
+                float bias_f = conversion::to<float>(data_bias[i]);
+                data[i] = conversion::to<T>(gelu(data_f + bias_f));
+            }
+        } else {
+#pragma unroll
+            for (int i = 0; i < values_per_access; i++) {
+                float data_f = conversion::to<float>(data[i]);
+                data[i] = conversion::to<T>(gelu(data_f));
+            }
         }
 
         mem_access::store_global<granularity>(input + offset, data);
@@ -321,11 +329,17 @@ __global__ void gptj_residual_add(float* residual,
             res_fl4.z += attn_bias_fl4.z;
             res_fl4.w += attn_bias_fl4.w;
         }
+        if (bias) {
+            res_fl4.x += bias_fl4.x;
+            res_fl4.y += bias_fl4.y;
+            res_fl4.z += bias_fl4.z;
+            res_fl4.w += bias_fl4.w;
+        }
         // residual = hidden_state + attention + (residual + bias) * mp_scale
-        res_fl4.x = hs_fl4.x + attn_fl4.x + (res_fl4.x + bias_fl4.x) * mp_scale;
-        res_fl4.y = hs_fl4.y + attn_fl4.y + (res_fl4.y + bias_fl4.y) * mp_scale;
-        res_fl4.z = hs_fl4.z + attn_fl4.z + (res_fl4.z + bias_fl4.z) * mp_scale;
-        res_fl4.w = hs_fl4.w + attn_fl4.w + (res_fl4.w + bias_fl4.w) * mp_scale;
+        res_fl4.x = hs_fl4.x + attn_fl4.x + res_fl4.x * mp_scale;
+        res_fl4.y = hs_fl4.y + attn_fl4.y + res_fl4.y * mp_scale;
+        res_fl4.z = hs_fl4.z + attn_fl4.z + res_fl4.z * mp_scale;
+        res_fl4.w = hs_fl4.w + attn_fl4.w + res_fl4.w * mp_scale;
 
         res_fl4_ptr[offset] = res_fl4;
     }
@@ -354,12 +368,10 @@ __global__ void gptj_residual_add(T* residual,
         float2 res_fl2 = res_fl2_ptr[offset];
         const float2 hs_fl2 = hs_fl2_ptr[offset];
         const float2 attn_fl2 = attn_fl2_ptr[offset];
-        const float2 bias_fl2 = bias_fl2_ptr[offset % intermediate_size];
 
         T2* res_half2 = reinterpret_cast<T2*>(&res_fl2);
         const T2* hs_half2 = reinterpret_cast<const T2*>(&hs_fl2);
         const T2* attn_half2 = reinterpret_cast<const T2*>(&attn_fl2);
-        const T2* bias_half2 = reinterpret_cast<const T2*>(&bias_fl2);
 
         float2 res_low = conversion::to<float2>(res_half2[0]);
         float2 res_high = conversion::to<float2>(res_half2[1]);
@@ -369,9 +381,6 @@ __global__ void gptj_residual_add(T* residual,
 
         const float2 attn_low = conversion::to<float2>(attn_half2[0]);
         const float2 attn_high = conversion::to<float2>(attn_half2[1]);
-
-        const float2 bias_low = conversion::to<float2>(bias_half2[0]);
-        const float2 bias_high = conversion::to<float2>(bias_half2[1]);
 
         if (attn_bias) {
             const float2 attn_bias_fl2 = attn_bias_fl2_ptr[offset % intermediate_size];
@@ -384,11 +393,22 @@ __global__ void gptj_residual_add(T* residual,
             res_high.x += attn_bias_high.x;
             res_high.y += attn_bias_high.y;
         }
+        if (bias) {
+            const float2 bias_fl2 = bias_fl2_ptr[offset % intermediate_size];
+            const T2* bias_half2 = reinterpret_cast<const T2*>(&bias_fl2);
+            const float2 bias_low = conversion::to<float2>(bias_half2[0]);
+            const float2 bias_high = conversion::to<float2>(bias_half2[1]);
+            // residual += attention_bias
+            res_low.x += bias_low.x;
+            res_low.y += bias_low.y;
+            res_high.x += bias_high.x;
+            res_high.y += bias_high.y;
+        }
         // residual = hidden_state + attention + (residual + bias) * mp_scale
-        res_low.x = attn_low.x + hs_low.x + (res_low.x + bias_low.x) * mp_scale;
-        res_low.y = attn_low.y + hs_low.y + (res_low.y + bias_low.y) * mp_scale;
-        res_high.x = attn_high.x + hs_high.x + (res_high.x + bias_high.x) * mp_scale;
-        res_high.y = attn_high.y + hs_high.y + (res_high.y + bias_high.y) * mp_scale;
+        res_low.x = attn_low.x + hs_low.x + res_low.x * mp_scale;
+        res_low.y = attn_low.y + hs_low.y + res_low.y * mp_scale;
+        res_high.x = attn_high.x + hs_high.x + res_high.x * mp_scale;
+        res_high.y = attn_high.y + hs_high.y + res_high.y * mp_scale;
 
         res_half2[0] = conversion::to<T2>(res_low);
         res_half2[1] = conversion::to<T2>(res_high);

@@ -786,6 +786,8 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
                     policy.update({orig_layer_class: (replace_fn, plcy)})
             elif plcy._orig_layer_class is not None:
                 policy.update({plcy._orig_layer_class: (replace_fn, plcy)})
+            elif hasattr(plcy, 'name'):
+                policy.update({plcy.name: (replace_fn, plcy)})
     assert len(policy.items()) > 0,\
         "No default policy found! Please specify your policy injection_policy (like {BertLayer:HFBEertLayerPolicy})." +\
         "You can find some samples here: https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/module_inject/replace_policy.py"
@@ -846,12 +848,18 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
         OPTLearnedPositionalEmbedding = None
     load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm, OPTLearnedPositionalEmbedding]
     for name, child in model.named_children():
-        if child.__class__ in policies:
-            replaced_module = policies[child.__class__][0](child,
-                                                           policies[child.__class__][-1],
-                                                           layer_id,
-                                                           prefix=prefix + name,
-                                                           state_dict=state_dict)
+        key = child.__class__
+        if key in policies or (isinstance(model, nn.ModuleList)
+                               and any(pname in str(key) for pname in policies if isinstance(pname, str))):
+            if not key in policies:
+                for pname in policies:
+                    if isinstance(pname, str) and pname in str(key):
+                        key = pname
+            replaced_module = policies[key][0](child,
+                                               policies[key][-1],
+                                               layer_id,
+                                               prefix=prefix + name,
+                                               state_dict=state_dict)
             setattr(model, name, replaced_module)
             if isinstance(model, PipelineModule):
                 assert hasattr(model, 'forward_funcs'),\
@@ -860,7 +868,7 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
             layer_id += 1
         else:
             checking_key = prefix + name + '.'
-            if child.__class__ in load_layers and state_dict != None:
+            if key in load_layers and state_dict != None:
                 if any(checking_key in item for item in state_dict):
                     load(
                         child,

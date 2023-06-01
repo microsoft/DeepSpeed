@@ -17,3 +17,4 @@ from .opt import DS_OPTContainer, HFOPTLayerPolicy
 from .clip import DS_CLIPContainer, HFCLIPLayerPolicy
 from .unet import UNetPolicy
 from .vae import VAEPolicy
+from .falcon import FALCONLayerPolicy, DS_FALCONContainer

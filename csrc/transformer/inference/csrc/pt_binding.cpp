@@ -364,7 +364,8 @@ void attention_unfused(T* prev_key_cont,
                        bool local_attention,
                        int window_size,
                        at::Tensor& alibi,
-                       int layer_id)
+                       int layer_id,
+                       int kv_seq_stride)
 {
     float layer_scale = alibi.sizes().size() > 1 ? std::max(1, layer_id) : 1.0;
     float alpha = norm_factor * norm_factor / layer_scale;
@@ -384,7 +385,7 @@ void attention_unfused(T* prev_key_cont,
                                 workspace,
                                 CUBLAS_OP_T,
                                 CUBLAS_OP_N,
-                                InferenceContext::Instance().GetMaxTokenLength() * k,
+                                kv_seq_stride * k,
                                 seq_len * k,
                                 seq_len * soft_len,
                                 bsz * heads,
@@ -417,7 +418,7 @@ void attention_unfused(T* prev_key_cont,
                                 (T*)output,
                                 CUBLAS_OP_N,
                                 CUBLAS_OP_N,
-                                InferenceContext::Instance().GetMaxTokenLength() * k,
+                                kv_seq_stride * k,
                                 seq_len * soft_len,
                                 seq_len * k,
                                 bsz * heads,
@@ -429,6 +430,38 @@ void attention_unfused(T* prev_key_cont,
 }
 
 void reset_cache() { InferenceContext::Instance().reset_tokens(); }
+
+template <typename T>
+std::vector<at::Tensor> ds_transform_multi_query(at::Tensor& query_key_value, int heads, int num_kv)
+{
+    unsigned bsz = query_key_value.size(0);
+    unsigned seq_len = query_key_value.size(1);
+    unsigned shared_kv_heads_size = query_key_value.size(2) / (num_kv * 2 + heads);
+    unsigned hidden_dim = query_key_value.size(2) - (num_kv * 2 * shared_kv_heads_size);
+    auto options = at::TensorOptions()
+                       .dtype(query_key_value.options().dtype())
+                       .layout(at::kStrided)
+                       .device(at::kCUDA)
+                       .requires_grad(false);
+    auto query_cont = torch::empty({bsz, seq_len, hidden_dim}, options);
+    auto key_cont = torch::empty({bsz, seq_len, hidden_dim}, options);
+    auto value_cont = torch::empty({bsz, seq_len, hidden_dim}, options);
+    launch_transform_multi_query((T*)query_cont.data_ptr(),
+                                 (T*)key_cont.data_ptr(),
+                                 (T*)value_cont.data_ptr(),
+                                 (T*)nullptr,
+                                 (T*)nullptr,
+                                 (T*)query_key_value.data_ptr(),
+                                 bsz,
+                                 seq_len,
+                                 seq_len,
+                                 hidden_dim,
+                                 heads,
+                                 num_kv,
+                                 InferenceContext::Instance().GetCurrentStream(),
+                                 seq_len);
+    return {query_cont, key_cont, value_cont};
+}
 
 template <typename T>
 std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
@@ -444,11 +477,16 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                            bool no_masking,
                                            unsigned layer_id,
                                            unsigned num_layers,
-                                           at::Tensor& alibi)
+                                           at::Tensor& alibi,
+                                           bool multi_query,
+                                           int num_kv)
 {
     unsigned bsz = query_key_value.size(0);
     unsigned seq_len = query_key_value.size(1);
-    unsigned hidden_dim = query_key_value.size(2) / 3;
+    unsigned shared_kv_heads_size = query_key_value.size(2) / (num_kv * 2 + heads);
+    unsigned hidden_dim = multi_query
+                              ? query_key_value.size(2) - (num_kv * 2 * shared_kv_heads_size)
+                              : query_key_value.size(2) / 3;
 
     bool is_prompt = (seq_len > 1);
 
@@ -467,34 +505,57 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
     auto output = torch::from_blob(workspace + 4 * buf_size, {bsz, seq_len, hidden_dim}, options);
 
     auto query_cont = workspace + 5 * buf_size;
+    auto key_cont = workspace + 6 * buf_size;
+    auto value_cont =
+        key_cont + bsz * InferenceContext::Instance().GetMaxTokenLength() * hidden_dim;
     size_t offset =
         10 * (hidden_dim * bsz * InferenceContext::Instance().GetMaxTokenLength()) +
         layer_id * 2 * bsz * InferenceContext::Instance().GetMaxTokenLength() * hidden_dim;
     unsigned all_tokens = soft_len;
     auto kv_cache = workspace + offset + (hidden_dim / heads) * (is_prompt ? 0 : soft_len - 1);
-    size_t value_offset = bsz * InferenceContext::Instance().GetMaxTokenLength() * hidden_dim;
+    size_t value_offset = bsz * InferenceContext::Instance().GetMaxTokenLength() *
+                          (multi_query ? (num_kv * k) : hidden_dim);
+    int kv_seq_stride =
+        (multi_query ? all_tokens : InferenceContext::Instance().GetMaxTokenLength());
 
     T* temp_buf = (T*)output.data_ptr() + at::numel(output);
-    launch_bias_add_transform_0213<T>((T*)query_cont,
-                                      kv_cache,
-                                      kv_cache + value_offset,
-                                      (T*)query_key_value.data_ptr(),
-                                      nullptr,
-                                      bsz,
-                                      seq_len,
-                                      (is_prompt ? 0 : soft_len - 1),
-                                      soft_len,
-                                      hidden_dim,
-                                      heads,
-                                      rotary_dim,
-                                      rotate_half,
-                                      rotate_every_two,
-                                      InferenceContext::Instance().GetCurrentStream(),
-                                      3,
-                                      InferenceContext::Instance().GetMaxTokenLength());
+    if (multi_query) {
+        launch_transform_multi_query((T*)query_cont,
+                                     (T*)key_cont,
+                                     (T*)value_cont,
+                                     workspace + offset,
+                                     workspace + offset + value_offset,
+                                     (T*)query_key_value.data_ptr(),
+                                     bsz,
+                                     seq_len,
+                                     soft_len,
+                                     hidden_dim,
+                                     heads,
+                                     num_kv,
+                                     InferenceContext::Instance().GetCurrentStream(),
+                                     InferenceContext::Instance().GetMaxTokenLength());
+    } else {
+        launch_bias_add_transform_0213<T>((T*)query_cont,
+                                          kv_cache,
+                                          kv_cache + value_offset,
+                                          (T*)query_key_value.data_ptr(),
+                                          nullptr,
+                                          bsz,
+                                          seq_len,
+                                          (is_prompt ? 0 : soft_len - 1),
+                                          soft_len,
+                                          hidden_dim,
+                                          heads,
+                                          rotary_dim,
+                                          rotate_half,
+                                          rotate_every_two,
+                                          InferenceContext::Instance().GetCurrentStream(),
+                                          3,
+                                          InferenceContext::Instance().GetMaxTokenLength());
+    }
     if (rotary_dim > 0 && rotate_half)
         launch_apply_rotary_pos_emb(query_cont,
-                                    kv_cache,
+                                    (multi_query ? key_cont : kv_cache),
                                     k,
                                     seq_len,
                                     rotary_dim,
@@ -502,12 +563,13 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                     heads,
                                     bsz,
                                     InferenceContext::Instance().GetCurrentStream(),
-                                    InferenceContext::Instance().GetMaxTokenLength());
+                                    kv_seq_stride,
+                                    multi_query);
 
-    attention_unfused<T>(workspace + offset,
+    attention_unfused<T>((multi_query ? key_cont : workspace + offset),
                          (T*)query_cont,
                          attn_mask,
-                         workspace + offset + value_offset,
+                         (multi_query ? value_cont : workspace + offset + value_offset),
                          temp_buf,
                          bsz,
                          k,
@@ -520,7 +582,8 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                          local_attention,
                          window_size,
                          alibi,
-                         layer_id);
+                         layer_id,
+                         kv_seq_stride);
     launch_transform4d_0213<T>((T*)output.data_ptr(),
                                temp_buf,
                                bsz,
@@ -531,22 +594,23 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                1);
 
     if (layer_id == num_layers - 1) InferenceContext::Instance().advance_tokens();
-    auto prev_key = torch::from_blob(workspace + offset,
-                                     {bsz, heads, all_tokens, k},
-                                     {hidden_dim * InferenceContext::Instance().GetMaxTokenLength(),
-                                      k * InferenceContext::Instance().GetMaxTokenLength(),
-                                      k,
-                                      1},
-                                     options);
+    auto prev_key = torch::from_blob(
+        workspace + offset,
+        {bsz, (multi_query ? num_kv : heads), all_tokens, k},
+        {(multi_query ? num_kv * k : hidden_dim) * InferenceContext::Instance().GetMaxTokenLength(),
+         k * InferenceContext::Instance().GetMaxTokenLength(),
+         k,
+         1},
+        options);
 
-    auto prev_value =
-        torch::from_blob(workspace + offset + value_offset,
-                         {bsz, heads, all_tokens, k},
-                         {hidden_dim * InferenceContext::Instance().GetMaxTokenLength(),
-                          k * InferenceContext::Instance().GetMaxTokenLength(),
-                          k,
-                          1},
-                         options);
+    auto prev_value = torch::from_blob(
+        workspace + offset + value_offset,
+        {bsz, (multi_query ? num_kv : heads), all_tokens, k},
+        {(multi_query ? num_kv * k : hidden_dim) * InferenceContext::Instance().GetMaxTokenLength(),
+         k * InferenceContext::Instance().GetMaxTokenLength(),
+         k,
+         1},
+        options);
 
     return {output, prev_key, prev_value};
 }
@@ -903,7 +967,7 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
 {
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)InferenceContext::Instance().GetWorkSpace();
-    workspace += (3 * bsz * input.size(2));
+    workspace += (bsz * weight.size(1));
     ds_layer_norm_internal<T>(workspace, input, gamma, beta, epsilon);
 
     if (q_int8) {
@@ -952,7 +1016,7 @@ std::vector<at::Tensor> ds_rms_qkv(at::Tensor& input,
 {
     const int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)InferenceContext::Instance().GetWorkSpace();
-    T* rms_norm_ptr = workspace + (3 * bsz * input.size(2));
+    T* rms_norm_ptr = workspace + (bsz * weight.size(1));
     int out_size = (transposed_mode || q_int8) ? weight.size(0) : weight.size(1);
 
     auto options = at::TensorOptions()
@@ -1436,13 +1500,13 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
     }
     if (act_func_type == ActivationFuncType::GELU) {
         launch_bias_gelu(intermediate,
-                         (T*)bias.data_ptr(),
+                         (T*)(bias.size(0) > 0 ? bias.data_ptr() : nullptr),
                          (transposed_mode || q_int8) ? weight.size(0) : weight.size(1),
                          bsz,
                          InferenceContext::Instance().GetCurrentStream());
     } else if (act_func_type == ActivationFuncType::ReLU) {
         launch_bias_relu(intermediate,
-                         (T*)bias.data_ptr(),
+                         (T*)(bias.size(0) > 0 ? bias.data_ptr() : nullptr),
                          (transposed_mode || q_int8) ? weight.size(0) : weight.size(1),
                          bsz,
                          InferenceContext::Instance().GetCurrentStream());
@@ -1805,7 +1869,7 @@ at::Tensor& residual_add_bias(at::Tensor& hidden_state,
             static_cast<T*>(residual.data_ptr()),
             static_cast<T*>(hidden_state.data_ptr()),
             static_cast<T*>(attention_output.data_ptr()),
-            static_cast<T*>(final_bias.data_ptr()),
+            static_cast<T*>(final_bias.size(0) > 0 ? final_bias.data_ptr() : nullptr),
             static_cast<T*>((add_bias ? attention_bias.data_ptr() : nullptr)),
             hidden_size,
             bsz,
@@ -1861,7 +1925,8 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                            num_heads,
                                            bsz,
                                            InferenceContext::Instance().GetCurrentStream(),
-                                           InferenceContext::Instance().GetMaxTokenLength());
+                                           InferenceContext::Instance().GetMaxTokenLength(),
+                                           false);
     else
         launch_apply_rotary_pos_emb<__half>((__half*)query_cont.data_ptr(),
                                             (__half*)key_cont.data_ptr(),
@@ -1872,7 +1937,8 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                             num_heads,
                                             bsz,
                                             InferenceContext::Instance().GetCurrentStream(),
-                                            InferenceContext::Instance().GetMaxTokenLength());
+                                            InferenceContext::Instance().GetMaxTokenLength(),
+                                            false);
     return {query_cont, key_cont};
 }
 
@@ -1979,4 +2045,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 #ifdef BF16_AVAILABLE
     DEF_OPS(bf16, __nv_bfloat16);
 #endif
+    m.def("transform_multi_query", ds_transform_multi_query<__nv_bfloat16>, "");
 }

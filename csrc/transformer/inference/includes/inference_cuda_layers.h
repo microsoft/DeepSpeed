@@ -169,7 +169,8 @@ void launch_apply_rotary_pos_emb(T* mixed_query,
                                  unsigned num_heads,
                                  unsigned batch,
                                  cudaStream_t stream,
-                                 int max_out_tokens);
+                                 int max_out_tokens,
+                                 bool multi_query);
 
 template <typename T>
 void launch_moe_res_matmul(T* residual,
@@ -243,3 +244,18 @@ void launch_vector_add(T* out,
                        float gamma,
                        int num_elems,
                        cudaStream_t stream);
+template <typename T>
+void launch_transform_multi_query(T* query,
+                                  T* key,
+                                  T* value,
+                                  T* k_cache,
+                                  T* v_cache,
+                                  const T* vals,
+                                  int batch_size,
+                                  int seq_length,
+                                  int all_tokens,
+                                  int hidden_dim,
+                                  int heads,
+                                  int num_kv,
+                                  cudaStream_t stream,
+                                  int max_out_tokens);

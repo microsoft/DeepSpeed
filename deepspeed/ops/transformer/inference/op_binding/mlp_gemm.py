@@ -12,6 +12,8 @@ from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
 from deepspeed.utils.types import NormType
 
+dummy_tensor = torch.Tensor([])
+
 
 class MLPGemmOp(BaseOp):
 
@@ -68,10 +70,10 @@ class MLPGemmOp(BaseOp):
             output, residual_add = self.mlp_gemm_func(
                 input,
                 residual,
-                input_bias,
+                input_bias if input_bias is not None else dummy_tensor,
                 weight_interm,
                 weight_out,
-                bias,
+                bias if bias is not None else dummy_tensor,
                 gamma,
                 beta,
                 self.config.epsilon,

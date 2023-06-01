@@ -9,6 +9,8 @@ from typing import Optional
 from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
 
+dummy_tensor = torch.Tensor([])
+
 
 class ResidualAddOp(BaseOp):
 
@@ -36,16 +38,17 @@ class ResidualAddOp(BaseOp):
                 final_bias: Optional[torch.Tensor] = None):
 
         if self.residual_add_func != None:
-            if final_bias is None:
+            if final_bias is None and self.config.mlp_after_attn:
                 residual = self._vector_add(residual, hidden_state, 1.0 / self.config.mp_size)
             else:
                 if not self.config.pre_layer_norm and residual_add is not None:
                     # only use residual add if its set and we are not pre layer norm
                     residual = residual_add
 
-                self.residual_add_func(hidden_state, residual, attention_output, attention_bias, final_bias,
-                                       self.config.mp_size, self.config.mlp_after_attn, add_bias,
-                                       self.config.pre_layer_norm)
+                self.residual_add_func(hidden_state, residual, attention_output,
+                                       attention_bias if attention_bias is not None else dummy_tensor,
+                                       final_bias if final_bias is not None else dummy_tensor, self.config.mp_size,
+                                       self.config.mlp_after_attn, add_bias, self.config.pre_layer_norm)
         else:
             # fallback
             if os.environ.get('DS_KI_FALLBACK') == 'True' and self.config.mlp_after_attn:
