@@ -160,7 +160,9 @@ class DeepSpeedSelfAttention(nn.Module):
 
         self.self_attn_layer_norm.weight.data.copy_(norm_w)
         self.self_attn_layer_norm.bias.data.copy_(norm_b)
+        torch.cuda.synchronize()
 
+        if debug: print(f"ds attn: b4 ln hidden_states = {input},{input.norm()}")
         hidden_states = self.self_attn_layer_norm(input)
         bsz, tgt_len, _ = hidden_states.size()
 
@@ -175,9 +177,9 @@ class DeepSpeedSelfAttention(nn.Module):
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
 
         past_key_value = (key_states, value_states)
-        if debug: print(f"inside ds attn: hidden_states = {hidden_states.norm()}")
-        if debug: print(f"inside ds attn: key_states   = {key_states.norm()}, size = {key_states.size()}")
-        if debug: print(f"inside ds attn: value_states  = {value_states.norm()}")
+        if debug: print(f"inside ds attn: hidden_states = {hidden_states}, {hidden_states.norm()}")
+        if debug: print(f"inside ds attn: key_states   = {key_states}, {key_states.norm()}, {key_states.size()}")
+        if debug: print(f"inside ds attn: value_states  = {value_states}, {value_states.norm()}")
 
         #same as qkv_func return
         #return (hidden_states, hidden_states.norm())
@@ -189,14 +191,17 @@ class DeepSpeedSelfAttention(nn.Module):
         scaling = head_dim**-0.5
         self.q_proj.weight.data.copy_(qkvw[0].transpose(0, 1))
         self.q_proj.bias.data.copy_(qkvb[0])
+        torch.cuda.synchronize()
         query_states = self.q_proj(hidden_states) * scaling
 
         proj_shape = (bsz * self.num_attention_heads_per_partition, -1, head_dim)
         query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
         key_states = key_states.view(*proj_shape)
+        if debug: print(f"ds attn: key_states = {key_states}, {key_states.norm()}, {key_states.size()}")
+        if debug: print(f"ds attn: query_states = {query_states}, {query_states.norm()}")
         attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
 
-        if debug: print(f"ds attn: a4 bmm attn_weights = {attn_weights.norm()}")
+        if debug: print(f"ds attn: a4 bmm attn_weights = {attn_weights},{attn_weights.norm()}")
 
         src_len = key_states.size(1)
         if debug: print(f"ds attn: src_len = {src_len}")
@@ -208,6 +213,7 @@ class DeepSpeedSelfAttention(nn.Module):
             )
 
         if input_mask is not None:
+            if debug: print(f"ds attn: input_mask = {input_mask}")
             if input_mask.size() != (bsz, 1, tgt_len, src_len):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {input_mask.size()}"
@@ -215,7 +221,7 @@ class DeepSpeedSelfAttention(nn.Module):
             attn_weights = attn_weights.view(bsz, self.num_attention_heads_per_partition, tgt_len, src_len) + input_mask
             attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
             attn_weights = attn_weights.view(bsz * self.num_attention_heads_per_partition, tgt_len, src_len)
-            if debug: print(f"ds attn: a4 attn_mask attn_weights = {attn_weights.norm()}")
+        if debug: print(f"ds attn: a4 attn_weights = {attn_weights}, {attn_weights.size()}")
 
         if attn_weights.dtype == torch.float16:
             attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(torch.float16)
@@ -257,7 +263,9 @@ class DeepSpeedSelfAttention(nn.Module):
         attn_output = attn_output.transpose(1, 2)
         attn_output = attn_output.reshape(bsz, tgt_len, self.config.hidden_size)
         attn_output = self.out_proj(attn_output)
-        if debug: print(f"hf attn: return attn_output = {attn_output.norm()}")
+        if debug: print(f"inside ds attn: key_states   = {key_layer}, {key_layer.norm()}, {key_states.size()}")
+        if debug: print(f"inside ds attn: value_states  = {value_layer}, {value_layer.norm()}")
+        if debug: print(f"hf attn: return attn_output = {attn_output}, {attn_output.norm()}")
 
         output = attn_output
         inp_norm = hidden_states.norm()
