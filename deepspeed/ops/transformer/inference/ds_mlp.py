@@ -97,7 +97,7 @@ class DeepSpeedMLP(nn.Module):
             debug = False
 
             # pytorch baseline to do add bias.
-            input = input + bias
+            #input = input + bias
             if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}, tensor = {input}')
 
             # pytorch baseline to do add residual (residual=input)
@@ -136,26 +136,29 @@ class DeepSpeedMLP(nn.Module):
 
             input = self.final_layer_norm(input)
             
-            if debug: print(f"inside ds mlp: a4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
-            if debug: print(f"inside ds mlp: a4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
+            if debug: print(f"inside ds mlp: a4 ln weight = {self.fc1.weight}, {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
+            if debug: print(f"inside ds mlp: a4 ln bias   = {self.fc1.bias}, {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
             if debug: print(f"inside ds mlp: a4 ln input  = {input.shape}, {input.norm()}")
             if debug: print(f"inside ds mlp: a4 ln input tensor = {input}")
             
             input = self.fc1(input)
 
-            if debug: print(f"inside ds mlp: a4 fc1: {input.norm()}")
+            if debug: print(f"inside ds mlp: a4 fc1: {input}, {input.norm()}")
 
             output = self.activation_fn(input)
 
-            if debug: print(f"inside ds mlp: a4 ac: {output.norm()}")
+            if debug: print(f"inside ds mlp: a4 relu: {output}, {output.norm()}")
+
+            if debug: print(f"inside ds mlp: fc2 weight = {self.fc2.weight.shape}, {self.fc2.weight.norm()}")
+            if debug: print(f"inside ds mlp: fc2 bias   = {self.fc2.bias.shape}, {self.fc2.bias.norm()}")
 
             output = self.fc2(output)
 
-            if debug: print(f"inside ds mlp: a4 fc2: {output.norm()}")
+            if debug: print(f"inside ds mlp: a4 fc2: {output}, {output.norm()}")
 
             # pytorch baseline residual add
             residual = output + residual
-            if debug: print(f"residual = {residual.norm()}")
+            if debug: print(f"residual = {residual}, {residual.norm()}")
 
             return residual
     
