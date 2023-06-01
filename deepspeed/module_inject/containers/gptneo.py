@@ -5,6 +5,7 @@
 
 from .base import *
 from .features.meta_tensor import MetaTensorContainer
+from .features.hybrid_engine import HybridEngineContainer
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
 import torch
 from torch.nn.parameter import Parameter
@@ -13,8 +14,10 @@ from ..policy import transformer_param_names
 from ..policy import maybe_copy
 from ..policy import maybe_copy_qkv
 
+from ..policy import maybe_get_lora
 
-class DS_GPTNEOContainer(MetaTensorContainer, BaseTransformerContainer):
+
+class DS_GPTNEOContainer(MetaTensorContainer, HybridEngineContainer, BaseTransformerContainer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -26,6 +29,18 @@ class DS_GPTNEOContainer(MetaTensorContainer, BaseTransformerContainer):
         self.module = DeepSpeedGPTInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
         return self.module
+
+    def set_lora_params(self):
+        """
+        Necessary to implement for `HybridEngineContainer`
+        """
+        self.lora_params = [
+            maybe_get_lora(p) for p in [
+                self.policy.client_module.mlp.c_fc, self.policy.client_module.mlp.c_proj,
+                self.policy.client_module.attn.attention.q_proj, self.policy.client_module.attn.attention.k_proj,
+                self.policy.client_module.attn.attention.v_proj, self.policy.client_module.attn.attention.out_proj
+            ]
+        ]
 
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
@@ -72,22 +87,32 @@ class HFGPTNEOLayerPolicy(TransformerPolicy):
             HFGPTNEOLayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
-        return self.client_module.attn.attention.q_proj.weight.shape[1], \
-                self.client_module.attn.attention.num_heads
+        return self.client_module.attn.attention.embed_dim, \
+                self.client_module.attn.attention.num_heads, \
+                self.client_module.ln_1.eps, \
+                DEFAULT_INTERMEDIATE_SIZE
 
-    def attention(self):
+    def get_q_k_v(self):
+        return self.client_module.attn.attention.q_proj.weight, \
+               None, \
+               self.client_module.attn.attention.k_proj.weight, \
+               None, \
+               self.client_module.attn.attention.v_proj.weight, \
+               None
+
+    def attention(self, enable_training=False):
         qw = self.client_module.attn.attention.q_proj.weight
         kw = self.client_module.attn.attention.k_proj.weight
         vw = self.client_module.attn.attention.v_proj.weight
 
-        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
+        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=enable_training)
 
         return qkvw, \
                None, \
                self.client_module.attn.attention.out_proj.weight, \
                self.client_module.attn.attention.out_proj.bias
 
-    def mlp(self):
+    def mlp(self, enable_training=False):
         return self.client_module.mlp.c_fc.weight, \
                self.client_module.mlp.c_fc.bias, \
                self.client_module.mlp.c_proj.weight, \

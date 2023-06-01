@@ -82,12 +82,13 @@ config_dict = {
     },
     "zero_optimization": {
         "stage": 0,
-        "reduce_bucket_size": 20
+        "reduce_bucket_size": 20,
+        "stage3_model_persistence_threshold": 10
     }
 }
 #        "initial_scale_power": 15
 args = get_args('/tmp/', config_dict)
-hidden_dim = 4
+hidden_dim = 32
 
 model = SimpleModel(hidden_dim, empty_grad=False)
 

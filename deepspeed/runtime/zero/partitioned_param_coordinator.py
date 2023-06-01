@@ -40,18 +40,19 @@ class ZeRoTraceMode(Enum):
     INVALID = 3
 
 
+class InflightParamRegistry(UserDict):
+    """registry for parameters in flight"""
+
+    def __setitem__(self, param: Parameter, handle: AllGatherCoalescedHandle) -> None:
+        if param in self.data:
+            raise RuntimeError(f"{param.ds_summary()} already in registry")
+        if param.ds_status != ZeroParamStatus.INFLIGHT:
+            raise RuntimeError(f"attempted to add non-inflight parameter to registry {param.ds_summary()}")
+        self.data[param] = handle
+
+
 class PartitionedParameterCoordinator:
     """Handles partitioning and gathering of parameters."""
-
-    class __InflightParamRegistry(UserDict):
-        """registry for parameters in flight"""
-
-        def __setitem__(self, param: Parameter, handle: AllGatherCoalescedHandle) -> None:
-            if param in self.data:
-                raise RuntimeError(f"{param.ds_summary()} already in registry")
-            if param.ds_status != ZeroParamStatus.INFLIGHT:
-                raise RuntimeError(f"attempted to add non-inflight parameter to registry {param.ds_summary()}")
-            self.data[param] = handle
 
     @dataclass
     class __ParamInTrace:
@@ -64,10 +65,11 @@ class PartitionedParameterCoordinator:
         max_reuse_distance_in_numel: int,
         max_available_parameters_in_numel: int,
         allgather_stream: get_accelerator().Stream,
+        inflight_param_registry: InflightParamRegistry,
         prefetch_nvme: bool = False,
     ) -> None:
         # mapping of param -> handle for each param that is currently in flight
-        self.__inflight_param_registry = __class__.__InflightParamRegistry()
+        self.__inflight_param_registry = inflight_param_registry
         # keeps track of the number of submodules invoked so far.
         self.__step_id: int = 0
         # network tracing mode
@@ -138,10 +140,20 @@ class PartitionedParameterCoordinator:
     def trace_prologue(self, sub_module: Module) -> None:
         if self.is_complete_trace():
             # sub_module must match expectation else invalidate trace cache
+            if len(self.__submodule_order) <= self.__step_id:
+                print_rank_0(
+                    f"Invalidate trace cache @ step {self.__step_id} and module {sub_module.id}: "
+                    f"cache has only {len(self.__submodule_order)} modules",
+                    force=True)
+                self._invalidate_trace()
+                return
+
             if sub_module != self.__submodule_order[self.__step_id]:
                 expected_module_id = self.__submodule_order[self.__step_id].id
-                debug_rank0(f"Invalidate trace cache @ step {self.__step_id}: "
-                            f"expected module {expected_module_id}, but got module {sub_module.id}")
+                print_rank_0(
+                    f"Invalidate trace cache @ step {self.__step_id}: "
+                    f"expected module {expected_module_id}, but got module {sub_module.id}",
+                    force=True)
                 self._invalidate_trace()
 
     def record_module(self, sub_module: Module) -> None:
@@ -187,7 +199,9 @@ class PartitionedParameterCoordinator:
                 self.__submodule_order = tuple(self.__submodule_order)  # freeze
                 self.__param_order = tuple(self.__param_order)  # freeze
                 self.__trace_mode = ZeRoTraceMode.COMPLETE
-                print_rank_0(f"completed record trace: {[m.id for m in self.__submodule_order]}", force=False)
+                print_rank_0(
+                    f"completed record trace of {len(self.__submodule_order)} sub modules: {[m.id for m in self.__submodule_order]}",
+                    force=False)
             else:
                 # Enable trace recording for next forward/backward pass
                 self.__trace_mode = ZeRoTraceMode.RECORD

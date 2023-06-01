@@ -4,7 +4,8 @@
 # DeepSpeed Team
 
 import json
-from deepspeed.utils.types import ActivationFuncType
+import torch
+from deepspeed.utils.types import ActivationFuncType, NormType
 
 
 class TransformerConfig():
@@ -32,6 +33,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                 using model-parallel architecture. If the client model already takes care of this, there is no
                 need to pass this argument.
             fp16: Enable half-precision computation
+            bf16: Enable bf16 floating point computation
             pre_layer_norm: Select between Pre-LN or Post-LN transformer architecture
             stochastic_mode:  Enable for high performance, please note that this flag has some level of
                 non-determinism and can produce different results on different runs.  However, we have seen
@@ -52,9 +54,9 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  layer_norm_eps=1e-12,
                  local_rank=-1,
                  mp_size=1,
-                 fp16=False,
-                 q_int8=False,
+                 dtype=torch.float16,
                  pre_layer_norm=True,
+                 norm_type=NormType.LayerNorm,
                  stochastic_mode=False,
                  scale_attention=True,
                  triangular_masking=True,
@@ -69,20 +71,23 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  training_mp_size=1,
                  bigscience_bloom=False,
                  max_out_tokens=1024,
+                 min_out_tokens=1,
                  enable_qkv_quantization=False,
                  use_mup=False,
                  scale_attn_by_inverse_layer_idx=False,
-                 return_single_tuple=False):
+                 return_single_tuple=False,
+                 set_empty_params=False,
+                 transposed_mode=False):
         super(DeepSpeedInferenceConfig,
               self).__init__(hidden_size, (intermediate_size if intermediate_size > 0 else 4 * hidden_size), heads,
                              num_hidden_layers)
-        self.fp16 = fp16
+        self.dtype = dtype
         self.pre_layer_norm = pre_layer_norm
+        self.norm_type = norm_type
         self.local_rank = local_rank
         self.stochastic_mode = stochastic_mode
         self.epsilon = layer_norm_eps
         self.mp_size = mp_size
-        self.q_int8 = q_int8
         self.scale_attention = scale_attention
         self.triangular_masking = triangular_masking
         self.local_attention = local_attention
@@ -97,10 +102,13 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.training_mp_size = training_mp_size
         self.bigscience_bloom = bigscience_bloom
         self.max_out_tokens = max_out_tokens
+        self.min_out_tokens = min_out_tokens
         self.scale_attn_by_inverse_layer_idx = scale_attn_by_inverse_layer_idx
         self.enable_qkv_quantization = enable_qkv_quantization
         self.use_mup = use_mup
         self.return_single_tuple = return_single_tuple
+        self.set_empty_params = set_empty_params
+        self.transposed_mode = transposed_mode
 
     @classmethod
     def from_dict(cls, json_object):

@@ -6,9 +6,11 @@ on:
       - 'staging**'
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
   schedule:
     - cron: "0 0 * * *"
 
@@ -21,7 +23,7 @@ jobs:
     runs-on: [self-hosted, nvidia, cu111, v100]
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
@@ -29,7 +31,7 @@ jobs:
       - name: Install pytorch
         run: |
           # use the same pytorch version as transformers CI
-          pip install torch torchvision torchaudio -f https://download.pytorch.org/whl/torch_stable.html
+          pip install --no-cache-dir torch torchvision torchaudio -f https://download.pytorch.org/whl/torch_stable.html
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
