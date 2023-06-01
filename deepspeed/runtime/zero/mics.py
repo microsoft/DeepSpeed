@@ -393,6 +393,11 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
                          gradient_accumulation_steps, elastic_checkpoint, aio_config)
         first_param = next(module.parameters())
         # overload the dp_process_group and partition_count
+        assert hasattr(first_param, "comm"), " ".join([
+            "Sharded parameters don't have the MiCS_CommGroups attached.",
+            "Might due to the use of deepspeed.zero.Init context for initializing the weights.",
+            "To use MiCS sharding, please use deepspeed.zero.MiCS_Init instead for initializing parameter."
+        ])
         self.dp_process_group = first_param.comm.param_shard_group
         self.partition_count = first_param.comm.param_shard_size
 

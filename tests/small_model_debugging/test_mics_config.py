@@ -105,8 +105,8 @@ config_dict = {
 args = get_args('/tmp/', config_dict)
 hidden_dim = 32
 
-# with deepspeed.zero.Init():
-model = SimpleModel(hidden_dim, empty_grad=False)
+with deepspeed.zero.MiCS_Init(config_dict_or_path=config_dict):
+    model = SimpleModel(hidden_dim, empty_grad=False)
 # print('------> init model with deepspeed.zero.Init()')
 
 model, _, _, _ = deepspeed.initialize(args=args,
