@@ -94,15 +94,17 @@ class DeepSpeedMLP(nn.Module):
         return DeepSpeedMLP._inter_w_buffers
 
     def mlp_baseline(self, input, residual, bias):
-            debug = False
+            debug = True
+
+            if debug: print(f'input norm before mlp: norm = {torch.norm(input)}')
 
             # pytorch baseline to do add bias.
             input = input + bias
-            if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}, tensor = {input}')
+            if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}')
 
             # pytorch baseline to do add residual (residual=input)
             input = input + residual
-            if debug: print(f'ds a4 attn + ln + bias-add + residual-add: norm = {torch.norm(input)}, tensor = {input}')
+            if debug: print(f'ds a4 attn + ln + bias-add + residual-add: norm = {torch.norm(input)}')
 
             # copy the weight and bias to fc1
             self.fc1.weight.data.copy_(self.inter_w.transpose(0, 1))
@@ -116,7 +118,7 @@ class DeepSpeedMLP(nn.Module):
             if debug: print(f"inside ds mlp: b4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
             if debug: print(f"inside ds mlp: b4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
             if debug: print(f"inside ds mlp: b4 ln input  = {input.shape}, {input.norm()}")
-            if debug: print(f"inside ds mlp: b4 ln input tensor = {input}")
+            #if debug: print(f"inside ds mlp: b4 ln input tensor = {input}")
 
             # do the layernorm
             if debug: print(f"self.final_layer_norm w norm = {self.final_layer_norm.weight.norm()}")
@@ -138,8 +140,8 @@ class DeepSpeedMLP(nn.Module):
 
             if debug: print(f"inside ds mlp: a4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
             if debug: print(f"inside ds mlp: a4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
-            if debug: print(f"inside ds mlp: a4 ln input  = {input.shape}, {input.norm()}")
-            if debug: print(f"inside ds mlp: a4 ln input tensor = {input}")
+            if debug: print(f"inside ds mlp: a4 ln input (shape, norm) = {input.shape}, {input.norm()}")
+            #if debug: print(f"inside ds mlp: a4 ln input tensor = {input}")
 
             input = self.fc1(input)
 
@@ -182,6 +184,7 @@ class DeepSpeedMLP(nn.Module):
                                                 weight_out=self.output_w)
             else:
                 # mlp_gemm_func ~= gemm(relu(layernorm(input) + bias))
+                print(f"input.norm before mlp_gemm_func = {input.norm()}")
                 output, residual_add = self.mlp_gemm_func(input=input,
                                                             residual=residual,
                                                             weight_interm=self.inter_w,
@@ -190,6 +193,8 @@ class DeepSpeedMLP(nn.Module):
                                                             bias=self.inter_b,
                                                             gamma=self.attn_nw,
                                                             beta=self.attn_nb)
+                print(f"output Norm Python: {output.norm()}")
+                print(f"residual_add Norm Python: {residual_add.norm()}")
 
             residual = self.residual_add_func(hidden_state=output,
                                                 residual=residual,

@@ -1395,7 +1395,12 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                   torch::numel(output);
     T* intermediate = inp_norm + torch::numel(input);
 
+    // input means at::Tensor& output in argument list
+    std::cout << "inside ds_mlp CUDA, input norm before ln =\n" << output.norm() << std::endl;
+
     if (mlp_after_attn) {
+        // OPT models come here
+        std::cout << "using launch_fused_residual\n" << std::endl;
         launch_fused_residual_ln((T*)inp_norm,
                                  (const T*)input.data_ptr(),
                                  (const T*)residual.data_ptr(),
@@ -1407,8 +1412,11 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                                  input.size(2),
                                  InferenceContext::Instance().GetCurrentStream());
     } else {
+        std::cout << "using ds_layer_norm_internal\n" << std::endl;
         ds_layer_norm_internal(inp_norm, input, gamma, beta, epsilon);
     }
+    std::cout << "inside ds_mlp CUDA, input norm after ln =\n" << torch::from_blob(inp_norm, input.sizes(), input.options()).norm() << std::endl;
+    
     if (q_int8) {
         quantized_gemm<T>(
             intermediate, inp_norm, weight, q_scale, q_scale.size(0), bsz, input.size(2));
@@ -1433,6 +1441,10 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
 #else
                        CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
+    std::cout << "input.sizes() =\n" << input.sizes() << std::endl;
+    std::cout << "weight.sizes() =\n" << weight.sizes() << std::endl;
+    // TODO: understand the dimensions of intermediate
+    std::cout << "after fc1 CUDA, norm before ln =\n" << torch::from_blob(intermediate, {input.size(0), input.size(1), input.size(2)*4}, input.options()).norm() << std::endl;
     }
     if (act_func_type == ActivationFuncType::GELU) {
         launch_bias_gelu(intermediate,
@@ -1447,6 +1459,8 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                          bsz,
                          InferenceContext::Instance().GetCurrentStream());
     }
+    // TODO: understand the dimensions of intermediate
+    std::cout << "after fc1 CUDA, norm after relu =\n" << torch::from_blob(intermediate, {input.size(0), input.size(1), input.size(2)*4}, input.options()).norm() << std::endl;
 
     if (q_int8) {
         quantized_gemm<T>(output.data_ptr(),
@@ -1531,6 +1545,10 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                          q_int8,
                                          act_func_type,
                                          transposed_mode);
+
+
+    std::cout << "output Norm:\n" << output.norm() << std::endl;
+    std::cout << "res_add Norm:\n" << res_add.norm() << std::endl;
 
     return {output, res_add};
 }

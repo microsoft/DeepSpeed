@@ -251,6 +251,7 @@ class DeepSpeedSelfAttention(nn.Module):
         if debug: print(f"inside ds attn: b4 qkv_func gamma = {norm_w.norm()}")
         if debug: print(f"inside ds attn: b4 qkv_func beta   = {norm_b.norm()}")
 
+        #import pdb; pdb.set_trace()
         if not self.config.pre_layer_norm:
             qkv_out = self.linear_func(input=input,
                                        weight=self._attn_qkvw,
@@ -269,7 +270,7 @@ class DeepSpeedSelfAttention(nn.Module):
         if debug: print(f"inside ds attn: qkv_out[0] = {qkv_out[0].norm()}")
         if debug: print(f"inside ds attn: qkv_out[1] = {qkv_out[1].norm()}")
         if debug: print(f"inside ds attn: input_mask   = {input_mask.norm()}")
-        if debug and layer_past: 
+        if debug and layer_past:
             print(f"inside ds attn: layer_past[0]  = {layer_past[0].norm()}")
             print(f"inside ds attn: layer_past[1]  = {layer_past[1].norm()}")
         if debug and alibi: print(f"inside ds attn: alibi  = {alibi.norm()}")
@@ -278,11 +279,11 @@ class DeepSpeedSelfAttention(nn.Module):
                                                                        input_mask=input_mask,
                                                                        layer_past=layer_past,
                                                                        alibi=alibi)
-        
+
         if debug: print(f"inside ds attn: a4 compute attn context_layer   = {context_layer.norm()}")
         if debug: print(f"inside ds attn: a4 compute attn key_layer  = {key_layer.norm()}")
         if debug: print(f"inside ds attn: a4 compute attn value_layer  = {value_layer.norm()}")
-    
+
         output = self.vector_matmul_func(input=context_layer, weight=self.attn_ow)
         inp_norm = qkv_out[-1]
 

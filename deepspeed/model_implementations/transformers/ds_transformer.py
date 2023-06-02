@@ -192,7 +192,7 @@ class DeepSpeedTransformerInference(nn.Module):
                 output = inference_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
             if debug: print(f"after layernorm: {torch.norm(output)}")
             #exit(0)
-            if self.config.layer_id == 23: exit(0)
+            if self.config.layer_id == 5: exit(0)
             output = output.to(input_type)
         if get_present:
             output = (output, presents)
