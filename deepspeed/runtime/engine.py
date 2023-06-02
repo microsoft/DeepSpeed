@@ -1030,20 +1030,22 @@ class DeepSpeedEngine(Module):
     def _configure_distributed_model(self, model):
         self._set_client_model(model)
 
+        is_zero3_model = self.zero_optimization_partition_weights() and any(
+            [hasattr(param, "ds_id") for param in self.module.parameters()])
+
         if self.fp16_enabled():
-            if self.zero_optimization_partition_weights() and any(
-                [hasattr(param, "ds_id") for param in self.module.parameters()]):
+            if is_zero3_model:
                 self.__check_params(self.module, torch.half)
             self.module.half()
         elif self.bfloat16_enabled():
-            if self.zero_optimization_partition_weights() and any(
-                    hasattr(param, 'ds_id') for param in self.module.parameters()):
+            if is_zero3_model:
                 self.__check_params(self.module, torch.bfloat16)
             self.module.bfloat16()
         else:
             self.__check_params(self.module, torch.float)
 
-        if not self.dont_change_device:
+        # zero.Init() handles device placement of model
+        if not (self.dont_change_device or is_zero3_model):
             self.module.to(self.device)
 
         # MoE related initialization
@@ -1079,7 +1081,7 @@ class DeepSpeedEngine(Module):
         self.expert_parallel_group = groups._get_expert_parallel_group_dict()
         self.expert_data_parallel_group = groups._get_expert_data_parallel_group_dict()
 
-        if not self.amp_enabled():
+        if not (self.amp_enabled() or is_zero3_model):
             self._broadcast_model()
 
     # check if parameters are duplicated in optimizer param_groups
@@ -1917,7 +1919,7 @@ class DeepSpeedEngine(Module):
         """
         Manually overrides the DeepSpeed engine's gradient accumulation boundary state, this is an optional
         feature and should be used with care. The state should be set before to the intended
-        value before each forward/backward. The final fordward/backward should have the
+        value before each forward/backward. The final forward/backward should have the
         boundary state set to True. This style allows client code to only call engine.step() once after all
         the gradient accumulation passes are complete. See example below:
         .. code-block:: python
