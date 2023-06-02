@@ -11,6 +11,11 @@ from .constants import *
 import os
 import json
 
+try:
+    import neural_compressor as nc
+except ImportError as e:
+    nc = None
+
 
 def check_deepspeed_config(config):
     if isinstance(config, dict):
@@ -117,6 +122,26 @@ def init_compression(model, deepspeed_config, teacher_model=None, mpu=None):
     layer_added_compress_methods = get_compress_methods(c_model, compress_methods, mpu=mpu)
     compression_preparation(c_model, layer_added_compress_methods, mpu)
 
+    # For sparse pruning snip_momentum method
+    shared_parameters = compress_methods[SPARSE_PRUNING][SHARED_PARAMETERS]
+    if shared_parameters[SPARSE_PRUNING_ENABLED] and \
+        shared_parameters[SPARSE_PRUNING_METHOD] == SPARSE_PRUNING_METHOD_SNIP_MOMENTUM:
+
+        assert nc is not None, "please ensure the neural_compressor python package is installed by pip or conda if user wants to use snip_momentum sparse pruning"
+
+        from .helper import generate_pruners, register_on_step_begin
+        from nc import WeightPruningConfig
+
+        config = WeightPruningConfig(target_sparsity=1 - shared_parameters[SPARSE_PRUNING_DENSE_RATIO],
+                                     pattern=shared_parameters[SPARSE_PRUNING_BLOCK_PATTERN],
+                                     pruning_frequency=shared_parameters[SPARSE_PRUNING_SCHEDULE_OFFSET_STRIDE],
+                                     start_step=shared_parameters[SPARSE_PRUNING_SCHEDULE_OFFSET],
+                                     end_step=shared_parameters[SPARSE_PRUNING_SCHEDULE_OFFSET_END],
+                                     excluded_op_names=shared_parameters[SPARSE_PRUNING_EXCLUDED_MODULES])
+        pruners = generate_pruners(config, c_model)
+        c_model.pruners = pruners
+        register_on_step_begin(c_model)
+
     return model
 
 
@@ -187,17 +212,17 @@ def student_initialization(student_model, teacher_model, deepspeed_config):
             The prefix name before the layer #.
             Example 1: bert.encoder.layer, for BERT_base model's prefix name
             Example 2: transformer.h, for GPT-2 hugging face prefix name
-        teacher_layer (`list of intergers`)
-            The layer of teacher will be used for student's reinitializedion
+        teacher_layer (`list of integers`)
+            The layer of teacher will be used for student's reinitialization
             Example 1: [1,3,5,7,9], means we want to matches the 2nd/4th/6th/8th/10th layer of teacher to the first 5 layers of student
         student_layer (`list` or None)
-            The layer of student need to be re-intiialized
+            The layer of student need to be re-initialized
             Example 1: None, means we want to reinitialize all the layers
             Example 1: [0,1,2,3,4], means  we want to reinitialize the first 5 layers
         other_module_name (`list of string`)
-            The modules will be used for student's reinitializedion
+            The modules will be used for student's reinitialization
             Example 1: ['bert.pooler', 'bert.embeddings', 'classifier'], means we want to apply the weight in teacher's embedding/pooler/classier module to the student
-            Example 2: ['transformer.w', 'transformer.ln_f', 'lm_head'], means we want to apply the weight in teacher's embeddingn layers module to the student
+            Example 2: ['transformer.w', 'transformer.ln_f', 'lm_head'], means we want to apply the weight in teacher's embedding layers module to the student
     Note that teacher_layer should matches student layer
     '''
     assert len(student_layer) == len(teacher_layer)

@@ -629,7 +629,13 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.single_partition_of_fp32_groups[i].grad = get_accelerator().pin_memory(
                 single_grad_partition) if self.cpu_offload else single_grad_partition
 
-        self.optimizer.step()
+        # Initialize the optimizer states with the flattended fp32 partition.
+        # State initialization for the Adagrad optimizer occurs at construction as opposed to other optimizers
+        # which do lazy initialization of the state at the first call to step.
+        if isinstance(self.optimizer, torch.optim.Adagrad):
+            self.optimizer = torch.optim.Adagrad(self.single_partition_of_fp32_groups, **self.optimizer.defaults)
+        else:
+            self.optimizer.step()
 
         if not self.cpu_offload:
             for group in self.single_partition_of_fp32_groups:
@@ -1704,7 +1710,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def _optimizer_step(self, group_no):
         original_param_groups = self.optimizer.param_groups
         self.optimizer.param_groups = [original_param_groups[group_no]]
-        # Disabling this as the C++ side copy & synchornize is not working correctly
+        # Disabling this as the C++ side copy & synchronize is not working correctly
         #from deepspeed.ops.adam import DeepSpeedCPUAdam
         #if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
         #    self.optimizer.step(fp16_param_groups=[self.get_bit16_param_group(group_no)])

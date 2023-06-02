@@ -156,7 +156,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                                             max_live_parameters=max_live_parameters,
                                                             param_persistence_threshold=param_persistence_threshold,
                                                             model_persistence_threshold=model_persistence_threshold,
-                                                            offload_optimizer_config=offload_optimizer_config,
+                                                            offload_param_config=offload_param_config,
                                                             mpu=mpu)
 
         self.persistent_parameters = self.parameter_offload.persistent_parameters
@@ -351,7 +351,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         max_live_parameters,
         param_persistence_threshold,
         model_persistence_threshold,
-        offload_optimizer_config,
+        offload_param_config,
         mpu,
     ):
         return DeepSpeedZeRoOffload(module=module,
@@ -363,7 +363,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                     max_live_parameters=max_live_parameters,
                                     param_persistence_threshold=param_persistence_threshold,
                                     model_persistence_threshold=model_persistence_threshold,
-                                    offload_param_config=offload_optimizer_config,
+                                    offload_param_config=offload_param_config,
                                     mpu=mpu)
 
     def _get_trainable_parameter_groups(self):
@@ -859,6 +859,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         timer_names = set()
 
+        # State initialization for the Adagrad optimizer occurs at construction as opposed to other optimizers
+        # which do lazy initialization of the state at the first call to step.
+        is_adagrad = isinstance(self.optimizer, torch.optim.Adagrad)
+
         if self.swap_optimizer:
             self.optimizer_swapper.init_timers()
 
@@ -888,7 +892,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             else:
                 self.fp32_partitioned_groups_flat[i].grad = gradient_buffer.narrow(0, 0, num_elements)
 
-            self._optimizer_step(i)
+            # Initialize the optimizer states with the flattended fp32 partition.
+            if not is_adagrad:
+                self._optimizer_step(i)
 
             if swappable_param_subgroup:
                 self._partitioned_params_swap_out(i)
@@ -899,6 +905,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             see_memory_usage(
                 f'[End] Initialize optimizer states {i} / {num_subgroups} subgroups, num_elems: {num_elements}, swappable opt/param:{swappable_optimizer_subgroup}/{swappable_param_subgroup}',
                 force=False)
+
+        # Initialize the optimizer states with the flattended fp32 partition.
+        if is_adagrad:
+            self.optimizer = torch.optim.Adagrad(self.fp32_partitioned_groups_flat, **self.optimizer.defaults)
 
         self.stop_timers([INIT_OPTIMIZER_TIMER])
         self.log_timers(timer_names)
@@ -1026,7 +1036,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             f"{tag}: elems in_bucket {self.elements_in_ipg_bucket} param {param_elems} max_percent {percent_of_bucket_size}",
             force=False)
 
-    ###############Idependent Partition Gradient ########################
+    ###############Independent Partition Gradient ########################
     def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):
         #print_rank_0(f"Inside reduce ipg buckets. {debug_param2name_id_shape(param)}, ipg elements {self.elements_in_ipg_bucket}, reduce bucket size {self.reduce_bucket_size}", force=True)
 
@@ -1112,7 +1122,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         grad_partitions_for_rank = reduce_scatter_coalesced(full_grads_for_rank, self.dp_process_group)
 
-        if self.postscale_gradients and self.gradient_predivide_factor != dist.get_world_size(self.dp_process_group):
+        if self.postscale_gradients and self.gradient_predivide_factor != 1.0 and self.gradient_predivide_factor != dist.get_world_size(
+                self.dp_process_group):
             grad_partitions_for_rank = [g.mul(self.gradient_predivide_factor) for g in grad_partitions_for_rank]
 
         if self.communication_data_type != self.dtype:
@@ -1488,7 +1499,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     grad_norms.append(g.to(get_accelerator().device_name(), non_blocking=True).double().norm(2))
 
             # Sum across all model parallel GPUs.
-            total_norm_cuda = torch.sum(torch.pow(torch.stack(grad_norms), 2))
+            if len(grad_norms) == 0:
+                # FIX https://github.com/microsoft/DeepSpeed/issues/3564
+                total_norm_cuda = torch.tensor(0,
+                                               dtype=gradients[0].dtype).to(get_accelerator().device_name()).double()
+            else:
+                total_norm_cuda = torch.sum(torch.pow(torch.stack(grad_norms), 2))
 
             dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.SUM, group=self.dp_process_group)
 

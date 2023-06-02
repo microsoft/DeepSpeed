@@ -5,15 +5,18 @@
 
 from .base import *
 from .features.meta_tensor import MetaTensorContainer
+from .features.hybrid_engine import HybridEngineContainer
 from deepspeed.model_implementations.transformers.ds_bloom import DeepSpeedBloomInference
 from ..policy import TransformerPolicy
 from ..policy import transformer_param_names
 from ..policy import maybe_copy
 
+from ..policy import maybe_get_lora
+
 supported_models = {None}
 
 
-class DS_BloomContainer(MetaTensorContainer, BaseTransformerContainer):
+class DS_BloomContainer(MetaTensorContainer, HybridEngineContainer, BaseTransformerContainer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -31,6 +34,17 @@ class DS_BloomContainer(MetaTensorContainer, BaseTransformerContainer):
     def attention_qkv_mp(self, mp_replace, reversed_dim=False):
         self.module.attention.attn_qkvw = mp_replace.copy(self.module.attention.attn_qkvw, self.qkvw)
         self.module.attention.attn_qkvb = mp_replace.copy(self.module.attention.attn_qkvb, self.qkvb)
+
+    def set_lora_params(self):
+        """
+        Necessary to implement for `HybridEngineContainer`
+        """
+        self.lora_params = [
+            maybe_get_lora(p) for p in [
+                self.policy.client_module.mlp.dense_h_to_4h, self.policy.client_module.mlp.dense_4h_to_h, self.policy.
+                client_module.self_attention.query_key_value, self.policy.client_module.self_attention.dense
+            ]
+        ]
 
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
@@ -85,10 +99,8 @@ class BLOOMLayerPolicy(TransformerPolicy):
     def get_hidden_heads(self):
         return self.client_module.self_attention.hidden_size, \
                 self.client_module.self_attention.num_heads, \
-                self.client_module.input_layernorm.eps
-
-    def get_q_k_v(self):
-        return None
+                self.client_module.input_layernorm.eps, \
+                DEFAULT_INTERMEDIATE_SIZE
 
     def attention(self, enable_training=False):
         return self.client_module.self_attention.query_key_value.weight, \
@@ -96,7 +108,7 @@ class BLOOMLayerPolicy(TransformerPolicy):
                 self.client_module.self_attention.dense.weight, \
                 self.client_module.self_attention.dense.bias,
 
-    def mlp(self):
+    def mlp(self, enable_training=False):
         return self.client_module.mlp.dense_h_to_4h.weight, \
                self.client_module.mlp.dense_h_to_4h.bias, \
                self.client_module.mlp.dense_4h_to_h.weight, \
@@ -107,6 +119,3 @@ class BLOOMLayerPolicy(TransformerPolicy):
                self.client_module.post_attention_layernorm.bias, \
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
-
-    def get_lora_params(self):
-        return []
