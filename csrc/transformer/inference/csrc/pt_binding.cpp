@@ -1313,7 +1313,7 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
                        .layout(at::kStrided)
                        .device(at::kCUDA)
                        .requires_grad(false);
-    int out_size = q_int8 ? weight.size(0) : weight.size(1);
+    int out_size = (q_int8 || transposed_mode) ? weight.size(0) : weight.size(1);
     int bsz = input.size(0) * input.size(1);
 
     T* workspace = (T*)InferenceContext::Instance().GetWorkSpace();
