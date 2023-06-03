@@ -398,10 +398,10 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
 
     def initialize_ds_offload(self, module, timers, ds_config, overlap_comm, prefetch_bucket_size, max_reuse_distance,
                               max_live_parameters, param_persistence_threshold, model_persistence_threshold,
-                              offload_optimizer_config, mpu):
+                              offload_param_config, mpu):
         return MiCS_Offload(module, timers, ds_config, overlap_comm, prefetch_bucket_size, max_reuse_distance,
                             max_live_parameters, param_persistence_threshold, model_persistence_threshold,
-                            offload_optimizer_config, mpu)
+                            offload_param_config, mpu)
 
     def partition_grads(self, params_to_release: List[Parameter], grad_partitions: List[Tensor]) -> None:
         grad_buffers = super().partition_grads(params_to_release, grad_partitions)
