@@ -31,7 +31,7 @@ from deepspeed.utils.debug import (debug_param2name_id_shape, debug_param2name_i
                                    debug_param2name_id, debug_param2name_id_shape_status)
 from deepspeed.accelerator import get_accelerator
 from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwapper, PartitionedParamStatus
-from deepspeed.compression.inference.utils import _quantize_param, WEIGHT_QUANTIZATION_LAYERS, wrap_quantized_functional, wrap_load_from_state_dict
+from deepspeed.inference.quantization.utils import _quantize_param, WEIGHT_QUANTIZATION_LAYERS, wrap_quantized_functional, wrap_load_from_state_dict
 
 param_count = 0
 partitioned_param_data_shape = [0]
@@ -295,7 +295,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         self.wrapped_cls = set()
 
         self.quantized_initialization = None
-        if ds_config is not None and ds_config.weight_quantization_config.quantized_initialization:
+        if ds_config is not None and ds_config.weight_quantization_config and ds_config.weight_quantization_config.quantized_initialization:
             self.quantized_initialization = ds_config.weight_quantization_config.quantized_initialization
 
     def __enter__(self):

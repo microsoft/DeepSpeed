@@ -7,9 +7,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 from deepspeed.accelerator import get_accelerator
-from deepspeed.compression.inference.quantization import _init_group_wise_weight_quantization
-from deepspeed.compression.inference.utils import Quantizer, DeQuantizer
-from deepspeed.compression.inference.layers import QuantizedLinear
+from deepspeed.inference.quantization.quantization import _init_group_wise_weight_quantization
+from deepspeed.inference.quantization.utils import Quantizer, DeQuantizer
+from deepspeed.inference.quantization.layers import QuantizedLinear
 from transformers.models.opt.modeling_opt import OPTDecoderLayer
 from transformers import AutoConfig, OPTConfig, AutoModel
 import pytest
@@ -258,35 +258,37 @@ def test_model_quantization():
 
         ds_config = {
             'weight_quantization': {
-                'fc': {
-                    'num_bits': bits,
-                    'group_size': 64,
-                    'group_dim': 0,
-                    'symmetric': False
-                },
-                'self_attn.q_proj': {
-                    'num_bits': bits,
-                    'group_size': 64,
-                    'group_dim': 0,
-                    'symmetric': False
-                },
-                'self_attn.k_proj': {
-                    'num_bits': bits,
-                    'group_size': 64,
-                    'group_dim': 0,
-                    'symmetric': False
-                },
-                'self_attn.v_proj': {
-                    'num_bits': bits,
-                    'group_size': 64,
-                    'group_dim': 0,
-                    'symmetric': False
-                },
-                'self_attn.out_proj': {
-                    'num_bits': bits,
-                    'group_size': 64,
-                    'group_dim': 0,
-                    'symmetric': False
+                'post_init_quant': {
+                    'fc': {
+                        'num_bits': bits,
+                        'group_size': 64,
+                        'group_dim': 0,
+                        'symmetric': False
+                    },
+                    'self_attn.q_proj': {
+                        'num_bits': bits,
+                        'group_size': 64,
+                        'group_dim': 0,
+                        'symmetric': False
+                    },
+                    'self_attn.k_proj': {
+                        'num_bits': bits,
+                        'group_size': 64,
+                        'group_dim': 0,
+                        'symmetric': False
+                    },
+                    'self_attn.v_proj': {
+                        'num_bits': bits,
+                        'group_size': 64,
+                        'group_dim': 0,
+                        'symmetric': False
+                    },
+                    'self_attn.out_proj': {
+                        'num_bits': bits,
+                        'group_size': 64,
+                        'group_dim': 0,
+                        'symmetric': False
+                    }
                 }
             }
         }
@@ -321,11 +323,13 @@ def test_quantized_linear():
 
         ds_config = {
             'weight_quantization': {
-                'layer': {
-                    'num_bits': 4,
-                    'group_size': 64,
-                    'group_dim': 0,
-                    'symmetric': False
+                'post_init_quant': {
+                    'layer': {
+                        'num_bits': 4,
+                        'group_size': 64,
+                        'group_dim': 0,
+                        'symmetric': False
+                    }
                 }
             }
         }

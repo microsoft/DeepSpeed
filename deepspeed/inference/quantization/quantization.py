@@ -7,10 +7,9 @@ import torch
 from torch import nn
 from typing import Dict
 import gc
-from deepspeed.compression.inference import layers
+from deepspeed.inference.quantization import layers
 from .layers import QUANTIZATION_LAYER_MAPPINGS
-from .utils import get_AsyncPartitionedParameterSwapper
-from ..helper import recursive_setattr
+from .utils import get_AsyncPartitionedParameterSwapper, recursive_setattr
 from deepspeed.utils.logging import logger
 from collections import deque
 from transformers.utils.generic import ContextManagers
@@ -35,7 +34,7 @@ def _init_group_wise_weight_quantization(model: nn.Module, ds_config: Dict) -> n
     matched_module_count = 0
 
     assert 'weight_quantization' in ds_config, 'Please provide quantization config in ds_config'
-    quantization_config = ds_config['weight_quantization']
+    quantization_config = ds_config['weight_quantization']['post_init_quant']
 
     # Return nvme swapper if exists, else return None.
     # For nvme offloading we must use the same swapper here as model initialized.
