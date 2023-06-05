@@ -186,7 +186,7 @@ class DeepSpeedTransformerInference(nn.Module):
             if debug: print(f"after layernorm: {torch.norm(output)}")
             # if self.config.layer_id == 1:
             #   exit(0)
-            #import pdb; pdb.set_trace()
+            import pdb; pdb.set_trace()
             output = output.to(input_type)
         if get_present:
             output = (output, presents)
