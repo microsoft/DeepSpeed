@@ -10,6 +10,7 @@ from deepspeed.utils import log_dist
 from deepspeed.utils import groups
 from .sharded_moe import MOELayer, TopKGate
 from .experts import Experts
+import types
 import typing
 
 
@@ -18,7 +19,7 @@ class MoE(torch.nn.Module):
 
     Arguments:
         hidden_size (int): the hidden dimension of the model, importantly this is also the input and output dimension.
-        expert (torch.nn.Module): the torch module that defines the expert (e.g., MLP, torch.linear).
+        expert (types.FunctionType): a function returning a torch module that defines the expert (e.g., MLP, torch.linear).
         num_experts (int, optional): default=1, the total number of experts per layer.
         ep_size (int, optional): default=1, number of ranks in the expert parallel world or group.
         k (int, optional): default=1, top-k gating value, only supports k=1 or k=2.
@@ -50,6 +51,10 @@ class MoE(torch.nn.Module):
                  enable_expert_tensor_parallelism: bool = False):
 
         super(MoE, self).__init__()
+
+        assert isinstance(
+            expert, types.FunctionType
+        ), f"`expert` should be a function, instead received a {type(expert)}, this API changed in v0.9.4"
 
         self.use_residual = use_residual
         self.enable_expert_tensor_parallelism = enable_expert_tensor_parallelism
