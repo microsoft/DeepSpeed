@@ -1446,7 +1446,13 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
     std::cout << "weight.sizes() =\n" << weight.sizes() << std::endl;
     // TODO: understand the dimensions of intermediate
     std::cout << "after fc1 CUDA, norm before ln =\n" << torch::from_blob(intermediate, {input.size(0), input.size(1), input.size(2)*4}, input.options()).norm() << std::endl;
-    torch::save(torch::from_blob(intermediate, {input.size(0), input.size(1), input.size(2)*4}, input.options()), "/home/deepspeed/repo/ds_chat/dse-chat/inference/huggingface/text-generation/logs/ds_mlp_fc1_tensor_layer_" + std::to_string(layer_id) + ".pt");
+
+auto data = torch::pickle_save(torch::from_blob(intermediate, {input.size(0), input.size(1), input.size(2)*4}, input.options()));
+std::ofstream out("/home/deepspeed/repo/ds_chat/dse-chat/inference/huggingface/text-generation/logs/ds_mlp_fc1_tensor_layer_" + std::to_string(layer_id) + ".pt", std::ios::binary);
+out.write(data.data(), data.size());
+out.close();
+
+    //torch::save(torch::from_blob(intermediate, {input.size(0), input.size(1), input.size(2)*4}, input.options()), "/home/deepspeed/repo/ds_chat/dse-chat/inference/huggingface/text-generation/logs/ds_mlp_fc1_tensor_layer_" + std::to_string(layer_id) + ".pt");
     }
     if (act_func_type == ActivationFuncType::GELU) {
         launch_bias_gelu(intermediate,

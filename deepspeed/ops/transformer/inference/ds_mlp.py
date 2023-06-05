@@ -179,7 +179,7 @@ class DeepSpeedMLP(nn.Module):
 
         # mlp_base = True  => calls a pytorch baseline mlp
         # mlp_base = False => calls the DS mlp
-        mlp_base = True
+        mlp_base = False
 
         if mlp_base:
             residual = self.mlp_baseline(input, residual, bias)
