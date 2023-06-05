@@ -30,7 +30,7 @@ class DeepSpeedSelfAttention(nn.Module):
         self.k_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, dtype=data_type)
         self.v_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, dtype=data_type)
         self.q_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, dtype=data_type)
-        self.out_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=False, dtype=data_type)
+        self.out_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, dtype=data_type)
 
         if self.config.set_empty_params:
             self.attn_qw = None
@@ -156,9 +156,7 @@ class DeepSpeedSelfAttention(nn.Module):
         self.v_proj.weight.data.copy_(qkvw[2].transpose(0, 1))
         self.v_proj.bias.data.copy_(qkvb[2])
         self.out_proj.weight.data.copy_(self.attn_ow.transpose(0, 1))
-
-        #HF adds bias in attn but we add it in mlp
-        #self.out_proj.bias.data.copy_(self.attn_ob)
+        self.out_proj.bias.data.copy_(self.attn_ob)
 
         self.self_attn_layer_norm.weight.data.copy_(norm_w)
         self.self_attn_layer_norm.bias.data.copy_(norm_b)
