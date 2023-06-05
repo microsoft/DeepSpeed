@@ -81,7 +81,8 @@ class MLPGemmOp(BaseOp):
                 weight_out.scale if hasattr(weight_out, 'scale') else torch.empty(1),  # type: ignore
                 self.config.dtype == torch.int8,
                 self.config.mlp_act_func_type,
-                self.config.transposed_mode)
+                self.config.transposed_mode,
+                self.config.layer_id)
         else:
             output, residual_add = self.mlp_gemm_func(
                 input,

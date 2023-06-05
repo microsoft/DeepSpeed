@@ -99,6 +99,7 @@ class DeepSpeedMLP(nn.Module):
             if debug: print(f'input norm before mlp: norm = {torch.norm(input)}')
 
             # pytorch baseline to do add bias.
+            # TODO (lekurile): If attn removed, remove this bias addtiiona as well
             input = input + bias
             if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}')
 
@@ -145,6 +146,8 @@ class DeepSpeedMLP(nn.Module):
 
             input = self.fc1(input)
 
+            torch.save(input, f'logs/torch_mlp_fc1_tensor_layer_{self.config.layer_id}.pt')
+
             if debug: print(f"inside ds mlp: a4 fc1: {input.norm()}")
 
             output = self.activation_fn(input)
@@ -153,11 +156,15 @@ class DeepSpeedMLP(nn.Module):
 
             output = self.fc2(output)
 
+            torch.save(output, f'logs/torch_mlp_fc2_tensor_layer_{self.config.layer_id}.pt')
+
             if debug: print(f"inside ds mlp: a4 fc2: {output.norm()}")
 
             # pytorch baseline residual add
             residual = output + residual
             if debug: print(f"residual = {residual.norm()}")
+
+            torch.save(residual, f'logs/torch_mlp_out_tensor_layer_{self.config.layer_id}.pt')
 
             return residual
 
@@ -172,7 +179,7 @@ class DeepSpeedMLP(nn.Module):
 
         # mlp_base = True  => calls a pytorch baseline mlp
         # mlp_base = False => calls the DS mlp
-        mlp_base = False
+        mlp_base = True
 
         if mlp_base:
             residual = self.mlp_baseline(input, residual, bias)
@@ -196,6 +203,13 @@ class DeepSpeedMLP(nn.Module):
                 print(f"output Norm Python: {output.norm()}")
                 print(f"residual_add Norm Python: {residual_add.norm()}")
 
+                output_w_bias = output + self.output_b #TODO: use this for fc2 comparison
+                torch.save(output_w_bias, f'logs/ds_mlp_fc2_tensor_layer_{self.config.layer_id}.pt')
+
+                #torch.save(output, f'logs/ds_mlp_fc2_tensor_layer_{self.config.layer_id}.pt')
+                #exit(0)
+
+
             residual = self.residual_add_func(hidden_state=output,
                                                 residual=residual,
                                                 add_bias=bias is not None,
@@ -203,6 +217,9 @@ class DeepSpeedMLP(nn.Module):
                                                 attention_bias=bias if bias is not None else self.output_b,
                                                 final_bias=self.output_b,
                                                 residual_add=residual_add)
+
+            torch.save(residual, f'logs/ds_mlp_out_tensor_layer_{self.config.layer_id}.pt')
+
             if self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
                 dist.all_reduce(residual, group=self.mp_group)
 

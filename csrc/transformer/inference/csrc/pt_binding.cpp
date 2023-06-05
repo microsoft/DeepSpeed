@@ -1388,7 +1388,8 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                               at::Tensor& q_scale1,
                               bool q_int8,
                               ActivationFuncType act_func_type,
-                              bool transposed_mode)
+                              bool transposed_mode,
+                              int layer_id)
 {
     int bsz = input.size(0) * input.size(1);
     T* inp_norm = (T*)InferenceContext::Instance().GetWorkSpace() + torch::numel(input) +
@@ -1445,6 +1446,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
     std::cout << "weight.sizes() =\n" << weight.sizes() << std::endl;
     // TODO: understand the dimensions of intermediate
     std::cout << "after fc1 CUDA, norm before ln =\n" << torch::from_blob(intermediate, {input.size(0), input.size(1), input.size(2)*4}, input.options()).norm() << std::endl;
+    torch::save(torch::from_blob(intermediate, {input.size(0), input.size(1), input.size(2)*4}, input.options()), "/home/deepspeed/repo/ds_chat/dse-chat/inference/huggingface/text-generation/logs/ds_mlp_fc1_tensor_layer_" + std::to_string(layer_id) + ".pt");
     }
     if (act_func_type == ActivationFuncType::GELU) {
         launch_bias_gelu(intermediate,
@@ -1512,7 +1514,8 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                     at::Tensor& q_scale1,
                                     bool q_int8,
                                     int activation_type,
-                                    bool transposed_mode)
+                                    bool transposed_mode,
+                                    int layer_id)
 {
     auto options = at::TensorOptions()
                        .dtype(input.options().dtype())
@@ -1544,7 +1547,8 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                          q_scale1,
                                          q_int8,
                                          act_func_type,
-                                         transposed_mode);
+                                         transposed_mode,
+                                         layer_id);
 
 
     std::cout << "output Norm:\n" << output.norm() << std::endl;

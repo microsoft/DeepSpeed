@@ -161,29 +161,38 @@ class DeepSpeedTransformerInference(nn.Module):
         if debug: print(f'ds b4 attn: norm = {torch.norm(input)}, tensor = {input}')
 
         with torch.no_grad():
-            attention_output, key, value, context_outputtn_ctx, inp_norm = \
-                                     self.attention(input,
-                                              input_mask,
-                                              head_mask,
-                                              layer_past,
-                                              get_present,
-                                              encoder_hidden_states,
-                                              encoder_attention_mask,
-                                              output_attentions,
-                                              self.norm_w,
-                                              self.norm_b,
-                                              alibi)
-            if debug: print(f'ds a4 attn + ln: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
+            mlp_base = True
+            tensor_affix = "torch" if mlp_base else "ds"
+            torch.save(input, f'logs/{tensor_affix}_input_tensor_layer_{self.config.layer_id}.pt')
 
-            presents = (key, value)
-            self.layer_past = presents if layer_past is None else None
+            skip_attention = False
 
-            # mlp_base = True  => calls a pytorch baseline mlp
-            # mlp_base = False => calls the DS mlp
-            mlp_base = False
+            if skip_attention:
+                attention_input = torch.clone(input)
+                inp_norm = torch.clone(input)
+                attention_bias = input[0][0]
+                output = self.mlp(attention_input, input, inp_norm, attention_bias, self.attention.attn_ow)
+            else:
+                attention_output, key, value, context_outputtn_ctx, inp_norm = \
+                                         self.attention(input,
+                                                  input_mask,
+                                                  head_mask,
+                                                  layer_past,
+                                                  get_present,
+                                                  encoder_hidden_states,
+                                                  encoder_attention_mask,
+                                                  output_attentions,
+                                                  self.norm_w,
+                                                  self.norm_b,
+                                                  alibi)
+                #import pdb; pdb.set_trace()
+                if debug: print(f'ds a4 attn + ln: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
 
-            # the attention_output in DS now matches the hidden_states from HF side.
-            output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob, self.attention.attn_ow)
+                presents = (key, value)
+                self.layer_past = presents if layer_past is None else None
+
+                # the attention_output in DS now matches the hidden_states from HF side.
+                output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob, self.attention.attn_ow)
 
             print(f"layer_id ({self.config.layer_id}), after mlp: {torch.norm(output)}")
             #if debug: print(f'layer_id = {self.config.layer_id}')
@@ -192,10 +201,11 @@ class DeepSpeedTransformerInference(nn.Module):
                 output = inference_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
             if debug: print(f"after layernorm: {torch.norm(output)}")
             #exit(0)
-            if self.config.layer_id == 5: exit(0)
+            if self.config.layer_id == 23: exit(0)
             output = output.to(input_type)
         if get_present:
-            output = (output, presents)
+            #output = (output, presents)
+            output = output
 
         if self.config.return_single_tuple:
             return (output, )
