@@ -5,6 +5,8 @@
 import os
 
 try:
+    # Importing logger currently requires that torch is installed, hence the try...except
+    # TODO: Remove logger dependency on torch.
     from deepspeed.utils import logger as accel_logger
 except ImportError as e:
     accel_logger = None
