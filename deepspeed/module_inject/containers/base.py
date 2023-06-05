@@ -249,21 +249,21 @@ class BaseTransformerContainer(ABC):
                                                    allocate_tensor=reversed_dim)
 
     def copy_data_to_new_module(self):
+        params = {'attn_nw': self.attn_nw, 'attn_nb': self.attn_nb}
+        for key in params:
+            if params[key] is None:
+                setattr(self.module.mlp, key, None)
+            else:
+                setattr(self.module.mlp, key,
+                        torch.nn.parameter.Parameter(params[key].to(get_accelerator().current_device_name())))
 
-        def maybe_copy(module, param_list):
-            for name, data in param_list:
-                if data is None:
-                    setattr(module, name, data)
-                else:
-                    getattr(module, name).data.copy_(data.to(get_accelerator().current_device_name()))
-
-        module_list = [self.module, self.module.mlp]
-        module_param_list = [
-            [('norm_w', self.input_nw), ('norm_b', self.input_nb)], \
-            [('attn_nw', self.attn_nw), ('attn_nb', self.attn_nw)],
-        ]
-        for module, param_list in zip(module_list, module_param_list):
-            maybe_copy(module, param_list)
+        params = {'norm_w': self.input_nw, 'norm_b': self.input_nb}
+        for key in params:
+            if params[key] is None:
+                setattr(self.module, key, None)
+            else:
+                setattr(self.module, key,
+                        torch.nn.parameter.Parameter(params[key].to(get_accelerator().current_device_name())))
 
     def transpose(self):
         self.transpose_attention()
