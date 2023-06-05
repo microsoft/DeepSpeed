@@ -9,6 +9,7 @@ from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInfe
 
 from ..policy import (
     TransformerPolicy,
+    maybe_copy,
     maybe_get_lora,
 )
 
@@ -47,6 +48,27 @@ class DS_FALCONContainer(BaseTransformerContainer, HybridEngineContainer):
                 attention.query_key_value, attention.dense
             ]
         ]
+
+    def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
+        param_names = (
+            'self_attention.query_key_value.weight', \
+            'self_attention.dense.weight', \
+            'mlp.dense_h_to_4h.weight', \
+            'mlp.dense_4h_to_h.weight', \
+            'ln_mlp.weight', \
+            'ln_mlp.bias', \
+            'ln_attn.weight', \
+            'ln_attn.bias'
+        )
+        for i in range(0, 2):
+            maybe_copy(module.attention, sd, weight_quantizer, mp_replace, transformer_param_names[i],
+                       prefix + param_names[i])
+        for i in range(2, 6):
+            maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[i],
+                       prefix + param_names[i])
+        for i in range(6, 8):
+            maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[i], prefix + param_names[i])
+
 
     def attention_qkv_mp(self, mp_replace, reversed_dim=False):
         self.module.attention.attn_qkvw = mp_replace.copy(self.module.attention.attn_qkvw,
