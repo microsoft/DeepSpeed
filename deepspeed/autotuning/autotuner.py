@@ -637,7 +637,7 @@ class Autotuner:
         logger.info(f"End tuning for space: {tuning_space_name}")
         return max_micro_batch_size, best_mbs, best_metric_val
 
-    def get_plauteu_mbs(self, tuning_space_name):
+    def get_plateau_mbs(self, tuning_space_name):
         if tuning_space_name not in self.records:
             return 0
         space_records = self.records[tuning_space_name]
@@ -661,7 +661,7 @@ class Autotuner:
             return self.model_info["num_params"]
 
     def model_info_profile_run(self):
-        """Does a model information profling experiment that collects the number of model parameters and activation memory.\
+        """Does a model information profiling experiment that collects the number of model parameters and activation memory.\
             The experiment produces a "profile_model_info" folder under self.results_dir.
         Returns:
             [dict]: a model information dictionary, e.g., {"num_params": 335144976, "trainable_num_params": 335144976, "activation_mem_per_gpu": 324358144, "rank": 0}

@@ -232,6 +232,7 @@ class DeepSpeedEngine(Module):
 
         self._is_gradient_accumulation_boundary = None
         self.scale_wrt_gas = None
+        self.losses = []
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
@@ -281,7 +282,7 @@ class DeepSpeedEngine(Module):
         log_dist(f"DeepSpeed Flops Profiler Enabled: {self.flops_profiler_enabled()}", ranks=[0])
 
         if self.flops_profiler_enabled():
-            self.flops_profiler = FlopsProfiler(self.module, self)
+            self.flops_profiler = FlopsProfiler(self.module, self, self.flops_profiler_recompute_fwd_factor())
 
         if training_data:
             self.training_dataloader = self.deepspeed_io(training_data)
@@ -568,6 +569,9 @@ class DeepSpeedEngine(Module):
 
     def flops_profiler_enabled(self):
         return self._config.flops_profiler_config.enabled or self.autotuning_enabled()
+
+    def flops_profiler_recompute_fwd_factor(self):
+        return self._config.flops_profiler_config.recompute_fwd_factor
 
     def flops_profiler_profile_step(self):
         step = self._config.flops_profiler_config.profile_step
@@ -1026,20 +1030,22 @@ class DeepSpeedEngine(Module):
     def _configure_distributed_model(self, model):
         self._set_client_model(model)
 
+        is_zero3_model = self.zero_optimization_partition_weights() and any(
+            [hasattr(param, "ds_id") for param in self.module.parameters()])
+
         if self.fp16_enabled():
-            if self.zero_optimization_partition_weights() and any(
-                [hasattr(param, "ds_id") for param in self.module.parameters()]):
+            if is_zero3_model:
                 self.__check_params(self.module, torch.half)
             self.module.half()
         elif self.bfloat16_enabled():
-            if self.zero_optimization_partition_weights() and any(
-                    hasattr(param, 'ds_id') for param in self.module.parameters()):
+            if is_zero3_model:
                 self.__check_params(self.module, torch.bfloat16)
             self.module.bfloat16()
         else:
             self.__check_params(self.module, torch.float)
 
-        if not self.dont_change_device:
+        # zero.Init() handles device placement of model
+        if not (self.dont_change_device or is_zero3_model):
             self.module.to(self.device)
 
         # MoE related initialization
@@ -1075,7 +1081,7 @@ class DeepSpeedEngine(Module):
         self.expert_parallel_group = groups._get_expert_parallel_group_dict()
         self.expert_data_parallel_group = groups._get_expert_data_parallel_group_dict()
 
-        if not self.amp_enabled():
+        if not (self.amp_enabled() or is_zero3_model):
             self._broadcast_model()
 
     # check if parameters are duplicated in optimizer param_groups
@@ -1834,10 +1840,15 @@ class DeepSpeedEngine(Module):
                 if self.global_rank == 0:
                     self.summary_events = [(
                         f"Train/Samples/train_loss",
-                        loss.mean().item() * self.gradient_accumulation_steps(),
+                        sum(self.losses) / self.gradient_accumulation_steps(),
                         self.global_samples,
                     )]
                     self.monitor.write_events(self.summary_events)
+
+        if self.is_gradient_accumulation_boundary():
+            self.losses = []
+        else:
+            self.losses.append(loss.mean().item())
 
         self._start_timers(self.engine_timers.backward_timers)
 
@@ -1908,7 +1919,7 @@ class DeepSpeedEngine(Module):
         """
         Manually overrides the DeepSpeed engine's gradient accumulation boundary state, this is an optional
         feature and should be used with care. The state should be set before to the intended
-        value before each forward/backward. The final fordward/backward should have the
+        value before each forward/backward. The final forward/backward should have the
         boundary state set to True. This style allows client code to only call engine.step() once after all
         the gradient accumulation passes are complete. See example below:
         .. code-block:: python
@@ -3046,11 +3057,11 @@ class DeepSpeedEngine(Module):
     def _create_zero_checkpoint_files(self, save_dir, tag):
         success = True
         # zero checkpoint files are created sequentially
-        for rank in range(self.world_size):
+        for rank in range(dist.get_world_size(self.optimizer.dp_process_group)):
             if rank == self.global_rank:
                 success = self._create_checkpoint_file(save_dir, tag, True)
 
-            dist.barrier()
+            dist.barrier(group=self.optimizer.dp_process_group)
 
         return success
 
