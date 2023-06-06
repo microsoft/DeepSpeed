@@ -176,8 +176,9 @@ class DeepSpeedTransformerInference(nn.Module):
             presents = (key, value)
             # Bug? Setting layer past to presents every pass fixes key states issue
             self.layer_past = presents #if layer_past is None else None
-
+            #zero_bias = torch.empty_like(self.attention.attn_ob)
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob, self.attention.attn_ow)
+            #output = self.mlp(attention_output, input, inp_norm, zero_bias, self.attention.attn_ow)
 
             if debug: print(f"after mlp: {torch.norm(output)}")
             #exit(0)

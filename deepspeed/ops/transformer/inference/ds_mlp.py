@@ -95,9 +95,9 @@ class DeepSpeedMLP(nn.Module):
 
     def mlp_baseline(self, input, residual, bias):
             debug = False
-
+            zero_bias = torch.zeros(bias.size(), dtype=bias.dtype, device=bias.device)
             # pytorch baseline to do add bias.
-            #input = input + bias
+            input = input + zero_bias # bias
             if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}, tensor = {input}')
 
             # pytorch baseline to do add residual (residual=input)
@@ -173,7 +173,7 @@ class DeepSpeedMLP(nn.Module):
         
         # mlp_base = True  => calls a pytorch baseline mlp
         # mlp_base = False => calls the DS mlp
-        mlp_base = True
+        mlp_base = False
         
         if mlp_base:
             residual = self.mlp_baseline(input, residual, bias)
@@ -184,21 +184,24 @@ class DeepSpeedMLP(nn.Module):
                                                 bias=self.inter_b,
                                                 weight_out=self.output_w)
             else:
-                # mlp_gemm_func ~= gemm(relu(layernorm(input) + bias)) 
+                # mlp_gemm_func ~= gemm(relu(layernorm(input) + bias))
+                zero_bias = torch.zeros(bias.size(), dtype=bias.dtype, device=bias.device)
                 output, residual_add = self.mlp_gemm_func(input=input,
                                                             residual=residual,
                                                             weight_interm=self.inter_w,
                                                             weight_out=self.output_w,
-                                                            input_bias=bias,
+                                                            #input_bias=bias,
+                                                            input_bias=zero_bias,
                                                             bias=self.inter_b,
                                                             gamma=self.attn_nw,
                                                             beta=self.attn_nb)
 
             residual = self.residual_add_func(hidden_state=output,
                                                 residual=residual,
-                                                add_bias=bias is not None,
+                                                #add_bias=bias is not None,
+                                                add_bias=False, #zero_bias,
                                                 attention_output=input,
-                                                attention_bias=bias if bias is not None else self.output_b,
+                                                attention_bias=zero_bias,# if bias is not None else self.output_b,
                                                 final_bias=self.output_b,
                                                 residual_add=residual_add)
             if self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
