@@ -16,9 +16,9 @@ if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
 inference_module = None
 
 
-def ref_implementation(vals, gamma, espilon):
+def ref_implementation(vals, gamma):
     variance = vals.to(torch.float32).pow(2).mean(-1, keepdim=True)
-    vals = vals * torch.rsqrt(variance + espilon)
+    vals = vals * torch.rsqrt(variance)
 
     if gamma.dtype in [torch.float16, torch.bfloat16]:
         vals = vals.to(gamma.dtype)
@@ -26,11 +26,11 @@ def ref_implementation(vals, gamma, espilon):
     return gamma * vals
 
 
-def ds_implementation(vals, gamma, epsilon):
+def ds_implementation(vals, gamma):
     global inference_module
     if inference_module is None:
         inference_module = InferenceBuilder().load()
-    return inference_module.rms_norm(vals, gamma, epsilon)
+    return inference_module.rms_norm(vals, gamma)
 
 
 @pytest.mark.inference_ops
@@ -42,27 +42,26 @@ def test_rms_norm(batch, seq_len, channels, dtype):
     device = get_accelerator().current_device_name()
     vals = torch.randn((batch, seq_len, channels), dtype=dtype, device=device)
     gamma = torch.randn((channels), dtype=dtype, device=device)
-    epsilon = 1e-5
 
-    ref_output = ref_implementation(vals, gamma, epsilon)
-    new_output = ds_implementation(vals, gamma, epsilon)
+    ref_output = ref_implementation(vals, gamma)
+    new_output = ds_implementation(vals, gamma)
 
     assert allclose(new_output, ref_output)
 
 
-def pre_ds_implementation(vals, residual, gamma, epsilon):
+def pre_ds_implementation(vals, residual, gamma):
     global inference_module
     if inference_module is None:
         inference_module = InferenceBuilder().load()
-    return inference_module.pre_rms_norm(vals, residual, gamma, epsilon)
+    return inference_module.pre_rms_norm(vals, residual, gamma)
 
 
-def pre_ref_implementation(vals, residual, gamma, epsilon):
+def pre_ref_implementation(vals, residual, gamma):
     residual = vals.to(torch.float32) + residual.to(torch.float32)
     vals = residual
 
     variance = vals.to(torch.float32).pow(2).mean(-1, keepdim=True)
-    vals = vals * torch.rsqrt(variance + epsilon)
+    vals = vals * torch.rsqrt(variance)
 
     if gamma.dtype in [torch.float16, torch.bfloat16]:
         vals = vals.to(gamma.dtype)
@@ -80,10 +79,9 @@ def test_pre_norm(batch, seq_len, channels, dtype):
     vals = torch.randn((batch, seq_len, channels), dtype=dtype, device=device)
     residual = torch.randn((batch, seq_len, channels), dtype=dtype, device=device)
     gamma = torch.randn((channels), dtype=dtype, device=device)
-    epsilon = 1e-5
 
-    ref_output = pre_ref_implementation(vals, residual, gamma, epsilon)
-    new_output = pre_ds_implementation(vals, residual, gamma, epsilon)
+    ref_output = pre_ref_implementation(vals, residual, gamma)
+    new_output = pre_ds_implementation(vals, residual, gamma)
 
     assert allclose(new_output[0], ref_output[0])
     #assert allclose(new_output[1], ref_output[1])
