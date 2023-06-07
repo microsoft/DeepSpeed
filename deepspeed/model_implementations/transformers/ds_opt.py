@@ -101,7 +101,7 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
         # set this to True to use pytorch based attention and mlp
         # (base=False => 2 seconds vs. base=True => 12 seconds on A6000)
         # base = True ==> matches the output of HF model output but base=False does not
-        base = False
+        base = True
 
         with torch.no_grad():
             attention_output, key, value, context_outputtn_ctx, inp_norm = \
