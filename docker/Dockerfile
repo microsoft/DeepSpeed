@@ -1,4 +1,4 @@
-FROM nvidia/cuda:10.0-devel-ubuntu18.04
+FROM nvidia/cuda:11.7.1-devel-ubuntu20.04
 
 ##############################################################################
 # Temporary Installation Directory
@@ -157,7 +157,7 @@ RUN cat /etc/ssh/sshd_config > ${STAGE_DIR}/sshd_config && \
 ##############################################################################
 # PyTorch
 ##############################################################################
-ENV PYTORCH_VERSION=1.2.0
+ENV PYTORCH_VERSION=1.12.0
 ENV TORCHVISION_VERSION=0.4.0
 ENV TENSORBOARDX_VERSION=1.8
 RUN pip install torch==${PYTORCH_VERSION}
