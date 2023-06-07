@@ -11,3 +11,4 @@ from .softmax import SoftmaxOp
 from .mlp_gemm import MLPGemmOp
 from .gelu_gemm import GELUGemmOp
 from .residual_add import ResidualAddOp
+from .mlp_funcs import MLPFunctions

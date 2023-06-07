@@ -1412,6 +1412,12 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                                  bsz,
                                  input.size(2),
                                  InferenceContext::Instance().GetCurrentStream());
+
+        auto data = torch::pickle_save(torch::from_blob(inp_norm, input.sizes(), input.options()));
+        std::ofstream out("/home/deepspeed/repo/ds_chat/dse-chat/inference/huggingface/text-generation/logs/ds_mlp_ln_tensor_layer_" + std::to_string(layer_id) + ".pt", std::ios::binary);
+        out.write(data.data(), data.size());
+        out.close();
+        
     } else {
         std::cout << "using ds_layer_norm_internal\n" << std::endl;
         ds_layer_norm_internal(inp_norm, input, gamma, beta, epsilon);
@@ -1447,10 +1453,10 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
     // TODO: understand the dimensions of intermediate
     std::cout << "after fc1 CUDA, norm before ln =\n" << torch::from_blob(intermediate, {input.size(0), input.size(1), input.size(2)*4}, input.options()).norm() << std::endl;
 
-auto data = torch::pickle_save(torch::from_blob(intermediate, {input.size(0), input.size(1), input.size(2)*4}, input.options()));
-std::ofstream out("/home/deepspeed/repo/ds_chat/dse-chat/inference/huggingface/text-generation/logs/ds_mlp_fc1_tensor_layer_" + std::to_string(layer_id) + ".pt", std::ios::binary);
-out.write(data.data(), data.size());
-out.close();
+    auto data = torch::pickle_save(torch::from_blob(intermediate, {input.size(0), input.size(1), input.size(2)*4}, input.options()));
+    std::ofstream out("/home/deepspeed/repo/ds_chat/dse-chat/inference/huggingface/text-generation/logs/ds_mlp_fc1_tensor_layer_" + std::to_string(layer_id) + ".pt", std::ios::binary);
+    out.write(data.data(), data.size());
+    out.close();
 
     //torch::save(torch::from_blob(intermediate, {input.size(0), input.size(1), input.size(2)*4}, input.options()), "/home/deepspeed/repo/ds_chat/dse-chat/inference/huggingface/text-generation/logs/ds_mlp_fc1_tensor_layer_" + std::to_string(layer_id) + ".pt");
     }
@@ -1933,6 +1939,146 @@ void ds_release_workspace() { InferenceContext::Instance().release_workspace(); 
 
 bool ds_retake_workspace() { return InferenceContext::Instance().retake_workspace(); }
 
+
+//================================================================================================================
+//                          START DS MLP FUNCTIONS
+//================================================================================================================
+
+//----------------------------------------------------------------------------------------------------------------
+// (DONE, NEEDS TESTING)            Fused Residual Layer Norm
+//----------------------------------------------------------------------------------------------------------------
+
+template <typename T>
+at::Tensor mlp_layer_norm(//at::Tensor& output,
+                          at::Tensor& input,
+                          at::Tensor& residual,
+                          at::Tensor& input_bias,
+                          at::Tensor& gamma,
+                          at::Tensor& beta,
+                          const float epsilon,
+                          bool mlp_after_attn,
+                          int layer_id)
+{
+    int bsz = input.size(0) * input.size(1);
+    T* inp_norm = (T*)InferenceContext::Instance().GetWorkSpace() + torch::numel(input);
+    //T* inp_norm = (T*)InferenceContext::Instance().GetWorkSpace() + torch::numel(input) +
+    //              torch::numel(output);
+    if (mlp_after_attn) {
+        // OPT models come here
+        launch_fused_residual_ln((T*)inp_norm,
+                                 (const T*)input.data_ptr(),
+                                 (const T*)residual.data_ptr(),
+                                 (const T*)input_bias.data_ptr(),
+                                 (const T*)gamma.data_ptr(),
+                                 (const T*)beta.data_ptr(),
+                                 epsilon,
+                                 bsz,
+                                 input.size(2),
+                                 InferenceContext::Instance().GetCurrentStream());
+    } else {
+        ds_layer_norm_internal(inp_norm, input, gamma, beta, epsilon);
+    }
+
+    return torch::from_blob(inp_norm, input.sizes(), input.options());
+}
+
+//
+//----------------------------------------------------------------------------------------------------------------
+// (DONE, NEEDS TESTING)            Cublas GEMM FC
+//----------------------------------------------------------------------------------------------------------------
+
+// TODO (lekurile): can ds_vector_matmul be used here?
+
+template <typename T>
+at::Tensor mlp_gemm_fc(at::Tensor& inp_norm,
+                       at::Tensor& input, // TODO (lekurile): change this to size param?
+                       at::Tensor& weight,
+                       at::Tensor& q_scale,
+                       bool q_int8,
+                       bool transposed_mode,
+                       int layer_id)
+{
+    auto options = at::TensorOptions()
+                       .dtype(input.options().dtype())
+                       .layout(at::kStrided)
+                       .device(at::kCUDA)
+                       .requires_grad(false);
+
+    int out_size = (q_int8 || transposed_mode) ? weight.size(0) : weight.size(1);
+    int bsz = input.size(0) * input.size(1);
+    auto output =
+        at::from_blob((T*)InferenceContext::Instance().GetWorkSpace(),
+                      {input.size(0), input.size(1), out_size},
+                      options);
+
+    if (q_int8) {
+        quantized_gemm<T>(
+            output.data_ptr(), (T*)inp_norm.data_ptr(), weight, q_scale, q_scale.size(0), bsz, input.size(2));
+    } else {
+        float alpha = (T)1.0;
+        float gemm_beta = (T)0.0;
+        cublasSetStream(InferenceContext::Instance().GetCublasHandle(),
+                        InferenceContext::Instance().GetCurrentStream());
+        cublas_gemm_ex(InferenceContext::Instance().GetCublasHandle(),
+                       (transposed_mode ? CUBLAS_OP_T : CUBLAS_OP_N),
+                       CUBLAS_OP_N,
+                       weight.size(transposed_mode ? 0 : 1),
+                       bsz,
+                       input.size(2),
+                       //weight1.size(transposed_mode ? 1 : 0), // TODO (lekurile): which sizing to use?
+                       &alpha,
+                       &gemm_beta,
+                       (T*)weight.data_ptr(),
+                       (T*)inp_norm.data_ptr(),
+                       (T*)output.data_ptr(),
+#ifdef __HIP_PLATFORM_HCC__
+                       rocblas_gemm_algo_standard);
+#else
+                       CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+#endif
+    }
+    return output;
+}
+
+
+//----------------------------------------------------------------------------------------------------------------
+// (DONE, TESTING)            Activation (ReLU or GELU)
+//----------------------------------------------------------------------------------------------------------------
+
+template <typename T>
+at::Tensor mlp_activation(at::Tensor& input,
+                          at::Tensor& input_mlp,
+                          at::Tensor& weight,
+                          at::Tensor& bias,
+                          bool q_int8,
+                          int activation_type,
+                          bool transposed_mode,
+                          int layer_id)
+{
+    auto act_func_type = static_cast<ActivationFuncType>(activation_type);
+    int bsz = input_mlp.size(0) * input_mlp.size(1);
+
+    if (act_func_type == ActivationFuncType::GELU) {
+        launch_bias_gelu((T*)input.data_ptr(),
+                         (T*)bias.data_ptr(),
+                         (transposed_mode || q_int8) ? weight.size(0) : weight.size(1),
+                         bsz,
+                         InferenceContext::Instance().GetCurrentStream());
+    } else if (act_func_type == ActivationFuncType::ReLU) {
+        launch_bias_relu((T*)input.data_ptr(),
+                         (T*)bias.data_ptr(),
+                         (transposed_mode || q_int8) ? weight.size(0) : weight.size(1),
+                         bsz,
+                         InferenceContext::Instance().GetCurrentStream());
+    }
+
+    return input;
+}
+
+//================================================================================================================
+//                          END DS MLP FUNCTIONS
+//================================================================================================================
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("softmax_context_int8",
@@ -2000,7 +2146,16 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           "DeepSpeed residual add with " #_name " (CUDA)");                                       \
     m.def("allocate_workspace_" #_name,                                                           \
           &allocate_workspace<_dtype>,                                                            \
-          "DeepSpeed memory allocation for GPT inference with " #_name " (CUDA)")
+          "DeepSpeed memory allocation for GPT inference with " #_name " (CUDA)");                \
+    m.def("mlp_layer_norm_" #_name,                                                               \
+          &mlp_layer_norm<_dtype>,                                                                \
+          "DeepSpeed mlp layer norm with " #_name " (CUDA)");                                     \
+    m.def("mlp_gemm_fc_" #_name,                                                                  \
+          &mlp_gemm_fc<_dtype>,                                                                   \
+          "DeepSpeed mlp fc with " #_name " (CUDA)");                                             \
+    m.def("mlp_activation_" #_name,                                                               \
+          &mlp_activation<_dtype>,                                                                \
+          "DeepSpeed mlp activation with " #_name " (CUDA)");
 
     DEF_OPS(fp32, float);
     DEF_OPS(fp16, __half);
