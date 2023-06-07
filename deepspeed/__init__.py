@@ -12,6 +12,12 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from packaging import version as pkg_version
 
+try:
+    import triton  # noqa: F401
+    HAS_TRITON = True
+except ImportError:
+    HAS_TRITON = False
+
 from . import ops
 from . import module_inject
 
@@ -37,7 +43,6 @@ from .runtime import DeepSpeedOptimizer, ZeROOptimizer
 from .pipe import PipelineModule
 
 from .git_version_info import version, git_hash, git_branch
-
 
 def _parse_version(version_str):
     '''Parse a version string and extract the major, minor, and patch versions.'''

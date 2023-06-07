@@ -21,6 +21,7 @@ from deepspeed.model_implementations import DeepSpeedTransformerInference
 from torch import nn
 from deepspeed.accelerator import get_accelerator
 
+
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
     pytest.skip("skip inference tests on rocm for now", allow_module_level=True)
@@ -95,13 +96,18 @@ def enable_cuda_graph(request):
     return request.param
 
 
+@pytest.fixture(params=[True, False], ids=["Triton", "noTriton"])
+def enable_triton(request):
+    return request.param
+
+
 """
 This fixture will validate the configuration
 """
 
 
 @pytest.fixture()
-def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
+def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph, enable_triton):
     model, task = model_w_task
     msg = ""
     if pkg_version.parse(torch.__version__) <= pkg_version.parse("1.2"):
@@ -125,6 +131,12 @@ def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
         msg = f"Bloom models only support half precision, cannot use dtype {dtype}"
     elif ("bert" not in model.lower()) and enable_cuda_graph:
         msg = "Non bert/roberta models do no support CUDA Graph"
+    elif enable_triton and not (dtype in [torch.half]):
+        msg = "Triton is for fp16"
+    elif enable_triton and not deepspeed.HAS_TRITON:
+        msg = "triton needs to be installed for the test"
+    elif ("bert" not in model.lower()) and enable_triton:
+        msg = "Triton kernels do not support Non bert/roberta models yet"
     return msg
 
 
@@ -254,10 +266,12 @@ class TestModelTask(DistributedTest):
         model_w_task,
         dtype,
         enable_cuda_graph,
+        enable_triton,
         query,
         inf_kwargs,
         assert_fn,
         invalid_model_task_config,
+        perf_meas=True
     ):
         if invalid_model_task_config:
             pytest.skip(invalid_model_task_config)
@@ -284,13 +298,17 @@ class TestModelTask(DistributedTest):
         get_accelerator().synchronize()
         bs_time = time.time() - start
 
-        pipe.model = deepspeed.init_inference(
-            pipe.model,
-            mp_size=1,
-            dtype=dtype,
-            replace_with_kernel_inject=True,
-            enable_cuda_graph=enable_cuda_graph,
-        )
+        args = {
+            'mp_size':1,
+            'dtype':dtype,
+            'replace_with_kernel_inject':True,
+            'enable_cuda_graph':enable_cuda_graph,
+            'use_triton':enable_triton,
+            'triton_autotune':False,
+        }
+        if pipe.tokenizer.model_max_length < deepspeed.ops.transformer.inference.config.DeepSpeedInferenceConfig().max_out_tokens:
+            args.update({'max_out_tokens':pipe.tokenizer.model_max_length})
+        pipe.model = deepspeed.init_inference(pipe.model, **args)
         check_injection(pipe.model)
         # Warm-up queries for perf measurement
         #for i in range(10):
@@ -301,6 +319,9 @@ class TestModelTask(DistributedTest):
         get_accelerator().synchronize()
         ds_time = time.time() - start
 
+        if perf_meas:
+            print(f"model={model}, task={task}, dtype={dtype}, cuda_graph={enable_cuda_graph}, triton={enable_triton}, bs_time={bs_time}, ds_time={ds_time}")
+
         # facebook/opt* and some bigscient/bloom* models are not matching
         # baseline exactly, adding an exception to them for now
         if ("opt" in model) or ("bloom" in model):
@@ -309,6 +330,7 @@ class TestModelTask(DistributedTest):
         # These performance tests are only measuring the time for a single
         # inference request, we just want to check that performance isn't terrible
         #assert ds_time <= (bs_time * 1.1)
+
         assert assert_fn(bs_output, ds_output)
 
 

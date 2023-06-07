@@ -9,7 +9,6 @@ from typing import Optional
 from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
 
-
 class ResidualAddOp(BaseOp):
 
     def __init__(self, config: DeepSpeedInferenceConfig):

@@ -14,3 +14,4 @@ tensorboard
 torchvision
 transformers
 wandb
+triton==2.0.0
