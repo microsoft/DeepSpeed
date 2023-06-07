@@ -28,11 +28,14 @@ class DeepSpeedMLP(nn.Module):
         self.config.intermediate_size = self.config.intermediate_size if self.config.intermediate_size > 0 else 4 * self.config.hidden_size
         self.intm_w_sz_per_partition = self.config.intermediate_size * proj_factor // self.config.mp_size
         self.intm_o_sz_per_partition = self.config.intermediate_size // self.config.mp_size
-        
+
         self.fc1 = nn.Linear(self.config.hidden_size, self.config.intermediate_size, bias=True, dtype=data_type)
         self.fc2 = nn.Linear(self.config.intermediate_size, self.config.hidden_size, bias=True, dtype=data_type)
         self.activation_fn = nn.ReLU()
-        self.final_layer_norm = nn.LayerNorm(self.config.hidden_size, elementwise_affine=True, dtype=data_type, device=device)
+        self.final_layer_norm = nn.LayerNorm(self.config.hidden_size,
+                                             elementwise_affine=True,
+                                             dtype=data_type,
+                                             device=device)
 
         if self.config.set_empty_params:
             self.attn_nw = None
@@ -94,75 +97,78 @@ class DeepSpeedMLP(nn.Module):
         return DeepSpeedMLP._inter_w_buffers
 
     def mlp_baseline(self, input, residual, bias):
-            debug = False
+        debug = False
 
-            # pytorch baseline to do add bias.
-            #input = input + bias
-            if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}, tensor = {input}')
+        # pytorch baseline to add bias. Note: We should not add bias here when attn_base=True.
+        #input = input + bias
+        if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}, tensor = {input}')
 
-            # pytorch baseline to do add residual (residual=input)
-            input = input + residual
-            if debug: print(f'ds a4 attn + ln + bias-add + residual-add: norm = {torch.norm(input)}, tensor = {input}')
-            
-            # copy the weight and bias to fc1
-            self.fc1.weight.data.copy_(self.inter_w.transpose(0, 1))
-            self.fc1.bias.data.copy_(self.inter_b)
-            
-            # copy the weight and bias to fc2
-            self.fc2.weight.data.copy_(self.output_w.transpose(0, 1))
-            self.fc2.bias.data.copy_(self.output_b)
-            torch.cuda.synchronize()
+        # pytorch baseline to do add residual (residual=input)
+        input = input + residual
+        if debug: print(f'ds a4 attn + ln + bias-add + residual-add: norm = {torch.norm(input)}, tensor = {input}')
 
-            if debug: print(f"inside ds mlp: b4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
-            if debug: print(f"inside ds mlp: b4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
-            if debug: print(f"inside ds mlp: b4 ln input  = {input.shape}, {input.norm()}")
-            if debug: print(f"inside ds mlp: b4 ln input tensor = {input}")
+        # copy the weight and bias to fc1
+        self.fc1.weight.data.copy_(self.inter_w.transpose(0, 1))
+        self.fc1.bias.data.copy_(self.inter_b)
 
-            # do the layernorm
-            if debug: print(f"self.final_layer_norm w norm = {self.final_layer_norm.weight.norm()}")
-            if debug: print(f"self.final_layer_norm b norm = {self.final_layer_norm.bias.norm()}")
-            if debug: print(f"self.attn_nb = {self.attn_nb}")
-            
-            self.final_layer_norm.bias.data.copy_(self.attn_nb)
-            torch.cuda.synchronize()
-            
-            # probably need a cuda sync - because it was giving wrong output without the next prints
-            if debug: print(f"self.final_layer_norm b norm = {self.final_layer_norm.bias.norm()}")
+        # copy the weight and bias to fc2
+        self.fc2.weight.data.copy_(self.output_w.transpose(0, 1))
+        self.fc2.bias.data.copy_(self.output_b)
+        get_accelerator().synchronize()
 
-            #print(f"self.final_layer_norm b norm = {self.output_b.norm()}")
-            #print(f"self.final_layer_norm b norm = {self.attn_nb.norm()}")
-            # bias here is 0 but HF has a really bias.
-            residual = input
+        if debug: print(f"inside ds mlp: b4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
+        if debug: print(f"inside ds mlp: b4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
+        if debug: print(f"inside ds mlp: b4 ln input  = {input.shape}, {input.norm()}")
+        if debug: print(f"inside ds mlp: b4 ln input tensor = {input}")
 
-            input = self.final_layer_norm(input)
-            
-            if debug: print(f"inside ds mlp: a4 ln weight = {self.fc1.weight}, {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
-            if debug: print(f"inside ds mlp: a4 ln bias   = {self.fc1.bias}, {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
-            if debug: print(f"inside ds mlp: a4 ln input  = {input.shape}, {input.norm()}")
-            if debug: print(f"inside ds mlp: a4 ln input tensor = {input}")
-            
-            input = self.fc1(input)
+        # do the layernorm
+        if debug: print(f"self.final_layer_norm w norm = {self.final_layer_norm.weight.norm()}")
+        if debug: print(f"self.final_layer_norm b norm = {self.final_layer_norm.bias.norm()}")
+        if debug: print(f"self.attn_nb = {self.attn_nb}")
 
-            if debug: print(f"inside ds mlp: a4 fc1: {input}, {input.norm()}")
+        self.final_layer_norm.bias.data.copy_(self.attn_nb)
+        get_accelerator().synchronize()
 
-            output = self.activation_fn(input)
+        # probably need a cuda sync - because it was giving wrong output without the next prints
+        if debug: print(f"self.final_layer_norm b norm = {self.final_layer_norm.bias.norm()}")
 
-            if debug: print(f"inside ds mlp: a4 relu: {output}, {output.norm()}")
+        #print(f"self.final_layer_norm b norm = {self.output_b.norm()}")
+        #print(f"self.final_layer_norm b norm = {self.attn_nb.norm()}")
+        # bias here is 0 but HF has a really bias.
+        residual = input
 
-            if debug: print(f"inside ds mlp: fc2 weight = {self.fc2.weight.shape}, {self.fc2.weight.norm()}")
-            if debug: print(f"inside ds mlp: fc2 bias   = {self.fc2.bias.shape}, {self.fc2.bias.norm()}")
+        input = self.final_layer_norm(input)
 
-            output = self.fc2(output)
+        if debug:
+            print(
+                f"inside ds mlp: a4 ln weight = {self.fc1.weight}, {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
+        if debug:
+            print(f"inside ds mlp: a4 ln bias   = {self.fc1.bias}, {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
+        if debug: print(f"inside ds mlp: a4 ln input  = {input.shape}, {input.norm()}")
+        if debug: print(f"inside ds mlp: a4 ln input tensor = {input}")
 
-            if debug: print(f"inside ds mlp: a4 fc2: {output}, {output.norm()}")
+        input = self.fc1(input)
 
-            # pytorch baseline residual add
-            residual = output + residual
-            if debug: print(f"residual = {residual}, {residual.norm()}")
+        if debug: print(f"inside ds mlp: a4 fc1: {input}, {input.norm()}")
 
-            return residual
-    
-    def forward(self, input, residual, residual_norm, bias, weight):
+        output = self.activation_fn(input)
+
+        if debug: print(f"inside ds mlp: a4 relu: {output}, {output.norm()}")
+
+        if debug: print(f"inside ds mlp: fc2 weight = {self.fc2.weight.shape}, {self.fc2.weight.norm()}")
+        if debug: print(f"inside ds mlp: fc2 bias   = {self.fc2.bias.shape}, {self.fc2.bias.norm()}")
+
+        output = self.fc2(output)
+
+        if debug: print(f"inside ds mlp: a4 fc2: {output}, {output.norm()}")
+
+        # pytorch baseline residual add
+        residual = output + residual
+        if debug: print(f"residual = {residual}, {residual.norm()}")
+
+        return residual
+
+    def forward(self, input, residual, residual_norm, bias, weight, mlp_base=False):
         if self.inter_w is None:
             self._inter_w, self._inter_b = self._merge_inter_w()
         else:
@@ -170,38 +176,35 @@ class DeepSpeedMLP(nn.Module):
             self._inter_b = self.inter_b
 
         residual_add = None
-        
-        # mlp_base = True  => calls a pytorch baseline mlp
-        # mlp_base = False => calls the DS mlp
-        mlp_base = True
-        
+
+        # only set mlp_base=True from the caller. This ensures that only the model that is supported (like opt) calls this
         if mlp_base:
             residual = self.mlp_baseline(input, residual, bias)
-        else:        
+        else:
             if self.attn_nw is None:
                 output = self.fused_gemm_gelu(input=residual_norm,
-                                                weight=self.inter_w,
-                                                bias=self.inter_b,
-                                                weight_out=self.output_w)
+                                              weight=self.inter_w,
+                                              bias=self.inter_b,
+                                              weight_out=self.output_w)
             else:
-                # mlp_gemm_func ~= gemm(relu(layernorm(input) + bias)) 
+                # mlp_gemm_func ~= gemm(relu(layernorm(input) + bias))
                 output, residual_add = self.mlp_gemm_func(input=input,
-                                                            residual=residual,
-                                                            weight_interm=self.inter_w,
-                                                            weight_out=self.output_w,
-                                                            input_bias=bias,
-                                                            bias=self.inter_b,
-                                                            gamma=self.attn_nw,
-                                                            beta=self.attn_nb)
+                                                          residual=residual,
+                                                          weight_interm=self.inter_w,
+                                                          weight_out=self.output_w,
+                                                          input_bias=bias,
+                                                          bias=self.inter_b,
+                                                          gamma=self.attn_nw,
+                                                          beta=self.attn_nb)
 
             residual = self.residual_add_func(hidden_state=output,
-                                                residual=residual,
-                                                add_bias=bias is not None,
-                                                attention_output=input,
-                                                attention_bias=bias if bias is not None else self.output_b,
-                                                final_bias=self.output_b,
-                                                residual_add=residual_add)
+                                              residual=residual,
+                                              add_bias=bias is not None,
+                                              attention_output=input,
+                                              attention_bias=bias if bias is not None else self.output_b,
+                                              final_bias=self.output_b,
+                                              residual_add=residual_add)
             if self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
                 dist.all_reduce(residual, group=self.mp_group)
-    
+
         return residual
