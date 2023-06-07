@@ -52,8 +52,8 @@ public:
         curandSetPseudoRandomGeneratorSeed(_gen, 123);
         cublasStatus_t stat = cublasCreate(&_cublasHandle);
         if (stat != CUBLAS_STATUS_SUCCESS) {
-            auto message = std::string("Failed to create cublas handle: ")
-                + cublasGetStatusName(stat) + " " + cublasGetStatusString(stat);
+            auto message = std::string("Failed to create cublas handle: ") +
+                           cublasGetStatusName(stat) + " " + cublasGetStatusString(stat);
             std::cerr << message << std::endl;
             throw std::runtime_error(message);
         }
