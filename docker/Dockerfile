@@ -1,5 +1,7 @@
 FROM nvidia/cuda:11.7.1-devel-ubuntu20.04
 
+ENV DEBIAN_FRONTEND noninteractive
+
 ##############################################################################
 # Temporary Installation Directory
 ##############################################################################
