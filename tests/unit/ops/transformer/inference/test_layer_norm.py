@@ -56,6 +56,7 @@ def residual_ref_implementation(vals, bias, res, gamma, beta, epsilon, channels,
     gamma_f = gamma.to(torch.float32)
     beta_f = beta.to(torch.float32)
     return torch.nn.functional.layer_norm(vals_f + bias_f + res_f, (channels, ),
+
                                           weight=gamma_f,
                                           bias=beta_f,
                                           eps=epsilon).to(dtype)
