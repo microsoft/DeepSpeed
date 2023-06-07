@@ -1476,6 +1476,11 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
     // TODO: understand the dimensions of intermediate
     std::cout << "after fc1 CUDA, norm after relu =\n" << torch::from_blob(intermediate, {input.size(0), input.size(1), input.size(2)*4}, input.options()).norm() << std::endl;
 
+    auto data = torch::pickle_save(torch::from_blob(intermediate, {input.size(0), input.size(1), input.size(2)*4}, input.options()));
+    std::ofstream out("/home/deepspeed/repo/ds_chat/dse-chat/inference/huggingface/text-generation/logs/ds_mlp_act_tensor_layer_" + std::to_string(layer_id) + ".pt", std::ios::binary);
+    out.write(data.data(), data.size());
+    out.close();
+
     if (q_int8) {
         quantized_gemm<T>(output.data_ptr(),
                           intermediate,
@@ -1996,6 +2001,7 @@ at::Tensor mlp_gemm_fc(at::Tensor& inp_norm,
                        at::Tensor& q_scale,
                        bool q_int8,
                        bool transposed_mode,
+					   bool fc1,
                        int layer_id)
 {
     auto options = at::TensorOptions()
@@ -2024,7 +2030,8 @@ at::Tensor mlp_gemm_fc(at::Tensor& inp_norm,
                        CUBLAS_OP_N,
                        weight.size(transposed_mode ? 0 : 1),
                        bsz,
-                       input.size(2),
+					   fc1 ? input.size(2) : weight.size(transposed_mode ? 1 : 0),
+                       //input.size(2),
                        //weight1.size(transposed_mode ? 1 : 0), // TODO (lekurile): which sizing to use?
                        &alpha,
                        &gemm_beta,

@@ -155,7 +155,7 @@ class DeepSpeedMLP(nn.Module):
 
             output = self.activation_fn(input)
 
-            import pdb; pdb.set_trace()
+            #import pdb; pdb.set_trace()
 
             if debug: print(f"inside ds mlp: a4 ac: {output.norm()}")
 
@@ -184,89 +184,96 @@ class DeepSpeedMLP(nn.Module):
 
         # mlp_base = True  => calls a pytorch baseline mlp
         # mlp_base = False => calls the DS mlp
-        mlp_base = True
+        mlp_base = False
         mlp_functions = False
-
-        if mlp_functions:
-                                                                #at::Tensor& input,
-                                                                #at::Tensor& residual,
-                                                                #at::Tensor& input_bias,
-                                                                #at::Tensor& gamma,
-                                                                #at::Tensor& beta,
-                                                                #const float epsilon,
-                                                                #bool mlp_after_attn,
-                                                                #int layer_id)
-            mlp_post_ln = self.mlp_functions.inference_module.mlp_layer_norm_fp16(input,
-                                                                 residual,
-                                                                 bias,
-                                                                 self.attn_nw,
-                                                                 self.attn_nb,
-                                                                 self.config.epsilon,
-                                                                 self.config.mlp_after_attn,
-                                                                 self.config.layer_id)
-            torch.save(mlp_post_ln, f'logs/ds_mlp_ln_new_tensor_layer_{self.config.layer_id}.pt')
-            #import pdb; pdb.set_trace()
-
-                                         #at::Tensor mlp_gemm_fc(at::Tensor& inp_norm,
-                                         #                       at::Tensor& input,
-                                         #                       at::Tensor& weight,
-                                         #                       at::Tensor& q_scale,
-                                         #                       bool q_int8,
-                                         #                       bool transposed_mode,
-                                         #                       int layer_id)
-            mlp_post_fc1 = self.mlp_functions.inference_module.mlp_gemm_fc_fp16(mlp_post_ln,
-                                                                               input,
-                                                                               self.inter_w,
-                                                                               self.inter_w.scale if hasattr(self.inter_w, 'scale') else torch.empty(1),  # type: ignore
-                                                                               self.config.dtype == torch.int8,
-                                                                               self.config.transposed_mode,
-                                                                               self.config.layer_id)
-            torch.save(mlp_post_fc1, f'logs/ds_mlp_fc1_new_tensor_layer_{self.config.layer_id}.pt')
-            #import pdb; pdb.set_trace()
-
-
-                                        #at::Tensor mlp_activation(at::Tensor& input,
-                                        #                          at::Tensor& input_mlp,
-                                        #                          at::Tensor& weight,
-                                        #                          at::Tensor& bias,
-                                        #                          bool q_int8,
-                                        #                          int activation_type,
-                                        #                          bool transposed_mode,
-                                        #                          int layer_id)
-#(arg0: torch.Tensor, arg1: torch.Tensor, arg2: torch.Tensor, arg3: torch.Tensor, arg4: bool, arg5: int, arg6: bool, arg7: int)
-            mlp_post_act = self.mlp_functions.inference_module.mlp_activation_fp16(mlp_post_fc1,
-                                                                               input,
-                                                                               self.output_w,
-                                                                               self.inter_b,
-                                                                               self.config.dtype == torch.int8,
-                                                                               self.config.mlp_act_func_type,
-                                                                               self.config.transposed_mode,
-                                                                               self.config.layer_id)
-            torch.save(mlp_post_act, f'logs/ds_mlp_act_new_tensor_layer_{self.config.layer_id}.pt')
-            #import pdb; pdb.set_trace()
-
-                                         #at::Tensor mlp_gemm_fc(at::Tensor& inp_norm,
-                                         #                       at::Tensor& input,
-                                         #                       at::Tensor& weight,
-                                         #                       at::Tensor& q_scale,
-                                         #                       bool q_int8,
-                                         #                       bool transposed_mode,
-                                         #                       int layer_id)
-            mlp_post_fc2 = self.mlp_functions.inference_module.mlp_gemm_fc_fp16(mlp_post_act,
-                                                                               input,
-                                                                               self.output_w,
-                                                                               self.output_w.scale if hasattr(self.output_w, 'scale') else torch.empty(1),  # type: ignore
-                                                                               self.config.dtype == torch.int8,
-                                                                               self.config.transposed_mode,
-                                                                               self.config.layer_id)
-            torch.save(mlp_post_fc1, f'logs/ds_mlp_fc1_new_tensor_layer_{self.config.layer_id}.pt')
-            #import pdb; pdb.set_trace()
-
 
         if mlp_base:
             residual = self.mlp_baseline(input, residual, bias)
         else:
-            if self.attn_nw is None:
+            if mlp_functions:
+                                                                    #at::Tensor& input,
+                                                                    #at::Tensor& residual,
+                                                                    #at::Tensor& input_bias,
+                                                                    #at::Tensor& gamma,
+                                                                    #at::Tensor& beta,
+                                                                    #const float epsilon,
+                                                                    #bool mlp_after_attn,
+                                                                    #int layer_id)
+                mlp_post_ln = self.mlp_functions.inference_module.mlp_layer_norm_fp16(input,
+                                                                     residual,
+                                                                     bias,
+                                                                     self.attn_nw,
+                                                                     self.attn_nb,
+                                                                     self.config.epsilon,
+                                                                     self.config.mlp_after_attn,
+                                                                     self.config.layer_id)
+                torch.save(mlp_post_ln, f'logs/ds_mlp_ln_new_tensor_layer_{self.config.layer_id}.pt')
+                #import pdb; pdb.set_trace()
+
+                                             #at::Tensor mlp_gemm_fc(at::Tensor& inp_norm,
+                                             #                       at::Tensor& input,
+                                             #                       at::Tensor& weight,
+                                             #                       at::Tensor& q_scale,
+                                             #                       bool q_int8,
+                                             #                       bool transposed_mode,
+                                             #                       bool fc1,
+                                             #                       int layer_id)
+                mlp_post_fc1 = self.mlp_functions.inference_module.mlp_gemm_fc_fp16(mlp_post_ln,
+                                                                                   input,
+                                                                                   self.inter_w,
+                                                                                   self.inter_w.scale if hasattr(self.inter_w, 'scale') else torch.empty(1),  # type: ignore
+                                                                                   self.config.dtype == torch.int8,
+                                                                                   self.config.transposed_mode,
+                                                                                   True,
+                                                                                   self.config.layer_id)
+                torch.save(mlp_post_fc1, f'logs/ds_mlp_fc1_new_tensor_layer_{self.config.layer_id}.pt')
+                #import pdb; pdb.set_trace()
+
+
+                                            #at::Tensor mlp_activation(at::Tensor& input,
+                                            #                          at::Tensor& input_mlp,
+                                            #                          at::Tensor& weight,
+                                            #                          at::Tensor& bias,
+                                            #                          bool q_int8,
+                                            #                          int activation_type,
+                                            #                          bool transposed_mode,
+                                            #                          int layer_id)
+                #(arg0: torch.Tensor, arg1: torch.Tensor, arg2: torch.Tensor, arg3: torch.Tensor, arg4: bool, arg5: int, arg6: bool, arg7: int)
+                mlp_post_act = self.mlp_functions.inference_module.mlp_activation_fp16(mlp_post_fc1,
+                                                                                   input,
+                                                                                   self.output_w,
+                                                                                   self.inter_b,
+                                                                                   self.config.dtype == torch.int8,
+                                                                                   self.config.mlp_act_func_type,
+                                                                                   self.config.transposed_mode,
+                                                                                   self.config.layer_id)
+                torch.save(mlp_post_act, f'logs/ds_mlp_act_new_tensor_layer_{self.config.layer_id}.pt')
+                #import pdb; pdb.set_trace()
+
+                                             #at::Tensor mlp_gemm_fc(at::Tensor& inp_norm,
+                                             #                       at::Tensor& input,
+                                             #                       at::Tensor& weight,
+                                             #                       at::Tensor& q_scale,
+                                             #                       bool q_int8,
+                                             #                       bool transposed_mode,
+                                             #                       bool fc1,
+                                             #                       int layer_id)
+                # TODO (lekurile): Check the size difference in fc2 inside mlp_gemm_fc_fp16
+                mlp_post_fc2 = self.mlp_functions.inference_module.mlp_gemm_fc_fp16(mlp_post_act,
+                                                                                   input,
+                                                                                   self.output_w,
+                                                                                   self.output_w.scale if hasattr(self.output_w, 'scale') else torch.empty(1),  # type: ignore
+                                                                                   self.config.dtype == torch.int8,
+                                                                                   self.config.transposed_mode,
+                                                                                   False,
+                                                                                   self.config.layer_id)
+                torch.save(mlp_post_fc2, f'logs/ds_mlp_fc2_new_tensor_layer_{self.config.layer_id}.pt')
+                #import pdb; pdb.set_trace()
+
+                output = mlp_post_fc2
+                residual_add = mlp_post_ln
+
+            elif self.attn_nw is None:
                 output = self.fused_gemm_gelu(input=residual_norm,
                                                 weight=self.inter_w,
                                                 bias=self.inter_b,
