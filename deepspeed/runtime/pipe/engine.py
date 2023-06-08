@@ -774,8 +774,9 @@ class PipelineEngine(DeepSpeedEngine):
                 loaded = []
                 for x in batch[0]:
                     assert torch.is_tensor(x)
+                    requires_grad = x.requires_grad
                     mine = x.clone().detach().to(self.device)
-                    mine.requires_grad = mine.is_floating_point()
+                    mine.requires_grad = requires_grad
                     loaded.append(mine)
                 loaded = tuple(loaded)
 
