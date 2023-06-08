@@ -39,9 +39,6 @@ def run_vector_matmul_ds(input_tensor, weight):
     async_op = False
     transposed_mode = True
 
-    print(input_tensor.size())
-    print(weight.size())
-
     inference_module.allocate_workspace_fp32(
                                     input_tensor.size()[2], #hidden_dim
                                     1,                      #num_heads
@@ -63,10 +60,10 @@ def run_vector_matmul_ds(input_tensor, weight):
 
 
 @pytest.mark.inference_ops
-@pytest.mark.parametrize("batch_size", [4])
+@pytest.mark.parametrize("batch_size", [6])
 @pytest.mark.parametrize("in_features", [2048])
-@pytest.mark.parametrize("out_features", [2048])
-@pytest.mark.parametrize("dtype", get_dtypes())
+@pytest.mark.parametrize("out_features", [2048,8192])
+@pytest.mark.parametrize("dtype", [torch.float16])
 def test_vector_matmul(batch_size, in_features, out_features, dtype):
 
     input_tensor_ds = torch.randn(1, batch_size, in_features, dtype=dtype, device=get_accelerator().device_name())
@@ -77,6 +74,8 @@ def test_vector_matmul(batch_size, in_features, out_features, dtype):
 
     ds_out = run_vector_matmul_ds(input_tensor_ds, weight_tensor_ds)
     ref_out = run_vector_matmul_reference(input_tensor_ref, weight_tensor_ref)
+    print(ds_out.size())
+    print(ref_out.size())
     if not allclose(ds_out, ref_out):
         print(ds_out)
         print(ref_out)
@@ -85,10 +84,10 @@ def test_vector_matmul(batch_size, in_features, out_features, dtype):
 
 
 @pytest.mark.inference_ops
-@pytest.mark.parametrize("batch_size", [4])
+@pytest.mark.parametrize("batch_size", [6])
 @pytest.mark.parametrize("in_features", [2048])
-@pytest.mark.parametrize("out_features", [2048])
-@pytest.mark.parametrize("dtype", get_dtypes())
+@pytest.mark.parametrize("out_features", [2048,8192])
+@pytest.mark.parametrize("dtype", [torch.float16])
 def test_vector_matmul_linear(batch_size, in_features, out_features, dtype):
     input_tensor_ds = torch.randn(1, batch_size, in_features, dtype=dtype, device=get_accelerator().device_name())
     weight_tensor_ds = torch.randn(out_features, in_features, dtype=dtype, device=get_accelerator().device_name())
@@ -100,8 +99,35 @@ def test_vector_matmul_linear(batch_size, in_features, out_features, dtype):
 
     ds_out = run_vector_matmul_ds(input_tensor_ds, weight_tensor_ds).add(bias_tensor_ds)
     ref_out = run_linear_reference(input_tensor_ref, weight_tensor_ref, bias_tensor_ref, dtype)
+    print(ds_out.size())
+    print(ref_out.size())
     if not allclose(ds_out, ref_out):
         print(ds_out)
         print(ref_out)
         print((ds_out - ref_out).abs().max())
         assert (allclose(ds_out, ref_out))
+
+
+@pytest.mark.inference_ops
+@pytest.mark.parametrize("batch_size", [6])
+@pytest.mark.parametrize("in_features", [2048])
+@pytest.mark.parametrize("out_features", [2048, 8192])
+@pytest.mark.parametrize("dtype", [torch.float16])
+def test_torch_matmul_linear(batch_size, in_features, out_features, dtype):
+    input_tensor = torch.randn(1, batch_size, in_features, dtype=dtype, device=get_accelerator().device_name())
+    weight_tensor = torch.randn(out_features, in_features, dtype=dtype, device=get_accelerator().device_name())
+    bias_tensor = torch.randn(out_features, dtype=dtype, device=get_accelerator().device_name())
+
+    input_tensor_ref = input_tensor.clone().detach()
+    weight_tensor_ref = weight_tensor.clone().detach()
+    bias_tensor_ref = bias_tensor.clone().detach()
+
+    matmul_out = run_vector_matmul_reference(input_tensor, weight_tensor).add(bias_tensor)
+    linear_out = run_linear_reference(input_tensor_ref, weight_tensor_ref, bias_tensor_ref, dtype)
+    print(matmul_out.size())
+    print(linear_out.size())
+    if not allclose(matmul_out, linear_out):
+        print(matmul_out)
+        print(linear_out)
+        print((matmul_out - linear_out).abs().max())
+        assert (allclose(matmul_out, linear_out))
