@@ -31,17 +31,20 @@ def run_vector_matmul_ds(input_tensor, weight):
     async_op = False
     transposed_mode = True
 
-    #input_tensor = input_tensor.flatten()
-    #weight = weight.flatten()
     print(input_tensor.size())
     print(weight.size())
 
-    inference_module.allocate_workspace_fp32(input_tensor.size()[1], 1,
-                                    weight.size()[1],
-                                    weight.size()[0], 0, 1,
-                                    False,
-                                    0, 100,
-                                    50)
+    inference_module.allocate_workspace_fp32(
+                                    input_tensor.size()[2], #hidden_dim
+                                    1,                      #num_heads
+                                    input_tensor.size()[2], #prompt length
+                                    input_tensor.size()[1], #batch_size
+                                    1,                      #num_layers
+                                    1,                      #mp_size
+                                    False,                  #external cache
+                                    0,                      #rank
+                                    50,                     #max out tokens
+                                    10)                     #min out tokens
 
     if input_tensor.dtype == torch.float16:
         return inference_module.vector_matmul_fp16(input_tensor, weight, async_op, q_scale, q_int8, transposed_mode)
@@ -53,24 +56,16 @@ def run_vector_matmul_ds(input_tensor, weight):
 
 @pytest.mark.inference_ops
 @pytest.mark.parametrize("batch_size", [4])
-@pytest.mark.parametrize("in_features", [128])
-@pytest.mark.parametrize("out_features", [128])
+@pytest.mark.parametrize("in_features", [2048])
+@pytest.mark.parametrize("out_features", [2048])
 @pytest.mark.parametrize("dtype", get_dtypes())
 def test_vector_matmul(batch_size, in_features, out_features, dtype):
 
     input_tensor_ds = torch.randn(1, batch_size, in_features, dtype=dtype, device=get_accelerator().device_name())
     weight_tensor_ds = torch.randn(out_features, in_features, dtype=dtype, device=get_accelerator().device_name())
 
-    print(input_tensor_ds.device)
-    print(weight_tensor_ds.device)
-
-    #bias_tensor_ds = torch.randn(out_features, dtype=dtype, device=get_accelerator().device_name())
-
     input_tensor_ref = input_tensor_ds.clone().detach()
     weight_tensor_ref = weight_tensor_ds.clone().detach()
-
-    print(input_tensor_ref.device)
-    print(weight_tensor_ref.device)
 
     ds_out = run_vector_matmul_ds(input_tensor_ds, weight_tensor_ds)
     ref_out = run_vector_matmul_reference(input_tensor_ref, weight_tensor_ref)
