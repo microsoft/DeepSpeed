@@ -228,8 +228,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.reduce_scatter:
             valid_reduce_scatter_dtypes = (torch.float16, torch.bfloat16, torch.float32)
             assert self.communication_data_type in valid_reduce_scatter_dtypes, f"{self.zero_stage_string} supports {valid_reduce_scatter_dtypes} communication_data_type with reduce scatter enabled. Got: '{self.communication_data_type}'"
-            assert self.gradient_predivide_factor == 1.0, "gradient_predivide_factor != 1.0 is not yet supported with {self.zero_stage_string} with reduce scatter enabled"
+            # assert self.gradient_predivide_factor == 1.0, "gradient_predivide_factor != 1.0 is not yet supported with {self.zero_stage_string} with reduce scatter enabled"
             assert self.postscale_gradients, "pre-scale gradients is not yet supported with {self.zero_stage_string} with reduce scatter enabled"
+        assert self.contiguous_gradients and self.gradient_predivide_factor == 1.0, "pre-divide gradients is not yet supported with contiguous gradients enabled"
 
         # param flattened by groups
         self.bit16_groups = []
@@ -858,6 +859,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         assert param.grad is not None, f"rank {dist.get_rank()} - Invalid to reduce Param {param_id} with None gradient"
 
+        # stash moe param info in the grad tensor, required to average the grad properly later
+        param.grad._is_moe = is_moe_param(param)
+        param.grad._group_name = param.group_name if is_moe_param(param) else None
+
         self.grads_in_ipg_bucket.append(param.grad)
         self.params_in_ipg_bucket.append((i, param, param_id))
 
@@ -1207,8 +1212,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             else:
                 self.average_tensor(self.ipg_buffer[self.ipg_index])
         else:
-            self.buffered_reduce_fallback(None,
-                                          self.grads_in_ipg_bucket,
+            self.buffered_reduce_fallback(grads=self.grads_in_ipg_bucket,
                                           elements_per_buffer=self.elements_in_ipg_bucket)
 
         if self.overlap_comm:
@@ -1319,8 +1323,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 param.grad = torch.zero_like(param)
 
     ######################Reduction Related Methods##############################
-    def allreduce_bucket(self, bucket, rank=None, log=None):
-        rank = None
+    def allreduce_bucket(self, bucket):
         tensor = self.flatten(bucket)
 
         tensor_to_allreduce = tensor
@@ -1333,18 +1336,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if communication_data_type != tensor.dtype:
             tensor_to_allreduce = tensor.to(communication_data_type)
 
-        tensor_to_allreduce.div_(dist.get_world_size(group=self.dp_process_group))
-
-        if rank is None:
-            #    "All Reducing"
-            dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
-        else:
-            global_rank = dist.get_global_rank(self.dp_process_group, rank)
-            dist.reduce(tensor_to_allreduce, global_rank, group=self.dp_process_group)
+        dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
 
         if communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
-            if rank is None or rank == dist.get_rank(group=self.dp_process_group):
-                tensor.copy_(tensor_to_allreduce)
+            tensor.copy_(tensor_to_allreduce)
 
         return tensor
 
@@ -1355,7 +1350,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.previous_reduced_grads = None
 
     # if rank is specified do a reduction instead of an allreduce
-    def allreduce_and_copy(self, small_bucket, rank=None, log=None):
+    def allreduce_and_copy(self, small_bucket):
         if self.overlap_comm:
             get_accelerator().synchronize()
             # It is safe to clear the previously reduced grads of other partitions
@@ -1365,31 +1360,47 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             stream = get_accelerator().current_stream()
 
         with get_accelerator().stream(stream):
-            allreduced = self.allreduce_bucket(small_bucket, rank=rank, log=log)
-            if rank is None or rank == dist.get_rank(group=self.dp_process_group):
-                for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
-                    buf.copy_(synced)
+            # potentially pre-divide each param grad
+            for grad in small_bucket:
+                if self.gradient_predivide_factor != 1.0:
+                    grad.mul_(1.0 / self.gradient_predivide_factor)
 
-    def allreduce_no_retain(self, bucket, numel_per_bucket=500000000, rank=None, log=None):
+            print(
+                f"[{dist.get_rank()}] allreduce_and_copy: {len(small_bucket)} tensors, {self.gradient_predivide_factor=}"
+            )
+            allreduced = self.allreduce_bucket(small_bucket)
+
+            for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
+                # potentially post-divide each grad
+                process_group = self.expert_dp_process_group[buf._group_name] if buf._is_moe else self.dp_process_group
+                world_size = dist.get_world_size(group=process_group)
+                if world_size != self.gradient_predivide_factor:
+                    # common case when not using predivide factor we will postscale by world size
+                    synced.mul_(self.gradient_predivide_factor / world_size)
+
+                # copy synced grads back into the original grads
+                buf.copy_(synced)
+
+    def allreduce_no_retain(self, bucket, numel_per_bucket=500000000):
         small_bucket = []
         numel = 0
         for tensor in bucket:
             small_bucket.append(tensor)
             numel = numel + tensor.numel()
             if numel > numel_per_bucket:
-                self.allreduce_and_copy(small_bucket, rank=rank, log=None)
+                self.allreduce_and_copy(small_bucket)
                 small_bucket = []
 
         if len(small_bucket) > 0:
-            self.allreduce_and_copy(small_bucket, rank=rank, log=log)
+            self.allreduce_and_copy(small_bucket)
 
     # allows using reduction of gradients instead of using all_reduce
 
-    def buffered_reduce_fallback(self, rank, grads, elements_per_buffer=500000000, log=None):
+    def buffered_reduce_fallback(self, grads, elements_per_buffer=500000000):
         split_buckets = split_half_float_double(grads)
 
         for i, bucket in enumerate(split_buckets):
-            self.allreduce_no_retain(bucket, numel_per_bucket=elements_per_buffer, rank=rank, log=log)
+            self.allreduce_no_retain(bucket, numel_per_bucket=elements_per_buffer)
 
     #############################################################################
     #############################################################################
