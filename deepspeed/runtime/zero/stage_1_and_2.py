@@ -1364,9 +1364,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 if self.gradient_predivide_factor != 1.0:
                     grad.mul_(1.0 / self.gradient_predivide_factor)
 
-            print(
-                f"[{dist.get_rank()}] allreduce_and_copy: {len(small_bucket)} tensors, {self.gradient_predivide_factor=}"
-            )
             allreduced = self.allreduce_bucket(small_bucket)
 
             for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
