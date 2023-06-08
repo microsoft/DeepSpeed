@@ -229,7 +229,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             valid_reduce_scatter_dtypes = (torch.float16, torch.bfloat16, torch.float32)
             assert self.communication_data_type in valid_reduce_scatter_dtypes, f"{self.zero_stage_string} supports {valid_reduce_scatter_dtypes} communication_data_type with reduce scatter enabled. Got: '{self.communication_data_type}'"
             assert self.postscale_gradients, "pre-scale gradients is not yet supported with {self.zero_stage_string} with reduce scatter enabled"
-        assert self.contiguous_gradients and self.gradient_predivide_factor == 1.0, "pre-divide gradients is not yet supported with contiguous gradients enabled"
+        if self.contiguous_gradients:
+            assert self.gradient_predivide_factor == 1.0, "pre-divide gradients is not yet supported with contiguous gradients enabled"
 
         # param flattened by groups
         self.bit16_groups = []
@@ -537,8 +538,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def _configure_moe_settings(self):
         # if we're using ZeRO stage 2, ensure contiguous gradients are used
-        if self.partition_gradients:
-            assert self.contiguous_gradients, "Contiguous Gradients in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
+        #if self.partition_gradients:
+        #    assert self.contiguous_gradients, "Contiguous Gradients in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
         # NOTE: To run ZeRO stage 1 with MoE, we need to set self.contiguous_gradients to True or ignore the assertion
         if not self.partition_gradients and not self.contiguous_gradients:
             logger.warn(
@@ -1322,7 +1323,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 param.grad = torch.zero_like(param)
 
     ######################Reduction Related Methods##############################
-    def allreduce_bucket(self, bucket):
+    def allreduce_bucket(self, bucket, process_group, is_moe):
         tensor = self.flatten(bucket)
 
         tensor_to_allreduce = tensor
@@ -1335,7 +1336,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if communication_data_type != tensor.dtype:
             tensor_to_allreduce = tensor.to(communication_data_type)
 
-        dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
+        # print(f"[{dist.get_rank()}] {is_moe=}, allreduce_bucket={tensor_to_allreduce.numel()}")
+        dist.all_reduce(tensor_to_allreduce, group=process_group)
 
         if communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
             tensor.copy_(tensor_to_allreduce)
@@ -1349,7 +1351,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.previous_reduced_grads = None
 
     # if rank is specified do a reduction instead of an allreduce
-    def allreduce_and_copy(self, small_bucket):
+    def allreduce_and_copy(self, small_bucket, process_group, is_moe):
         if self.overlap_comm:
             get_accelerator().synchronize()
             # It is safe to clear the previously reduced grads of other partitions
@@ -1364,7 +1366,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 if self.gradient_predivide_factor != 1.0:
                     grad.mul_(1.0 / self.gradient_predivide_factor)
 
-            allreduced = self.allreduce_bucket(small_bucket)
+            allreduced = self.allreduce_bucket(small_bucket, process_group, is_moe)
 
             for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
                 # potentially post-divide each grad
@@ -1380,15 +1382,24 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def allreduce_no_retain(self, bucket, numel_per_bucket=500000000):
         small_bucket = []
         numel = 0
+
+        if any([tensor._is_moe for tensor in bucket]):
+            assert all([tensor._is_moe for tensor in bucket]), "found mix of moe and non-moe tensors in bucket"
+            process_group = self.expert_dp_process_group[bucket[0]._group_name]
+            is_moe = True
+        else:
+            process_group = self.dp_process_group
+            is_moe = False
+
         for tensor in bucket:
             small_bucket.append(tensor)
             numel = numel + tensor.numel()
             if numel > numel_per_bucket:
-                self.allreduce_and_copy(small_bucket)
+                self.allreduce_and_copy(small_bucket, process_group, is_moe)
                 small_bucket = []
 
         if len(small_bucket) > 0:
-            self.allreduce_and_copy(small_bucket)
+            self.allreduce_and_copy(small_bucket, process_group, is_moe)
 
     # allows using reduction of gradients instead of using all_reduce
 
