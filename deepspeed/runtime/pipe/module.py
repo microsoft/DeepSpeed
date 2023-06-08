@@ -82,6 +82,16 @@ class TiedLayerSpec(LayerSpec):
         self.tied_weight_attr = tied_weight_attr
 
 
+class TiedWeight:
+
+    def __init__(self, key, tied_ranks, tied_weight_attr, module):
+        """"""
+        self.key = key
+        self.tied_ranks = tied_ranks
+        self.tied_weight_attr = tied_weight_attr
+        self.module = module
+
+
 class PipelineModule(nn.Module):
     """Modules to be parallelized with pipeline parallelism.
 
@@ -474,6 +484,46 @@ class PipelineModule(nn.Module):
         '''
 
         return tied_comms
+
+    def register_tied_weights(self, tie: TiedWeight):
+        """
+        register the tied weights without using TiedLayerSpec
+        """
+
+        if self._topo.get_dim('pipe') == 1:
+            # no pipeline stages, directly return
+            return
+        for ranks in tie.tied_ranks:
+            # 1. create the comm group
+            # 2. register to self.tied_comms
+            # 3. register to self.tied_weight_attrs
+            # 4. register to self.tied_modules
+
+            # 1:
+            group = dist.new_group(ranks=ranks)
+
+            # 2:
+            if self.global_rank in ranks:
+                if tie.key in self.tied_comms:
+                    logger.warn(f'key {tie.key} already in self.tied_comms; existing tied_comm will be replaced')
+                self.tied_comms[tie.key] = {
+                    'ranks': ranks,
+                    'group': group,
+                    'weight_attr': tie.tied_weight_attr,
+                    'module': tie.module,
+                }
+
+                # 3:
+                self.tied_weight_attrs[tie.key] = tie.tied_weight_attr
+                # 4:
+                self.tied_modules[tie.key] = tie.module
+
+                # mark the weight on ranks other than the first of tied ranks as replicated weight
+                if self.global_rank != ranks[0]:
+                    tied_param = getattr(tie.module, tie.tied_weight_attr)
+                    tied_param.ds_pipe_replicated = True
+
+        self._synchronize_tied_weights()
 
     def partitions(self):
         return self.parts

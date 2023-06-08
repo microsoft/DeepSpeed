@@ -3,5 +3,5 @@
 
 # DeepSpeed Team
 
-from .module import PipelineModule, LayerSpec, TiedLayerSpec
+from .module import PipelineModule, LayerSpec, TiedLayerSpec, TiedWeight
 from .topology import ProcessTopology

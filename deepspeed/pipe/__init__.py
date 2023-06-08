@@ -3,4 +3,4 @@
 
 # DeepSpeed Team
 
-from ..runtime.pipe import PipelineModule, LayerSpec, TiedLayerSpec
+from ..runtime.pipe import PipelineModule, LayerSpec, TiedLayerSpec, TiedWeight
