@@ -21,6 +21,14 @@ def run_vector_matmul_reference(input_tensor, weight):
     return torch.matmul(input_tensor, weight.transpose(0, 1))
 
 
+def run_linear_reference(input_tensor, weight, bias, dtype):
+    linear_module = torch.nn.Linear(weight.size()[1], weight.size()[0], bias = True, dtype=dtype, device=get_accelerator().device_name())
+    linear_module.weight.data.copy_(weight)
+    linear_module.bias.data.copy_(bias)
+    linear_output = linear_module(input_tensor)
+    return linear_output
+
+
 def run_vector_matmul_ds(input_tensor, weight):
     global inference_module
     if inference_module is None:
@@ -70,5 +78,30 @@ def test_vector_matmul(batch_size, in_features, out_features, dtype):
     ds_out = run_vector_matmul_ds(input_tensor_ds, weight_tensor_ds)
     ref_out = run_vector_matmul_reference(input_tensor_ref, weight_tensor_ref)
     if not allclose(ds_out, ref_out):
+        print(ds_out)
+        print(ref_out)
+        print((ds_out - ref_out).abs().max())
+        assert (allclose(ds_out, ref_out))
+
+
+@pytest.mark.inference_ops
+@pytest.mark.parametrize("batch_size", [4])
+@pytest.mark.parametrize("in_features", [2048])
+@pytest.mark.parametrize("out_features", [2048])
+@pytest.mark.parametrize("dtype", get_dtypes())
+def test_vector_matmul_linear(batch_size, in_features, out_features, dtype):
+    input_tensor_ds = torch.randn(1, batch_size, in_features, dtype=dtype, device=get_accelerator().device_name())
+    weight_tensor_ds = torch.randn(out_features, in_features, dtype=dtype, device=get_accelerator().device_name())
+    bias_tensor_ds = torch.randn(out_features, dtype=dtype, device=get_accelerator().device_name())
+
+    input_tensor_ref = input_tensor_ds.clone().detach()
+    weight_tensor_ref = weight_tensor_ds.clone().detach()
+    bias_tensor_ref = bias_tensor_ds.clone().detach()
+
+    ds_out = run_vector_matmul_ds(input_tensor_ds, weight_tensor_ds).add(bias_tensor_ds)
+    ref_out = run_linear_reference(input_tensor_ref, weight_tensor_ref, bias_tensor_ref, dtype)
+    if not allclose(ds_out, ref_out):
+        print(ds_out)
+        print(ref_out)
         print((ds_out - ref_out).abs().max())
         assert (allclose(ds_out, ref_out))
