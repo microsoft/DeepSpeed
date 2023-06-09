@@ -129,8 +129,8 @@ class HybridSplitQKVContainer(HybridEngineContainer):
         if not Z3_enabled:
             # In initialize_tensors, we create a fused qkvw with the appropriate shape
             # and copy the qw, qb, kw, kb, vw, vb into it
-            self.module.attn_qkvw = self.qkvw
-            self.module.attn_qkvb = self.qkvb
+            self.module.attention.attn_qkvw = self.qkvw
+            self.module.attention.attn_qkvb = self.qkvb
 
             # We reset the data for qw (which is the original model parameter) to point
             # to the fused weight matrix we have created here
