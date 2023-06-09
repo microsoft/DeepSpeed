@@ -7,8 +7,7 @@ import torch
 import deepspeed
 import pytest
 from unit.common import DistributedTest
-from unit.simple_model import random_dataloader
-import transformer_engine.pytorch as te
+import transformer_engine.pytorch as transformer_engine
 from transformer_engine.common import recipe
 
 
@@ -17,10 +16,12 @@ class TestFp8ComposabilityAcrossZero(DistributedTest):
     world_size = 1
 
     def test(self, base_datatype):
+
         def run_zero(stage, model_dtype):
             num_batches = 128
             batch_size = 16
             hidden_dim = 768
+            # Have to set seed before model
             torch.random.manual_seed(42)
             enable_fp16 = False
             enable_bf16 = False
@@ -29,12 +30,12 @@ class TestFp8ComposabilityAcrossZero(DistributedTest):
             elif model_dtype == torch.bfloat16:
                 enable_bf16 = True
             # TransformerEngine Model
-            model = te.Linear(hidden_dim, hidden_dim, bias=True, params_dtype=model_dtype)
-        
+            model = transformer_engine.Linear(hidden_dim, hidden_dim, bias=True, params_dtype=model_dtype)
+
             # Create FP8 recipe. Note: All input args are optional.
             fp8_recipe = recipe.DelayedScaling(fp8_format=recipe.Format.HYBRID,
-                                                   amax_history_len=16,
-                                                   amax_compute_algo="max")
+                                               amax_history_len=16,
+                                               amax_compute_algo="max")
             config = {
                 "train_batch_size": batch_size,
                 "gradient_accumulation_steps": 1,
@@ -56,13 +57,15 @@ class TestFp8ComposabilityAcrossZero(DistributedTest):
                 }
             }
             # Init DeepSpeed
-            model, optimizer, _, _ = deepspeed.initialize(args=None, model=model,
-                                                          model_parameters=model.parameters(), config=config)
-            
+            model, optimizer, _, _ = deepspeed.initialize(args=None,
+                                                          model=model,
+                                                          model_parameters=model.parameters(),
+                                                          config=config)
+
             batches = torch.randn(num_batches, batch_size, hidden_dim, device=model.device, dtype=model_dtype)
             for batch in batches:
                 # Enables autocasting for the forward pass
-                with te.fp8_autocast(enabled=True, fp8_recipe=fp8_recipe):
+                with transformer_engine.fp8_autocast(enabled=True, fp8_recipe=fp8_recipe):
                     out = model(batch)
                 loss = out.mean()
                 model.backward(loss)
@@ -77,7 +80,7 @@ class TestFp8ComposabilityAcrossZero(DistributedTest):
             model_dtype = torch.float32
 
         # config
-        zero_stage = [0,1,2,3]
+        zero_stage = [0, 1, 2, 3]
         losses = []
         for stage in zero_stage:
             loss = run_zero(stage, model_dtype)
