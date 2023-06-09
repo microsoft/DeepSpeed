@@ -7,8 +7,13 @@ import torch
 import deepspeed
 import pytest
 from unit.common import DistributedTest
-import transformer_engine.pytorch as transformer_engine
-from transformer_engine.common import recipe
+from unit.util import skip_on_arch
+
+try:
+    import transformer_engine.pytorch as transformer_engine
+    from transformer_engine.common import recipe
+except ImportError:
+    pytest.skip("Transformer Engine package is missing, skipping tests")
 
 
 @pytest.mark.parametrize("base_datatype", ["fp16", "bf16", "fp32"])
@@ -16,6 +21,7 @@ class TestFp8ComposabilityAcrossZero(DistributedTest):
     world_size = 1
 
     def test(self, base_datatype):
+        skip_on_arch(min_arch=9)
 
         def run_zero(stage, model_dtype):
             num_batches = 128
