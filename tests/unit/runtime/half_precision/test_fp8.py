@@ -23,12 +23,8 @@ class TestFp8ComposabilityAcrossZero(DistributedTest):
             hidden_dim = 768
             # Have to set seed before model
             torch.random.manual_seed(42)
-            enable_fp16 = False
-            enable_bf16 = False
-            if model_dtype == torch.float16:
-                enable_fp16 = True
-            elif model_dtype == torch.bfloat16:
-                enable_bf16 = True
+            enable_fp16 = model_dtype == torch.float16
+            enable_bf16 = model_dtype == torch.bfloat16
             # TransformerEngine Model
             model = transformer_engine.Linear(hidden_dim, hidden_dim, bias=True, params_dtype=model_dtype)
 
