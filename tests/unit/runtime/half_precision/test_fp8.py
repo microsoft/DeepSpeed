@@ -13,7 +13,7 @@ try:
     import transformer_engine.pytorch as transformer_engine
     from transformer_engine.common import recipe
 except ImportError:
-    pytest.skip("Transformer Engine package is missing, skipping tests")
+    pytest.skip("Transformer Engine package is missing, skipping tests", allow_module_level=True)
 
 
 @pytest.mark.parametrize("base_datatype", ["fp16", "bf16", "fp32"])
