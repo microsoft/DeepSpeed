@@ -234,13 +234,25 @@ __global__ void fused_bias_residual(T* residual,
             // residual = (residual + attention + bias + attention_bias) *
             // mp_scale + hidden_state
             res_low.x =
-                (res_low.x + attn_low.x + bias_low.x + attn_bias_low.x) * mp_scale + hs_low.x;
+                res_low.x + attn_low.x + bias_low.x + attn_bias_low.x  + hs_low.x;
             res_low.y =
-                (res_low.y + attn_low.y + bias_low.y + attn_bias_low.y) * mp_scale + hs_low.y;
+                res_low.y + attn_low.y + bias_low.y + attn_bias_low.y  + hs_low.y;
             res_high.x =
-                (res_high.x + attn_high.x + bias_high.x + attn_bias_high.x) * mp_scale + hs_high.x;
+                res_high.x + attn_high.x + bias_high.x + attn_bias_high.x + hs_high.x;
             res_high.y =
-                (res_high.y + attn_high.y + bias_high.y + attn_bias_high.y) * mp_scale + hs_high.y;
+                res_high.y + attn_high.y + bias_high.y + attn_bias_high.y + hs_high.y;
+        
+        //if (preln) {
+        //    // residual = (residual + attention + bias + attention_bias) *
+        //    // mp_scale + hidden_state
+        //    res_low.x =
+        //        (res_low.x + attn_low.x + bias_low.x + attn_bias_low.x) * mp_scale + hs_low.x;
+        //    res_low.y =
+        //        (res_low.y + attn_low.y + bias_low.y + attn_bias_low.y) * mp_scale + hs_low.y;
+        //    res_high.x =
+        //        (res_high.x + attn_high.x + bias_high.x + attn_bias_high.x) * mp_scale + hs_high.x;
+        //    res_high.y =
+        //        (res_high.y + attn_high.y + bias_high.y + attn_bias_high.y) * mp_scale + hs_high.y;
         } else {
             // residual += hidden_state + bias
             res_low.x = (res_low.x + hs_low.x + bias_low.x);

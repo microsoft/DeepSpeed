@@ -97,7 +97,7 @@ class DeepSpeedMLP(nn.Module):
             debug = False
 
             # pytorch baseline to do add bias.
-            #input = input + bias
+            input = input + bias
             if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}, tensor = {input}')
 
             # pytorch baseline to do add residual (residual=input)
@@ -105,13 +105,13 @@ class DeepSpeedMLP(nn.Module):
             if debug: print(f'ds a4 attn + ln + bias-add + residual-add: norm = {torch.norm(input)}, tensor = {input}')
             
             # copy the weight and bias to fc1
-            self.fc1.weight.data.copy_(self.inter_w.transpose(0, 1))
-            self.fc1.bias.data.copy_(self.inter_b)
+            #self.fc1.weight.data.copy_(self.inter_w.transpose(0, 1))
+            #self.fc1.bias.data.copy_(self.inter_b)
             
             # copy the weight and bias to fc2
-            self.fc2.weight.data.copy_(self.output_w.transpose(0, 1))
-            self.fc2.bias.data.copy_(self.output_b)
-            torch.cuda.synchronize()
+            #self.fc2.weight.data.copy_(self.output_w.transpose(0, 1))
+            #self.fc2.bias.data.copy_(self.output_b)
+            #torch.cuda.synchronize()
 
             if debug: print(f"inside ds mlp: b4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
             if debug: print(f"inside ds mlp: b4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
@@ -141,7 +141,8 @@ class DeepSpeedMLP(nn.Module):
             if debug: print(f"inside ds mlp: a4 ln input  = {input.shape}, {input.norm()}")
             if debug: print(f"inside ds mlp: a4 ln input tensor = {input}")
             
-            input = self.fc1(input)
+            #input = self.fc1(input)
+            input = torch.matmul(input, self.inter_w).add_(self.inter_b)
 
             if debug: print(f"inside ds mlp: a4 fc1: {input}, {input.norm()}")
 
@@ -152,7 +153,8 @@ class DeepSpeedMLP(nn.Module):
             if debug: print(f"inside ds mlp: fc2 weight = {self.fc2.weight.shape}, {self.fc2.weight.norm()}")
             if debug: print(f"inside ds mlp: fc2 bias   = {self.fc2.bias.shape}, {self.fc2.bias.norm()}")
 
-            output = self.fc2(output)
+            #output = self.fc2(output)
+            output = torch.matmul(output, self.output_w).add_(self.output_b)
 
             if debug: print(f"inside ds mlp: a4 fc2: {output}, {output.norm()}")
 
@@ -173,7 +175,7 @@ class DeepSpeedMLP(nn.Module):
         
         # mlp_base = True  => calls a pytorch baseline mlp
         # mlp_base = False => calls the DS mlp
-        mlp_base = True
+        mlp_base = False
         
         if mlp_base:
             residual = self.mlp_baseline(input, residual, bias)
@@ -194,13 +196,18 @@ class DeepSpeedMLP(nn.Module):
                                                             gamma=self.attn_nw,
                                                             beta=self.attn_nb)
 
-            residual = self.residual_add_func(hidden_state=output,
-                                                residual=residual,
-                                                add_bias=bias is not None,
-                                                attention_output=input,
-                                                attention_bias=bias if bias is not None else self.output_b,
-                                                final_bias=self.output_b,
-                                                residual_add=residual_add)
+
+            residual = output + self.output_b + residual + bias + input
+            
+            ## the DS kernels are doing this:
+            # // residual = (residual + attention + bias + attention_bias) * mp_scale + hidden_state
+            #residual = self.residual_add_func(hidden_state=output,
+            #                                    residual=residual,
+            #                                    add_bias=bias is not None,
+            #                                    attention_output=input,
+            #                                    attention_bias=bias if bias is not None else self.output_b,
+            #                                    final_bias=self.output_b,
+            #                                    residual_add=residual_add)
             if self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
                 dist.all_reduce(residual, group=self.mp_group)
     

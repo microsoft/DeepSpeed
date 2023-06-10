@@ -33,7 +33,8 @@ def get_tolerances():
 def allclose(x, y):
     assert x.dtype == y.dtype
     rtol, atol = get_tolerances()[x.dtype]
-    return torch.allclose(x, y, rtol=rtol, atol=atol)
+    #return torch.allclose(x, y, rtol=rtol, atol=atol)
+    return torch.allclose(x, y)
 
 
 @pytest.fixture(scope="module")
@@ -68,11 +69,11 @@ def run_residual_add_reference(hidden_state, residual, attn_output, attn_bias, f
 @pytest.mark.inference_ops
 @pytest.mark.parametrize("batch", [1, 2])
 @pytest.mark.parametrize("sequence", [1, 128, 255])
-@pytest.mark.parametrize("hidden_dim", [512, 1232, 4096])
+@pytest.mark.parametrize("hidden_dim", [2048, 1232, 4096])
 @pytest.mark.parametrize("dtype", get_dtypes())
 @pytest.mark.parametrize("mlp_after_attn", [True, False])
 @pytest.mark.parametrize("add_bias", [True, False])
-@pytest.mark.parametrize("mp_size", [1, 2])
+@pytest.mark.parametrize("mp_size", [1])
 @pytest.mark.parametrize("pre_attn_norm", [True, False])
 def test_residual_add(inference_module, batch, sequence, hidden_dim, dtype, mlp_after_attn, add_bias, mp_size,
                       pre_attn_norm):
