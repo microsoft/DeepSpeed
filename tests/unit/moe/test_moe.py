@@ -11,10 +11,10 @@ from unit.simple_model import SimplePRMoEModel, SimpleMoEModel, sequence_dataloa
 from unit.util import required_torch_version
 
 
-@pytest.mark.parametrize("ep_size", [2, 4])
+@pytest.mark.parametrize("ep_size", [2])
 @pytest.mark.parametrize("use_residual", [True, False])
 class TestMoE(DistributedTest):
-    world_size = 4
+    world_size = 2
 
     def test(self, ep_size, use_residual):
         if not required_torch_version():

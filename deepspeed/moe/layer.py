@@ -75,7 +75,7 @@ class MoE(torch.nn.Module):
                                       self.num_local_experts,
                                       use_tutel=use_tutel)
         if self.use_residual:
-            self.mlp = expert
+            self.mlp = expert()
             # coefficient is used for weighted sum of the output of expert and mlp
             self.coefficient = torch.nn.Linear(hidden_size, 2)
 

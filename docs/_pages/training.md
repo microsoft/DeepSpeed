@@ -44,7 +44,7 @@ optimizations on advanced hyperparameter tuning and optimizers. For example:
   | 64 V100 GPUs   | DeepSpeed |            **8.68** hr|
   | 16 V100 GPUs   | DeepSpeed |           **33.22** hr|
 
-  *BERT codes and tutorials will be available soon.*
+  *BERT code and tutorials will be available soon.*
 
 * DeepSpeed trains GPT2 (1.5 billion parameters) 3.75x faster than state-of-art, NVIDIA
   Megatron on Azure GPUs.
@@ -201,6 +201,7 @@ Enable 16-bit (FP16) training by in the `deepspeed_config` JSON.
     "loss_scale": 0,
     "loss_scale_window": 1000,
     "hysteresis": 2,
+    "consecutive_hysteresis": false,
     "min_loss_scale": 1
 }
 ```

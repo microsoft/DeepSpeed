@@ -72,16 +72,20 @@ class SimpleMoEModel(torch.nn.Module):
     def __init__(self, hidden_dim, num_experts=4, ep_size=1, use_residual=False):
         super(SimpleMoEModel, self).__init__()
         self.linear = torch.nn.Linear(hidden_dim, hidden_dim)
-        expert = torch.nn.Linear(hidden_dim, hidden_dim)
+
+        def create_expert():
+            expert = torch.nn.Linear(hidden_dim, hidden_dim, device='cuda', dtype=torch.half)
+            return expert
+
         # using two MoE layers to check implications of sharing a single storage
         self.linear2 = MoE(hidden_size=hidden_dim,
-                           expert=expert,
+                           expert=create_expert,
                            ep_size=ep_size,
                            use_residual=use_residual,
                            num_experts=num_experts,
                            k=1)
         self.linear3 = MoE(hidden_size=hidden_dim,
-                           expert=expert,
+                           expert=create_expert,
                            ep_size=ep_size,
                            use_residual=use_residual,
                            num_experts=num_experts,
