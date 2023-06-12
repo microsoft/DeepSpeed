@@ -133,20 +133,21 @@ class DeepSpeedSelfAttention(nn.Module):
         head_dim = self.hidden_size_per_partition // self.num_attention_heads_per_partition
         return tensor.view(bsz, seq_len, self.num_attention_heads_per_partition, head_dim).transpose(1, 2).contiguous()
 
+    # todo: this runs through two model forward passes before errors on src_len and key_states shape
     def attn_baseline(self,
                 input,
                 input_mask,
-                # head_mask=None,
-                # layer_past=None,
+                head_mask=None,
+                layer_past=None,
                 # get_present=False,
                 # encoder_hidden_states=None,
                 # encoder_attention_mask=None,
-                # output_attentions=False,
+                output_attentions=False,
                 norm_w=None,
                 norm_b=None,
                 # alibi=None
                 ):
-        debug = True
+        debug = False
         qkvw =  self._attn_qkvw.split(2048,1)
         qkvb = self._attn_qkvb.split(2048,0)
 
@@ -159,47 +160,98 @@ class DeepSpeedSelfAttention(nn.Module):
 
         self.self_attn_layer_norm.weight.data.copy_(norm_w)
         self.self_attn_layer_norm.bias.data.copy_(norm_b)
+        torch.cuda.synchronize()
 
+        if debug: print(f"ds attn: b4 ln hidden_states = {input},{input.norm()}")
         hidden_states = self.self_attn_layer_norm(input)
         bsz, tgt_len, _ = hidden_states.size()
-        key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
-        value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+
+        if layer_past is not None:
+            if debug: print(f"ds attn: layer_past key   = {layer_past[0]}, {layer_past[0].norm()}, {layer_past[0].size()}")
+            if debug: print(f"ds attn: layer_past value  = {layer_past[1]}, {layer_past[1].norm()}")
+            # reuse k, v, self_attention
+            key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
+            value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+            key_states = torch.cat([layer_past[0], key_states], dim=2)
+            value_states = torch.cat([layer_past[1], value_states], dim=2)
+        else:
+            key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
+            value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+
         past_key_value = (key_states, value_states)
-        if debug: print(f"inside ds attn: hidden_states = {hidden_states.norm()}")
-        if debug: print(f"inside ds attn: key_states   = {key_states.norm()}")
-        if debug: print(f"inside ds attn: value_states  = {value_states.norm()}")
+        key_layer = key_states
+        value_layer = value_states
+        if debug: print(f"ds attn: key_states   = {key_states}, {key_states.norm()}, {key_states.size()}")
+        if debug: print(f"ds attn: value_states  = {value_states}, {value_states.norm()}")
+        if debug: print(f"ds attn: hidden_states = {hidden_states}, {hidden_states.norm()}")
+
 
         #same as qkv_func return
         #return (hidden_states, hidden_states.norm())
-
-        key_layer = key_states
-        value_layer = value_states
 
         head_dim = self.hidden_size_per_partition // self.num_attention_heads_per_partition
         scaling = head_dim**-0.5
         self.q_proj.weight.data.copy_(qkvw[0].transpose(0, 1))
         self.q_proj.bias.data.copy_(qkvb[0])
+        torch.cuda.synchronize()
         query_states = self.q_proj(hidden_states) * scaling
 
         proj_shape = (bsz * self.num_attention_heads_per_partition, -1, head_dim)
         query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
         key_states = key_states.view(*proj_shape)
+        if debug: print(f"ds attn: a4 view key_states = {key_states}, {key_states.norm()}, {key_states.size()}")
+        if debug: print(f"ds attn: query_states = {query_states}, {query_states.norm()}")
         attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
 
-        if debug: print(f"ds attn: a4 bmm attn_weights = {attn_weights.norm()}")
+        if debug: print(f"ds attn: a4 bmm attn_weights = {attn_weights},{attn_weights.norm()}")
+
+        src_len = key_states.size(1)
+        if debug: print(f"ds attn: src_len = {src_len}")
+
+        if attn_weights.size() != (bsz * self.num_attention_heads_per_partition, tgt_len, src_len):
+            raise ValueError(
+                f"Attention weights should be of size {(bsz * self.num_attention_heads_per_partition, tgt_len, src_len)}, but is"
+                f" {attn_weights.size()}"
+            )
 
         if input_mask is not None:
-            src_len = key_states.size(1)
+            if debug: print(f"ds attn: input_mask = {input_mask}")
+            if input_mask.size() != (bsz, 1, tgt_len, src_len):
+                raise ValueError(
+                    f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {input_mask.size()}"
+                )
             attn_weights = attn_weights.view(bsz, self.num_attention_heads_per_partition, tgt_len, src_len) + input_mask
             attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
             attn_weights = attn_weights.view(bsz * self.num_attention_heads_per_partition, tgt_len, src_len)
-            if debug: print(f"ds attn: a4 attn_mask attn_weights = {attn_weights.norm()}")
+        if debug: print(f"ds attn: a4 attn_weights = {attn_weights}, {attn_weights.size()}")
 
         if attn_weights.dtype == torch.float16:
             attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(torch.float16)
         else:
             attn_weights = nn.functional.softmax(attn_weights, dim=-1)
         if debug: print(f"ds attn: a4 softmax attn_weights = {attn_weights.norm()}")
+
+        if head_mask is not None:
+            if head_mask.size() != (self.num_attention_heads_per_partition,):
+                raise ValueError(
+                    f"Head mask for a single layer should be of size {(self.num_attention_heads_per_partition,)}, but is"
+                    f" {head_mask.size()}"
+                )
+            attn_weights = head_mask.view(1, -1, 1, 1) * attn_weights.view(bsz, self.num_attention_heads_per_partition, tgt_len, src_len)
+            attn_weights = attn_weights.view(bsz * self.num_attention_heads_per_partition, tgt_len, src_len)
+            if debug: print(f"ds attn: a4 head_mask attn_weights = {attn_weights.norm()}")
+
+        if output_attentions:
+            # this operation is a bit awkward, but it's required to
+            # make sure that attn_weights keeps its gradient.
+            # In order to do so, attn_weights have to be reshaped
+            # twice and have to be reused in the following
+            attn_weights_reshaped = attn_weights.view(bsz, self.num_attention_heads_per_partition, tgt_len, src_len)
+            attn_weights = attn_weights_reshaped.view(bsz * self.num_attention_heads_per_partition, tgt_len, src_len)
+        else:
+            attn_weights_reshaped = None
+        if debug: print(f"ds attn: a4 output_attentions attn_weights = {attn_weights.norm()}")
+
 
         value_states = value_states.view(*proj_shape)
         attn_output = torch.bmm(attn_weights, value_states)
@@ -213,7 +265,9 @@ class DeepSpeedSelfAttention(nn.Module):
         attn_output = attn_output.transpose(1, 2)
         attn_output = attn_output.reshape(bsz, tgt_len, self.config.hidden_size)
         attn_output = self.out_proj(attn_output)
-        if debug: print(f"hf attn: return attn_output = {attn_output.norm()}")
+        if debug: print(f"inside ds attn: key_states   = {key_layer}, {key_layer.norm()}, {key_states.size()}")
+        if debug: print(f"inside ds attn: value_states  = {value_layer}, {value_layer.norm()}")
+        if debug: print(f"ds attn: return attn_output = {attn_output}, {attn_output.norm()}")
 
         output = attn_output
         inp_norm = hidden_states.norm()
@@ -239,64 +293,65 @@ class DeepSpeedSelfAttention(nn.Module):
             self._attn_qkvw = self.attn_qkvw
             self._attn_qkvb = self.attn_qkvb
 
-        attn_base = False
+        attn_base = True
         if attn_base:
-            self.attn_baseline(input, input_mask, norm_w, norm_b)
-        debug = False
-
-        if debug: print(f"inside ds attn: b4 ln weight = {self._attn_qkvw.norm()}")
-        if debug: print(f"inside ds attn: b4 ln bias   = {self._attn_qkvb.norm()}")
-        if debug: print(f"inside ds attn: b4 ln input  = {input.norm()}")
-        #if debug: print(f"inside ds attn: b4 ln input tensor = {input}")
-        if debug: print(f"inside ds attn: b4 qkv_func gamma = {norm_w.norm()}")
-        if debug: print(f"inside ds attn: b4 qkv_func beta   = {norm_b.norm()}")
-
-        if not self.config.pre_layer_norm:
-            qkv_out = self.linear_func(input=input,
-                                       weight=self._attn_qkvw,
-                                       bias=self._attn_qkvb,
-                                       add_bias=self.attn_qkvb is not None,
-                                       do_flash_attn=False,
-                                       num_heads=self.num_attention_heads_per_partition,
-                                       num_layers=DeepSpeedSelfAttention.num_layers)
+            output, key_layer, value_layer, context_layer, inp_norm = self.attn_baseline(input, input_mask, head_mask, layer_past, output_attentions, norm_w, norm_b)
         else:
-            qkv_out = self.qkv_func(input=input,
-                                    weight=self._attn_qkvw,
-                                    bias=self._attn_qkvb,
-                                    gamma=norm_w,
-                                    beta=norm_b)
+            debug = False
 
-        if debug: print(f"inside ds attn: qkv_out[0] = {qkv_out[0].norm()}")
-        if debug: print(f"inside ds attn: qkv_out[1] = {qkv_out[1].norm()}")
-        if debug: print(f"inside ds attn: input_mask   = {input_mask.norm()}")
-        if debug and layer_past: 
-            print(f"inside ds attn: layer_past[0]  = {layer_past[0].norm()}")
-            print(f"inside ds attn: layer_past[1]  = {layer_past[1].norm()}")
-        if debug and alibi: print(f"inside ds attn: alibi  = {alibi.norm()}")
+            if debug: print(f"inside ds attn: b4 ln weight = {self._attn_qkvw.norm()}")
+            if debug: print(f"inside ds attn: b4 ln bias   = {self._attn_qkvb.norm()}")
+            if debug: print(f"inside ds attn: b4 ln input  = {input.norm()}")
+            #if debug: print(f"inside ds attn: b4 ln input tensor = {input}")
+            if debug: print(f"inside ds attn: b4 qkv_func gamma = {norm_w.norm()}")
+            if debug: print(f"inside ds attn: b4 qkv_func beta   = {norm_b.norm()}")
 
-        context_layer, key_layer, value_layer = self.compute_attention(qkv_out=qkv_out,
-                                                                       input_mask=input_mask,
-                                                                       layer_past=layer_past,
-                                                                       alibi=alibi)
+            if not self.config.pre_layer_norm:
+                qkv_out = self.linear_func(input=input,
+                                        weight=self._attn_qkvw,
+                                        bias=self._attn_qkvb,
+                                        add_bias=self.attn_qkvb is not None,
+                                        do_flash_attn=False,
+                                        num_heads=self.num_attention_heads_per_partition,
+                                        num_layers=DeepSpeedSelfAttention.num_layers)
+            else:
+                qkv_out = self.qkv_func(input=input,
+                                        weight=self._attn_qkvw,
+                                        bias=self._attn_qkvb,
+                                        gamma=norm_w,
+                                        beta=norm_b)
+
+            if debug: print(f"inside ds attn: qkv_out[0] = {qkv_out[0].norm()}")
+            if debug: print(f"inside ds attn: qkv_out[1] = {qkv_out[1].norm()}")
+            if debug: print(f"inside ds attn: input_mask   = {input_mask.norm()}")
+            if debug and layer_past: 
+                print(f"inside ds attn: layer_past[0]  = {layer_past[0].norm()}")
+                print(f"inside ds attn: layer_past[1]  = {layer_past[1].norm()}")
+            if debug and alibi: print(f"inside ds attn: alibi  = {alibi.norm()}")
+
+            context_layer, key_layer, value_layer = self.compute_attention(qkv_out=qkv_out,
+                                                                        input_mask=input_mask,
+                                                                        layer_past=layer_past,
+                                                                        alibi=alibi)
+            
+            if debug: print(f"inside ds attn: a4 compute attn context_layer   = {context_layer.norm()}")
+            if debug: print(f"inside ds attn: a4 compute attn key_layer  = {key_layer.norm()}")
+            if debug: print(f"inside ds attn: a4 compute attn value_layer  = {value_layer.norm()}")
         
-        if debug: print(f"inside ds attn: a4 compute attn context_layer   = {context_layer.norm()}")
-        if debug: print(f"inside ds attn: a4 compute attn key_layer  = {key_layer.norm()}")
-        if debug: print(f"inside ds attn: a4 compute attn value_layer  = {value_layer.norm()}")
-    
-        output = self.vector_matmul_func(input=context_layer, weight=self.attn_ow)
-        inp_norm = qkv_out[-1]
+            output = self.vector_matmul_func(input=context_layer, weight=self.attn_ow)
+            inp_norm = qkv_out[-1]
 
-        if debug: print(f"inside ds attn: a4 matmul output  = {output.norm()}")
-        if debug: print(f"inside ds attn: a4 matmul inp_norm  = {inp_norm.norm()}")
+            if debug: print(f"inside ds attn: a4 matmul output  = {output.norm()}")
+            if debug: print(f"inside ds attn: a4 matmul inp_norm  = {inp_norm.norm()}")
 
-        if self.config.mlp_after_attn and self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
-            dist.all_reduce(output, group=self.mp_group)
+            if self.config.mlp_after_attn and self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
+                dist.all_reduce(output, group=self.mp_group)
 
-        if debug: print(f"inside ds attn: return output = {output.norm()}")
-        if debug: print(f"inside ds attn: return key_layer   = {key_layer.norm()}")
-        if debug: print(f"inside ds attn: return value_layer  = {value_layer.norm()}")
-        if debug: print(f"inside ds attn: return context_layer  = {context_layer.norm()}")
-        if debug: print(f"inside ds attn: return inp_norm  = {inp_norm.norm()}")
+            if debug: print(f"inside ds attn: return output = {output.norm()}")
+            if debug: print(f"inside ds attn: return key_layer   = {key_layer.norm()}")
+            if debug: print(f"inside ds attn: return value_layer  = {value_layer.norm()}")
+            if debug: print(f"inside ds attn: return context_layer  = {context_layer.norm()}")
+            if debug: print(f"inside ds attn: return inp_norm  = {inp_norm.norm()}")
 
         return (output, key_layer, value_layer, context_layer, inp_norm)
 
