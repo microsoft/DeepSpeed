@@ -162,14 +162,29 @@ class DeepSpeedSelfAttention(nn.Module):
         
         #print(len(qkvw), len(qkvb))
         #exit(0)
-        self.k_proj.weight.data.copy_(qkvw[1].transpose(0, 1))
+        if self.config.transposed_mode:
+            self.k_proj.weight.data.copy_(qkvw[1])
+        else:
+            self.k_proj.weight.data.copy_(qkvw[1].transpose(0, 1))
         self.k_proj.bias.data.copy_(qkvb[1])
-        self.v_proj.weight.data.copy_(qkvw[2].transpose(0, 1))
+        
+        if self.config.transposed_mode:
+            self.v_proj.weight.data.copy_(qkvw[2])
+        else:
+            self.v_proj.weight.data.copy_(qkvw[2].transpose(0, 1))
+
         self.v_proj.bias.data.copy_(qkvb[2])
-        self.out_proj.weight.data.copy_(self.attn_ow.transpose(0, 1))
+        if self.config.transposed_mode:
+            self.out_proj.weight.data.copy_(self.attn_ow)
+        else:   
+            self.out_proj.weight.data.copy_(self.attn_ow.transpose(0, 1))
         self.out_proj.bias.data.copy_(self.attn_ob)
 
+        #if self.config.transposed_mode:
         self.self_attn_layer_norm.weight.data.copy_(norm_w)
+        #else:
+        #    self.self_attn_layer_norm.weight.data.copy_(norm_w.transpose(0, 1))
+
         self.self_attn_layer_norm.bias.data.copy_(norm_b)
         get_accelerator().synchronize()
 
@@ -202,7 +217,11 @@ class DeepSpeedSelfAttention(nn.Module):
 
         head_dim = self.hidden_size_per_partition // self.num_attention_heads_per_partition
         scaling = head_dim**-0.5
-        self.q_proj.weight.data.copy_(qkvw[0].transpose(0, 1))
+        if self.config.transposed_mode:
+            self.q_proj.weight.data.copy_(qkvw[0])
+        else:
+            self.q_proj.weight.data.copy_(qkvw[0].transpose(0, 1))
+
         self.q_proj.bias.data.copy_(qkvb[0])
         get_accelerator().synchronize()
         query_states = self.q_proj(hidden_states) * scaling
