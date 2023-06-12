@@ -11,6 +11,7 @@ from enum import Enum
 import functools
 import itertools
 from typing import List
+import logging
 import torch
 from torch import Tensor
 from deepspeed import comm as dist
@@ -219,6 +220,8 @@ _orig_torch_empty = torch.empty
 _orig_torch_zeros = torch.zeros
 _orig_torch_ones = torch.ones
 _orig_torch_full = torch.full
+_orig_torch_arange = torch.arange
+_orig_torch_eye = torch.eye
 
 
 def zero_wrapper_for_fp_tensor_constructor(fn: Callable, target_fp_dtype: torch.dtype) -> Callable:
@@ -423,11 +426,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
             torch.nn.modules.module.Module.__init_subclass__ = classmethod(_init_subclass)
             torch.nn.modules.module.Module.apply = apply_with_gather(torch.nn.modules.module.Module._old_apply)
 
-            torch.Tensor.__new__ = get_new_tensor_fn_for_dtype(self.dtype)
-            torch.empty = zero_wrapper_for_fp_tensor_constructor(_orig_torch_empty, self.dtype)
-            torch.zeros = zero_wrapper_for_fp_tensor_constructor(_orig_torch_zeros, self.dtype)
-            torch.ones = zero_wrapper_for_fp_tensor_constructor(_orig_torch_ones, self.dtype)
-            torch.full = zero_wrapper_for_fp_tensor_constructor(_orig_torch_full, self.dtype)
+            self._add_tensor_creation_wrappers()
 
             if self.mem_efficient_linear:
                 print_rank_0(
@@ -475,6 +474,24 @@ class InsertPostInitMethodToModuleSubClasses(object):
         else:
             self.dtype = dtype or torch.half
 
+    def _add_tensor_creation_wrappers(self):
+        torch.Tensor.__new__ = get_new_tensor_fn_for_dtype(self.dtype)
+        torch.empty = zero_wrapper_for_fp_tensor_constructor(_orig_torch_empty, self.dtype)
+        torch.zeros = zero_wrapper_for_fp_tensor_constructor(_orig_torch_zeros, self.dtype)
+        torch.ones = zero_wrapper_for_fp_tensor_constructor(_orig_torch_ones, self.dtype)
+        torch.full = zero_wrapper_for_fp_tensor_constructor(_orig_torch_full, self.dtype)
+        torch.arange = zero_wrapper_for_fp_tensor_constructor(_orig_torch_arange, self.dtype)
+        torch.eye = zero_wrapper_for_fp_tensor_constructor(_orig_torch_eye, self.dtype)
+
+    def _remove_tensor_creation_wrappers(self):
+        torch.Tensor.__new__ = torch.Tensor.__old_new__
+        torch.empty = _orig_torch_empty
+        torch.zeros = _orig_torch_zeros
+        torch.ones = _orig_torch_ones
+        torch.full = _orig_torch_full
+        torch.arange = _orig_torch_arange
+        torch.eye = _orig_torch_eye
+
     def remove_wrappers(self):
 
         def _disable_class(cls):
@@ -490,11 +507,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
             torch.nn.modules.module.Module.__init_subclass__ = torch.nn.modules.module.Module._old_init_subclass
             torch.nn.modules.module.Module.apply = torch.nn.modules.module.Module._old_apply
 
-            torch.Tensor.__new__ = torch.Tensor.__old_new__
-            torch.empty = _orig_torch_empty
-            torch.zeros = _orig_torch_zeros
-            torch.ones = _orig_torch_ones
-            torch.full = _orig_torch_full
+            self._remove_tensor_creation_wrappers()
 
             # un doing it here will undo it during training
             # if self.mem_efficient_linear:
@@ -898,7 +911,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             # to debug correctness issues.
             params = sorted(params, key=lambda p: p.ds_id)
 
-            debug_rank0(f"-allgather_coalesced: {[p.ds_id for p in params]}")
+            if logger.isEnabledFor(logging.DEBUG):
+                debug_rank0(f"-allgather_coalesced: {[p.ds_id for p in params]}")
 
             if safe_mode:
                 # ensure that same list (with same ordering) of parameters are
