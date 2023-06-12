@@ -32,6 +32,11 @@ class AutoTP():
         return mlist
 
     def supported(model):
+        # when replace_with_kernel_inject is set to True, the following models are not supported e.g.
+        # kernel_inject: True  : {'replace_with_kernel_inject': True}
+        # kernel_inject: False : {'injection_policy': {<class 'transformers.models.bloom.modeling_bloom.BloomBlock'>: ('self_attention.dense', 'mlp.dense_4h_to_h')}}
+        # e.g. https://github.com/huggingface/transformers-bloom-inference/blob/main/bloom-inference-scripts/bloom-ds-inference.py#122
+        partially_supported = ['bloom']
         unsupported = ['codegen', 'deberta', 'flaubert', 'fsmt', 'gpt2', 'led', 'longformer', 'xlm', 'xlnet']
         model = str(model)
         key = re.search(r": (.*?)Model", model)
@@ -42,6 +47,11 @@ class AutoTP():
         assert key is not None, "Not able to determine model policy automatically. Please provide policy."
         if key.group(1).lower() in unsupported:
             return False
+        elif key.group(1).lower() in partially_supported:
+            print(
+                "WARNING! Partially supported models may not work as expected when replace_with_kernel_inject reference is set to False."
+            )
+            return True
         return True
 
     def get_layers(parent, module):
@@ -89,7 +99,7 @@ class AutoTP():
 
         module_list = AutoTP.get_module_list(model)
         assert AutoTP.supported(model), "AutoTP not supported for model. Please use kernel injection since container policy for model exists." \
-        if AutoTP.kernel_supported(module_list) else "AutoTP not supported for model. Please provide policy."
+            if AutoTP.kernel_supported(module_list) else "AutoTP not supported for model. Please provide policy."
         for module in module_list:
             for key, submodule in module._modules.items():
                 if isinstance(submodule, nn.Linear):
@@ -114,5 +124,5 @@ class AutoTP():
                 policy_list = AutoTP.update_policy_list(policy_list, module, gem_list)
                 gem_list = []
         assert len(policy_list), "AutoTP not supported for model. Please use kernel injection since container policy for model exists." \
-        if AutoTP.kernel_supported(module_list) else "Not able to determine model policy automatically. Please provide policy."
+            if AutoTP.kernel_supported(module_list) else "Not able to determine model policy automatically. Please provide policy."
         return policy_list
