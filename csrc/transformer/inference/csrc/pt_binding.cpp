@@ -2012,10 +2012,12 @@ at::Tensor mlp_gemm_fc(at::Tensor& inp_norm,
 
     int out_size = (q_int8 || transposed_mode) ? weight.size(0) : weight.size(1);
     int bsz = input.size(0) * input.size(1);
-    auto output =
-        at::from_blob((T*)InferenceContext::Instance().GetWorkSpace(),
-                      {input.size(0), input.size(1), out_size},
-                      options);
+    //auto output =
+    //    at::from_blob((T*)InferenceContext::Instance().GetWorkSpace(),
+    //                  {input.size(0), input.size(1), out_size},
+    //                  options);
+
+    auto output = at::empty({input.size(0), input.size(1), out_size}, options);
 
     if (q_int8) {
         quantized_gemm<T>(

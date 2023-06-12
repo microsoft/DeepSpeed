@@ -35,7 +35,7 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
 
     auto act_func_type = static_cast<ActivationFuncType>(activation_type);
     auto res_add = mlp_unfused_cublas<T>(output,
-                                         mlp_after_attn ? input : residual,
+                                         mlp_after_attn ? input : residual, // TODO (lekurile): comprehend this
                                          residual,
                                          input_bias,
                                          weight_interm,

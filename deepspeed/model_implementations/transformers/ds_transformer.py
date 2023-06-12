@@ -161,11 +161,13 @@ class DeepSpeedTransformerInference(nn.Module):
         if debug: print(f'ds b4 attn: norm = {torch.norm(input)}, tensor = {input}')
 
         with torch.no_grad():
-            mlp_base = False
-            tensor_affix = "torch" if mlp_base else "ds"
-            torch.save(input, f'logs/{tensor_affix}_input_tensor_layer_{self.config.layer_id}.pt')
-
+            save_tensors = False
             skip_attention = False
+            mlp_base = True
+
+            tensor_affix = "torch" if mlp_base else "ds"
+            if save_tensors: torch.save(input, f'logs/{tensor_affix}_input_tensor_layer_{self.config.layer_id}.pt')
+
 
             if skip_attention:
                 attention_input = torch.clone(input)
@@ -194,18 +196,17 @@ class DeepSpeedTransformerInference(nn.Module):
                 # the attention_output in DS now matches the hidden_states from HF side.
                 output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob, self.attention.attn_ow)
 
-            print(f"layer_id ({self.config.layer_id}), after mlp: {torch.norm(output)}")
+            if debug: print(f"layer_id ({self.config.layer_id}), after mlp: {torch.norm(output)}")
             #if debug: print(f'layer_id = {self.config.layer_id}')
             #exit(0)
             if not self.config.pre_layer_norm:
                 output = inference_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
             if debug: print(f"after layernorm: {torch.norm(output)}")
             #exit(0)
-            if self.config.layer_id == 23: exit(0)
+            #if self.config.layer_id == 23: exit(0)
             output = output.to(input_type)
         if get_present:
-            #output = (output, presents)
-            output = output
+            output = (output, presents)
 
         if self.config.return_single_tuple:
             return (output, )

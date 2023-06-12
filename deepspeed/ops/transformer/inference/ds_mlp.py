@@ -101,7 +101,7 @@ class DeepSpeedMLP(nn.Module):
 
             # pytorch baseline to do add bias.
             # TODO (lekurile): If attn removed, remove this bias addtiiona as well
-            input = input + bias
+            #input = input + bias
             if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}')
 
             # pytorch baseline to do add residual (residual=input)
@@ -155,6 +155,7 @@ class DeepSpeedMLP(nn.Module):
 
             output = self.activation_fn(input)
 
+            torch.save(output, f'logs/torch_mlp_act_tensor_layer_{self.config.layer_id}.pt')
             #import pdb; pdb.set_trace()
 
             if debug: print(f"inside ds mlp: a4 ac: {output.norm()}")
@@ -180,16 +181,30 @@ class DeepSpeedMLP(nn.Module):
             self._inter_w = self.inter_w
             self._inter_b = self.inter_b
 
+        #print(f"input = {input}")
         residual_add = None
 
         # mlp_base = True  => calls a pytorch baseline mlp
         # mlp_base = False => calls the DS mlp
-        mlp_base = False
-        mlp_functions = False
+        mlp_base = True
+        attn_base = True
+        mlp_functions = True
+
+        debug = False
+        save_tensors = False
 
         if mlp_base:
             residual = self.mlp_baseline(input, residual, bias)
+        elif self.attn_nw is None:
+            output = self.fused_gemm_gelu(input=residual_norm,
+                                            weight=self.inter_w,
+                                            bias=self.inter_b,
+                                            weight_out=self.output_w)
         else:
+            #if attn_base:
+            #    #import pdb; pdb.set_trace()
+            #    bias = torch.zeros(bias.size(), dtype=bias.dtype)
+
             if mlp_functions:
                                                                     #at::Tensor& input,
                                                                     #at::Tensor& residual,
@@ -207,8 +222,11 @@ class DeepSpeedMLP(nn.Module):
                                                                      self.config.epsilon,
                                                                      self.config.mlp_after_attn,
                                                                      self.config.layer_id)
-                torch.save(mlp_post_ln, f'logs/ds_mlp_ln_new_tensor_layer_{self.config.layer_id}.pt')
+
+                #print(f"post_ln input = {input}")
+                if save_tensors: torch.save(mlp_post_ln, f'logs/ds_mlp_ln_new_tensor_layer_{self.config.layer_id}.pt')
                 #import pdb; pdb.set_trace()
+                # TODO (lekurile): call layernorm separately followed by add
 
                                              #at::Tensor mlp_gemm_fc(at::Tensor& inp_norm,
                                              #                       at::Tensor& input,
@@ -226,7 +244,8 @@ class DeepSpeedMLP(nn.Module):
                                                                                    self.config.transposed_mode,
                                                                                    True,
                                                                                    self.config.layer_id)
-                torch.save(mlp_post_fc1, f'logs/ds_mlp_fc1_new_tensor_layer_{self.config.layer_id}.pt')
+                #print(f"post_fc1 input = {input}")
+                if save_tensors: torch.save(mlp_post_fc1, f'logs/ds_mlp_fc1_new_tensor_layer_{self.config.layer_id}.pt')
                 #import pdb; pdb.set_trace()
 
 
@@ -241,13 +260,14 @@ class DeepSpeedMLP(nn.Module):
                 #(arg0: torch.Tensor, arg1: torch.Tensor, arg2: torch.Tensor, arg3: torch.Tensor, arg4: bool, arg5: int, arg6: bool, arg7: int)
                 mlp_post_act = self.mlp_functions.inference_module.mlp_activation_fp16(mlp_post_fc1,
                                                                                    input,
-                                                                                   self.output_w,
+                                                                                   self.inter_w,
                                                                                    self.inter_b,
                                                                                    self.config.dtype == torch.int8,
                                                                                    self.config.mlp_act_func_type,
                                                                                    self.config.transposed_mode,
                                                                                    self.config.layer_id)
-                torch.save(mlp_post_act, f'logs/ds_mlp_act_new_tensor_layer_{self.config.layer_id}.pt')
+                #print(f"post_act input = {input}")
+                if save_tensors: torch.save(mlp_post_act, f'logs/ds_mlp_act_new_tensor_layer_{self.config.layer_id}.pt')
                 #import pdb; pdb.set_trace()
 
                                              #at::Tensor mlp_gemm_fc(at::Tensor& inp_norm,
@@ -267,17 +287,15 @@ class DeepSpeedMLP(nn.Module):
                                                                                    self.config.transposed_mode,
                                                                                    False,
                                                                                    self.config.layer_id)
-                torch.save(mlp_post_fc2, f'logs/ds_mlp_fc2_new_tensor_layer_{self.config.layer_id}.pt')
-                #import pdb; pdb.set_trace()
+                #print(f"post_fc2 input = {input}")
+                #if save_tensors: torch.save(mlp_post_fc2, f'logs/ds_mlp_fc2_new_tensor_layer_{self.config.layer_id}.pt')
 
                 output = mlp_post_fc2
                 residual_add = mlp_post_ln
+                #import pdb; pdb.set_trace()
 
-            elif self.attn_nw is None:
-                output = self.fused_gemm_gelu(input=residual_norm,
-                                                weight=self.inter_w,
-                                                bias=self.inter_b,
-                                                weight_out=self.output_w)
+                output_w_bias = output + self.output_b #TODO: use this for fc2 comparison
+                if save_tensors: torch.save(output_w_bias, f'logs/ds_mlp_fc2_new_tensor_layer_{self.config.layer_id}.pt')
             else:
                 # mlp_gemm_func ~= gemm(relu(layernorm(input) + bias))
                 print(f"input.norm before mlp_gemm_func = {input.norm()}")
@@ -292,12 +310,24 @@ class DeepSpeedMLP(nn.Module):
                 print(f"output Norm Python: {output.norm()}")
                 print(f"residual_add Norm Python: {residual_add.norm()}")
 
-                output_w_bias = output + self.output_b #TODO: use this for fc2 comparison
-                torch.save(output_w_bias, f'logs/ds_mlp_fc2_tensor_layer_{self.config.layer_id}.pt')
+                #output_w_bias = output + self.output_b #TODO: use this for fc2 comparison
+                #if save_tensors: torch.save(output_w_bias, f'logs/ds_mlp_fc2_tensor_layer_{self.config.layer_id}.pt')
 
-                #torch.save(output, f'logs/ds_mlp_fc2_tensor_layer_{self.config.layer_id}.pt')
-                #exit(0)
+                if save_tensors: torch.save(output, f'logs/ds_mlp_fc2_tensor_layer_{self.config.layer_id}.pt')
 
+            # RESIDUAL_ADD_FUNC FALLBACK IMPLEMENTATION
+            #    tmp = (residual.float() + attention_output.float() + attention_bias.float() +
+            #            final_bias.float()) / self.config.mp_size + hidden_state.float()
+
+            #residual_torch = output + self.output_b + residual + bias + input
+
+            #print(f"\n==================== layer_{self.config.layer_id} ====================")
+            #print(f"output = {output}")
+            #print(f"self.output_b = {self.output_b}")
+            #print(f"residual = {residual}")
+            #print(f"bias = {bias}")
+            #print(f"input = {input}")
+            #print(f"==================== layer_{self.config.layer_id} ====================\n")
 
             residual = self.residual_add_func(hidden_state=output,
                                                 residual=residual,
@@ -306,10 +336,16 @@ class DeepSpeedMLP(nn.Module):
                                                 attention_bias=bias if bias is not None else self.output_b,
                                                 final_bias=self.output_b,
                                                 residual_add=residual_add)
+            if debug: print(f"residual_torch norm = {residual_torch.norm()}")
+            if debug: print(f"residual norm = {residual.norm()}")
 
-            torch.save(residual, f'logs/ds_mlp_out_tensor_layer_{self.config.layer_id}.pt')
+            if mlp_functions:
+                if save_tensors: torch.save(residual, f'logs/ds_mlp_out_new_tensor_layer_{self.config.layer_id}.pt')
+            else:
+                if save_tensors: torch.save(residual, f'logs/ds_mlp_out_tensor_layer_{self.config.layer_id}.pt')
 
             if self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
                 dist.all_reduce(residual, group=self.mp_group)
 
+        #return residual_torch
         return residual

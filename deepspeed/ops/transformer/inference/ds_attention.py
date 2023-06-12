@@ -239,7 +239,7 @@ class DeepSpeedSelfAttention(nn.Module):
             self._attn_qkvw = self.attn_qkvw
             self._attn_qkvb = self.attn_qkvb
 
-        attn_base = False
+        attn_base = True
         if attn_base:
             self.attn_baseline(input, input_mask, norm_w, norm_b)
         debug = False
