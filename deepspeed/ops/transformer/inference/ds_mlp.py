@@ -29,8 +29,8 @@ class DeepSpeedMLP(nn.Module):
         self.intm_w_sz_per_partition = self.config.intermediate_size * proj_factor // self.config.mp_size
         self.intm_o_sz_per_partition = self.config.intermediate_size // self.config.mp_size
 
-        self.fc1 = nn.Linear(self.config.hidden_size, self.config.intermediate_size, bias=True, dtype=data_type)
-        self.fc2 = nn.Linear(self.config.intermediate_size, self.config.hidden_size, bias=True, dtype=data_type)
+        self.fc1 = nn.Linear(self.config.hidden_size, self.config.intermediate_size, bias=True, device=device, dtype=data_type)
+        self.fc2 = nn.Linear(self.config.intermediate_size, self.config.hidden_size, bias=True, device=device, dtype=data_type)
         self.activation_fn = nn.ReLU()
         self.final_layer_norm = nn.LayerNorm(self.config.hidden_size,
                                              elementwise_affine=True,
@@ -108,11 +108,17 @@ class DeepSpeedMLP(nn.Module):
         if debug: print(f'ds a4 attn + ln + bias-add + residual-add: norm = {torch.norm(input)}, tensor = {input}')
 
         # copy the weight and bias to fc1
-        self.fc1.weight.data.copy_(self.inter_w.transpose(0, 1))
+        if self.config.transposed_mode:
+            self.fc1.weight.data.copy_(self.inter_w)
+        else:
+            self.fc1.weight.data.copy_(self.inter_w.transpose(0, 1))
         self.fc1.bias.data.copy_(self.inter_b)
 
         # copy the weight and bias to fc2
-        self.fc2.weight.data.copy_(self.output_w.transpose(0, 1))
+        if self.config.transposed_mode:
+            self.fc2.weight.data.copy_(self.output_w)
+        else:
+            self.fc2.weight.data.copy_(self.output_w.transpose(0, 1))
         self.fc2.bias.data.copy_(self.output_b)
         get_accelerator().synchronize()
 
