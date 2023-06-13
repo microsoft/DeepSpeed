@@ -101,7 +101,7 @@ class DeepSpeedMLP(nn.Module):
 
             # pytorch baseline to do add bias.
             # TODO (lekurile): If attn removed, remove this bias addtiiona as well
-            #input = input + bias
+            input = input + bias
             if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}')
 
             # pytorch baseline to do add residual (residual=input)
@@ -168,7 +168,7 @@ class DeepSpeedMLP(nn.Module):
 
             # pytorch baseline residual add
             residual = output + residual
-            if debug: print(f"residual = {residual.norm()}")
+            if debug: print(f"residual = {residual}, {residual.norm()}")
 
             torch.save(residual, f'logs/torch_mlp_out_tensor_layer_{self.config.layer_id}.pt')
 
@@ -187,7 +187,7 @@ class DeepSpeedMLP(nn.Module):
         # mlp_base = True  => calls a pytorch baseline mlp
         # mlp_base = False => calls the DS mlp
         mlp_base = True
-        attn_base = True
+        attn_base = False
         mlp_functions = True
 
         debug = False

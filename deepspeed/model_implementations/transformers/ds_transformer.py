@@ -191,12 +191,14 @@ class DeepSpeedTransformerInference(nn.Module):
                 if debug: print(f'ds a4 attn + ln: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
 
                 presents = (key, value)
-                self.layer_past = presents if layer_past is None else None
+                # Bug? Setting layer past to presents every pass fixes key states issue
+                self.layer_past = presents #if layer_past is None else None
 
                 # the attention_output in DS now matches the hidden_states from HF side.
                 output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob, self.attention.attn_ow)
 
             if debug: print(f"layer_id ({self.config.layer_id}), after mlp: {torch.norm(output)}")
+
             #if debug: print(f'layer_id = {self.config.layer_id}')
             #exit(0)
             if not self.config.pre_layer_norm:
