@@ -94,14 +94,14 @@ class DeepSpeedMLP(nn.Module):
             inter_b[self.intm_w_sz_per_partition:] = self.inter_gate_b  # type: ignore
         return DeepSpeedMLP._inter_w_buffers
 
-    def mlp_baseline(self, input, residual, bias):
-            debug = True
+    def mlp_baseline(self, input, residual, bias, save_tensors, attn_base):
+            debug = False
 
             if debug: print(f'input norm before mlp: norm = {torch.norm(input)}')
 
             # pytorch baseline to do add bias.
             # TODO (lekurile): If attn removed, remove this bias addtiiona as well
-            input = input + bias
+            if not attn_base: input = input + bias
             if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}')
 
             # pytorch baseline to do add residual (residual=input)
@@ -140,7 +140,7 @@ class DeepSpeedMLP(nn.Module):
 
             input = self.final_layer_norm(input)
 
-            torch.save(input, f'logs/torch_mlp_ln_tensor_layer_{self.config.layer_id}.pt')
+            if save_tensors: torch.save(input, f'logs/torch_mlp_ln_tensor_layer_{self.config.layer_id}.pt')
 
             if debug: print(f"inside ds mlp: a4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
             if debug: print(f"inside ds mlp: a4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
@@ -149,20 +149,20 @@ class DeepSpeedMLP(nn.Module):
 
             input = self.fc1(input)
 
-            torch.save(input, f'logs/torch_mlp_fc1_tensor_layer_{self.config.layer_id}.pt')
+            if save_tensors: torch.save(input, f'logs/torch_mlp_fc1_tensor_layer_{self.config.layer_id}.pt')
 
             if debug: print(f"inside ds mlp: a4 fc1: {input.norm()}")
 
             output = self.activation_fn(input)
 
-            torch.save(output, f'logs/torch_mlp_act_tensor_layer_{self.config.layer_id}.pt')
+            if save_tensors: torch.save(output, f'logs/torch_mlp_act_tensor_layer_{self.config.layer_id}.pt')
             #import pdb; pdb.set_trace()
 
             if debug: print(f"inside ds mlp: a4 ac: {output.norm()}")
 
             output = self.fc2(output)
 
-            torch.save(output, f'logs/torch_mlp_fc2_tensor_layer_{self.config.layer_id}.pt')
+            if save_tensors: torch.save(output, f'logs/torch_mlp_fc2_tensor_layer_{self.config.layer_id}.pt')
 
             if debug: print(f"inside ds mlp: a4 fc2: {output.norm()}")
 
@@ -170,7 +170,7 @@ class DeepSpeedMLP(nn.Module):
             residual = output + residual
             if debug: print(f"residual = {residual}, {residual.norm()}")
 
-            torch.save(residual, f'logs/torch_mlp_out_tensor_layer_{self.config.layer_id}.pt')
+            if save_tensors: torch.save(residual, f'logs/torch_mlp_out_tensor_layer_{self.config.layer_id}.pt')
 
             return residual
 
@@ -187,23 +187,26 @@ class DeepSpeedMLP(nn.Module):
         # mlp_base = True  => calls a pytorch baseline mlp
         # mlp_base = False => calls the DS mlp
         mlp_base = True
-        attn_base = False
+        attn_base = True
         mlp_functions = True
 
         debug = False
-        save_tensors = False
+        save_tensors = True
+        print(f"mlp_base = {mlp_base}, attn_base = {attn_base}")
 
         if mlp_base:
-            residual = self.mlp_baseline(input, residual, bias)
+            residual = self.mlp_baseline(input, residual, bias, save_tensors, attn_base)
         elif self.attn_nw is None:
             output = self.fused_gemm_gelu(input=residual_norm,
                                             weight=self.inter_w,
                                             bias=self.inter_b,
                                             weight_out=self.output_w)
         else:
-            #if attn_base:
-            #    #import pdb; pdb.set_trace()
-            #    bias = torch.zeros(bias.size(), dtype=bias.dtype)
+            if attn_base:
+                #import pdb; pdb.set_trace()
+                #bias = torch.zeros(bias.size(), dtype=bias.dtype)
+                bias = bias.zero_()
+                #import pdb; pdb.set_trace()
 
             if mlp_functions:
                                                                     #at::Tensor& input,

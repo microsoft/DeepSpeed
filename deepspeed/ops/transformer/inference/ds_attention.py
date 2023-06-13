@@ -293,7 +293,7 @@ class DeepSpeedSelfAttention(nn.Module):
             self._attn_qkvw = self.attn_qkvw
             self._attn_qkvb = self.attn_qkvb
 
-        attn_base = False
+        attn_base = True
         if attn_base:
             output, key_layer, value_layer, context_layer, inp_norm = self.attn_baseline(input, input_mask, head_mask, layer_past, output_attentions, norm_w, norm_b)
         else:

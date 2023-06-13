@@ -161,11 +161,12 @@ class DeepSpeedTransformerInference(nn.Module):
         if debug: print(f'ds b4 attn: norm = {torch.norm(input)}, tensor = {input}')
 
         with torch.no_grad():
-            save_tensors = False
+            save_tensors = True
             skip_attention = False
             mlp_base = True
+            attn_base = True
 
-            tensor_affix = "torch" if mlp_base else "ds"
+            tensor_affix = "torch" if mlp_base and attn_base else "ds"
             if save_tensors: torch.save(input, f'logs/{tensor_affix}_input_tensor_layer_{self.config.layer_id}.pt')
 
 
@@ -205,8 +206,8 @@ class DeepSpeedTransformerInference(nn.Module):
                 output = inference_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
             if debug: print(f"after layernorm: {torch.norm(output)}")
             #exit(0)
-            #if self.config.layer_id == 23: exit(0)
             output = output.to(input_type)
+            #if self.config.layer_id == 23: exit(0)
         if get_present:
             output = (output, presents)
 
