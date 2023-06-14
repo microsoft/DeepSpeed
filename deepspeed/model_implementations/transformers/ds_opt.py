@@ -66,16 +66,6 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
         if debug: print(f'ds b4 attn: input = {torch.norm(input)}')
         if debug: print(f'ds b4 attn: input_mask = {torch.norm(input_mask)}')
 
-        # Allocate memory only on first layer forward
-        if self.config.layer_id == 0 and self._alloc_workspace:
-            self.allocate_workspace(self.config.hidden_size, self.config.heads,
-                                    input.size()[1],
-                                    input.size()[0], DeepSpeedOPTInference.layer_id, self.config.mp_size,
-                                    self.config.bigscience_bloom,
-                                    dist.get_rank() if dist.is_initialized() else 0, self.config.max_out_tokens,
-                                    self.config.min_out_tokens)
-            self._alloc_workspace = False
-
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 
