@@ -801,7 +801,7 @@ def skip_level_0_prefix(model, name):
         key = re.search(r": (.*?)Stack", model)
     if key is None:
         key = re.match(r"(.*?)Model", model)
-    if key is not None and key.group(1).lower() in "bloom":
+    if key is not None and key.group(1).lower() in ["bloom", "opt"]:
         # if keys start with 'model.', don't skip level 0 prefix
         if not re.match("^model[.]", name):
             return True
