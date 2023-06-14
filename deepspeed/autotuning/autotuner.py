@@ -637,7 +637,7 @@ class Autotuner:
         logger.info(f"End tuning for space: {tuning_space_name}")
         return max_micro_batch_size, best_mbs, best_metric_val
 
-    def get_plauteu_mbs(self, tuning_space_name):
+    def get_plateau_mbs(self, tuning_space_name):
         if tuning_space_name not in self.records:
             return 0
         space_records = self.records[tuning_space_name]
@@ -985,7 +985,7 @@ class Autotuner:
             if isinstance(gas_in_config, int):
                 gas = gas_in_config
             elif gas_in_config == "auto":  # GRADIENT_ACCUMULATION_STEPS: "auto"
-                val = self.get_val_from_config(GRADIENT_ACCUMULATION_STEPS)
+                val = self.get_val_from_user_args(GRADIENT_ACCUMULATION_STEPS)
                 if val:
                     gas = int(val)
             elif isinstance(gas_in_config, list):
