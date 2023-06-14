@@ -34,11 +34,6 @@ jobs:
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
-      - name: Install deepspeed
-        run: |
-          pip install .[dev]
-          ds_report
-
       - name: Install apex
         run: |
           git clone https://github.com/loadams/apex
@@ -47,6 +42,11 @@ jobs:
           # if pip >= 23.1 (ref: https://pip.pypa.io/en/stable/news/#v23-1) which supports multiple `--config-settings` with the same key...
           # pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --global-option="--cpp_ext" --global-option="--cuda_ext" ./
           pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
+
+      - name: Install deepspeed
+        run: |
+          pip install .[dev] --no-build-isolation
+          ds_report
 
       - name: Python environment
         run: |
