@@ -30,10 +30,26 @@ class DeepSpeedSelfAttention(nn.Module):
                                                  elementwise_affine=True,
                                                  dtype=data_type,
                                                  device=device)
-        self.k_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, device=device, dtype=data_type)
-        self.v_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, device=device, dtype=data_type)
-        self.q_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, device=device, dtype=data_type)
-        self.out_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, device=device, dtype=data_type)
+        self.k_proj = nn.Linear(self.config.hidden_size,
+                                self.config.hidden_size,
+                                bias=True,
+                                device=device,
+                                dtype=data_type)
+        self.v_proj = nn.Linear(self.config.hidden_size,
+                                self.config.hidden_size,
+                                bias=True,
+                                device=device,
+                                dtype=data_type)
+        self.q_proj = nn.Linear(self.config.hidden_size,
+                                self.config.hidden_size,
+                                bias=True,
+                                device=device,
+                                dtype=data_type)
+        self.out_proj = nn.Linear(self.config.hidden_size,
+                                  self.config.hidden_size,
+                                  bias=True,
+                                  device=device,
+                                  dtype=data_type)
 
         if self.config.set_empty_params:
             self.attn_qw = None
@@ -159,7 +175,7 @@ class DeepSpeedSelfAttention(nn.Module):
         else:
             qkvw = self._attn_qkvw.split(self.config.hidden_size, 1)
         qkvb = self._attn_qkvb.split(self.config.hidden_size, 0)
-        
+
         #print(len(qkvw), len(qkvb))
         #exit(0)
         if self.config.transposed_mode:
@@ -167,7 +183,7 @@ class DeepSpeedSelfAttention(nn.Module):
         else:
             self.k_proj.weight.data.copy_(qkvw[1].transpose(0, 1))
         self.k_proj.bias.data.copy_(qkvb[1])
-        
+
         if self.config.transposed_mode:
             self.v_proj.weight.data.copy_(qkvw[2])
         else:
@@ -176,7 +192,7 @@ class DeepSpeedSelfAttention(nn.Module):
         self.v_proj.bias.data.copy_(qkvb[2])
         if self.config.transposed_mode:
             self.out_proj.weight.data.copy_(self.attn_ow)
-        else:   
+        else:
             self.out_proj.weight.data.copy_(self.attn_ow.transpose(0, 1))
         self.out_proj.bias.data.copy_(self.attn_ob)
 

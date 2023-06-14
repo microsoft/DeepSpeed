@@ -4,7 +4,6 @@
 # DeepSpeed Team
 
 import torch
-from deepspeed import comm as dist
 from deepspeed.model_implementations.transformers.ds_transformer import DeepSpeedTransformerInference
 
 inference_module = None
@@ -62,7 +61,9 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
 
         input_mask = (input_mask if attn_mask is None else attn_mask) if attention_mask is None else attention_mask
 
-        debug = False
+        debug = True
+        print_tensors = False
+
         if debug: print(f'ds b4 attn: input = {torch.norm(input)}')
         if debug: print(f'ds b4 attn: input_mask = {torch.norm(input_mask)}')
 
@@ -86,8 +87,8 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
             target_dtype = torch.half if self.dtype == torch.int8 else self.dtype
             input = input.to(target_dtype)
 
-        if debug: print(f'ds b4 attn: norm = {torch.norm(input)}, tensor = {input}')
-
+        if debug: print(f'ds b4 attn: norm = {torch.norm(input)}')
+        if print_tensors: print(f'ds b4 attn: tensor = {input}')
         # set this to True to use pytorch based attention and mlp
         # (base=False => 2 seconds vs. base=True => 12 seconds on A6000)
         # base = True ==> matches the output of HF model output but base=False does not
@@ -107,7 +108,8 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
                                               self.norm_b,
                                               alibi,
                                               attn_base=base)
-            if debug: print(f'ds a4 attn + ln: norm = {torch.norm(attention_output)}, tensor = {attention_output}')
+            if debug: print(f'ds a4 attn + ln: norm = {torch.norm(attention_output)}')
+            if print_tensors: print(f'ds a4 attn + ln: tensor = {attention_output}')
 
             presents = (key, value)
             # Bug? Setting layer past to presents every pass fixes key states issue
@@ -120,14 +122,8 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
                               self.attention.attn_ow,
                               mlp_base=base)
 
-            if debug: print(f"after mlp: {torch.norm(output)}")
-            #exit(0)
-            if not self.config.pre_layer_norm:
-                output = inference_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
-            if debug: print(f"after layernorm: {torch.norm(output)}")
-            # if self.config.layer_id == 1:
-            #   exit(0)
-            #import pdb; pdb.set_trace()
+            if debug: print(f"after mlp (end of ds-opt): {torch.norm(output)}")
+
             output = output.to(input_type)
         if get_present:
             output = (output, presents)
