@@ -80,10 +80,10 @@ class BaseTransformerContainer(ABC):
         self.input_nb = None
 
         self.mp_group = None
+        self.use_triton = False
 
         # Triton
         self.use_triton = config.use_triton and deepspeed.HAS_TRITON
-
 
     def create_ds_model_config(self):
         self.set_hidden_heads(*self.policy.get_hidden_heads())

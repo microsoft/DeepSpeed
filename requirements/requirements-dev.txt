@@ -13,5 +13,5 @@ sphinx-rtd-theme
 tensorboard
 torchvision
 transformers
+triton
 wandb
-triton==2.0.0

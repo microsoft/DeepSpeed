@@ -6,12 +6,12 @@
 import torch
 import triton
 import triton.language as tl
-
 '''
 layer-normalization
 modified the triton kernel in
 https://github.com/openai/triton/blob/34817ecc954a6f4ca7b4dfb352fdde1f8bd49ca5/python/tutorials/05-layer-norm.py
 '''
+
 
 @triton.jit
 def layer_norm_kernel(
@@ -164,7 +164,6 @@ def layer_norm_residual_bias_kernel(
         tl.store(Out + cols, out, mask=mask)
 
 
-
 def layer_norm(a, weight, bias, eps):
     assert a.is_contiguous()
     assert weight.is_contiguous()
@@ -183,19 +182,19 @@ def layer_norm(a, weight, bias, eps):
     BLOCK_SIZE = BLOCK_SIZE if N <= 4096 else 8192
     # heuristics for number of warps
     num_warps = min(max(BLOCK_SIZE // 256, 1), 8)
-    layer_norm_kernel[(M,
-                       )](
-                           out,
-                           a_arg,
-                           weight,
-                           bias,
-                           a_arg.stride(0),
-                           N,
-                           eps,
-                           BLOCK_SIZE=BLOCK_SIZE,
-                           num_warps=num_warps,
-                       )
+    layer_norm_kernel[(M, )](
+        out,
+        a_arg,
+        weight,
+        bias,
+        a_arg.stride(0),
+        N,
+        eps,
+        BLOCK_SIZE=BLOCK_SIZE,
+        num_warps=num_warps,
+    )
     return out
+
 
 def layer_norm_residual(a, input_bias, residual, weight, bias, eps):
     assert a.is_contiguous()
@@ -219,32 +218,32 @@ def layer_norm_residual(a, input_bias, residual, weight, bias, eps):
     # heuristics for number of warps
     num_warps = min(max(BLOCK_SIZE // 256, 1), 8)
     if input_bias is None:
-        layer_norm_residual_kernel[(M,
-                                )](out,
-                                    a_arg,
-                                    residual,
-                                    ln_input,
-                                    weight,
-                                    bias,
-                                    a_arg.stride(0),
-                                    N,
-                                    eps,
-                                    BLOCK_SIZE=BLOCK_SIZE,
-                                    num_warps=num_warps,
-                        )
+        layer_norm_residual_kernel[(M, )](
+            out,
+            a_arg,
+            residual,
+            ln_input,
+            weight,
+            bias,
+            a_arg.stride(0),
+            N,
+            eps,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=num_warps,
+        )
     else:
-        layer_norm_residual_bias_kernel[(M,
-                                )](out,
-                                    a_arg,
-                                    residual,
-                                    input_bias,
-                                    ln_input,
-                                    weight,
-                                    bias,
-                                    a_arg.stride(0),
-                                    N,
-                                    eps,
-                                    BLOCK_SIZE=BLOCK_SIZE,
-                                    num_warps=num_warps,
-                        )
+        layer_norm_residual_bias_kernel[(M, )](
+            out,
+            a_arg,
+            residual,
+            input_bias,
+            ln_input,
+            weight,
+            bias,
+            a_arg.stride(0),
+            N,
+            eps,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=num_warps,
+        )
     return out

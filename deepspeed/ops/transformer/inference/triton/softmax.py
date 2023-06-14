@@ -6,12 +6,12 @@
 import torch
 import triton
 import triton.language as tl
-
 '''
 softmax
 modified the triton kernel in
 https://github.com/openai/triton/blob/34817ecc954a6f4ca7b4dfb352fdde1f8bd49ca5/python/tutorials/02-fused-softmax.py
 '''
+
 
 @triton.jit
 def softmax_kernel(output_ptr, input_ptr, stride, n_cols, BLOCK_SIZE: tl.constexpr):
@@ -19,9 +19,7 @@ def softmax_kernel(output_ptr, input_ptr, stride, n_cols, BLOCK_SIZE: tl.constex
     row_start_ptr = input_ptr + row_idx * stride
     col_offsets = tl.arange(0, BLOCK_SIZE)
     input_ptrs = row_start_ptr + col_offsets
-    row = tl.load(input_ptrs,
-                  mask=col_offsets < n_cols,
-                  other=-float('inf')).to(tl.float32)
+    row = tl.load(input_ptrs, mask=col_offsets < n_cols, other=-float('inf')).to(tl.float32)
     row_minus_max = row - tl.max(row, axis=0)
     numerator = tl.exp(row_minus_max)
     denominator = tl.sum(numerator, axis=0)
@@ -38,12 +36,8 @@ def masked_softmax_kernel(output_ptr, input_ptr, stride, mask_ptr, mask_stride, 
     col_offsets = tl.arange(0, BLOCK_SIZE)
     input_ptrs = row_start_ptr + col_offsets
     mask_ptrs = mask_ptr + col_offsets + row_idx * mask_stride  # mask_stride is 0 for 1d mask
-    row = tl.load(input_ptrs,
-                  mask=col_offsets < n_cols,
-                  other=-float('inf')).to(tl.float32)
-    mask = tl.load(mask_ptrs,
-                  mask=col_offsets < n_cols,
-                  other=0).to(tl.float32)
+    row = tl.load(input_ptrs, mask=col_offsets < n_cols, other=-float('inf')).to(tl.float32)
+    mask = tl.load(mask_ptrs, mask=col_offsets < n_cols, other=0).to(tl.float32)
     row_minus_max = row - tl.max(row, axis=0)
     row_minus_max = row_minus_max + mask
     numerator = tl.exp(row_minus_max)
@@ -54,7 +48,7 @@ def masked_softmax_kernel(output_ptr, input_ptr, stride, mask_ptr, mask_stride, 
     tl.store(output_ptrs, softmax_output, mask=col_offsets < n_cols)
 
 
-def softmax(input: torch.Tensor, mask: torch.Tensor=None, dim=-1) -> torch.Tensor:
+def softmax(input: torch.Tensor, mask: torch.Tensor = None, dim=-1) -> torch.Tensor:
     assert input.is_contiguous()
     assert (dim == -1) or (dim == len(input.shape) - 1), "Only dim=-1 is supported"
 
@@ -73,27 +67,25 @@ def softmax(input: torch.Tensor, mask: torch.Tensor=None, dim=-1) -> torch.Tenso
         assert mask.is_contiguous()
         mask = mask.view(-1, mask.shape[-1])
         mask_stride = mask.shape[-1] if mask.shape[-2] > 1 else 0
-        masked_softmax_kernel[(n_rows,
-                        )](
-                            output,
-                            input,
-                            input_arg.stride(0),
-                            mask,
-                            mask_stride,
-                            n_cols,
-                            num_warps=num_warps,
-                            BLOCK_SIZE=BLOCK_SIZE,
-                        )
+        masked_softmax_kernel[(n_rows, )](
+            output,
+            input,
+            input_arg.stride(0),
+            mask,
+            mask_stride,
+            n_cols,
+            num_warps=num_warps,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
     else:
-        softmax_kernel[(n_rows,
-                        )](
-                            output,
-                            input,
-                            input_arg.stride(0),
-                            n_cols,
-                            num_warps=num_warps,
-                            BLOCK_SIZE=BLOCK_SIZE,
-                        )
+        softmax_kernel[(n_rows, )](
+            output,
+            input,
+            input_arg.stride(0),
+            n_cols,
+            num_warps=num_warps,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
     return output
 
 
@@ -104,22 +96,23 @@ def _test_softmax(M=1823, N=781, use_mask=False, minus_inf=-10000.0):
     if use_mask:
         # 1d masking test
         mask = torch.zeros(1, N, device='cuda')
-        mask[0,random.randint(0, N-1)] = minus_inf
+        mask[0, random.randint(0, N - 1)] = minus_inf
         y_triton = softmax(x, mask=mask)
-        y_torch = torch.softmax(x+mask, axis=1)
+        y_torch = torch.softmax(x + mask, axis=1)
         assert torch.allclose(y_triton, y_torch), (y_triton, y_torch)
 
         # 2d masking test
         mask = torch.zeros(M, N, device='cuda')
         for i in range(M):
-            mask[i,random.randint(0, N-1)] = minus_inf
+            mask[i, random.randint(0, N - 1)] = minus_inf
         y_triton = softmax(x, mask=mask)
-        y_torch = torch.softmax(x+mask, axis=1)
+        y_torch = torch.softmax(x + mask, axis=1)
     else:
         y_triton = softmax(x)
         y_torch = torch.softmax(x, axis=1)
     assert torch.allclose(y_triton, y_torch), (y_triton, y_torch)
     print("PASSED")
+
 
 if __name__ == '__main__':
     _test_softmax(M=1823, N=781, use_mask=False)

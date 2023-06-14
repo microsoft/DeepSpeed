@@ -8,6 +8,7 @@ from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
 import deepspeed
 
+
 class GELUGemmOp(BaseOp):
 
     def __init__(self, config: DeepSpeedInferenceConfig):

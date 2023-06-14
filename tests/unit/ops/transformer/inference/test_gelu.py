@@ -9,8 +9,7 @@ import deepspeed
 from deepspeed.ops.op_builder import InferenceBuilder
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
-    pytest.skip("Inference ops are not available on this system",
-                allow_module_level=True)
+    pytest.skip("Inference ops are not available on this system", allow_module_level=True)
 
 inference_module = None
 torch_minor_version = None

@@ -60,7 +60,7 @@ def test_layer_norm(batch, seq_len, channels, dtype, use_triton_ops):
     ref_output = ref_implementation(vals, gamma, beta, epsilon, channels, dtype)
     if use_triton_ops:
         new_output = ds_triton_implementation(vals, gamma, beta, epsilon)
-        if dtype != torch.float16: # fp16 supported in triton
+        if dtype != torch.float16:  # fp16 supported in triton
             return
     else:
         new_output = ds_implementation(vals, gamma, beta, epsilon)
@@ -109,7 +109,7 @@ def test_layer_norm_residual(batch, seq_len, channels, dtype, use_triton_ops):
 
     if use_triton_ops:
         new_output = residual_ds_triton_implementation(vals, bias, residual, gamma, beta, epsilon)
-        if dtype != torch.float16: # fp16 supported in triton
+        if dtype != torch.float16:  # fp16 supported in triton
             return
     else:
         new_output = residual_ds_implementation(vals, bias, residual, gamma, beta, epsilon)
@@ -190,7 +190,8 @@ def test_triton_layer_norm(M, N, dtype, residual, input_bias, eps=1e-5, device='
         y_tri = layer_norm_residual(x, x_bias if input_bias else None, res, weight, bias, eps)
     else:
         y_tri = layer_norm(x, weight, bias, eps)
-    y_ref = torch.nn.functional.layer_norm(x + res + (x_bias if input_bias else 0), w_shape, weight, bias, eps).to(dtype)
+    y_ref = torch.nn.functional.layer_norm(x + res + (x_bias if input_bias else 0), w_shape, weight, bias,
+                                           eps).to(dtype)
     # compare
     #print(f"y_tri={y_tri}, y_ref={y_ref}")
     triton.testing.assert_almost_equal(y_tri, y_ref)

@@ -10,44 +10,66 @@ from deepspeed.ops.transformer.inference.triton.layer_norm import layer_norm, la
 
 inference_module = None
 
+
 def vector_matmul_func(input, weight, async_op, q_scale, q_int8, transposed_mode):
     assert not transposed_mode and not async_op and not q_int8
-    return matmul_ext.matmul(input, weight,
-                             bias=None, activation="",
-                             use_triton=True)
+    return matmul_ext.matmul(input, weight, bias=None, activation="", use_triton=True)
 
-def fused_gemm_gelu(input, weight, weight_scale, bias, weight_out, weight_out_scale, epsilon,
-                    pre_layer_norm, q_int8, async_op, transposed_mode, use_triton_ln=True
-                    ):
+
+def fused_gemm_gelu(input,
+                    weight,
+                    weight_scale,
+                    bias,
+                    weight_out,
+                    weight_out_scale,
+                    epsilon,
+                    pre_layer_norm,
+                    q_int8,
+                    async_op,
+                    transposed_mode,
+                    use_triton_ln=True):
     assert not transposed_mode
 
     # activation
     activation = "gelu"
 
     # intermediate fc in FF
-    intm_out = matmul_ext.matmul(input, weight,
-                                    bias=bias, activation=activation,
-                                    use_triton=True)
+    intm_out = matmul_ext.matmul(input, weight, bias=bias, activation=activation, use_triton=True)
 
     # output fc in FF
-    ff_out = matmul_ext.matmul(intm_out, weight_out,
-                                    bias=None, activation="", # bias added layer with residual_add + bias + layerNorm layer
-                                    use_triton=True)
+    ff_out = matmul_ext.matmul(
+        intm_out,
+        weight_out,
+        bias=None,
+        activation="",  # bias added layer with residual_add + bias + layerNorm layer
+        use_triton=True)
     return ff_out
+
 
 def linear_func(input, weight, bias, add_bias, do_flash_attn, num_heads, transposed_mode=False):
     assert not transposed_mode and not do_flash_attn
-    qkv_out = matmul_ext.matmul(input, weight,
-                                bias=(bias if add_bias else None), activation="",
-                                use_triton=True)
+    qkv_out = matmul_ext.matmul(input, weight, bias=(bias if add_bias else None), activation="", use_triton=True)
 
     return qkv_out
 
-def mlp_gemm_func(input, residual, input_bias, weight_interm, weight_out, bias, gamma,
-                  beta, epsilon, pre_layer_norm, mlp_after_attn, weight_interm_scale,
-                  weight_out_scale, q_int8, mlp_act_func_type, transposed_mode,
-                  use_triton_ln=True
-                  ):
+
+def mlp_gemm_func(input,
+                  residual,
+                  input_bias,
+                  weight_interm,
+                  weight_out,
+                  bias,
+                  gamma,
+                  beta,
+                  epsilon,
+                  pre_layer_norm,
+                  mlp_after_attn,
+                  weight_interm_scale,
+                  weight_out_scale,
+                  q_int8,
+                  mlp_act_func_type,
+                  transposed_mode,
+                  use_triton_ln=True):
     assert not transposed_mode
 
     # residual add and layerNorm after attention
@@ -68,19 +90,31 @@ def mlp_gemm_func(input, residual, input_bias, weight_interm, weight_out, bias, 
         activation = ""
 
     # intermediate fc in FF
-    intm_out = matmul_ext.matmul(mlp_input, weight_interm,
-                                    bias=bias, activation=activation,
-                                    use_triton=True)
+    intm_out = matmul_ext.matmul(mlp_input, weight_interm, bias=bias, activation=activation, use_triton=True)
     # output fc in FF
-    ff_out = matmul_ext.matmul(intm_out, weight_out,
-                                    bias=None, activation="", # bias added layer with residual_add + bias + layerNorm layer
-                                    use_triton=True)
+    ff_out = matmul_ext.matmul(
+        intm_out,
+        weight_out,
+        bias=None,
+        activation="",  # bias added layer with residual_add + bias + layerNorm layer
+        use_triton=True)
 
     return ff_out, mlp_input
 
-def qkv_gemm_func(input, weight, q_scale, bias, gamma, beta, epsilon,
-                  add_bias, q_int8, transposed_mode=False, use_triton_ln=True,
-                  ):
+
+def qkv_gemm_func(
+    input,
+    weight,
+    q_scale,
+    bias,
+    gamma,
+    beta,
+    epsilon,
+    add_bias,
+    q_int8,
+    transposed_mode=False,
+    use_triton_ln=True,
+):
 
     assert not transposed_mode
     # residual add and layerNorm after attention
@@ -92,8 +126,6 @@ def qkv_gemm_func(input, weight, q_scale, bias, gamma, beta, epsilon,
             inference_module = InferenceBuilder().load()
         qkv_input = inference_module.layer_norm(input, gamma, beta, epsilon)
 
-    qkv_out = matmul_ext.matmul(qkv_input, weight,
-                                    bias=(bias if add_bias else None), activation="",
-                                    use_triton=True)
+    qkv_out = matmul_ext.matmul(qkv_input, weight, bias=(bias if add_bias else None), activation="", use_triton=True)
 
     return qkv_out, qkv_input

@@ -6,9 +6,11 @@
 import triton
 import triton.language as tl
 from .gelu import gelu_functor
+import torch
 
 AUTOTUNE_TOP_K = 10
 SKIP_AUTOTUNE = False
+
 
 def _fp16_matmul_prune_config(configs, named_args, skip_autotune=SKIP_AUTOTUNE):
     if skip_autotune:
@@ -17,22 +19,70 @@ def _fp16_matmul_prune_config(configs, named_args, skip_autotune=SKIP_AUTOTUNE):
         configs = triton.ops.matmul_perf_model.early_config_prune(configs, named_args)
     return configs
 
+
 """
 fp16 matmul implementation is adapted from triton matmul:
 https://github.com/openai/triton/blob/34817ecc954a6f4ca7b4dfb352fdde1f8bd49ca5/python/triton/ops/matmul.py
 """
+
+
 @triton.autotune(
     configs=[
         # basic configs for compute-bound matmuls
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 256, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=3, num_warps=8),
-        triton.Config({'BLOCK_M': 256, 'BLOCK_N': 128, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=3, num_warps=8),
-        triton.Config({'BLOCK_M': 256, 'BLOCK_N': 64, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 256, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 128, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 32, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 32, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=5, num_warps=2),
+        triton.Config({
+            'BLOCK_M': 128,
+            'BLOCK_N': 256,
+            'BLOCK_K': 32,
+            'SPLIT_K': 1
+        }, num_stages=3, num_warps=8),
+        triton.Config({
+            'BLOCK_M': 256,
+            'BLOCK_N': 128,
+            'BLOCK_K': 32,
+            'SPLIT_K': 1
+        }, num_stages=3, num_warps=8),
+        triton.Config({
+            'BLOCK_M': 256,
+            'BLOCK_N': 64,
+            'BLOCK_K': 32,
+            'SPLIT_K': 1
+        }, num_stages=4, num_warps=4),
+        triton.Config({
+            'BLOCK_M': 64,
+            'BLOCK_N': 256,
+            'BLOCK_K': 32,
+            'SPLIT_K': 1
+        }, num_stages=4, num_warps=4),
+        triton.Config({
+            'BLOCK_M': 128,
+            'BLOCK_N': 128,
+            'BLOCK_K': 32,
+            'SPLIT_K': 1
+        }, num_stages=4, num_warps=4),
+        triton.Config({
+            'BLOCK_M': 128,
+            'BLOCK_N': 64,
+            'BLOCK_K': 32,
+            'SPLIT_K': 1
+        }, num_stages=4, num_warps=4),
+        triton.Config({
+            'BLOCK_M': 64,
+            'BLOCK_N': 128,
+            'BLOCK_K': 32,
+            'SPLIT_K': 1
+        }, num_stages=4, num_warps=4),
+        triton.Config({
+            'BLOCK_M': 128,
+            'BLOCK_N': 32,
+            'BLOCK_K': 32,
+            'SPLIT_K': 1
+        }, num_stages=4, num_warps=4),
+        triton.Config({
+            'BLOCK_M': 64,
+            'BLOCK_N': 32,
+            'BLOCK_K': 32,
+            'SPLIT_K': 1
+        }, num_stages=5, num_warps=2),
     ],
     key=['CACHE_M', 'CACHE_N', 'CACHE_K'],
     prune_configs_by={
@@ -45,17 +95,33 @@ https://github.com/openai/triton/blob/34817ecc954a6f4ca7b4dfb352fdde1f8bd49ca5/p
     'EVEN_K': lambda args: args['K'] % (args['BLOCK_K'] * args['SPLIT_K']) == 0,
 })
 @triton.jit
-def _fp_matmul(A, B, C, M, N, K, bias,
-            stride_am, stride_ak,
-            stride_bk, stride_bn,
-            stride_cm, stride_cn,
-            CACHE_M, CACHE_N, CACHE_K,
-            BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
-            GROUP_M: tl.constexpr, SPLIT_K: tl.constexpr, EVEN_K: tl.constexpr,
-            ACC_TYPE: tl.constexpr,
-            BIAS_ADD: tl.constexpr,
-            ACTIVATION: tl.constexpr,
-            ):
+def _fp_matmul(
+    A,
+    B,
+    C,
+    M,
+    N,
+    K,
+    bias,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    CACHE_M,
+    CACHE_N,
+    CACHE_K,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+    EVEN_K: tl.constexpr,
+    ACC_TYPE: tl.constexpr,
+    BIAS_ADD: tl.constexpr,
+    ACTIVATION: tl.constexpr,
+):
     # matrix multiplication
     pid = tl.program_id(0)
     pid_z = tl.program_id(1)
@@ -92,7 +158,7 @@ def _fp_matmul(A, B, C, M, N, K, bias,
         bias_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
         bias_ptr = bias + bias_offset
         b = tl.load(bias_ptr, mask=bias_offset < N)
-        acc = acc + b[None,:]
+        acc = acc + b[None, :]
     # activation
     if ACTIVATION == "relu":
         acc = tl.where(acc >= 0, acc, 0)
@@ -102,7 +168,7 @@ def _fp_matmul(A, B, C, M, N, K, bias,
         #acc = tl.sigmoid(1.702 * acc) * acc
         acc = gelu_functor(acc)
     elif ACTIVATION == "sigmoid":
-        acc = tl.sigmoid(acc) # sigmoid
+        acc = tl.sigmoid(acc)  # sigmoid
     acc = acc.to(C.dtype.element_ty)
     # rematerialize rm and rn to save registers
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -115,23 +181,104 @@ def _fp_matmul(A, B, C, M, N, K, bias,
     else:
         tl.atomic_add(C, acc, mask=mask)
 
+
 def matmul_4d_prune_config(configs, named_args, skip_autotune=SKIP_AUTOTUNE):
     if skip_autotune:
         configs = [configs[0]]
+    else:
+        device = torch.cuda.current_device()  #ignore-cuda
+        capability = torch.cuda.get_device_capability()  #ignore-cuda
+        # BLOCK_M, BLOCK_N, BLOCK_K, SPLIT_K, num_warps, num_stages
+        dtsize = named_args['a_ptr'].element_size()
+        dtype = named_args['a_ptr'].dtype
+
+        # 1. make sure we have enough smem
+        pruned_configs = []
+        for config in configs:
+            kw = config.kwargs
+            BLOCK_M, BLOCK_N, BLOCK_K, num_stages = \
+                kw['BLOCK_SIZE_M'], kw['BLOCK_SIZE_N'], kw['BLOCK_SIZE_K'], config.num_stages
+
+            triton.compiler.init_cuda_utils()
+            max_shared_memory = triton.compiler.cuda_utils.get_device_properties(device)["max_shared_mem"]
+            required_shared_memory = (BLOCK_M + BLOCK_N) * BLOCK_K * num_stages * dtsize
+            if required_shared_memory <= max_shared_memory:
+                pruned_configs.append(config)
+        configs = pruned_configs
     return configs
+
 
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 32, "GROUP_SIZE_M": 8}, num_stages=3, num_warps=8),
-        triton.Config({"BLOCK_SIZE_M": 256, "BLOCK_SIZE_N": 128,"BLOCK_SIZE_K": 32, "GROUP_SIZE_M": 8,}, num_stages=3,num_warps=8,),
-        triton.Config({ "BLOCK_SIZE_M": 256,"BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32,"GROUP_SIZE_M": 8, },num_stages=4, num_warps=4,),
-        triton.Config({ "BLOCK_SIZE_M": 64,"BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 32,"GROUP_SIZE_M": 8, },num_stages=4, num_warps=4,),
-        triton.Config({ "BLOCK_SIZE_M": 128,"BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32,"GROUP_SIZE_M": 8, },num_stages=4, num_warps=4,),
-        triton.Config({ "BLOCK_SIZE_M": 128,"BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32,"GROUP_SIZE_M": 8, },num_stages=4, num_warps=4,),
-        triton.Config({ "BLOCK_SIZE_M": 64,"BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32,"GROUP_SIZE_M": 8, },num_stages=4, num_warps=4,),
-        triton.Config({ "BLOCK_SIZE_M": 128,"BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 32,"GROUP_SIZE_M": 8, },num_stages=4, num_warps=4,),
-        triton.Config({ "BLOCK_SIZE_M": 64,"BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 32,"GROUP_SIZE_M": 8, },num_stages=5, num_warps=2,),
-        triton.Config({ "BLOCK_SIZE_M": 32,"BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32,"GROUP_SIZE_M": 8, },num_stages=5, num_warps=2,),
+        triton.Config(
+            {
+                "BLOCK_SIZE_M": 64,
+                "BLOCK_SIZE_N": 64,
+                "BLOCK_SIZE_K": 64,
+                "GROUP_SIZE_M": 8
+            },
+            num_stages=1,  # this is mainly for unit test, to minimize the share memory usage
+            num_warps=8),
+        triton.Config(
+            {
+                "BLOCK_SIZE_M": 128,
+                "BLOCK_SIZE_N": 128,
+                "BLOCK_SIZE_K": 32,
+                "GROUP_SIZE_M": 8,
+            },
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {
+                "BLOCK_SIZE_M": 128,
+                "BLOCK_SIZE_N": 64,
+                "BLOCK_SIZE_K": 32,
+                "GROUP_SIZE_M": 8,
+            },
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {
+                "BLOCK_SIZE_M": 64,
+                "BLOCK_SIZE_N": 128,
+                "BLOCK_SIZE_K": 32,
+                "GROUP_SIZE_M": 8,
+            },
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {
+                "BLOCK_SIZE_M": 128,
+                "BLOCK_SIZE_N": 32,
+                "BLOCK_SIZE_K": 32,
+                "GROUP_SIZE_M": 8,
+            },
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {
+                "BLOCK_SIZE_M": 64,
+                "BLOCK_SIZE_N": 32,
+                "BLOCK_SIZE_K": 32,
+                "GROUP_SIZE_M": 8,
+            },
+            num_stages=5,
+            num_warps=2,
+        ),
+        triton.Config(
+            {
+                "BLOCK_SIZE_M": 32,
+                "BLOCK_SIZE_N": 64,
+                "BLOCK_SIZE_K": 32,
+                "GROUP_SIZE_M": 8,
+            },
+            num_stages=5,
+            num_warps=2,
+        ),
     ],
     key=['CACHE_M', 'CACHE_N', 'CACHE_K'],
     prune_configs_by={
@@ -143,16 +290,31 @@ def matmul_4d_prune_config(configs, named_args, skip_autotune=SKIP_AUTOTUNE):
 @triton.jit
 def matmul_4d_kernel(
     # Pointers to matrices
-    a_ptr, b_ptr, c_ptr,
+    a_ptr,
+    b_ptr,
+    c_ptr,
     # Matrix dimensions
-    M, N, K,
-    CACHE_M, CACHE_N, CACHE_K,
+    M,
+    N,
+    K,
+    CACHE_M,
+    CACHE_N,
+    CACHE_K,
     # The stride variables represent how much to increase the ptr by when moving by 1
     # element in a particular dimension. E.g. stride_am is how much to increase a_ptr
     # by to get the element one row down (A has M rows)
-    stride_ab, stride_ah, stride_am, stride_ak,
-    stride_bb, stride_bh, stride_bk, stride_bn,
-    stride_cb, stride_ch, stride_cm, stride_cn,
+    stride_ab,
+    stride_ah,
+    stride_am,
+    stride_ak,
+    stride_bb,
+    stride_bh,
+    stride_bk,
+    stride_bn,
+    stride_cb,
+    stride_ch,
+    stride_cm,
+    stride_cn,
     scale,
     # Meta-parameters
     BLOCK_SIZE_M: tl.constexpr,
@@ -185,18 +347,11 @@ def matmul_4d_kernel(
     if MASK:
         # This handles the blocks whose elements should entirely be masked out.
         if (pid_m + 1) * BLOCK_SIZE_M - 1 < pid_n * BLOCK_SIZE_N:
-            c = tl.zeros((BLOCK_SIZE_M,
-                          BLOCK_SIZE_N),
-                         dtype=c_ptr.dtype.element_ty) - float("inf")
+            c = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=c_ptr.dtype.element_ty) - float("inf")
             offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
             offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-            c_ptrs = (
-                c_ptr
-                + batch * stride_cb
-                + head * stride_ch
-                + stride_cm * offs_cm[:, None]
-                + stride_cn * offs_cn[None, :]
-            )
+            c_ptrs = (c_ptr + batch * stride_cb + head * stride_ch + stride_cm * offs_cm[:, None] +
+                      stride_cn * offs_cn[None, :])
             tl.store(c_ptrs, c)
             return
 
@@ -210,18 +365,10 @@ def matmul_4d_kernel(
     offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     offs_k = tl.arange(0, BLOCK_SIZE_K)
-    a_ptrs = (
-        a_ptr
-        + batch * stride_ab
-        + head * stride_ah
-        + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
-    )
-    b_ptrs = (
-        b_ptr
-        + batch * stride_bb
-        + head * stride_bh
-        + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
-    )
+    a_ptrs = (a_ptr + batch * stride_ab + head * stride_ah +
+              (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak))
+    b_ptrs = (b_ptr + batch * stride_bb + head * stride_bh +
+              (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn))
 
     # -----------------------------------------------------------
     # Iterate to compute a block of the C matrix
@@ -254,12 +401,7 @@ def matmul_4d_kernel(
     if MASK:
         # This handles the blocks whose elements should partially be masked out.
         c += tl.where(offs_cm[:, None] >= offs_cn[None, :], 0, float("-inf"))
-    c_ptrs = (
-        c_ptr
-        + batch * stride_cb
-        + head * stride_ch
-        + stride_cm * offs_cm[:, None]
-        + stride_cn * offs_cn[None, :]
-    )
+    c_ptrs = (c_ptr + batch * stride_cb + head * stride_ch + stride_cm * offs_cm[:, None] +
+              stride_cn * offs_cn[None, :])
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
     tl.store(c_ptrs, c, mask=c_mask)

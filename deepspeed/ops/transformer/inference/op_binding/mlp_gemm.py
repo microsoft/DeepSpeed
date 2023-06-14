@@ -12,13 +12,16 @@ from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
 from deepspeed.utils.types import NormType
 
+
 class MLPGemmOp(BaseOp):
 
     def __init__(self, config: DeepSpeedInferenceConfig):
         super(MLPGemmOp, self).__init__(config)
         try:
             if self.config.norm_type == NormType.LayerNorm:
-                if self.config.dtype in [torch.float16, torch.int8]:  # non-triton cuda kernel has a higher performance in MLP than mlp_gemm_func in triton.ops
+                if self.config.dtype in [
+                        torch.float16, torch.int8
+                ]:  # non-triton cuda kernel has a higher performance in MLP than mlp_gemm_func in triton.ops
                     self.mlp_gemm_func = self.inference_module.mlp_gemm_fp16  # type: ignore
                 elif self.config.dtype == torch.bfloat16:
                     self.mlp_gemm_func = self.inference_module.mlp_gemm_bf16

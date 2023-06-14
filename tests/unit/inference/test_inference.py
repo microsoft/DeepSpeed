@@ -21,7 +21,6 @@ from deepspeed.model_implementations import DeepSpeedTransformerInference
 from torch import nn
 from deepspeed.accelerator import get_accelerator
 
-
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
     pytest.skip("skip inference tests on rocm for now", allow_module_level=True)
@@ -261,18 +260,16 @@ Tests
 class TestModelTask(DistributedTest):
     world_size = 1
 
-    def test(
-        self,
-        model_w_task,
-        dtype,
-        enable_cuda_graph,
-        enable_triton,
-        query,
-        inf_kwargs,
-        assert_fn,
-        invalid_model_task_config,
-        perf_meas=True
-    ):
+    def test(self,
+             model_w_task,
+             dtype,
+             enable_cuda_graph,
+             enable_triton,
+             query,
+             inf_kwargs,
+             assert_fn,
+             invalid_model_task_config,
+             perf_meas=True):
         if invalid_model_task_config:
             pytest.skip(invalid_model_task_config)
 
@@ -299,15 +296,16 @@ class TestModelTask(DistributedTest):
         bs_time = time.time() - start
 
         args = {
-            'mp_size':1,
-            'dtype':dtype,
-            'replace_with_kernel_inject':True,
-            'enable_cuda_graph':enable_cuda_graph,
-            'use_triton':enable_triton,
-            'triton_autotune':False,
+            'mp_size': 1,
+            'dtype': dtype,
+            'replace_with_kernel_inject': True,
+            'enable_cuda_graph': enable_cuda_graph,
+            'use_triton': enable_triton,
+            'triton_autotune': False,
         }
-        if pipe.tokenizer.model_max_length < deepspeed.ops.transformer.inference.config.DeepSpeedInferenceConfig().max_out_tokens:
-            args.update({'max_out_tokens':pipe.tokenizer.model_max_length})
+        if pipe.tokenizer.model_max_length < deepspeed.ops.transformer.inference.config.DeepSpeedInferenceConfig(
+        ).max_out_tokens:
+            args.update({'max_out_tokens': pipe.tokenizer.model_max_length})
         pipe.model = deepspeed.init_inference(pipe.model, **args)
         check_injection(pipe.model)
         # Warm-up queries for perf measurement
@@ -320,7 +318,9 @@ class TestModelTask(DistributedTest):
         ds_time = time.time() - start
 
         if perf_meas:
-            print(f"model={model}, task={task}, dtype={dtype}, cuda_graph={enable_cuda_graph}, triton={enable_triton}, bs_time={bs_time}, ds_time={ds_time}")
+            print(
+                f"model={model}, task={task}, dtype={dtype}, cuda_graph={enable_cuda_graph}, triton={enable_triton}, bs_time={bs_time}, ds_time={ds_time}"
+            )
 
         # facebook/opt* and some bigscient/bloom* models are not matching
         # baseline exactly, adding an exception to them for now

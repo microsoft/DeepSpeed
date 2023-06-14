@@ -9,8 +9,7 @@ import deepspeed
 from deepspeed.ops.op_builder import InferenceBuilder
 
 if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
-    pytest.skip("Inference ops are not available on this system",
-                allow_module_level=True)
+    pytest.skip("Inference ops are not available on this system", allow_module_level=True)
 
 inference_module = None
 torch_minor_version = None
@@ -45,6 +44,11 @@ def run_matmul_ds(a, b, use_triton_ops=False):
 def test_matmul_4d(B, H, M, K, N, dtype, use_triton_ops):
     if not deepspeed.HAS_TRITON and use_triton_ops:
         pytest.skip("triton has to be installed for the test")
+
+    # skip autotune in testing
+    from deepspeed.ops.transformer.inference.triton.matmul_ext import fp16_matmul
+    fp16_matmul.skip_autotune()
+
     a_ds = torch.randn((B, H, M, K), dtype=dtype, device='cuda')
     b_ds = torch.randn((B, H, K, N), dtype=dtype, device='cuda')
     a_ref = a_ds.clone().detach()

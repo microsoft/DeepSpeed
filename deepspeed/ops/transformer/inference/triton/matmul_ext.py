@@ -11,10 +11,12 @@ import deepspeed.ops.transformer.inference.triton.triton_matmul_kernel as triton
 import pickle
 from io import open
 
+
 # -----------------------------------------------------------------------------
 # util class/functions for triton
 def _default_cache_dir():
     return os.path.join(os.environ["HOME"], ".triton", "autotune")
+
 
 def bias_add_activation(C, bias=None, activation=""):
     if bias is not None:
@@ -39,6 +41,7 @@ class AutotuneCacheManager:
     """
         Cache manager for autotune
     """
+
     def __init__(self, key):
         self.key = key
         self.file_path = None
@@ -74,6 +77,7 @@ class AutotuneCacheManager:
 # -----------------------------------------------------------------------------
 # triton matmul class
 
+
 class MatmulExt(torch.autograd.Function):
     """
         a wrapper class that can call different triton matmul kernels depending on the input parameters
@@ -89,7 +93,7 @@ class MatmulExt(torch.autograd.Function):
         quantize_activation = False
         Batch = 0
 
-        if len(A.shape) == 3: # if A is 3d-tensor where batch index is given as 0-axis
+        if len(A.shape) == 3:  # if A is 3d-tensor where batch index is given as 0-axis
             assert A.is_contiguous(), "matrix A must be contiguous"
             Batch, M, K = A.shape
             A = A.view(-1, K)
@@ -138,13 +142,17 @@ class TritonMatmul(torch.autograd.Function):
         autotune_table = cache_manager.load()
         if autotune_table is None:
             autotune_table = dict()
-        autotune_table.update(triton_kernel.cache) # always overwrite with the new autotune results
+        autotune_table.update(triton_kernel.cache)  # always overwrite with the new autotune results
         cache_manager = AutotuneCacheManager(cache_key)
         cache_manager.put(autotune_table)
 
     @staticmethod
-    def forward(A, B, ref_dtype=torch.float32, # fp32 only
-                bias=None, activation=""):
+    def forward(
+            A,
+            B,
+            ref_dtype=torch.float32,  # fp32 only
+            bias=None,
+            activation=""):
         C = torch.matmul(A.type(ref_dtype), B.type(ref_dtype))
         C = bias_add_activation(C, bias, activation)
         return C
@@ -169,7 +177,6 @@ class Fp16Matmul(TritonMatmul):
         __class__._2d_kernel.configs = [__class__._2d_kernel.configs[0]]
         __class__._4d_kernel.configs = [__class__._4d_kernel.configs[0]]
 
-
     @staticmethod
     def forward(A, B, use_triton=True, bias=None, activation=""):
         if use_triton:
@@ -186,17 +193,30 @@ class Fp16Matmul(TritonMatmul):
             # allocates output
             C = torch.empty((M, N), device=device, dtype=A.dtype)
             # accumulator types
-            ACC_TYPE = triton.language.float32 if A.dtype in [torch.float16, torch.bfloat16, torch.float32] else triton.language.int32
+            ACC_TYPE = triton.language.float32 if A.dtype in [torch.float16, torch.bfloat16, torch.float32
+                                                              ] else triton.language.int32
             # launch kernel
             grid = lambda META: (triton.cdiv(M, META['BLOCK_M']) * triton.cdiv(N, META['BLOCK_N']), META['SPLIT_K'])
-            __class__._2d_kernel[grid](A, B, C, M, N, K, bias,
-                                    A.stride(0), A.stride(1),
-                                    B.stride(0), B.stride(1),
-                                    C.stride(0), C.stride(1),
-                                    M//__class__._cache_stride, N//__class__._cache_stride, K//__class__._cache_stride,
-                                    GROUP_M=8, ACC_TYPE=ACC_TYPE,
-                                    BIAS_ADD=(0 if bias is None else 1),
-                                    ACTIVATION=activation)
+            __class__._2d_kernel[grid](A,
+                                       B,
+                                       C,
+                                       M,
+                                       N,
+                                       K,
+                                       bias,
+                                       A.stride(0),
+                                       A.stride(1),
+                                       B.stride(0),
+                                       B.stride(1),
+                                       C.stride(0),
+                                       C.stride(1),
+                                       M // __class__._cache_stride,
+                                       N // __class__._cache_stride,
+                                       K // __class__._cache_stride,
+                                       GROUP_M=8,
+                                       ACC_TYPE=ACC_TYPE,
+                                       BIAS_ADD=(0 if bias is None else 1),
+                                       ACTIVATION=activation)
         else:
             C = torch.matmul(A, B)
         return C
@@ -219,18 +239,33 @@ class Fp16Matmul(TritonMatmul):
         c = torch.empty((B, H, M, N), device=a.device, dtype=a.dtype)
 
         grid = lambda META: (
-            triton.cdiv(M,
-                        META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']),
-            H, B,
+            triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']),
+            H,
+            B,
         )
 
         __class__._4d_kernel[grid](
-            a, b, c,
-            M, N, K,
-            M//__class__._cache_stride, N//__class__._cache_stride, K//__class__._cache_stride,
-            a.stride(0), a.stride(1), a.stride(2), a.stride(3),
-            b.stride(0), b.stride(1), b.stride(2), b.stride(3),
-            c.stride(0), c.stride(1), c.stride(2), c.stride(3),
+            a,
+            b,
+            c,
+            M,
+            N,
+            K,
+            M // __class__._cache_stride,
+            N // __class__._cache_stride,
+            K // __class__._cache_stride,
+            a.stride(0),
+            a.stride(1),
+            a.stride(2),
+            a.stride(3),
+            b.stride(0),
+            b.stride(1),
+            b.stride(2),
+            b.stride(3),
+            c.stride(0),
+            c.stride(1),
+            c.stride(2),
+            c.stride(3),
             scale=-1.0,
             MASK=False,
         )
@@ -268,21 +303,34 @@ class Fp16Matmul(TritonMatmul):
         output = torch.empty((B, H, M, N), device=q.device, dtype=q.dtype)
         # 1D launch kernel where each block gets its own program.
         grid = lambda META: (
-            triton.cdiv(M,
-                        META["BLOCK_SIZE_M"]) * triton.cdiv(N,
-                                                            META["BLOCK_SIZE_N"]),
+            triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
             H,
             B,
         )
         __class__._4d_kernel[grid](
-            q, k, output,
-            M, N, K,
-            M//__class__._cache_stride, N//__class__._cache_stride, K//__class__._cache_stride,
+            q,
+            k,
+            output,
+            M,
+            N,
+            K,
+            M // __class__._cache_stride,
+            N // __class__._cache_stride,
+            K // __class__._cache_stride,
             # Correctly swapping the strides for tensor transposition.
             # This has minimal cost since Triton should be able to detect strided memory access pattern and use shared memory if vector dimension is involved.
-            q.stride(0), q.stride(2), q.stride(1), q.stride(3),
-            k.stride(0), k.stride(2), k.stride(3), k.stride(1),
-            output.stride(0), output.stride(1), output.stride(2), output.stride(3),
+            q.stride(0),
+            q.stride(2),
+            q.stride(1),
+            q.stride(3),
+            k.stride(0),
+            k.stride(2),
+            k.stride(3),
+            k.stride(1),
+            output.stride(0),
+            output.stride(1),
+            output.stride(2),
+            output.stride(3),
             scale=scale,
             MASK=False,
         )
@@ -302,12 +350,8 @@ class Fp16Matmul(TritonMatmul):
         v = v.view(batches, -1, num_of_heads, head_size)
 
         # checks constraints
-        assert (
-            prob.shape[0] == v.shape[0]
-            and prob.shape[1] == v.shape[2]
-            and prob.shape[2] == v.shape[1]
-            and prob.shape[3] == v.shape[1]
-        ), "incompatible dimensions"
+        assert (prob.shape[0] == v.shape[0] and prob.shape[1] == v.shape[2] and prob.shape[2] == v.shape[1]
+                and prob.shape[3] == v.shape[1]), "incompatible dimensions"
         B, H, M, K = prob.shape
         B, K, H, N = v.shape
 
@@ -323,21 +367,34 @@ class Fp16Matmul(TritonMatmul):
         output = torch.empty((B, M, H, N), device=v.device, dtype=v.dtype)
         # 1D launch kernel where each block gets its own program.
         grid = lambda META: (
-            triton.cdiv(M,
-                        META["BLOCK_SIZE_M"]) * triton.cdiv(N,
-                                                            META["BLOCK_SIZE_N"]),
+            triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
             H,
             B,
         )
 
         __class__._4d_kernel[grid](
-            prob, v, output,
-            M, N, K,
-            M//__class__._cache_stride, N//__class__._cache_stride, K//__class__._cache_stride,
-            prob.stride(0), prob.stride(1), prob.stride(2), prob.stride(3),
-            v.stride(0), v.stride(2), v.stride(1), v.stride(3),
+            prob,
+            v,
+            output,
+            M,
+            N,
+            K,
+            M // __class__._cache_stride,
+            N // __class__._cache_stride,
+            K // __class__._cache_stride,
+            prob.stride(0),
+            prob.stride(1),
+            prob.stride(2),
+            prob.stride(3),
+            v.stride(0),
+            v.stride(2),
+            v.stride(1),
+            v.stride(3),
             # Here we also transpose the output when writing to memory.
-            output.stride(0), output.stride(2), output.stride(1), output.stride(3),
+            output.stride(0),
+            output.stride(2),
+            output.stride(1),
+            output.stride(3),
             scale=-1,
             MASK=False,
         )
@@ -350,9 +407,17 @@ class Fp16Matmul(TritonMatmul):
         return C
 
     @staticmethod
-    def _check_parity(A, B, output_dtype, SA=None, SB=None, qblock_size=None,
-                     ref_dtype=torch.float32, tol=0.01, use_triton=True,
-                     bias=None, activation=""):
+    def _check_parity(A,
+                      B,
+                      output_dtype,
+                      SA=None,
+                      SB=None,
+                      qblock_size=None,
+                      ref_dtype=torch.float32,
+                      tol=0.01,
+                      use_triton=True,
+                      bias=None,
+                      activation=""):
         torch_output = __class__._ref_forward(A, B, ref_dtype=ref_dtype, bias=bias, activation=activation)
         triton_output = __class__.forward(A, B, use_triton=use_triton, bias=bias, activation=activation)
         assert triton.testing.allclose(triton_output.cpu().type(torch_output.dtype), torch_output.cpu(), tol=tol)
@@ -385,6 +450,8 @@ context_4d_matmul = fp16_matmul._context_4d_matmul
 
 #
 import atexit
+
+
 @atexit.register
 def matmul_ext_update_autotune_table():
     # print(f"updating {fp16_matmul.__class__} triton autotune table")
