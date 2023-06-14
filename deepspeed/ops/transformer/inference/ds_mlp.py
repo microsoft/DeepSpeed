@@ -29,8 +29,16 @@ class DeepSpeedMLP(nn.Module):
         self.intm_w_sz_per_partition = self.config.intermediate_size * proj_factor // self.config.mp_size
         self.intm_o_sz_per_partition = self.config.intermediate_size // self.config.mp_size
 
-        self.fc1 = nn.Linear(self.config.hidden_size, self.config.intermediate_size, bias=True, device=device, dtype=data_type)
-        self.fc2 = nn.Linear(self.config.intermediate_size, self.config.hidden_size, bias=True, device=device, dtype=data_type)
+        self.fc1 = nn.Linear(self.config.hidden_size,
+                             self.config.intermediate_size,
+                             bias=True,
+                             device=device,
+                             dtype=data_type)
+        self.fc2 = nn.Linear(self.config.intermediate_size,
+                             self.config.hidden_size,
+                             bias=True,
+                             device=device,
+                             dtype=data_type)
         self.activation_fn = nn.ReLU()
         self.final_layer_norm = nn.LayerNorm(self.config.hidden_size,
                                              elementwise_affine=True,
