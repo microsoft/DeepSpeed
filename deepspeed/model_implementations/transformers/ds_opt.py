@@ -61,14 +61,7 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
 
         input_mask = (input_mask if attn_mask is None else attn_mask) if attention_mask is None else attention_mask
 
-        debug = True
-        print_tensors = False
-
-        if debug: print(f'ds b4 attn: input = {torch.norm(input)}')
-        if debug: print(f'ds b4 attn: input_mask = {torch.norm(input_mask)}')
-
         get_present = (get_present or get_key_value or use_cache)
-        input_mask = input_mask if attention_mask is None else attention_mask
 
         # We set the prev key/value to None when there is a prompt
         if input.shape[1] > 1:
@@ -87,13 +80,8 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
             target_dtype = torch.half if self.dtype == torch.int8 else self.dtype
             input = input.to(target_dtype)
 
-        if debug: print(f'ds b4 attn: norm = {torch.norm(input)}')
-        if print_tensors: print(f'ds b4 attn: tensor = {input}')
-        # set this to True to use pytorch based attention and mlp
-        # (base=False => 2 seconds vs. base=True => 12 seconds on A6000)
-        # base = True ==> matches the output of HF model output but base=False does not
         base = True
-
+        debug = False
         with torch.no_grad():
             attention_output, key, value, context_outputtn_ctx, inp_norm = \
                                      self.attention(input,
@@ -107,9 +95,8 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
                                               self.norm_w,
                                               self.norm_b,
                                               alibi,
-                                              attn_base=base)
-            if debug: print(f'ds a4 attn + ln: norm = {torch.norm(attention_output)}')
-            if print_tensors: print(f'ds a4 attn + ln: tensor = {attention_output}')
+                                              attn_base=base,
+                                              attn_debug=debug)
 
             presents = (key, value)
             # Bug? Setting layer past to presents every pass fixes key states issue
@@ -120,9 +107,8 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
                               inp_norm,
                               self.attention.attn_ob,
                               self.attention.attn_ow,
-                              mlp_base=base)
-
-            if debug: print(f"after mlp (end of ds-opt): {torch.norm(output)}")
+                              mlp_base=base,
+                              mlp_debug=debug)
 
             output = output.to(input_type)
         if get_present:

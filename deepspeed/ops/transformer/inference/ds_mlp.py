@@ -104,9 +104,47 @@ class DeepSpeedMLP(nn.Module):
             inter_b[self.intm_w_sz_per_partition:] = self.inter_gate_b  # type: ignore
         return DeepSpeedMLP._inter_w_buffers
 
+
     def mlp_baseline(self, input, residual, bias):
-        debug = False
-        print_tensors = False
+
+        # pytorch baseline to add bias. Note: We should not add bias here when attn_base=True.
+        #input = input + bias
+
+        # pytorch baseline to do add residual (residual=input)
+        input = input + residual
+
+        # copy the weight and bias to fc1
+        if self.config.transposed_mode:
+            self.fc1.weight.data.copy_(self.inter_w)
+        else:
+            self.fc1.weight.data.copy_(self.inter_w.transpose(0, 1))
+        self.fc1.bias.data.copy_(self.inter_b)
+
+        # copy the weight and bias to fc2
+        if self.config.transposed_mode:
+            self.fc2.weight.data.copy_(self.output_w)
+        else:
+            self.fc2.weight.data.copy_(self.output_w.transpose(0, 1))
+        self.fc2.bias.data.copy_(self.output_b)
+
+        self.final_layer_norm.bias.data.copy_(self.attn_nb)
+        self.final_layer_norm.weight.data.copy_(self.attn_nw)
+
+        residual = input
+        input = self.final_layer_norm(input)
+        input = self.fc1(input)
+        output = self.activation_fn(input)
+        output = self.fc2(output)
+
+        # pytorch baseline residual add
+        residual = output + residual
+
+        return residual
+
+    # Copy of mlp_baseline for debugging
+    def debug_mlp_baseline(self, input, residual, bias):
+        debug = True
+        print_tensors = True
 
         # pytorch baseline to add bias. Note: We should not add bias here when attn_base=True.
         #input = input + bias
@@ -131,7 +169,6 @@ class DeepSpeedMLP(nn.Module):
         else:
             self.fc2.weight.data.copy_(self.output_w.transpose(0, 1))
         self.fc2.bias.data.copy_(self.output_b)
-        get_accelerator().synchronize()
 
         if debug: print(f"inside ds mlp: b4 ln weight (shape, norm) = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
         if debug: print(f"inside ds mlp: b4 ln bias  (shape, norm)  = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
@@ -144,7 +181,6 @@ class DeepSpeedMLP(nn.Module):
 
         self.final_layer_norm.bias.data.copy_(self.attn_nb)
         self.final_layer_norm.weight.data.copy_(self.attn_nw)
-        get_accelerator().synchronize()
 
         #print(f"self.final_layer_norm.weight = {self.final_layer_norm.weight}")
         #print(f"self.final_layer_norm.weight norm = {self.final_layer_norm.weight.norm()}")
@@ -195,7 +231,7 @@ class DeepSpeedMLP(nn.Module):
 
         return residual
 
-    def forward(self, input, residual, residual_norm, bias, weight, mlp_base=False):
+    def forward(self, input, residual, residual_norm, bias, weight, mlp_base=False, mlp_debug=False):
         if self.inter_w is None:
             self._inter_w, self._inter_b = self._merge_inter_w()
         else:
@@ -205,8 +241,10 @@ class DeepSpeedMLP(nn.Module):
         residual_add = None
 
         # only set mlp_base=True from the caller. This ensures that only the model that is supported (like opt) calls this
-        if mlp_base:
+        if mlp_base and not mlp_debug:
             residual = self.mlp_baseline(input, residual, bias)
+        elif mlp_base and mlp_debug:
+            residual = self.debug_mlp_baseline(input, residual, bias)
         else:
             if self.attn_nw is None:
                 output = self.fused_gemm_gelu(input=residual_norm,
