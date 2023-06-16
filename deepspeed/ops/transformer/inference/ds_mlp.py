@@ -106,14 +106,17 @@ class DeepSpeedMLP(nn.Module):
 
     def mlp_baseline(self, input, residual, bias):
         debug = False
+        print_tensors = False
 
         # pytorch baseline to add bias. Note: We should not add bias here when attn_base=True.
         #input = input + bias
-        if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}, tensor = {input}')
+        if debug: print(f'ds a4 attn + ln + bias-add: norm = {torch.norm(input)}')
+        if print_tensors: print(f'tensor = {input}')
 
         # pytorch baseline to do add residual (residual=input)
         input = input + residual
-        if debug: print(f'ds a4 attn + ln + bias-add + residual-add: norm = {torch.norm(input)}, tensor = {input}')
+        if debug: print(f'ds a4 attn + ln + bias-add + residual-add: norm = {torch.norm(input)}')
+        if print_tensors: print(f'tensor = {input}')
 
         # copy the weight and bias to fc1
         if self.config.transposed_mode:
@@ -130,20 +133,24 @@ class DeepSpeedMLP(nn.Module):
         self.fc2.bias.data.copy_(self.output_b)
         get_accelerator().synchronize()
 
-        if debug: print(f"inside ds mlp: b4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
-        if debug: print(f"inside ds mlp: b4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
-        if debug: print(f"inside ds mlp: b4 ln input  = {input.shape}, {input.norm()}")
-        if debug: print(f"inside ds mlp: b4 ln input tensor = {input}")
+        if debug: print(f"inside ds mlp: b4 ln weight (shape, norm) = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
+        if debug: print(f"inside ds mlp: b4 ln bias  (shape, norm)  = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
+        if debug: print(f"inside ds mlp: b4 ln input (shape, norm)  = {input.shape}, {input.norm()}")
+        if print_tensors: print(f"inside ds mlp: b4 ln input tensor = {input}")
 
         # do the layernorm
-        if debug: print(f"self.final_layer_norm w norm = {self.final_layer_norm.weight.norm()}")
-        if debug: print(f"self.final_layer_norm b norm = {self.final_layer_norm.bias.norm()}")
-        if debug: print(f"self.attn_nb = {self.attn_nb}")
+        #print(f"self.final_layer_norm.weight = {self.final_layer_norm.weight}")
+        #print(f"self.final_layer_norm.weight norm = {self.final_layer_norm.weight.norm()}")
 
         self.final_layer_norm.bias.data.copy_(self.attn_nb)
+        self.final_layer_norm.weight.data.copy_(self.attn_nw)
         get_accelerator().synchronize()
 
+        #print(f"self.final_layer_norm.weight = {self.final_layer_norm.weight}")
+        #print(f"self.final_layer_norm.weight norm = {self.final_layer_norm.weight.norm()}")
+
         # probably need a cuda sync - because it was giving wrong output without the next prints
+        if debug: print(f"self.final_layer_norm w norm = {self.final_layer_norm.weight.norm()}")
         if debug: print(f"self.final_layer_norm b norm = {self.final_layer_norm.bias.norm()}")
 
         #print(f"self.final_layer_norm b norm = {self.output_b.norm()}")
@@ -155,30 +162,36 @@ class DeepSpeedMLP(nn.Module):
 
         if debug:
             print(
-                f"inside ds mlp: a4 ln weight = {self.fc1.weight}, {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
+                f"inside ds mlp: a4 ln weight (shape, norm) = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
+        if print_tensors: print(f"inside ds mlp: a4 ln weight = {self.fc1.weight}")
         if debug:
-            print(f"inside ds mlp: a4 ln bias   = {self.fc1.bias}, {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
+            print(f"inside ds mlp: a4 ln bias (shape, norm)  = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
+        if print_tensors: print(f"inside ds mlp: a4 ln bias = {self.fc1.bias}")
         if debug: print(f"inside ds mlp: a4 ln input  = {input.shape}, {input.norm()}")
-        if debug: print(f"inside ds mlp: a4 ln input tensor = {input}")
+        if print_tensors: print(f"inside ds mlp: a4 ln input tensor = {input}")
 
         input = self.fc1(input)
 
-        if debug: print(f"inside ds mlp: a4 fc1: {input}, {input.norm()}")
+        if debug: print(f"inside ds mlp: a4 fc1 norm: {input.norm()}")
+        if print_tensors: print(f"inside ds mlp: a4 fc1: {input}")
 
         output = self.activation_fn(input)
 
-        if debug: print(f"inside ds mlp: a4 relu: {output}, {output.norm()}")
+        if debug: print(f"inside ds mlp: a4 relu norm: {output.norm()}")
+        if print_tensors: print(f"inside ds mlp: a4 relu: {output}")
 
-        if debug: print(f"inside ds mlp: fc2 weight = {self.fc2.weight.shape}, {self.fc2.weight.norm()}")
-        if debug: print(f"inside ds mlp: fc2 bias   = {self.fc2.bias.shape}, {self.fc2.bias.norm()}")
+        if debug: print(f"inside ds mlp: fc2 weight (shape, norm) = {self.fc2.weight.shape}, {self.fc2.weight.norm()}")
+        if debug: print(f"inside ds mlp: fc2 bias  (shape, norm)  = {self.fc2.bias.shape}, {self.fc2.bias.norm()}")
 
         output = self.fc2(output)
 
-        if debug: print(f"inside ds mlp: a4 fc2: {output}, {output.norm()}")
+        if debug: print(f"inside ds mlp: a4 fc2 norm: {output.norm()}")
+        if print_tensors: print(f"inside ds mlp: a4 fc2: {output}")
 
         # pytorch baseline residual add
         residual = output + residual
-        if debug: print(f"residual = {residual}, {residual.norm()}")
+        if debug: print(f"residual norm = {residual.norm()}")
+        if print_tensors: print(f"residual = {residual}")
 
         return residual
 
