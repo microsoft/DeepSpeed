@@ -4,7 +4,7 @@
 
 We integrate [Triton](https://github.com/openai/triton) to Deepspeed, which further accelerates inference in BERT-like models in float16 precision.
 In other words, Triton kernels can be used in DeepSpeed which leverages a recent open source compiler.
-Depending on the model, task-query (e.g., different sequence lengths in fill-mask task) and underlying hardware (i.e., A100), it has been shown to give a latency reduction of 12~39% as shown in Table 1.
+Depending on the model, task-query (e.g., different sequence lengths in fill-mask task) and underlying hardware (i.e., A100), it has been shown to give a latency reduction of 12~41% as shown in Table 1.
 
 <div align="center">
 
