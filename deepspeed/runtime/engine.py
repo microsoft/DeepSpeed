@@ -1118,9 +1118,6 @@ class DeepSpeedEngine(Module):
             if model_dtype == torch.bfloat16 and grad_accum_dtype == torch.float32 and self.zero_optimization_stage(
             ) == 1:
                 return BFLOAT16
-            if model_dtype != grad_accum_dtype and self.zero_optimization_stage() == 3:
-                raise NotImplementedError(
-                    "Model data type and gradient accumulation data type must be equal to use ZeRO stage 3")
             return ZERO_OPTIMIZATION
         elif amp_enabled:
             if model_dtype != grad_accum_dtype:
@@ -1500,6 +1497,7 @@ class DeepSpeedEngine(Module):
                     gradient_predivide_factor=self.gradient_predivide_factor(),
                     gradient_accumulation_steps=self.gradient_accumulation_steps(),
                     aio_config=self.aio_config(),
+                    gradient_accumulation_dtype=gradient_accumulation_dtype,
                     communication_data_type=self.communication_data_type)
 
         else:
