@@ -15,9 +15,7 @@ Table 1. Average P90 latency reduction in percentage when compared to the Huggin
 
 
 </div>
-Table 2 further illustrates the performance gain that's achieved with Triton kernels in Deepspeed: it gives 6~24% latency reduction when compared to Deepspeed with CUDA kernels.
-
-In addition, it can be noted that
+Table 2 further illustrates the performance gain that's achieved with Triton kernels in Deepspeed: it gives 6~24% latency reduction when compared to Deepspeed with CUDA kernels. In addition, it can be noted that
 [the latest Triton release](https://pypi.org/project/triton/2.0.0.post1/)
 tends to perform better with GPUs with Ampre architectures (Table 2).
 
