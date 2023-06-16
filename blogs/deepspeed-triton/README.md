@@ -2,9 +2,9 @@
 
 # 1. Overview
 
-We integrate [Triton](https://github.com/openai/triton) to Deepspeed, which further accelerates inference in BERT-like models in float16 precision.
-In other words, Triton kernels can be used in DeepSpeed which leverages a recent open source compiler.
-Depending on the model, task-query (e.g., different sequence lengths in fill-mask task) and underlying hardware (i.e., A100), it has been shown to give a latency reduction of 12~41% as shown in Table 1.
+We have integrated [Triton](https://github.com/openai/triton), an open source compiler for GPU programming, into DeepSpeed, which further boosts the inference speed of BERT-like models in float16 precision.
+With Triton kernels, DeepSpeed can achieve a latency reduction of 12~41% compared to the Huggingface transformers baseline, depending on the model, the query sequence length, and the underlying hardware (i.e., A100).
+Table 1 shows the average P90 latency reduction for different models and GPUs.
 
 <div align="center">
 
@@ -18,8 +18,7 @@ Table 1. Average P90 latency reduction in percentage when compared to the Huggin
 
 </div>
 Table 2 further illustrates the performance gain that's achieved with Triton kernels in Deepspeed: it gives 6~24% latency reduction when compared to Deepspeed with CUDA kernels.
-In addition, it can be noted that Triton tends to perform better with GPUs with Ampre architectures (Table 2).
-
+In addition, it can be noted that Triton tends to perform better with GPUs with Ampere architectures (Table 2).
 
 <div align="center">
 
@@ -34,11 +33,10 @@ Table 2. Average P90 latency reduction in percentage when compared to the latenc
 </div>
 
 
-Figures below further shows the detailed performance profiles.
+Figures below further show performance profiles in detail.
 Figure 1 visualizes latency reduction in different sequence lengths in A100 GPU for Bert-base model.
 The baseline (blue) is from Huggingface transformers without any kernel injection, the orange is from Deepspeed with CUDA kernels and the gray is from Deepspeed with Triton kernels.
-Figure 2 show again the normalized latency in A100 but for Bert-large model.
-
+Figure 2 shows again the normalized latency in A100 but for Bert-large model.
 
 <div align="center">
 
@@ -57,7 +55,8 @@ Next, we dive deeper into this new feature in DeepSpeed.
 
 # 2. How to use Triton in Deepspeed
 
-For those transformer operators in float16 (such as matmul, softmax and layer-norm), there are kernels written in Triton language that replaces ordinary CUDA or torch operators. From DeepSpeed config, it can be enabled to use Triton compilers to optimize the kernels.
+For those transformer operators in float16 (such as matmul, softmax and layer-norm), we have implemented kernels written in Triton language that replace ordinary CUDA or torch operators.
+You can enable Triton compilers to optimize these kernels by setting a flag in the DeepSpeed config file.
 
 ```
 pipe = pipeline('fill-mask', model='bert-base-cased', framework='pt', device=0)
@@ -85,7 +84,7 @@ cd DeepSpeedExamples/inference/huggingface/fill-mask
 deepspeed --num_gpus 1 test-bert.py --triton
 ```
 
-Also, you can run a performance benchmark.
+To run a performance benchmark, you can use the following command:
 
 ```python
 pip install deepspeed
@@ -103,12 +102,14 @@ deepspeed --num_gpus 1 triton-bert-benchmark.py --model bert-base-cased --dtype 
 * We will continue to improve DeepSpeed-Triton with your feedback and support.
 
 * Please visit our [website](https://www.deepspeed.ai/) for detailed blog posts, tutorials, and helpful documentation.
-* This is primarily for BERT, Roberta and other BERT-like models and is not enabled for text-generation yet.
 
-* Sequence length ranges from 8 to 512 and batch-size is set to 1 in the experiments. CUDA graph is enabled for all cases and the task in the tests are 'fill-mask'.
+* This feature is currently only available for BERT, Roberta and other BERT-like models and is not supported for text-generation yet.
 
-* It also should be noted the cuda-graph has to be enabled to benefit from Triton. Otherwise, there will be rather larger overhead from JIT compilation and a deep call stack in Triton.
+* It is important to note that CUDA graph has to be enabled to benefit from Triton. Otherwise, there will be a significant overhead from JIT compilation and a deep call stack in Triton.
 
-* 'triton_autotune' in the config also needs to be on for the best performance. It initially goes through Triton autotuning step to build the optimal autotune table for Triton kernels and it will take some time.
+* 'triton_autotune' in the config also needs to be on for the best performance. It will run an initial Triton autotuning step to build the optimal autotune table for Triton kernels, which will take some time.
 
-* [The latest Triton release](https://pypi.org/project/triton/2.0.0.post1/) is used.
+* In our experiments, sequence length in query ranged from 8 to 512 and batch-size was set to 1.
+Table 1 and 2 compare the P90 latencies averaged over the eniture sequence length range (i.e., 8~512), while Figures 1 and 2 compare the P90 latencies over specific sub-ranges (i.e. sequence lengths in the range shown in x-axis).
+We enabled CUDA graph for all cases and used the 'fill-mask' task for the tests.
+Also, we used [The latest Triton release](https://pypi.org/project/triton/2.0.0.post1/) for our experiments.
