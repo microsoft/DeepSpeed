@@ -161,7 +161,7 @@ class DeepSpeedTransformerInference(nn.Module):
         if debug: print(f'ds b4 attn: norm = {torch.norm(input)}, tensor = {input}')
 
         with torch.no_grad():
-            save_tensors = True
+            save_tensors = False
             skip_attention = False
             mlp_base = True
             attn_base = True

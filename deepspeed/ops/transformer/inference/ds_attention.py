@@ -26,11 +26,30 @@ class DeepSpeedSelfAttention(nn.Module):
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
         device = get_accelerator().current_device_name()  #if config.bigscience_bloom else 'cpu'
 
-        self.self_attn_layer_norm = nn.LayerNorm(self.config.hidden_size, elementwise_affine=True, dtype=data_type, device=device)
-        self.k_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, dtype=data_type)
-        self.v_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, dtype=data_type)
-        self.q_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, dtype=data_type)
-        self.out_proj = nn.Linear(self.config.hidden_size, self.config.hidden_size, bias=True, dtype=data_type)
+        self.self_attn_layer_norm = nn.LayerNorm(self.config.hidden_size,
+                                                 elementwise_affine=True,
+                                                 dtype=data_type,
+                                                 device=device)
+        self.k_proj = nn.Linear(self.config.hidden_size,
+                                self.config.hidden_size,
+                                bias=True,
+                                device=device,
+                                dtype=data_type)
+        self.v_proj = nn.Linear(self.config.hidden_size,
+                                self.config.hidden_size,
+                                bias=True,
+                                device=device,
+                                dtype=data_type)
+        self.q_proj = nn.Linear(self.config.hidden_size,
+                                self.config.hidden_size,
+                                bias=True,
+                                device=device,
+                                dtype=data_type)
+        self.out_proj = nn.Linear(self.config.hidden_size,
+                                  self.config.hidden_size,
+                                  bias=True,
+                                  device=device,
+                                  dtype=data_type)
 
         if self.config.set_empty_params:
             self.attn_qw = None
@@ -134,41 +153,70 @@ class DeepSpeedSelfAttention(nn.Module):
         return tensor.view(bsz, seq_len, self.num_attention_heads_per_partition, head_dim).transpose(1, 2).contiguous()
 
     # todo: this runs through two model forward passes before errors on src_len and key_states shape
-    def attn_baseline(self,
-                input,
-                input_mask,
-                head_mask=None,
-                layer_past=None,
-                # get_present=False,
-                # encoder_hidden_states=None,
-                # encoder_attention_mask=None,
-                output_attentions=False,
-                norm_w=None,
-                norm_b=None,
-                # alibi=None
-                ):
+    def attn_baseline(
+        self,
+        input,
+        input_mask,
+        head_mask=None,
+        layer_past=None,
+        # get_present=False,
+        # encoder_hidden_states=None,
+        # encoder_attention_mask=None,
+        output_attentions=False,
+        norm_w=None,
+        norm_b=None,
+        # alibi=None
+    ):
         debug = False
-        qkvw =  self._attn_qkvw.split(2048,1)
-        qkvb = self._attn_qkvb.split(2048,0)
+        print_tensors = False
+        #print(len(self._attn_qkvw), len(self._attn_qkvb))
 
-        self.k_proj.weight.data.copy_(qkvw[1].transpose(0, 1))
+        if self.config.transposed_mode:
+            qkvw = self._attn_qkvw.split(self.config.hidden_size, 0)
+        else:
+            qkvw = self._attn_qkvw.split(self.config.hidden_size, 1)
+        qkvb = self._attn_qkvb.split(self.config.hidden_size, 0)
+
+        #print(len(qkvw), len(qkvb))
+        #exit(0)
+        if self.config.transposed_mode:
+            self.k_proj.weight.data.copy_(qkvw[1])
+        else:
+            self.k_proj.weight.data.copy_(qkvw[1].transpose(0, 1))
         self.k_proj.bias.data.copy_(qkvb[1])
-        self.v_proj.weight.data.copy_(qkvw[2].transpose(0, 1))
+
+        if self.config.transposed_mode:
+            self.v_proj.weight.data.copy_(qkvw[2])
+        else:
+            self.v_proj.weight.data.copy_(qkvw[2].transpose(0, 1))
+
         self.v_proj.bias.data.copy_(qkvb[2])
-        self.out_proj.weight.data.copy_(self.attn_ow.transpose(0, 1))
+        if self.config.transposed_mode:
+            self.out_proj.weight.data.copy_(self.attn_ow)
+        else:
+            self.out_proj.weight.data.copy_(self.attn_ow.transpose(0, 1))
         self.out_proj.bias.data.copy_(self.attn_ob)
 
+        #if self.config.transposed_mode:
         self.self_attn_layer_norm.weight.data.copy_(norm_w)
-        self.self_attn_layer_norm.bias.data.copy_(norm_b)
-        torch.cuda.synchronize()
+        #else:
+        #    self.self_attn_layer_norm.weight.data.copy_(norm_w.transpose(0, 1))
 
-        if debug: print(f"ds attn: b4 ln hidden_states = {input},{input.norm()}")
+        self.self_attn_layer_norm.bias.data.copy_(norm_b)
+        get_accelerator().synchronize()
+
+        if debug: print(f"ds attn: b4 ln hidden_states norm = {input.norm()}")
+        if print_tensors: print(f"ds attn: b4 ln hidden_states = {input}")
         hidden_states = self.self_attn_layer_norm(input)
         bsz, tgt_len, _ = hidden_states.size()
 
         if layer_past is not None:
-            if debug: print(f"ds attn: layer_past key   = {layer_past[0]}, {layer_past[0].norm()}, {layer_past[0].size()}")
-            if debug: print(f"ds attn: layer_past value  = {layer_past[1]}, {layer_past[1].norm()}")
+            if debug:
+                print(f"ds attn: layer_past key (norm, size)  = {layer_past[0].norm()}, {layer_past[0].size()}")
+            if print_tensors:
+                print(f"ds attn: layer_past key   = {layer_past[0]}")
+            if debug: print(f"ds attn: layer_past value norm = {layer_past[1].norm()}")
+            if print_tensors: print(f"ds attn: layer_past value  = {layer_past[1]}")
             # reuse k, v, self_attention
             key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
@@ -181,29 +229,38 @@ class DeepSpeedSelfAttention(nn.Module):
         past_key_value = (key_states, value_states)
         key_layer = key_states
         value_layer = value_states
-        if debug: print(f"ds attn: key_states   = {key_states}, {key_states.norm()}, {key_states.size()}")
-        if debug: print(f"ds attn: value_states  = {value_states}, {value_states.norm()}")
-        if debug: print(f"ds attn: hidden_states = {hidden_states}, {hidden_states.norm()}")
-
+        if debug: print(f"ds attn: key_states (norm, size) = {key_states.norm()}, {key_states.size()}")
+        if print_tensors: print(f"ds attn: key_states   = {key_states}")
+        if debug: print(f"ds attn: value_states norm = {value_states.norm()}")
+        if print_tensors: print(f"ds attn: value_states  = {value_states}")
+        if debug: print(f"ds attn: hidden_states norm = {hidden_states.norm()}")
+        if print_tensors: print(f"ds attn: hidden_states = {hidden_states}")
 
         #same as qkv_func return
         #return (hidden_states, hidden_states.norm())
 
         head_dim = self.hidden_size_per_partition // self.num_attention_heads_per_partition
         scaling = head_dim**-0.5
-        self.q_proj.weight.data.copy_(qkvw[0].transpose(0, 1))
+        if self.config.transposed_mode:
+            self.q_proj.weight.data.copy_(qkvw[0])
+        else:
+            self.q_proj.weight.data.copy_(qkvw[0].transpose(0, 1))
+
         self.q_proj.bias.data.copy_(qkvb[0])
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
         query_states = self.q_proj(hidden_states) * scaling
 
         proj_shape = (bsz * self.num_attention_heads_per_partition, -1, head_dim)
         query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
         key_states = key_states.view(*proj_shape)
-        if debug: print(f"ds attn: a4 view key_states = {key_states}, {key_states.norm()}, {key_states.size()}")
-        if debug: print(f"ds attn: query_states = {query_states}, {query_states.norm()}")
+        if debug: print(f"ds attn: a4 view key_states (norm, size) = {key_states.norm()}, {key_states.size()}")
+        if print_tensors: print(f"ds attn: a4 view key_states = {key_states}")
+        if debug: print(f"ds attn: query_states norm = {query_states.norm()}")
+        if print_tensors: print(f"ds attn: query_states = {query_states}")
         attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
 
-        if debug: print(f"ds attn: a4 bmm attn_weights = {attn_weights},{attn_weights.norm()}")
+        if debug: print(f"ds attn: a4 bmm attn_weights norm = {attn_weights.norm()}")
+        if print_tensors: print(f"ds attn: a4 bmm attn_weights = {attn_weights}")
 
         src_len = key_states.size(1)
         if debug: print(f"ds attn: src_len = {src_len}")
@@ -211,19 +268,19 @@ class DeepSpeedSelfAttention(nn.Module):
         if attn_weights.size() != (bsz * self.num_attention_heads_per_partition, tgt_len, src_len):
             raise ValueError(
                 f"Attention weights should be of size {(bsz * self.num_attention_heads_per_partition, tgt_len, src_len)}, but is"
-                f" {attn_weights.size()}"
-            )
+                f" {attn_weights.size()}")
 
         if input_mask is not None:
-            if debug: print(f"ds attn: input_mask = {input_mask}")
+            if print_tensors: print(f"ds attn: input_mask = {input_mask}")
             if input_mask.size() != (bsz, 1, tgt_len, src_len):
                 raise ValueError(
-                    f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {input_mask.size()}"
-                )
-            attn_weights = attn_weights.view(bsz, self.num_attention_heads_per_partition, tgt_len, src_len) + input_mask
+                    f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {input_mask.size()}")
+            attn_weights = attn_weights.view(bsz, self.num_attention_heads_per_partition, tgt_len,
+                                             src_len) + input_mask
             attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
             attn_weights = attn_weights.view(bsz * self.num_attention_heads_per_partition, tgt_len, src_len)
-        if debug: print(f"ds attn: a4 attn_weights = {attn_weights}, {attn_weights.size()}")
+        if debug: print(f"ds attn: a4 attn_weights size = {attn_weights.size()}")
+        if print_tensors: print(f"ds attn: a4 attn_weights = {attn_weights}")
 
         if attn_weights.dtype == torch.float16:
             attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(torch.float16)
@@ -232,14 +289,14 @@ class DeepSpeedSelfAttention(nn.Module):
         if debug: print(f"ds attn: a4 softmax attn_weights = {attn_weights.norm()}")
 
         if head_mask is not None:
-            if head_mask.size() != (self.num_attention_heads_per_partition,):
+            if head_mask.size() != (self.num_attention_heads_per_partition, ):
                 raise ValueError(
                     f"Head mask for a single layer should be of size {(self.num_attention_heads_per_partition,)}, but is"
-                    f" {head_mask.size()}"
-                )
-            attn_weights = head_mask.view(1, -1, 1, 1) * attn_weights.view(bsz, self.num_attention_heads_per_partition, tgt_len, src_len)
+                    f" {head_mask.size()}")
+            attn_weights = head_mask.view(1, -1, 1, 1) * attn_weights.view(bsz, self.num_attention_heads_per_partition,
+                                                                           tgt_len, src_len)
             attn_weights = attn_weights.view(bsz * self.num_attention_heads_per_partition, tgt_len, src_len)
-            if debug: print(f"ds attn: a4 head_mask attn_weights = {attn_weights.norm()}")
+            if debug: print(f"ds attn: a4 head_mask attn_weights norm = {attn_weights.norm()}")
 
         if output_attentions:
             # this operation is a bit awkward, but it's required to
@@ -250,12 +307,11 @@ class DeepSpeedSelfAttention(nn.Module):
             attn_weights = attn_weights_reshaped.view(bsz * self.num_attention_heads_per_partition, tgt_len, src_len)
         else:
             attn_weights_reshaped = None
-        if debug: print(f"ds attn: a4 output_attentions attn_weights = {attn_weights.norm()}")
-
+        if debug: print(f"ds attn: a4 output_attentions attn_weights norm = {attn_weights.norm()}")
 
         value_states = value_states.view(*proj_shape)
         attn_output = torch.bmm(attn_weights, value_states)
-        if debug: print(f"ds attn: a4 bmm attn_output = {attn_output.norm()}")
+        if debug: print(f"ds attn: a4 bmm attn_output norm = {attn_output.norm()}")
         context_layer = attn_output
 
         # same as compute_attention return
@@ -265,15 +321,17 @@ class DeepSpeedSelfAttention(nn.Module):
         attn_output = attn_output.transpose(1, 2)
         attn_output = attn_output.reshape(bsz, tgt_len, self.config.hidden_size)
         attn_output = self.out_proj(attn_output)
-        if debug: print(f"inside ds attn: key_states   = {key_layer}, {key_layer.norm()}, {key_states.size()}")
-        if debug: print(f"inside ds attn: value_states  = {value_layer}, {value_layer.norm()}")
-        if debug: print(f"ds attn: return attn_output = {attn_output}, {attn_output.norm()}")
+        if debug: print(f"inside ds attn: key_states (norm, size)  = {key_layer.norm()}, {key_states.size()}")
+        if print_tensors: print(f"inside ds attn: key_states   = {key_layer}")
+        if debug: print(f"inside ds attn: value_states norm  = {value_layer.norm()}")
+        if print_tensors: print(f"inside ds attn: value_states  = {value_layer}")
+        if debug: print(f"ds attn: return attn_output norm = {attn_output.norm()}")
+        if print_tensors: print(f"ds attn: return attn_output = {attn_output}")
 
         output = attn_output
         inp_norm = hidden_states.norm()
 
         return (output, key_layer, value_layer, context_layer, inp_norm)
-
 
     def forward(self,
                 input,
@@ -286,16 +344,18 @@ class DeepSpeedSelfAttention(nn.Module):
                 output_attentions=False,
                 norm_w=None,
                 norm_b=None,
-                alibi=None):
+                alibi=None,
+                attn_base=False):
         if self.attn_qkvw is None:
             self._attn_qkvw, self._attn_qkvb = self._merge_qkv()
         else:
             self._attn_qkvw = self.attn_qkvw
             self._attn_qkvb = self.attn_qkvb
 
-        attn_base = True
+        # only set attn_base=True from the caller. This ensures that only the model that is supported (like opt) calls this
         if attn_base:
-            output, key_layer, value_layer, context_layer, inp_norm = self.attn_baseline(input, input_mask, head_mask, layer_past, output_attentions, norm_w, norm_b)
+            output, key_layer, value_layer, context_layer, inp_norm = self.attn_baseline(
+                input, input_mask, head_mask, layer_past, output_attentions, norm_w, norm_b)
         else:
             debug = False
 
@@ -308,12 +368,12 @@ class DeepSpeedSelfAttention(nn.Module):
 
             if not self.config.pre_layer_norm:
                 qkv_out = self.linear_func(input=input,
-                                        weight=self._attn_qkvw,
-                                        bias=self._attn_qkvb,
-                                        add_bias=self.attn_qkvb is not None,
-                                        do_flash_attn=False,
-                                        num_heads=self.num_attention_heads_per_partition,
-                                        num_layers=DeepSpeedSelfAttention.num_layers)
+                                           weight=self._attn_qkvw,
+                                           bias=self._attn_qkvb,
+                                           add_bias=self.attn_qkvb is not None,
+                                           do_flash_attn=False,
+                                           num_heads=self.num_attention_heads_per_partition,
+                                           num_layers=DeepSpeedSelfAttention.num_layers)
             else:
                 qkv_out = self.qkv_func(input=input,
                                         weight=self._attn_qkvw,
@@ -330,9 +390,9 @@ class DeepSpeedSelfAttention(nn.Module):
             if debug and alibi: print(f"inside ds attn: alibi  = {alibi.norm()}")
 
             context_layer, key_layer, value_layer = self.compute_attention(qkv_out=qkv_out,
-                                                                        input_mask=input_mask,
-                                                                        layer_past=layer_past,
-                                                                        alibi=alibi)
+                                                                           input_mask=input_mask,
+                                                                           layer_past=layer_past,
+                                                                           alibi=alibi)
 
             if debug: print(f"inside ds attn: a4 compute attn context_layer   = {context_layer.norm()}")
             if debug: print(f"inside ds attn: a4 compute attn key_layer  = {key_layer.norm()}")
@@ -344,7 +404,8 @@ class DeepSpeedSelfAttention(nn.Module):
             if debug: print(f"inside ds attn: a4 matmul output  = {output.norm()}")
             if debug: print(f"inside ds attn: a4 matmul inp_norm  = {inp_norm.norm()}")
 
-            if self.config.mlp_after_attn and self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
+            if self.config.mlp_after_attn and self.mp_group is not None and dist.get_world_size(
+                    group=self.mp_group) > 1:
                 dist.all_reduce(output, group=self.mp_group)
 
             if debug: print(f"inside ds attn: return output = {output.norm()}")
