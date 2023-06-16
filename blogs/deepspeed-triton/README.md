@@ -34,10 +34,10 @@ Table 2. Average P90 latency reduction in percentage when compared to the latenc
 </div>
 
 
-Figures below and Table 3 further shows the detailed performance profiles.Figure 1 visualizes latency reduction in different sequence lengths in A100 GPU for Bert-base model.
+Figures below further shows the detailed performance profiles.
+Figure 1 visualizes latency reduction in different sequence lengths in A100 GPU for Bert-base model.
 The baseline (blue) is from Huggingface transformers without any kernel injection, the orange is from Deepspeed with CUDA kernels and the gray is from Deepspeed with Triton kernels.
 Figure 2 show again the normalized latency in A100 but for Bert-large model.
-From the figures and Table 3, it can be seend that the longer sequence length, the more latency reduction can be obtained with Triton kernels.
 
 
 <div align="center">
@@ -50,13 +50,6 @@ From the figures and Table 3, it can be seend that the longer sequence length, t
 
 *Figure 2: Sequence length ranges versus normnalized P90 latency in A100 for Bert-large model*
 
-| Sequence length range | Bert-base | Bert-large | Roberta-large |
-|----------|:------:|:------:|:------:|
-| short (8 ~ 64) | 9% | 9% | 9% |
-| medium (64 ~ 256) | 11% | 11% | 10% |
-| long (256 ~ 512) | 23% | 25% | 23% |
-
-Table 3. Latency reduction in percentage with different sequence lengths in A100.
 </div>
 
 
@@ -112,7 +105,7 @@ deepspeed --num_gpus 1 triton-bert-benchmark.py --model bert-base-cased --dtype 
 * Please visit our [website](https://www.deepspeed.ai/) for detailed blog posts, tutorials, and helpful documentation.
 * This is primarily for BERT, Roberta and other BERT-like models and is not enabled for text-generation yet.
 
-* Sequence length ranges from 8 to 512 and batch-size is set to 1 in the experiments shown in Table 1 and 2. CUDA graph is enabled for all cases and the task in the tests are 'fill-mask'.
+* Sequence length ranges from 8 to 512 and batch-size is set to 1 in the experiments. CUDA graph is enabled for all cases and the task in the tests are 'fill-mask'.
 
 * It also should be noted the cuda-graph has to be enabled to benefit from Triton. Otherwise, there will be rather larger overhead from JIT compilation and a deep call stack in Triton.
 
