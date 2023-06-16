@@ -110,6 +110,6 @@ deepspeed --num_gpus 1 triton-bert-benchmark.py --model bert-base-cased --dtype 
 * 'triton_autotune' in the config also needs to be on for the best performance. It will run an initial Triton autotuning step to build the optimal autotune table for Triton kernels, which will take some time.
 
 * In our experiments, sequence length in query ranged from 8 to 512 and batch-size was set to 1.
-Table 1 and 2 compare the P90 model latencies averaged over the eniture sequence length range (i.e., 8~512), while Figures 1 and 2 compare the P90 model latencies over specific sub-ranges (i.e. sequence lengths in the range shown in x-axis).
+Table 1 and 2 compare the P90 model latencies averaged over the entire sequence length range (i.e., 8~512), while Figures 1 and 2 compare the P90 model latencies over specific sub-ranges (i.e. sequence lengths in the range shown in x-axis).
 We enabled CUDA graph for all cases and used the 'fill-mask' task for the tests.
 Also, we used [the latest Triton release](https://pypi.org/project/triton/2.0.0.post1/) for our experiments.
