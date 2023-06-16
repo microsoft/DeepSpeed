@@ -2,7 +2,9 @@
 
 # 1. Overview
 
-We integrate [Triton](https://github.com/openai/triton) to Deepspeed, which further accelerates inference in BERT-like models in float16 precision. In other words, Triton kernels can be used in DeepSpeed which leverages a recent open source compiler. Depending on the model, task-query (e.g., different sequence lengths in fill-mask task) and underlying hardware (i.e., A100), it has been shown to give a latency reduction of 12~41% as shown in Table 1.
+We integrate [Triton](https://github.com/openai/triton) to Deepspeed, which further accelerates inference in BERT-like models in float16 precision.
+In other words, Triton kernels can be used in DeepSpeed which leverages a recent open source compiler.
+Depending on the model, task-query (e.g., different sequence lengths in fill-mask task) and underlying hardware (i.e., A100), it has been shown to give a latency reduction of 12~41% as shown in Table 1.
 
 <div align="center">
 
@@ -15,9 +17,8 @@ Table 1. Average P90 latency reduction in percentage when compared to the Huggin
 
 
 </div>
-Table 2 further illustrates the performance gain that's achieved with Triton kernels in Deepspeed: it gives 6~24% latency reduction when compared to Deepspeed with CUDA kernels. In addition, it can be noted that
-[the latest Triton release](https://pypi.org/project/triton/2.0.0.post1/)
-tends to perform better with GPUs with Ampre architectures (Table 2).
+Table 2 further illustrates the performance gain that's achieved with Triton kernels in Deepspeed: it gives 6~24% latency reduction when compared to Deepspeed with CUDA kernels.
+In addition, it can be noted that Triton tends to perform better with GPUs with Ampre architectures (Table 2).
 
 
 <div align="center">
@@ -33,7 +34,9 @@ Table 2. Average P90 latency reduction in percentage when compared to the latenc
 </div>
 
 
-Figures below and Table 3 further shows the detailed performance profiles.Figure 1 visualizes latency reduction in different sequence lengths in A100 GPU for Bert-base model. The baseline (blue) is from Huggingface transformers without any kernel injection, the orange is from Deepspeed with CUDA kernels and the gray is from Deepspeed with Triton kernels.Figure 2 show again the normalized latency in A100 but for Bert-large model.
+Figures below and Table 3 further shows the detailed performance profiles.Figure 1 visualizes latency reduction in different sequence lengths in A100 GPU for Bert-base model.
+The baseline (blue) is from Huggingface transformers without any kernel injection, the orange is from Deepspeed with CUDA kernels and the gray is from Deepspeed with Triton kernels.
+Figure 2 show again the normalized latency in A100 but for Bert-large model.
 From the figures and Table 3, it can be seend that the longer sequence length, the more latency reduction can be obtained with Triton kernels.
 
 
@@ -114,3 +117,5 @@ deepspeed --num_gpus 1 triton-bert-benchmark.py --model bert-base-cased --dtype 
 * It also should be noted the cuda-graph has to be enabled to benefit from Triton. Otherwise, there will be rather larger overhead from JIT compilation and a deep call stack in Triton.
 
 * 'triton_autotune' in the config also needs to be on for the best performance. It initially goes through Triton autotuning step to build the optimal autotune table for Triton kernels and it will take some time.
+
+* [The latest Triton release](https://pypi.org/project/triton/2.0.0.post1/) is used.
