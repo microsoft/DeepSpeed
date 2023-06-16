@@ -5,6 +5,7 @@
 
 import torch
 from deepspeed.model_implementations.transformers.ds_transformer import DeepSpeedTransformerInference
+from deepspeed import comm as dist
 
 inference_module = None
 
@@ -54,12 +55,29 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
             past_key_value=None,
             **kwargs):
 
+        # base = True => Use HF/pytorch based baseline
+        # base = False => Use DS implementation
+        # debug = True => Print debug info in either scenario
+        base = True
+        debug = False
+
         if x is not None:
             input = x
         if "hidden_states" in kwargs:
             input = kwargs["hidden_states"]
 
         input_mask = (input_mask if attn_mask is None else attn_mask) if attention_mask is None else attention_mask
+
+        if not base:
+            # Allocate memory only on first layer forward
+            if self.config.layer_id == 0 and self._alloc_workspace:
+                self.allocate_workspace(self.config.hidden_size, self.config.heads,
+                                        input.size()[1],
+                                        input.size()[0], DeepSpeedTransformerInference.layer_id, self.config.mp_size,
+                                        self.config.bigscience_bloom,
+                                        dist.get_rank() if dist.is_initialized() else 0, self.config.max_out_tokens,
+                                        self.config.min_out_tokens)
+                self._alloc_workspace = False
 
         get_present = (get_present or get_key_value or use_cache)
 
@@ -80,8 +98,6 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
             target_dtype = torch.half if self.dtype == torch.int8 else self.dtype
             input = input.to(target_dtype)
 
-        base = True
-        debug = False
         with torch.no_grad():
             attention_output, key, value, context_outputtn_ctx, inp_norm = \
                                      self.attention(input,
@@ -99,7 +115,7 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
                                               attn_debug=debug)
 
             presents = (key, value)
-            # Bug? Setting layer past to presents every pass fixes key states issue
+            # Setting layer past to presents every pass fixes key states issue
             self.layer_past = presents  #if layer_past is None else None
 
             output = self.mlp(attention_output,
