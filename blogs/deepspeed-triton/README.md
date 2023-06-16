@@ -2,24 +2,57 @@
 
 # 1. Overview
 
-We integrate Triton to Deepspeed, which further accelerates inference in BERT-like models in float16 precision. In other words, Triton kernels can be used in DeepSpeed which leverages a recent open source compiler (https://github.com/openai/triton). Depending on the model, task-query (e.g., different sequence lengths in fill-mask task) and underlying hardware (i.e., A100), it has been shown to give an average latency reduction of 4~18% as shown in Table 1.
+We integrate [Triton](https://github.com/openai/triton) to Deepspeed, which further accelerates inference in BERT-like models in float16 precision.
+In other words, Triton kernels can be used in DeepSpeed which leverages a recent open source compiler.
+Depending on the model, task-query (e.g., different sequence lengths in fill-mask task) and underlying hardware (i.e., A100), it has been shown to give a latency reduction of 12~39% as shown in Table 1.
 
 <div align="center">
 
-| Hardware | Bert-base | Bert-large | Roberta-large |
-|----------|:------:|:------:|:------:|
-| A100 | 17% | 18% | 17% |
-| A6000 | 10% | 11% | 8% |
-| V100 | 4% | 5% | 2% |
+| Hardware | Bert-base | Bert-large | Roberta-base | Roberta-large |
+|----------|:------:|:------:|:------:|:------:|
+| A100 | 39% | 41% | 35% | 38% |
+| V100 | 22% | 12% | 19% | 17% |
 
-Table 1. Average latency reduction in percentage when compared to the latency with CUDA kernels in Deepspeed.
+Table 1. Average P90 latency reduction in percentage when compared to the Huggingface transformers baseline.
+
+
+</div>
+Table 2 further illustrates the performance gain that's achieved with Triton kernels in Deepspeed: it gives 6~24% latency reduction when compared to Deepspeed with CUDA kernels.
+
+In addition, it can be noted that
+[the latest Triton release](https://pypi.org/project/triton/2.0.0.post1/)
+tends to perform better with GPUs with Ampre architectures (Table 2).
+
+
+<div align="center">
+
+| Hardware | Bert-base | Bert-large | Roberta-base | Roberta-large |
+|----------|:------:|:------:|:------:|:------:|
+| A100 | 22% | 24% | 19% | 22% |
+| V100 | 9% | 7% | 8% | 7% |
+| A6000 | 10% | 11% | 6% | 8% |
+
+Table 2. Average P90 latency reduction in percentage when compared to the latency with CUDA kernels in Deepspeed.
 
 </div>
 
-Specifically, with the latest Triton (https://pypi.org/project/triton/2.0.0.post1/), it gives a larger performance gain for a longer sequence length as shown in Table 2 and performs better with GPUs with ampre architectures.
+
+Figures below and Table 3 further shows the detailed performance profiles.
+Figure 1 visualizes latency reduction in different sequence lengths in A100 GPU for Bert-base model.
+The baseline (blue) is from Huggingface transformers without any kernel injection, the orange is from Deepspeed with CUDA kernels and the gray is from Deepspeed with Triton kernels.
+Figure 2 show again the normalized latency in A100 but for Bert-large model.
+From the figures and Table 3, it can be seend that the longer sequence length, the more latency reduction can be obtained with Triton kernels.
 
 
 <div align="center">
+
+<img src="../assets/images/triton-bert-base-latency.png" width="500px" alt="triton-bert-base-latency"/>
+
+*Figure 1: Sequence length ranges versus normnalized P90 latency in A100 for Bert-base model*
+
+<img src="../assets/images/triton-bert-large-latency.png" width="500px" alt="triton-bert-large-latency"/>
+
+*Figure 2: Sequence length ranges versus normnalized P90 latency in A100 for Bert-large model*
 
 | Sequence length range | Bert-base | Bert-large | Roberta-large |
 |----------|:------:|:------:|:------:|
@@ -27,8 +60,7 @@ Specifically, with the latest Triton (https://pypi.org/project/triton/2.0.0.post
 | medium (64 ~ 256) | 11% | 11% | 10% |
 | long (256 ~ 512) | 23% | 25% | 23% |
 
-Table 2. Latency reduction in percentage with different sequence lengths in A100.
-
+Table 3. Latency reduction in percentage with different sequence lengths in A100.
 </div>
 
 
@@ -84,7 +116,7 @@ deepspeed --num_gpus 1 triton-bert-benchmark.py --model bert-base-cased --dtype 
 * Please visit our [website](https://www.deepspeed.ai/) for detailed blog posts, tutorials, and helpful documentation.
 * This is primarily for BERT, Roberta and other BERT-like models and is not enabled for text-generation yet.
 
-* Sequence length ranges from 8 to 512 and batch-size is set to 1 in the experiments shown in Table 1 and 2.
+* Sequence length ranges from 8 to 512 and batch-size is set to 1 in the experiments shown in Table 1 and 2. CUDA graph is enabled for all cases and the task in the tests are 'fill-mask'.
 
 * It also should be noted the cuda-graph has to be enabled to benefit from Triton. Otherwise, there will be rather larger overhead from JIT compilation and a deep call stack in Triton.
 
