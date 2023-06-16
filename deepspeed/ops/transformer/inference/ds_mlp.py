@@ -218,8 +218,8 @@ class DeepSpeedMLP(nn.Module):
 
         # mlp_base = True  => calls a pytorch baseline mlp
         # mlp_base = False => calls the DS mlp
-        mlp_base = True
-        attn_base = True
+        mlp_base = False
+        attn_base = False
         mlp_functions = True
 
         debug = False
@@ -334,7 +334,7 @@ class DeepSpeedMLP(nn.Module):
                 if save_tensors: torch.save(output_w_bias, f'logs/ds_mlp_fc2_new_tensor_layer_{self.config.layer_id}.pt')
             else:
                 # mlp_gemm_func ~= gemm(relu(layernorm(input) + bias))
-                print(f"input.norm before mlp_gemm_func = {input.norm()}")
+                if debug: print(f"input.norm before mlp_gemm_func = {input.norm()}")
                 output, residual_add = self.mlp_gemm_func(input=input,
                                                             residual=residual,
                                                             weight_interm=self.inter_w,
@@ -343,8 +343,8 @@ class DeepSpeedMLP(nn.Module):
                                                             bias=self.inter_b,
                                                             gamma=self.attn_nw,
                                                             beta=self.attn_nb)
-                print(f"output Norm Python: {output.norm()}")
-                print(f"residual_add Norm Python: {residual_add.norm()}")
+                if debug: print(f"output Norm Python: {output.norm()}")
+                if debug: print(f"residual_add Norm Python: {residual_add.norm()}")
 
                 #output_w_bias = output + self.output_b #TODO: use this for fc2 comparison
                 #if save_tensors: torch.save(output_w_bias, f'logs/ds_mlp_fc2_tensor_layer_{self.config.layer_id}.pt')
@@ -355,7 +355,7 @@ class DeepSpeedMLP(nn.Module):
             #    tmp = (residual.float() + attention_output.float() + attention_bias.float() +
             #            final_bias.float()) / self.config.mp_size + hidden_state.float()
 
-            #residual_torch = output + self.output_b + residual + bias + input
+            residual_torch = (output + self.output_b + residual + bias + input).to(get_accelerator().current_device_name())
 
             #print(f"\n==================== layer_{self.config.layer_id} ====================")
             #print(f"output = {output}")
@@ -365,15 +365,15 @@ class DeepSpeedMLP(nn.Module):
             #print(f"input = {input}")
             #print(f"==================== layer_{self.config.layer_id} ====================\n")
 
-            residual = self.residual_add_func(hidden_state=output,
-                                                residual=residual,
-                                                add_bias=bias is not None,
-                                                attention_output=input,
-                                                attention_bias=bias if bias is not None else self.output_b,
-                                                final_bias=self.output_b,
-                                                residual_add=residual_add)
-            if debug: print(f"residual_torch norm = {residual_torch.norm()}")
-            if debug: print(f"residual norm = {residual.norm()}")
+            #residual = self.residual_add_func(hidden_state=output,
+            #                                    residual=residual,
+            #                                    add_bias=bias is not None,
+            #                                    attention_output=input,
+            #                                    attention_bias=bias if bias is not None else self.output_b,
+            #                                    final_bias=self.output_b,
+            #                                    residual_add=residual_add)
+            #if debug: print(f"residual_torch norm = {residual_torch.norm()}")
+            #if debug: print(f"residual norm = {residual.norm()}")
 
             if mlp_functions:
                 if save_tensors: torch.save(residual, f'logs/ds_mlp_out_new_tensor_layer_{self.config.layer_id}.pt')
@@ -383,5 +383,5 @@ class DeepSpeedMLP(nn.Module):
             if self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
                 dist.all_reduce(residual, group=self.mp_group)
 
-        #return residual_torch
-        return residual
+        return residual_torch
+        #return residual

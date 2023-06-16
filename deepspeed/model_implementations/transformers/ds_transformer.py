@@ -163,8 +163,8 @@ class DeepSpeedTransformerInference(nn.Module):
         with torch.no_grad():
             save_tensors = False
             skip_attention = False
-            mlp_base = True
-            attn_base = True
+            mlp_base = False
+            attn_base = False
 
             tensor_affix = "torch" if mlp_base and attn_base else "ds"
             if save_tensors: torch.save(input, f'logs/{tensor_affix}_input_tensor_layer_{self.config.layer_id}.pt')

@@ -6,6 +6,7 @@
 from .base import *
 from .features import MetaTensorContainer, HybridSplitQKVContainer
 from deepspeed.model_implementations.transformers.ds_opt import DeepSpeedOPTInference
+from deepspeed.model_implementations.transformers.ds_transformer import DeepSpeedTransformerInference
 import torch
 from torch.nn.parameter import Parameter
 from ..policy import TransformerPolicy
@@ -26,6 +27,7 @@ class DS_OPTContainer(MetaTensorContainer, HybridSplitQKVContainer, BaseTransfor
     def create_module(self, config=None):
         _config = config if config is not None else self.ds_model_config
         self.module = DeepSpeedOPTInference(_config, mp_group=self.mp_group)
+        #self.module = DeepSpeedTransformerInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
         return self.module
 
