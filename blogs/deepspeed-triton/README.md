@@ -2,9 +2,7 @@
 
 # 1. Overview
 
-We integrate [Triton](https://github.com/openai/triton) to Deepspeed, which further accelerates inference in BERT-like models in float16 precision.
-In other words, Triton kernels can be used in DeepSpeed which leverages a recent open source compiler.
-Depending on the model, task-query (e.g., different sequence lengths in fill-mask task) and underlying hardware (i.e., A100), it has been shown to give a latency reduction of 12~41% as shown in Table 1.
+We integrate [Triton](https://github.com/openai/triton) to Deepspeed, which further accelerates inference in BERT-like models in float16 precision. In other words, Triton kernels can be used in DeepSpeed which leverages a recent open source compiler. Depending on the model, task-query (e.g., different sequence lengths in fill-mask task) and underlying hardware (i.e., A100), it has been shown to give a latency reduction of 12~41% as shown in Table 1.
 
 <div align="center">
 
@@ -37,10 +35,7 @@ Table 2. Average P90 latency reduction in percentage when compared to the latenc
 </div>
 
 
-Figures below and Table 3 further shows the detailed performance profiles.
-Figure 1 visualizes latency reduction in different sequence lengths in A100 GPU for Bert-base model.
-The baseline (blue) is from Huggingface transformers without any kernel injection, the orange is from Deepspeed with CUDA kernels and the gray is from Deepspeed with Triton kernels.
-Figure 2 show again the normalized latency in A100 but for Bert-large model.
+Figures below and Table 3 further shows the detailed performance profiles.Figure 1 visualizes latency reduction in different sequence lengths in A100 GPU for Bert-base model. The baseline (blue) is from Huggingface transformers without any kernel injection, the orange is from Deepspeed with CUDA kernels and the gray is from Deepspeed with Triton kernels.Figure 2 show again the normalized latency in A100 but for Bert-large model.
 From the figures and Table 3, it can be seend that the longer sequence length, the more latency reduction can be obtained with Triton kernels.
 
 
