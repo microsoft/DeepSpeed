@@ -28,7 +28,7 @@ In addition, it can be noted that Triton tends to perform better with GPUs with 
 | V100 | 9% | 7% | 8% | 7% |
 | A6000 | 10% | 11% | 6% | 8% |
 
-Table 2. Average P90 latency reduction in percentage when compared to the latency with CUDA kernels in Deepspeed.
+Table 2. Average P90 latency reduction in percentage when compared to the Deepspeed with CUDA kernels.
 
 </div>
 
