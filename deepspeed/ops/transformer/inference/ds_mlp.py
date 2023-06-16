@@ -205,6 +205,7 @@ class DeepSpeedMLP(nn.Module):
             if attn_base:
                 #import pdb; pdb.set_trace()
                 #bias = torch.zeros(bias.size(), dtype=bias.dtype)
+                # TODO (lekurile): does this actually work?
                 bias = bias.zero_()
                 #import pdb; pdb.set_trace()
 
