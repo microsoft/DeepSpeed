@@ -40,11 +40,11 @@ jobs:
           # if needed switch to the last known good SHA until transformers@master is fixed
           # git checkout 1cc453d33
           git rev-parse --short HEAD
-          pip install .
+          python3 -m pip install .
 
       - name: Install deepspeed
         run: |
-          pip install .[dev,1bit,autotuning]
+          python3 -m pip install .[dev,1bit,autotuning]
           ds_report
 
       - name: Python environment
