@@ -51,3 +51,11 @@ jobs:
       - name: Python environment
         run: |
           python3 -m pip list
+
+      - name: Unit tests
+        run: |
+          unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
+          if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
+          cd tests
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --forked -n 4  unit/ --torch_ver="2.0" --cuda_ver="11"
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --forked -m 'sequential' unit/ --torch_ver="2.0" --cuda_ver="11"
