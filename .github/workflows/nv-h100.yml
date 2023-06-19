@@ -28,3 +28,25 @@ jobs:
       - name: Nvidia SMI
         run: |
           nvidia-smi -L
+          
+      - name: Load docker image
+        run: |
+          sudo docker exec -it deepspeed-github-ci /bin/bash
+
+      - name: Install transformers
+        run: |
+          git clone https://github.com/huggingface/transformers
+          cd transformers
+          # if needed switch to the last known good SHA until transformers@master is fixed
+          # git checkout 1cc453d33
+          git rev-parse --short HEAD
+          pip install .
+
+      - name: Install deepspeed
+        run: |
+          pip install .[dev,1bit,autotuning]
+          ds_report
+
+      - name: Python environment
+        run: |
+          pip list
