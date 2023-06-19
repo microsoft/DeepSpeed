@@ -44,8 +44,9 @@ jobs:
 
       - name: Install deepspeed
         run: |
+          python3 -m pip install docutils==0.18.1 jinja2==3.0 urllib3==1.26.11
           python3 -m pip install .[dev,1bit,autotuning]
-          ds_report
+          ./bin/ds_report
 
       - name: Python environment
         run: |
