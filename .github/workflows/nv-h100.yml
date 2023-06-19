@@ -1,0 +1,27 @@
+name: nv-h100
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    runs-on: [self-hosted, nvidia, h100]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - id: setup-venv
+        uses: ./.github/workflows/setup-venv
+
+      - name: Python environment
+        run: |
+          pip list
+
+      - name: Nvidia SMI
+        run: |
+          nvidia-smi -L
