@@ -196,9 +196,15 @@ class TestOptimizerImplementation(DistributedTest):
         # ZeRO 3 Wrapper
         is_supported[('zero3', 'fp16', None)] = True
         is_supported[('zero3', 'fp16', 'fp16')] = True
+        is_supported[('zero3', 'fp16', 'bf16')] = True
+        is_supported[('zero3', 'fp16', 'fp32')] = True
         is_supported[('zero3', 'bf16', None)] = True
+        is_supported[('zero3', 'bf16', 'fp16')] = True
         is_supported[('zero3', 'bf16', 'bf16')] = True
+        is_supported[('zero3', 'bf16', 'fp32')] = True
         is_supported[('zero3', 'fp32', None)] = True
+        is_supported[('zero3', 'fp32', 'fp16')] = True
+        is_supported[('zero3', 'fp32', 'bf16')] = True
         is_supported[('zero3', 'fp32', 'fp32')] = True
         # Amp Wrapper
         is_supported[('amp', 'fp32', None)] = True
