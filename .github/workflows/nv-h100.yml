@@ -28,7 +28,7 @@ jobs:
       - name: Nvidia SMI
         run: |
           nvidia-smi -L
-          
+
       - name: Load docker image
         run: |
           sudo docker exec -it deepspeed-github-ci /bin/bash
