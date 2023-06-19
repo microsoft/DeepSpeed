@@ -50,4 +50,4 @@ jobs:
 
       - name: Python environment
         run: |
-          pip list
+          python3 -m pip list
