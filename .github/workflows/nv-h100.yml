@@ -31,7 +31,7 @@ jobs:
 
       - name: Load docker image
         run: |
-          sudo docker exec -it deepspeed-github-ci /bin/bash
+          sudo docker exec deepspeed-github-ci /bin/bash
 
       - name: Install transformers
         run: |
