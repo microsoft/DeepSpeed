@@ -230,10 +230,6 @@ class Fp16Matmul(TritonMatmul):
         B, H, M, K = a.shape
         B, H, K, N = b.shape
 
-        # NOTE : there is a bug in triton with K=1.
-        #  the workaround is to make the tensor's inner-product dim (i.e. K) comes next to N
-        #  so that vectors to inner-product with are contiguous with row-major order mem layout in tensor.
-        #  however, it's assumed the workaround is not applied and here it raises an error when K==1
         assert K > 1, "inner-product dimension K should be larger than 1"
 
         c = torch.empty((B, H, M, N), device=a.device, dtype=a.dtype)
@@ -282,9 +278,6 @@ class Fp16Matmul(TritonMatmul):
         q = input[:, :, :d_model]
         k = input[:, :, d_model:d_model * 2]
 
-        # views as a convenient way to derive tensor shapes and strides later on.
-        # Views don't involve cloning the tensor so they are very cheap.
-        # Note that in this case, the returned views are not contiguous in memory.
         q = q.view(batches, -1, num_of_heads, head_size)
         k = k.view(batches, -1, num_of_heads, head_size)
 
@@ -293,15 +286,10 @@ class Fp16Matmul(TritonMatmul):
         B, M, H, K = q.shape
         B, N, H, K = k.shape
 
-        # NOTE : there is a bug in triton with K=1.
-        #  the workaround is to make the tensor's inner-product dim (i.e. K) comes next to N
-        #  so that vectors to inner-product with are contiguous with row-major order mem layout in tensor.
-        #  however, it's assumed the workaround is not applied and here it raises an error when K==1
         assert K > 1, "inner-product dimension K should be larger than 1"
 
         # allocates output
         output = torch.empty((B, H, M, N), device=q.device, dtype=q.dtype)
-        # 1D launch kernel where each block gets its own program.
         grid = lambda META: (
             triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
             H,
@@ -317,8 +305,6 @@ class Fp16Matmul(TritonMatmul):
             M // __class__._cache_stride,
             N // __class__._cache_stride,
             K // __class__._cache_stride,
-            # Correctly swapping the strides for tensor transposition.
-            # This has minimal cost since Triton should be able to detect strided memory access pattern and use shared memory if vector dimension is involved.
             q.stride(0),
             q.stride(2),
             q.stride(1),
@@ -355,17 +341,10 @@ class Fp16Matmul(TritonMatmul):
         B, H, M, K = prob.shape
         B, K, H, N = v.shape
 
-        #print(f"prob.shape={prob.shape}, v.shape={v.shape}")
-
-        # NOTE : there is a bug in triton with K=1.
-        #  the workaround is to make the tensor's inner-product dim (i.e. K) comes next to N
-        #  so that vectors to inner-product with are contiguous with row-major order mem layout in tensor.
-        #  however, it's assumed the workaround is not applied and here it raises an error when K==1
         assert K > 1, "inner-product dimension K should be larger than 1"
 
         # allocates output
         output = torch.empty((B, M, H, N), device=v.device, dtype=v.dtype)
-        # 1D launch kernel where each block gets its own program.
         grid = lambda META: (
             triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
             H,
@@ -454,5 +433,4 @@ import atexit
 
 @atexit.register
 def matmul_ext_update_autotune_table():
-    # print(f"updating {fp16_matmul.__class__} triton autotune table")
     fp16_matmul._update_autotune_table()
