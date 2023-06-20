@@ -21,6 +21,8 @@ concurrency:
 jobs:
   unit-tests:
     runs-on: [self-hosted, nvidia, h100]
+    container:
+      image: nvcr.io/nvidia/pytorch:23.03-py3
 
     steps:
       - uses: actions/checkout@v3
@@ -31,7 +33,6 @@ jobs:
 
       - name: Load docker image
         run: |
-          sudo docker run --rm --gpus all nvcr.io/nvidia/pytorch:23.03-py3
           sudo apt install -y libaio-dev ninja-build
           python3 -c "import torch; print('torch:', torch.__version__, torch)"
 
