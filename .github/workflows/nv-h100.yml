@@ -33,6 +33,7 @@ jobs:
         run: |
           sudo docker run --rm --gpus all nvcr.io/nvidia/pytorch:23.03-py3
           sudo apt install -y libaio-dev ninja-build
+          python3 -c "import torch; print('torch:', torch.__version__, torch)"
 
       - name: Install transformers
         run: |
@@ -42,11 +43,13 @@ jobs:
           # git checkout 1cc453d33
           git rev-parse --short HEAD
           python3 -m pip install .
+          python3 -c "import torch; print('torch:', torch.__version__, torch)"
 
       - name: Install deepspeed
         run: |
           python3 -m pip install docutils==0.18.1 jinja2==3.0 urllib3==1.26.11 ninja
           python3 -m pip install .[dev,1bit,autotuning]
+          python3 -c "import torch; print('torch:', torch.__version__, torch)"
           ./bin/ds_report
 
       - name: Python environment
