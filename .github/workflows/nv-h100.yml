@@ -27,7 +27,7 @@ jobs:
 
       - name: Nvidia SMI
         run: |
-          nvidia-smi -L
+          nvidia-smi
 
       - name: Load docker image
         run: |
