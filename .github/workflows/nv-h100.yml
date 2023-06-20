@@ -32,7 +32,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          apt install -y libaio-dev ninja-build
+          apt install -y ninja-build
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -40,11 +40,9 @@ jobs:
         run: |
           git clone https://github.com/huggingface/transformers
           cd transformers
-          # if needed switch to the last known good SHA until transformers@master is fixed
-          # git checkout 1cc453d33
           git rev-parse --short HEAD
-          python3 -m pip install .
-          python3 -c "import torch; print('torch:', torch.__version__, torch)"
+          python -m pip install .
+          python -c "import torch; print('torch:', torch.__version__, torch)"
 
       - name: Install deepspeed
         run: |
