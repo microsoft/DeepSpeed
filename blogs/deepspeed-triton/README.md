@@ -3,7 +3,7 @@
 # 1. Overview
 
 We have integrated [Triton](https://github.com/openai/triton), an open source compiler for GPU programming, into DeepSpeed, which further boosts the inference speed of BERT-like models in float16 precision.
-With Triton kernels, DeepSpeed can achieve 1.14~1.68x performance gain (in other words, average latency reduction of 12~41%), depending on the model and the underlying hardware.
+With Triton kernels, DeepSpeed can achieve 1.14-1.68x performance gain (in other words, average latency reduction of 12-41%), depending on the model and the underlying hardware.
 Table 1 shows the average performance improvement for different models and GPUs.
 
 <div align="center">
@@ -20,7 +20,7 @@ Table 1. The average performance gain when compared to the baseline (see NOTE be
 
 For those transformer operators in float16, we have implemented kernels written in Triton language that replace ordinary CUDA kernels or torch operators.
 Specifically, softmax, activation, layer-normalization, residual-addition and all the matmuls except MLP layers are replaced by Triton kernels (refer NOTE below for details).
-In our experiments, Triton kernels helped to reduce the average (over difference sequence lengths) latency by 6~24% (depending on model and hardware) when compared to the latency with CUDA-only kernels.
+In our experiments, Triton kernels helped to reduce the average (over difference sequence lengths) latency by 6-24% (depending on model and hardware) when compared to the latency with CUDA-only kernels.
 
 
 Figures below further show performance profiles in detail.
