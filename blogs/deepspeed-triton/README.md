@@ -87,9 +87,9 @@ deepspeed --num_gpus 1 triton-bert-benchmark.py --model bert-base-cased --dtype 
 <!-- **_NOTE:_** -->
 * For more information on how to use DeepSpeed, please visit our [GitHub Page](https://github.com/microsoft/DeepSpeedExamples) and our [website](https://www.deepspeed.ai/), where you can find blog posts, tutorials, and documentation.
 
-* This feature is currently only supported for BERT, Roberta and other BERT-like models, and not for text-generation models.
+* This feature is currently only supported for BERT, Roberta and other BERT-like models, and not for text-generation models yet.
 
-* To enable Triton optimization, you need to turn on CUDA graph and ‘triton_autotune’ in the DeepSpeed config. CUDA graph is required to avoid the overhead of JIT compilation and a deep call stack in Triton. ‘triton_autotune’ will run an initial step to find the optimal parameters for Triton kernels, which may take some time.
+* To achieve the best performance with Triton optimization, you need to activate CUDA graph and ‘triton_autotune’ in the DeepSpeed config. CUDA graph prevents the overhead of JIT compilation and a deep call stack in Triton. ‘triton_autotune’ executes an initial step to find the most suitable parameters for Triton kernels, which may take some time.
 
 * We used [the latest Triton release](https://pypi.org/project/triton/2.0.0.post1/) in our experiments.
 
