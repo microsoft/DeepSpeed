@@ -32,6 +32,7 @@ jobs:
       - name: Load docker image
         run: |
           sudo docker exec deepspeed-github-ci /bin/bash
+          sudo apt install -y libaio-dev ninja-build
 
       - name: Install transformers
         run: |
@@ -44,7 +45,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          python3 -m pip install docutils==0.18.1 jinja2==3.0 urllib3==1.26.11
+          python3 -m pip install docutils==0.18.1 jinja2==3.0 urllib3==1.26.11 ninja
           python3 -m pip install .[dev,1bit,autotuning]
           ./bin/ds_report
 
@@ -57,5 +58,5 @@ jobs:
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
-          TORCH_EXTENSIONS_DIR=./torch-extensions python3 -m pytest --forked -n 4  unit/ --torch_ver="2.0" --cuda_ver="11"
-          TORCH_EXTENSIONS_DIR=./torch-extensions python3 -m pytest --forked -m 'sequential' unit/ --torch_ver="2.0" --cuda_ver="11"
+          TORCH_EXTENSIONS_DIR=./torch-extensions python3 -m pytest -x --forked -n 4  unit/ --torch_ver="2.0" --cuda_ver="11"
+          TORCH_EXTENSIONS_DIR=./torch-extensions python3 -m pytest -x --forked -m 'sequential' unit/ --torch_ver="2.0" --cuda_ver="11"
