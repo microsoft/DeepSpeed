@@ -6,7 +6,7 @@ runs:
     - id: update-env
       run: |
         sudo apt-get update
-        sudo apt-get install -y libaio-dev
+        sudo apt-get install -y libaio-dev python3-venv
         python3 -m pip install --user --upgrade pip
         python3 -m pip install --user --upgrade virtualenv
       shell: bash
