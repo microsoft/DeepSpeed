@@ -3,8 +3,7 @@
 # 1. Overview
 
 We have integrated [Triton](https://github.com/openai/triton), an open source compiler for GPU programming, into DeepSpeed, which further boosts the inference speed of BERT-like models in float16 precision.
-With Triton kernels, DeepSpeed can achieve 1.14-1.68x performance gain (in other words, average latency reduction of 12-41%), depending on the model and the underlying hardware.
-Table 1 shows the average performance improvement for different models and GPUs.
+By replacing some CUDA kernels or torch operators with Triton kernels, we achieved 1.14\~1.68x speedup (or 12\~41% latency reduction) for different models and GPUs, as shown in Table 1.
 
 <div align="center">
 
@@ -19,24 +18,24 @@ Table 1. The average performance gain when compared to the baseline (see NOTE be
 </div>
 
 For those transformer operators in float16, we have implemented kernels written in Triton language that replace ordinary CUDA kernels or torch operators.
-Specifically, softmax, activation, layer-normalization, residual-addition and all the matmuls except MLP layers are replaced by Triton kernels (refer NOTE below for details).
-In our experiments, Triton kernels helped to reduce the average (over difference sequence lengths) latency by 6-24% (depending on model and hardware) when compared to the latency with CUDA-only kernels.
+The Triton kernels we implemented include softmax, layer-normalization, residual-addition and all the matrix multiplications except MLP layers (see NOTE below for details).
+In our experiments, Triton kernels helped to reduce the average latecy (over difference sequence lengths) by 6\~24% (depending on model and hardware) when compared to the latency with CUDA-only kernels.
 
 
-Figures below further show performance profiles in detail.
+Figures below show the latency reduction in more detail.
 Figure 1 visualizes latency reduction in different sequence lengths in A100 GPU for Bert-base model.
 The baseline (blue) is from Huggingface transformers without any kernel injection, the orange is from Deepspeed with CUDA-only kernels and the gray is from Deepspeed with Triton kernels.
-Figure 2 shows again the normalized latency in A100 but for Bert-large model.
+Figure 2 shows the same plot for Bert-large model in A100 GPU.
 
 <div align="center">
 
 <img src="../assets/images/triton-bert-base-latency.png" width="500px" alt="triton-bert-base-latency"/>
 
-*Figure 1: Sequence length ranges versus normalized P90 latency in A100 for Bert-base model*
+*Figure 1: Normalized P90 latency for Bert-base model in A100 GPU across different sequence lengths*
 
 <img src="../assets/images/triton-bert-large-latency.png" width="500px" alt="triton-bert-large-latency"/>
 
-*Figure 2: Sequence length ranges versus normalized P90 latency in A100 for Bert-large model*
+*Figure 2: Normalized P90 latency for Bert-large model in A100 GPU across different sequence lengths*
 
 </div>
 
@@ -86,22 +85,12 @@ deepspeed --num_gpus 1 triton-bert-benchmark.py --model bert-base-cased --dtype 
 
 # NOTE
 <!-- **_NOTE:_** -->
-* To get started, please visit our github page for DeepSpeed: [GitHub Landing Page](https://github.com/microsoft/DeepSpeedExamples)
+* For more information on how to use DeepSpeed, please visit our [GitHub Page](https://github.com/microsoft/DeepSpeedExamples) and our [website](https://www.deepspeed.ai/), where you can find blog posts, tutorials, and documentation.
 
-* We will continue to improve DeepSpeed-Triton with your feedback and support.
+* This feature is currently only supported for BERT, Roberta and other BERT-like models, and not for text-generation models.
 
-* Please visit our [website](https://www.deepspeed.ai/) for detailed blog posts, tutorials, and helpful documentation.
-
-* This feature is currently only available for BERT, Roberta and other BERT-like models and is not supported for text-generation yet.
-
-* It is important to note that CUDA graph has to be enabled to benefit from Triton. Otherwise, there will be a significant overhead from JIT compilation and a deep call stack in Triton.
-Thus, we enabled CUDA graph for all cases.
-
-* 'triton_autotune' in the config also needs to be on for the best performance. It will run an initial Triton autotuning step to build the optimal autotune table for Triton kernels, which will take some time.
-
-* In our experiments, sequence length in query ranged from 8 to 512 and batch-size was set to 1, while the task is set to 'fill-mask'.
-Table 1 compares the P90 model latencies averaged over the entire sequence length range (i.e., 8~512), while Figures 1 and 2 compare the P90 model latencies over specific sub-ranges (i.e. sequence lengths in the range shown in x-axis).
-The baseline was set to the Huggingface transformers and the performance gain is defined to be (reference P90 latency)/(Deepspeed-Triton P90 Latency).
-One thing to note is that the cuda kernel in MLP exhibited a better performance than the triton kernel in our experiments so we chose the hybrid approach that both triton and cuda kernels are used when Triton kernel is enabled from the Deepspeed config.
+* To enable Triton optimization, you need to turn on CUDA graph and ‘triton_autotune’ in the DeepSpeed config. CUDA graph is required to avoid the overhead of JIT compilation and a deep call stack in Triton. ‘triton_autotune’ will run an initial step to find the optimal parameters for Triton kernels, which may take some time.
 
 * We used [the latest Triton release](https://pypi.org/project/triton/2.0.0.post1/) in our experiments.
+
+* In our experiments, we used a batch size of 1, a sequence length range of 8 to 512, and a ‘fill-mask’ task. Table 1 shows the average P90 latency over the entire sequence length range, while Figures 1 and 2 show the P90 latency for specific sub-ranges. The baseline is the Huggingface transformers without any optimization. The speedup is calculated as (baseline P90 latency)/(DeepSpeed-Triton P90 Latency). We found that the CUDA kernel in MLP performed better than the Triton kernel in our experiments, so we used a hybrid approach that combines both kernels when Triton is enabled in the DeepSpeed config.
