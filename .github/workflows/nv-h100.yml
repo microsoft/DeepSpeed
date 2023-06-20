@@ -27,20 +27,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Nvidia SMI
-        run: |
-          nvidia-smi
-
-      - name: Load docker image
+      - name: Install dependencies
         run: |
           sudo apt install -y libaio-dev ninja-build
-          python3 -c "import torch; print('torch:', torch.__version__, torch)"
-
-      - name: Install pytorch
-        run: |
-          python3 -m pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu12
-          python3 -c "import torch; print('torch:', torch.__version__, torch)"
-          python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+          python -c "import torch; print('torch:', torch.__version__, torch)"
+          python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
       - name: Install transformers
         run: |
