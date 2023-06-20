@@ -42,11 +42,11 @@ Figure 2 shows again the normalized latency in A100 but for Bert-large model.
 
 <img src="../assets/images/triton-bert-base-latency.png" width="500px" alt="triton-bert-base-latency"/>
 
-*Figure 1: Sequence length ranges versus normnalized P90 latency in A100 for Bert-base model*
+*Figure 1: Sequence length ranges versus normalized P90 latency in A100 for Bert-base model*
 
 <img src="../assets/images/triton-bert-large-latency.png" width="500px" alt="triton-bert-large-latency"/>
 
-*Figure 2: Sequence length ranges versus normnalized P90 latency in A100 for Bert-large model*
+*Figure 2: Sequence length ranges versus normalized P90 latency in A100 for Bert-large model*
 
 </div>
 
