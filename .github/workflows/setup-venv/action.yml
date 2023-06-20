@@ -7,21 +7,21 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libaio-dev
-        python3 -m pip install --user --upgrade pip
-        python3 -m pip install --user --upgrade virtualenv
+        python -m pip install --user --upgrade pip
+        python -m pip install --user --upgrade virtualenv
       shell: bash
     - id: create-venv
       run: |
-        python3 -m venv unit-test-venv
+        python -m venv unit-test-venv
         source ./unit-test-venv/bin/activate
-        python3 -m pip install --upgrade pip
-        python3 -m pip install wheel # required after pip>=23.1
+        python -m pip install --upgrade pip
+        pip install wheel # required after pip>=23.1
         echo PATH=$PATH >> $GITHUB_ENV # Make it so venv is inherited for other steps
       shell: bash
     - id: print-env
       run: |
         which python
-        python3 --version
+        python --version
         if [[ -z "${AISC_NODE_INSTANCE_ID}" ]]; then
           echo "Not on self-hosted node"
         else
