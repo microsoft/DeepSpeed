@@ -34,6 +34,10 @@ jobs:
           sudo docker run --rm --gpus all nvcr.io/nvidia/pytorch:23.03-py3
           sudo apt install -y libaio-dev ninja-build
 
+      - name: Nvidia SMI
+        run: |
+          nvidia-smi
+
       - name: Install transformers
         run: |
           git clone https://github.com/huggingface/transformers
@@ -42,6 +46,10 @@ jobs:
           # git checkout 1cc453d33
           git rev-parse --short HEAD
           python3 -m pip install .
+
+      - name: Nvidia SMI
+        run: |
+          nvidia-smi
 
       - name: Install deepspeed
         run: |
