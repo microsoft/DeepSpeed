@@ -23,6 +23,9 @@ jobs:
     runs-on: [self-hosted, nvidia, h100]
     container:
       image: nvcr.io/nvidia/pytorch:23.03-py3
+      ports:
+        - 80
+      options: --gpus all
 
     steps:
       - uses: actions/checkout@v3
