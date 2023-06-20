@@ -29,7 +29,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt install -y libaio-dev ninja-build
+          apt install -y libaio-dev ninja-build
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
