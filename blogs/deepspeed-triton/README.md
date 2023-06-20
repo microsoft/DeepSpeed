@@ -12,7 +12,7 @@ By replacing some CUDA kernels or torch operators with Triton kernels, we achiev
 | A100 |1.65x | 1.68x | 1.53x | 1.61x |
 | V100 | 1.29x | 1.14x | 1.23x | 1.21x |
 
-Table 1. The average performance gain when compared to the baseline (see NOTE below)
+Table 1. The average speedup (see NOTE below for more detail)
 
 
 </div>
