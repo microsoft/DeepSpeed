@@ -31,7 +31,7 @@ jobs:
 
       - name: Load docker image
         run: |
-          sudo docker run --rm -it --gpus all nvcr.io/nvidia/pytorch:23.03-py3
+          sudo docker run --rm --gpus all nvcr.io/nvidia/pytorch:23.03-py3
           sudo apt install -y libaio-dev ninja-build
 
       - name: Install transformers
