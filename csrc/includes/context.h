@@ -44,28 +44,32 @@ inline int DS_GET_BLOCKS(const int N)
         1);
 }
 
-class Context {
+class TrainingContext {
 public:
-    Context() : _workspace(nullptr), _seed(42), _curr_offset(0)
+    TrainingContext() : _workspace(nullptr), _seed(42), _curr_offset(0)
     {
         curandCreateGenerator(&_gen, CURAND_RNG_PSEUDO_DEFAULT);
         curandSetPseudoRandomGeneratorSeed(_gen, 123);
-        if (cublasCreate(&_cublasHandle) != CUBLAS_STATUS_SUCCESS) {
-            auto message = std::string("Fail to create cublas handle.");
+        cublasStatus_t stat = cublasCreate(&_cublasHandle);
+        if (stat != CUBLAS_STATUS_SUCCESS) {
+            // It would be nice to use cublasGetStatusName and
+            // cublasGetStatusString, but they were only added in CUDA 11.4.2.
+            auto message = std::string("Failed to create cublas handle: cublasStatus_t was ") +
+                           std::to_string(stat);
             std::cerr << message << std::endl;
             throw std::runtime_error(message);
         }
     }
 
-    virtual ~Context()
+    virtual ~TrainingContext()
     {
         cublasDestroy(_cublasHandle);
         cudaFree(_workspace);
     }
 
-    static Context& Instance()
+    static TrainingContext& Instance()
     {
-        static Context _ctx;
+        static TrainingContext _ctx;
         return _ctx;
     }
 

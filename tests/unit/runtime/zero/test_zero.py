@@ -4,7 +4,8 @@
 # DeepSpeed Team
 
 import math
-from typing import Dict, List, Set
+from collections import namedtuple
+from typing import Dict, List, NamedTuple, Set, Tuple
 import pytest
 import deepspeed.comm as dist
 import torch
@@ -137,10 +138,11 @@ class TestZero3RepeatForwardLoop(DistributedTest):
 # testing the fix https://github.com/microsoft/DeepSpeed/pull/1227
 # also reproduces the https://github.com/microsoft/DeepSpeed/pull/1372
 @pytest.mark.parametrize('zero_stage', [2, 3])
+@pytest.mark.parametrize('freeze_params', [True, False])
 class TestZeroToFP32(DistributedTest):
     world_size = 2
 
-    def test_1_param_group(self, tmpdir, zero_stage):
+    def test_1_param_group(self, tmpdir, zero_stage, freeze_params):
         # XXX: ideally refactor with the 2_param_group test as 75% is the same
         # force all params to be partitioned by forcing threshold=0
         config_dict = {
@@ -165,7 +167,7 @@ class TestZeroToFP32(DistributedTest):
 
         class MyModel(torch.nn.Module):
 
-            def __init__(self, hidden_dim, n_layers):
+            def __init__(self, hidden_dim, n_layers, freeze_params):
                 super().__init__()
                 # to reproduce https://github.com/microsoft/DeepSpeed/pull/1372 it is important that
                 # the number of total elements is uneven:
@@ -175,6 +177,9 @@ class TestZeroToFP32(DistributedTest):
                 self.classifier = torch.nn.Linear(4, 1)
                 # total 48+5=53 (uneven as desired) elements
                 self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
+                if freeze_params:
+                    self.ll[0].weight.requires_grad = False
+                    self.ll[0].bias.requires_grad = False
 
             def forward(self, x, y):
                 hidden = x
@@ -187,9 +192,12 @@ class TestZeroToFP32(DistributedTest):
         world_size = dist.get_world_size()
         # we want at least 2x layers as there are gpus to trigger round_robin_fp16_groups reshuffle in zero2
         n_layers = world_size * 2
-        model = MyModel(hidden_dim=hidden_dim, n_layers=n_layers)
+        model = MyModel(hidden_dim=hidden_dim, n_layers=n_layers, freeze_params=freeze_params)
 
         model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
+        # Flush zero stage 3 cache
+        model.empty_partition_cache()
+
         data_loader = random_dataloader(model=model, total_samples=16, hidden_dim=hidden_dim, device=model.device)
 
         for i, batch in enumerate(data_loader):
@@ -197,6 +205,7 @@ class TestZeroToFP32(DistributedTest):
             model.backward(loss)
             model.step()
 
+        model.empty_partition_cache()
         model.save_checkpoint(tmpdir)
 
         # make sure all sides saved it
@@ -225,7 +234,7 @@ class TestZeroToFP32(DistributedTest):
                 # float() workaround for torch<1.6
                 assert torch.allclose(orig_state_dict[name].float(), fp32_state_dict[name].float())
 
-    def test_2_param_groups(self, tmpdir, zero_stage):
+    def test_2_param_groups(self, tmpdir, zero_stage, freeze_params):
         # TODO:
         # - need to test with multiple param groups
         # force all params to be partitioned by forcing threshold=0
@@ -252,10 +261,13 @@ class TestZeroToFP32(DistributedTest):
 
         class MyModel(torch.nn.Module):
 
-            def __init__(self, hidden_dim, n_layers):
+            def __init__(self, hidden_dim, n_layers, freeze_params):
                 super().__init__()
                 self.ll = torch.nn.ModuleList(torch.nn.Linear(hidden_dim, hidden_dim) for i in range(n_layers))
                 self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
+                if freeze_params:
+                    self.ll[0].weight.requires_grad = False
+                    self.ll[0].bias.requires_grad = False
 
             def forward(self, x, y):
                 hidden = x
@@ -267,7 +279,7 @@ class TestZeroToFP32(DistributedTest):
 
         world_size = dist.get_world_size()
         n_layers = world_size * 2
-        model = MyModel(hidden_dim=hidden_dim, n_layers=n_layers)
+        model = MyModel(hidden_dim=hidden_dim, n_layers=n_layers, freeze_params=freeze_params)
 
         optim_groups = [
             {
@@ -285,6 +297,8 @@ class TestZeroToFP32(DistributedTest):
                                               model_parameters=model.parameters(),
                                               optimizer=optim,
                                               config=config_dict)
+        model.empty_partition_cache()
+
         data_loader = random_dataloader(model=model, total_samples=16, hidden_dim=hidden_dim, device=model.device)
 
         for i, batch in enumerate(data_loader):
@@ -292,6 +306,7 @@ class TestZeroToFP32(DistributedTest):
             model.backward(loss)
             model.step()
 
+        model.empty_partition_cache()
         model.save_checkpoint(tmpdir)
 
         # make sure all sides saved it
@@ -426,7 +441,7 @@ class EltwiseMultiplicationModule(Module):
         return result
 
 
-class EltwiseMultiplicationTestNetwork(Module):
+class EltwiseMultiplicationTestNetwork_Dict(Module):
     """used for testing purposes"""
 
     def __init__(
@@ -481,6 +496,91 @@ class EltwiseMultiplicationTestNetwork(Module):
             "loss": loss,
         }
 
+    @staticmethod
+    def to_dict(outputs: Dict[str, Tensor]) -> Dict[str, Tensor]:
+        return outputs
+
+
+class EltwiseMultiplicationNamedTuple(NamedTuple):
+    hidden1: Tensor
+    hidden2: Tensor
+    y_hat: Tensor
+    loss: Tensor
+
+
+class EltwiseMultiplicationTestNetwork_NamedTuple(EltwiseMultiplicationTestNetwork_Dict):
+
+    def forward(self, *args, **kwargs) -> EltwiseMultiplicationNamedTuple:
+        outputs_dicts = super().forward(*args, **kwargs)
+        return EltwiseMultiplicationNamedTuple(hidden1=outputs_dicts['hidden1'],
+                                               hidden2=outputs_dicts['hidden2'],
+                                               y_hat=outputs_dicts['y_hat'],
+                                               loss=outputs_dicts['loss'])
+
+    @staticmethod
+    def to_dict(outputs: EltwiseMultiplicationNamedTuple) -> Dict[str, Tensor]:
+        return {
+            "hidden1": outputs.hidden1,
+            "hidden2": outputs.hidden2,
+            "y_hat": outputs.y_hat,
+            "loss": outputs.loss,
+        }
+
+
+EltwiseMultiplication_namedtuple = namedtuple('EltwiseMultiplication_namedtuple',
+                                              ['hidden1', 'hidden2', 'y_hat', 'loss'])
+
+
+class EltwiseMultiplicationTestNetwork_namedtuple(EltwiseMultiplicationTestNetwork_Dict):
+
+    def forward(self, *args, **kwargs) -> EltwiseMultiplication_namedtuple:
+        outputs_dicts = super().forward(*args, **kwargs)
+        return EltwiseMultiplication_namedtuple(hidden1=outputs_dicts['hidden1'],
+                                                hidden2=outputs_dicts['hidden2'],
+                                                y_hat=outputs_dicts['y_hat'],
+                                                loss=outputs_dicts['loss'])
+
+    @staticmethod
+    def to_dict(outputs: EltwiseMultiplicationNamedTuple) -> Dict[str, Tensor]:
+        return {
+            "hidden1": outputs.hidden1,
+            "hidden2": outputs.hidden2,
+            "y_hat": outputs.y_hat,
+            "loss": outputs.loss,
+        }
+
+
+class EltwiseMultiplicationTestNetwork_Tuple(EltwiseMultiplicationTestNetwork_Dict):
+
+    def forward(self, *args, **kwargs) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        outputs_dicts = super().forward(*args, **kwargs)
+        return (outputs_dicts['hidden1'], outputs_dicts['hidden2'], outputs_dicts['y_hat'], outputs_dicts['loss'])
+
+    @staticmethod
+    def to_dict(outputs: Tuple[Tensor, Tensor, Tensor, Tensor]) -> Dict[str, Tensor]:
+        return {
+            "hidden1": outputs[0],
+            "hidden2": outputs[1],
+            "y_hat": outputs[2],
+            "loss": outputs[3],
+        }
+
+
+class EltwiseMultiplicationTestNetwork_List(EltwiseMultiplicationTestNetwork_Dict):
+
+    def forward(self, *args, **kwargs) -> List[Tensor]:
+        outputs_dicts = super().forward(*args, **kwargs)
+        return [outputs_dicts['hidden1'], outputs_dicts['hidden2'], outputs_dicts['y_hat'], outputs_dicts['loss']]
+
+    @staticmethod
+    def to_dict(outputs: List[Tensor]) -> Dict[str, Tensor]:
+        return {
+            "hidden1": outputs[0],
+            "hidden2": outputs[1],
+            "y_hat": outputs[2],
+            "loss": outputs[3],
+        }
+
 
 @pytest.mark.parametrize("param_persistence_threshold", [0, 10])
 @pytest.mark.parametrize("fp16_enabled", [True, False])
@@ -488,6 +588,11 @@ class EltwiseMultiplicationTestNetwork(Module):
 @pytest.mark.parametrize("offload_optimizer", [True, False])
 @pytest.mark.parametrize("zero_grad", [True, False])
 @pytest.mark.parametrize("prefetching", [True, False])
+@pytest.mark.parametrize("model_class", [
+    EltwiseMultiplicationTestNetwork_Dict, EltwiseMultiplicationTestNetwork_NamedTuple,
+    EltwiseMultiplicationTestNetwork_namedtuple, EltwiseMultiplicationTestNetwork_Tuple,
+    EltwiseMultiplicationTestNetwork_List
+])
 class TestZero3ParamPartitioningBase(DistributedTest):
     world_size = 2
 
@@ -499,6 +604,7 @@ class TestZero3ParamPartitioningBase(DistributedTest):
         offload_optimizer: bool,
         zero_grad: bool,
         prefetching: bool,
+        model_class: EltwiseMultiplicationTestNetwork_Dict,
     ) -> None:
         if offload_optimizer and not contiguous_gradients:
             return
@@ -506,7 +612,7 @@ class TestZero3ParamPartitioningBase(DistributedTest):
         m = 3
         n = 5
         weights = [Parameter(torch.zeros((m, n), dtype=torch.float32)) for _ in range(3)]
-        model = EltwiseMultiplicationTestNetwork(*weights)
+        model = model_class(*weights)
         prefetch_bucket_size = sum([p.numel() for p in model.parameters(recurse=True)])
         cfg = {
             "train_micro_batch_size_per_gpu": 1,
@@ -568,6 +674,8 @@ class TestZero3ParamPartitioningBase(DistributedTest):
                 use_module_trace=train_iter > 0,
                 param_prefetching=prefetching and train_iter > 0,
             )
+            # for ease in testing convert outputs to dict.
+            activations = model_class.to_dict(activations)
             assert torch.allclose(activations["hidden1"], expected_hidden1)
             assert torch.allclose(activations["hidden2"], expected_hidden2)
             assert torch.allclose(activations["y_hat"], expected_yhat)
@@ -628,10 +736,11 @@ class TestZero3ParamPartitioningBase(DistributedTest):
 
 
 @pytest.mark.parametrize("init_context_manager", [True, False])
+@pytest.mark.parametrize("reduce_scatter", [True, False])
 class TestZero3ParamPartitioningLargeParam(DistributedTest):
     world_size = 4
 
-    def test(self, init_context_manager: bool, param_sz: int = 8100) -> None:
+    def test(self, init_context_manager: bool, reduce_scatter: bool, param_sz: int = 8100) -> None:
 
         class LargeParamModel(Module):
 
@@ -659,6 +768,7 @@ class TestZero3ParamPartitioningLargeParam(DistributedTest):
                 "stage3_max_reuse_distance": 0,
                 "contiguous_gradients": True,
                 "overlap_comm": True,
+                "reduce_scatter": reduce_scatter,
             },
             "optimizer": {
                 "type": "Adam",
@@ -832,24 +942,23 @@ class TestZero3InitForParentWeightInitialization(DistributedTest):
 @pytest.mark.parametrize("offload_optimizer", [True, False])
 @pytest.mark.parametrize("zero_grad", [True, False])
 @pytest.mark.parametrize("prefetching", [True, False])
+@pytest.mark.parametrize("model_class", [
+    EltwiseMultiplicationTestNetwork_Dict, EltwiseMultiplicationTestNetwork_NamedTuple,
+    EltwiseMultiplicationTestNetwork_namedtuple, EltwiseMultiplicationTestNetwork_Tuple,
+    EltwiseMultiplicationTestNetwork_List
+])
 class TestZero3ParamPartitioningBaseBF16(DistributedTest):
     world_size = 2
 
-    def test(
-        self,
-        param_persistence_threshold: int,
-        contiguous_gradients: bool,
-        offload_optimizer: bool,
-        zero_grad: bool,
-        prefetching: bool,
-    ) -> None:
+    def test(self, param_persistence_threshold: int, contiguous_gradients: bool, offload_optimizer: bool,
+             zero_grad: bool, prefetching: bool, model_class: EltwiseMultiplicationTestNetwork_Dict) -> None:
         if offload_optimizer and not contiguous_gradients:
             return
 
         m = 3
         n = 5
         weights = [Parameter(torch.zeros((m, n), dtype=torch.float32)) for _ in range(3)]
-        model = EltwiseMultiplicationTestNetwork(*weights)
+        model = model_class(*weights)
         prefetch_bucket_size = sum([p.numel() for p in model.parameters(recurse=True)])
         cfg = {
             "train_micro_batch_size_per_gpu": 1,
@@ -910,6 +1019,8 @@ class TestZero3ParamPartitioningBaseBF16(DistributedTest):
                 use_module_trace=train_iter > 0,
                 param_prefetching=prefetching and train_iter > 0,
             )
+            # for ease in testing convert outputs to dict.
+            activations = model_class.to_dict(activations)
             assert torch.allclose(activations["hidden1"], expected_hidden1)
             assert torch.allclose(activations["hidden2"], expected_hidden2)
             assert torch.allclose(activations["y_hat"], expected_yhat)

@@ -16,10 +16,8 @@ class DtypeEnum(Enum):
     # The torch dtype must always be the first value (so we return torch.dtype)
     fp16 = torch.float16, "torch.float16", "fp16", "float16", "half"
     fp32 = torch.float32, "torch.float32", "fp32", "float32", "float"
+    bf16 = torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16", "bfloat"
     int8 = torch.int8, "torch.int8", "int8"
-
-    # bf16 not supported
-    # bf16 = torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16"
 
     # Copied from https://stackoverflow.com/a/43210118
     # Allows us to use multiple values for each Enum index and returns first
@@ -186,7 +184,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     """
 
     #todo: refactor the following 3 into the new checkpoint_config
-    checkpoint: str = None
+    checkpoint: Union[str, Dict] = None
     """
     Path to deepspeed compatible checkpoint or path to JSON with load policy.
     """
@@ -195,6 +193,11 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     """
     This shows the root directory under which all the checkpoint files exists.
     This can be passed through the json config too.
+    """
+
+    set_empty_params: bool = False
+    """
+    specifying whether the inference-module is created with empty or real Tensor
     """
 
     save_mp_checkpoint_path: str = None
@@ -246,6 +249,16 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     with, including the input and output tokens. Please consider increasing it
     to the required token-length required for your use-case.
     """
+
+    min_out_tokens: int = Field(1, alias="min_tokens")
+    """
+    This argument communicates to the runtime the minimum number of tokens you
+    expect you will need to generate. This will cause the runtime to error
+    if it unable to provide this and provide context on the memory pressure
+    rather than seg-faulting or providing corrupted output.
+    """
+
+    transposed_mode: bool = Field(False, alias="transposed_mode")
 
     mp_size: int = Field(1, deprecated=True, new_param="tensor_parallel.tp_size")
     """

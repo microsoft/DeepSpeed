@@ -49,12 +49,12 @@ _gpt_models = [
     "gpt2",
     "distilgpt2",
     "Norod78/hebrew-bad_wiki-gpt_neo-tiny",
-    #"EleutherAI/gpt-j-6B", # Removed as this is causing OOM errors randomly
+    "EleutherAI/gpt-j-6B",  # bring back this model as we did not catch an error before by merging some changes! TODO: we need to fix the OOM issue later!
     "bigscience/bloom-560m",
 ]
 _opt_models = [
     "facebook/opt-125m",  # 125m, 1.7B, ..., 175B variants have the same model architecture.
-    "facebook/opt-350m",  # 350m applies layer norm after attnention layer which is different than other variants.
+    "facebook/opt-350m",  # 350m applies layer norm after attention layer which is different than other variants.
 ]
 _all_models = HfApi().list_models()
 

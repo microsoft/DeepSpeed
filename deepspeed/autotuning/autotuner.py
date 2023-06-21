@@ -50,7 +50,7 @@ class Autotuner:
 
         assert tabulate is not None, "Missing required package `tabulate`, please install with `pip install deepspeed[autotuning]`."
 
-        logger.debug(f"autotunning args={args}")
+        logger.debug(f"autotuning args={args}")
 
         self.user_config = self._get_user_config(args.user_args)
         assert self.user_config is not None, "DeepSpeed configuration is not provided"
@@ -81,7 +81,7 @@ class Autotuner:
         if not os.path.exists(self.results_dir):
             try:
                 os.makedirs(self.results_dir, exist_ok=True)
-                logger.info(f"Created autotuning resutls directory: {self.exps_dir}")
+                logger.info(f"Created autotuning results directory: {self.exps_dir}")
             except:
                 logger.error(
                     f"Failed to create {self.results_dir}, please check `results_dir` in the autotuning config file is accessible by all the nodes in the job."
@@ -101,7 +101,7 @@ class Autotuner:
 
         self.records = {}
         self.optimal_cmd = None
-        self.optmal_ds_config = None
+        self.optimal_ds_config = None
 
         self.mlflow_parent_id = None
 
@@ -431,7 +431,6 @@ class Autotuner:
 
         #TODO: FIX THIS
         stage = self.user_config.get(ZERO_OPTIMIZATION, {}).get(ZERO_OPTIMIZATION_STAGE, "all")
-        stage = "all"
         user_zero_stages = [stage] if not isinstance(stage, list) else stage
         logger.info(f"User-defined zero stages are {stage}.")
 
@@ -638,7 +637,7 @@ class Autotuner:
         logger.info(f"End tuning for space: {tuning_space_name}")
         return max_micro_batch_size, best_mbs, best_metric_val
 
-    def get_plauteu_mbs(self, tuning_space_name):
+    def get_plateau_mbs(self, tuning_space_name):
         if tuning_space_name not in self.records:
             return 0
         space_records = self.records[tuning_space_name]
@@ -662,7 +661,7 @@ class Autotuner:
             return self.model_info["num_params"]
 
     def model_info_profile_run(self):
-        """Does a model information profling experiment that collects the number of model parameters and activation memory.\
+        """Does a model information profiling experiment that collects the number of model parameters and activation memory.\
             The experiment produces a "profile_model_info" folder under self.results_dir.
         Returns:
             [dict]: a model information dictionary, e.g., {"num_params": 335144976, "trainable_num_params": 335144976, "activation_mem_per_gpu": 324358144, "rank": 0}
@@ -802,7 +801,7 @@ class Autotuner:
         if tuning_micro_batch_sizes_overwritten:
             return tuning_micro_batch_sizes
 
-        # in a auto-detected tuning_micro_batch_sizs list, max_micro_batch_size might not be performant as the memory consumption is close to max
+        # in a auto-detected tuning_micro_batch_sizes list, max_micro_batch_size might not be performant as the memory consumption is close to max
         # try smaller values while gas stays the same
         # if finding a more performant mbs value, use it to replace max_micro_batch_size in the list
         min_micro_batch_size_with_same_gas = (tuning_micro_batch_sizes[-2] +
@@ -986,7 +985,7 @@ class Autotuner:
             if isinstance(gas_in_config, int):
                 gas = gas_in_config
             elif gas_in_config == "auto":  # GRADIENT_ACCUMULATION_STEPS: "auto"
-                val = self.get_val_from_config(GRADIENT_ACCUMULATION_STEPS)
+                val = self.get_val_from_user_args(GRADIENT_ACCUMULATION_STEPS)
                 if val:
                     gas = int(val)
             elif isinstance(gas_in_config, list):
@@ -1093,14 +1092,14 @@ class Autotuner:
                 fd.write("\n")
                 fd.flush()
             self.optimal_cmd = cmd
-            self.optmal_ds_config = ds_config
+            self.optimal_ds_config = ds_config
             logger.info(
                 f"Wrote the optimal DeepSpeed configuration found by autotuning to {ds_config_path}, and the corresponding DeepSpeed command to {cmd_path}"
             )
 
     def run_after_tuning(self):
         """ Launches the training with the optimal DeepSpeed configuration found through the autotuning process.
-            "ds_config_optimal.json" describing the optmimal DeepSpeed configuration as well the command used to launch training "cmd_optimal.txt" are saved to self.results_dir.
+            "ds_config_optimal.json" describing the optimal DeepSpeed configuration as well the command used to launch training "cmd_optimal.txt" are saved to self.results_dir.
         """
         if self.optimal_cmd:
             result = subprocess.Popen(self.optimal_cmd)

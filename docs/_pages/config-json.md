@@ -181,7 +181,7 @@ Example of <i>**scheduler**</i>
 
 ### Communication options
 
-<i>**communication_data_type**</i>: [boolean]
+<i>**communication_data_type**</i>: [string]
 
 | Description                                                                                                                   | Default |
 | ----------------------------------------------------------------------------------------------------------------------------- | ------- |
@@ -224,6 +224,7 @@ Example of <i>**scheduler**</i>
     "initial_scale_power": 16,
     "loss_scale_window": 1000,
     "hysteresis": 2,
+    "consecutive_hysteresis": false,
     "min_loss_scale": 1
 }
 ```
@@ -250,7 +251,7 @@ Example of <i>**scheduler**</i>
 
 | Description                                                                                                                                                                                             | Default |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| <i>**initial_scale_power**</i> is a **fp16** parameter representing the power of the initial dynamic loss scale value. The actual loss scale is computed as 2<sup><i>**initial_scale_power**</i></sup>. | `32`    |
+| <i>**initial_scale_power**</i> is a **fp16** parameter representing the power of the initial dynamic loss scale value. The actual loss scale is computed as 2<sup><i>**initial_scale_power**</i></sup>. | `16`    |
 
 <i>**fp16:loss_scale_window**</i>: [integer]
 
@@ -263,6 +264,12 @@ Example of <i>**scheduler**</i>
 | Description                                                                                         | Default |
 | --------------------------------------------------------------------------------------------------- | ------- |
 | <i>**hysteresis**</i> is a **fp16** parameter representing the delay shift in dynamic loss scaling. | `2`     |
+
+<i>**fp16:consecutive_hysteresis**</i>: [boolean]
+
+| Description                                                                                         | Default |
+| --------------------------------------------------------------------------------------------------- | ------- |
+| <i>**consecutive_hysteresis**</i> is a **fp16** parameter representing whether to refill the hysteresis if we reach an iteration that doesn't overflow | `false`     |
 
 <i>**fp16:min_loss_scale**</i>: [integer]
 
@@ -692,7 +699,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 | Description                                                                                                               | Default |
 |---------------------------------------------------------------------------------------------------------------------------| ------- |
-| Whether to run autotuing experiments whose results already exist. Setting it to true would overwrite the existing result. | `false` |
+| Whether to run autotuning experiments whose results already exist. Setting it to true would overwrite the existing result. | `false` |
 
 
 <i>**metric**</i>: [string]
@@ -1435,6 +1442,25 @@ Different quantization sets, this is used for different quantization parameters.
 }
 ```
 
+```json
+"compression_training": {
+  "sparse_pruning":{
+    "shared_parameters":{
+      "enabled": true,
+      "schedule_offset": 30,
+      "schedule_offset_end": 90,
+      "schedule_offset_stride": 15,
+      "method": "snip_momentum",
+      "block_pattern": "4x1",
+      "dense_ratio": 0.4,
+      "excluded_modules": ['classifier', 'pooler']
+    },
+    "different_groups":{
+    }
+  }
+}
+```
+
 <i>**shared_parameters**</i>: [dictionary]
 
 Shared parameters for all sparse pruning groups.
@@ -1443,11 +1469,17 @@ Shared parameters for all sparse pruning groups.
 | ----- | ----- | ----- |
 | <i>**enabled**</i>: [boolean] | Enable sparse pruning or not. | `false` |
 | <i>**schedule_offset**</i>: [integer] | Enable sparse pruning after scheduled steps (can be treated as warmup steps). | `0` |
-| <i>**method**</i>: [string] | Choose different pruning methods, l1 (static, magnitude based) or topk (dynamic, learnable). | `"l1"` |
+| <i>**schedule_offset_end**</i>: [integer] | Disable sparse pruning after scheduled steps, mandotory for `snip_momentum`. | `0` |
+| <i>**schedule_offset_stride**</i>: [integer] | The stride of pruning on training steps, mandotory for `snip_momentum`. | `"1"` |
+| <i>**method**</i>: [string] | Choose different pruning methods, l1 (static, magnitude based), topk (dynamic, learnable) or snip_momentum (structured pruning). | `"l1"` |
+| <i>**block_pattern**</i>: [string] | Choose different structured pruning block patterns, NxM or N:M (N and M are integers). For instance, "4x1" or "2:4" are common block patterns, mandotory for `snip_momentum`. | `"4x1"` |
+| <i>**dense_ratio**</i>: [float] | Used to get the targeted global sparsity ratio, mandotory for `snip_momentum`. | `"0.1"` |
+| <i>**excluded_modules**</i>: [list] | Excluded pruning scope on some special modules like output layer. | `[]` |
 
 <i>**different_groups**</i>: [dictionary]
 
 Different pruning sets, this is used for different pruning parameters. In this example, we give one set. In practice, you can choose the number of sets based on your requirements.
+Note for `snip_momentum` method, you can leave it as empty.
 
 | Fields | Value | Default |
 | ----- | ----- | ----- |

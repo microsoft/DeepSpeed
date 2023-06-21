@@ -27,7 +27,7 @@ repos:
     hooks:
     -   id: yapf
 
--   repo: https://gitlab.com/daverona/pre-commit-cpp
+-   repo: https://gitlab.com/daverona/pre-commit/cpp
     rev: 0.8.0
     hooks:
     -   id: clang-format  # formatter of C/C++ code based on a style guide: LLVM, Google, Chromium, Mozilla, and WebKit available
@@ -75,5 +75,5 @@ repos:
         name: check-torchcuda
         entry: ./scripts/check-torchcuda.py
         language: script
-        exclude: ^(.github/workflows/|scripts/check-torchcuda.py|accelerator/cuda_accelerator.py|deepspeed/inference/engine.py|deepspeed/model_implementations/transformers/clip_encoder.py|deepspeed/model_implementations/diffusers/vae.py|deepspeed/model_implementations/diffusers/unet.py|op_builder/spatial_inference.py|op_builder/transformer_inference.py|op_builder/builder.py|setup.py|tests/unit/ops/sparse_attention/test_sparse_attention.py)
+        exclude: ^(.github/workflows/|scripts/check-torchcuda.py|docs/_tutorials/accelerator-abstraction-interface.md|accelerator/cuda_accelerator.py|deepspeed/inference/engine.py|deepspeed/model_implementations/transformers/clip_encoder.py|deepspeed/model_implementations/diffusers/vae.py|deepspeed/model_implementations/diffusers/unet.py|op_builder/spatial_inference.py|op_builder/transformer_inference.py|op_builder/builder.py|setup.py|tests/unit/ops/sparse_attention/test_sparse_attention.py)
         # Specific deepspeed/ files are excluded for now until we wrap ProcessGroup in deepspeed.comm

@@ -18,6 +18,7 @@ from .fp16.loss_scaler import (
     INITIAL_LOSS_SCALE,
     SCALE_WINDOW,
     DELAYED_SHIFT,
+    CONSECUTIVE_HYSTERESIS,
     MIN_LOSS_SCALE,
 )
 from .config_utils import (
@@ -31,6 +32,7 @@ from ..comm.config import DeepSpeedCommsConfig
 from ..monitor.config import get_monitor_config
 
 from deepspeed import comm as dist
+from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 from ..git_version_info import version as __version__
 from ..utils import logger
@@ -45,8 +47,8 @@ from ..elasticity.constants import (
     ELASTICITY,
     IGNORE_NON_ELASTIC_BATCH_INFO,
     IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT,
-    MODEL_PARLLEL_SIZE,
-    MODEL_PARLLEL_SIZE_DEFAULT,
+    MODEL_PARALLEL_SIZE,
+    MODEL_PARALLEL_SIZE_DEFAULT,
     NUM_GPUS_PER_NODE,
     NUM_GPUS_PER_NODE_DEFAULT,
 )
@@ -203,16 +205,20 @@ def get_dynamic_loss_scale_args(param_dict):
             FP16_LOSS_SCALE_WINDOW,
             FP16_MIN_LOSS_SCALE,
             FP16_HYSTERESIS,
+            FP16_CONSECUTIVE_HYSTERESIS,
         ]
         if any(arg in list(fp16_dict.keys()) for arg in dynamic_loss_args):
             init_scale = get_scalar_param(fp16_dict, FP16_INITIAL_SCALE_POWER, FP16_INITIAL_SCALE_POWER_DEFAULT)
             scale_window = get_scalar_param(fp16_dict, FP16_LOSS_SCALE_WINDOW, FP16_LOSS_SCALE_WINDOW_DEFAULT)
             delayed_shift = get_scalar_param(fp16_dict, FP16_HYSTERESIS, FP16_HYSTERESIS_DEFAULT)
+            consecutive_hysteresis = get_scalar_param(fp16_dict, FP16_CONSECUTIVE_HYSTERESIS,
+                                                      FP16_CONSECUTIVE_HYSTERESIS_DEFAULT)
             min_loss_scale = get_scalar_param(fp16_dict, FP16_MIN_LOSS_SCALE, FP16_MIN_LOSS_SCALE_DEFAULT)
             loss_scale_args = {
                 INITIAL_LOSS_SCALE: 2**init_scale,
                 SCALE_WINDOW: scale_window,
                 DELAYED_SHIFT: delayed_shift,
+                CONSECUTIVE_HYSTERESIS: consecutive_hysteresis,
                 MIN_LOSS_SCALE: min_loss_scale,
             }
 
@@ -514,6 +520,21 @@ def get_memory_breakdown(param_dict):
     return get_scalar_param(param_dict, MEMORY_BREAKDOWN, MEMORY_BREAKDOWN_DEFAULT)
 
 
+class HybridEngineConfig(DeepSpeedConfigModel):
+    enabled: bool = False
+    max_out_tokens: int = 512
+    inference_tp_size: int = 1
+    release_inference_cache: bool = False
+    pin_parameters: bool = True
+    tp_gather_partition_size: int = 8
+
+
+def get_hybrid_engine_config(param_dict):
+    hybrid_engine_config_dict = param_dict.get("hybrid_engine", {})
+    hybrid_engine_config = HybridEngineConfig(**hybrid_engine_config_dict)
+    return hybrid_engine_config
+
+
 def get_eigenvalue_config(param_dict):
     if get_quantize_enabled(param_dict):
         param_dict = param_dict[QUANTIZE_TRAINING]
@@ -696,7 +717,7 @@ class DeepSpeedConfig(object):
             # Ensure the resource scheduler saw the same elastic config we are using at runtime
             ensure_immutable_elastic_config(runtime_elastic_config_dict=elastic_dict)
 
-            self.elastic_model_parallel_size = elastic_dict.get(MODEL_PARLLEL_SIZE, MODEL_PARLLEL_SIZE_DEFAULT)
+            self.elastic_model_parallel_size = elastic_dict.get(MODEL_PARALLEL_SIZE, MODEL_PARALLEL_SIZE_DEFAULT)
             if self.elastic_model_parallel_size < 1:
                 raise ElasticityConfigError("Model-Parallel size cannot be less than 1, "
                                             f"given model-parallel size: {self.elastic_model_parallel_size}")
@@ -763,6 +784,8 @@ class DeepSpeedConfig(object):
         self.sparse_gradients_enabled = get_sparse_gradients_enabled(param_dict)
 
         self.zero_config = get_zero_config(param_dict)
+        self.mics_shard_size = self.zero_config.mics_shard_size
+        self.mics_hierarchial_params_gather = self.zero_config.mics_hierarchical_params_gather
         self.zero_optimization_stage = self.zero_config.stage
         self.zero_enabled = self.zero_optimization_stage > 0
 
@@ -815,6 +838,8 @@ class DeepSpeedConfig(object):
             self.eigenvalue_layer_name,
             self.eigenvalue_layer_num,
         ) = get_eigenvalue_config(param_dict)
+
+        self.hybrid_engine = get_hybrid_engine_config(param_dict)
 
         self.sparse_attention = get_sparse_attention(param_dict)
         self.pipeline = get_pipeline_config(param_dict)

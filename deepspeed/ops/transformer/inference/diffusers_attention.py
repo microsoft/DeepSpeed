@@ -13,7 +13,7 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
 
 # Cuda modules will be imported if needed
-inference_cuda_module = None
+inference_module = None
 minus_inf = -10000.0
 triton_flash_attn = None
 
@@ -59,7 +59,7 @@ class DeepSpeedDiffusersAttentionFunction(Function):
             scale = (1 / norm_factor) * (1 / norm_factor)
             if do_flash_attn and context == None:
                 qkv_out = linear_func(input, attn_qkvw, attn_qkvb if attn_qkvb is not None else attn_qkvw, attn_qkvb
-                                      is not None, do_flash_attn, config.heads)
+                                      is not None, do_flash_attn, config.heads, False)
 
                 context_layer = triton_flash_attn_kernel(qkv_out[0], qkv_out[1], qkv_out[2], scale,
                                                          input.shape[-2] % 128 == 0)
@@ -77,12 +77,11 @@ class DeepSpeedDiffusersAttentionFunction(Function):
                     query = query.contiguous()
                     key = key.contiguous()
                     value = value.contiguous()
-                query, key, value = inference_cuda_module.pad_transform_fp16(query, key, value, config.heads,
-                                                                             do_flash_attn)
+                query, key, value = inference_module.pad_transform_fp16(query, key, value, config.heads, do_flash_attn)
                 attention_scores = (torch.matmul(query, key.transpose(-1, -2)) * scale).softmax(dim=-1)
                 context_layer = _transpose_for_context(torch.matmul(attention_scores, value))
 
-            output = linear_func(context_layer, attn_ow, attn_ob, do_out_bias, False, config.heads)
+            output = linear_func(context_layer, attn_ow, attn_ob, do_out_bias, False, config.heads, False)
             return output
 
         output = selfAttention_fp(input, context, input_mask)
@@ -116,12 +115,12 @@ class DeepSpeedDiffusersAttention(nn.Module):
         device = get_accelerator().current_device_name() if config.bigscience_bloom else 'cpu'
         qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
 
-        data_type = torch.int8 if config.q_int8 else torch.half if config.fp16 else torch.float
-        data_type_fp = torch.half if config.fp16 else torch.float
-        global inference_cuda_module
-        if inference_cuda_module is None:
+        data_type = self.config.dtype
+        data_type_fp = torch.half if self.config.dtype == torch.int8 else self.config.dtype
+        global inference_module
+        if inference_module is None:
             builder = InferenceBuilder()
-            inference_cuda_module = builder.load()
+            inference_module = builder.load()
 
         if DeepSpeedDiffusersAttention.layer_id == 1:
             log_dist(f"DeepSpeed-Attention config: {self.config.__dict__}", [0])
@@ -172,19 +171,21 @@ class DeepSpeedDiffusersAttention(nn.Module):
             self.norm_factor *= math.sqrt(self.config.layer_id + 1)
             # https://github.com/huggingface/transformers/blob/v4.24.0/src/transformers/models/gpt2/modeling_gpt2.py#L191
 
-        self.score_context_func = inference_cuda_module.softmax_context_fp32 if (not config.fp16) else \
-                                    inference_cuda_module.softmax_context_fp16
-        self.linear_func = inference_cuda_module.linear_layer_fp16 if config.fp16 else \
-                                    inference_cuda_module.linear_layer_fp32
-        self.allocate_workspace = inference_cuda_module.allocate_workspace_fp32 if not (config.fp16) else \
-                                    inference_cuda_module.allocate_workspace_fp16
+        if self.config.dtype in [torch.float16, torch.int8]:
+            self.score_context_func = inference_module.softmax_context_fp16
+            self.linear_func = inference_module.linear_layer_fp16
+            self.allocate_workspace = inference_module.allocate_workspace_fp16
+        else:
+            self.score_context_func = inference_module.softmax_context_fp32
+            self.linear_func = inference_module.linear_layer_fp32
+            self.allocate_workspace = inference_module.allocate_workspace_fp32
 
     def forward(self, input, context=None, input_mask=None):
         if self.config.layer_id == 0:
             self.allocate_workspace(self.config.hidden_size, self.config.heads,
                                     input.size()[1],
                                     input.size()[0], DeepSpeedDiffusersAttention.layer_id, self.config.mp_size, False,
-                                    0, self.config.max_out_tokens)
+                                    0, self.config.max_out_tokens, self.config.min_out_tokens)
         output = DeepSpeedDiffusersAttentionFunction.apply(input, context, input_mask, self.config, self.attn_qkvw,
                                                            self.attn_qw, self.attn_kw, self.attn_vw, self.attn_qkvb,
                                                            self.num_attention_heads_per_partition, self.norm_factor,
