@@ -879,9 +879,7 @@ class DeepSpeedEngine(Module):
                     NebulaCheckpointEngine
                 self.checkpoint_engine = NebulaCheckpointEngine(config_params=self._config.nebula_config)
             except ImportError as err:
-                logger.error(
-                    f"No torch_nebula was found! Will fall back to torch.save. Details: {err}"
-                )
+                logger.error(f"No torch_nebula was found! Will fall back to torch.save. Details: {err}")
                 self.checkpoint_engine = TorchCheckpointEngine(rank=rank)
 
         # only the first data parallel process needs to store the model checkpoint
@@ -2590,8 +2588,7 @@ class DeepSpeedEngine(Module):
 
         if tag is None:
             if self.load_universal_checkpoint():
-                raise ValueError(
-                    f'Invalid for universal checkpoint: {load_dir} does not exist')
+                raise ValueError(f'Invalid for universal checkpoint: {load_dir} does not exist')
             else:
                 logger.warning(
                     f"Unable to find latest file at {load_dir}, if trying to load latest "

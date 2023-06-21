@@ -54,13 +54,10 @@ class NebulaCheckpointEngine(CheckpointEngine):
 
     def commit(self, tag):
         # nebula commit will be call when all files under give tag are ready to be persisted in the async way.
-        logger.info(
-            f"[Nebula] all files for {tag} are saved in tier1. It is ready to start persisting"
-        )
+        logger.info(f"[Nebula] all files for {tag} are saved in tier1. It is ready to start persisting")
         commit_rls = self.checkpoint.commit()
         if not commit_rls:
-            logger.error(
-                f"[Nebula] failed to commit the checkpoint, please check the log.")
+            logger.error(f"[Nebula] failed to commit the checkpoint, please check the log.")
             return False
         return commit_rls
 
@@ -105,8 +102,7 @@ class NebulaCheckpointEngine(CheckpointEngine):
         if self.checkpoint is None:
             tag = _get_tag_from_path(path)
             self.tag_flag = tag
-            logger.info(
-                f"[Nebula] Disable nebula load. Loading checkpoint from {path} ...")
+            logger.info(f"[Nebula] Disable nebula load. Loading checkpoint from {path} ...")
             partition = torch.load(path, map_location=map_location)
             logger.info(f"[Nebula] Disable nebula load. Loaded checkpoint from {path} .")
             return partition
@@ -114,13 +110,10 @@ class NebulaCheckpointEngine(CheckpointEngine):
         tag = self.checkpoint.tag
 
         partititon_name = os.path.basename(path)
-        logger.info(
-            f"[Nebula] Loading {path} under tag {tag} from nebula path {self.nebula_load_path}..."
-        )
+        logger.info(f"[Nebula] Loading {path} under tag {tag} from nebula path {self.nebula_load_path}...")
 
         partition = self.checkpoint.load(partititon_name, map_location=map_location)
-        logger.info(
-            f"[Nebula] Loaded {path} under tag {tag} from {self.nebula_load_path}.")
+        logger.info(f"[Nebula] Loaded {path} under tag {tag} from {self.nebula_load_path}.")
         return partition
 
     def close(self, tag):
