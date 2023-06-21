@@ -181,18 +181,27 @@ class DeepSpeedSelfAttention(nn.Module):
         self.self_attn_layer_norm.weight.data.copy_(norm_w)
         self.self_attn_layer_norm.bias.data.copy_(norm_b)
 
-        hidden_states = self.self_attn_layer_norm(input)
-        bsz, tgt_len, _ = hidden_states.size()
+        hidden_states = input
+        bsz, q_len, _ = hidden_states.size()
+        kv_seq_len = key_states.shape[-2]
+
+        query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+
+        debug = True
+        if debug: print(f"hf attn: hidden_states = {hidden_states}, {hidden_states.norm()}, {hidden_states.size()}")
+        if debug: print(f"hf attn: query_states = {query_states}, {query_states.norm()}")
+        if debug: print(f"hf attn: key_states = {key_states}, {key_states.norm()}, {key_states.size()}")
+        if debug: print(f"hf attn: value_states = {value_states}, {value_states.norm()}")
+        exit()
 
         if layer_past is not None:
-            # reuse k, v, self_attention
-            key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
-            value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
-            key_states = torch.cat([layer_past[0], key_states], dim=2)
-            value_states = torch.cat([layer_past[1], value_states], dim=2)
-        else:
-            key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
-            value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+            kv_seq_len += past_key_value[0].shape[-2]
+        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        # [bsz, nh, t, hd]
+
 
         past_key_value = (key_states, value_states)
         key_layer = key_states
