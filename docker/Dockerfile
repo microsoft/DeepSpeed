@@ -1,4 +1,6 @@
-FROM nvidia/cuda:10.0-devel-ubuntu18.04
+FROM nvidia/cuda:11.7.0-devel-ubuntu18.04
+
+ENV DEBIAN_FRONTEND noninteractive
 
 ##############################################################################
 # Temporary Installation Directory
@@ -95,7 +97,7 @@ ENV PYTHON_VERSION=3
 RUN apt-get install -y python3 python3-dev && \
         rm -f /usr/bin/python && \
         ln -s /usr/bin/python3 /usr/bin/python && \
-        curl -O https://bootstrap.pypa.io/get-pip.py && \
+        curl -O https://bootstrap.pypa.io/pip/3.6/get-pip.py && \
         python get-pip.py && \
         rm get-pip.py && \
         pip install --upgrade pip && \
@@ -157,8 +159,8 @@ RUN cat /etc/ssh/sshd_config > ${STAGE_DIR}/sshd_config && \
 ##############################################################################
 # PyTorch
 ##############################################################################
-ENV PYTORCH_VERSION=1.2.0
-ENV TORCHVISION_VERSION=0.4.0
+ENV PYTORCH_VERSION=1.9.0
+ENV TORCHVISION_VERSION=0.10.0
 ENV TENSORBOARDX_VERSION=1.8
 RUN pip install torch==${PYTORCH_VERSION}
 RUN pip install torchvision==${TORCHVISION_VERSION}

@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .base import *
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
 import torch
@@ -6,6 +11,7 @@ from ..policy import TransformerPolicy
 
 
 class DS_CLIPContainer(BaseTransformerContainer):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -19,6 +25,7 @@ class DS_CLIPContainer(BaseTransformerContainer):
 
 
 class HFCLIPLayerPolicy(TransformerPolicy):
+
     def __init__(self, client_module, inference=False):
         super().__init__(inference, pre_attn_norm=True, scale_attention=True)
         self.client_module = client_module
@@ -33,9 +40,11 @@ class HFCLIPLayerPolicy(TransformerPolicy):
 
     def get_hidden_heads(self):
         return self.client_module.self_attn.q_proj.weight.shape[1], \
-                self.client_module.self_attn.num_heads
+                self.client_module.self_attn.num_heads, \
+                self.client_module.layer_norm1.eps, \
+                DEFAULT_INTERMEDIATE_SIZE
 
-    def attention(self):
+    def attention(self, enable_training=False):
         qw = self.client_module.self_attn.q_proj.weight
         qb = self.client_module.self_attn.q_proj.bias
         kw = self.client_module.self_attn.k_proj.weight
@@ -43,15 +52,15 @@ class HFCLIPLayerPolicy(TransformerPolicy):
         vw = self.client_module.self_attn.v_proj.weight
         vb = self.client_module.self_attn.v_proj.bias
 
-        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
-        qkvb = Parameter(torch.cat((qb, kb, vb), dim=0), requires_grad=False)
+        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=enable_training)
+        qkvb = Parameter(torch.cat((qb, kb, vb), dim=0), requires_grad=enable_training)
 
         return qkvw, \
                qkvb, \
                self.client_module.self_attn.out_proj.weight, \
                self.client_module.self_attn.out_proj.bias
 
-    def mlp(self):
+    def mlp(self, enable_training=False):
         return self.client_module.mlp.fc1.weight, \
                self.client_module.mlp.fc1.bias, \
                self.client_module.mlp.fc2.weight, \
@@ -62,6 +71,3 @@ class HFCLIPLayerPolicy(TransformerPolicy):
                self.client_module.layer_norm2.bias, \
                self.client_module.layer_norm1.weight, \
                self.client_module.layer_norm1.bias
-
-    def get_param_names(self):
-        pass

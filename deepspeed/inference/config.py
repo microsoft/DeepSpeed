@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
@@ -10,8 +15,8 @@ from enum import Enum
 class DtypeEnum(Enum):
     # The torch dtype must always be the first value (so we return torch.dtype)
     fp16 = torch.float16, "torch.float16", "fp16", "float16", "half"
-    bf16 = torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16"
     fp32 = torch.float32, "torch.float32", "fp32", "float32", "float"
+    bf16 = torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16", "bfloat"
     int8 = torch.int8, "torch.int8", "int8"
 
     # Copied from https://stackoverflow.com/a/43210118
@@ -179,7 +184,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     """
 
     #todo: refactor the following 3 into the new checkpoint_config
-    checkpoint: str = None
+    checkpoint: Union[str, Dict] = None
     """
     Path to deepspeed compatible checkpoint or path to JSON with load policy.
     """
@@ -188,6 +193,11 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     """
     This shows the root directory under which all the checkpoint files exists.
     This can be passed through the json config too.
+    """
+
+    set_empty_params: bool = False
+    """
+    specifying whether the inference-module is created with empty or real Tensor
     """
 
     save_mp_checkpoint_path: str = None
@@ -217,12 +227,10 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     inference.
     """
 
-    replace_method: str = "auto"
-    """
-    If 'auto' DeepSpeed will automatically try and replace model modules with
-    its optimized versions. If an injection_policy is set this will override
-    the automatic replacement behavior.
-    """
+    replace_method: str = Field(
+        "auto",
+        deprecated=True,
+        deprecated_msg="This parameter is no longer needed, please remove from your call to DeepSpeed-inference")
 
     injection_policy: Dict = Field(None, alias="injection_dict")
     """
@@ -233,9 +241,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     injection_policy_tuple: tuple = None
     """ TODO: Add docs """
 
-    config: Dict = Field(
-        None,
-        alias="args")  # todo: really no need for this field if we can refactor
+    config: Dict = Field(None, alias="args")  # todo: really no need for this field if we can refactor
 
     max_out_tokens: int = Field(1024, alias="max_tokens")
     """
@@ -243,6 +249,16 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     with, including the input and output tokens. Please consider increasing it
     to the required token-length required for your use-case.
     """
+
+    min_out_tokens: int = Field(1, alias="min_tokens")
+    """
+    This argument communicates to the runtime the minimum number of tokens you
+    expect you will need to generate. This will cause the runtime to error
+    if it unable to provide this and provide context on the memory pressure
+    rather than seg-faulting or providing corrupted output.
+    """
+
+    transposed_mode: bool = Field(False, alias="transposed_mode")
 
     mp_size: int = Field(1, deprecated=True, new_param="tensor_parallel.tp_size")
     """
@@ -252,18 +268,10 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     """
     mpu: object = Field(None, deprecated=True, new_param="tensor_parallel.mpu")
     ep_size: int = Field(1, deprecated=True, new_param="moe.ep_size")
-    ep_group: object = Field(None,
-                             alias="expert_group",
-                             deprecated=True,
-                             new_param="moe.ep_group")
-    ep_mp_group: object = Field(None,
-                                alias="expert_mp_group",
-                                deprecated=True,
-                                new_param="moe.ep_mp_group")
+    ep_group: object = Field(None, alias="expert_group", deprecated=True, new_param="moe.ep_group")
+    ep_mp_group: object = Field(None, alias="expert_mp_group", deprecated=True, new_param="moe.ep_mp_group")
     moe_experts: list = Field([1], deprecated=True, new_param="moe.moe_experts")
-    moe_type: MoETypeEnum = Field(MoETypeEnum.standard,
-                                  deprecated=True,
-                                  new_param="moe.type")
+    moe_type: MoETypeEnum = Field(MoETypeEnum.standard, deprecated=True, new_param="moe.type")
 
     @validator("moe")
     def moe_backward_compat(cls, field_value, values):

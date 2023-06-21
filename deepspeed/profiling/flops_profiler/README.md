@@ -166,6 +166,7 @@ When using DeepSpeed for model training, the profiler can be configured in the d
 {
   "flops_profiler": {
     "enabled": true,
+    "recompute_fwd_factor": 0.0,
     "profile_step": 1,
     "module_depth": -1,
     "top_modules": 1,
@@ -309,8 +310,9 @@ The following example shows how to profile AlexNet using the DeepSpeed flops pro
 import torchvision.models as models
 import torch
 from deepspeed.profiling.flops_profiler import get_model_profile
+from deepspeed.accelerator import get_accelerator
 
-with torch.cuda.device(0):
+with get_accelerator().device(0):
     model = models.alexnet()
     batch_size = 256
     flops, macs, params = get_model_profile(model=model, # model
@@ -334,6 +336,7 @@ from functools import partial
 import torch
 from transformers import BertForSequenceClassification, BertTokenizer
 from deepspeed.profiling.flops_profiler import get_model_profile
+from deepspeed.accelerator import get_accelerator
 
 
 def bert_input_constructor(batch_size, seq_len, tokenizer):
@@ -350,7 +353,7 @@ def bert_input_constructor(batch_size, seq_len, tokenizer):
     return inputs
 
 
-with torch.cuda.device(0):
+with get_accelerator().device(0):
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     model = BertForSequenceClassification.from_pretrained('bert-base-uncased')
     batch_size = 4

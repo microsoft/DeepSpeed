@@ -1,7 +1,9 @@
-/*
-Copyright 2020 The Microsoft DeepSpeed Team
-Licensed under the MIT license.
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
 
+// DeepSpeed Team
+
+/*
 Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 */
 
@@ -36,6 +38,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("sync_pwrite", &deepspeed_aio_handle_t::sync_pwrite)
         .def("async_pread", &deepspeed_aio_handle_t::async_pread)
         .def("async_pwrite", &deepspeed_aio_handle_t::async_pwrite)
+
+        .def("new_cpu_locked_tensor", &deepspeed_aio_handle_t::new_cpu_locked_tensor)
+        .def("free_cpu_locked_tensor", &deepspeed_aio_handle_t::free_cpu_locked_tensor)
 
         .def("wait", &deepspeed_aio_handle_t::wait);
 }

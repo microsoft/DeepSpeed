@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 from deepspeed.utils import logger, log_dist
 from deepspeed.runtime.checkpoint_engine.checkpoint_engine import \
@@ -5,11 +10,12 @@ from deepspeed.runtime.checkpoint_engine.checkpoint_engine import \
 
 
 class TorchCheckpointEngine(CheckpointEngine):
+
     def __init__(self, config_params=None):
         super().__init__(config_params)
 
     def create(self, tag):
-        log_dist(f"[Torch] Checkpoint {tag} is begin to save!", ranks=[0])
+        log_dist(f"[Torch] Checkpoint {tag} is about to be saved!", ranks=[0])
 
     def save(self, state_dict, path: str):
         logger.info(f"[Torch] Saving {path}...")
