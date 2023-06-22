@@ -563,8 +563,8 @@ class AllGatherCoalescedHandle:
         params: List[Parameter],
         partitions: List[Tensor],
         world_size: int,
-        use_secondary_tensor: bool,
-        forward: bool,
+        use_secondary_tensor=False,
+        forward=False,
         quantization=None,
     ) -> None:
         self.allgather_handle = allgather_handle
