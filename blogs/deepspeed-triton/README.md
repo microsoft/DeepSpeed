@@ -64,7 +64,7 @@ pipe.model = deepspeed.init_inference(pipe.model,
 We use an example of Bert-base here.
 
 ```python
-pip install deepspeed
+pip install deepspeed[triton]
 
 git clone https://github.com/microsoft/DeepSpeedExamples.git
 cd DeepSpeedExamples/inference/huggingface/fill-mask
@@ -75,7 +75,7 @@ deepspeed --num_gpus 1 test-bert.py --triton
 To run a performance benchmark, you can use the following command:
 
 ```python
-pip install deepspeed
+pip install deepspeed[triton]
 
 git clone https://github.com/microsoft/DeepSpeedExamples.git
 cd DeepSpeedExamples/benchmarks/inference
@@ -91,6 +91,6 @@ deepspeed --num_gpus 1 triton-bert-benchmark.py --model bert-base-cased --dtype 
 
 * To achieve the best performance with Triton optimization, you need to activate CUDA graph and ‘triton_autotune’ in the DeepSpeed config. CUDA graph prevents the overhead of JIT compilation and a deep call stack in Triton. ‘triton_autotune’ executes an initial step to find the most suitable parameters for Triton kernels, which may take some time.
 
-* We used [the latest Triton release](https://pypi.org/project/triton/2.0.0.post1/) in our experiments.
+* We used [Triton 2.0.0.post1 release](https://pypi.org/project/triton/2.0.0.post1/) in our experiments.
 
 * In our experiments, we used a batch size of 1, a sequence length range of 8 to 512, and a ‘fill-mask’ task. Table 1 shows the average P90 latency over the entire sequence length range, while Figures 1 and 2 show the P90 latency for specific sub-ranges. The baseline is the Huggingface transformers without any optimization. The speedup is calculated as (baseline P90 latency)/(DeepSpeed-Triton P90 Latency). We found that the CUDA kernel in MLP performed better than the Triton kernel in our experiments, so we used a hybrid approach that combines both kernels when Triton is enabled in the DeepSpeed config.
