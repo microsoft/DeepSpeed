@@ -3346,7 +3346,7 @@ class DeepSpeedEngine(Module):
 
         tag = f"global_step{self.global_steps}"
         tag = str(tag)
-        self.checkpoint_engine.create(tag)
+        self.checkpoint_engine.create(save_dir, tag)
 
         if dist.get_rank() == 0:
             self.checkpoint_engine.makedirs(save_dir, exist_ok=True)
