@@ -682,15 +682,23 @@ def _instance_norm_flops_compute(
     return input.numel() * (5 if has_affine else 4), 0
 
 
-def _upsample_flops_compute(input, **kwargs):
+def _upsample_flops_compute(*args, **kwargs):
+    input = args[0]
     size = kwargs.get('size', None)
+    if size is None and len(args) > 1:
+        size = args[1]
+
     if size is not None:
         if isinstance(size, tuple) or isinstance(size, list):
             return int(_prod(size)), 0
         else:
             return int(size), 0
+
     scale_factor = kwargs.get('scale_factor', None)
+    if scale_factor is None and len(args) > 2:
+        scale_factor = args[2]
     assert scale_factor is not None, "either size or scale_factor should be defined"
+
     flops = input.numel()
     if isinstance(scale_factor, tuple) and len(scale_factor) == len(input):
         flops * int(_prod(scale_factor))
@@ -1172,20 +1180,19 @@ def get_module_duration(module):
     return duration
 
 
-def get_model_profile(
-    model,
-    input_shape=None,
-    args=[],
-    kwargs={},
-    print_profile=True,
-    detailed=True,
-    module_depth=-1,
-    top_modules=1,
-    warm_up=1,
-    as_string=True,
-    output_file=None,
-    ignore_modules=None,
-):
+def get_model_profile(model,
+                      input_shape=None,
+                      args=[],
+                      kwargs={},
+                      print_profile=True,
+                      detailed=True,
+                      module_depth=-1,
+                      top_modules=1,
+                      warm_up=1,
+                      as_string=True,
+                      output_file=None,
+                      ignore_modules=None,
+                      mode='forward'):
     """Returns the total floating-point operations, MACs, and parameters of a model.
 
     Example:
@@ -1231,18 +1238,29 @@ def get_model_profile(
 
         args = [input]
     assert (len(args) > 0) or (len(kwargs) > 0), "args and/or kwargs must be specified if input_shape is None"
-
     for _ in range(warm_up):
         if kwargs:
-            _ = model(*args, **kwargs)
+            if mode == 'forward':
+                _ = model(*args, **kwargs)
+            if mode == 'generate':
+                _ = model.generate(*args, **kwargs)
         else:
-            _ = model(*args)
+            if mode == 'forward':
+                _ = model(*args)
+            if mode == 'generate':
+                _ = model.generate(*args)
     prof.start_profile(ignore_list=ignore_modules)
 
     if kwargs:
-        _ = model(*args, **kwargs)
+        if mode == 'forward':
+            _ = model(*args, **kwargs)
+        if mode == 'generate':
+            _ = model.generate(*args, **kwargs)
     else:
-        _ = model(*args)
+        if mode == 'forward':
+            _ = model(*args)
+        if mode == 'generate':
+            _ = model.generate(*args)
 
     flops = prof.get_total_flops()
     macs = prof.get_total_macs()
