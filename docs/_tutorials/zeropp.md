@@ -1,6 +1,6 @@
 ---
 title: "ZeRO++"
-tags: training, ZeRO, communication-efficiency, large-model
+tags: training ZeRO communication-efficiency large-model
 ---
 
 ZeRO++ is a system of communication optimization strategies built on top of [ZeRO](https://www.microsoft.com/en-us/research/blog/zeropp) to offer unmatched efficiency for large model training regardless of the scale or cross-device bandwidth constraints. Read our [ZeRO++ blog](https://www.microsoft.com/en-us/research/blog/msr-zeropp-placeholder/) and [paper](https://www.microsoft.com/en-us/research/blog/arxiv-placehoder/) to learn more!
@@ -72,13 +72,13 @@ See more details on Megatron-DeepSpeed [tutorial](/tutorials/megatron/) examples
 Here is a screenshots of the training log for both ZeRO baseline and ZeRO++:
 
 ZeRO baseline
-<a href="/docs/assets/images/zeropp/ZeRO-baseline.png">
-<img src="/docs/assets/images/zeropp/ZeRO-baseline.png">
+<a href="/assets/images/zeropp/ZeRO-baseline.png">
+<img src="/assets/images/zeropp/ZeRO-baseline.png">
 </a>
 
 ZeRO++
-<a href="/docs/assets/images/zeropp/ZeROpp.png">
-<img src="/docs/assets/images/zeropp/ZeROpp.png">
+<a href="/assets/images/zeropp/ZeROpp.png">
+<img src="/assets/images/zeropp/ZeROpp.png">
 </a>
 
 Congratulations! You have completed the ZeRO++ tutorial.
