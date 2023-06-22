@@ -1,8 +1,12 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
+import functools
 import logging
 import sys
 import os
-
-from deepspeed import comm as dist
 
 log_levels = {
     "debug": logging.DEBUG,
@@ -14,6 +18,7 @@ log_levels = {
 
 
 class LoggerFactory:
+
     @staticmethod
     def create_logger(name=None, level=logging.INFO):
         """create a logger
@@ -29,9 +34,8 @@ class LoggerFactory:
         if name is None:
             raise ValueError("name for logger cannot be None")
 
-        formatter = logging.Formatter(
-            "[%(asctime)s] [%(levelname)s] "
-            "[%(filename)s:%(lineno)d:%(funcName)s] %(message)s")
+        formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] "
+                                      "[%(filename)s:%(lineno)d:%(funcName)s] %(message)s")
 
         logger_ = logging.getLogger(name)
         logger_.setLevel(level)
@@ -46,7 +50,30 @@ class LoggerFactory:
 logger = LoggerFactory.create_logger(name="DeepSpeed", level=logging.INFO)
 
 
+@functools.lru_cache(None)
+def warning_once(*args, **kwargs):
+    """
+    This method is identical to `logger.warning()`, but will emit the warning with the same message only once
+
+    Note: The cache is for the function arguments, so 2 different callers using the same arguments will hit the cache.
+    The assumption here is that all warning messages are unique across the code. If they aren't then need to switch to
+    another type of cache that includes the caller frame information in the hashing function.
+    """
+    logger.warning(*args, **kwargs)
+
+
+logger.warning_once = warning_once
+
+
+def print_configuration(args, name):
+    logger.info("{}:".format(name))
+    for arg in sorted(vars(args)):
+        dots = "." * (29 - len(arg))
+        logger.info("  {} {} {}".format(arg, dots, getattr(args, arg)))
+
+
 def log_dist(message, ranks=None, level=logging.INFO):
+    from deepspeed import comm as dist
     """Log message when one of following condition meets
 
     + not dist.is_initialized()
@@ -70,6 +97,7 @@ def log_dist(message, ranks=None, level=logging.INFO):
 
 
 def print_json_dist(message, ranks=None, path=None):
+    from deepspeed import comm as dist
     """Print message when one of following condition meets
 
     + not dist.is_initialized()

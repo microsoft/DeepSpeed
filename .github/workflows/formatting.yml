@@ -3,11 +3,12 @@ name: Formatting
 on:
   push:
     branches:
-      - 'master'
       - 'staging**'
   pull_request:
     branches:
       '**'
+  schedule:
+    - cron: "0 0 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,14 +21,12 @@ jobs:
     runs-on: ubuntu-20.04
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: environment
         run: |
           which python
           python --version
-          pip install torch==1.9.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
-          python -c "import torch; print('torch:', torch.__version__, torch)"
 
       - name: Install deepspeed
         run: |
@@ -36,4 +35,5 @@ jobs:
 
       - name: Formatting checks
         run: |
+           pip show pre-commit clang-format
            pre-commit run --all-files

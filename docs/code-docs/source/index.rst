@@ -19,7 +19,7 @@ Training API
    training
 
 Inference API
-------------
+-------------
 
 .. toctree::
    :maxdepth: 2
@@ -64,7 +64,7 @@ Pipeline Parallelism
    pipeline
 
 Optimizers
---------------------
+----------
 .. toctree::
    :maxdepth: 2
 
@@ -97,6 +97,13 @@ Memory Usage
    :maxdepth: 2
 
    memory
+
+Monitoring
+----------
+.. toctree::
+   :maxdepth: 2
+
+   monitor
 
 Indices and tables
 ------------------

@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
+from __future__ import annotations
+'''Copyright The Microsoft DeepSpeed Team'''
 """
 Checks each file in sys.argv for the string "torch.distributed".
 Modified from https://github.com/jlebar/pre-commit-hooks/blob/master/check_do_not_submit.py
 """
-from __future__ import annotations
 
-import os
 import subprocess
 import sys
 
@@ -21,12 +26,7 @@ def err(s: str) -> None:
 #  - unlike plain grep, which is slower and has different flags on MacOS versus
 #    Linux, git grep is always the same.
 res = subprocess.run(
-    ["git",
-     "grep",
-     "-Hn",
-     "--no-index",
-     "torch\.distributed",
-     *sys.argv[1:]],
+    ["git", "grep", "-Hn", "--no-index", r"torch\.distributed", *sys.argv[1:]],
     capture_output=True,
 )
 if res.returncode == 0:

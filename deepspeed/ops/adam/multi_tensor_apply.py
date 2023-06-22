@@ -1,13 +1,15 @@
-'''
-Copyright 2020 The Microsoft DeepSpeed Team
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
+# DeepSpeed Team
+"""
 Copyright NVIDIA/apex
 This file is adapted from NVIDIA/apex, commit a109f85
-'''
-import torch
+"""
 
 
 class MultiTensorApply(object):
+
     def __init__(self, chunk_size):
         self.chunk_size = chunk_size
 

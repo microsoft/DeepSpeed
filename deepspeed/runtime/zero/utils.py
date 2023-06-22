@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import os
 from typing import List
 
@@ -5,16 +10,16 @@ import torch
 from deepspeed import comm as dist
 from deepspeed.utils import logger
 from deepspeed.ops.adam import DeepSpeedCPUAdam
+from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
 from deepspeed.ops.adam import FusedAdam
 from deepspeed.utils.nvtx import instrument_w_nvtx
+from deepspeed.accelerator import get_accelerator
 
 
 def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
     data_parallel_size = int(dist.get_world_size())
     parameter_parallel_size = parameter_parallel_size or data_parallel_size
-    logger.info("data_parallel_size: %s, parameter_parallel_size: %s",
-                data_parallel_size,
-                parameter_parallel_size)
+    logger.info("data_parallel_size: %s, parameter_parallel_size: %s", data_parallel_size, parameter_parallel_size)
     assert data_parallel_size % parameter_parallel_size == 0, \
         'world size should be divisible by parameter parallel size'
     rank = dist.get_rank()
@@ -32,10 +37,7 @@ class ZeRORuntimeException(Exception):
 
 
 ZERO_SUPPORTED_OPTIMIZERS = [
-    torch.optim.Adam,
-    torch.optim.AdamW,
-    FusedAdam,
-    DeepSpeedCPUAdam
+    torch.optim.Adam, torch.optim.AdamW, FusedAdam, DeepSpeedCPUAdam, torch.optim.Adagrad, DeepSpeedCPUAdagrad
 ]
 
 # Add apex FusedAdam to supported list if apex is installed
@@ -49,9 +51,7 @@ except ImportError:
 
 def is_zero_supported_optimizer(optimizer):
     if dist.get_rank() == 0:
-        logger.info(
-            f'Checking ZeRO support for optimizer={optimizer.__class__.__name__} type={type(optimizer)}'
-        )
+        logger.info(f'Checking ZeRO support for optimizer={optimizer.__class__.__name__} type={type(optimizer)}')
     return type(optimizer) in ZERO_SUPPORTED_OPTIMIZERS
 
 
@@ -63,8 +63,8 @@ def get_lst_from_rank0(lst: List[int]) -> None:
     lst_tensor = torch.tensor(
         lst if dist.get_rank() == 0 else [-1] * len(lst),
         dtype=int,
-        # device=torch.cuda.current_device(),
-        device=torch.device('cuda:{}'.format(os.environ["LOCAL_RANK"])),
+        # device=get_accelerator().current_device_name(),
+        device=torch.device(get_accelerator().device_name(os.environ["LOCAL_RANK"])),
         requires_grad=False,
     )
     dist.broadcast(lst_tensor, src=0, async_op=False)

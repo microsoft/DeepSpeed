@@ -1,0 +1,46 @@
+name: python
+
+on:
+  push:
+    branches:
+      - 'staging**'
+    paths-ignore:
+      - 'docs/**'
+      - 'blogs/**'
+  pull_request:
+    branches:
+      '**'
+    paths-ignore:
+      - 'docs/**'
+      - 'blogs/**'
+  schedule:
+    - cron: "0 0 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  version-check:
+    strategy:
+      matrix:
+        pyVersion: ["3.6", "3.7", "3.8", "3.9", "3.10"]
+      fail-fast: false
+
+    runs-on: ubuntu-20.04
+    container:
+      image: deepspeed/gh-builder:py${{ matrix.pyVersion }}
+
+    steps:
+        - uses: actions/checkout@v3
+
+        - name: environment
+          run: |
+            which python
+            python --version
+        - name: Install deepspeed
+          run: |
+            pip3 install .
+        - name: DS Report
+          run: |
+             ds_report

@@ -1,18 +1,16 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-Licensed under the MIT license.
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
+# DeepSpeed Team
+"""
 Functionality of swapping tensors to/from (NVMe) storage devices.
 """
 
-import os
 import torch
 from deepspeed.utils.logging import logger
+from deepspeed.accelerator import get_accelerator
 
 from deepspeed import comm as dist
-
-from deepspeed.runtime.swap_tensor.constants import AIO_BLOCK_SIZE, AIO_QUEUE_DEPTH, \
-    AIO_THREAD_COUNT, AIO_SINGLE_SUBMIT, AIO_OVERLAP_EVENTS
 
 MIN_AIO_BYTES = 1024**2
 AIO_ALIGNED_BYTES = 1024
@@ -37,6 +35,7 @@ def print_object(obj, name, exclude_list=[]):
 
 
 class SwapBuffer(object):
+
     def __init__(self, buffer):
         self.buffer = buffer
         self.reset()
@@ -95,6 +94,7 @@ class SwapBuffer(object):
 
 
 class SwapBufferPool(object):
+
     def __init__(self, buffers):
         assert all([buf.is_pinned() for buf in buffers])
         self.buffers = [SwapBuffer(buf) for buf in buffers]
@@ -178,19 +178,17 @@ class SwapBufferPool(object):
 
 
 class SwapBufferManager(object):
+
     def __init__(self, num_elems, count, dtype):
         self.num_elems = num_elems
         self.count = count
         self.dtype = dtype
         self.all_buffers = [
-            torch.zeros(num_elems,
-                        device='cpu',
-                        dtype=dtype).pin_memory() for _ in range(count)
+            get_accelerator().pin_memory(torch.zeros(num_elems, device='cpu', dtype=dtype)) for _ in range(count)
         ]
         self.free_buffer_index = [i for i in range(count)]
         self.used_buffer_index = {}
-        self.gigabytes = (self.all_buffers[0].element_size() * num_elems * count) / (1024
-                                                                                     **3)
+        self.gigabytes = (self.all_buffers[0].element_size() * num_elems * count) / (1024**3)
 
         if dist.get_rank() == 0:
             exclude_list = ['all_buffers']
@@ -213,9 +211,7 @@ class SwapBufferManager(object):
         return buffers
 
     def allocate_all(self, num_elems, dtype):
-        return self.allocate(num_elems=num_elems,
-                             count=len(self.free_buffer_index),
-                             dtype=dtype)
+        return self.allocate(num_elems=num_elems, count=len(self.free_buffer_index), dtype=dtype)
 
     def free(self, buffers):
         buffer_ids = []

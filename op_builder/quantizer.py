@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .builder import CUDAOpBuilder
 
 
@@ -15,8 +20,13 @@ class QuantizerBuilder(CUDAOpBuilder):
     def sources(self):
         return [
             'csrc/quantization/pt_binding.cpp',
-            'csrc/quantization/quantizer.cu',
+            'csrc/quantization/fake_quantizer.cu',
+            'csrc/quantization/quantize.cu',
+            'csrc/quantization/dequantize.cu',
         ]
 
     def include_paths(self):
         return ['csrc/includes']
+
+    def extra_ldflags(self):
+        return ['-lcurand']

@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .utils import check_wandb_availability
 from .monitor import Monitor
 
@@ -5,15 +10,16 @@ import deepspeed.comm as dist
 
 
 class WandbMonitor(Monitor):
-    def __init__(self, monitor_config):
-        super().__init__(monitor_config)
+
+    def __init__(self, wandb_config):
+        super().__init__(wandb_config)
         check_wandb_availability()
         import wandb
 
-        self.enabled = monitor_config.wandb_config.enabled
-        self.group = monitor_config.wandb_config.group
-        self.team = monitor_config.wandb_config.team
-        self.project = monitor_config.wandb_config.project
+        self.enabled = wandb_config.enabled
+        self.group = wandb_config.group
+        self.team = wandb_config.team
+        self.project = wandb_config.project
 
         if self.enabled and dist.get_rank() == 0:
             wandb.init(project=self.project, group=self.group, entity=self.team)

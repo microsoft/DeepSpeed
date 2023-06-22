@@ -47,9 +47,7 @@ Epoch: 18 | Time: 12m 38s
 Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8340295466123281/0.8339096826688365
 ```
 
-<!-- TODO: uncomment the below task-agnostic tutorial after the code example is fixed and released. -->
-
-<!-- To apply layer reduction for task-agnostic compression, we provide an example on how to do so in the GPT pre-training stage.
+To apply layer reduction for task-agnostic compression, we provide an example on how to do so in the GPT pre-training stage.
 
 Step 1: Obtain the latest version of the [Megatron-DeepSpeed](https://github.com/microsoft/Megatron-DeepSpeed).
 
@@ -69,16 +67,14 @@ Step 3: Run the example bash script such as `ds_pretrain_gpt_125M_dense_cl_kd.sh
 
 Apart from the above configs, you may also need to modify the data path in the `data_options` so that the trainer knows the data location. To make things slightly easier, we provide several example scripts for running distillation for different model sizes, including 350M (`ds_pretrain_gpt_350M_dense_kd.sh`) and 1.3B models (`ds_pretrain_gpt_1.3B_dense_cl_kd.sh`). We also empirically found that a staged KD often led to a better pre-trained distilled model on downstream tasks. Therefore, we suggest an easy approach to early-stop KD by not setting `--kd` in the script provided (e.g., disabling KD in the remaining 40% of training).
 
-Step 4 (optional): After distilling the model, one can also choose to further quantize the distilled model by running the script `125M-Int8-test-64gpu-distilled-group48.sh`, which quantizes both the weights and activations of a distilled model with INT8 quantizer (the weight and activation quantization are introduced in the following sections). We provide the perplexity results and zero-shot evaluation results (average across 10 tasks) in the following table.
+Step 4: After distilling the model, one can also choose to further quantize the distilled model by running the script `125M-L10-Int8-test-64gpu-distilled-group48.sh`, which quantizes both the weights and activations of a distilled model with INT8 quantizer (the weight and activation quantization are introduced in the following sections). note that you need to set the `-reset-iteration` flag when performing the quantization. We provide the zero-shot perplexity result from WikiText-2 and LAMBADA in the following table.
 
-| ---: | ---: | ---: |
-| **GPT (125M)** | **PPL** | **Zero-shot evaluation** |
-| Uncompressed | 8.92 | 32.01 |
-| Pretraining distillation | 9.36 | 31.74 |
-| Quantization only | 9.39 | 31.96 |
-| Pretraining distillation + quantization | 9.86 | 31.32 | -->
-
-<!-- TODO: Is the PPL the validation PPL or wikitext PPL? And there is no description about which 10 tasks are used, maybe it's better to just show one common task result (e.g., WikiText-2). -->
+| **GPT (125M)** | **#Layers** | **wikitex2 perplexity** | **LAMBADA** |
+| ---------- |---------- |---------- |---------- |
+| Uncompressed | 12 | 29.6 | 39.5 |
+| Quantization only | 12 | 29.8 | 39.7 |
+| Distillation only | 10 | 31.9 | 39.2 |
+| Distillation + quantization | 10 | 32.28 | 38.7 |
 
 ### 1.2 Weight Quantization
 **What is weight quantization**
@@ -162,7 +158,7 @@ Pruning aims to reduce the number of parameters and operations involved in gener
 
 | **Method**            | **Type**     |
 | --------------------- | ------------ |
-| [Sparse pruning](#141-sparse-pruning)  | Unstructured |
+| [Sparse pruning](#141-sparse-pruning)  | Unstructured and Structured |
 | [Row pruning](#142-row-pruning)     | Structured    |
 | [Head pruning](#143-head-pruning)     | Structured    |
 | [Channel pruning](#144-channel-pruning) | Structured    |
@@ -170,7 +166,7 @@ Pruning aims to reduce the number of parameters and operations involved in gener
 #### 1.4.1 Sparse Pruning
 **What is sparse pruning**
 
-Sparse pruning means we set some of the elements in each weight matrix with zero values. There is no structure pattern in the zero values. One way to perform pruning is based on the absolute value of the weight parameters, see for instance [this paper](https://arxiv.org/abs/1506.02626).
+Sparse pruning means we set some of the elements in each weight matrix with zero values. Relying on the pruning method user chosen, the zero values may have structured pattern or unstructured pattern. One way to perform pruning is based on the absolute value of the weight parameters, see for instance [this paper](https://arxiv.org/abs/1506.02626). Another way to perform pruning is based on the weights' effect to the loss function when they are masked, see for instance [this paper](https://arxiv.org/abs/1810.02340).
 
 **When to use sparse pruning**
 
@@ -182,11 +178,13 @@ Sparse pruning can be enabled and configured using the DeepSpeed config JSON fil
 
 (1)`schedule_offset`, we empirically find that when using `method: topk`, it’s better to set the `schedule_offset` to a large value such as 10% of the total training steps.
 
-(2)`method`, we support L1 norm and topk methods. Users are welcome to contribute more methods.
+(2)`method`, we support L1 norm, topk and snip_momentum methods. Users are welcome to contribute more methods.
 
-(3)`sp1`, users can expand more groups such as `sp2`, `sp3`, etc.
+(3)`sp1`, users can expand more groups such as `sp2`, `sp3`, etc. Note this is not needed for snip_momentum method.
 
-(4)`dense_ratio`, for unstructured sparse pruning, the dense ratio could be less than 0.1 for BRET-base model while still yielding a good accuracy. For ResNet-50, the dense ratio could be as low as 0.3 while still having good accuracy on ImageNet.
+(4)`dense_ratio`, for unstructured sparse pruning, the dense ratio could be less than 0.1 for BRET-base model while still yielding a good accuracy. For ResNet-50, the dense ratio could be as low as 0.3 while still having good accuracy on ImageNet. for structured sparse pruning like snip_momentum, the dense ratio should be specified in shared_parameters and is used to calculate the global sparsity ratio.
+
+(5)`frequency`, `block_pattern` and `schedule_offset_end`, they are used to specify the pruning frequency on steps, the block-wise pruning pattern (NxM and N in M), and the end steps for pruning. For snip_momentum method, these configurations are mandatory.
 
 The client code change is the same as [weight quantization](#12-weight-quantization).
 

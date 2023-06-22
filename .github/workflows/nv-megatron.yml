@@ -1,0 +1,59 @@
+name: nv-megatron
+
+on:
+  push:
+    branches:
+      - 'staging**'
+    paths-ignore:
+      - 'docs/**'
+      - 'blogs/**'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'blogs/**'
+  schedule:
+    - cron: "0 0 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    runs-on: [self-hosted, nvidia, cu116, v100]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - id: setup-venv
+        uses: ./.github/workflows/setup-venv
+
+      - name: Install pytorch
+        run: |
+          pip install --no-cache-dir torch==1.13.1 torchvision --extra-index-url https://download.pytorch.org/whl/cu116
+          python -c "import torch; print('torch:', torch.__version__, torch)"
+          python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+
+      - name: Install deepspeed
+        run: |
+          pip install .[dev]
+          ds_report
+
+      - name: Install apex
+        run: |
+          # Install 82ee367 specifically before pyproject.toml changes due to incomplete dependencies causing errors.
+          pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" git+https://github.com/NVIDIA/apex.git@82ee367
+
+      - name: Python environment
+        run: |
+          pip list
+
+      - name: Megatron unit tests
+        run: |
+          git clone https://github.com/microsoft/Megatron-DeepSpeed.git
+          cd Megatron-DeepSpeed
+          pip install .
+          unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
+          if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
+          cd tests
+          MEGATRON_CKPT_DIR=/blob/megatron_ckpt/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose ./

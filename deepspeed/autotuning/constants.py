@@ -1,29 +1,22 @@
-"""
-Copyright (c) Microsoft Corporation
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 #########################################
-# autotunner implementation constants
+# autotuner implementation constants
 #########################################
 
 import os
 
-DEFAULT_TEMPLATE_PATH_ZERO_0 = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                                            "config_templates",
+DEFAULT_TEMPLATE_PATH_ZERO_0 = os.path.join(os.path.dirname(os.path.realpath(__file__)), "config_templates",
                                             "template_zero0.json")
-DEFAULT_TEMPLATE_PATH_ZERO_1 = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                                            "config_templates",
+DEFAULT_TEMPLATE_PATH_ZERO_1 = os.path.join(os.path.dirname(os.path.realpath(__file__)), "config_templates",
                                             "template_zero1.json")
-DEFAULT_TEMPLATE_PATH_ZERO_2 = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                                            "config_templates",
+DEFAULT_TEMPLATE_PATH_ZERO_2 = os.path.join(os.path.dirname(os.path.realpath(__file__)), "config_templates",
                                             "template_zero2.json")
-DEFAULT_TEMPLATE_PATH_ZERO_3 = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                                            "config_templates",
+DEFAULT_TEMPLATE_PATH_ZERO_3 = os.path.join(os.path.dirname(os.path.realpath(__file__)), "config_templates",
                                             "template_zero3.json")
-
-DEFAULT_EXPRS_DIR = os.path.join(os.getcwd(), "autotuning_exps")
-DEFAULT_RESULTS_DIR = os.path.join(os.getcwd(), "autotuning_results")
 
 METRIC_PERCENT_DIFF_CONST = 0.05
 DS_CONFIG = "ds_config"
@@ -54,10 +47,10 @@ AUTOTUNING_FAST = "fast"
 AUTOTUNING_FAST_DEFAULT = True
 
 AUTOTUNING_RESULTS_DIR = "results_dir"
-AUTOTUNING_RESULTS_DIR_DEFAULT = None
+AUTOTUNING_RESULTS_DIR_DEFAULT = "autotuning_results"
 
 AUTOTUNING_EXPS_DIR = "exps_dir"
-AUTOTUNING_EXPS_DIR_DEFAULT = None
+AUTOTUNING_EXPS_DIR_DEFAULT = "autotuning_exps"
 
 AUTOTUNING_OVERWRITE = "overwrite"
 AUTOTUNING_OVERWRITE_DEFAULT = True
@@ -124,7 +117,7 @@ MODEL_INFO_PROFILE = "profile"
 MODEL_INFO_PROFILE_DEFAULT = False
 MODEL_INFO_NUM_PARAMS = "num_params"
 MODEL_INFO_NUM_PARAMS_DEFAULT = None
-MODEL_INFO_HIDDEN_SIZE = "hideen_size"
+MODEL_INFO_HIDDEN_SIZE = "hidden_size"
 MODEL_INFO_HIDDEN_SIZE_DEFAULT = None
 MODEL_INFO_NUM_LAYERS = "num_layers"
 MODEL_INFO_NUM_LAYERS_DEFAULT = None
@@ -137,7 +130,7 @@ MODEL_INFO_KEY_DEFAULT_DICT = {
 }
 
 #########################################
-# autotunner search space constants
+# autotuner search space constants
 #########################################
 
 DEFAULT_HF_CONFIG = {
@@ -159,50 +152,31 @@ DEFAULT_TUNING_SPACE_ZERO_0 = {"zero_optimization": {"stage": 0}}
 DEFAULT_TUNING_SPACE_ZERO_1 = {
     "zero_optimization": {
         "stage": 1,
-        "reduce_bucket_size": [5e7,
-                               5e8,
-                               1e9],
-        "allgather_bucket_size": [5e7,
-                                  5e8,
-                                  1e9],
+        "reduce_bucket_size": [5e7, 5e8, 1e9],
+        "allgather_bucket_size": [5e7, 5e8, 1e9],
     }
 }
 
 DEFAULT_TUNING_SPACE_ZERO_2 = {
     "zero_optimization": {
         "stage": 2,
-        "overlap_comm": [True,
-                         False],
-        "reduce_scatter": [False,
-                           True],
-        "reduce_bucket_size": [5e7,
-                               5e8,
-                               1e9],
-        "allgather_bucket_size": [5e7,
-                                  5e8,
-                                  1e9],
-        "contiguous_gradients": [False,
-                                 True]
+        "overlap_comm": [True, False],
+        "reduce_scatter": [False, True],
+        "reduce_bucket_size": [5e7, 5e8, 1e9],
+        "allgather_bucket_size": [5e7, 5e8, 1e9],
+        "contiguous_gradients": [False, True]
     },
 }
 
 DEFAULT_TUNING_SPACE_ZERO_3 = {
     "zero_optimization": {
         "stage": 3,
-        "overlap_comm": [True,
-                         False],
-        "reduce_scatter": [False,
-                           True],
-        "reduce_bucket_size": [5e7,
-                               5e8,
-                               1e9],
-        "allgather_partitions": [True,
-                                 False],
-        "allgather_bucket_size": [5e7,
-                                  5e8,
-                                  1e9],
-        "contiguous_gradients": [False,
-                                 True]
+        "overlap_comm": [True, False],
+        "reduce_scatter": [False, True],
+        "reduce_bucket_size": [5e7, 5e8, 1e9],
+        "allgather_partitions": [True, False],
+        "allgather_bucket_size": [5e7, 5e8, 1e9],
+        "contiguous_gradients": [False, True]
     },
 }
 

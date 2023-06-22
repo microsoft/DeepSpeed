@@ -1,11 +1,10 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-Licensed under the MIT license.
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
+# DeepSpeed Team
+"""
 Functionality of swapping optimizer tensors to/from (NVMe) storage devices.
 """
-
-import os
 
 BYTES_PER_GB = 1024**3
 LOG_TIDS = [0]

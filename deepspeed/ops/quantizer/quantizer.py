@@ -1,14 +1,11 @@
-'''
-Copyright 2020 The Microsoft DeepSpeed Team
-'''
-import json
-import math
-import importlib
-import torch
-from torch import nn
-from torch.autograd import Function
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
-from ..op_builder import QuantizerBuilder
+# DeepSpeed Team
+
+import torch
+
+from deepspeed.ops.op_builder import QuantizerBuilder
 
 # Cuda modules will be imported if needed
 quantizer_cuda_module = None
