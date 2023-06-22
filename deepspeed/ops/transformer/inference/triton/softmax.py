@@ -87,33 +87,3 @@ def softmax(input: torch.Tensor, mask: torch.Tensor = None, dim=-1) -> torch.Ten
             BLOCK_SIZE=BLOCK_SIZE,
         )
     return output
-
-
-def _test_softmax(M=1823, N=781, use_mask=False, minus_inf=-10000.0):
-    import random
-    torch.manual_seed(0)
-    x = torch.randn(M, N, device='cuda')
-    if use_mask:
-        # 1d masking test
-        mask = torch.zeros(1, N, device='cuda')
-        mask[0, random.randint(0, N - 1)] = minus_inf
-        y_triton = softmax(x, mask=mask)
-        y_torch = torch.softmax(x + mask, axis=1)
-        assert torch.allclose(y_triton, y_torch), (y_triton, y_torch)
-
-        # 2d masking test
-        mask = torch.zeros(M, N, device='cuda')
-        for i in range(M):
-            mask[i, random.randint(0, N - 1)] = minus_inf
-        y_triton = softmax(x, mask=mask)
-        y_torch = torch.softmax(x + mask, axis=1)
-    else:
-        y_triton = softmax(x)
-        y_torch = torch.softmax(x, axis=1)
-    assert torch.allclose(y_triton, y_torch), (y_triton, y_torch)
-    print("PASSED")
-
-
-if __name__ == '__main__':
-    _test_softmax(M=1823, N=781, use_mask=False)
-    _test_softmax(M=1823, N=781, use_mask=True)

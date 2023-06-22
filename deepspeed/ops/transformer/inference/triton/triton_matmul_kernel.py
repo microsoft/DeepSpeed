@@ -192,7 +192,7 @@ def matmul_4d_prune_config(configs, named_args, skip_autotune=SKIP_AUTOTUNE):
         dtsize = named_args['a_ptr'].element_size()
         dtype = named_args['a_ptr'].dtype
 
-        # 1. make sure we have enough smem
+        # make sure we have enough smem
         pruned_configs = []
         for config in configs:
             kw = config.kwargs
@@ -300,9 +300,6 @@ def matmul_4d_kernel(
     CACHE_M,
     CACHE_N,
     CACHE_K,
-    # The stride variables represent how much to increase the ptr by when moving by 1
-    # element in a particular dimension. E.g. stride_am is how much to increase a_ptr
-    # by to get the element one row down (A has M rows)
     stride_ab,
     stride_ah,
     stride_am,
@@ -326,10 +323,6 @@ def matmul_4d_kernel(
     """Kernel for computing the matmul C = A x B.
     A has shape (M, K), B has shape (K, N) and C has shape (M, N)
     """
-    # -----------------------------------------------------------
-    # Map program ids `pid` to the block of C it should compute.
-    # This is done in a grouped ordering to promote L2 data reuse
-    # See above `L2 Cache Optimizations` section for details
     pid = tl.program_id(axis=0)
     head = tl.program_id(axis=1)
     batch = tl.program_id(axis=2)
@@ -342,10 +335,7 @@ def matmul_4d_kernel(
     pid_m = first_pid_m + (pid % group_size_m)
     pid_n = (pid % num_pid_in_group) // group_size_m
 
-    # There's a bug where chained predicates are evaluated incorrectly.
-    # So here we need to nest each predicate.
     if MASK:
-        # This handles the blocks whose elements should entirely be masked out.
         if (pid_m + 1) * BLOCK_SIZE_M - 1 < pid_n * BLOCK_SIZE_N:
             c = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=c_ptr.dtype.element_ty) - float("inf")
             offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
@@ -355,13 +345,6 @@ def matmul_4d_kernel(
             tl.store(c_ptrs, c)
             return
 
-    # ----------------------------------------------------------
-    # Create pointers for the first blocks of A and B.
-    # We will advance this pointer as we move in the K direction
-    # and accumulate
-    # a_ptrs is a block of [BLOCK_SIZE_M, BLOCK_SIZE_K] pointers
-    # b_ptrs is a block of [BLOCK_SIZE_K, BLOCK_SIZE_n] pointers
-    # see above `Pointer Arithmetics` section for details
     offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     offs_k = tl.arange(0, BLOCK_SIZE_K)
@@ -370,36 +353,23 @@ def matmul_4d_kernel(
     b_ptrs = (b_ptr + batch * stride_bb + head * stride_bh +
               (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn))
 
-    # -----------------------------------------------------------
-    # Iterate to compute a block of the C matrix
-    # We accumulate into a `[BLOCK_SIZE_M, BLOCK_SIZE_N]` block
-    # of fp32 values for higher accuracy.
-    # `accumulator` will be converted back to fp16 after the loop
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, K, BLOCK_SIZE_K):
         a_mask = (offs_am[:, None] < M) & (offs_k[None, :] + k < K)
         b_mask = (offs_k[:, None] + k < K) & (offs_bn[None, :] < N)
         a = tl.load(a_ptrs, mask=a_mask, other=0.)
         b = tl.load(b_ptrs, mask=b_mask, other=0.)
-        # We accumulate along the K dimension
         accumulator += tl.dot(a, b)
-        # Advance the ptrs to the next K block
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
-    # you can fuse arbitrary activation functions here
-    # while the accumulator is still in FP32
-    # if scale > 0:
-    #     accumulator = accumulator * scale.to(tl.float32)
+
     c = accumulator.to(c_ptr.dtype.element_ty)
     if scale > 0:
         c = c * scale.to(c_ptr.dtype.element_ty)
 
-    # -----------------------------------------------------------
-    # Write back the block of the output matrix C
     offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     if MASK:
-        # This handles the blocks whose elements should partially be masked out.
         c += tl.where(offs_cm[:, None] >= offs_cn[None, :], 0, float("-inf"))
     c_ptrs = (c_ptr + batch * stride_cb + head * stride_ch + stride_cm * offs_cm[:, None] +
               stride_cn * offs_cn[None, :])
