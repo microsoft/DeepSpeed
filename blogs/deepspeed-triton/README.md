@@ -51,7 +51,6 @@ pipe = pipeline('fill-mask', model='bert-base-cased', framework='pt', device=0)
 pipe.model = deepspeed.init_inference(pipe.model,
                                         dtype=torch.float16,
                                         replace_with_kernel_inject=True,
-                                        replace_method='auto',
                                         enable_cuda_graph=True,
                                         use_triton=True,
                                         triton_autotune=True,
