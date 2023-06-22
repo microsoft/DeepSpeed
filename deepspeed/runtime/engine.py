@@ -16,6 +16,7 @@ from torch.nn.modules import Module
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
+from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
 from typing import Callable, Dict, Union, Iterable
 
@@ -93,7 +94,6 @@ from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist, print_configuration
 
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import UtilsBuilder
 
 from deepspeed.runtime.config import DtypeEnum
 
@@ -360,10 +360,9 @@ class DeepSpeedEngine(Module):
             if self.dump_state():
                 print_configuration(self, "DeepSpeedEngine")
 
-        # Load pre-installed or JIT compile (un)flatten ops
-        util_ops = UtilsBuilder().load()
-        self.flatten = util_ops.flatten
-        self.unflatten = util_ops.unflatten
+        # Use torch (un)flatten ops
+        self.flatten = _flatten_dense_tensors
+        self.unflatten = _unflatten_dense_tensors
 
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
@@ -1045,7 +1044,7 @@ class DeepSpeedEngine(Module):
             self.__check_params(self.module, torch.float)
 
         # zero.Init() handles device placement of model
-        if not (self.dont_change_device or is_zero3_model):
+        if not self.dont_change_device:
             self.module.to(self.device)
 
         # MoE related initialization
@@ -1081,7 +1080,7 @@ class DeepSpeedEngine(Module):
         self.expert_parallel_group = groups._get_expert_parallel_group_dict()
         self.expert_data_parallel_group = groups._get_expert_data_parallel_group_dict()
 
-        if not (self.amp_enabled() or is_zero3_model):
+        if not self.amp_enabled():
             self._broadcast_model()
 
     # check if parameters are duplicated in optimizer param_groups
