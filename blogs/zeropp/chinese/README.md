@@ -1,6 +1,13 @@
+<div align="center">
+
 # DeepSpeed ZeRO++：降低4倍网络通信，显著提高大模型及类ChatGPT模型训练效率
 
+</div>
+<div align="center">
+
 <img src="../assets/images/overview.png" width="800px"/>
+
+</div>
 
 图1: DeepSpeed ZeRO++ 简介
 
@@ -24,9 +31,17 @@ DeepSpeed 的 ZeRO [优化系列](https://www.deepspeed.ai/tutorials/zero/)为�
 
 接下来，我们将更深入地解释 ZeRO 及其通信开销，并讨论 ZeRO++ 中为解决这些问题而进行的关键优化。 然后我们将展示 ZeRO++ 对不同模型大小、批量大小和带宽限制的训练吞吐量的影响。我们还将讨论 ZeRO++ 如何应用于 DeepSpeed-Chat，以加速使用 RLHF的对话模型的训练。
 
+<div align="center">
+
 ## ZeRO++详解
 
+</div>
+
+<div align="center">
+
 <img src="../assets/images/zero-overview.gif" width="800px"/>
+
+</div>
 
 图2: ZeRO optimizer 工作流程图
 
@@ -36,7 +51,11 @@ ZeRO 是数据并行(Data Parallelism)的一种内存高效版本，其中模型
 
 为了减少这些通信开销，ZeRO++ 进行了三组通信优化，分别针对上述三个通信集合：
 
+<div align="center">
+
 <img src="../assets/images/qwz.png" width="800px"/>
+
+</div>
 
 图3:qwZ的分区量化图例
 
@@ -44,7 +63,11 @@ ZeRO 是数据并行(Data Parallelism)的一种内存高效版本，其中模型
 
 首先，为了减少 all-gather 期间的参数通信量，我们采用权重量化在通信前将每个模型参数从 FP16（两个字节）动态缩小为 INT8（一个字节）数据类型，并在通信后对权重进行反量化。 然而，简单地对权重进行量化会降低模型训练的准确性。 为了保持良好的模型训练精度，我们采用分区量化，即对模型参数的每个子集进行独立量化。目前尚且没有针对分区量化的高性能现有实现。 因此，我们自行从头开始实现了一套高度优化的量化 CUDA 内核，与基本量化相比，精度提高 3 倍，速度提高 5 倍。
 
+<div align="center">
+
 <img src="../assets/images/hpz.png" width="800px"/>
+
+</div>
 
 图4: 权重的分层分割存储(hpZ).
 
@@ -52,7 +75,11 @@ ZeRO 是数据并行(Data Parallelism)的一种内存高效版本，其中模型
 
 其次，为了减少向后传递期间全收集(all-gather)权重的通信开销，我们用 GPU 内存进行通信。 更具体地说，我们不像在 ZeRO 中那样将整个模型权重分布在所有机器上，而是在每台机器中维护一个完整的模型副本。 以更高的内存开销为代价，这允许我们用机器内的模型权重全收集/广播(all-gather/broadcast)代替昂贵的跨机器全收集/广播(all-gather/broadcast)，由于机器内通信带宽更高，这使得通信速度大幅提升。
 
+<div align="center">
+
 <img src="../assets/images/qgz.gif" width="800px"/>
+
+</div>
 
 图5: qgZ 端到端的工作流程.
 
@@ -66,10 +93,14 @@ qgZ 中有三个主要步骤：i）梯度切片重新排序，ii）节点内通�
 \
 这种分层方法的原因是为了减少跨节点通信量。 更准确地说，给定每个节点 N 个 GPU、M 的模型大小和 Z 的量化比率，单跳 all-to-all 将生成 M\*N/Z 跨节点流量。 相比之下，通过这种分层方法，我们将每个 GPU 的跨节点流量从 M/Z 减少到 M/(Z\*N)。 因此，总通信量从 M\*N/Z 减少到 M\*N/(Z\*N) = M/Z。 我们通过重叠节点内和节点间通信以及融合 CUDA 内核来进一步优化 qgZ 的端到端延迟（张量切片重新排序 (Tensor Slice Reordering)+ 节点内量化(Intra-node quantization)）和（节点内反量化 (Intra-node Dequantization) + 节点内梯度整合 (Intra-node Reduction) + 节点间量化(inter-node quantization)）。
 
+<div align="center">
+
 |     Communication Volume    |     Forward all-gather on weights    |     Backward all-gather on weights    |     Backward reduce-scatter on gradients    |     Total    |
 |:---------------------------:|:------------------------------------:|:-------------------------------------:|:-------------------------------------------:|:------------:|
 |             ZeRO            |                   M                  |                    M                  |                       M                     |       3M     |
 |            ZeRO++           |                  0.5M                |                    0                  |                     0.25M                   |     0.75M    |
+
+</div>
 
 ### **通信总量优化**
 
@@ -79,7 +110,11 @@ qgZ 中有三个主要步骤：i）梯度切片重新排序，ii）节点内通�
 
 在这里，我们展示了 ZeRO++ 在 384 个 Nvidia V100 GPU 上的真实 LLM 训练场景的测试结果。
 
+<div align="center">
+
 <img src="../assets/images/eval1.png" width="800px"/>
+
+</div>
 
 \[图6: 在 384 个 V100 GPU 上的各种模型大小下 ZeRO++ 与 ZeRO 的吞吐量，节点间使用 4 个 Infiniband (IB) 进行互连，每个以 100 Gbps 运行。\]
 
@@ -87,13 +122,21 @@ qgZ 中有三个主要步骤：i）梯度切片重新排序，ii）节点内通�
 
 **高带宽集群:** 如图 6 所示，我们首先展示了 ZeRO++ 相对于 ZeRO 的吞吐量改进，针对不同的模型大小和微批量(micro-batch size)大小，测试使用 4x Infiniband (IB) 以实现 400Gbps 跨节点互连带宽，每个以 100Gbps 运行。 在 micro-batch size为每 GPU 1k tokens时，ZeRO++ 比 ZeRO-3 的吞吐量提高了 28% 到 36%。 对于 2k tokens micro-batch size大小，ZeRO++ 比 ZeRO-3 实现了 24% 到 29% 的吞吐量增益。
 
+<div align="center">
+
 <img src="../assets/images/eval2.png" width="800px"/>
+
+</div>
 
 图7: 在 384 个 V00 GPU 上 100Gbps 跨节点带宽时各种 LLM 的吞吐量
 
 **低带宽集群:** 在 100Gbps等低带宽网络环境中，ZeRO++ 的性能明显优于 ZeRO-3。 如图 7 所示，与 ZeRO-3 相比，ZeRO++ 在端到端吞吐量方面实现了高达 2.2 倍的加速。 平均而言，ZeRO++ 比 ZeRO-3 基线实现了大约 2 倍的加速。
 
+<div align="center">
+
 <img src="../assets/images/eval3.png" width="800px"/>
+
+</div>
 
 图8: ZeRO++ 以显着降低的带宽实现高带宽集群性能
 
@@ -113,7 +156,11 @@ RLHF 训练带来了巨大的内存压力，因为它使用了四种模型（演
 
 ### **DeepSpeed-Chat with ZeRO++ 用于 RLHF 训练**
 
+<div align="center">
+
 <img src="../assets/images/rlhf-eval.png" width="800px"/>
+
+</div>
 
 图9: ZeRO++ 加速了 RLHF 训练的生成和训练阶段
 
@@ -125,12 +172,12 @@ ZeRO++ 已集成到 DeepSpeed-Chat 中，以支持 ChatGPT 类模型的 RLHF 训
 
 ##  **DeepSpeed ZeRO++现已发布!**
 
-我们非常高兴能够发布 DeepSpeed ZeRO++ 并让 AI 社区中的每个人都可以使用它。请访问我们的 GitHub 页面以获取 [LLM训练教程](https://github.com/microsoft/DeepSpeed-internal/blob/zero%2B%2B_tutorials/docs/_tutorials/zeropp.md)。 用于 DeepSpeed-Chat 的 ZeRO++ 将在未来几周内发布。\
-有关 ZeRO++ 的更多技术细节，请查看我们的[arxiv论文]{.mark}。
+我们非常高兴能够发布 DeepSpeed ZeRO++ 并让 AI 社区中的每个人都可以使用它。请访问我们的 GitHub 页面以获取 [LLM训练教程](https://github.com/microsoft/DeepSpeed/blob/master/docs/_tutorials/zeropp.md)。 用于 DeepSpeed-Chat 的 ZeRO++ 将在未来几周内发布。\
+有关 ZeRO++ 的更多技术细节，请查看我们的[arxiv论文](https://arxiv.org/pdf/2306.10209.pdf)。
 
 DeepSpeed-ZeRO++ 是 DeepSpeed 生态系统的一部分。 要了解更多信息，请访问我们的网站，在那里您可以找到详细的博客文章、教程和有用的文档。
 
-您还可以在我们的[英文 Twitter](https://twitter.com/MSFTDeepSpeed)、日文 Twitter 和[中文知乎](https://www.zhihu.com/people/deepspeed) 上获取最新的 DeepSpeed 新闻。
+您还可以在我们的[英文 Twitter](https://twitter.com/MSFTDeepSpeed)、[日文 Twitter](https://twitter.com/MSFTDeepSpeedJP) 和[中文知乎](https://www.zhihu.com/people/deepspeed) 上获取最新的 DeepSpeed 新闻。
 
 DeepSpeed 欢迎您的贡献！ 我们鼓励您在 DeepSpeed GitHub 页面上报告问题、贡献 PR 并加入讨论。 有关更多详细信息，请参阅我们的贡献指南。 我们对与大学、研究实验室和公司的合作持开放态度。 对于此类请求（以及其他不适合 GitHub 的请求），请直接发送电子邮件至 <deepspeed-info@microsoft.com>。
 
@@ -138,4 +185,4 @@ DeepSpeed 欢迎您的贡献！ 我们鼓励您在 DeepSpeed GitHub 页面上报
 
 DeepSpeed 团队的以下人员的贡献使该项目成为可能：
 
-Guanhua Wang, Heyang Qin, Sam Ade Jacobs, Connor Holmes, [Samyam Rajbhandari](https://www.microsoft.com/en-us/research/people/samyamr/), [Olatunji Ruwase](https://www.microsoft.com/en-us/research/people/olruwase/), Ammar Ahmad Awan, Jeff Rasley, Michael Wyatt, [Yuxiong He](https://www.microsoft.com/en-us/research/people/yuxhe/) (team lead)
+[Guanhua Wang](https://www.microsoft.com/en-us/research/people/guanhuawang/), Heyang Qin, Sam Ade Jacobs, Connor Holmes, [Samyam Rajbhandari](https://www.microsoft.com/en-us/research/people/samyamr/), [Olatunji Ruwase](https://www.microsoft.com/en-us/research/people/olruwase/), Ammar Ahmad Awan, Jeff Rasley, Michael Wyatt, [Yuxiong He](https://www.microsoft.com/en-us/research/people/yuxhe/) (team lead)
