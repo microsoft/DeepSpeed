@@ -7,9 +7,8 @@
 
 <img src="../assets/images/overview.png" width="800px"/>
 
-</div>
-
 图1: DeepSpeed ZeRO++ 简介
+</div>
 
 大型 AI 模型正在改变数字世界。基于大型语言模型 (LLM)的 Turing-NLG、ChatGPT 和 GPT-4 等生成语言模型用途广泛，能够执行摘要、代码生成和翻译等任务。 同样，DALL·E、Microsoft Designer 和 Bing Image Creator 等大型多模态生成模型可以生成艺术、建筑、视频和其他数字资产，使内容创作者、建筑师和工程师能够探索全新的创意生产力。\
 \
@@ -41,9 +40,8 @@ DeepSpeed 的 ZeRO [优化系列](https://www.deepspeed.ai/tutorials/zero/)为�
 
 <img src="../assets/images/zero-overview.gif" width="800px"/>
 
-</div>
-
 图2: ZeRO optimizer 工作流程图
+</div>
 
 ZeRO 是数据并行(Data Parallelism)的一种内存高效版本，其中模型状态会被分割储存在所有 GPU 上，而不需要在训练期间使用基于gather/broadcas的通信进行复制和重建。这使 ZeRO 能够有效地利用所有设备的聚合 GPU 内存和计算力，同时提供简单易用的数据并行训练。\
 \
@@ -55,9 +53,9 @@ ZeRO 是数据并行(Data Parallelism)的一种内存高效版本，其中模型
 
 <img src="../assets/images/qwz.png" width="800px"/>
 
+图3:qwZ的分区量化图例
 </div>
 
-图3:qwZ的分区量化图例
 
 ### ZeRO通信过程中的权重量化 (qwZ)
 
@@ -67,9 +65,9 @@ ZeRO 是数据并行(Data Parallelism)的一种内存高效版本，其中模型
 
 <img src="../assets/images/hpz.png" width="800px"/>
 
+图4: 权重的分层分割存储(hpZ)
 </div>
 
-图4: 权重的分层分割存储(hpZ).
 
 ### ZeRO模型权重的分层分割存储 (hpZ)
 
@@ -79,9 +77,9 @@ ZeRO 是数据并行(Data Parallelism)的一种内存高效版本，其中模型
 
 <img src="../assets/images/qgz.gif" width="800px"/>
 
-</div>
+图5: qgZ 端到端的工作流程
 
-图5: qgZ 端到端的工作流程.
+</div>
 
 ### ZeRO通信过程中梯度量化 (qgZ)
 
@@ -114,9 +112,9 @@ qgZ 中有三个主要步骤：i）梯度切片重新排序，ii）节点内通�
 
 <img src="../assets/images/eval1.png" width="800px"/>
 
-</div>
+图6: 在 384 个 V100 GPU 上的各种模型大小下 ZeRO++ 与 ZeRO 的吞吐量，节点间使用 4 个 Infiniband (IB) 进行互连，每个以 100 Gbps 运行。
 
-\[图6: 在 384 个 V100 GPU 上的各种模型大小下 ZeRO++ 与 ZeRO 的吞吐量，节点间使用 4 个 Infiniband (IB) 进行互连，每个以 100 Gbps 运行。\]
+</div>
 
 ### **在GPU小batch size情况下ZeRO++实现更高的训练效率**
 
@@ -126,9 +124,10 @@ qgZ 中有三个主要步骤：i）梯度切片重新排序，ii）节点内通�
 
 <img src="../assets/images/eval2.png" width="800px"/>
 
-</div>
 
 图7: 在 384 个 V00 GPU 上 100Gbps 跨节点带宽时各种 LLM 的吞吐量
+
+</div>
 
 **低带宽集群:** 在 100Gbps等低带宽网络环境中，ZeRO++ 的性能明显优于 ZeRO-3。 如图 7 所示，与 ZeRO-3 相比，ZeRO++ 在端到端吞吐量方面实现了高达 2.2 倍的加速。 平均而言，ZeRO++ 比 ZeRO-3 基线实现了大约 2 倍的加速。
 
@@ -136,9 +135,10 @@ qgZ 中有三个主要步骤：i）梯度切片重新排序，ii）节点内通�
 
 <img src="../assets/images/eval3.png" width="800px"/>
 
-</div>
 
 图8: ZeRO++ 以显着降低的带宽实现高带宽集群性能
+
+</div>
 
 ### **实现高带宽ZeRO和低带宽ZeRO++集群之间的模型训练效率等效**
 
@@ -160,9 +160,10 @@ RLHF 训练带来了巨大的内存压力，因为它使用了四种模型（演
 
 <img src="../assets/images/rlhf-eval.png" width="800px"/>
 
-</div>
 
 图9: ZeRO++ 加速了 RLHF 训练的生成和训练阶段
+
+</div>
 
 ZeRO++在RLHF + LoRA的场景下有着独特的应用，因为大多数模型权重都被冻结了。 这意味着 ZeRO++ 可以将这些冻结的权重量化保存到INT4/8 中，而不是将它们存储在 fp16 中并在每次通信操作之前对其进行量化。 通信后的反量化仍然是为了让权重为计算做好准备，但反量化后的权重在计算后被简单地丢弃。
 
