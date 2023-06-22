@@ -480,6 +480,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                                             dynamic_loss_args=dynamic_loss_args)
         self.dynamic_loss_scale = self.loss_scaler.dynamic
 
+        if self.dtype != torch.float16:
+            # Only fp16 should use dynamic loss scaling
+            assert self.loss_scaler.cur_scale == 1.0
+            assert not self.dynamic_loss_scale
+
         see_memory_usage("Before initializing optimizer states", force=True)
         self.initialize_optimizer_states()
         see_memory_usage("After initializing optimizer states", force=True)
