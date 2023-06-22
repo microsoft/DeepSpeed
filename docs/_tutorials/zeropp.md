@@ -3,7 +3,7 @@ title: "ZeRO++"
 tags: training ZeRO communication-efficiency large-model
 ---
 
-ZeRO++ is a system of communication optimization strategies built on top of [ZeRO](https://www.microsoft.com/en-us/research/blog/deepspeed-zero-a-leap-in-speed-for-llm-and-chat-model-training-with-4x-less-communication/) to offer unmatched efficiency for large model training regardless of the scale or cross-device bandwidth constraints. Read our [ZeRO++ blog](https://www.microsoft.com/en-us/research/blog/msr-zeropp-placeholder/) and [paper](https://www.microsoft.com/en-us/research/blog/arxiv-placehoder/) to learn more!
+ZeRO++ is a system of communication optimization strategies built on top of [ZeRO](/tutorials/zero/) to offer unmatched efficiency for large model training regardless of the scale or cross-device bandwidth constraints. Read our [ZeRO++ blog](https://www.microsoft.com/en-us/research/blog/deepspeed-zero-a-leap-in-speed-for-llm-and-chat-model-training-with-4x-less-communication/) and [paper](https://arxiv.org/pdf/2306.10209.pdf) to learn more!
 
 We recommend that you read the tutorials on [Getting Started](/getting-started/), [ZeRO](/tutorials/zero/)  and [Megatron-DeepSpeed](/tutorials/megatron/) before stepping through this tutorial.
 
