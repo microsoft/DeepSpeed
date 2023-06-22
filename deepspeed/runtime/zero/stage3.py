@@ -93,7 +93,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                  param_persistence_threshold=100000,
                  model_persistence_threshold=sys.maxsize,
                  dp_process_group=None,
-                 all2all_process_group=None,
                  reduce_scatter=True,
                  overlap_comm=False,
                  offload_optimizer_config=None,
@@ -107,6 +106,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                  gradient_accumulation_steps=1,
                  elastic_checkpoint=False,
                  aio_config=None,
+                 all2all_process_group=None,
                  zero_hpz_partition_size=1,
                  zero_quantized_weights=False):
         see_memory_usage("Stage 3 initialize beginning", force=True)
