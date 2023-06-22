@@ -21,8 +21,8 @@ from copy import deepcopy
 import signal
 import time
 
-from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner, SlurmRunner, MPICHRunner
-from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER, SLURM_LAUNCHER, MPICH_LAUNCHER
+from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner, SlurmRunner, MPICHRunner, IMPIRunner
+from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER, SLURM_LAUNCHER, MPICH_LAUNCHER, IMPI_LAUNCHER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..nebula.constants import NEBULA_EXPORT_ENVS
 from ..utils import logger
@@ -36,6 +36,10 @@ EXPORT_ENVS += NEBULA_EXPORT_ENVS
 DEEPSPEED_ENVIRONMENT_NAME = ".deepspeed_env"
 DEEPSPEED_ENVIRONMENT_PATHS = [os.path.expanduser("~"), '.']
 PDSH_MAX_FAN_OUT = 1024
+
+# On AISC compute, each node sets environment variables independently, want to prevent
+# exporting rank-0 env variables in case of heterogeneous compute.
+EXCLUDE_ENVS = {'AISC_JOB_NAME': ['NCCL_IB_HCA', 'UCX_NET_DEVICES']}
 
 
 def parse_args(args=None):
@@ -95,6 +99,7 @@ def parse_args(args=None):
                         "Default is num_nodes when elastic training is enabled")
 
     parser.add_argument("--num_gpus",
+                        "--num_accelerators",
                         type=int,
                         default=-1,
                         help="Max number of GPUs to use on each node, will use "
@@ -116,7 +121,7 @@ def parse_args(args=None):
                         default=PDSH_LAUNCHER,
                         type=str,
                         help="(optional) choose launcher backend for multi-node "
-                        "training. Options currently include PDSH, OpenMPI, MVAPICH, SLURM, MPICH.")
+                        "training. Options currently include PDSH, OpenMPI, MVAPICH, SLURM, MPICH, IMPI.")
 
     parser.add_argument("--launcher_args",
                         default="",
@@ -222,7 +227,7 @@ def _parse_hostfile(hostfile_lines):
             resource_pool[host] = num_slots
         else:
             logger.error(f"Bad hostfile text: {hostfile_lines}")
-            raise ValueError("Hostfile contains a bad entry: {line}, unable to proceed with launching")
+            raise ValueError(f"Hostfile contains a bad entry: {line}, unable to proceed with launching")
 
     if len(resource_pool) == 0:
         logger.error(f"Bad hostfile text: {hostfile_lines}")
@@ -504,6 +509,8 @@ def main(args=None):
             runner = OpenMPIRunner(args, world_info_base64, resource_pool)
         elif args.launcher == MPICH_LAUNCHER:
             runner = MPICHRunner(args, world_info_base64, resource_pool)
+        elif args.launcher == IMPI_LAUNCHER:
+            runner = IMPIRunner(args, world_info_base64, resource_pool)
         elif args.launcher == MVAPICH_LAUNCHER:
             runner = MVAPICHRunner(args, world_info_base64, resource_pool)
         elif args.launcher == SLURM_LAUNCHER:
@@ -520,10 +527,17 @@ def main(args=None):
         else:
             env['PYTHONPATH'] = curr_path
 
+        excluded_vars = []
+        for exclude_key, var_list in EXCLUDE_ENVS.items():
+            if exclude_key in env.keys():
+                # key exists in launcher env -> var list should be used
+                excluded_vars += var_list
+
         exports = ""
         for var in env.keys():
             if any([var.startswith(name) for name in EXPORT_ENVS]):
-                runner.add_export(var, env[var])
+                if not any([var == name for name in excluded_vars]):
+                    runner.add_export(var, env[var])
 
         for environ_path in DEEPSPEED_ENVIRONMENT_PATHS:
             environ_file = os.path.join(environ_path, DEEPSPEED_ENVIRONMENT_NAME)
@@ -550,7 +564,7 @@ def main(args=None):
         time.sleep(1)
         sys.exit(1)
 
-    if args.launcher == PDSH_LAUNCHER:
+    if args.launcher == PDSH_LAUNCHER and multi_node_exec:
         signal.signal(signal.SIGINT, sigkill_handler)
 
     result.wait()

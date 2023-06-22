@@ -257,7 +257,7 @@ class InferenceEngine(Module):
         else:
             get_accelerator().synchronize()
             self._end = time.time()
-            elapsed_time = self._end - self._start
+            elapsed_time = (self._end - self._start) * 1e3  # convert seconds to ms
         self._model_times.append(elapsed_time)
 
     def _create_model_parallel_group(self, config):
@@ -422,6 +422,7 @@ class InferenceEngine(Module):
 
         generic_injection(self.module,
                           fp16=(config.dtype == torch.half) or (config.dtype == torch.int8),
+                          bf16=(config.dtype == torch.bfloat16),
                           enable_cuda_graph=config.enable_cuda_graph)
 
         if isinstance(self.module, torch.nn.Module):
@@ -641,7 +642,7 @@ class InferenceEngine(Module):
 
         if self.model_profile_enabled and self._config.enable_cuda_graph:
             get_accelerator().synchronize()
-            duration = time.time() - start
+            duration = (time.time() - start) * 1e3  # convert seconds to ms
             self._model_times.append(duration)
 
         return outputs
