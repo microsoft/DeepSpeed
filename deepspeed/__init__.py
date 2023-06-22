@@ -6,7 +6,7 @@
 import sys
 import types
 import json
-from typing import Optional, Union
+from typing import Iterable, Optional, Union
 import torch
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
@@ -58,7 +58,7 @@ dist = None
 def initialize(args=None,
                model: torch.nn.Module = None,
                optimizer: Optional[Union[Optimizer, DeepSpeedOptimizerCallable]] = None,
-               model_parameters: Optional[torch.nn.Module] = None,
+               model_parameters: Optional[Union[Iterable[dict], Iterable[torch.Tensor]]] = None,
                training_data: Optional[torch.utils.data.Dataset] = None,
                lr_scheduler: Optional[Union[_LRScheduler, DeepSpeedSchedulerCallable]] = None,
                mpu=None,
