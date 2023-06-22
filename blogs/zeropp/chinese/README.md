@@ -36,7 +36,7 @@ ZeRO 是数据并行(Data Parallelism)的一种内存高效版本，其中模型
 
 为了减少这些通信开销，ZeRO++ 进行了三组通信优化，分别针对上述三个通信集合：
 
-<img src="../assets/images/qwz-overview.png" width="800px"/>
+<img src="../assets/images/qwz.png" width="800px"/>
 
 图3:qwZ的分区量化图例
 
@@ -44,7 +44,7 @@ ZeRO 是数据并行(Data Parallelism)的一种内存高效版本，其中模型
 
 首先，为了减少 all-gather 期间的参数通信量，我们采用权重量化在通信前将每个模型参数从 FP16（两个字节）动态缩小为 INT8（一个字节）数据类型，并在通信后对权重进行反量化。 然而，简单地对权重进行量化会降低模型训练的准确性。 为了保持良好的模型训练精度，我们采用分区量化，即对模型参数的每个子集进行独立量化。目前尚且没有针对分区量化的高性能现有实现。 因此，我们自行从头开始实现了一套高度优化的量化 CUDA 内核，与基本量化相比，精度提高 3 倍，速度提高 5 倍。
 
-<img src="../assets/images/hpz-overview.png" width="800px"/>
+<img src="../assets/images/hpz.png" width="800px"/>
 
 图4: 权重的分层分割存储(hpZ).
 
@@ -52,7 +52,7 @@ ZeRO 是数据并行(Data Parallelism)的一种内存高效版本，其中模型
 
 其次，为了减少向后传递期间全收集(all-gather)权重的通信开销，我们用 GPU 内存进行通信。 更具体地说，我们不像在 ZeRO 中那样将整个模型权重分布在所有机器上，而是在每台机器中维护一个完整的模型副本。 以更高的内存开销为代价，这允许我们用机器内的模型权重全收集/广播(all-gather/broadcast)代替昂贵的跨机器全收集/广播(all-gather/broadcast)，由于机器内通信带宽更高，这使得通信速度大幅提升。
 
-<img src="../assets/images/qgz-overview.gif" width="800px"/>
+<img src="../assets/images/qgz.gif" width="800px"/>
 
 图5: qgZ 端到端的工作流程.
 
@@ -113,7 +113,7 @@ RLHF 训练带来了巨大的内存压力，因为它使用了四种模型（演
 
 ##### **DeepSpeed-Chat with ZeRO++ 用于 RLHF 训练**
 
-<img src="../assets/images/rlhf_eval.png" width="800px"/>
+<img src="../assets/images/rlhf-eval.png" width="800px"/>
 
 图9: ZeRO++ 加速了 RLHF 训练的生成和训练阶段
 
