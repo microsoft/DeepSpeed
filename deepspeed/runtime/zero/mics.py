@@ -417,7 +417,7 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
         zpg=None,
         zero_quantized_weights=False,
     ):
-        assert zero_quantized_weights or zpg is not None, "MiCS is mutually exclusive with ZeRO++"
+        assert not zero_quantized_weights and zpg is None, "MiCS is mutually exclusive with ZeRO++"
         return MiCS_Offload(module, timers, ds_config, overlap_comm, prefetch_bucket_size, max_reuse_distance,
                             max_live_parameters, param_persistence_threshold, model_persistence_threshold,
                             offload_param_config, mpu)
