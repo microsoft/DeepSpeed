@@ -34,17 +34,17 @@ jobs:
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
+      - name: Install deepspeed
+        run: |
+          pip install .[dev] --no-build-isolation
+          ds_report
+
       - name: Install apex
         run: |
           git clone https://github.com/loadams/apex
           cd apex
           git checkout loadams/update-build-deps
-          pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings --build-option="--cpp_ext --cuda_ext" ./
-
-      - name: Install deepspeed
-        run: |
-          pip install .[dev] --no-build-isolation
-          ds_report
+          pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
       - name: Python environment
         run: |
