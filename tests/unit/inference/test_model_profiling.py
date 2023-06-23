@@ -12,26 +12,7 @@ from transformers import pipeline
 from unit.common import DistributedTest
 from deepspeed.accelerator import get_accelerator
 
-
-@pytest.fixture
-def query(model, task):
-    if task == "text-generation":
-        return "DeepSpeed is"
-    elif task == "fill-mask":
-        if "roberta" in model:
-            return "I am a <mask> model"
-        else:
-            return "I am a [MASK] model"
-    else:
-        raise NotImplementedError
-
-
-@pytest.fixture
-def inf_kwargs(task):
-    if task == "text-generation":
-        return {"do_sample": False, "min_length": 50, "max_length": 50}
-    else:
-        return {}
+from .fixtures import query, inf_kwargs, cuda_graphs  # noqa: F401
 
 
 @pytest.mark.inference
@@ -42,7 +23,6 @@ def inf_kwargs(task):
     ("facebook/opt-125m", "text-generation"),
     ("bigscience/bloom-560m", "text-generation"),
 ])
-@pytest.mark.parametrize("cuda_graphs", [True, False])
 @pytest.mark.parametrize("use_cuda_events", [True, False])
 class TestModelProfiling(DistributedTest):
     world_size = 1

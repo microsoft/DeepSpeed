@@ -4,3 +4,4 @@ select = E9,F,W6
 per-file-ignores =
     __init__.py:F401
     tests/unit/inference/test_inference.py:F811
+    tests/unit/inference/test_model_profiling.py:F811
