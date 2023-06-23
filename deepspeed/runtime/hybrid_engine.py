@@ -323,6 +323,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
                 world_size = dist.get_world_size()
                 mp_group_id = global_rank // self._config.hybrid_engine.inference_tp_size
                 num_mp_groups = world_size // self._config.hybrid_engine.inference_tp_size
+                assert num_mp_groups > 0, f"world_size must be greater than inference_tp_size"
                 for mp_group_id in range(num_mp_groups):
                     ranks = list(
                         range(mp_group_id * self._config.hybrid_engine.inference_tp_size, \
