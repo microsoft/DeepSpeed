@@ -1,6 +1,11 @@
-import pytest
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
+# DeepSpeed Team
+
+import pytest
 import torch
+
 
 @pytest.fixture(params=[torch.float, torch.half], ids=["fp32", "fp16"])
 def dtype(request):
@@ -10,6 +15,12 @@ def dtype(request):
 @pytest.fixture(params=[True, False], ids=["CG", "noCG"])
 def enable_cuda_graph(request):
     return request.param
+
+
+@pytest.fixture(params=[True, False], ids=["Triton", "noTriton"])
+def enable_triton(request):
+    return request.param
+
 
 @pytest.fixture
 def query(model_w_task):
@@ -39,6 +50,7 @@ def query(model_w_task):
     else:
         NotImplementedError(f'query for task "{task}" is not implemented')
 
+
 @pytest.fixture
 def inf_kwargs(model_w_task):
     model, task = model_w_task
@@ -49,6 +61,7 @@ def inf_kwargs(model_w_task):
         return {"do_sample": False, "max_length": 20}
     else:
         return {}
+
 
 def fill_mask_assert(x, y):
     return set(res["token_str"] for res in x) == set(res["token_str"] for res in y)
@@ -80,6 +93,7 @@ def translation_assert(x, y):
 
 def summarization_assert(x, y):
     return set(res["summary_text"] for res in x) == set(res["summary_text"] for res in y)
+
 
 @pytest.fixture
 def assert_fn(model_w_task):

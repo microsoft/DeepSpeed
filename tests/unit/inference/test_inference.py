@@ -21,7 +21,7 @@ from deepspeed.model_implementations import DeepSpeedTransformerInference
 from torch import nn
 from deepspeed.accelerator import get_accelerator
 
-from .fixtures import dtype, enable_cuda_graph, inf_kwargs, query, assert_fn  # noqa: F401
+from .fixtures import dtype, enable_cuda_graph, enable_triton, inf_kwargs, query, assert_fn  # noqa: F401
 
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
@@ -95,11 +95,6 @@ def verify_models():
 # Fixture to iterate over all model and task tuples
 @pytest.fixture(params=pytest.model_w_tasks, ids=pytest.mt_names)
 def model_w_task(request):
-    return request.param
-
-
-@pytest.fixture(params=[True, False], ids=["Triton", "noTriton"])
-def enable_triton(request):
     return request.param
 
 
