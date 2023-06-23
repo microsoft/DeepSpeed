@@ -14,6 +14,7 @@ import deepspeed
 from pathlib import Path
 import atexit
 
+
 # -----------------------------------------------------------------------------
 # util class/functions for triton
 def _default_cache_dir():
@@ -435,6 +436,7 @@ else:
     matmul_4d = None
     score_4d_matmul = None
     context_4d_matmul = None
+
 
 @atexit.register
 def matmul_ext_update_autotune_table():
