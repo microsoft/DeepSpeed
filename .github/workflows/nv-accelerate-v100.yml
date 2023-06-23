@@ -1,14 +1,12 @@
 name: nv-accelerate-v100
 
 on:
-  push:
-    branches:
-      - 'staging**'
-    paths-ignore:
-      - 'docs/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
+  schedule:
+    - cron: "0 0 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -19,14 +17,14 @@ jobs:
     runs-on: [self-hosted, nvidia, cu111, v100]
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
 
       - name: Install pytorch
         run: |
-          pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu111
+          pip install --no-cache-dir torch torchvision --extra-index-url https://download.pytorch.org/whl/cu111
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
