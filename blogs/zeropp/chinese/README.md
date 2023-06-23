@@ -30,11 +30,7 @@ DeepSpeed 的 ZeRO [优化系列](https://www.deepspeed.ai/tutorials/zero/)为�
 
 接下来，我们将更深入地解释 ZeRO 及其通信开销，并讨论 ZeRO++ 中为解决这些问题而进行的关键优化。 然后我们将展示 ZeRO++ 对不同模型大小、批量大小和带宽限制的训练吞吐量的影响。我们还将讨论 ZeRO++ 如何应用于 DeepSpeed-Chat，以加速使用 RLHF的对话模型的训练。
 
-<div align="center">
-
 ## ZeRO++详解
-
-</div>
 
 <div align="center">
 
@@ -173,7 +169,7 @@ ZeRO++ 已集成到 DeepSpeed-Chat 中，以支持 ChatGPT 类模型的 RLHF 训
 
 ##  **DeepSpeed ZeRO++现已发布!**
 
-我们非常高兴能够发布 DeepSpeed ZeRO++ 并让 AI 社区中的每个人都可以使用它。请访问我们的 GitHub 页面以获取 [LLM训练教程](https://github.com/microsoft/DeepSpeed/blob/master/docs/_tutorials/zeropp.md)。 用于 DeepSpeed-Chat 的 ZeRO++ 将在未来几周内发布。\
+我们非常高兴能够发布 DeepSpeed ZeRO++ 并让 AI 社区中的每个人都可以使用它。请访问我们的 GitHub 页面以获取 [LLM训练教程](https://www.deepspeed.ai/tutorials/zeropp/)。 用于 DeepSpeed-Chat 的 ZeRO++ 将在未来几周内发布。\
 有关 ZeRO++ 的更多技术细节，请查看我们的[arxiv论文](https://arxiv.org/pdf/2306.10209.pdf)。
 
 DeepSpeed-ZeRO++ 是 DeepSpeed 生态系统的一部分。 要了解更多信息，请访问我们的网站，在那里您可以找到详细的博客文章、教程和有用的文档。
