@@ -21,6 +21,8 @@ from deepspeed.model_implementations import DeepSpeedTransformerInference
 from torch import nn
 from deepspeed.accelerator import get_accelerator
 
+from .fixtures import dtype, enable_cuda_graph, inf_kwargs, query, assert_fn  # noqa: F401
+
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
     pytest.skip("skip inference tests on rocm for now", allow_module_level=True)
@@ -49,66 +51,59 @@ _gpt_models = [
     "gpt2",
     "distilgpt2",
     "Norod78/hebrew-bad_wiki-gpt_neo-tiny",
-    "EleutherAI/gpt-j-6b", # bring back this model as we did not catch an error before by merging some changes! TODO: we need to fix the OOM issue later!
+    "EleutherAI/gpt-j-6b",
+    "EleutherAI/pythia-70m-deduped",
     "bigscience/bloom-560m",
 ]
 _opt_models = [
     "facebook/opt-125m",  # 125m, 1.7B, ..., 175B variants have the same model architecture.
     "facebook/opt-350m",  # 350m applies layer norm after attention layer which is different than other variants.
 ]
-_all_models = HfApi().list_models()
-
-test_models = set(_bert_models + _roberta_models + _gpt_models + _opt_models)
-test_tasks = [
+_test_models = set(_bert_models + _roberta_models + _gpt_models + _opt_models)
+_test_tasks = [
     "fill-mask", "question-answering", "text-classification", "token-classification", "text-generation",
     "text2text-generation", "summarization", "translation"
 ]
-pytest.all_models = {task: [m.modelId for m in _all_models if m.pipeline_tag == task] for task in test_tasks}
 
-_model_w_tasks = itertools.product(*[test_models, test_tasks])
+# Get a list of all models and mapping from task to supported models
+_hf_models = HfApi().list_models()
+_hf_model_names = [m.modelId for m in _hf_models]
+_hf_task_to_models = {task: [m.modelId for m in _hf_models if m.pipeline_tag == task] for task in _test_tasks}
 
+# Get all combinations of task:model to test
+_model_w_tasks = [(m, t) for m, t in itertools.product(*[_test_models, _test_tasks]) if m in _hf_task_to_models[t]]
 
-def _valid_model_task(model_task):
-    m, t = model_task
-    return m in pytest.all_models[t]
-
-
-pytest.models_w_tasks = list(filter(_valid_model_task, _model_w_tasks))
-pytest.mt_names = [f"{m}-{t}" for m, t in pytest.models_w_tasks]
-"""
-These fixtures iterate all combinations of tasks and models, dtype, & cuda_graph
-"""
+# Assign to pytest variables for testing
+pytest.model_w_tasks = _model_w_tasks
+pytest.mt_names = [f"{m}-{t}" for m, t in pytest.model_w_tasks]
 
 
-@pytest.fixture(params=pytest.models_w_tasks, ids=pytest.mt_names)
+@pytest.fixture(scope="module", autouse=True)
+def verify_models():
+    # Verify all test models are registered in HF
+    _test_models_not_found = [m for m in _test_models if m not in _hf_model_names]
+    if _test_models_not_found:
+        pytest.fail(f"Model(s) not found in HuggingFace: {_test_models_not_found}")
+
+    # Verify all models are assigned to at least one task
+    _models_to_be_tested = set(m for m, t in _model_w_tasks)
+    _missing_task_models = _models_to_be_tested.difference(_test_models)
+    if _missing_task_models:
+        pytest.fail(f"Model(s) do not have an assigned task: {_missing_task_models}")
+
+
+# Fixture to iterate over all model and task tuples
+@pytest.fixture(params=pytest.model_w_tasks, ids=pytest.mt_names)
 def model_w_task(request):
     return request.param
 
 
-@pytest.fixture(params=[torch.float, torch.half], ids=["fp32", "fp16"])
-def dtype(request):
-    return request.param
-
-
-@pytest.fixture(params=[True, False], ids=["CG", "noCG"])
-def enable_cuda_graph(request):
-    return request.param
-
-
-"""
-This fixture will validate the configuration
-"""
-
-
+# Fixture to add skips for certain configurations
 @pytest.fixture()
-def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
+def invalid_test(model_w_task, dtype, enable_cuda_graph):
     model, task = model_w_task
     msg = ""
-    if pkg_version.parse(torch.__version__) <= pkg_version.parse("1.2"):
-        msg = "DS inference injection doesn't work well on older torch versions"
-    elif model not in pytest.all_models[task]:
-        msg = f"Not a valid model / task combination: {model} / {task}"
-    elif enable_cuda_graph and (torch_info["cuda_version"] == "0.0"):
+    if enable_cuda_graph and (torch_info["cuda_version"] == "0.0"):
         msg = "CUDA not detected, cannot use CUDA Graph"
     elif enable_cuda_graph and pkg_version.parse(torch.__version__) < pkg_version.parse("1.10"):
         msg = "CUDA Graph is only available in torch versions >= 1.10"
@@ -128,104 +123,7 @@ def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
     return msg
 
 
-"""
-These fixtures can be used to customize the query, inference args, and assert
-statement for each combination of model /task
-"""
-
-
-@pytest.fixture
-def query(model_w_task):
-    model, task = model_w_task
-    angle_bracket_mask_models = ["roberta", "camembert", "esm", "ibert", "luke", "mpnet", "yoso", "mpnet"]
-
-    if task == "fill-mask":
-        if any(map(lambda x: x in model, angle_bracket_mask_models)):
-            return "Hello I'm a <mask> model."
-        else:
-            return "Hell I'm a [MASK] model."
-    elif task == "question-answering":
-        return {
-            "question": "What's my name?",
-            "context": "My name is Clara and I live in Berkeley",
-        }
-    elif task == "text-classification":
-        return "DeepSpeed is the greatest"
-    elif task == "token-classification":
-        return "My name is jean-baptiste and I live in montreal."
-    elif task == "text-generation":
-        return "DeepSpeed is the greatest"
-    elif task == "text2text-generation":
-        return "Is this review positive or negative? Review: this is the best cast iron skillet you will ever buy"
-    elif task == "translation" or task == "summarization":
-        return "Hello, my dog is cute"
-    else:
-        NotImplementedError(f'query for task "{task}" is not implemented')
-
-
-@pytest.fixture
-def inf_kwargs(model_w_task):
-    model, task = model_w_task
-    if task == "text-generation":
-        if model == "EleutherAI/gpt-j-6b":
-            # This model on V100 is hitting memory problems that limit the number of output tokens
-            return {"do_sample": False, "max_length": 12}
-        return {"do_sample": False, "max_length": 20}
-    else:
-        return {}
-
-
-def fill_mask_assert(x, y):
-    return set(res["token_str"] for res in x) == set(res["token_str"] for res in y)
-
-
-def question_answering_assert(x, y):
-    return x["answer"] == y["answer"]
-
-
-def text_classification_assert(x, y):
-    return set(res["label"] for res in x) == set(res["label"] for res in y)
-
-
-def token_classification_assert(x, y):
-    return set(ent["word"] for ent in x) == set(ent["word"] for ent in y)
-
-
-def text_generation_assert(x, y):
-    return set(res["generated_text"] for res in x) == set(res["generated_text"] for res in y)
-
-
-def text2text_generation_assert(x, y):
-    return set(res["generated_text"] for res in x) == set(res["generated_text"] for res in y)
-
-
-def translation_assert(x, y):
-    return set(res["translation_text"] for res in x) == set(res["translation_text"] for res in y)
-
-
-def summarization_assert(x, y):
-    return set(res["summary_text"] for res in x) == set(res["summary_text"] for res in y)
-
-
-@pytest.fixture
-def assert_fn(model_w_task):
-    model, task = model_w_task
-    assert_fn_dict = {
-        "fill-mask": fill_mask_assert,
-        "question-answering": question_answering_assert,
-        "text-classification": text_classification_assert,
-        "token-classification": token_classification_assert,
-        "text-generation": text_generation_assert,
-        "text2text-generation": text2text_generation_assert,
-        "translation": translation_assert,
-        "summarization": summarization_assert
-    }
-    assert_fn = assert_fn_dict.get(task, None)
-    if assert_fn is None:
-        NotImplementedError(f'assert_fn for task "{task}" is not implemented')
-    return assert_fn
-
-
+# Used to verify DeepSpeed kernel injection worked with a model
 def check_injection(model):
 
     def verify_injection(module):
@@ -240,11 +138,6 @@ def check_injection(model):
     verify_injection(model)
 
 
-"""
-Tests
-"""
-
-
 @pytest.mark.inference
 class TestModelTask(DistributedTest):
     world_size = 1
@@ -257,10 +150,10 @@ class TestModelTask(DistributedTest):
         query,
         inf_kwargs,
         assert_fn,
-        invalid_model_task_config,
+        invalid_test,
     ):
-        if invalid_model_task_config:
-            pytest.skip(invalid_model_task_config)
+        if invalid_test:
+            pytest.skip(invalid_test)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -328,10 +221,10 @@ class TestMPSize(DistributedTest):
         query,
         inf_kwargs,
         assert_fn,
-        invalid_model_task_config,
+        invalid_test,
     ):
-        if invalid_model_task_config:
-            pytest.skip(invalid_model_task_config)
+        if invalid_test:
+            pytest.skip(invalid_test)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -368,8 +261,6 @@ class TestMPSize(DistributedTest):
     ],
     ids=["t5", "roberta"],
 )
-@pytest.mark.parametrize("dtype", [torch.float], ids=["fp32"])
-@pytest.mark.parametrize("enable_cuda_graph", [False], ids=["noCG"])
 class TestInjectionPolicy(DistributedTest):
     world_size = [1, 2]
 
@@ -380,12 +271,12 @@ class TestInjectionPolicy(DistributedTest):
         query,
         inf_kwargs,
         assert_fn,
-        invalid_model_task_config,
-        dtype,
-        enable_cuda_graph,
+        invalid_test,
+        dtype=torch.float,
+        enable_cuda_graph=False,
     ):
-        if invalid_model_task_config:
-            pytest.skip(invalid_model_task_config)
+        if invalid_test:
+            pytest.skip(invalid_test)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -430,12 +321,12 @@ class TestAutoTensorParallelism(DistributedTest):
         query,
         inf_kwargs,
         assert_fn,
-        invalid_model_task_config,
+        invalid_test,
         dtype,
         enable_cuda_graph,
     ):
-        if invalid_model_task_config:
-            pytest.skip(invalid_model_task_config)
+        if invalid_test:
+            pytest.skip(invalid_test)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
