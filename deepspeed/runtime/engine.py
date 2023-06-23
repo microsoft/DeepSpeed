@@ -2159,7 +2159,11 @@ class DeepSpeedEngine(Module):
                 BACKWARD_GLOBAL_TIMER,
                 STEP_GLOBAL_TIMER,
             ], reset=False)
-            titer = msg[FORWARD_GLOBAL_TIMER] + msg[BACKWARD_GLOBAL_TIMER] + msg[STEP_GLOBAL_TIMER]
+            titer = 0.0
+            titer += msg[FORWARD_GLOBAL_TIMER] if FORWARD_GLOBAL_TIMER in msg else 0
+            titer += msg[BACKWARD_GLOBAL_TIMER] if BACKWARD_GLOBAL_TIMER in msg else 0
+            titer += msg[STEP_GLOBAL_TIMER] if STEP_GLOBAL_TIMER in msg else 0
+
             msg["latency"] = titer
             msg["FLOPS_per_gpu"] = self.flops * 1_000_000 * self.gradient_accumulation_steps() / titer
             msg["throughput"] = self.train_batch_size() * 1_000_000 / \
@@ -2288,7 +2292,7 @@ class DeepSpeedEngine(Module):
                 expert_grads[key] = []
 
         for param_name, param in self.module.named_parameters():
-            if param.grad is None:
+            if param.grad is None and param.requires_grad:
                 # In cases where there is an imbalance of empty grads across
                 # ranks we must create empty grads, this will ensure that every
                 # rank is reducing the same size. In some cases it may make
