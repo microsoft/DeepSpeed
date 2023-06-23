@@ -10,12 +10,13 @@ from filelock import FileLock
 import deepspeed.ops.transformer.inference.triton.triton_matmul_kernel as triton_matmul_kernel
 import pickle
 from io import open
+from pathlib import Path
 
 
 # -----------------------------------------------------------------------------
 # util class/functions for triton
 def _default_cache_dir():
-    return os.path.join(os.environ["HOME"], ".triton", "autotune")
+    return os.path.join(Path.home(), ".triton", "autotune")
 
 
 def bias_add_activation(C, bias=None, activation=""):

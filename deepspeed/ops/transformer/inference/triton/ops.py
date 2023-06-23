@@ -5,9 +5,9 @@
 
 import deepspeed
 from deepspeed.ops.op_builder import InferenceBuilder
-import deepspeed.ops.transformer.inference.triton.matmul_ext as matmul_ext
 from deepspeed.ops.transformer.inference.triton.layer_norm import layer_norm, layer_norm_residual
 
+matmul_ext = None
 inference_module = None
 
 
@@ -125,6 +125,10 @@ def qkv_gemm_func(
         if inference_module is None:
             inference_module = InferenceBuilder().load()
         qkv_input = inference_module.layer_norm(input, gamma, beta, epsilon)
+
+    global matmul_ext
+    if matmul_ext is None:
+        import deepspeed.ops.transformer.inference.triton.matmul_ext as matmul_ext
 
     qkv_out = matmul_ext.matmul(qkv_input, weight, bias=(bias if add_bias else None), activation="", use_triton=True)
 
