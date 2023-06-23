@@ -25,7 +25,7 @@ DeepSpeed 的 ZeRO [优化系列](https://www.deepspeed.ai/tutorials/zero/)为�
 2. *ZeRO++加速 ChatGPT 类的 RLHF训练*
 
     1. 虽然 ZeRO++ 主要是为训练而设计的，但它的优化也自动适用于 [ZeRO-Inference](https://www.deepspeed.ai/2022/09/09/zero-inference.html#:~:text=ZeRO-Inference%20adapts%20and%20optimizes%20ZeRO-Infinity%20techniques%20for%20model,memory%2C%20thus%20hosting%20no%20%28zero%29%20weights%20in%20GPU.)，因为通信开销对于 ZeRO 的训练和推理同样适用。 因此，ZeRO++ 可以提高人类反馈强化学习 (RLHF) 等算法的效率，因为RLHF结合了训练和推理。
-    
+
     2. 通过与 DeepSpeed-Chat 的集成，与原始 ZeRO 相比，ZeRO++ 可以将 RLHF 训练的生成阶段效率提高多达 2 倍，强化学习训练阶段效率提高多达 1.3 倍。
 
 接下来，我们将更深入地解释 ZeRO 及其通信开销，并讨论 ZeRO++ 中为解决这些问题而进行的关键优化。 然后我们将展示 ZeRO++ 对不同模型大小、批量大小和带宽限制的训练吞吐量的影响。我们还将讨论 ZeRO++ 如何应用于 DeepSpeed-Chat，以加速使用 RLHF的对话模型的训练。
