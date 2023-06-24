@@ -483,9 +483,12 @@ class DeepSpeedSelfAttention(nn.Module):
             else:
                 qkv_out = self.qkv_func(input=input,
                                         weight=self._attn_qkvw,
-                                        bias=self._attn_qkvb,
+                                        bias=(self._attn_qkvb if self._attn_qkvb is not None else norm_b),
                                         gamma=norm_w,
-                                        beta=norm_b)
+                                        beta=norm_b,
+                                        add_bias=(self.attn_qkvb is not None),
+                                        num_layers=DeepSpeedSelfAttention.num_layers,
+                                        num_heads=self.num_attention_heads_per_partition)
 
             if debug: print(f"inside ds attn: qkv_out[0] = {qkv_out[0].norm()}")
             if debug: print(f"inside ds attn: qkv_out[1] = {qkv_out[1].norm()}")
@@ -600,9 +603,9 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
         attention_scores = matmul_result.view(output_size[0], output_size[1], output_size[2], -1)
 
         offset = dist.get_rank() * self.num_attention_heads_per_partition if dist.is_initialized() else 0
-        target_dtype = torch.float16 if self.config.dtype == torch.int8 else self.config.dtype
+        #target_dtype = torch.float16 if self.config.dtype == torch.int8 else self.config.dtype
         attention_probs = self.softmax_func(attn_scores=attention_scores,
-                                            attn_mask=((1 - input_mask).to(target_dtype) * minus_inf),
+                                            attn_mask=((1 - input_mask).half() * minus_inf),
                                             alibi=alibi,
                                             triangular=(self.config.triangular_masking
                                                         and (attention_scores.shape[-2] > 1)),

@@ -75,17 +75,22 @@ class DeepSpeedTransformerInference(nn.Module):
             self.norm_b = nn.Parameter(torch.empty(self.config.hidden_size, dtype=data_type, device=device),
                                        requires_grad=False)
         self.layer_past = None
-        try:
-            if config.dtype == torch.float32:
-                self.allocate_workspace = inference_module.allocate_workspace_fp32
-            elif config.dtype == torch.bfloat16:
-                self.allocate_workspace = inference_module.allocate_workspace_bf16
-            else:
-                self.allocate_workspace = inference_module.allocate_workspace_fp32
-            self._alloc_workspace = True
-        except AttributeError:
-            self.allocate_workspace = None
-            self._alloc_workspace = False
+
+        self.allocate_workspace = inference_module.allocate_workspace_fp32 if (not config.fp16) else \
+                                inference_module.allocate_workspace_fp16
+        self._alloc_workspace = True
+
+        #try:
+        #    if config.dtype == torch.float32:
+        #        self.allocate_workspace = inference_module.allocate_workspace_fp32
+        #    elif config.dtype == torch.bfloat16:
+        #        self.allocate_workspace = inference_module.allocate_workspace_bf16
+        #    else:
+        #        self.allocate_workspace = inference_module.allocate_workspace_fp32
+        #    self._alloc_workspace = True
+        #except AttributeError:
+        #    self.allocate_workspace = None
+        #    self._alloc_workspace = False
 
     @classmethod
     def reset_cache(cls):

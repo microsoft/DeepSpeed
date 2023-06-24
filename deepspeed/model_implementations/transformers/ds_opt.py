@@ -6,6 +6,7 @@
 import torch
 from deepspeed.model_implementations.transformers.ds_transformer import DeepSpeedTransformerInference
 from deepspeed import comm as dist
+import os
 
 inference_module = None
 
@@ -26,6 +27,7 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
         super(DeepSpeedOPTInference, self).__init__(config, mp_group, quantize_scales, quantize_groups, merge_count,
                                                     mlp_extra_grouping)
         print("DEBUG: Initializing DeepSpeedOPTInference!")
+        print(f"BASE = {os.getenv('BASE')}")
 
     @classmethod
     def reset_cache(cls):
@@ -60,6 +62,12 @@ class DeepSpeedOPTInference(DeepSpeedTransformerInference):
         # base = False => Use DS implementation
         # debug = True => Print debug info in either scenario
         base = True
+
+        if os.getenv('BASE') is not None:
+            if os.getenv('BASE') == 'False':
+                base = False
+        #print(f"base = {base}")
+        #import pdb; pdb.set_trace()
         debug = False
 
         if x is not None:
