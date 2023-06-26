@@ -100,7 +100,7 @@ def model_w_task(request):
 
 # Fixture to add skips for certain configurations
 @pytest.fixture()
-def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph, enable_triton):
+def invalid_test(model_w_task, dtype, enable_cuda_graph, enable_triton):
     model, task = model_w_task
     msg = ""
     if enable_cuda_graph and (torch_info["cuda_version"] == "0.0"):
