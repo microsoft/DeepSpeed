@@ -11,6 +11,8 @@ from torch.nn import functional as F
 from torch.nn.parameter import Parameter
 from deepspeed.accelerator import get_accelerator
 
+global output_tensors
+output_tensors = {}
 
 class LinearAllreduce(nn.Module):
 
@@ -21,9 +23,16 @@ class LinearAllreduce(nn.Module):
         self.mp_group = mp_group
 
     def forward(self, input):
-        output = torch.matmul(input, self.weight.transpose(-1, -2))
+        global output_tensors
+        output_size = input.size()[:-1] + self.weight.transpose(-1,-2).size()[1:]
+        if not output_size in output_tensors:
+            output_tensors[output_size] = torch.empty(output_size, device=input.device, dtype=input.dtype)
+        output = output_tensors[output_size]
+        torch.matmul(input, self.weight.transpose(-1, -2), out=output)
+        #output = torch.matmul(input, self.weight.transpose(-1, -2))
+
         if self.mp_group is not None:
-            dist.all_reduce(output, group=self.mp_group)
+            dist.all_reduce_low_latency(output, group=self.mp_group)
         if self.bias is not None:
             output += self.bias
         return output

@@ -24,7 +24,7 @@ def build_ccl_op():
 class CCLBackend(TorchBackend):
 
     def __init__(self, name='ccl', rank=-1, world_size=-1, mpu=None, timeout=None, init_method=None):
-        super(CCLBackend, self).__init__(backend='ccl',
+        super(CCLBackend, self).__init__(backend='gloo',
                                          name='torch',
                                          rank=rank,
                                          world_size=world_size,
@@ -57,6 +57,9 @@ class CCLBackend(TorchBackend):
             self.ccl_comm_op.all_reduce_caching(tensor, op, match_id, group, async_op)
         else:
             self.ccl_comm_op.all_reduce(tensor, op, group, async_op)
+
+    def all_reduce_low_latency(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
+        self.ccl_comm_op.all_reduce_low_latency(tensor, op, group, async_op)
 
     def barrier(self, group=None, async_op=False):
         self.ccl_comm_op.barrier(group, async_op)

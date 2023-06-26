@@ -168,6 +168,32 @@ void all_reduce(torch::Tensor& data, py::object op, py::object group, bool async
                  .wait());
 }
 
+void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group, bool async_op)
+{
+    auto data_ptr = data.data_ptr();
+    auto numel = data.numel();
+    auto datatype = data.scalar_type();
+    auto reduce_op = op;
+
+/*
+    if SHM for this data_size/type had not been created
+        create data_size/type
+    set all local SHM_flag to 1
+
+    for i = 0 to world_size - 1:
+        if i == my_rank:
+            continue
+        wait until ith rank SHM_flag+i == 1
+        copy data to ith rank SHM_buf+numel*i
+        set SHM_flag+i to 2
+
+    wait until all SHM_flag == 2
+    reduce result and save to data
+
+    set all SHM_flag to 0
+*/
+}
+
 void all_reduce_caching(torch::Tensor& data,
                         py::object op,
                         std::string match_id,
@@ -206,6 +232,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("get_world_size", &get_world_size, "get world size");
     m.def("broadcast", &broadcast, "ccl broadcast");
     m.def("all_reduce", &all_reduce, "ccl all_reduce");
+    m.def("all_reduce_low_latency", &all_reduce_low_latency, "low latency all_reduce implementation");
     m.def("all_reduce_caching", &all_reduce_caching, "ccl all_reduce with caching");
     m.def("barrier", &barrier, "barrier");
 }
