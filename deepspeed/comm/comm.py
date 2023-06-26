@@ -145,8 +145,8 @@ def init_deepspeed_backend(ds_backend, timeout, init_method):
     global mpi_backend
     global ccl_backend
 
-    rank = int(os.environ["RANK"])
-    size = int(os.environ["WORLD_SIZE"])
+    rank = int(os.getenv('RANK', '-1'))
+    size = int(os.getenv('WORLD_SIZE', '-1'))
 
     if ds_backend == NCCL_BACKEND:
         utils.logger.warn("NCCL backend in DeepSpeed not yet implemented")
@@ -256,7 +256,7 @@ def reduce_scatter_fn(output_tensor,
     else:
         if get_rank() == 0:
             utils.logger.warning_once("unable to find torch.distributed.reduce_scatter_tensor. will fall back to "
-                                      "torch.distributed.all_gather which will result in suboptimal performance. "
+                                      "torch.distributed.reduce_scatter which will result in suboptimal performance. "
                                       "please consider upgrading your pytorch installation.")
         input_tensor_lst = list(torch.chunk(tensor, cdb.get_world_size(group)))
         return reduce_scatter(output_tensor,
@@ -555,6 +555,21 @@ def get_global_rank(group=None, group_rank=0):
     assert cdb is not None and cdb.is_initialized(
     ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     return cdb.get_global_rank(group, group_rank)
+
+
+def get_all_ranks_from_group(group=None):
+    global cdb
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    rank = 0
+    group_ranks = []
+    try:
+        while True:
+            group_ranks.append(cdb.get_global_rank(group, rank))
+            rank += 1
+    except RuntimeError:
+        pass
+    return group_ranks
 
 
 # Main DeepSpeed Comms. public API.
