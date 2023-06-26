@@ -1,9 +1,11 @@
-'''
-Copyright 2019 The Microsoft DeepSpeed Team
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
+# DeepSpeed Team
+"""
 Copyright NVIDIA/apex
 This file is adapted from FP16_Optimizer in NVIDIA/apex
-'''
+"""
 
 import torch
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
@@ -14,6 +16,7 @@ from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW,
 from deepspeed.utils import groups, logger, log_dist
 from deepspeed import comm as dist
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, CLIP_GRAD
+from deepspeed.accelerator import get_accelerator
 
 
 class FP16_Optimizer(DeepSpeedOptimizer):
@@ -22,6 +25,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
 
    For usage example please see, TODO:  DeepSpeed V2 Tutorial
     """
+
     def __init__(self,
                  init_optimizer,
                  deepspeed=None,
@@ -41,8 +45,8 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         self.deepspeed = deepspeed
         self.has_moe_layers = has_moe_layers
         self.using_pipeline = self.deepspeed.pipeline_parallelism
-        if not torch.cuda.is_available:
-            raise SystemError("Cannot use fp16 without CUDA.")
+        if not get_accelerator().is_available():
+            raise SystemError("Cannot use fp16 without accelerator.")
         self.optimizer = init_optimizer
 
         # param flattened by groups
@@ -57,20 +61,15 @@ class FP16_Optimizer(DeepSpeedOptimizer):
             # push this group to list before modify
             self.fp16_groups.append(param_group['params'])
             # init fp16 weight buffer, flattened
-            self.fp16_groups_flat.append(
-                _flatten_dense_tensors([p.clone().detach()
-                                        for p in self.fp16_groups[i]]))
+            self.fp16_groups_flat.append(_flatten_dense_tensors([p.clone().detach() for p in self.fp16_groups[i]]))
             # set model fp16 weight to slices of flattened buffer
-            updated_params = _unflatten_dense_tensors(self.fp16_groups_flat[i],
-                                                      self.fp16_groups[i])
+            updated_params = _unflatten_dense_tensors(self.fp16_groups_flat[i], self.fp16_groups[i])
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data = q.data
             # init master weight, flattened
-            self.fp32_groups_flat.append(
-                self.fp16_groups_flat[i].clone().float().detach())
+            self.fp32_groups_flat.append(self.fp16_groups_flat[i].clone().float().detach())
             # modify optimizer of have flat master weight
-            self.fp32_groups_flat[
-                i].requires_grad = True  # keep this in case internal optimizer uses it
+            self.fp32_groups_flat[i].requires_grad = True  # keep this in case internal optimizer uses it
             param_group['params'] = [self.fp32_groups_flat[i]]
 
         # we may have a way of fusing dynamic scale. Do not support for now
@@ -112,16 +111,13 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         self.mpu = mpu
 
         self.overflow = False
-        self.overflow_checker = CheckOverflow(self.fp16_groups,
-                                              mpu=self.mpu,
-                                              deepspeed=deepspeed)
+        self.overflow_checker = CheckOverflow(self.fp16_groups, mpu=self.mpu, deepspeed=deepspeed)
         self.initialize_optimizer_states()
 
     def initialize_optimizer_states(self):
         for i, group in enumerate(self.fp16_groups):
-            self.fp32_groups_flat[i].grad = torch.zeros(
-                self.fp32_groups_flat[i].size(),
-                device=self.fp32_groups_flat[i].device)
+            self.fp32_groups_flat[i].grad = torch.zeros(self.fp32_groups_flat[i].size(),
+                                                        device=self.fp32_groups_flat[i].device)
 
         self.optimizer.step()
 
@@ -130,14 +126,14 @@ class FP16_Optimizer(DeepSpeedOptimizer):
 
         return
 
-    def zero_grad(self, set_grads_to_None=True):
+    def zero_grad(self, set_to_none=False):
         """
         Zero FP16 parameter grads.
         """
         # For speed, set model fp16 grad to None by default
         for group in self.fp16_groups:
             for p in group:
-                if set_grads_to_None:
+                if set_to_none:
                     p.grad = None
                 else:
                     if p.grad is not None:
@@ -155,10 +151,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         for i, group in enumerate(self.fp16_groups):
             grads_groups_flat.append(
                 _flatten_dense_tensors([
-                    torch.zeros(p.size(),
-                                dtype=p.dtype,
-                                device=p.device) if p.grad is None else p.grad
-                    for p in group
+                    torch.zeros(p.size(), dtype=p.dtype, device=p.device) if p.grad is None else p.grad for p in group
                 ]))
             norm_groups.append(get_weight_norm(grads_groups_flat[i], mpu=self.mpu))
 
@@ -168,17 +161,13 @@ class FP16_Optimizer(DeepSpeedOptimizer):
 
         if self.overflow:
             if self.verbose:
-                logger.info(
-                    "[deepspeed] fp16 dynamic loss scale overflow! Skipping step. Attempted loss "
-                    "scale: {}, reducing to {}".format(prev_scale,
-                                                       self.cur_scale))
+                logger.info("[deepspeed] fp16 dynamic loss scale overflow! Skipping step. Attempted loss "
+                            "scale: {}, reducing to {}".format(prev_scale, self.cur_scale))
             return self.overflow
 
         scaled_grad_norm = get_global_norm(norm_list=norm_groups)
 
-        combined_scale = self.unscale_and_clip_grads(grads_groups_flat,
-                                                     scaled_grad_norm,
-                                                     apply_scale=False)
+        combined_scale = self.unscale_and_clip_grads(grads_groups_flat, scaled_grad_norm, apply_scale=False)
 
         # Stash unscaled gradient norm
         self._global_grad_norm = scaled_grad_norm / self.cur_scale
@@ -190,8 +179,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
                             grad_norms=norm_groups)
         # TODO: we probably don't need this? just to be safe
         for i in range(len(norm_groups)):
-            updated_params = _unflatten_dense_tensors(self.fp16_groups_flat[i],
-                                                      self.fp16_groups[i])
+            updated_params = _unflatten_dense_tensors(self.fp16_groups_flat[i], self.fp16_groups[i])
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data = q.data
         return self.overflow
@@ -221,9 +209,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
 
     def override_loss_scale(self, loss_scale):
         if loss_scale != self.external_loss_scale:
-            logger.info(
-                f'[deepspeed] setting loss scale from {self.external_loss_scale} -> {loss_scale}'
-            )
+            logger.info(f'[deepspeed] setting loss scale from {self.external_loss_scale} -> {loss_scale}')
         self.custom_loss_scaler = True
         self.external_loss_scale = loss_scale
 
@@ -272,10 +258,8 @@ class FP16_Optimizer(DeepSpeedOptimizer):
 
             grads_groups_flat.append(
                 _flatten_dense_tensors([
-                    torch.zeros(p.size(),
-                                dtype=data_type,
-                                device=p.device)
-                    if p.grad is None else p.grad.to(data_type) for p in group
+                    torch.zeros(p.size(), dtype=data_type, device=p.device) if p.grad is None else p.grad.to(data_type)
+                    for p in group
                 ]))
 
             for p in group:
@@ -312,8 +296,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         self.start_timers([UPDATE_FP16])
 
         for i in range(len(self.fp16_groups)):
-            updated_params = _unflatten_dense_tensors(self.fp32_groups_flat[i],
-                                                      self.fp16_groups[i])
+            updated_params = _unflatten_dense_tensors(self.fp32_groups_flat[i], self.fp16_groups[i])
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data.copy_(q.data)
 
@@ -333,9 +316,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         else:
             pg = groups._get_data_parallel_group()
         scaled_norm = all_groups_norm * 1.0 / float(dist.get_world_size(group=pg))
-        scaled_norm_tensor = torch.tensor(scaled_norm,
-                                          device=self.fp32_groups_flat[0].device,
-                                          dtype=torch.float)
+        scaled_norm_tensor = torch.tensor(scaled_norm, device=self.fp32_groups_flat[0].device, dtype=torch.float)
         dist.all_reduce(scaled_norm_tensor, group=pg)
         all_groups_norm = scaled_norm_tensor.item()
         #print(f"old = {all_groups_norm_old} and new = {all_groups_norm} at rank: {deepspeed.comm.get_rank()}")
@@ -375,25 +356,19 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         if self.dynamic_loss_scale:
             prev_scale = self.cur_scale
             if skip:
-                self.cur_scale = max(self.cur_scale / self.scale_factor,
-                                     self.min_loss_scale)
+                self.cur_scale = max(self.cur_scale / self.scale_factor, self.min_loss_scale)
                 self.last_overflow_iter = self.cur_iter
                 if self.verbose:
                     logger.info(f"\nGrad overflow on iteration {self.cur_iter}")
-                    logger.info(
-                        f"Reducing dynamic loss scale from {prev_scale} to {self.cur_scale}"
-                    )
+                    logger.info(f"Reducing dynamic loss scale from {prev_scale} to {self.cur_scale}")
             else:
                 # Ensure self.scale_window updates since last overflow
                 stable_interval = (self.cur_iter - self.last_overflow_iter) - 1
                 if (stable_interval > 0) and (stable_interval % self.scale_window == 0):
                     self.cur_scale *= self.scale_factor
                     if self.verbose:
-                        logger.info(
-                            f"No Grad overflow for {self.scale_window} iterations")
-                        logger.info(
-                            f"Increasing dynamic loss scale from {prev_scale} to {self.cur_scale}"
-                        )
+                        logger.info(f"No Grad overflow for {self.scale_window} iterations")
+                        logger.info(f"Increasing dynamic loss scale from {prev_scale} to {self.cur_scale}")
         else:
             if skip:
                 logger.info("Grad overflow on iteration: %s", self.cur_iter)
@@ -457,7 +432,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         will call ``model.load_state_dict()`` before
         ``fp16_optimizer_instance.load_state_dict()`` is called.
         Example::
-            model = torch.nn.Linear(D_in, D_out).cuda().half()
+            model = torch.nn.Linear(D_in, D_out).to(get_accelerator().device_name()).half()
             optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
             optimizer = FP16_Optimizer(optimizer, static_loss_scale = 128.0)
             ...

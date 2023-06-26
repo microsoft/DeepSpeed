@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import math
 from deepspeed.utils import log_dist
 
@@ -29,7 +34,7 @@ def calc_bw_log(comm_op, size, duration):
     if comm_op == "all_to_all_single":
         tput = (size / duration)
         busbw = (size / duration) * ((n - 1) / n)
-    elif comm_op == "all_gather" or comm_op == "all_gather_base" or comm_op == "reduce_scatter" or comm_op == "reduce_scatter_base":
+    elif comm_op == "all_gather" or comm_op == "all_gather_into_tensor" or comm_op == "reduce_scatter" or comm_op == "reduce_scatter_tensor":
         size *= n
         tput = (size / duration)
         busbw = (size / duration) * ((n - 1) / n)
@@ -54,6 +59,7 @@ def calc_bw_log(comm_op, size, duration):
 
 
 class CommsLogger:
+
     def __init__(self):
         from deepspeed.comm.constants import COMMS_LOGGER_VERBOSE_DEFAULT, COMMS_LOGGER_DEBUG_DEFAULT, COMMS_LOGGER_PROF_OPS_DEFAULT, COMMS_LOGGER_PROF_ALL_DEFAULT, COMMS_LOGGER_ENABLED_DEFAULT
         self.comms_dict = {}
@@ -109,8 +115,7 @@ class CommsLogger:
         # TODO: Add to tensorboard
         if self.verbose:
             n = dist.get_world_size()
-            log_str = f"rank={dist.get_rank()} | comm op: " + record_name + " | time (ms): {:.2f}".format(
-                latency)
+            log_str = f"rank={dist.get_rank()} | comm op: " + record_name + " | time (ms): {:.2f}".format(latency)
             log_str += " | msg size: " + convert_size(msg_size)
             log_str += " | algbw (Gbps): {:.2f} ".format(algbw)
             log_str += " | busbw (Gbps): {:.2f} ".format(busbw)

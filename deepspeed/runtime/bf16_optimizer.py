@@ -1,41 +1,34 @@
-"""
-Copyright 2022 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from collections import OrderedDict
 import torch
 import sys
 import os
+from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from deepspeed import comm as dist
 from deepspeed.runtime.constants import PIPE_REPLICATED
-from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.runtime import ZeROOptimizer
 from packaging import version as pkg_version
 
 from deepspeed.git_version_info import version
-from deepspeed.runtime.utils import (get_global_norm_of_tensors,
-                                     clip_tensors_by_global_norm,
-                                     DummyOptim,
-                                     align_dense_tensors,
-                                     all_gather_dp_groups,
-                                     bwc_tensor_model_parallel_rank,
-                                     is_model_parallel_parameter,
-                                     see_memory_usage)
+from deepspeed.runtime.utils import (get_global_norm_of_tensors, clip_tensors_by_global_norm, DummyOptim,
+                                     align_dense_tensors, all_gather_dp_groups, bwc_tensor_model_parallel_rank,
+                                     is_model_parallel_parameter, see_memory_usage)
 
 from deepspeed.utils import link_hp_params, fragment_address
 from deepspeed.checkpoint import enable_universal_checkpoint
-from deepspeed.checkpoint.constants import (DS_VERSION,
-                                            PARTITION_COUNT,
-                                            BASE_OPTIMIZER_STATE,
-                                            SINGLE_PARTITION_OF_FP32_GROUPS,
-                                            CLIP_GRAD,
-                                            GROUP_PADDINGS,
+from deepspeed.checkpoint.constants import (DS_VERSION, PARTITION_COUNT, BASE_OPTIMIZER_STATE,
+                                            SINGLE_PARTITION_OF_FP32_GROUPS, CLIP_GRAD, GROUP_PADDINGS,
                                             PARAM_SLICE_MAPPINGS)
 
 setattr(sys.modules[__name__], 'fragment_address', fragment_address)
 
 
 class BF16_Optimizer(ZeROOptimizer):
+
     def __init__(self,
                  init_optimizer,
                  param_names,
@@ -58,14 +51,11 @@ class BF16_Optimizer(ZeROOptimizer):
         self.allgather_bucket_size = int(allgather_bucket_size)
         self.dp_process_group = dp_process_group
         self.dp_rank = dist.get_rank(group=self.dp_process_group)
-        self.real_dp_process_group = [
-            dp_process_group for i in range(len(self.optimizer.param_groups))
-        ]
+        self.real_dp_process_group = [dp_process_group for i in range(len(self.optimizer.param_groups))]
 
-        # Load pre-built or JIT compile (un)flatten ops
-        util_ops = UtilsBuilder().load()
-        self.flatten = util_ops.flatten
-        self.unflatten = util_ops.unflatten
+        # Use torch (un)flatten ops
+        self.flatten = _flatten_dense_tensors
+        self.unflatten = _unflatten_dense_tensors
 
         #align nccl all-gather send buffers to 4-bye boundary
         self.nccl_start_alignment_factor = 2  # 4-byte alignment/sizeof(fp16) = 2
@@ -79,6 +69,7 @@ class BF16_Optimizer(ZeROOptimizer):
 
         # Maintain different fp32 gradients views for convenience
         self.fp32_groups_gradients = []
+        self.fp32_groups_gradient_dict = {}
         self.fp32_groups_gradients_flat = []
         self.fp32_groups_actual_gradients_flat = []
         self.fp32_groups_gradient_flat_partition = []
@@ -94,9 +85,7 @@ class BF16_Optimizer(ZeROOptimizer):
 
     def _setup_for_real_optimizer(self):
         dp_world_size = dist.get_world_size(group=self.dp_process_group)
-        self.partition_count = [
-            dp_world_size for i in range(len(self.optimizer.param_groups))
-        ]
+        self.partition_count = [dp_world_size for i in range(len(self.optimizer.param_groups))]
 
         for i, param_group in enumerate(self.optimizer.param_groups):
             see_memory_usage(f'before initializing group {i}', force=True)
@@ -104,68 +93,55 @@ class BF16_Optimizer(ZeROOptimizer):
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
 
             # grab the original list
-            self.bf16_groups.append(param_group['params'])
+            trainable_parameters = [param for param in param_group['params'] if param.requires_grad]
+            self.bf16_groups.append(trainable_parameters)
 
             # create flat bf16 params
             self.bf16_groups_flat.append(
-                self._flatten_dense_tensors_aligned(
-                    self.bf16_groups[i],
-                    self.nccl_start_alignment_factor * dp_world_size))
+                self._flatten_dense_tensors_aligned(self.bf16_groups[i],
+                                                    self.nccl_start_alignment_factor * dp_world_size))
 
             # Make bf16 params point to flat tensor storage
-            self._update_storage_to_flattened_tensor(
-                tensor_list=self.bf16_groups[i],
-                flat_tensor=self.bf16_groups_flat[i])
+            self._update_storage_to_flattened_tensor(tensor_list=self.bf16_groups[i],
+                                                     flat_tensor=self.bf16_groups_flat[i])
 
             # divide flat weights into equal sized partitions
             partition_size = self.bf16_groups_flat[i].numel() // dp_world_size
             bf16_dp_partitions = [
-                self.bf16_groups_flat[i].narrow(0,
-                                                dp_index * partition_size,
-                                                partition_size)
+                self.bf16_groups_flat[i].narrow(0, dp_index * partition_size, partition_size)
                 for dp_index in range(dp_world_size)
             ]
             self.bf16_partitioned_groups.append(bf16_dp_partitions)
 
             # create fp32 params partition
-            self.fp32_groups_flat_partition.append(
-                bf16_dp_partitions[partition_id].clone().float().detach())
+            self.fp32_groups_flat_partition.append(bf16_dp_partitions[partition_id].clone().float().detach())
             self.fp32_groups_flat_partition[i].requires_grad = True
 
             num_elem_list = [t.numel() for t in self.bf16_groups[i]]
 
             # create fp32 gradients
-            self.fp32_groups_gradients_flat.append(
-                torch.zeros_like(self.bf16_groups_flat[i],
-                                 dtype=torch.float32))
+            self.fp32_groups_gradients_flat.append(torch.zeros_like(self.bf16_groups_flat[i], dtype=torch.float32))
 
             # track individual fp32 gradients for entire model
-            fp32_gradients = self._split_flat_tensor(
-                flat_tensor=self.fp32_groups_gradients_flat[i],
-                num_elem_list=num_elem_list)
+            fp32_gradients = self._split_flat_tensor(flat_tensor=self.fp32_groups_gradients_flat[i],
+                                                     num_elem_list=num_elem_list)
             self.fp32_groups_gradients.append(fp32_gradients)
+            self.fp32_groups_gradient_dict[i] = fp32_gradients
 
             # flat tensor corresponding to actual fp32 gradients (i.e., minus alignment padding)
             length_without_padding = sum(num_elem_list)
             self.fp32_groups_actual_gradients_flat.append(
-                torch.narrow(self.fp32_groups_gradients_flat[i],
-                             0,
-                             0,
-                             length_without_padding))
+                torch.narrow(self.fp32_groups_gradients_flat[i], 0, 0, length_without_padding))
 
             # flat tensor corresponding to gradient partition
             self.fp32_groups_gradient_flat_partition.append(
-                torch.narrow(self.fp32_groups_gradients_flat[i],
-                             0,
-                             partition_id * partition_size,
-                             partition_size))
+                torch.narrow(self.fp32_groups_gradients_flat[i], 0, partition_id * partition_size, partition_size))
 
             # track fp32 gradient updates
             self.fp32_groups_has_gradients.append([False] * len(self.bf16_groups[i]))
 
             # Record padding required for alignment
-            if partition_id == dist.get_world_size(
-                    group=self.real_dp_process_group[i]) - 1:
+            if partition_id == dist.get_world_size(group=self.real_dp_process_group[i]) - 1:
                 padding = self.bf16_groups_flat[i].numel() - length_without_padding
             else:
                 padding = 0
@@ -197,8 +173,7 @@ class BF16_Optimizer(ZeROOptimizer):
             for lp in self.bf16_groups[i]:
                 if lp._hp_mapping is not None:
                     lp_name = self.param_names[lp]
-                    param_mapping_per_group[
-                        lp_name] = lp._hp_mapping.get_hp_fragment_address()
+                    param_mapping_per_group[lp_name] = lp._hp_mapping.get_hp_fragment_address()
             param_mapping.append(param_mapping_per_group)
 
         return param_mapping
@@ -210,13 +185,16 @@ class BF16_Optimizer(ZeROOptimizer):
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             partition_size = self.bf16_groups_flat[i].numel() // dp_world_size
             flat_hp_partition = self.fp32_groups_flat_partition[i]
-            link_hp_params(
-                lp_param_list=self.bf16_groups[i],
-                flat_hp_partition=flat_hp_partition,
-                partition_start=partition_id * partition_size,
-                partition_size=partition_size,
-                partition_optimizer_state=self.optimizer.state[flat_hp_partition],
-                dp_group=self.real_dp_process_group[i])
+            link_hp_params(lp_param_list=self.bf16_groups[i],
+                           flat_hp_partition=flat_hp_partition,
+                           gradient_dict=self.fp32_groups_gradient_dict,
+                           offload_gradient_dict=None,
+                           use_offload=False,
+                           param_group_index=i,
+                           partition_start=partition_id * partition_size,
+                           partition_size=partition_size,
+                           partition_optimizer_state=self.optimizer.state[flat_hp_partition],
+                           dp_group=self.real_dp_process_group[i])
 
     def initialize_optimizer_states(self):
         """Take an optimizer step with zero-valued gradients to allocate internal
@@ -225,7 +203,8 @@ class BF16_Optimizer(ZeROOptimizer):
         This helps prevent memory fragmentation by allocating optimizer state at the
         beginning of training instead of after activations have been allocated.
         """
-        for param_partition, grad_partition in zip(self.fp32_groups_flat_partition, self.fp32_groups_gradient_flat_partition):
+        for param_partition, grad_partition in zip(self.fp32_groups_flat_partition,
+                                                   self.fp32_groups_gradient_flat_partition):
             param_partition.grad = grad_partition
 
         self.optimizer.step()
@@ -256,19 +235,17 @@ class BF16_Optimizer(ZeROOptimizer):
         if closure is not None:
             raise NotImplementedError(f'{self.__class__} does not support closure.')
 
-        all_groups_norm = get_global_norm_of_tensors(
-            input_tensors=self.get_grads_for_norm(),
-            mpu=self.mpu,
-            norm_type=self.norm_type)
+        all_groups_norm = get_global_norm_of_tensors(input_tensors=self.get_grads_for_norm(),
+                                                     mpu=self.mpu,
+                                                     norm_type=self.norm_type)
         self._global_grad_norm = all_groups_norm
 
         assert all_groups_norm > 0.
         if self.clip_grad > 0.:
-            clip_tensors_by_global_norm(
-                input_tensors=self.get_grads_for_norm(for_clipping=True),
-                max_norm=self.clip_grad,
-                global_norm=all_groups_norm,
-                mpu=self.mpu)
+            clip_tensors_by_global_norm(input_tensors=self.get_grads_for_norm(for_clipping=True),
+                                        max_norm=self.clip_grad,
+                                        global_norm=all_groups_norm,
+                                        mpu=self.mpu)
 
         self.optimizer.step()
 
@@ -337,7 +314,8 @@ class BF16_Optimizer(ZeROOptimizer):
 
     @torch.no_grad()
     def update_lp_params(self):
-        for i, (bf16_partitions, fp32_partition) in enumerate(zip(self.bf16_partitioned_groups, self.fp32_groups_flat_partition)):
+        for i, (bf16_partitions,
+                fp32_partition) in enumerate(zip(self.bf16_partitioned_groups, self.fp32_groups_flat_partition)):
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             bf16_partitions[partition_id].data.copy_(fp32_partition.data)
             # print_rank_0(f'update_lp_params {i=} {partition_id=}', force=True)
@@ -389,18 +367,11 @@ class BF16_Optimizer(ZeROOptimizer):
                         load_optimizer_states=True,
                         load_from_fp32_weights=False):
         if checkpoint_folder:
-            self._load_universal_checkpoint(checkpoint_folder,
-                                            load_optimizer_states,
-                                            load_from_fp32_weights)
+            self._load_universal_checkpoint(checkpoint_folder, load_optimizer_states, load_from_fp32_weights)
         else:
-            self._load_legacy_checkpoint(state_dict_list,
-                                         load_optimizer_states,
-                                         load_from_fp32_weights)
+            self._load_legacy_checkpoint(state_dict_list, load_optimizer_states, load_from_fp32_weights)
 
-    def _load_legacy_checkpoint(self,
-                                state_dict_list,
-                                load_optimizer_states=True,
-                                load_from_fp32_weights=False):
+    def _load_legacy_checkpoint(self, state_dict_list, load_optimizer_states=True, load_from_fp32_weights=False):
 
         dp_rank = dist.get_rank(group=self.dp_process_group)
         current_rank_sd = state_dict_list[dp_rank]
@@ -415,17 +386,15 @@ class BF16_Optimizer(ZeROOptimizer):
             self.optimizer.load_state_dict(current_rank_sd[BASE_OPTIMIZER_STATE])
 
         if load_from_fp32_weights:
-            for current, saved in zip(self.fp32_groups_flat_partition, current_rank_sd[SINGLE_PARTITION_OF_FP32_GROUPS]):
+            for current, saved in zip(self.fp32_groups_flat_partition,
+                                      current_rank_sd[SINGLE_PARTITION_OF_FP32_GROUPS]):
                 src_tensor = _get_padded_tensor(saved, current.numel())
                 current.data.copy_(src_tensor.data)
 
         if load_optimizer_states:
             self._link_all_hp_params()
 
-    def _load_universal_checkpoint(self,
-                                   checkpoint_folder,
-                                   load_optimizer_states,
-                                   load_from_fp32_weights):
+    def _load_universal_checkpoint(self, checkpoint_folder, load_optimizer_states, load_from_fp32_weights):
         self._load_hp_checkpoint_state(checkpoint_folder)
 
     @property
@@ -442,11 +411,8 @@ class BF16_Optimizer(ZeROOptimizer):
             for lp in self.bf16_groups[i]:
                 if lp._hp_mapping is not None:
                     #print(f"Loading {self.param_names[lp]} {tp_rank=} {tp_world_size=}")
-                    lp.load_hp_checkpoint_state(
-                        os.path.join(checkpoint_dir,
-                                     self.param_names[lp]),
-                        tp_rank,
-                        tp_world_size)
+                    lp.load_hp_checkpoint_state(os.path.join(checkpoint_dir, self.param_names[lp]), tp_rank,
+                                                tp_world_size)
 
 
 def _get_padded_tensor(src_tensor, size):

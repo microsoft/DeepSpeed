@@ -1,12 +1,16 @@
-/*
-Copyright 2022 The Microsoft DeepSpeed Team
-*/
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
 
 #pragma once
 
 #include "ds_kernel_utils.h"
 
 #include <cuda.h>
+#ifdef BF16_AVAILABLE
+#include <cuda_bf16.h>
+#endif
 #include <cuda_fp16.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +24,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #define SMs 80
 
 #define MAX_REGISTERS 256
+
 template <typename T>
 void launch_attn_softmax_v2(T* vals,
                             T* mask,
@@ -47,11 +52,13 @@ void launch_bias_gelu(T* input,
                       cudaStream_t stream);
 
 template <typename T>
-void launch_fused_bias_geglu(T* output,
+void launch_gated_activation(T* output,
                              const T* activation,
                              const T* bias,
                              int rows,
+                             int output_stride,
                              int elems_per_row,
+                             bool use_gelu,
                              cudaStream_t stream);
 
 // Fused bias add with relu activation
@@ -100,17 +107,28 @@ void launch_fused_residual_ln(T* output,
                               cudaStream_t stream);
 
 template <typename T>
-void launch_fused_residual_ln_store(T* norm_output,
-                                    T* res_output,
-                                    const T* vals,
-                                    const T* residual,
-                                    const T* bias,
-                                    const T* gamma,
-                                    const T* beta,
-                                    float epsilon,
-                                    int rows,
-                                    int elems_per_row,
-                                    cudaStream_t stream);
+void launch_fused_residual_ln_store_pre_ln_res(T* norm_output,
+                                               T* res_output,
+                                               const T* vals,
+                                               const T* residual,
+                                               const T* bias,
+                                               const T* gamma,
+                                               const T* beta,
+                                               float epsilon,
+                                               int rows,
+                                               int elems_per_row,
+                                               cudaStream_t stream);
+
+template <typename T>
+void launch_rms_norm(T* norm_output,
+                     T* res_output,
+                     const T* vals,
+                     const T* residual,
+                     const T* gamma,
+                     float epsilon,
+                     int rows,
+                     int elems_per_row,
+                     cudaStream_t stream);
 
 template <typename T>
 void launch_dequantize(T* output,
@@ -150,8 +168,6 @@ void launch_apply_rotary_pos_emb(T* mixed_query,
                                  unsigned offset,
                                  unsigned num_heads,
                                  unsigned batch,
-                                 bool rotate_half,
-                                 bool rotate_every_two,
                                  cudaStream_t stream,
                                  int max_out_tokens);
 
@@ -219,3 +235,11 @@ void launch_pad_add_transform_0213(T* output,
                                    int heads,
                                    int padded_head_size,
                                    cudaStream_t stream);
+
+template <typename T>
+void launch_vector_add(T* out,
+                       const T* a,
+                       const T* b,
+                       float gamma,
+                       int num_elems,
+                       cudaStream_t stream);

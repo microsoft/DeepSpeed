@@ -1,5 +1,11 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 import pytest
+from deepspeed.accelerator import get_accelerator
 from deepspeed.ops import op_builder
 
 quantizer_cuda_module = None
@@ -34,7 +40,7 @@ def run_quant_dequant(inputs, groups, bits):
     return quantizer_cuda_module.ds_quantize_fp16(inputs, groups, bits)
 
 
-@pytest.mark.inference
+@pytest.mark.inference_ops
 @pytest.mark.parametrize("tensor_shape", [(16, 4096), (128, 256)])
 # Test with two tensor shapes as (16, 4096) and (128, 256).
 @pytest.mark.parametrize("groups", [1, 16])
@@ -42,7 +48,7 @@ def run_quant_dequant(inputs, groups, bits):
 # Note that we have an explicit boundary for groups as ((size / groups) - 1) / 4096 + 1) <= MAX_REG.
 def test_fake_quant_dequant(tensor_shape, groups):
 
-    input_tensor = torch.rand((tensor_shape), dtype=torch.float16).cuda()
+    input_tensor = torch.rand((tensor_shape), dtype=torch.float16).to(get_accelerator().device_name())
 
     # 8-bit quantization.
     ref_input_8bit = input_tensor.clone().detach()

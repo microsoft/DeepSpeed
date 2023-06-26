@@ -1,10 +1,16 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import os
 import pkgutil
 import importlib
-from deepspeed.accelerator import get_accelerator
+try:
+    # during installation time accelerator is visible, otherwise return deepspeed.accelerator
+    from accelerator import get_accelerator
+except ImportError:
+    from deepspeed.accelerator import get_accelerator
 
 # List of all available ops
 
@@ -15,7 +21,7 @@ __op_builders__ = []
 
 for _, module_name, _ in pkgutil.iter_modules([os.path.dirname(op_builder_module.__file__)]):
     # avoid self references
-    if module_name != 'all_ops' and module_name != 'builder' and module_name != 'builder_names':
+    if module_name != 'all_ops' and module_name != 'builder':
         module = importlib.import_module("{}.{}".format(op_builder_dir, module_name))
         for member_name in module.__dir__():
             if member_name.endswith('Builder'):

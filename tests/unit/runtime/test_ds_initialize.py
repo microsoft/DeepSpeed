@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import pytest
 from typing import Callable
 import torch
@@ -59,6 +64,7 @@ class TestClientOptimizer(DistributedTest):
     world_size = 1
 
     def test(self, optimizer_type):
+
         def _optimizer_callable(params) -> Optimizer:
             return AdamW(params=params)
 
@@ -75,9 +81,9 @@ class TestClientOptimizer(DistributedTest):
             client_optimizer = _optimizer_callable
 
         _, ds_optimizer, _, _ = deepspeed.initialize(config=config_dict,
-                                                    model=model,
-                                                    model_parameters=list(model.parameters()),
-                                                    optimizer=client_optimizer)
+                                                     model=model,
+                                                     model_parameters=list(model.parameters()),
+                                                     optimizer=client_optimizer)
         if client_optimizer is None:
             assert isinstance(ds_optimizer, FusedAdam)
         elif isinstance(client_optimizer, Optimizer):
@@ -91,15 +97,7 @@ class TestConfigOptimizer(DistributedTest):
     world_size = 1
 
     def test(self, client_parameters):
-        ds_config = {
-            "train_batch_size": 1,
-            "optimizer": {
-                "type": "Adam",
-                "params": {
-                    "lr": 0.001
-                }
-            }
-        }
+        ds_config = {"train_batch_size": 1, "optimizer": {"type": "Adam", "params": {"lr": 0.001}}}
 
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
@@ -109,21 +107,24 @@ class TestConfigOptimizer(DistributedTest):
         else:
             model_parameters = None
 
-        _, ds_optimizer, _, _ = deepspeed.initialize(config=ds_config,
-                                                    model=model,
-                                                    model_parameters=model_parameters)
+        _, ds_optimizer, _, _ = deepspeed.initialize(config=ds_config, model=model, model_parameters=model_parameters)
 
         assert isinstance(ds_optimizer, FusedAdam)
 
 
-@pytest.mark.parametrize('optimizer_extension', ['zero', 'amp', None])
+@pytest.mark.parametrize('optimizer_extension', ['zero1', 'zero2', 'amp', None])
 @pytest.mark.parametrize('model_dtype', ['fp16', 'bf16', 'fp32'])
 @pytest.mark.parametrize('grad_accum_dtype', [None, 'fp16', 'bf16', 'fp32'])
 class TestOptimizerImplementation(DistributedTest):
     world_size = 1
 
     def test(self, optimizer_extension, model_dtype, grad_accum_dtype):
-        zero_stage = 1 if optimizer_extension == 'zero' else 0
+        if optimizer_extension == 'zero1':
+            zero_stage = 1
+        elif optimizer_extension == 'zero2':
+            zero_stage = 2
+        else:
+            zero_stage = 0
         amp = True if optimizer_extension == 'amp' else False
         fp16 = True if model_dtype == 'fp16' else False
         bf16 = True if model_dtype == 'bf16' else False
@@ -164,12 +165,21 @@ class TestOptimizerImplementation(DistributedTest):
 
         # Enumerate supported configurations
         is_supported = {}
-        # Zero Wrapper
-        is_supported[('zero', 'fp16', None)] = True
-        is_supported[('zero', 'fp16', 'fp16')] = True
-        is_supported[('zero', 'bf16', 'bf16')] = True
-        is_supported[('zero', 'fp32', None)] = True
-        is_supported[('zero', 'fp32', 'fp32')] = True
+        # ZeRO 1 Wrapper
+        is_supported[('zero1', 'fp16', None)] = True
+        is_supported[('zero1', 'fp16', 'fp16')] = True
+        is_supported[('zero1', 'bf16', None)] = True
+        is_supported[('zero1', 'bf16', 'bf16')] = True
+        is_supported[('zero1', 'bf16', 'fp32')] = True
+        is_supported[('zero1', 'fp32', None)] = True
+        is_supported[('zero1', 'fp32', 'fp32')] = True
+        # ZeRO 2 Wrapper
+        is_supported[('zero2', 'fp16', None)] = True
+        is_supported[('zero2', 'fp16', 'fp16')] = True
+        is_supported[('zero2', 'bf16', None)] = True
+        is_supported[('zero2', 'bf16', 'bf16')] = True
+        is_supported[('zero2', 'fp32', None)] = True
+        is_supported[('zero2', 'fp32', 'fp32')] = True
         # Amp Wrapper
         is_supported[('amp', 'fp32', None)] = True
         is_supported[('amp', 'fp32', 'fp32')] = True
@@ -189,14 +199,14 @@ class TestOptimizerImplementation(DistributedTest):
 
         if key in is_supported:
             _, ds_optimizer, _, _ = deepspeed.initialize(config=ds_config,
-                                                        model=model,
-                                                        model_parameters=model_parameters)
+                                                         model=model,
+                                                         model_parameters=model_parameters)
             assert True
         else:
             with pytest.raises(NotImplementedError):
                 _, ds_optimizer, _, _ = deepspeed.initialize(config=ds_config,
-                                                            model=model,
-                                                            model_parameters=model_parameters)
+                                                             model=model,
+                                                             model_parameters=model_parameters)
 
 
 @pytest.mark.parametrize("scheduler_type", [None, _LRScheduler, Callable])
@@ -205,6 +215,7 @@ class TestClientLrScheduler(DistributedTest):
     world_size = 1
 
     def test(self, scheduler_type, optimizer_type):
+
         def _my_lambda(epoch):
             return epoch // 10
 
@@ -236,14 +247,11 @@ class TestClientLrScheduler(DistributedTest):
                 client_scheduler = LambdaLR(client_optimizer, _my_lambda)
             else:
                 # Verify invalid combination is correctly handled
-                client_scheduler = LambdaLR(torch.optim.Adam(model.parameters()),
-                                            _my_lambda)
+                client_scheduler = LambdaLR(torch.optim.Adam(model.parameters()), _my_lambda)
         else:
             client_scheduler = _lr_scheduler_callable
 
-        if isinstance(client_scheduler,
-                      _LRScheduler) and not isinstance(client_optimizer,
-                                                       Optimizer):
+        if isinstance(client_scheduler, _LRScheduler) and not isinstance(client_optimizer, Optimizer):
             with pytest.raises(AssertionError):
                 _, _, _, _ = deepspeed.initialize(config=config_dict,
                                                   model=model,

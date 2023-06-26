@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .builder import CUDAOpBuilder
 
 
@@ -18,6 +23,8 @@ class QuantizerBuilder(CUDAOpBuilder):
             'csrc/quantization/fake_quantizer.cu',
             'csrc/quantization/quantize.cu',
             'csrc/quantization/dequantize.cu',
+            'csrc/quantization/swizzled_quantize.cu',
+            'csrc/quantization/quant_reduce.cu',
         ]
 
     def include_paths(self):

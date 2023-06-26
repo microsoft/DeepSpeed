@@ -1,48 +1,79 @@
-"""
-Copyright (c) Microsoft Corporation
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
-from pydantic import BaseModel
-from .constants import *
+# DeepSpeed Team
 
-
-class MonitorConfig(BaseModel):
-    class Config:
-        validate_all = True
-        validate_assignment = True
-        use_enum_values = True
-        extra = 'forbid'
+from pydantic import root_validator
+from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 
-class TensorBoardConfig(MonitorConfig):
-    enabled: bool = TENSORBOARD_ENABLED_DEFAULT
-    output_path: str = TENSORBOARD_OUTPUT_PATH_DEFAULT
-    job_name: str = TENSORBOARD_JOB_NAME_DEFAULT
+def get_monitor_config(param_dict):
+    monitor_dict = {key: param_dict.get(key, {}) for key in ("tensorboard", "wandb", "csv_monitor")}
+    return DeepSpeedMonitorConfig(**monitor_dict)
 
 
-class WandbConfig(MonitorConfig):
-    enabled: bool = WANDB_ENABLED_DEFAULT
-    group: str = WANDB_GROUP_NAME_DEFAULT
-    team: str = WANDB_TEAM_NAME_DEFAULT
-    project: str = WANDB_PROJECT_NAME_DEFAULT
+class TensorBoardConfig(DeepSpeedConfigModel):
+    """Sets parameters for TensorBoard monitor."""
+
+    enabled: bool = False
+    """ Whether logging to Tensorboard is enabled. Requires `tensorboard` package is installed. """
+
+    output_path: str = ""
+    """
+    Path to where the Tensorboard logs will be written. If not provided, the
+    output path is set under the training script’s launching path.
+    """
+
+    job_name: str = "DeepSpeedJobName"
+    """ Name for the current job. This will become a new directory inside `output_path`. """
 
 
-class CSVConfig(MonitorConfig):
-    enabled: bool = CSV_MONITOR_ENABLED_DEFAULT
-    output_path: str = CSV_MONITOR_OUTPUT_PATH_DEFAULT
-    job_name: str = CSV_MONITOR_JOB_NAME_DEFAULT
+class WandbConfig(DeepSpeedConfigModel):
+    """Sets parameters for WandB monitor."""
+
+    enabled: bool = False
+    """ Whether logging to WandB is enabled. Requires `wandb` package is installed. """
+
+    group: str = None
+    """ Name for the WandB group. This can be used to group together runs. """
+
+    team: str = None
+    """ Name for the WandB team. """
+
+    project: str = "deepspeed"
+    """ Name for the WandB project. """
 
 
-class DeepSpeedMonitorConfig:
-    def __init__(self, ds_config):
-        self.tensorboard_enabled = 'tensorboard' in ds_config
-        self.wandb_enabled = 'wandb' in ds_config
-        self.csv_monitor_enabled = 'csv_monitor' in ds_config
+class CSVConfig(DeepSpeedConfigModel):
+    """Sets parameters for CSV monitor."""
 
-        if self.tensorboard_enabled:
-            self.tensorboard_config = TensorBoardConfig(**ds_config['tensorboard'])
-        if self.wandb_enabled:
-            self.wandb_config = WandbConfig(**ds_config['wandb'])
-        if self.csv_monitor_enabled:
-            self.csv_monitor_config = CSVConfig(**ds_config['csv_monitor'])
+    enabled: bool = False
+    """ Whether logging to local CSV files is enabled. """
+
+    output_path: str = ""
+    """
+    Path to where the csv files will be written. If not provided, the output
+    path is set under the training script’s launching path.
+    """
+
+    job_name: str = "DeepSpeedJobName"
+    """ Name for the current job. This will become a new directory inside `output_path`. """
+
+
+class DeepSpeedMonitorConfig(DeepSpeedConfigModel):
+    """Sets parameters for various monitoring methods."""
+
+    tensorboard: TensorBoardConfig = {}
+    """ TensorBoard monitor, requires `tensorboard` package is installed. """
+
+    wandb: WandbConfig = {}
+    """ WandB monitor, requires `wandb` package is installed. """
+
+    csv_monitor: CSVConfig = {}
+    """ Local CSV output of monitoring data. """
+
+    @root_validator
+    def check_enabled(cls, values):
+        values["enabled"] = values.get("tensorboard").enabled or values.get("wandb").enabled or values.get(
+            "csv_monitor").enabled
+        return values

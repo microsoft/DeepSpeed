@@ -1,24 +1,37 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 import time
 
-device = 'cpu'
-model_size = 1 * 1024**3
-group_size = [model_size, 274432]
+NUM_ITERS = 100
 
-param = [torch.nn.Parameter(torch.ones(size, device=device)) for size in group_size]
-optimizer = DeepSpeedCPUAdam(param)
-#torch.set_num_threads(128)
-for i, p in enumerate(param):
-    p.grad = torch.ones(group_size[i], device=device)
-#param.grad = torch.ones(model_size, device=device)
-avg = 0
-for i in range(100):
-    start = time.time()
-    optimizer.step()
-    stop = time.time()
-    avg += (stop - start)
-    for i, p in enumerate(param):
-        p.grad = torch.ones(group_size[i], device=device) * 2
-    #param.grad = torch.ones(model_size, device=device) * 2
-print("Elapsed Time is ", avg / 100)
+
+def _test_perf(param, optimizer_func):
+    optimizer = optimizer_func(param)
+    avg = 0
+    for i in range(NUM_ITERS):
+        for i, p in enumerate(param):
+            p.grad = torch.ones_like(p) * 2
+        start = time.time()
+        optimizer.step()
+        stop = time.time()
+        avg += (stop - start)
+
+    return avg / NUM_ITERS
+
+
+def _main():
+    device = 'cpu'
+    model_size = 1 * 1024**3
+    group_size = [model_size, 274432]
+    param = [torch.nn.Parameter(torch.ones(size, device=device)) for size in group_size]
+    torch_time = _test_perf(param, torch.optim.Adam)
+    ds_time = _test_perf(param, DeepSpeedCPUAdam)
+    print(f"Step time: {torch_time=} {ds_time=}")
+
+
+_main()
