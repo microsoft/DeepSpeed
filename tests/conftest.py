@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 # tests directory-specific settings - this file is run automatically by pytest before any tests are run
 
@@ -16,6 +19,13 @@ os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 # 'pip install -e .[dev]' when switching between checkouts and running tests.
 git_repo_path = abspath(join(dirname(dirname(__file__)), "src"))
 sys.path.insert(1, git_repo_path)
+
+
+def pytest_configure(config):
+    config.option.color = "yes"
+    config.option.durations = 0
+    config.option.durations_min = 1
+    config.option.verbose = True
 
 
 def pytest_addoption(parser):
@@ -43,16 +53,14 @@ def check_environment(pytestconfig):
     expected_cuda_version = pytestconfig.getoption("cuda_ver")
     if expected_torch_version is None:
         warnings.warn(
-            "Running test without verifying torch version, please provide an expected torch version with --torch_ver"
-        )
+            "Running test without verifying torch version, please provide an expected torch version with --torch_ver")
     elif not validate_version(expected_torch_version, torch.__version__):
         pytest.exit(
             f"expected torch version {expected_torch_version} did not match found torch version {torch.__version__}",
             returncode=2)
     if expected_cuda_version is None:
         warnings.warn(
-            "Running test without verifying cuda version, please provide an expected cuda version with --cuda_ver"
-        )
+            "Running test without verifying cuda version, please provide an expected cuda version with --cuda_ver")
     elif not validate_version(expected_cuda_version, torch.version.cuda):
         pytest.exit(
             f"expected cuda version {expected_cuda_version} did not match found cuda version {torch.version.cuda}",

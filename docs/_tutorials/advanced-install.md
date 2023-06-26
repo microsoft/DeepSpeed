@@ -147,6 +147,33 @@ This is also recommended to ensure your exact architecture is used. Due to a var
 
 The full list of nvidia GPUs and their compute capabilities can be found [here](https://developer.nvidia.com/cuda-gpus).
 
+## CUDA version mismatch
+
+If you're getting the following error:
+
+```
+Exception: >- DeepSpeed Op Builder: Installed CUDA version {VERSION} does not match the version torch was compiled with {VERSION}, unable to compile cuda/cpp extensions without a matching cuda version.
+```
+You have a misaligned version of CUDA installed compared to the version of CUDA
+used to compile torch. A mismatch in the major version is likely to result in
+errors or unexpected behavior.
+
+The easiest fix for this error is changing the CUDA version installed (check
+with `nvcc --version`) or updating the torch version to match the installed
+CUDA version (check with `python3 -c "import torch; print(torch.__version__)"`).
+
+We only require that the major version matches (e.g., 11.1 and 11.8). However,
+note that even a mismatch in the minor version _may still_ result in unexpected
+behavior and errors, so it's recommended to match both major and minor versions.
+When there's a minor version mismatch, DeepSpeed will log a warning.
+
+If you want to skip this check and proceed with the mismatched CUDA versions,
+use the following environment variable, but beware of unexpected behavior:
+
+```bash
+DS_SKIP_CUDA_CHECK=1
+```
+
 ## Feature specific dependencies
 
 Some DeepSpeed features require specific dependencies outside the general dependencies of DeepSpeed.

@@ -1,14 +1,12 @@
 name: nv-torch-latest-v100
 
 on:
-  push:
-    branches:
-      - 'staging**'
-    paths-ignore:
-      - 'docs/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
+  schedule:
+    - cron: "0 0 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -19,7 +17,7 @@ jobs:
     runs-on: [self-hosted, nvidia, cu116, v100]
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
@@ -53,5 +51,5 @@ jobs:
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose --forked -n 4 unit/ --torch_ver="1.13" --cuda_ver="11.6"
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose --forked -m 'sequential' unit/ --torch_ver="1.13" --cuda_ver="11.6"
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --forked -n 4 unit/ --torch_ver="2.0" --cuda_ver="11.7"
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --forked -m 'sequential' unit/ --torch_ver="2.0" --cuda_ver="11.7"
