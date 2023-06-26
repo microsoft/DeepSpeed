@@ -1905,7 +1905,7 @@ class GatheredParameters:
         else:
             # single param
             params = [params]
-
+        params = list(set(params)) #remove duplicates
         # enable if at least one is zero-param, otherwise a noop
         if not any(is_zero_param(p) for p in params):
             self.enabled = False
