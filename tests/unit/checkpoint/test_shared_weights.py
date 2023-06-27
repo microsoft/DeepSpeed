@@ -31,7 +31,7 @@ class TestCheckpointSharedWeights(DistributedTest):
             "zero_optimization": {"stage": 2},
         }
         model = ModelWithSharedWeights()
-        optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+        optimizer = torch.optim.Adam(model.parameters())
 
         deepspeed_engine, _, _, _ = deepspeed.initialize(
             config=config,
