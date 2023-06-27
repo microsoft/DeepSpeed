@@ -3236,10 +3236,8 @@ class DeepSpeedEngine(Module):
         shared_index = {}
         shared_params_by_full_name = {}
 
-        is_zero3_model = (
-            self.zero_optimization_partition_weights()
-            and any(hasattr(param, "ds_id") for param in self.module.parameters())
-        )
+        is_zero3_model = (self.zero_optimization_partition_weights()
+                          and any(hasattr(param, "ds_id") for param in self.module.parameters()))
 
         def get_layer_state_dict(module, prefix=""):
             # handle params
@@ -3251,8 +3249,8 @@ class DeepSpeedEngine(Module):
                 # When weights are manged by stage 3, we can't rely on param.data_ptr() as it will be reused
                 # as weights get gathered and reduced, but param.ds_id is unique across all zero weights
                 # (and shared params will have the same param.ds_id)
-                param_id = param.ds_id if is_zero3_model else param.data_ptr() 
-                
+                param_id = param.ds_id if is_zero3_model else param.data_ptr()
+
                 if param_id in shared_index:
                     # shared weights
                     #print(f"`{key}` is shared with `{shared_index[param_id]}`")

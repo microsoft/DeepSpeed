@@ -12,6 +12,7 @@ from unit.common import DistributedTest
 
 
 class ModelWithSharedWeights(nn.Module):
+
     def __init__(self):
         super().__init__()
         self.layer0 = nn.Linear(100, 100)
@@ -24,11 +25,13 @@ class ModelWithSharedWeights(nn.Module):
 class TestCheckpointSharedWeights(DistributedTest):
     world_size = 2
 
-    def test_checkpoint_shared_weights(self, tmp_path):     
+    def test_checkpoint_shared_weights(self, tmp_path):
         config = {
             "train_micro_batch_size_per_gpu": 2,
             "zero_allow_untested_optimizer": True,
-            "zero_optimization": {"stage": 2},
+            "zero_optimization": {
+                "stage": 2
+            },
         }
         model = ModelWithSharedWeights()
         optimizer = torch.optim.Adam(model.parameters())
