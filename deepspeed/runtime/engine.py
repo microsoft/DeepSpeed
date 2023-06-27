@@ -3102,7 +3102,6 @@ class DeepSpeedEngine(Module):
                      mp_world_size=self.mp_world_size,
                      ds_config=self.config,
                      ds_version=version)
-        print("shared params saving", state["shared_params"])
         state.update(client_state)
 
         if self.save_non_zero_checkpoint:
