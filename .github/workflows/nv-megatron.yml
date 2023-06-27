@@ -45,7 +45,7 @@ jobs:
             pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --target=/blob/apex/ --upgrade .
             git rev-parse HEAD > /blob/apex/.venv_installed_version
           fi
-        echo PYTHONPATH=$PYTHONPATH:/blob/apex/ >> $GITHUB_ENV
+          echo PYTHONPATH=$PYTHONPATH:/blob/apex/ >> $GITHUB_ENV
 
       - name: Python environment
         run: |
