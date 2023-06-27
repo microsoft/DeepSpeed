@@ -3220,7 +3220,7 @@ class DeepSpeedEngine(Module):
                 
                 if param_id in shared_index:
                     # shared weights
-                    # print(f"`{key}` is shared with `{shared_index[param_id]}`")
+                    #print(f"`{key}` is shared with `{shared_index[param_id]}`")
                     shared_params_by_full_name[key] = shared_index[param_id]
                 else:
                     shared_index[param_id] = key
