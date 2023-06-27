@@ -3207,10 +3207,8 @@ class DeepSpeedEngine(Module):
         def get_layer_state_dict(module, prefix=""):
             # handle params
             for name, param in module.named_parameters(recurse=False):
-
                 if param is None or (is_zero3_model and not hasattr(param, "ds_id")):
                     continue
-
                 key = prefix + name
 
                 # When weights are manged by stage 3, we can't rely on param.data_ptr() as it will be reused
