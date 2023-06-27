@@ -55,5 +55,6 @@ jobs:
 
       - name: Coverage Report
         run: |
+          cd tests
           coverage combine
           coverage report -m
