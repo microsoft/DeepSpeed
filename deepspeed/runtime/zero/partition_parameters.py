@@ -1905,7 +1905,9 @@ class GatheredParameters:
         else:
             # single param
             params = [params]
-        params = list(set(params))  #remove duplicates
+        params = sorted(
+            set(params), key=lambda x: x.ds_id
+        )  # remove the duplicates to prevent racing condition, we must also make sure the order is the same on all ranks otherwise we'll get deadlocks
         # enable if at least one is zero-param, otherwise a noop
         if not any(is_zero_param(p) for p in params):
             self.enabled = False
