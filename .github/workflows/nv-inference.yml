@@ -52,9 +52,5 @@ jobs:
           TRANSFORMERS_CACHE=/blob/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions coverage run --parallel-mode --source=../deepspeed/ -m pytest -m 'seq_inference' unit/ --torch_ver="1.13" --cuda_ver="11.6"
           TRANSFORMERS_CACHE=/blob/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions coverage run --parallel-mode --source=../deepspeed/ -m pytest -m 'inference_ops' unit/ --torch_ver="1.13" --cuda_ver="11.6"
           TRANSFORMERS_CACHE=/blob/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions coverage run --parallel-mode --source=../deepspeed/ -m pytest --forked -n 4 -m 'inference' unit/ --torch_ver="1.13" --cuda_ver="11.6"
-
-      - name: Coverage Report
-        run: |
-          cd tests
           coverage combine
           coverage report -m
