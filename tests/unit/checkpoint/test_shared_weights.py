@@ -24,7 +24,7 @@ class ModelWithSharedWeights(nn.Module):
 class TestCheckpointSharedWeights(DistributedTest):
     world_size = 2
 
-    def test_checkpoint_shared_weights(self):     
+    def test_checkpoint_shared_weights(self, tmp_path):     
         config = {
             "train_micro_batch_size_per_gpu": 2,
             "zero_allow_untested_optimizer": True,
@@ -38,8 +38,9 @@ class TestCheckpointSharedWeights(DistributedTest):
             model=model,
             optimizer=optimizer,
         )
-        deepspeed_engine.save_checkpoint("checkpoints_ds/checkpoint0.pt", tag="checkpoint")
+        filename = tmp_path / "checkpoint.pt"
+        deepspeed_engine.save_checkpoint(filename, tag="checkpoint")
 
         model = ModelWithSharedWeights()
-        state_dict = get_fp32_state_dict_from_zero_checkpoint("checkpoints_ds/checkpoint0.pt", tag="checkpoint")
+        state_dict = get_fp32_state_dict_from_zero_checkpoint(filename, tag="checkpoint")
         model.load_state_dict(state_dict, strict=True)
