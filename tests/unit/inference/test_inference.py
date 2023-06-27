@@ -280,6 +280,8 @@ class TestMPSize(DistributedTest):
     ],
     ids=["t5", "roberta"],
 )
+@pytest.mark.parametrize("dtype", [torch.float], ids=["fp32"])
+@pytest.mark.parametrize("enable_cuda_graph", [False], ids=["noCG"])
 class TestInjectionPolicy(DistributedTest):
     world_size = [1, 2]
 
@@ -291,8 +293,8 @@ class TestInjectionPolicy(DistributedTest):
         inf_kwargs,
         assert_fn,
         invalid_test,
-        dtype=torch.float,
-        enable_cuda_graph=False,
+        dtype,
+        enable_cuda_graph,
     ):
         if invalid_test:
             pytest.skip(invalid_test)
