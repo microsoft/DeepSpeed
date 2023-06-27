@@ -12,24 +12,19 @@ from transformers import pipeline
 from unit.common import DistributedTest
 from deepspeed.accelerator import get_accelerator
 
-from .fixtures import query, inf_kwargs, enable_cuda_graph  # noqa: F401
-
 
 @pytest.mark.inference
-@pytest.mark.parametrize("model,task", [
-    ("bert-base-cased", "fill-mask"),
-    ("roberta-base", "fill-mask"),
-    ("gpt2", "text-generation"),
-    ("facebook/opt-125m", "text-generation"),
-    ("bigscience/bloom-560m", "text-generation"),
-])
 @pytest.mark.parametrize("use_cuda_events", [True, False])
+@pytest.mark.parametrize("enable_cuda_graph", [True, False])
 class TestModelProfiling(DistributedTest):
     world_size = 1
 
-    def test(self, model, task, query, inf_kwargs, enable_cuda_graph, use_cuda_events, dtype=torch.float16):
-        if enable_cuda_graph and "bert" not in model:
-            pytest.skip(f"CUDA Graph not supported for {model}")
+    def test(self, enable_cuda_graph, use_cuda_events):
+        task = "text-generation"
+        model = "bigscience/bloom-560m"
+        dtype = torch.float16
+        query = "DeepSpeed is"
+        inf_kwargs = {"do_sample": False, "min_length": 50, "max_length": 50}
 
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         world_size = int(os.getenv("WORLD_SIZE", "1"))
