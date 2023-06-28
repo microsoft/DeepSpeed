@@ -47,11 +47,11 @@ class NoGatherHandle:
             raise RuntimeError(f"expected param {param.ds_summary()} to be available")
 
         if hasattr(param.ds_tensor, "ds_quant_scale"):
-            param.data = Init.quantizer_module.dequantize(param.ds_tensor.data, param.ds_tensor.ds_quant_scale).to(device=get_accelerator().current_device_name(),
-                                                non_blocking=True).view(param.ds_shape)
+            param.data = Init.quantizer_module.dequantize(param.ds_tensor.data, param.ds_tensor.ds_quant_scale).to(
+                device=get_accelerator().current_device_name(), non_blocking=True).view(param.ds_shape)
         else:
             param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(),
-                                                non_blocking=True).view(param.ds_shape)
+                                                 non_blocking=True).view(param.ds_shape)
 
     def wait(self) -> None:
         get_accelerator().current_stream().synchronize()
@@ -68,11 +68,11 @@ class NoGatherCoalescedHandle:
             if param.ds_status != ZeroParamStatus.INFLIGHT:
                 raise RuntimeError(f"expected param {param.ds_summary()} to not be available")
             if hasattr(param.ds_tensor, "ds_quant_scale"):
-                param.data = Init.quantizer_module.dequantize(param.ds_tensor.data, param.ds_tensor.ds_quant_scale).to(device=get_accelerator().current_device_name(),
-                                                    non_blocking=True).view(param.ds_shape)
+                param.data = Init.quantizer_module.dequantize(param.ds_tensor.data, param.ds_tensor.ds_quant_scale).to(
+                    device=get_accelerator().current_device_name(), non_blocking=True).view(param.ds_shape)
             else:
                 param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(),
-                                                    non_blocking=True).view(param.ds_shape)
+                                                     non_blocking=True).view(param.ds_shape)
 
     @instrument_w_nvtx
     def wait(self) -> None:
@@ -693,20 +693,22 @@ class Init(InsertPostInitMethodToModuleSubClasses):
     num_persisted_elements = 0
     apply_param_persistence = False
 
-    def __init__(self,
-                 module=None,
-                 data_parallel_group=None,
-                 mem_efficient_linear=True,
-                 remote_device=None,
-                 pin_memory=False,
-                 config_dict_or_path=None,
-                 config=None,
-                 enabled=True,
-                 dtype=None,
-                 mpu=None,
-                 zero_param_parallel_group=None,
-                 zero_quantized_weights=False,
-                 zero_quantized_nontrainable_weights=False,):
+    def __init__(
+        self,
+        module=None,
+        data_parallel_group=None,
+        mem_efficient_linear=True,
+        remote_device=None,
+        pin_memory=False,
+        config_dict_or_path=None,
+        config=None,
+        enabled=True,
+        dtype=None,
+        mpu=None,
+        zero_param_parallel_group=None,
+        zero_quantized_weights=False,
+        zero_quantized_nontrainable_weights=False,
+    ):
         """A context to enable massive model construction for training with
         ZeRO-3. Models are automatically partitioned (or, sharded) across the
         system and converted to half precision.
@@ -1007,7 +1009,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         def all_gather_coalesced(params: Iterable[Parameter],
                                  forward: bool,
                                  safe_mode: bool = False,
-                                 quantize:bool = False) -> AllGatherCoalescedHandle:
+                                 quantize: bool = False) -> AllGatherCoalescedHandle:
 
             # fetches from nvme if the partition is not available and in nvme
             self._ensure_availability_of_partitioned_params(params)
@@ -1139,10 +1141,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     if params[0].ds_secondary_tensor is not None and not forward:
                         use_secondary_tensor = True
                         if hasattr(params[0].ds_secondary_tensor, "ds_quant_scale"):
-                            quantized_param = instrument_w_nvtx(
-                                torch.cat)([p.ds_secondary_tensor.data.to(get_accelerator().current_device()) for p in params])
-                            scales = instrument_w_nvtx(
-                                torch.cat)([p.ds_secondary_tensor.ds_quant_scale.to(get_accelerator().current_device()) for p in params])
+                            quantized_param = instrument_w_nvtx(torch.cat)(
+                                [p.ds_secondary_tensor.data.to(get_accelerator().current_device()) for p in params])
+                            scales = instrument_w_nvtx(torch.cat)([
+                                p.ds_secondary_tensor.ds_quant_scale.to(get_accelerator().current_device())
+                                for p in params
+                            ])
                         else:
                             quantized_param, scales = self.quantizer_module.quantize(
                                 instrument_w_nvtx(torch.cat)(
@@ -1151,8 +1155,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         if hasattr(params[0].ds_tensor, "ds_quant_scale"):
                             quantized_param = instrument_w_nvtx(
                                 torch.cat)([p.ds_tensor.data.to(get_accelerator().current_device()) for p in params])
-                            scales = instrument_w_nvtx(
-                                torch.cat)([p.ds_tensor.ds_quant_scale.to(get_accelerator().current_device()) for p in params])
+                            scales = instrument_w_nvtx(torch.cat)(
+                                [p.ds_tensor.ds_quant_scale.to(get_accelerator().current_device()) for p in params])
                         else:
                             quantized_param, scales = self.quantizer_module.quantize(
                                 instrument_w_nvtx(
@@ -1314,16 +1318,18 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             if len(param_list) == 1:
                 ret_value = self._allgather_params(all_gather_list, hierarchy=hierarchy)
             else:
-                all_gather_quantize_list=[]
-                all_gather_nonquantize_list=[]
+                all_gather_quantize_list = []
+                all_gather_nonquantize_list = []
                 for param in param_list:
-                    if hasattr(param.ds_tensor, "ds_quant_scale") or (hasattr(param, "ds_secondary_tensor") and hasattr(param.ds_secondary_tensor, "ds_quant_scale")):
+                    if hasattr(param.ds_tensor,
+                               "ds_quant_scale") or (hasattr(param, "ds_secondary_tensor")
+                                                     and hasattr(param.ds_secondary_tensor, "ds_quant_scale")):
                         all_gather_quantize_list.append(param)
                     else:
                         all_gather_nonquantize_list.append(param)
                 # _allgather_params_coalesced always return None
-                self._allgather_params_coalesced(all_gather_nonquantize_list, hierarchy, quantize = False)
-                self._allgather_params_coalesced(all_gather_quantize_list, hierarchy, quantize = True)
+                self._allgather_params_coalesced(all_gather_nonquantize_list, hierarchy, quantize=False)
+                self._allgather_params_coalesced(all_gather_quantize_list, hierarchy, quantize=True)
             for param in all_gather_list:
                 param.ds_status = ZeroParamStatus.AVAILABLE
             return None
@@ -1481,7 +1487,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     secondary_partitioned_tensor = secondary_partitioned_tensor.pin_memory()
                 # quantize the tensor if it's not trainable
                 if not param.requires_grad and self.quantized_nontrainable_weights:
-                    secondary_partitioned_tensor, secondary_partitioned_tensor.ds_quant_scale = self.quantizer_module.quantize(secondary_partitioned_tensor)
+                    secondary_partitioned_tensor, secondary_partitioned_tensor.ds_quant_scale = self.quantizer_module.quantize(
+                        secondary_partitioned_tensor)
                 secondary_partitioned_tensor.requires_grad = False
                 param.ds_secondary_tensor = secondary_partitioned_tensor
                 param.ds_secondary_tensor.ds_numel = secondary_partition_size
@@ -1574,7 +1581,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         param.data = replicated_tensor.data
         return handle
 
-    def _allgather_params_coalesced(self, param_list, hierarchy=0,quantize=False):
+    def _allgather_params_coalesced(self, param_list, hierarchy=0, quantize=False):
         """ blocking call
         avoid explicit memory copy in _allgather_params
         """
@@ -1604,16 +1611,19 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             allgather_quantize_scale = []
         for psize in partition_sizes:
             tensor_size = psize * self.num_partitions
-            flat_tensor = torch.empty(tensor_size, dtype=param_list[0].ds_tensor.dtype, device=self.local_device).view(-1)
+            flat_tensor = torch.empty(tensor_size, dtype=param_list[0].ds_tensor.dtype,
+                                      device=self.local_device).view(-1)
             flat_tensor.requires_grad = False
             allgather_params.append(flat_tensor)
         if quantize:
             for psize in quantize_scale_sizes:
                 tensor_size = psize * self.num_partitions
-                flat_tensor = torch.empty(tensor_size, dtype=param_list[0].ds_tensor.ds_quant_scale.dtype, device=self.local_device).view(-1)
+                flat_tensor = torch.empty(tensor_size,
+                                          dtype=param_list[0].ds_tensor.ds_quant_scale.dtype,
+                                          device=self.local_device).view(-1)
                 flat_tensor.requires_grad = False
                 allgather_quantize_scale.append(flat_tensor)
-                
+
         # launch
         launch_handles = []
         launch_quantize_handles = []
@@ -1628,9 +1638,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                                 async_op=True)
                 if quantize:
                     quantize_handle = dist.all_gather_into_tensor(allgather_quantize_scale[param_idx],
-                                                    quantize_scale_tensors[param_idx],
-                                                    group=self.ds_process_group,
-                                                    async_op=True)
+                                                                  quantize_scale_tensors[param_idx],
+                                                                  group=self.ds_process_group,
+                                                                  async_op=True)
                     launch_quantize_handles.append(quantize_handle)
             else:
                 output_list = []
@@ -1650,7 +1660,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         psize = quantize_scale_sizes[param_idx]
                         partition = allgather_quantize_scale[param_idx].narrow(0, i * psize, psize)
                         output_scale_list.append(partition)
-                    quant_handle = dist.all_gather(output_scale_list, quantize_scale_tensors[param_idx], group=self.get_partition_dp_group(param), async_op=True)
+                    quant_handle = dist.all_gather(output_scale_list,
+                                                   quantize_scale_tensors[param_idx],
+                                                   group=self.get_partition_dp_group(param),
+                                                   async_op=True)
                     launch_quantize_handles.append(quant_handle)
             launch_handles.append(h)
 

@@ -103,8 +103,8 @@ class PartitionedParameterCoordinator:
         self.__prefetch_bucket_sz: int = prefetch_bucket_sz
         self.__prefetch_nvme: bool = prefetch_nvme
         self.hierarchy: int = 0
-        self.zero_quantized_weights=zero_quantized_weights
-        self.zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights
+        self.zero_quantized_weights = zero_quantized_weights
+        self.zero_quantized_nontrainable_weights = zero_quantized_nontrainable_weights
 
         # stream that will be used for allgather operations
         self.__allgather_stream: get_accelerator().Stream = allgather_stream
@@ -423,7 +423,7 @@ class PartitionedParameterCoordinator:
         if nonquantized_params:
             self.__all_gather_params_(nonquantized_params, forward, quantize=self.zero_quantized_weights)
 
-    def __all_gather_params_(self, params: Set[Parameter], forward: bool, quantize:bool=False) -> None:
+    def __all_gather_params_(self, params: Set[Parameter], forward: bool, quantize: bool = False) -> None:
         """for each partitioned parameter, kick off an async allgather and store
         the work handle for the in flight parameters."""
         partitioned_params = []
