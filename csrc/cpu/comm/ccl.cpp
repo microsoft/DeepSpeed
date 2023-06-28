@@ -6,10 +6,63 @@
 #include <torch/extension.h>
 
 #include <oneapi/ccl.hpp>
+#include <chrono>
+#include <iostream>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+struct SharedData {
+    const char *name;
+    int descriptor;
+    void *bytes;
+    size_t nbytes;
+};
+
+int world_rank = -1;
+int world_size = -1;
+
+void shared_open(SharedData *data, const char *name, size_t nbytes) {
+    int d = shm_open(name, O_RDWR, S_IRUSR | S_IWUSR);
+    if (d != -1) {
+        void *bytes = mmap(NULL, nbytes, PROT_READ|PROT_WRITE, MAP_SHARED, d, 0);
+        data->name = name;
+        data->descriptor = d;
+        data->bytes = bytes;
+        data->nbytes = nbytes;
+        printf ("(%d)shared_open %s done\n", world_rank, name);
+    } else {
+        printf ("(%d)shared_open %s failed\n", world_rank, name);
+        data->descriptor = -1;
+    }
+}
+
+void shared_create(SharedData *data, const char *name, void *bytes, size_t nbytes) {
+    int d = shm_open(name, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+    if (d != -1) {
+        if (nbytes = write(d, bytes, nbytes)) {
+            shared_open(data, name, nbytes);
+        }
+    } else {
+        printf ("(%d)shared_create %s failed\n", world_rank, name);
+    }
+    printf ("(%d)shared_create %s done\n", world_rank, name);
+}
+
+void shared_close(SharedData *data) {
+    if (data->descriptor != -1) {
+        munmap(data->bytes, data->nbytes);
+        shm_unlink(data->name);
+    }
+}
 
 std::set<int> _comm_ids;
 std::set<int> _colors;
 ccl::vector_class<ccl::communicator> _ccl_comms;
+
+ccl::communicator& _get_comm_from_group() { return _ccl_comms[0]; }
+ccl::communicator& _get_comm_from_group(py::object group) { return _ccl_comms[0]; }
 
 #define CCLCHECK(cmd) \
     do {              \
@@ -21,10 +74,15 @@ ccl::vector_class<ccl::communicator> _ccl_comms;
 
 bool is_initialized = 0;
 
-int world_rank = -1;
-int world_size = -1;
-
 ccl::shared_ptr_class<ccl::kvs> kvs;
+
+SharedData allreduce_buffer;
+char buffer_name[100] = "allreduce_buffer";
+struct allreduce_workspace {
+    int state;
+    char buffer[32768];
+};
+struct allreduce_workspace *buffer;
 
 void initialize(int size, int rank, torch::Tensor& kvs_data)
 {
@@ -41,6 +99,21 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
     }
 
     _ccl_comms.emplace_back(ccl::create_communicator(size, rank, kvs));
+
+    //sprintf (buffer_name, "allreduce_buffer_%d", rank);
+    if (rank == 0) {
+        buffer = (struct allreduce_workspace*) malloc(size*sizeof(struct allreduce_workspace));
+        shared_create(&allreduce_buffer, buffer_name, buffer, size*sizeof(struct allreduce_workspace));
+        buffer = (struct allreduce_workspace*)allreduce_buffer.bytes;
+        for (int i=0; i<size; i++) {
+            buffer[i].state = 0;
+        }
+    }
+    CCLCHECK(ccl::barrier(_get_comm_from_group()).wait());
+    if (rank != 0) {
+        shared_open(&allreduce_buffer, buffer_name, size*sizeof(struct allreduce_workspace));
+    }
+    buffer = (struct allreduce_workspace*)allreduce_buffer.bytes;
 }
 
 /*
@@ -142,10 +215,6 @@ ccl::reduction get_ccl_reduce_op(py::object op, at::Tensor& input)
     return ccl_op;
 }
 
-ccl::communicator& _get_comm_from_group() { return _ccl_comms[0]; }
-
-ccl::communicator& _get_comm_from_group(py::object group) { return _ccl_comms[0]; }
-
 void broadcast(torch::Tensor& data, int src, py::object group, bool async_op)
 {
     CCLCHECK(ccl::broadcast(data.data_ptr(),
@@ -156,9 +225,17 @@ void broadcast(torch::Tensor& data, int src, py::object group, bool async_op)
                  .wait());
 }
 
+float total = 0.0f;
+float min = 1000.0f;
+float max = 0.0f;
+int count = 0;
+int min_count = 0;
+int max_count = 0;
 // TODO: implement torch's async_op behavior, document it.
 void all_reduce(torch::Tensor& data, py::object op, py::object group, bool async_op)
 {
+    //CCLCHECK(ccl::barrier(_get_comm_from_group(group)).wait());
+    auto start = std::chrono::high_resolution_clock::now();
     CCLCHECK(ccl::allreduce(data.data_ptr(),
                             data.data_ptr(),
                             data.numel(),
@@ -166,6 +243,25 @@ void all_reduce(torch::Tensor& data, py::object op, py::object group, bool async
                             get_ccl_reduce_op(op, data),
                             _get_comm_from_group(group))
                  .wait());
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    count++;
+    auto t = duration.count();
+    total += t;
+    if (t>max) max = t;
+    if (t<min) min = t;
+    if (t<70.0) min_count ++;
+    if (t>100.0) max_count ++;
+    if (count == 17920 && world_rank == 0) {
+        printf ("%f, %f, %f, %d, %d\n", total/count, min, max, min_count, max_count);
+    }
+}
+
+void wait_buffer_state_until(int index, int state)
+{
+    volatile int *state_ptr = &(buffer[index].state);
+
+    while (*state_ptr != state);
 }
 
 void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group, bool async_op)
@@ -175,23 +271,34 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
     auto datatype = data.scalar_type();
     auto reduce_op = op;
 
-/*
-    if SHM for this data_size/type had not been created
-        create data_size/type
-    set all local SHM_flag to 1
+    memcpy(buffer[world_rank].buffer, data_ptr, numel*2);
+    buffer[world_rank].state = 1;
 
-    for i = 0 to world_size - 1:
-        if i == my_rank:
-            continue
-        wait until ith rank SHM_flag+i == 1
-        copy data to ith rank SHM_buf+numel*i
-        set SHM_flag+i to 2
-
-    wait until all SHM_flag == 2
-    reduce result and save to data
-
-    set all SHM_flag to 0
-*/
+    if (world_rank == 0) {
+        // compute allreduce result on rank 0
+        for (int i=1; i< world_size; i++) {
+            // wait until the other rank copy the buffer
+            wait_buffer_state_until(i, 1);
+            memcpy(buffer[0].buffer, buffer[i].buffer, numel*2);
+        }
+        buffer[world_rank].state = 2;
+        memcpy(data_ptr, buffer[0].buffer, numel*2);
+    }
+    if (world_rank != 0) {
+        wait_buffer_state_until(0, 2);
+        memcpy(data_ptr, buffer[0].buffer, numel*2);
+        buffer[world_rank].state = 2;
+    }
+    if (world_rank == 0) {
+        for (int i=1; i< world_size; i++) {
+            wait_buffer_state_until(i, 2);
+        }
+        buffer[world_rank].state = 0;
+    }
+    if (world_rank != 0) {
+        wait_buffer_state_until(0, 0);
+        buffer[world_rank].state = 0;
+    }
 }
 
 void all_reduce_caching(torch::Tensor& data,
