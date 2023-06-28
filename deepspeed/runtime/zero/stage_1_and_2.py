@@ -493,6 +493,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self._link_all_hp_params()
         self._enable_universal_checkpoint()
         self._param_slice_mappings = self._create_param_mapping()
+        self._overflow_already_checked = False
+        self.skip_step = False
 
     def _enable_universal_checkpoint(self):
         for lp_param_group in self.bit16_groups:
@@ -1647,7 +1649,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         see_memory_usage(f"In step before checking overflow")
 
         # First compute norm for all group so we know if there is overflow
-        self.check_overflow()
+        if self._overflow_already_checked:
+            self.check_overflow()
+        self._overflow_already_checked = False
+
         OPTIMIZER_ALLGATHER = 'optimizer_allgather'
         OPTIMIZER_GRADIENTS = 'optimizer_gradients'
         OPTIMIZER_STEP = 'optimizer_step'
@@ -1655,7 +1660,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         prev_scale = self.loss_scale
         self._update_scale(self.overflow)
-        if self.overflow:
+        if self.overflow or self.skip_step:
+            self.skip_step = False
             see_memory_usage('After overflow before clearing gradients')
             self.zero_grad(set_to_none=True)
             if self.cpu_offload:
@@ -1899,8 +1905,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         else:
             self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
-    def check_overflow(self, partition_gradients=True):
+    def check_overflow(self, partition_gradients=True, external=False):
         self._check_overflow(partition_gradients)
+        if external:
+            self._overflow_already_checked = True
+            return self.overflow
 
     def _update_scale(self, has_overflow=False):
         self.loss_scaler.update_scale(has_overflow)
