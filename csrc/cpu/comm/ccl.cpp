@@ -12,6 +12,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <immintrin.h>
+#include <math.h>
 
 struct SharedData {
     const char *name;
@@ -31,7 +33,6 @@ void shared_open(SharedData *data, const char *name, size_t nbytes) {
         data->descriptor = d;
         data->bytes = bytes;
         data->nbytes = nbytes;
-        printf ("(%d)shared_open %s done\n", world_rank, name);
     } else {
         printf ("(%d)shared_open %s failed\n", world_rank, name);
         data->descriptor = -1;
@@ -47,7 +48,6 @@ void shared_create(SharedData *data, const char *name, void *bytes, size_t nbyte
     } else {
         printf ("(%d)shared_create %s failed\n", world_rank, name);
     }
-    printf ("(%d)shared_create %s done\n", world_rank, name);
 }
 
 void shared_close(SharedData *data) {
@@ -226,6 +226,7 @@ void broadcast(torch::Tensor& data, int src, py::object group, bool async_op)
 }
 
 float total = 0.0f;
+float total_sq = 0.0f;
 float min = 1000.0f;
 float max = 0.0f;
 int count = 0;
@@ -248,12 +249,10 @@ void all_reduce(torch::Tensor& data, py::object op, py::object group, bool async
     count++;
     auto t = duration.count();
     total += t;
-    if (t>max) max = t;
-    if (t<min) min = t;
-    if (t<70.0) min_count ++;
-    if (t>100.0) max_count ++;
+    total_sq += t*t;
+    auto segma = sqrt(total_sq/count-total*total/count/count);
     if (count == 17920 && world_rank == 0) {
-        printf ("%f, %f, %f, %d, %d\n", total/count, min, max, min_count, max_count);
+        printf ("average duration: %f, std: %f\n", total/count, segma);
     }
 }
 
@@ -264,6 +263,52 @@ void wait_buffer_state_until(int index, int state)
     while (*state_ptr != state);
 }
 
+__m512 cvt_bf16_to_fp32(const __m256i src) __attribute__((target("avx512bw")));
+inline __m512 cvt_bf16_to_fp32(const __m256i src) {
+  auto y = _mm512_cvtepu16_epi32(src);
+  return _mm512_castsi512_ps(_mm512_bslli_epi128(y, 2));
+}
+
+inline __m256i cvt_fp32_to_bf16(const __m512 src) __attribute__((target("avx512bw")));
+inline __m256i cvt_fp32_to_bf16(const __m512 src) {
+//#if (defined CPU_CAPABILITY_AVX512_BF16)
+#if 0
+  return reinterpret_cast<__m256i>(_mm512_cvtneps_pbh(src));
+#else
+  __m512i value = _mm512_castps_si512(src);
+  __m512i nan = _mm512_set1_epi32(0xffff);
+  auto mask_value = _mm512_cmp_ps_mask(src, src, _CMP_ORD_Q);
+  __m512i ones = _mm512_set1_epi32(0x1);
+  __m512i vec_bias = _mm512_set1_epi32(0x7fff);
+  // uint32_t lsb = (input >> 16) & 1;
+  auto t_value = _mm512_and_si512(_mm512_srli_epi32(value, 16), ones);
+  // uint32_t rounding_bias = 0x7fff + lsb;
+  t_value = _mm512_add_epi32(t_value, vec_bias);
+  // input += rounding_bias;
+  t_value = _mm512_add_epi32(t_value, value);
+  // input = input >> 16;
+  t_value = _mm512_srli_epi32(t_value, 16);
+  // Check NaN before converting back to bf16
+  t_value = _mm512_mask_blend_epi32(mask_value, nan, t_value);
+  return _mm512_cvtusepi32_epi16(t_value);
+#endif
+}
+
+void reduce_bf16_buffers(void* inout, void* in, int num_elements) __attribute__((target("avx512bw")));
+void reduce_bf16_buffers(void* inout, void* in, int num_elements)
+{
+    for (int i=0; i<num_elements*2; i+=64) {
+        auto in1 = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in+i)));
+        auto in2 = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in+i+32)));      
+        auto inout1 = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(inout+i)));
+        auto inout2 = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(inout+i+32)));      
+        inout1 = _mm512_add_ps(inout1, in1);
+        inout2 = _mm512_add_ps(inout2, in2);
+        _mm256_storeu_si256((__m256i*)(inout+i), cvt_fp32_to_bf16(inout1));
+        _mm256_storeu_si256((__m256i*)(inout+i+32), cvt_fp32_to_bf16(inout2));
+    }
+}
+
 void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group, bool async_op)
 {
     auto data_ptr = data.data_ptr();
@@ -271,6 +316,7 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
     auto datatype = data.scalar_type();
     auto reduce_op = op;
 
+    auto start = std::chrono::high_resolution_clock::now();
     memcpy(buffer[world_rank].buffer, data_ptr, numel*2);
     buffer[world_rank].state = 1;
 
@@ -279,7 +325,8 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
         for (int i=1; i< world_size; i++) {
             // wait until the other rank copy the buffer
             wait_buffer_state_until(i, 1);
-            memcpy(buffer[0].buffer, buffer[i].buffer, numel*2);
+            reduce_bf16_buffers(buffer[0].buffer, buffer[i].buffer, numel);
+            //memcpy(buffer[0].buffer, buffer[i].buffer, numel*2);
         }
         buffer[world_rank].state = 2;
         memcpy(data_ptr, buffer[0].buffer, numel*2);
@@ -298,6 +345,16 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
     if (world_rank != 0) {
         wait_buffer_state_until(0, 0);
         buffer[world_rank].state = 0;
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    count++;
+    auto t = duration.count();
+    total += t;
+    total_sq += t*t;
+    auto segma = sqrt(total_sq/count-total*total/count/count);
+    if (count == 17920 && world_rank == 0) {
+        printf ("average duration: %f, std: %f\n", total/count, segma);
     }
 }
 
