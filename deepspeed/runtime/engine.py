@@ -827,6 +827,9 @@ class DeepSpeedEngine(Module):
 
     def zero_quantized_weights(self):
         return self._config.zero_config.zero_quantized_weights
+    
+    def zero_quantized_nontrainable_weights(self):
+        return self._config.zero_config.zero_quantized_nontrainable_weights
 
     def zero_quantized_gradients(self):
         return self._config.zero_config.zero_quantized_gradients
@@ -1490,7 +1493,8 @@ class DeepSpeedEngine(Module):
                                                  offload_param_config=self.zero_offload_param(),
                                                  mpu=self.mpu,
                                                  zero_param_parallel_group=zpg,
-                                                 zero_quantized_weights=self.zero_quantized_weights())
+                                                 zero_quantized_weights=self.zero_quantized_weights(),
+                                                 zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights(),)
             else:
                 log_dist(
                     f'Creating fp16 ZeRO stage {zero_stage} optimizer,'
@@ -1532,7 +1536,8 @@ class DeepSpeedEngine(Module):
                     aio_config=self.aio_config(),
                     communication_data_type=self.communication_data_type,
                     zero_hpz_partition_size=self.zero_hpz_partition_size(),
-                    zero_quantized_weights=self.zero_quantized_weights())
+                    zero_quantized_weights=self.zero_quantized_weights(),
+                    zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights(),)
 
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))

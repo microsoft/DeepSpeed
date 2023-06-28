@@ -108,7 +108,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                  aio_config=None,
                  all2all_process_group=None,
                  zero_hpz_partition_size=1,
-                 zero_quantized_weights=False):
+                 zero_quantized_weights=False,
+                 zero_quantized_nontrainable_weights=False,):
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
         print_rank_0(f"initialized {__class__.__name__} with args: {locals()}", force=False)
@@ -171,7 +172,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                                             offload_param_config=offload_param_config,
                                                             mpu=mpu,
                                                             zpg=zpg,
-                                                            zero_quantized_weights=zero_quantized_weights)
+                                                            zero_quantized_weights=zero_quantized_weights,
+                                                            zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights)
 
         self.persistent_parameters = self.parameter_offload.persistent_parameters
         self._configure_offloading(offload_optimizer_config, offload_param_config)
@@ -206,6 +208,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.dp_process_group = dp_process_group
 
         self.all2all_process_group = all2all_process_group
+
+        self.zero_quantized_nontrainable_weights = zero_quantized_nontrainable_weights
 
         self.partition_count = dist.get_world_size(group=self.dp_process_group)
 
@@ -373,6 +377,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         mpu,
         zpg,
         zero_quantized_weights,
+        zero_quantized_nontrainable_weights,
     ):
         return DeepSpeedZeRoOffload(module=module,
                                     timers=timers,
@@ -386,7 +391,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                     offload_param_config=offload_param_config,
                                     mpu=mpu,
                                     zero_param_parallel_group=zpg,
-                                    zero_quantized_weights=zero_quantized_weights)
+                                    zero_quantized_weights=zero_quantized_weights,
+                                    zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights)
 
     def _get_trainable_parameter_groups(self):
         param_groups = []
@@ -1341,6 +1347,33 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         for params_id in self.is_grad_computed[i][partition_id]:
             if are_all_related_partitions_reduced(params_id):
                 self.param_dict[params_id].grad = None
+
+    def quantize_nontrainable_params(self):
+        """ In ZeRO-3, when the zero_quantized_nontrainable_weights flag is set, we quantize the non-trainable weights and also store them in quantized format. However, this check for trainable/non-trainable is done when deepspeed initializes the partitioning. So, if the user changes the trainable/non-trainable status of a parameter after the partitioning is done (e.g. LoRA), the user needs to re-quantize the non-trainable weights by calling this function.
+        """
+        if not self.zero_quantized_nontrainable_weights:
+            print_rank_0(f"Warning: quantize_nontrainable_params() called with zero_quantized_nontrainable_weights disabled, return without doing anything", force=True)
+            return
+        
+        quantizer_module = CUDAQuantizer()
+        def quantize_dstensor(tensor):
+            partition_size = tensor.ds_numel
+            ds_status = tensor.status
+            final_location = tensor.final_location
+            tensor, tensor.ds_quant_scale = quantizer_module.quantize(tensor)
+            tensor.ds_numel = partition_size
+            tensor.status = ds_status
+            tensor.final_location = final_location
+            tensor.requires_grad = False
+            return tensor
+        for param in self.module.parameters():
+            if hasattr(param,"ds_tensor") and not param.requires_grad and not hasattr(param.ds_tensor, "ds_quant_scale"):
+                param.ds_tensor = quantize_dstensor(param.ds_tensor)
+            if hasattr(param,"ds_secondary_tensor") and not param.requires_grad and not hasattr(param.ds_secondary_tensor, "ds_quant_scale") and param.ds_secondary_tensor is not None:
+                param.ds_secondary_tensor = quantize_dstensor(param.ds_secondary_tensor)
+        torch.cuda.synchronize()
+            
+
 
     def flatten_and_print(self, message, tensors, start=0, n=5):
         flatten_tensor = self.flatten(tensors)
