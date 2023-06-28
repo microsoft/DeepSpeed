@@ -20,11 +20,10 @@ class TestModelProfiling(DistributedTest):
     world_size = 1
 
     def test(self, enable_cuda_graph, use_cuda_events):
-        task = "text-generation"
-        model = "bigscience/bloom-560m"
+        task = "fill-mask"
+        model = "bert-base-cased"
         dtype = torch.float16
-        query = "DeepSpeed is"
-        inf_kwargs = {"do_sample": False, "min_length": 50, "max_length": 50}
+        query = "I am a [MASK] model"
 
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         world_size = int(os.getenv("WORLD_SIZE", "1"))
@@ -43,7 +42,7 @@ class TestModelProfiling(DistributedTest):
             get_accelerator().synchronize()
             start = time.perf_counter_ns()
 
-            r = pipe(query, **inf_kwargs)
+            r = pipe(query)
 
             get_accelerator().synchronize()
             end = time.perf_counter_ns()
