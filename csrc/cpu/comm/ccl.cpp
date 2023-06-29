@@ -295,17 +295,56 @@ inline __m256i cvt_fp32_to_bf16(const __m512 src) {
 }
 
 void reduce_bf16_buffers(void* inout, void* in, int num_elements) __attribute__((target("avx512bw")));
+void reduce_8_bf16_buffers(void* inout, void* in1, void* in2, void* in3,
+                                        void* in4, void* in5, void* in6, void* in7,
+                                        int num_elements) __attribute__((target("avx512bw")));
+
+void reduce_all_bf16_buffers(struct allreduce_workspace * buffer, int num_elements, int num_buffers)
+{
+    if (num_buffers == 8) {
+        reduce_8_bf16_buffers(buffer[0].buffer, buffer[1].buffer,
+                              buffer[2].buffer, buffer[3].buffer,
+                              buffer[4].buffer, buffer[5].buffer,
+                              buffer[6].buffer, buffer[7].buffer,
+                              num_elements);
+    } else {
+        for (int i=1; i<num_buffers; i++) {
+            reduce_bf16_buffers(buffer[0].buffer, buffer[i].buffer, num_elements);
+        }
+    }
+}
+
 void reduce_bf16_buffers(void* inout, void* in, int num_elements)
 {
-    for (int i=0; i<num_elements*2; i+=64) {
+    for (int i=0; i<num_elements*2; i+=32) {
         auto in1 = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in+i)));
-        auto in2 = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in+i+32)));      
         auto inout1 = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(inout+i)));
-        auto inout2 = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(inout+i+32)));      
         inout1 = _mm512_add_ps(inout1, in1);
-        inout2 = _mm512_add_ps(inout2, in2);
         _mm256_storeu_si256((__m256i*)(inout+i), cvt_fp32_to_bf16(inout1));
-        _mm256_storeu_si256((__m256i*)(inout+i+32), cvt_fp32_to_bf16(inout2));
+    }
+}
+
+void reduce_8_bf16_buffers(void* inout, void* in1, void* in2, void* in3,
+                                        void* in4, void* in5, void* in6, void* in7,
+                                        int num_elements)
+{
+    for (int i=0; i<num_elements*2; i+=32) {
+        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(inout+i)));
+        auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in1+i)));
+        inout_val = _mm512_add_ps(inout_val, in1_val);
+        auto in2_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in2+i)));
+        inout_val = _mm512_add_ps(inout_val, in2_val);
+        auto in3_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in3+i)));
+        inout_val = _mm512_add_ps(inout_val, in3_val);
+        auto in4_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in4+i)));
+        inout_val = _mm512_add_ps(inout_val, in4_val);
+        auto in5_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in5+i)));
+        inout_val = _mm512_add_ps(inout_val, in5_val);
+        auto in6_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in6+i)));
+        inout_val = _mm512_add_ps(inout_val, in6_val);
+        auto in7_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in7+i)));
+        inout_val = _mm512_add_ps(inout_val, in7_val);
+        _mm256_storeu_si256((__m256i*)(inout+i), cvt_fp32_to_bf16(inout_val));
     }
 }
 
@@ -325,9 +364,11 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
         for (int i=1; i< world_size; i++) {
             // wait until the other rank copy the buffer
             wait_buffer_state_until(i, 1);
-            reduce_bf16_buffers(buffer[0].buffer, buffer[i].buffer, numel);
-            //memcpy(buffer[0].buffer, buffer[i].buffer, numel*2);
         }
+        reduce_all_bf16_buffers(buffer, numel, world_size);
+        //for (int i=1; i< world_size; i++) {
+        //    reduce_bf16_buffers(buffer[0].buffer, buffer[i].buffer, numel);
+        //}
         buffer[world_rank].state = 2;
         memcpy(data_ptr, buffer[0].buffer, numel*2);
     }
