@@ -1,13 +1,5 @@
 name: amd-mi100
 
-on:
-  pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - 'blogs/**'
-  schedule:
-    - cron: "0 0 * * *"
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
