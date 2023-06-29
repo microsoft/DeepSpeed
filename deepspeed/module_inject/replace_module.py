@@ -24,7 +24,7 @@ from .load_checkpoint import load_model_with_checkpoint
 import time
 
 from .utils import policy_to_ds_container
-
+from deepspeed.utils.logging import warning_once
 import gc
 
 
@@ -382,6 +382,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                          dtype=child.weight.dtype)
                 if conv_linear_layer:
                     child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
+    
                 data = mp_replace.copy(new_weight, child.weight.data)
                 new_bias = torch.empty((weight_shape[0]), device=child.weight.device, dtype=child.weight.dtype)
                 if child.bias is not None:
@@ -398,16 +399,117 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                          dtype=child.weight.dtype)
                 if conv_linear_layer:
                     child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
-                data = mp_replace.copy(new_weight, child.weight.data)
-
+                    
                 new_bias = torch.empty((weight_shape[0] // mp_size),
-                                       device=child.weight.device,
-                                       dtype=child.weight.dtype)
-                bias_data = None if child.bias is None else mp_replace.copy(new_bias, child.bias.data).to(
+                        device=child.weight.device,
+                        dtype=child.weight.dtype)
+                
+                if require_tp_fused_qkvw(name):
+                    #for detecting fused type
+                    module_str=str(module).strip()
+                    data = mp_replace.copy(new_weight, prepare_tp_fused_qkvw(module_str,child.weight.data,mp_size))
+                    bias_data = None if child.bias is None else mp_replace.copy(new_bias, prepare_tp_fused_qkvw(module_str,child.bias.data,mp_size)).to(
+                        get_accelerator().current_device_name())
+                else:
+                    data = mp_replace.copy(new_weight, child.weight.data)
+                    bias_data = None if child.bias is None else mp_replace.copy(new_bias, child.bias.data).to(
                     get_accelerator().current_device_name())
+
                 setattr(child, "replaced", True)
                 return LinearLayer(weight=data.to(get_accelerator().current_device_name()), bias=bias_data)
+        def require_tp_fused_qkvw(name):
+            if mp_size==1:
+                return False
+            fused_qkvw_name_list = ['qkv_proj','query_key_value']
+            for fused_name in fused_qkvw_name_list:
+                if fused_name in name:
+                    return True
+            return False
+        def prepare_tp_fused_qkvw(module_str,src,mp_size):
+            
+            #src should be
+            if src==None or mp_size==1:
+                return
+            # print(module)
+            # import io
+            # from contextlib import redirect_stdout
+            module_str=None
+            fused_type_dict={
+              'CodeGenBlock':'codegentype',
+              'BloomBlock':'bloomtype',
+              'GLMBlock':'glmtype',
+            }
+            # output = io.StringIO()
+            # with redirect_stdout(output):
+            #     print(module)
+            # module_str = output.getvalue()
+            module_str =str(module).strip()
+            def _codegen_type_tranpose(input,mp_size,codegen_mp_num=4):
+                # codegen_mp_num defined in https://github.com/huggingface/transformers/blob/main/src/transformers/models/codegen/modeling_codegen.py
+                if input == None:
+                    return
+                #TODO: assert num_heads % (mp_size*codegen_mp_num) == 0
+                
+                shape = input.shape
+                #input : [3*hidden_dim, hidden_dim]
 
+                num_mp_blocks = input.reshape(codegen_mp_num,shape[0]//codegen_mp_num,shape[1])
+
+                #input : [codegen_mp_num, 3*hidden_dim/codegen_mp_num, dim]
+
+   
+                src_split = list(torch.split(num_mp_blocks, num_mp_blocks.shape[1]//3, dim=1))
+                src_split = [x.reshape(codegen_mp_num*mp_size,-1,shape[1]) for x in src_split]
+
+                qkv_split = [torch.split(src_s, num_mp_blocks.shape[1]//3//mp_size, dim=0) for src_s in src_split]
+
+
+                split_fuseqkv = [
+                torch.cat([qkv_s[i] for qkv_s in qkv_split], axis=1) for i in range(len(qkv_split[0]))
+                ]
+                tp_fuseqkv_weight =  torch.cat(split_fuseqkv,dim=0).reshape(shape[0],-1)
+
+                return tp_fuseqkv_weight
+
+            def _glm_tranpose(input, mp_size):
+                if input == None:
+                    return
+                shape = input.shape
+                src_split = torch.split(input, shape[0] // 3, dim=0)
+                #4 use mp_size
+                qkv_split = [torch.split(src_s, shape[0]//3//mp_size, dim=0) for src_s in src_split]
+                split_fusedqkv = [
+                    torch.cat([qkv_s[i] for qkv_s in qkv_split], axis=0) for i in range(len(qkv_split[0]))
+                ]
+                tp_fuseqkv_weight = torch.cat(split_fusedqkv,dim=0)
+                return tp_fuseqkv_weight
+            
+            def _bloom_type_tranpose(input,mp_size):
+                #no need to transpose
+                return input
+            
+            def _tranpose_fused_qkvw(src, mp_size,fused_qkv_type=None):
+                
+                
+                # suppose num_heads=n, q(n)_w means the n-th q head linear weight, the weight format are as following
+                # bloomtype: [q(1)_w,k(1)_w,v(1)_w,q(2)_w,k(2)_w,v(2)_w,...,q(n)_w,k(n)_w,v(n)_w]
+                # glmtype:  [q(1)_w, q(2)_w,...,q(n)_w,k(1)_w,k(2)_w,...,k(n)_w,v(1)_w,v(2)_w,...,v(n)_w]
+                # codegentype: [q(1)_w,q(2)_w,...,q(n/t)_w,k(1)_w,k(2)_w,...,k(n/t)_w,v(1)_2,v(2)_w,...v(n/t)_w,q(n/t+1)_w,...], where t is a const defined in model file.
+                
+                
+                if fused_qkv_type=='bloomtype':
+                    return _bloom_type_tranpose(src,mp_size)
+                elif fused_qkv_type=='codegentype':
+                    return _codegen_type_tranpose(src,mp_size)
+                elif fused_qkv_type=='glmtype':
+                    return _glm_tranpose(src,mp_size)
+                raise ValueError("unknow fused_qkv_type")
+                
+            for module_name, fused_type in fused_type_dict.items():
+                if re.search(module_name, module_str):
+                    return _tranpose_fused_qkvw(src,mp_size,fused_type)
+            warning_once('Unrecognized fusedkqv weight type, default to using bloom type, please check in prepare_tp_fused_qkvw() to avoid potential calculation errors')
+            return src
         def _slice_embedding(child, name, conv_linear_layer):
             if getattr(child, "replaced", False) == True:
                 return
