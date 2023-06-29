@@ -50,7 +50,7 @@ def get_accelerator():
     accelerator_name = None
     ds_set_method = None
     # 1. Detect whether there is override of DeepSpeed accelerators from environment variable.
-    #    DS_ACCELERATOR = 'cuda'|'xpu'|'cpu'|'npu'
+    DS_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'npu']
     if 'DS_ACCELERATOR' in os.environ.keys():
         accelerator_name = os.environ['DS_ACCELERATOR']
         if accelerator_name == 'xpu':
@@ -69,14 +69,13 @@ def get_accelerator():
             try:
                 import torch_npu  # noqa: F401
             except ImportError as e:
-                raise ValueError(
-                    f'NPU_Accelerator requires torch_npu, which is not installed on this system.')
+                raise ValueError(f'NPU_Accelerator requires torch_npu, which is not installed on this system.')
             pass
         elif accelerator_name == 'cuda':
             pass
         else:
             raise ValueError(
-                f'DS_ACCELERATOR must be one of "cuda", "cpu", "xpu", or "npu".  Value "{accelerator_name}" is not supported')
+                f'DS_ACCELERATOR must be one of {DS_ACCELERATOR_LIST}.  Value "{accelerator_name}" is not supported')
         ds_set_method = 'override'
 
     # 2. If no override, detect which accelerator to use automatically

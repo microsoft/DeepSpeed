@@ -6,6 +6,7 @@
 import torch
 from .abstract_accelerator import DeepSpeedAccelerator
 
+
 class NPU_Accelerator(DeepSpeedAccelerator):
 
     def __init__(self):
