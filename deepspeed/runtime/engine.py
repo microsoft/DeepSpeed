@@ -117,6 +117,7 @@ def split_half_float_double_sparse(tensors):
     supported_types = [
         "torch.{}.HalfTensor".format(device_type), "torch.{}.FloatTensor".format(device_type),
         "torch.{}.DoubleTensor".format(device_type), "torch.{}.BFloat16Tensor".format(device_type),
+        "torch.HalfTensor","torch.FloatTensor","torch.DoubleTensor","torch.BFloat16Tensor",
         SparseTensor.type()
     ]
 
