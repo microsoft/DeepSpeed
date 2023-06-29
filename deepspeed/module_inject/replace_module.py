@@ -460,7 +460,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
                 return tp_fuseqkv_weight
 
-            def _glm_transpose(input, mp_size):
+            def _glm_type_transpose(input, mp_size):
                 if input == None:
                     return
                 shape = input.shape
@@ -488,9 +488,9 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 elif fused_qkv_type == 'codegentype':
                     return _codegen_type_transpose(src, mp_size)
                 elif fused_qkv_type == 'glmtype':
-                    return _glm_transpose(src, mp_size)
-                else:
-                    raise ValueError("unknown fused_qkv_type")
+                    return _glm_type_transpose(src, mp_size)
+
+                raise ValueError("unknown fused_qkv_type")
 
             for module_name, fused_type in fused_type_dict.items():
                 if re.search(module_name, module_str):
