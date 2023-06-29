@@ -12,6 +12,12 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from packaging import version as pkg_version
 
+try:
+    import triton  # noqa: F401
+    HAS_TRITON = True
+except ImportError:
+    HAS_TRITON = False
+
 from . import ops
 from . import module_inject
 
@@ -188,6 +194,9 @@ def initialize(args=None,
                                 collate_fn=collate_fn,
                                 config=config,
                                 config_class=config_class)
+
+    # Restore zero.Init context if necessary
+    zero.partition_parameters.restore_init_context()
 
     return_items = [engine, engine.optimizer, engine.training_dataloader, engine.lr_scheduler]
     return tuple(return_items)
