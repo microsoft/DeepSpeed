@@ -45,6 +45,7 @@ def _assert_secondary_tensor_size(model: Module) -> None:
         assert param.ds_secondary_tensor is not None
         assert param.ds_secondary_tensor.size()[0] % param.ds_tensor.size()[0] == 0
 
+
 #Large sweep along hidden dim, num_layers, and zpg of different sizes
 #Assert when zpg=1 that secondary group and tensors are invalid
 @pytest.mark.sequential
@@ -91,4 +92,3 @@ class TestZeroPPConfigSweep(DistributedTest):
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
-
