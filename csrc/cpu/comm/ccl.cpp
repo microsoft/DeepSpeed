@@ -295,6 +295,20 @@ inline __m256i cvt_fp32_to_bf16(const __m512 src) {
 }
 
 void reduce_bf16_buffers(void* inout, void* in, int num_elements) __attribute__((target("avx512bw")));
+
+void reduce_3_bf16_buffers(void* inout, void* in1, void* in2,
+                                        int num_elements) __attribute__((target("avx512bw")));
+void reduce_4_bf16_buffers(void* inout, void* in1, void* in2, void* in3,
+                                        int num_elements) __attribute__((target("avx512bw")));
+void reduce_5_bf16_buffers(void* inout, void* in1, void* in2, void* in3,
+                                        void* in4,
+                                        int num_elements) __attribute__((target("avx512bw")));
+void reduce_6_bf16_buffers(void* inout, void* in1, void* in2, void* in3,
+                                        void* in4, void* in5,
+                                        int num_elements) __attribute__((target("avx512bw")));
+void reduce_7_bf16_buffers(void* inout, void* in1, void* in2, void* in3,
+                                        void* in4, void* in5, void* in6,
+                                        int num_elements) __attribute__((target("avx512bw")));
 void reduce_8_bf16_buffers(void* inout, void* in1, void* in2, void* in3,
                                         void* in4, void* in5, void* in6, void* in7,
                                         int num_elements) __attribute__((target("avx512bw")));
@@ -302,10 +316,25 @@ void reduce_8_bf16_buffers(void* inout, void* in1, void* in2, void* in3,
 void reduce_all_bf16_buffers(struct allreduce_workspace * buffer, int num_elements, int num_buffers)
 {
     if (num_buffers == 8) {
-        reduce_8_bf16_buffers(buffer[0].buffer, buffer[1].buffer,
-                              buffer[2].buffer, buffer[3].buffer,
-                              buffer[4].buffer, buffer[5].buffer,
-                              buffer[6].buffer, buffer[7].buffer,
+        reduce_8_bf16_buffers(buffer[0].buffer, buffer[1].buffer, buffer[2].buffer,
+                              buffer[3].buffer, buffer[4].buffer, buffer[5].buffer,
+                              buffer[6].buffer, buffer[7].buffer, num_elements);
+    } else if (num_buffers == 7) {
+        reduce_7_bf16_buffers(buffer[0].buffer, buffer[1].buffer, buffer[2].buffer,
+                              buffer[3].buffer, buffer[4].buffer, buffer[5].buffer,
+                              buffer[6].buffer, num_elements);
+    } else if (num_buffers == 6) {
+        reduce_6_bf16_buffers(buffer[0].buffer, buffer[1].buffer, buffer[2].buffer,
+                              buffer[3].buffer, buffer[4].buffer, buffer[5].buffer,
+                              num_elements);
+    } else if (num_buffers == 5) {
+        reduce_5_bf16_buffers(buffer[0].buffer, buffer[1].buffer, buffer[2].buffer,
+                              buffer[3].buffer, buffer[4].buffer, num_elements);
+    } else if (num_buffers == 4) {
+        reduce_4_bf16_buffers(buffer[0].buffer, buffer[1].buffer, buffer[2].buffer,
+                              buffer[3].buffer, num_elements);
+    } else if (num_buffers == 3) {
+        reduce_3_bf16_buffers(buffer[0].buffer, buffer[1].buffer, buffer[2].buffer,
                               num_elements);
     } else {
         for (int i=1; i<num_buffers; i++) {
@@ -321,6 +350,93 @@ void reduce_bf16_buffers(void* inout, void* in, int num_elements)
         auto inout1 = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(inout+i)));
         inout1 = _mm512_add_ps(inout1, in1);
         _mm256_storeu_si256((__m256i*)(inout+i), cvt_fp32_to_bf16(inout1));
+    }
+}
+
+void reduce_3_bf16_buffers(void* inout, void* in1, void* in2, int num_elements)
+{
+    for (int i=0; i<num_elements*2; i+=32) {
+        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(inout+i)));
+        auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in1+i)));
+        inout_val = _mm512_add_ps(inout_val, in1_val);
+        auto in2_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in2+i)));
+        inout_val = _mm512_add_ps(inout_val, in2_val);
+        _mm256_storeu_si256((__m256i*)(inout+i), cvt_fp32_to_bf16(inout_val));
+    }
+}
+
+void reduce_4_bf16_buffers(void* inout, void* in1, void* in2, void* in3,
+                                        int num_elements)
+{
+    for (int i=0; i<num_elements*2; i+=32) {
+        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(inout+i)));
+        auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in1+i)));
+        inout_val = _mm512_add_ps(inout_val, in1_val);
+        auto in2_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in2+i)));
+        inout_val = _mm512_add_ps(inout_val, in2_val);
+        auto in3_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in3+i)));
+        inout_val = _mm512_add_ps(inout_val, in3_val);
+        _mm256_storeu_si256((__m256i*)(inout+i), cvt_fp32_to_bf16(inout_val));
+    }
+}
+
+void reduce_5_bf16_buffers(void* inout, void* in1, void* in2, void* in3,
+                                        void* in4,
+                                        int num_elements)
+{
+    for (int i=0; i<num_elements*2; i+=32) {
+        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(inout+i)));
+        auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in1+i)));
+        inout_val = _mm512_add_ps(inout_val, in1_val);
+        auto in2_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in2+i)));
+        inout_val = _mm512_add_ps(inout_val, in2_val);
+        auto in3_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in3+i)));
+        inout_val = _mm512_add_ps(inout_val, in3_val);
+        auto in4_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in4+i)));
+        inout_val = _mm512_add_ps(inout_val, in4_val);
+        _mm256_storeu_si256((__m256i*)(inout+i), cvt_fp32_to_bf16(inout_val));
+    }
+}
+
+void reduce_6_bf16_buffers(void* inout, void* in1, void* in2, void* in3,
+                                        void* in4, void* in5,
+                                        int num_elements)
+{
+    for (int i=0; i<num_elements*2; i+=32) {
+        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(inout+i)));
+        auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in1+i)));
+        inout_val = _mm512_add_ps(inout_val, in1_val);
+        auto in2_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in2+i)));
+        inout_val = _mm512_add_ps(inout_val, in2_val);
+        auto in3_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in3+i)));
+        inout_val = _mm512_add_ps(inout_val, in3_val);
+        auto in4_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in4+i)));
+        inout_val = _mm512_add_ps(inout_val, in4_val);
+        auto in5_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in5+i)));
+        inout_val = _mm512_add_ps(inout_val, in5_val);
+        _mm256_storeu_si256((__m256i*)(inout+i), cvt_fp32_to_bf16(inout_val));
+    }
+}
+
+void reduce_7_bf16_buffers(void* inout, void* in1, void* in2, void* in3,
+                                        void* in4, void* in5, void* in6,
+                                        int num_elements)
+{
+    for (int i=0; i<num_elements*2; i+=32) {
+        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(inout+i)));
+        auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in1+i)));
+        inout_val = _mm512_add_ps(inout_val, in1_val);
+        auto in2_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in2+i)));
+        inout_val = _mm512_add_ps(inout_val, in2_val);
+        auto in3_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in3+i)));
+        inout_val = _mm512_add_ps(inout_val, in3_val);
+        auto in4_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in4+i)));
+        inout_val = _mm512_add_ps(inout_val, in4_val);
+        auto in5_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in5+i)));
+        inout_val = _mm512_add_ps(inout_val, in5_val);
+        auto in6_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in6+i)));
+        inout_val = _mm512_add_ps(inout_val, in6_val);
+        _mm256_storeu_si256((__m256i*)(inout+i), cvt_fp32_to_bf16(inout_val));
     }
 }
 
