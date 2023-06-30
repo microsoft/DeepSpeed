@@ -25,6 +25,7 @@ runs:
         echo TORCH_EXTENSIONS_DIR=./torch-extensions/ >> $GITHUB_ENV
         echo HF_DATASETS_CACHE=/blob/datasets_cache/ >> $GITHUB_ENV
         echo MEGATRON_CKPT_DIR=/blob/megatron_ckpt/ >> $GITHUB_ENV
+      shell: bash
     - id: print-env
       run: |
         which python
