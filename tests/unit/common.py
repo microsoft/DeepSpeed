@@ -26,8 +26,10 @@ DEEPSPEED_UNIT_WORKER_TIMEOUT = 120
 # Worker timeout for tests that hang
 DEEPSPEED_TEST_TIMEOUT = 600
 
+
 def is_rocm_pytorch():
     return  hasattr(torch.version, 'hip') and torch.version.hip is not None
+
 
 def get_xdist_worker_id():
     xdist_worker = os.environ.get('PYTEST_XDIST_WORKER', None)

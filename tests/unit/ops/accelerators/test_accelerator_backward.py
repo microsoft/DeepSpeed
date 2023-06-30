@@ -265,7 +265,7 @@ class TestCUDABackward(DistributedTest):
     world_size = 1
     if is_rocm_pytorch:
         #This is to flush denorms in forward pass. Please refer to https://github.com/pytorch/pytorch/blob/main/docs/source/notes/numerical_accuracy.rst#reduced-precision-fp16-and-bf16-gemms-and-convolutions-on-amd-instinct-mi200-devices
-        os.environ['ROCBLAS_INTERNAL_FP16_ALT_IMPL']='1'
+        os.environ['ROCBLAS_INTERNAL_FP16_ALT_IMPL'] = '1'
 
     def test_backward(self, batch_size, hidden_size, seq_len, heads, num_layers, is_preln, use_fp16, atol):
         # Only run fp16 test cases on devices with FP16 capability.
