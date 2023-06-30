@@ -636,7 +636,7 @@ class InferenceEngine(Module):
             self._check_for_workspace_invalidation(signature)
             if signature not in self._cuda_graphs:
                 self._create_cuda_graph(*inputs, **kwargs)
-            outputs = self._graph_replay(*inputs, **kwargs)
+                outputs = self._graph_replay(*inputs, **kwargs)
         else:
             outputs = self.module(*inputs, **kwargs)
 
