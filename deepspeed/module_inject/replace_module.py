@@ -468,17 +468,19 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                         continue
                 if len(child._buffers) != 0 and state_dict != None:
                     load_buffer(child, state_dict, checking_key)
-                if any(isinstance(child, lp) for lp in linear_policies):
-                    if child.__class__ in linear_policies:
-                        setattr(r_module, name, linear_policies[child.__class__](child, prev_name + '.' + name,
-                                                                                 conv_linear_layer))
-                    else:
-                        key = None
-                        for lp in linear_policies:
-                            if isinstance(child, lp):
-                                key = lp
-                        assert key is not None
-                        setattr(r_module, name, linear_policies[key](child, prev_name + '.' + name, conv_linear_layer))
+                if child.__class__ in linear_policies:
+                    setattr(r_module, name, linear_policies[child.__class__](child, prev_name + '.' + name,
+                                                                             conv_linear_layer))
+                elif any(isinstance(child, lp) for lp in linear_policies):
+                    # Added for falcon model support
+                    # Note: isinstance will account for class inheritance, child.__class__ does not
+                    key = None
+                    for lp in linear_policies:
+                        if isinstance(child, lp):
+                            key = lp
+                            break
+                    assert key is not None
+                    setattr(r_module, name, linear_policies[key](child, prev_name + '.' + name, conv_linear_layer))
                 else:
                     update_mp_params(child)
                     _replace_module(child, name, class_name)
