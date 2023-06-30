@@ -40,7 +40,6 @@ jobs:
 
       - name: HF transformers tests
         run: |
-          if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           git clone https://github.com/huggingface/transformers
           cd transformers
           # if needed switch to the last known good SHA until transformers@master is fixed
@@ -55,4 +54,4 @@ jobs:
           # force protobuf version due to issues
           pip install "protobuf<4.21.0"
           pip list
-          HF_DATASETS_CACHE=/blob/datasets_cache/ TRANSFORMERS_CACHE=/blob/transformers_cache/ WANDB_DISABLED=true TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --color=yes --durations=0 --verbose tests/deepspeed
+          WANDB_DISABLED=true RUN_SLOW=1 pytest --color=yes --durations=0 --verbose tests/deepspeed

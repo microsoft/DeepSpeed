@@ -40,7 +40,6 @@ jobs:
       - name: Unit tests
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
-          if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest -n 4 unit/ --torch_ver="1.12"
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest -m 'sequential' unit/ --torch_ver="1.12"
+          pytest -n 4 unit/ --torch_ver="1.12"
+          pytest -m 'sequential' unit/ --torch_ver="1.12"

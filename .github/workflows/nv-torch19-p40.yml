@@ -44,6 +44,5 @@ jobs:
 
       - name: Unit tests
         run: |
-          if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --forked -n 4 unit/ --torch_ver="1.9" --cuda_ver="11.1"
+          pytest --forked -n 4 unit/ --torch_ver="1.9" --cuda_ver="11.1"
