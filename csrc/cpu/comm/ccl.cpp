@@ -75,13 +75,15 @@ ccl::communicator& _get_comm_from_group(py::object group) { return _ccl_comms[0]
 
 bool is_initialized = 0;
 
+#define MAX_BUF_SIZE 65536
+
 ccl::shared_ptr_class<ccl::kvs> kvs;
 
 SharedData allreduce_buffer;
 char buffer_name[100] = "allreduce_buffer";
 struct allreduce_workspace {
     int state;
-    char buffer[32768];
+    char buffer[MAX_BUF_SIZE];
 };
 struct allreduce_workspace* buffer;
 
@@ -521,8 +523,21 @@ void reduce_8_bf16_buffers(void* in_out,
 
 void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group, bool async_op)
 {
-    auto data_ptr = data.data_ptr();
     auto numel = data.numel();
+
+    if (numel * 2 > MAX_BUF_SIZE) {
+        // fallback to oneccl allreduce
+        CCLCHECK(ccl::allreduce(data.data_ptr(),
+                                data.data_ptr(),
+                                data.numel(),
+                                get_ccl_datatype(data.scalar_type()),
+                                get_ccl_reduce_op(op, data),
+                                _get_comm_from_group(group))
+                     .wait());
+        return;
+    }
+
+    auto data_ptr = data.data_ptr();
     auto datatype = data.scalar_type();
     auto reduce_op = op;
 
