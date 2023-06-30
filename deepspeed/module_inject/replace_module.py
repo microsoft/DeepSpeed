@@ -429,8 +429,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
             return False
 
         def prepare_tp_fused_qkvw(module_str, src, mp_size):
-
-            if src == None or mp_size == 1:
+            if src == None:
                 return
             fused_type_dict = {
                 'CodeGenBlock': 'codegentype',
@@ -440,8 +439,6 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
             def _codegen_type_transpose(input, mp_size, codegen_mp_num=4):
                 # codegen_mp_num defined in https://github.com/huggingface/transformers/blob/main/src/transformers/models/codegen/modeling_codegen.py
-                if input == None:
-                    return
                 #TODO: assert num_heads % (mp_size*codegen_mp_num) == 0
 
                 shape = input.shape
@@ -453,16 +450,13 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
                 qkv_split = [torch.split(src_s, num_mp_blocks.shape[1] // 3 // mp_size, dim=0) for src_s in src_split]
 
-                split_fuseqkv = [
-                    torch.cat([qkv_s[i] for qkv_s in qkv_split], axis=1) for i in range(len(qkv_split[0]))
-                ]
+                split_fuseqkv = [torch.cat([qkv_s[i] for qkv_s in qkv_split], dim=1) for i in range(len(qkv_split[0]))]
                 tp_fuseqkv_weight = torch.cat(split_fuseqkv, dim=0).reshape(shape[0], -1)
 
                 return tp_fuseqkv_weight
 
             def _glm_type_transpose(input, mp_size):
-                if input == None:
-                    return
+
                 shape = input.shape
                 src_split = torch.split(input, shape[0] // 3, dim=0)
 
