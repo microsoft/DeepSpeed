@@ -110,29 +110,6 @@ inline __m256i cvt_fp32_to_bf16(const __m512 src)
 void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in)
     __attribute__((target("avx512bw")));
 
-void reduce_3_bf16_buffers(int num_elements, void* in_out, void* in1, void* in2)
-    __attribute__((target("avx512bw")));
-void reduce_4_bf16_buffers(int num_elements, void* in_out, void* in1, void* in2, void* in3)
-    __attribute__((target("avx512bw")));
-void reduce_5_bf16_buffers(int num_elements, void* in_out,
-                           void* in1,
-                           void* in2,
-                           void* in3,
-                           void* in4) __attribute__((target("avx512bw")));
-void reduce_6_bf16_buffers(int num_elements, void* in_out,
-                           void* in1,
-                           void* in2,
-                           void* in3,
-                           void* in4,
-                           void* in5) __attribute__((target("avx512bw")));
-void reduce_7_bf16_buffers(int num_elements, void* in_out,
-                           void* in1,
-                           void* in2,
-                           void* in3,
-                           void* in4,
-                           void* in5,
-                           void* in6) __attribute__((target("avx512bw")));
-
 void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace) __attribute__((target("avx512bw")));
 
 void reduce_all_bf16_buffers(struct allreduce_workspace* workspace, int num_elements, int num_buffers)
@@ -195,7 +172,6 @@ void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in_out + i)));
         auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
         inout_val = _mm512_add_ps(inout_val, in1_val);
-        REPEAT(1, CVT_ADD);
         _mm256_storeu_si256((__m256i*)((char*)in_out + i), cvt_fp32_to_bf16(inout_val));
     }
 }
