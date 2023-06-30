@@ -65,11 +65,11 @@ struct allreduce_workspace {
     int state;
     char buffer[MAX_BUF_SIZE];
 };
-struct allreduce_workspace* buffer;
+struct allreduce_workspace* workspace;
 
 void wait_buffer_state_until(int index, int state)
 {
-    volatile int* state_ptr = &(buffer[index].state);
+    volatile int* state_ptr = &(workspace[index].state);
 
     while (*state_ptr != state)
         ;
@@ -132,63 +132,17 @@ void reduce_7_bf16_buffers(int num_elements, void* in_out,
                            void* in4,
                            void* in5,
                            void* in6) __attribute__((target("avx512bw")));
-void reduce_8_bf16_buffers(int num_elements, void* in_out,
-                           void* in1,
-                           void* in2,
-                           void* in3,
-                           void* in4,
-                           void* in5,
-                           void* in6,
-                           void* in7) __attribute__((target("avx512bw")));
 
-void reduce_all_bf16_buffers(struct allreduce_workspace* buffer, int num_elements, int num_buffers)
+void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace) __attribute__((target("avx512bw")));
+
+void reduce_all_bf16_buffers(struct allreduce_workspace* workspace, int num_elements, int num_buffers)
 {
-    switch (num_buffers) {
-    case 8:
-        reduce_8_bf16_buffers(num_elements, buffer[0].buffer,
-                              buffer[1].buffer,
-                              buffer[2].buffer,
-                              buffer[3].buffer,
-                              buffer[4].buffer,
-                              buffer[5].buffer,
-                              buffer[6].buffer,
-                              buffer[7].buffer);
-        break;
-    case 7:
-        reduce_7_bf16_buffers(num_elements, buffer[0].buffer,
-                              buffer[1].buffer,
-                              buffer[2].buffer,
-                              buffer[3].buffer,
-                              buffer[4].buffer,
-                              buffer[5].buffer,
-                              buffer[6].buffer);
-        break;
-    case 6:
-        reduce_6_bf16_buffers(num_elements, buffer[0].buffer,
-                              buffer[1].buffer,
-                              buffer[2].buffer,
-                              buffer[3].buffer,
-                              buffer[4].buffer,
-                              buffer[5].buffer);
-        break;
-    case 5:
-        reduce_5_bf16_buffers(num_elements, buffer[0].buffer,
-                              buffer[1].buffer,
-                              buffer[2].buffer,
-                              buffer[3].buffer,
-                              buffer[4].buffer);
-        break;
-    case 4:
-        reduce_4_bf16_buffers(num_elements, buffer[0].buffer, buffer[1].buffer, buffer[2].buffer, buffer[3].buffer);
-        break;
-    case 3:
-        reduce_3_bf16_buffers(num_elements, buffer[0].buffer, buffer[1].buffer, buffer[2].buffer);
-        break;
-    default:
+    if (num_buffers >=3 && num_buffers <=8) {
+        reduce_bf16_buffers(num_elements, num_buffers, workspace);
+    } else {
         for (int i = 1; i < num_buffers; i++) {
-            reduce_2_bf16_buffers(num_elements, buffer[0].buffer, buffer[i].buffer);
+            reduce_2_bf16_buffers(num_elements, workspace[0].buffer, workspace[i].buffer);
         }
-        break;
     }
 }
 
@@ -202,68 +156,46 @@ void reduce_all_bf16_buffers(struct allreduce_workspace* buffer, int num_element
 #define REPEAT_7(x) REPEAT_6(x);x(7)
 
 #define CVT_ADD(x) do {\
-        auto in##x##_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in##x + i))); \
+        auto in##x##_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[x].buffer + i))); \
         inout_val = _mm512_add_ps(inout_val, in##x##_val);} while(0)
+
+void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
+{
+    for (int i = 0; i < num_elements * 2; i += 32) {
+        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0].buffer + i)));
+        switch (num_buffers) {
+            case 8:
+                REPEAT(7, CVT_ADD);
+                break;
+            case 7:
+                REPEAT(6, CVT_ADD);
+                break;
+            case 6:
+                REPEAT(5, CVT_ADD);
+                break;
+            case 5:
+                REPEAT(4, CVT_ADD);
+                break;
+            case 4:
+                REPEAT(3, CVT_ADD);
+                break;
+            case 3:
+                REPEAT(2, CVT_ADD);
+                break;
+            default:
+                assert(!"Should not get here.");
+        }
+        _mm256_storeu_si256((__m256i*)(workspace[0].buffer + i), cvt_fp32_to_bf16(inout_val));
+    }
+}
 
 void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
 {
     for (int i = 0; i < num_elements * 2; i += 32) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in_out + i)));
+        auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in1 + i)));
+        inout_val = _mm512_add_ps(inout_val, in1_val);
         REPEAT(1, CVT_ADD);
-        _mm256_storeu_si256((__m256i*)(in_out + i), cvt_fp32_to_bf16(inout_val));
-    }
-}
-
-void reduce_3_bf16_buffers(int num_elements, void* in_out, void* in1, void* in2)
-{
-    for (int i = 0; i < num_elements * 2; i += 32) {
-        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in_out + i)));
-        REPEAT(2, CVT_ADD);
-        _mm256_storeu_si256((__m256i*)(in_out + i), cvt_fp32_to_bf16(inout_val));
-    }
-}
-
-void reduce_4_bf16_buffers(int num_elements, void* in_out, void* in1, void* in2, void* in3)
-{
-    for (int i = 0; i < num_elements * 2; i += 32) {
-        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in_out + i)));
-        REPEAT(3, CVT_ADD);
-        _mm256_storeu_si256((__m256i*)(in_out + i), cvt_fp32_to_bf16(inout_val));
-    }
-}
-
-void reduce_5_bf16_buffers(int num_elements, void* in_out, void* in1, void* in2, void* in3, void* in4)
-{
-    for (int i = 0; i < num_elements * 2; i += 32) {
-        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in_out + i)));
-        REPEAT(4, CVT_ADD);
-        _mm256_storeu_si256((__m256i*)(in_out + i), cvt_fp32_to_bf16(inout_val));
-    }
-}
-
-void reduce_6_bf16_buffers(int num_elements, void* in_out, void* in1, void* in2, void* in3, void* in4, void* in5)
-{
-    for (int i = 0; i < num_elements * 2; i += 32) {
-        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in_out + i)));
-        REPEAT(5, CVT_ADD);
-        _mm256_storeu_si256((__m256i*)(in_out + i), cvt_fp32_to_bf16(inout_val));
-    }
-}
-
-void reduce_7_bf16_buffers(int num_elements, void* in_out, void* in1, void* in2, void* in3, void* in4, void* in5, void* in6)
-{
-    for (int i = 0; i < num_elements * 2; i += 32) {
-        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in_out + i)));
-        REPEAT(6, CVT_ADD);
-        _mm256_storeu_si256((__m256i*)(in_out + i), cvt_fp32_to_bf16(inout_val));
-    }
-}
-
-void reduce_8_bf16_buffers(int num_elements, void* in_out, void* in1, void* in2, void* in3, void* in4, void* in5, void* in6, void* in7)
-{
-    for (int i = 0; i < num_elements * 2; i += 32) {
-        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in_out + i)));
-        REPEAT(7, CVT_ADD);
         _mm256_storeu_si256((__m256i*)(in_out + i), cvt_fp32_to_bf16(inout_val));
     }
 }
@@ -323,17 +255,17 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
     // create shared workspace for SHM based allreduce
     if (all_ranks_local_p) {
         if (rank == 0) {
-            buffer = (struct allreduce_workspace*)malloc(size * sizeof(struct allreduce_workspace));
+            workspace = (struct allreduce_workspace*)malloc(size * sizeof(struct allreduce_workspace));
             shared_create(
-                &allreduce_buffer, SHM_BUFFER_NAME, buffer, size * sizeof(struct allreduce_workspace));
-            buffer = (struct allreduce_workspace*)allreduce_buffer.bytes;
-            for (int i = 0; i < size; i++) { buffer[i].state = 0; }
+                &allreduce_buffer, SHM_BUFFER_NAME, workspace, size * sizeof(struct allreduce_workspace));
+            workspace = (struct allreduce_workspace*)allreduce_buffer.bytes;
+            for (int i = 0; i < size; i++) { workspace[i].state = 0; }
         }
         CCLCHECK(ccl::barrier(_get_comm_from_group()).wait());
         if (rank != 0) {
             shared_open(&allreduce_buffer, SHM_BUFFER_NAME, size * sizeof(struct allreduce_workspace));
         }
-        buffer = (struct allreduce_workspace*)allreduce_buffer.bytes;
+        workspace = (struct allreduce_workspace*)allreduce_buffer.bytes;
     }
 }
 
@@ -510,8 +442,8 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
 
     auto data_ptr = data.data_ptr();
 
-    memcpy(buffer[world_rank].buffer, data_ptr, numel * 2);
-    buffer[world_rank].state = 1;
+    memcpy(workspace[world_rank].buffer, data_ptr, numel * 2);
+    workspace[world_rank].state = 1;
 
     if (world_rank == 0) {
         // compute allreduce result on rank 0
@@ -519,22 +451,22 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
             // wait until the other rank copy the buffer
             wait_buffer_state_until(i, 1);
         }
-        reduce_all_bf16_buffers(buffer, numel, world_size);
-        buffer[world_rank].state = 2;
-        memcpy(data_ptr, buffer[0].buffer, numel * 2);
+        reduce_all_bf16_buffers(workspace, numel, world_size);
+        workspace[world_rank].state = 2;
+        memcpy(data_ptr, workspace[0].buffer, numel * 2);
     }
     if (world_rank != 0) {
         wait_buffer_state_until(0, 2);
-        memcpy(data_ptr, buffer[0].buffer, numel * 2);
-        buffer[world_rank].state = 2;
+        memcpy(data_ptr, workspace[0].buffer, numel * 2);
+        workspace[world_rank].state = 2;
     }
     if (world_rank == 0) {
         for (int i = 1; i < world_size; i++) { wait_buffer_state_until(i, 2); }
-        buffer[world_rank].state = 0;
+        workspace[world_rank].state = 0;
     }
     if (world_rank != 0) {
         wait_buffer_state_until(0, 0);
-        buffer[world_rank].state = 0;
+        workspace[world_rank].state = 0;
     }
 }
 
