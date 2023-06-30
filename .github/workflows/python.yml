@@ -1,12 +1,12 @@
 name: python
 
 on:
-  push:
-    branches:
-      - 'staging**'
   pull_request:
     branches:
       '**'
+    paths-ignore:
+      - 'docs/**'
+      - 'blogs/**'
   schedule:
     - cron: "0 0 * * *"
 
