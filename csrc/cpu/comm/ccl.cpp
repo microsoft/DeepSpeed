@@ -192,11 +192,11 @@ void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_wor
 void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
 {
     for (int i = 0; i < num_elements * 2; i += 32) {
-        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in_out + i)));
-        auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in1 + i)));
+        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in_out + i)));
+        auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
         inout_val = _mm512_add_ps(inout_val, in1_val);
         REPEAT(1, CVT_ADD);
-        _mm256_storeu_si256((__m256i*)(in_out + i), cvt_fp32_to_bf16(inout_val));
+        _mm256_storeu_si256((__m256i*)((char*)in_out + i), cvt_fp32_to_bf16(inout_val));
     }
 }
 
@@ -424,11 +424,16 @@ void all_reduce_caching(torch::Tensor& data,
 
 void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group, bool async_op)
 {
-    auto numel = data.numel();
-    auto datatype = data.scalar_type();
-    auto reduce_op = op;
+    static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
+    static auto ReduceOpSum = (int)py::int_(ReduceOp.attr("SUM").attr("value"));
 
-    if (numel * 2 > MAX_BUF_SIZE || !all_ranks_local_p) {
+    assert (py::int_(op.attr("value")) == ReduceOpSum);
+
+    auto numel = data.numel();
+
+    if (numel * 2 > MAX_BUF_SIZE
+        || data.scalar_type() != c10::ScalarType::BFloat16
+        || !all_ranks_local_p) {
         // fallback to oneccl allreduce
         CCLCHECK(ccl::allreduce(data.data_ptr(),
                                 data.data_ptr(),
