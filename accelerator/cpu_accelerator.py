@@ -5,7 +5,6 @@
 
 import torch
 from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
-#import oneccl_bindings_for_pytorch  # noqa: F401
 import psutil
 import os
 
