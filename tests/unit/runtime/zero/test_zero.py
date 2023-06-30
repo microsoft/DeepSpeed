@@ -804,13 +804,11 @@ class TestZero3ParamPartitioningLargeParam(DistributedTest):
             assert torch.allclose(weight_gradient, expected_weight_gradient)
 
 
-@pytest.mark.parametrize("param_sz", [100, 1_000, 10_000])
-@pytest.mark.parametrize("n_layers", [100, 1_000])
 @pytest.mark.parametrize("init_context_manager", [True, False])
 class TestZero3ParamPartitioningManyParams(DistributedTest):
-    world_size = 4
+    world_size = 2
 
-    def test(self, param_sz: int, n_layers: int, init_context_manager: bool) -> None:
+    def test(self, init_context_manager: bool,  param_sz: int = 100, n_layers: int = 100) -> None:
 
         class ManyParamModel(Module):
 

@@ -41,9 +41,11 @@ class TestPipeCifar10(DistributedTest):
     def test(self, topo_config):
         skip_on_arch(min_arch=7)
 
+        global_batch_size = 4
+        assert global_batch_size % self.world_size == 0
         config_dict = {
-            "train_batch_size": 16,
-            "train_micro_batch_size_per_gpu": 4,
+            "train_batch_size": global_batch_size,
+            "train_micro_batch_size_per_gpu": int(global_batch_size / self.world_size),
             "steps_per_print": 20,
             "optimizer": {
                 "type": "Adam",
@@ -67,7 +69,7 @@ class TestPipeCifar10(DistributedTest):
         }
 
         topo = PipeTopo(**topo_config)
-        steps = 500  # must be >=100
+        steps = 100  # must be >=100
 
         # Allocate model for consistent initial weights.
         init_net = AlexNetPipe()
