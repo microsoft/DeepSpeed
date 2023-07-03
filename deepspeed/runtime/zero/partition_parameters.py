@@ -38,6 +38,14 @@ param_count = 0
 partitioned_param_data_shape = [0]
 zero_init_context = 0
 top_level_context = None
+_cls_excluded_from_partitioning = set()
+
+
+class NoPartitioningDecorator:
+    def __call__(self, cls):
+        global _cls_excluded_from_partitioning
+        _cls_excluded_from_partitioning.add(cls)
+        return cls
 
 
 class NoGatherHandle:
@@ -445,10 +453,14 @@ class InsertPostInitMethodToModuleSubClasses(object):
             return wrapper
 
         def _enable_class(cls):
+            if cls in _cls_excluded_from_partitioning:
+                return
             cls._old_init = cls.__init__
             cls.__init__ = partition_after(cls.__init__)
 
         def _init_subclass(cls, **kwargs):
+            if cls in _cls_excluded_from_partitioning:
+                return
             cls._old_init = cls.__init__
             cls.__init__ = partition_after(cls.__init__)
 
@@ -481,6 +493,8 @@ class InsertPostInitMethodToModuleSubClasses(object):
         if self.patched:
 
             def _disable_class(cls):
+                if cls in _cls_excluded_from_partitioning:
+                    return
                 cls.__init__ = cls._old_init
 
             for subclass in get_all_subclasses(torch.nn.modules.module.Module):
