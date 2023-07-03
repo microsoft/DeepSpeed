@@ -480,6 +480,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                                             dynamic_loss_args=dynamic_loss_args)
         self.dynamic_loss_scale = self.loss_scaler.dynamic
 
+        if self.dtype != torch.float16:
+            # Only fp16 should use dynamic loss scaling
+            assert self.loss_scaler.cur_scale == 1.0
+            assert not self.dynamic_loss_scale
+
         see_memory_usage("Before initializing optimizer states", force=True)
         self.initialize_optimizer_states()
         see_memory_usage("After initializing optimizer states", force=True)
@@ -917,7 +922,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             rank_and_offsets = []
             real_dp_process_group = []
             curr_size = 0
-            prev_id = -1
+            prev_id, prev_process_group = -1, None
 
             process_group = self.dp_process_group
             # count = 0
@@ -960,14 +965,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                         numel = partition_ids_w_offsets[idx + 1][1] - offset
 
                     # Merge bucket ranges if they belong to the same rank
-                    if partition_id == prev_id:
+                    if partition_id == prev_id and process_group == prev_process_group:
                         prev_pid, prev_size, prev_numel = rank_and_offsets[-1]
                         rank_and_offsets[-1] = (prev_pid, prev_size, prev_numel + numel)
                     else:
                         rank_and_offsets.append((partition_id, curr_size, numel))
                         real_dp_process_group.append(process_group)
                     curr_size += numel
-                    prev_id = partition_id
+                    prev_id, prev_process_group = partition_id, process_group
 
             if not self.ipg_bucket_has_moe_params:
                 tensor.div_(dist.get_world_size(group=self.dp_process_group))
@@ -1672,12 +1677,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.stop_timers(timer_names)
             return
 
-        # Step 1:- Calculate gradient norm using fp-16 grads
-        if self.dtype == torch.float16:
-            see_memory_usage('Before norm calculation')
-            scaled_global_grad_norm = self.scaled_global_norm()
-            self._global_grad_norm = scaled_global_grad_norm / prev_scale
-            see_memory_usage('After norm before optimizer')
+        # Step 1:- Calculate gradient norm using bit-16 grads
+        see_memory_usage('Before norm calculation')
+        scaled_global_grad_norm = self.scaled_global_norm()
+        self._global_grad_norm = scaled_global_grad_norm / prev_scale
+        see_memory_usage('After norm before optimizer')
 
         # Step 2:- run optimizer and upscaling simultaneously
         for i, group in enumerate(self.bit16_groups):
@@ -1685,8 +1689,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             if self.cpu_offload:
                 single_grad_partition = self.single_partition_of_fp32_groups[i].grad
-                if self.dtype == torch.float16:
-                    self.unscale_and_clip_grads([single_grad_partition], scaled_global_grad_norm)
+                self.unscale_and_clip_grads([single_grad_partition], scaled_global_grad_norm)
 
                 self.stop_timers([OPTIMIZER_GRADIENTS])
                 self.start_timers([OPTIMIZER_STEP])
@@ -1726,8 +1729,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
                 self.averaged_gradients[i] = None
 
-                if self.dtype == torch.float16:
-                    self.unscale_and_clip_grads([single_grad_partition], scaled_global_grad_norm)
+                self.unscale_and_clip_grads([single_grad_partition], scaled_global_grad_norm)
 
                 self.stop_timers([OPTIMIZER_GRADIENTS])
 
