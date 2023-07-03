@@ -85,9 +85,6 @@ inline __m512 cvt_bf16_to_fp32(const __m256i src)
 inline __m256i cvt_fp32_to_bf16(const __m512 src) __attribute__((target("avx512bw")));
 inline __m256i cvt_fp32_to_bf16(const __m512 src)
 {
-#if 0
-    return reinterpret_cast<__m256i>(_mm512_cvtneps_pbh(src));
-#else
     __m512i value = _mm512_castps_si512(src);
     __m512i nan = _mm512_set1_epi32(0xffff);
     auto mask_value = _mm512_cmp_ps_mask(src, src, _CMP_ORD_Q);
@@ -104,7 +101,6 @@ inline __m256i cvt_fp32_to_bf16(const __m512 src)
     // Check NaN before converting back to bf16
     t_value = _mm512_mask_blend_epi32(mask_value, nan, t_value);
     return _mm512_cvtusepi32_epi16(t_value);
-#endif
 }
 
 void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in)
