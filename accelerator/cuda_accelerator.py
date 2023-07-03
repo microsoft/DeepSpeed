@@ -148,7 +148,7 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
             return False
 
     def supported_dtypes(self):
-        return [torch.float, torch.half]
+        return [torch.float, torch.half, torch.bfloat16]
 
     # Misc
     def amp(self):
