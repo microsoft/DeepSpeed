@@ -31,8 +31,7 @@ class LinearAllreduce(nn.Module):
         #output = output_tensors[output_size]
         #torch.matmul(input, self.weight.transpose(-1, -2), out=output)
         output = torch.matmul(input, self.weight.transpose(-1, -2))
-        if self.mp_group is not None:
-            dist.all_reduce_low_latency(output, group=self.mp_group)
+        dist.all_reduce_low_latency(output, group=self.mp_group)
         if self.bias is not None:
             output += self.bias
         return output
