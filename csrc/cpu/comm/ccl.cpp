@@ -351,13 +351,6 @@ void broadcast(torch::Tensor& data, int src, py::object group, bool async_op)
                  .wait());
 }
 
-float total = 0.0f;
-float total_sq = 0.0f;
-float min = 1000.0f;
-float max = 0.0f;
-int count = 0;
-int min_count = 0;
-int max_count = 0;
 // TODO: implement torch's async_op behavior, document it.
 void all_reduce(torch::Tensor& data, py::object op, py::object group, bool async_op)
 {
