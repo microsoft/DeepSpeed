@@ -132,6 +132,7 @@ void reduce_all_bf16_buffers(struct allreduce_workspace* workspace, int num_elem
         auto in##x##_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[x].buffer + i))); \
         inout_val = _mm512_add_ps(inout_val, in##x##_val);} while(0)
 
+// num_elements must be divisible by 16 (caller check)
 void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
 {
     for (int i = 0; i < num_elements * 2; i += 32) {
@@ -404,6 +405,7 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
     auto numel = data.numel();
 
     if (numel * 2 > MAX_BUF_SIZE
+        || (numel % 16) != 0
         || data.scalar_type() != c10::ScalarType::BFloat16
         || !all_ranks_local_p) {
         // fallback to oneccl allreduce
