@@ -601,7 +601,8 @@ class CUDAOpBuilder(OpBuilder):
 
     def builder(self):
         try:
-            assert_no_cuda_mismatch(self.name)
+            if not self.is_rocm_pytorch():
+                assert_no_cuda_mismatch(self.name)
             self.build_for_cpu = False
         except BaseException:
             self.build_for_cpu = True
@@ -655,7 +656,7 @@ class CUDAOpBuilder(OpBuilder):
         if sys.platform == "win32":
             return ['-O2']
         else:
-            return ['-O3', '-std=c++14', '-g', '-Wno-reorder']
+            return ['-O3', '-std=c++17', '-g', '-Wno-reorder']
 
     def nvcc_args(self):
         if self.build_for_cpu:
@@ -664,7 +665,7 @@ class CUDAOpBuilder(OpBuilder):
         if self.is_rocm_pytorch():
             ROCM_MAJOR, ROCM_MINOR = self.installed_rocm_version()
             args += [
-                '-std=c++14', '-U__HIP_NO_HALF_OPERATORS__', '-U__HIP_NO_HALF_CONVERSIONS__',
+                '-std=c++17', '-U__HIP_NO_HALF_OPERATORS__', '-U__HIP_NO_HALF_CONVERSIONS__',
                 '-U__HIP_NO_HALF2_OPERATORS__',
                 '-DROCM_VERSION_MAJOR=%s' % ROCM_MAJOR,
                 '-DROCM_VERSION_MINOR=%s' % ROCM_MINOR
@@ -673,8 +674,8 @@ class CUDAOpBuilder(OpBuilder):
             cuda_major, _ = installed_cuda_version()
             args += [
                 '-allow-unsupported-compiler' if sys.platform == "win32" else '', '--use_fast_math',
-                '-std=c++17' if sys.platform == "win32" and cuda_major > 10 else '-std=c++14',
-                '-U__CUDA_NO_HALF_OPERATORS__', '-U__CUDA_NO_HALF_CONVERSIONS__', '-U__CUDA_NO_HALF2_OPERATORS__'
+                '-std=c++17' if cuda_major > 10 else '-std=c++14', '-U__CUDA_NO_HALF_OPERATORS__',
+                '-U__CUDA_NO_HALF_CONVERSIONS__', '-U__CUDA_NO_HALF2_OPERATORS__'
             ]
             if os.environ.get('DS_DEBUG_CUDA_BUILD', '0') == '1':
                 args.append('--ptxas-options=-v')

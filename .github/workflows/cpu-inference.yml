@@ -1,14 +1,10 @@
 name: cpu-inference
 
 on:
-  push:
-    branches:
-      - 'staging**'
-    paths-ignore:
-      - 'docs/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
