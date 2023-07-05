@@ -431,9 +431,8 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
         super().step(lr_kwargs=lr_kwargs)
 
         if len(self._inference_containers) > 0:
-            if not self.Z3_enabled:
-                for inference_container in self._inference_containers:
-                    inference_container.reset_params()
+            for inference_container in self._inference_containers:
+                inference_container.reset_params()
 
         if self._training_start_time is not None:
             self._training_latency += (time.time() - self._training_start_time)
