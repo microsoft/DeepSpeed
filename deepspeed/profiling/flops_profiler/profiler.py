@@ -547,9 +547,20 @@ def _conv_flops_compute(input, weight, bias=None, stride=1, padding=0, dilation=
 
     length = len(input_dims)
 
-    paddings = padding if type(padding) is tuple else (padding, ) * length
     strides = stride if type(stride) is tuple else (stride, ) * length
     dilations = dilation if type(dilation) is tuple else (dilation, ) * length
+    if isinstance(padding, str):
+        if padding == 'valid':
+            paddings = (0, ) * length
+        elif padding == 'same':
+            paddings = ()
+            for d, k in zip(dilations, kernel_dims):
+                total_padding = d * (k - 1)
+                paddings += (total_padding // 2, )
+    elif isinstance(padding, tuple):
+        paddings = padding
+    else:
+        paddings = (padding, ) * length
 
     output_dims = []
     for idx, input_dim in enumerate(input_dims):
@@ -582,7 +593,7 @@ def _conv_trans_flops_compute(
 ):
     batch_size = input.shape[0]
     in_channels = input.shape[1]
-    out_channels = weight.shape[0]
+    out_channels = weight.shape[1]
     kernel_dims = list(weight.shape[2:])
     input_dims = list(input.shape[2:])
 
@@ -671,15 +682,23 @@ def _instance_norm_flops_compute(
     return input.numel() * (5 if has_affine else 4), 0
 
 
-def _upsample_flops_compute(input, **kwargs):
+def _upsample_flops_compute(*args, **kwargs):
+    input = args[0]
     size = kwargs.get('size', None)
+    if size is None and len(args) > 1:
+        size = args[1]
+
     if size is not None:
         if isinstance(size, tuple) or isinstance(size, list):
             return int(_prod(size)), 0
         else:
             return int(size), 0
+
     scale_factor = kwargs.get('scale_factor', None)
+    if scale_factor is None and len(args) > 2:
+        scale_factor = args[2]
     assert scale_factor is not None, "either size or scale_factor should be defined"
+
     flops = input.numel()
     if isinstance(scale_factor, tuple) and len(scale_factor) == len(input):
         flops * int(_prod(scale_factor))
@@ -1161,20 +1180,19 @@ def get_module_duration(module):
     return duration
 
 
-def get_model_profile(
-    model,
-    input_shape=None,
-    args=[],
-    kwargs={},
-    print_profile=True,
-    detailed=True,
-    module_depth=-1,
-    top_modules=1,
-    warm_up=1,
-    as_string=True,
-    output_file=None,
-    ignore_modules=None,
-):
+def get_model_profile(model,
+                      input_shape=None,
+                      args=[],
+                      kwargs={},
+                      print_profile=True,
+                      detailed=True,
+                      module_depth=-1,
+                      top_modules=1,
+                      warm_up=1,
+                      as_string=True,
+                      output_file=None,
+                      ignore_modules=None,
+                      mode='forward'):
     """Returns the total floating-point operations, MACs, and parameters of a model.
 
     Example:
@@ -1220,18 +1238,29 @@ def get_model_profile(
 
         args = [input]
     assert (len(args) > 0) or (len(kwargs) > 0), "args and/or kwargs must be specified if input_shape is None"
-
     for _ in range(warm_up):
         if kwargs:
-            _ = model(*args, **kwargs)
+            if mode == 'forward':
+                _ = model(*args, **kwargs)
+            if mode == 'generate':
+                _ = model.generate(*args, **kwargs)
         else:
-            _ = model(*args)
+            if mode == 'forward':
+                _ = model(*args)
+            if mode == 'generate':
+                _ = model.generate(*args)
     prof.start_profile(ignore_list=ignore_modules)
 
     if kwargs:
-        _ = model(*args, **kwargs)
+        if mode == 'forward':
+            _ = model(*args, **kwargs)
+        if mode == 'generate':
+            _ = model.generate(*args, **kwargs)
     else:
-        _ = model(*args)
+        if mode == 'forward':
+            _ = model(*args)
+        if mode == 'generate':
+            _ = model.generate(*args)
 
     flops = prof.get_total_flops()
     macs = prof.get_total_macs()
