@@ -393,19 +393,19 @@ class InsertPostInitMethodToModuleSubClasses(object):
                     4. re-partitions the parameters
                     """
 
-                    if not all(is_zero_param(p) for p in module_to_apply_fn_to.parameters(recurse=False)):
+                    # if not all(is_zero_param(p) for p in module_to_apply_fn_to.parameters(recurse=False)):
                         # import pdb; pdb.set_trace()
                         # non_init_params = [p for p in module_to_apply_fn_to.parameters(recurse=False) if not is_zero_param(p)]
                         # zero_params = [p for p in module_to_apply_fn_to.parameters() if is_zero_param(p)]
                         # zero_params[0].convert_to_zero_parameters(param_list=non_init_params)
                         # TODO Delay error checking for dangling partitioned parameters to post module init
-                        raise RuntimeError(f"not all parameters for {module_to_apply_fn_to.__class__.__name__}, "
-                                           f"were zero params, is it possible that the parameters were "
-                                           f"overwritten after they were initialized? "
-                                           f"params: {[p for p in module_to_apply_fn_to.parameters(recurse=False)]} ")
+                        # raise RuntimeError(f"not all parameters for {module_to_apply_fn_to.__class__.__name__}, "
+                        #                    f"were zero params, is it possible that the parameters were "
+                        #                    f"overwritten after they were initialized? "
+                        #                    f"params: {[p for p in module_to_apply_fn_to.parameters(recurse=False)]} ")
 
                     params_to_apply_fn_to: Iterable[Parameter] = list(
-                        sorted(module_to_apply_fn_to.parameters(recurse=False), key=lambda p: p.ds_id))
+                        sorted([p for p in module_to_apply_fn_to.parameters(recurse=False) if is_zero_param(p)], key=lambda p: p.ds_id))
 
                     for param in params_to_apply_fn_to:
                         param.all_gather()
