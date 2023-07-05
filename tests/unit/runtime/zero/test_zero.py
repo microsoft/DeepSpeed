@@ -808,7 +808,7 @@ class TestZero3ParamPartitioningLargeParam(DistributedTest):
 class TestZero3ParamPartitioningManyParams(DistributedTest):
     world_size = 2
 
-    def test(self, init_context_manager: bool,  param_sz: int = 100, n_layers: int = 100) -> None:
+    def test(self, init_context_manager: bool, param_sz: int = 100, n_layers: int = 100) -> None:
 
         class ManyParamModel(Module):
 

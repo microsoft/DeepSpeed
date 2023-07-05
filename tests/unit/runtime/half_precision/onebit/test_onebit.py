@@ -35,6 +35,10 @@ if rocm_version[0] > 4:
                 allow_module_level=True)
 
 
+def rel_diff(A, B):
+    return abs(A - B) / abs(A)
+
+
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16], ids=["fp32", "fp16"])
 class TestOneBitAdamBasic(DistributedTest):
     world_size = 2
@@ -335,16 +339,8 @@ class TestOneBitAdamCheckpointing(DistributedTest):
     "topo_config",
     [
         {
-            "num_pp": 1,
-            "num_dp": 4
-        },
-        {
             "num_pp": 2,
             "num_dp": 2
-        },
-        {
-            "num_pp": 4,
-            "num_dp": 1
         },
     ],
 )
@@ -352,9 +348,11 @@ class TestOneBitAdamFP16Pipeline(DistributedTest):
     world_size = 4
 
     def test(self, topo_config):
+        global_batch_size = 4
+        assert global_batch_size % self.world_size == 0, "Global batch size must be divisible by world size"
         config_dict = {
-            "train_batch_size": 16,
-            "train_micro_batch_size_per_gpu": 4,
+            "train_batch_size": global_batch_size,
+            "train_micro_batch_size_per_gpu": int(global_batch_size / self.world_size),
             "steps_per_print": 20,
             "optimizer": {
                 "type": "OneBitAdam",
@@ -384,20 +382,42 @@ class TestOneBitAdamFP16Pipeline(DistributedTest):
         }
 
         topo = PipeTopo(**topo_config)
-        steps = 500  # Must be >=100
+        steps = 100  # Must be >=100
 
         # Allocate model for consistent initial weights.
         init_net = AlexNetPipe()
 
+        base_net = copy.deepcopy(init_net)
+        base_model = PipelineModule(layers=base_net.to_layers(), num_stages=1, loss_fn=nn.CrossEntropyLoss())
+
+        # Train with just data parallelism
+        base_losses = train_cifar(base_model, config=config_dict, num_steps=steps, fp16=config_dict['fp16']['enabled'])
+
         test_net = copy.deepcopy(init_net)
         test_model = PipelineModule(layers=test_net.to_layers(), topology=topo, loss_fn=nn.CrossEntropyLoss())
 
-        test_losses = train_cifar(
-            test_model,
-            config=config_dict,
-            num_steps=steps,
-            fp16=config_dict["fp16"]["enabled"],
-        )
+        test_losses = train_cifar(test_model, config=config_dict, num_steps=steps, fp16=config_dict['fp16']['enabled'])
+
+        abs_diffs = [l0 - l1 for l0, l1 in zip(base_losses, test_losses)]
+        rel_diffs = [rel_diff(l0, l1) for l0, l1 in zip(base_losses, test_losses)]
+        if dist.get_rank() == 0:
+            print(f'abs min={min(abs_diffs)} max={max(abs_diffs)} avg={sum(abs_diffs)/len(abs_diffs)}')
+            print(f'rel min={min(rel_diffs)} max={max(rel_diffs)} avg={sum(rel_diffs)/len(rel_diffs)}')
+            print(f'first: base={base_losses[0]} test={test_losses[0]} abs={abs_diffs[0]} rel={rel_diffs[0]}')
+
+            for lastX in [1, 10, 100]:
+                base_avg = sum(base_losses[-lastX:]) / lastX
+                test_avg = sum(test_losses[-lastX:]) / lastX
+                print(
+                    f'last-{lastX}: base={base_avg} test={test_avg} abs={base_avg - test_avg} rel={rel_diff(base_avg, test_avg)}'
+                )
+
+        lastX = 100
+        base = base_losses[-lastX:]
+        base_avg = sum(base) / len(base)
+        test = test_losses[-lastX:]
+        test_avg = sum(test) / len(test)
+        assert rel_diff(base_avg, test_avg) < 0.05
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16], ids=["fp32", "fp16"])
@@ -708,16 +728,8 @@ class TestZeroOneAdamCheckpointing(DistributedTest):
     "topo_config",
     [
         {
-            "num_pp": 1,
-            "num_dp": 4
-        },
-        {
             "num_pp": 2,
             "num_dp": 2
-        },
-        {
-            "num_pp": 4,
-            "num_dp": 1
         },
     ],
 )
@@ -725,9 +737,11 @@ class TestZeroOneAdamFP16Pipeline(DistributedTest):
     world_size = 4
 
     def test(self, topo_config):
+        global_batch_size = 4
+        assert global_batch_size % self.world_size == 0, "Global batch size must be divisible by world size"
         config_dict = {
-            "train_batch_size": 16,
-            "train_micro_batch_size_per_gpu": 4,
+            "train_batch_size": global_batch_size,
+            "train_micro_batch_size_per_gpu": int(global_batch_size / self.world_size),
             "steps_per_print": 20,
             "optimizer": {
                 "type": "ZeroOneAdam",
@@ -760,20 +774,42 @@ class TestZeroOneAdamFP16Pipeline(DistributedTest):
         }
 
         topo = PipeTopo(**topo_config)
-        steps = 500  # Must be >=100
+        steps = 100  # Must be >=100
 
         # Allocate model for consistent initial weights.
         init_net = AlexNetPipe()
 
+        base_net = copy.deepcopy(init_net)
+        base_model = PipelineModule(layers=base_net.to_layers(), num_stages=1, loss_fn=nn.CrossEntropyLoss())
+
+        # Train with just data parallelism
+        base_losses = train_cifar(base_model, config=config_dict, num_steps=steps, fp16=config_dict['fp16']['enabled'])
+
         test_net = copy.deepcopy(init_net)
         test_model = PipelineModule(layers=test_net.to_layers(), topology=topo, loss_fn=nn.CrossEntropyLoss())
 
-        test_losses = train_cifar(
-            test_model,
-            config=config_dict,
-            num_steps=steps,
-            fp16=config_dict["fp16"]["enabled"],
-        )
+        test_losses = train_cifar(test_model, config=config_dict, num_steps=steps, fp16=config_dict['fp16']['enabled'])
+
+        abs_diffs = [l0 - l1 for l0, l1 in zip(base_losses, test_losses)]
+        rel_diffs = [rel_diff(l0, l1) for l0, l1 in zip(base_losses, test_losses)]
+        if dist.get_rank() == 0:
+            print(f'abs min={min(abs_diffs)} max={max(abs_diffs)} avg={sum(abs_diffs)/len(abs_diffs)}')
+            print(f'rel min={min(rel_diffs)} max={max(rel_diffs)} avg={sum(rel_diffs)/len(rel_diffs)}')
+            print(f'first: base={base_losses[0]} test={test_losses[0]} abs={abs_diffs[0]} rel={rel_diffs[0]}')
+
+            for lastX in [1, 10, 100]:
+                base_avg = sum(base_losses[-lastX:]) / lastX
+                test_avg = sum(test_losses[-lastX:]) / lastX
+                print(
+                    f'last-{lastX}: base={base_avg} test={test_avg} abs={base_avg - test_avg} rel={rel_diff(base_avg, test_avg)}'
+                )
+
+        lastX = 100
+        base = base_losses[-lastX:]
+        base_avg = sum(base) / len(base)
+        test = test_losses[-lastX:]
+        test_avg = sum(test) / len(test)
+        assert rel_diff(base_avg, test_avg) < 0.05
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16], ids=["fp32", "fp16"])
@@ -1110,16 +1146,8 @@ class TestOneBitLambCheckpointing(DistributedTest):
     "topo_config",
     [
         {
-            "num_pp": 1,
-            "num_dp": 4
-        },
-        {
             "num_pp": 2,
             "num_dp": 2
-        },
-        {
-            "num_pp": 4,
-            "num_dp": 1
         },
     ],
 )
@@ -1127,9 +1155,11 @@ class TestOneBitLambFP16Pipeline(DistributedTest):
     world_size = 4
 
     def test(self, topo_config):
+        global_batch_size = 4
+        assert global_batch_size % self.world_size == 0, "Global batch size must be divisible by world size"
         config_dict = {
-            "train_batch_size": 16,
-            "train_micro_batch_size_per_gpu": 4,
+            "train_batch_size": global_batch_size,
+            "train_micro_batch_size_per_gpu": int(global_batch_size / self.world_size),
             "steps_per_print": 20,
             "optimizer": {
                 "type": "OneBitLamb",
@@ -1159,20 +1189,42 @@ class TestOneBitLambFP16Pipeline(DistributedTest):
         }
 
         topo = PipeTopo(**topo_config)
-        steps = 500  # Must be >=100
+        steps = 100  # Must be >=100
 
         # Allocate model for consistent initial weights.
         init_net = AlexNetPipe()
 
+        base_net = copy.deepcopy(init_net)
+        base_model = PipelineModule(layers=base_net.to_layers(), num_stages=1, loss_fn=nn.CrossEntropyLoss())
+
+        # Train with just data parallelism
+        base_losses = train_cifar(base_model, config=config_dict, num_steps=steps, fp16=config_dict['fp16']['enabled'])
+
         test_net = copy.deepcopy(init_net)
         test_model = PipelineModule(layers=test_net.to_layers(), topology=topo, loss_fn=nn.CrossEntropyLoss())
 
-        test_losses = train_cifar(
-            test_model,
-            config=config_dict,
-            num_steps=steps,
-            fp16=config_dict["fp16"]["enabled"],
-        )
+        test_losses = train_cifar(test_model, config=config_dict, num_steps=steps, fp16=config_dict['fp16']['enabled'])
+
+        abs_diffs = [l0 - l1 for l0, l1 in zip(base_losses, test_losses)]
+        rel_diffs = [rel_diff(l0, l1) for l0, l1 in zip(base_losses, test_losses)]
+        if dist.get_rank() == 0:
+            print(f'abs min={min(abs_diffs)} max={max(abs_diffs)} avg={sum(abs_diffs)/len(abs_diffs)}')
+            print(f'rel min={min(rel_diffs)} max={max(rel_diffs)} avg={sum(rel_diffs)/len(rel_diffs)}')
+            print(f'first: base={base_losses[0]} test={test_losses[0]} abs={abs_diffs[0]} rel={rel_diffs[0]}')
+
+            for lastX in [1, 10, 100]:
+                base_avg = sum(base_losses[-lastX:]) / lastX
+                test_avg = sum(test_losses[-lastX:]) / lastX
+                print(
+                    f'last-{lastX}: base={base_avg} test={test_avg} abs={base_avg - test_avg} rel={rel_diff(base_avg, test_avg)}'
+                )
+
+        lastX = 100
+        base = base_losses[-lastX:]
+        base_avg = sum(base) / len(base)
+        test = test_losses[-lastX:]
+        test_avg = sum(test) / len(test)
+        assert rel_diff(base_avg, test_avg) < 0.05
 
 
 @pytest.mark.sequential
