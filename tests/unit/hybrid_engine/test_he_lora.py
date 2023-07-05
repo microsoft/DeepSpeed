@@ -150,7 +150,7 @@ class TestHybridEngineLoRA(DistributedTest):
         model = convert_linear_layer_to_lora(model, "", 8)
         model = only_optimize_lora_parameters(model)
         optim = FusedAdam([p for p in model.parameters() if p.requires_grad], lr=1.0, betas=(0.9, 0.95))
-        ds_config = {"train_batch_size": batch_size, "bfp16": {"enabled": True}, "hybrid_engine": {"enabled": True}}
+        ds_config = {"train_batch_size": batch_size, "fp16": {"enabled": True}, "hybrid_engine": {"enabled": True}}
 
         model, *_ = deepspeed.initialize(model=model, optimizer=optim, config=ds_config)
 
