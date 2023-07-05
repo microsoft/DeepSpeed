@@ -23,7 +23,7 @@ class tensor_fragment:
     hp_fragment_address: fragment_address
     optim_fragment: Dict
     gradient_dict: Dict
-    offload_gradient_dict: Dict 
+    offload_gradient_dict: Dict
     use_offload: bool
     param_group_index: int
 
