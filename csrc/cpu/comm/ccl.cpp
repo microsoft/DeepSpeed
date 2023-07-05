@@ -11,10 +11,10 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <chrono>
 #include <iostream>
 #include <cstdlib>
 #include <oneapi/ccl.hpp>
+#include <atomic>
 
 // SHM building blocks
 struct SharedData {
@@ -415,6 +415,7 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
     auto data_ptr = data.data_ptr();
 
     memcpy(workspace[world_rank].buffer, data_ptr, numel * 2);
+    std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank].state = 1;
 
     if (world_rank == 0) {
@@ -424,16 +425,19 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
             wait_buffer_state_until(i, 1);
         }
         reduce_all_bf16_buffers(workspace, numel, world_size);
+        std::atomic_thread_fence(std::memory_order_release);
         workspace[world_rank].state = 2;
         memcpy(data_ptr, workspace[0].buffer, numel * 2);
     }
     if (world_rank != 0) {
         wait_buffer_state_until(0, 2);
         memcpy(data_ptr, workspace[0].buffer, numel * 2);
+        std::atomic_thread_fence(std::memory_order_release);
         workspace[world_rank].state = 2;
     }
     if (world_rank == 0) {
         for (int i = 1; i < world_size; i++) { wait_buffer_state_until(i, 2); }
+        std::atomic_thread_fence(std::memory_order_release);
         workspace[world_rank].state = 0;
     }
     if (world_rank != 0) {
