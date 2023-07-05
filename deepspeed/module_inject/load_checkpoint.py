@@ -33,6 +33,8 @@ def load_model_with_checkpoint(r_module,
         for key in sd[0].keys():
             if re.match("^model[.]", key):
                 return False
+            if re.match("^transformer[.]", key):
+                return False
         return True
 
     skip_level_0_prefix = prefix_check() and container.policy.use_load_prefix
