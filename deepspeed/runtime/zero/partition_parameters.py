@@ -52,6 +52,7 @@ class NoGatherHandle:
         else:
             param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(),
                                                  non_blocking=True).view(param.ds_shape)
+        self.__param = param
 
     def wait(self) -> None:
         get_accelerator().current_stream().synchronize()
@@ -1410,7 +1411,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     partitioned_tensor = torch.empty(partition_size, dtype=param.dtype, device=device)
                     # quantize the tensor if it's not trainable
                     if not param.requires_grad and self.quantized_nontrainable_weights:
-                        partitioned_tensor, param.ds_quant_scale = self.quantizer_module.quantize(partitioned_tensor)
+                        partitioned_tensor, partitioned_tensor.ds_quant_scale = self.quantizer_module.quantize(partitioned_tensor)
 
                     if device == OffloadDeviceEnum.cpu and self.pin_memory:
                         partitioned_tensor = get_accelerator().pin_memory(partitioned_tensor)
@@ -1639,7 +1640,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 if quantize:
                     quantize_handle = dist.all_gather_into_tensor(allgather_quantize_scale[param_idx],
                                                                   quantize_scale_tensors[param_idx],
-                                                                  group=self.ds_process_group,
+                                                                  group=self.get_partition_dp_group(param),
                                                                   async_op=True)
                     launch_quantize_handles.append(quantize_handle)
             else:
@@ -1656,7 +1657,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 h = dist.all_gather(output_list, input_tensor, group=self.get_partition_dp_group(param), async_op=True)
                 if quantize:
                     output_scale_list = []
-                    for i in range(self.world_size):
+                    for i in range(self.num_partitions):
                         psize = quantize_scale_sizes[param_idx]
                         partition = allgather_quantize_scale[param_idx].narrow(0, i * psize, psize)
                         output_scale_list.append(partition)
@@ -1670,7 +1671,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # Wait ensures the operation is enqueued, but not necessarily complete.
         launch_handles[-1].wait()
         if quantize:
-            launch_quantize_handles[-1].wait()
+            for quant_handle in launch_quantize_handles:
+                quant_handle.wait()
 
         # assign to param.data (not copy)
         for i, param in enumerate(param_list):
@@ -1708,10 +1710,27 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
                     offset += param_numel
 
-        dist.all_gather(partitions,
-                        partitions[self.get_partition_rank()],
-                        group=self.get_partition_dp_group(param),
-                        async_op=False)
+        if hasattr(param_list[0], 'ds_quant_scale'):
+            scale_size = sum([param.ds_tensor.ds_quant_scale.numel() for param in param_list])
+            scale_tensor_size = scale_size * self.world_size
+            flat_scale_tensor = torch.empty(scale_tensor_size, dtype=param_list[0].ds_tensor.ds_quant_scale.dtype, device=self.local_device)
+            flat_scale_tensor.requires_grad = False
+            scale_partitions = []
+            for i in range(self.world_size):
+                start = scale_tensor_size * i
+                scale_partitions.append(flat_scale_tensor.narrow(0, start, scale_tensor_size))
+                if i == self.rank:
+                    offset = 0
+                    for param in param_list:
+                        param_scale_numel = param.ds_tensor.ds_quant_scale.ds_numel
+
+                        scale_partitions[i].narrow(0, offset, param_scale_numel).copy_(param.ds_tensor.ds_quant_scale.data)
+
+                        offset += param_scale_numel
+
+        dist.all_gather(partitions, partitions[self.get_partition_rank()], group=self.get_partition_dp_group(param), async_op=False)
+        if hasattr(param_list[0], 'ds_quant_scale'):
+            dist.all_gather(flat_scale_tensor, param_list[0].ds_quant_scale, group=self.get_partition_dp_group(param), async_op=False)
         param_offset = 0
 
         for param in param_list:
@@ -1733,7 +1752,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     replicated_tensor.view(-1).narrow(0, param_start, numel_to_copy).copy_(part_to_copy)
             #param_offset += param.data.numel()
             param_offset += param.ds_tensor.ds_numel
-
+            if hasattr(param_list[0], 'ds_quant_scale'):
+                replicated_tensor = self.quantizer_module.dequantize(replicated_tensor, flat_scale_tensor)
             param.data = replicated_tensor.data
 
         return None
