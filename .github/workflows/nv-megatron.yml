@@ -30,13 +30,13 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          pip install .[dev] --no-build-isolation
+          pip install .[dev]
           ds_report
 
       - name: Install apex
         run: |
+          git clone https://github.com/NVIDIA/apex.git
           cd apex
-          # Install 82ee367 specifically before pyproject.toml changes due to incomplete dependencies causing errors.
           CURRENT_VER=$(git rev-parse HEAD)
           INSTALLED_VER=$(cat /blob/apex/.venv_installed_version)
           if [[ "$CURRENT_VER" != "$INSTALLED_VER" ]]; then
