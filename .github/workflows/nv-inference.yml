@@ -5,6 +5,7 @@ on:
     paths-ignore:
       - 'docs/**'
       - 'blogs/**'
+  merge_group:
   schedule:
     - cron: "0 0 * * *"
 

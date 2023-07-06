@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       '**'
+  merge_group:
   schedule:
     - cron: "0 0 * * *"
 
