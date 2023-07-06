@@ -112,7 +112,6 @@ class DistributedExec(ABC):
             world_size = [world_size]
         for procs in world_size:
             self._launch_procs(procs)
-            time.sleep(0.5)
 
     def _get_fixture_kwargs(self, request, func):
         if not request:
