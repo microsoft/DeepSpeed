@@ -129,9 +129,9 @@ def get_numactl_cmd(bind_core_list, num_local_procs, local_rank):
     for i in range(num_numas):
         # look for empty numa which is HBM numa
         if numa_cores[i] == []:
-            empty_numa_list.append([i])
+            empty_numa_list.append(i)
         else:
-            non_empty_numa_list.append([i])
+            non_empty_numa_list.append(i)
 
     if empty_numa_list != [] and len(empty_numa_list) == len(non_empty_numa_list):
         numa_mode = "flat_hbm"
