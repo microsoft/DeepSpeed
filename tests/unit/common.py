@@ -28,7 +28,7 @@ DEEPSPEED_TEST_TIMEOUT = 600
 
 
 def is_rocm_pytorch():
-    return  hasattr(torch.version, 'hip') and torch.version.hip is not None
+    return hasattr(torch.version, 'hip') and torch.version.hip is not None
 
 
 def get_xdist_worker_id():
