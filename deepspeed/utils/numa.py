@@ -121,11 +121,34 @@ def get_numactl_cmd(bind_core_list, num_local_procs, local_rank):
     # check if all cores belong to same numa, if true, bind process to that numa domain with -m parameter
     numa_cores = get_numa_cores()
     num_numas = len(numa_cores)
+
+    numa_mode = "normal"
+
+    non_empty_numa_list = []
+    empty_numa_list = []
     for i in range(num_numas):
-        if set(core_list_for_rank) <= set(numa_cores[i]):
-            numactl_cmd.append("-m")
-            numactl_cmd.append(f"{i}")
-            break
+        # look for empty numa which is HBM numa
+        if numa_cores[i] == []:
+            empty_numa_list.append[i]
+        else:
+            non_empty_numa_list.append[i]
+
+    if empty_numa_list != [] and len(empty_numa_list) == len(non_empty_numa_list):
+        numa_mode = "flat_hbm"
+        numa_dict = dict(zip(non_empty_numa_list, empty_numa_list))
+
+    if numa_mode == "normal":
+        for i in range(num_numas):
+            if set(core_list_for_rank) <= set(numa_cores[i]):
+                numactl_cmd.append("-m")
+                numactl_cmd.append(f"{i}")
+                break
+    elif numa_mode == "flat_hbm":
+        for i in range(num_numas):
+            if set(core_list_for_rank) <= set(numa_cores[i]):
+                numactl_cmd.append("-p")
+                numactl_cmd.append(f"{numa_dict[i]}")
+                break
 
     numactl_cmd.append("-C")
     last_core = core_list_for_rank[0]
