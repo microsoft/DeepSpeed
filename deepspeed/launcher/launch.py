@@ -243,6 +243,7 @@ def main():
                 cmd.append(f"--local_rank={local_rank}")
             cmd += args.training_script_args
 
+            print (cmd)
             if args.enable_each_rank_log != "None":
                 log_file = os.path.join(args.enable_each_rank_log, f"{log_name_prefix}_rank{dist_rank}.log")
                 log_fd = open(log_file, 'w')
