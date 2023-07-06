@@ -115,7 +115,7 @@ reduce_scatter_tensor | [Caller Func: reduce_scatter_fn]
                     678.86 MB           80                  1527.17             13.94               1211.75             1136.01
 ```
 
-Straggler effect can be shown by supply optional argument `show_straggler=True` to `deepspeed.comm.log_summary()` call.   Straggler effect is defined as the time a rank waits for the slowest rank to start communication.  For each collective, `log_summary` would get the minimum collective time among all ranks, compute straggler effect as follows:
+Straggler effect can be shown by supplying optional argument `show_straggler=True` to `deepspeed.comm.log_summary()` call.   Straggler effect is defined as the time a rank waits for the slowest rank to start communication.  For each collective, `log_summary` would get the minimum collective time among all ranks, compute straggler effect as follows:
 
 ```
 straggler = sum(t_collectives - allreduce(t_collectives, MIN))
