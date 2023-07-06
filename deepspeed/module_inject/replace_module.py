@@ -440,11 +440,13 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
             def _codegen_type_transpose(input, mp_size, codegen_mp_num=4):
                 # codegen_mp_num defined in https://github.com/huggingface/transformers/blob/main/src/transformers/models/codegen/modeling_codegen.py
                 #TODO: assert num_heads % (mp_size*codegen_mp_num) == 0
+                #input : [3*hidden_dim, hidden_dim](weight) or [3*hidden_dim](bias)
 
                 shape = input.shape
-                #input : [3*hidden_dim, hidden_dim]
+                dst_shape = shape[0] // mp_size
                 num_mp_blocks = input.reshape(codegen_mp_num, shape[0] // codegen_mp_num, shape[1])
-                #num_mp_blocks : [codegen_mp_num, 3*hidden_dim/codegen_mp_num, dim]
+
+                #num_mp_blocks : [codegen_mp_num, 3*hidden_dim/codegen_mp_num, :]
                 src_split = list(torch.split(num_mp_blocks, num_mp_blocks.shape[1] // 3, dim=1))
                 src_split = [x.reshape(codegen_mp_num * mp_size, -1, shape[1]) for x in src_split]
 
@@ -453,11 +455,13 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 split_fuseqkv = [torch.cat([qkv_s[i] for qkv_s in qkv_split], dim=1) for i in range(len(qkv_split[0]))]
                 tp_fuseqkv_weight = torch.cat(split_fuseqkv, dim=0).reshape(shape[0], -1)
 
-                return tp_fuseqkv_weight
+                return tp_fuseqkv_weight[mp_replace.gpu_index * dst_shape:(mp_replace.gpu_index + 1) * dst_shape]
 
             def _glm_type_transpose(input, mp_size):
+                #input : [3*hidden_dim, hidden_dim](weight) or [3*hidden_dim](bias)
 
                 shape = input.shape
+                dst_shape = shape[0] // mp_size
                 src_split = torch.split(input, shape[0] // 3, dim=0)
 
                 qkv_split = [torch.split(src_s, shape[0] // 3 // mp_size, dim=0) for src_s in src_split]
@@ -465,7 +469,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                     torch.cat([qkv_s[i] for qkv_s in qkv_split], axis=0) for i in range(len(qkv_split[0]))
                 ]
                 tp_fuseqkv_weight = torch.cat(split_fusedqkv, dim=0)
-                return tp_fuseqkv_weight
+                return tp_fuseqkv_weight[mp_replace.gpu_index * dst_shape:(mp_replace.gpu_index + 1) * dst_shape]
 
             def _bloom_type_transpose(input, mp_size):
                 return input
