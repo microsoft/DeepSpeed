@@ -63,8 +63,15 @@ class DS_FALCONContainer(MetaTensorContainer, BaseTransformerContainer, HybridEn
             'ln_attn.bias'
         )
         for i in range(0, 2):
-            maybe_copy(module.attention, sd, weight_quantizer, mp_replace, transformer_param_names[i * 2],
-                       prefix + param_names[i])
+            maybe_copy(module.attention, 
+                       sd, 
+                       weight_quantizer, 
+                       mp_replace, 
+                       transformer_param_names[i * 2],
+                       prefix + param_names[i],
+                       qkv=True,
+                       megatron_v2=self.policy.is_megatron_v2,
+                       split_qkv=self.policy.split_qkv)
         maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[4],
                        prefix + param_names[2])
         maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[6],
@@ -89,7 +96,7 @@ class DS_FALCONContainer(MetaTensorContainer, BaseTransformerContainer, HybridEn
 class FALCONLayerPolicy(TransformerPolicy):
 
     def __init__(self, client_module, inference=True):
-        super().__init__(inference, )
+        super().__init__(inference, split_qkv=False)
         self.client_module = client_module
         FALCONLayerPolicy.name = 'falcon'
         FALCONLayerPolicy._orig_layer_class = None
