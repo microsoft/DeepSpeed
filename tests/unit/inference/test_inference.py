@@ -549,9 +549,7 @@ class TestLMCorrectness(DistributedTest):
 class TestVariableBatchSizeCudaGraph(DistributedTest):
     world_size = 1
 
-    def test(self, model_w_task, dtype, query, inf_kwargs, invalid_model_task_config, enable_cuda_graph):
-        if invalid_model_task_config:
-            pytest.skip(invalid_model_task_config)
+    def test(self, model_w_task, dtype, query, inf_kwargs, enable_cuda_graph):
 
         deepspeed.init_distributed()
 
