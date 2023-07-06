@@ -4,9 +4,11 @@
 # DeepSpeed Team
 
 from .base import *
+from .features.meta_tensor import MetaTensorContainer
 from .features.hybrid_engine import HybridEngineContainer
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
 
+from ..policy import transformer_param_names
 from ..policy import (
     TransformerPolicy,
     maybe_copy,
@@ -14,7 +16,7 @@ from ..policy import (
 )
 
 
-class DS_FALCONContainer(BaseTransformerContainer, HybridEngineContainer):
+class DS_FALCONContainer(MetaTensorContainer, BaseTransformerContainer, HybridEngineContainer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -61,13 +63,18 @@ class DS_FALCONContainer(BaseTransformerContainer, HybridEngineContainer):
             'ln_attn.bias'
         )
         for i in range(0, 2):
-            maybe_copy(module.attention, sd, weight_quantizer, mp_replace, transformer_param_names[i],
+            maybe_copy(module.attention, sd, weight_quantizer, mp_replace, transformer_param_names[i * 2],
                        prefix + param_names[i])
-        for i in range(2, 6):
-            maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[i],
-                       prefix + param_names[i])
+        maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[4],
+                       prefix + param_names[2])
+        maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[6],
+                       prefix + param_names[3])
+        maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[8],
+                       prefix + param_names[4])
+        maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[9],
+                       prefix + param_names[5])
         for i in range(6, 8):
-            maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[i], prefix + param_names[i])
+            maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[i + 4], prefix + param_names[i])
 
 
     def attention_qkv_mp(self, mp_replace, reversed_dim=False):
