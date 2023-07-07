@@ -8,7 +8,7 @@ import deepspeed
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 from pydantic import ConfigDict, Field
-from pydantic import validator
+from pydantic import field_validator
 from typing import Dict, Union
 from enum import Enum
 
@@ -286,21 +286,18 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     moe_experts: list = Field([1], deprecated=True, new_param="moe.moe_experts")
     moe_type: MoETypeEnum = Field(MoETypeEnum.standard, deprecated=True, new_param="moe.type")
 
-    # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
-    @validator("moe")
+    @field_validator("moe")
     def moe_backward_compat(cls, field_value, values):
         if isinstance(field_value, bool):
             return DeepSpeedMoEConfig(moe=field_value)
         return field_value
 
-    # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
-    @validator("use_triton")
+    @field_validator("use_triton")
     def has_triton(cls, field_value, values):
         if field_value and not deepspeed.HAS_TRITON:
             raise ValueError('Triton needs to be installed to use deepspeed with triton kernels')
         return field_value
+
     # TODO[pydantic]: The following keys were removed: `json_encoders`.
     # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
     model_config = ConfigDict(json_encoders={torch.dtype: lambda x: str(x)})

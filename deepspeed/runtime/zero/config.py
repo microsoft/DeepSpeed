@@ -3,7 +3,7 @@
 
 # DeepSpeed Team
 
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 import sys
 from typing import Optional
 from enum import Enum
@@ -275,9 +275,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     """
 
     # Validators
-    # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
-    @validator("overlap_comm")
+    @field_validator("overlap_comm")
     def overlap_comm_valid(cls, field_value, values):
         if field_value is None:
             assert ("stage" in values), "DeepSpeedZeroConfig: 'stage' must be defined before 'overlap_comm'"
