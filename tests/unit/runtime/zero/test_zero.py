@@ -6,7 +6,6 @@
 import math
 from collections import namedtuple
 from typing import Dict, List, NamedTuple, Set, Tuple
-import itertools
 import pytest
 import deepspeed.comm as dist
 import torch
@@ -613,68 +612,52 @@ class EltwiseMultiplicationTestNetwork_List(EltwiseMultiplicationTestNetwork_Dic
 class TestZero3ParamPartitioningBase(DistributedTest):
     world_size = 2
 
-    def test(self):
-        # NOTE: We avoid using parametrize here because of how many tests all
-        # these options generate. Running a separate test for each one adds a
-        # lot of overhead due to the time necessary to setup and teardown a
-        # distributed environment for each setting. We run all these tests in a
-        # single distributed environment to save CI time!
-        param_persistence_threshold = [0, 10]
-        fp16_enabled = [True, False]
-        contiguous_gradients = [True, False]
-        offload_optimizer = [True, False]
-        zero_grad = [True, False]
-        prefetching = [True, False]
-        reduce_scatter = [True, False]
-        model_class = [
-            EltwiseMultiplicationTestNetwork_Dict,
-            EltwiseMultiplicationTestNetwork_NamedTuple,
-            EltwiseMultiplicationTestNetwork_namedtuple,
-            EltwiseMultiplicationTestNetwork_Tuple,
-            EltwiseMultiplicationTestNetwork_List,
-        ]
+    @pytest.mark.parametrize("param_persistence_threshold", [0, 10])
+    def test_param_persistence_threshold(self, param_persistence_threshold):
+        self._test(param_persistence_threshold=param_persistence_threshold)
 
-        parametrize_opts = itertools.product(
-            param_persistence_threshold,
-            fp16_enabled,
-            contiguous_gradients,
-            offload_optimizer,
-            zero_grad,
-            prefetching,
-            reduce_scatter,
-            model_class,
-        )
-        for (
-                param_persistence_threshold,
-                fp16_enabled,
-                contiguous_gradients,
-                offload_optimizer,
-                zero_grad,
-                prefetching,
-                reduce_scatter,
-                model_class,
-        ) in parametrize_opts:
-            self._test(
-                param_persistence_threshold,
-                fp16_enabled,
-                contiguous_gradients,
-                offload_optimizer,
-                zero_grad,
-                prefetching,
-                reduce_scatter,
-                model_class,
-            )
+    @pytest.mark.parametrize("fp16_enabled", [True, False])
+    def test_fp16_enabled(self, fp16_enabled):
+        self._test(fp16_enabled=fp16_enabled)
+
+    @pytest.mark.parametrize("contiguous_gradients", [True, False])
+    def test_contiguous_gradients(self, contiguous_gradients):
+        self._test(contiguous_gradients=contiguous_gradients)
+
+    @pytest.mark.parametrize("offload_optimizer", [True, False])
+    def test_offload_optimizer(self, offload_optimizer):
+        self._test(offload_optimizer=offload_optimizer)
+
+    @pytest.mark.parametrize("zero_grad", [True, False])
+    def test_zero_grad(self, zero_grad):
+        self._test(zero_grad=zero_grad)
+
+    @pytest.mark.parametrize("prefetching", [True, False])
+    def test_prefetching(self, prefetching):
+        self._test(prefetching=prefetching)
+
+    @pytest.mark.parametrize("reduce_scatter", [True, False])
+    def test_reduce_scatter(self, reduce_scatter):
+        self._test(reduce_scatter=reduce_scatter)
+
+    @pytest.mark.parametrize("model_class", [
+        EltwiseMultiplicationTestNetwork_Dict, EltwiseMultiplicationTestNetwork_NamedTuple,
+        EltwiseMultiplicationTestNetwork_namedtuple, EltwiseMultiplicationTestNetwork_Tuple,
+        EltwiseMultiplicationTestNetwork_List
+    ])
+    def test_model_class(self, model_class):
+        self._test(model_class=model_class)
 
     def _test(
         self,
-        param_persistence_threshold: int,
-        fp16_enabled: bool,
-        contiguous_gradients: bool,
-        offload_optimizer: bool,
-        zero_grad: bool,
-        prefetching: bool,
-        reduce_scatter: bool,
-        model_class: EltwiseMultiplicationTestNetwork_Dict,
+        param_persistence_threshold: int = 0,
+        fp16_enabled: bool = False,
+        contiguous_gradients: bool = False,
+        offload_optimizer: bool = False,
+        zero_grad: bool = False,
+        prefetching: bool = False,
+        reduce_scatter: bool = False,
+        model_class: EltwiseMultiplicationTestNetwork_Dict = EltwiseMultiplicationTestNetwork_Dict,
     ) -> None:
         if offload_optimizer and not contiguous_gradients:
             return
