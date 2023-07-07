@@ -96,7 +96,7 @@ class DeepSpeedConfigModel(BaseModel):
                     raise e
 
     def _deprecated_fields_check(self, pydantic_config):
-        fields = pydantic_config.__fields__
+        fields = pydantic_config.model_fields
         for field in fields.values():
             if field.field_info.extra.get("deprecated", False):
                 self._process_deprecated_field(pydantic_config, field)
@@ -110,10 +110,10 @@ class DeepSpeedConfigModel(BaseModel):
 
 
 def get_config_default(config, field_name):
-    assert field_name in config.__fields__, f"'{field_name}' is not a field in {config}"
-    assert not config.__fields__.get(
+    assert field_name in config.model_fields, f"'{field_name}' is not a field in {config}"
+    assert not config.model_fields.get(
         field_name).required, f"'{field_name}' is a required field and does not have a default value"
-    return config.__fields__.get(field_name).default
+    return config.model_fields.get(field_name).default
 
 
 class pp_int(int):
