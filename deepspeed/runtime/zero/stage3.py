@@ -1380,6 +1380,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             if hasattr(param, "ds_secondary_tensor") and not param.requires_grad and not hasattr(
                     param.ds_secondary_tensor, "ds_quant_scale") and param.ds_secondary_tensor is not None:
                 param.ds_secondary_tensor = quantize_dstensor(param.ds_secondary_tensor)
+        torch.cuda.synchronize()
 
     def flatten_and_print(self, message, tensors, start=0, n=5):
         flatten_tensor = self.flatten(tensors)
