@@ -490,7 +490,7 @@ def all_reduce_coalesced(tensors,
                          prof=False,
                          log_name='all_reduce',
                          debug=get_caller_func()):
-    global cbd
+    global cdb
     return cdb.all_reduce_coalesced(tensors, op, group, async_op)
 
 
@@ -606,13 +606,14 @@ def init_distributed(dist_backend=None,
         dist_init_required = cdb is None or not cdb.is_initialized()
 
     if cdb is None:
-        init_deepspeed_backend(get_accelerator().communication_backend_name(), timeout, init_method)
-        set_backend()
-        utils.logger.info(f'cdb={cdb}')
-    if cdb is None and torch.distributed.is_initialized():
-        # The user initialized torch.dist themselves, create cdb and short-circuit
-        cdb = TorchBackend(dist_backend, timeout, init_method)
-        return
+        if torch.distributed.is_initialized():
+            # The user initialized torch.dist themselves, create cdb and short-circuit
+            cdb = TorchBackend(dist_backend, timeout, init_method)
+            return
+        else:
+            init_deepspeed_backend(get_accelerator().communication_backend_name(), timeout, init_method)
+            set_backend()
+            utils.logger.info(f'cdb={cdb}')
 
     if dist_init_required is False:
         assert (
