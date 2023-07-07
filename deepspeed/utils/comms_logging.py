@@ -12,6 +12,12 @@ def get_caller_func(frame=3):
     return sys._getframe(frame).f_code.co_name
 
 
+def print_rank_0(message):
+    import deepspeed.comm as dist
+    if dist.get_rank() == 0:
+        print(message)
+
+
 # Helper function to pretty-print message sizes
 def convert_size(size_bytes):
     if size_bytes == 0:
