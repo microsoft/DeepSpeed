@@ -3,17 +3,12 @@
 
 # DeepSpeed Team
 
-from pydantic import BaseModel
+from pydantic import ConfigDict, BaseModel
 from .constants import *
 
 
 class CommsConfig(BaseModel):
-
-    class Config:
-        validate_all = True
-        validate_assignment = True
-        use_enum_values = True
-        extra = 'forbid'
+    model_config = ConfigDict(validate_default=True, validate_assignment=True, use_enum_values=True, extra='forbid')
 
 
 class CommsLoggerConfig(CommsConfig):

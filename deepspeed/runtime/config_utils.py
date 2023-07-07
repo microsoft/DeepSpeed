@@ -9,7 +9,7 @@ import json
 import collections
 import collections.abc
 from functools import reduce
-from pydantic import BaseModel
+from pydantic import ConfigDict, BaseModel
 from deepspeed.utils import logger
 
 
@@ -100,14 +100,7 @@ class DeepSpeedConfigModel(BaseModel):
         for field in fields.values():
             if field.field_info.extra.get("deprecated", False):
                 self._process_deprecated_field(pydantic_config, field)
-
-    class Config:
-        validate_all = True
-        validate_assignment = True
-        use_enum_values = True
-        allow_population_by_field_name = True
-        extra = "forbid"
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(validate_default=True, validate_assignment=True, use_enum_values=True, populate_by_name=True, extra="forbid", arbitrary_types_allowed=True)
 
 
 def get_config_default(config, field_name):
