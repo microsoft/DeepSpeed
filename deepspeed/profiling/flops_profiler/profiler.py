@@ -12,6 +12,7 @@ from typing import List, Optional
 from collections import OrderedDict
 import numpy as np
 from deepspeed.accelerator import get_accelerator
+from deepspeed.moe.layer import MoE
 
 Tensor = torch.Tensor
 
@@ -57,9 +58,10 @@ class FlopsProfiler(object):
         object (torch.nn.Module): The PyTorch model to profile.
     """
 
-    def __init__(self, model, ds_engine=None):
+    def __init__(self, model, ds_engine=None, recompute_fwd_factor=0.0):
         self.model = model
         self.ds_engine = ds_engine
+        self.recompute_fwd_factor = recompute_fwd_factor
         self.started = False
         self.func_patched = False
 
@@ -156,10 +158,31 @@ class FlopsProfiler(object):
         Adds or resets the extra attributes.
         """
 
+        def get_param_count_and_ep(param):
+            """
+            Return the number of parameters in the layer, whether the layer is an MoE layer,
+            and its expert parallelism size if so
+            """
+            prefix = 'ep_size_'
+            offset = len(prefix)
+            expert_parallelism = 0
+            if getattr(param, "group_name", "").startswith(prefix):
+                try:
+                    expert_parallelism = int(param.group_name[offset:])
+                except ValueError:
+                    pass
+            is_moe = expert_parallelism > 0
+            return param.numel(), is_moe, expert_parallelism
+
         def add_or_reset_attrs(module):
+            parameters = [get_param_count_and_ep(p) for p in module.parameters()]
             module.__flops__ = 0
             module.__macs__ = 0
-            module.__params__ = sum(p.numel() for p in module.parameters())
+            module.__params__ = sum(count for count, is_expert, _ in parameters if not is_expert)
+            module.__expert_params__ = sum(count for count, is_expert, _ in parameters if is_expert)
+            # number of expert parameters taking into account other expert parallel groups
+            module.__model_expert_params__ = sum(count * expert_parallelism
+                                                 for count, is_expert, expert_parallelism in parameters if is_expert)
             module.__start_time__ = 0
             module.__duration__ = 0
 
@@ -182,6 +205,10 @@ class FlopsProfiler(object):
                 del module.__macs__
             if hasattr(module, "__params__"):
                 del module.__params__
+            if hasattr(module, "__expert_params__"):
+                del module.__expert_params__
+            if hasattr(module, "__model_expert_params__"):
+                del module.__model_expert_params__
             if hasattr(module, "__start_time__"):
                 del module.__start_time__
             if hasattr(module, "__duration__"):
@@ -226,15 +253,22 @@ class FlopsProfiler(object):
         return duration_to_string(total_duration) if as_string else total_duration
 
     def get_total_params(self, as_string=False):
-        """Returns the total parameters of the model.
+        """Returns the total number of parameters stored per rank.
 
         Args:
             as_string (bool, optional): whether to output the parameters as string. Defaults to False.
 
         Returns:
-            The number of parameters in the model.
+            The total number of parameters stored per rank.
         """
-        return params_to_string(self.model.__params__) if as_string else self.model.__params__
+        total_params = self.model.__expert_params__ + self.model.__params__
+        return params_to_string(total_params) if as_string else total_params
+
+    def is_expert_tensor_parallelism_enabled(self):
+        for _, module in self.model.named_modules():
+            if isinstance(module, MoE) and hasattr(module, 'enable_expert_tensor_parallelism'):
+                return module.enable_expert_tensor_parallelism
+        return False
 
     def print_model_profile(self, profile_step=1, module_depth=-1, top_modules=1, detailed=True, output_file=None):
         """Prints the model graph with the measured profile attached to each module.
@@ -264,6 +298,14 @@ class FlopsProfiler(object):
         total_macs = self.get_total_macs()
         total_duration = self.get_total_duration()
         total_params = self.get_total_params()
+        expert_tensor_parallelism = None  # silence the linters
+        total_model_expert_params = total_model_nonexpert_params = 0
+        if self.ds_engine:
+            total_model_nonexpert_params = self.model.__params__ * self.ds_engine.mp_world_size
+            if self.ds_engine.has_moe_layers:
+                expert_tensor_parallelism = self.is_expert_tensor_parallelism_enabled()
+                total_model_expert_params = self.model.__model_expert_params__ * (self.ds_engine.mp_world_size
+                                                                                  if expert_tensor_parallelism else 1)
 
         self.flops = total_flops
         self.macs = total_macs
@@ -279,11 +321,19 @@ class FlopsProfiler(object):
             print('{:<60}  {:<8}'.format('data parallel size: ', self.ds_engine.dp_world_size))
             print('{:<60}  {:<8}'.format('model parallel size: ', self.ds_engine.mp_world_size))
             print('{:<60}  {:<8}'.format('batch size per GPU: ', self.ds_engine.train_micro_batch_size_per_gpu()))
+            if self.ds_engine.has_moe_layers:
+                print('{:<60}  {:<8}'.format('expert tensor parallelism enabled: ', expert_tensor_parallelism))
 
         print('{:<60}  {:<8}'.format('params per gpu: ', params_to_string(total_params)))
-        print('{:<60}  {:<8}'.format(
-            'params of model = params per GPU * mp_size: ',
-            params_to_string(total_params * ((self.ds_engine.mp_world_size) if self.ds_engine else 1))))
+        if total_model_expert_params > 0:
+            print('{:<60}  {:<8}'.format('params of model: ',
+                                         params_to_string(total_model_nonexpert_params + total_model_expert_params)))
+            print('{:<60}  {:<8}'.format('   non-expert params of model: ',
+                                         params_to_string(total_model_nonexpert_params)))
+            print('{:<60}  {:<8}'.format('   expert params of model: ', params_to_string(total_model_expert_params)))
+        else:
+            print('{:<60}  {:<8}'.format('params of model = params per GPU * mp_size: ',
+                                         params_to_string(total_model_nonexpert_params)))
 
         print('{:<60}  {:<8}'.format('fwd MACs per GPU: ', macs_to_string(total_macs)))
 
@@ -301,26 +351,28 @@ class FlopsProfiler(object):
                                      flops_to_string(total_flops / fwd_latency)))
 
         if self.ds_engine and self.ds_engine.wall_clock_breakdown():
+            bwd_factor = 2 + self.recompute_fwd_factor
             bwd_latency = self.ds_engine.timers('backward').elapsed(False) / 1000.0
             step_latency = self.ds_engine.timers('step').elapsed(False) / 1000.0
             print('{:<60}  {:<8}'.format('bwd latency: ', duration_to_string(bwd_latency)))
-            print('{:<60}  {:<8}'.format('bwd FLOPS per GPU = 2 * fwd flops per GPU / bwd latency: ',
-                                         flops_to_string(2 * total_flops / bwd_latency)))
-            print('{:<60}  {:<8}'.format('fwd+bwd FLOPS per GPU = 3 * fwd flops per GPU / (fwd+bwd latency): ',
-                                         flops_to_string(3 * total_flops / (fwd_latency + bwd_latency))))
+            print('{:<60}  {:<8}'.format(f'bwd FLOPS per GPU = {bwd_factor} * fwd flops per GPU / bwd latency: ',
+                                         flops_to_string(bwd_factor * total_flops / bwd_latency)))
+            print('{:<60}  {:<8}'.format(
+                f'fwd+bwd FLOPS per GPU = {bwd_factor+1} * fwd flops per GPU / (fwd+bwd latency): ',
+                flops_to_string((bwd_factor + 1) * total_flops / (fwd_latency + bwd_latency))))
 
             print('{:<60}  {:<8}'.format('step latency: ', duration_to_string(step_latency)))
 
             iter_latency = fwd_latency + bwd_latency + step_latency
             print('{:<60}  {:<8}'.format('iter latency: ', duration_to_string(iter_latency)))
-            print('{:<60}  {:<8}'.format('FLOPS per GPU = 3 * fwd flops per GPU / iter latency: ',
-                                         flops_to_string(3 * total_flops / iter_latency)))
+            print('{:<60}  {:<8}'.format(f'FLOPS per GPU = {bwd_factor+1} * fwd flops per GPU / iter latency: ',
+                                         flops_to_string((bwd_factor + 1) * total_flops / iter_latency)))
 
             samples_per_iter = self.ds_engine.train_micro_batch_size_per_gpu() * self.ds_engine.world_size
             print('{:<60}  {:<8.2f}'.format('samples/second: ', samples_per_iter / iter_latency))
 
         def flops_repr(module):
-            params = module.__params__
+            params = module.__params__ + module.__expert_params__
             flops = get_module_flops(module)
             macs = get_module_macs(module)
             items = [
@@ -394,7 +446,7 @@ class FlopsProfiler(object):
                     0,
                 ]  # macs, params, time
             info[curr_depth][module.__class__.__name__][0] += get_module_macs(module)
-            info[curr_depth][module.__class__.__name__][1] += module.__params__
+            info[curr_depth][module.__class__.__name__][1] += module.__params__ + module.__expert_params__
             info[curr_depth][module.__class__.__name__][2] += get_module_duration(module)
             has_children = len(module._modules.items()) != 0
             if has_children:
@@ -495,9 +547,20 @@ def _conv_flops_compute(input, weight, bias=None, stride=1, padding=0, dilation=
 
     length = len(input_dims)
 
-    paddings = padding if type(padding) is tuple else (padding, ) * length
     strides = stride if type(stride) is tuple else (stride, ) * length
     dilations = dilation if type(dilation) is tuple else (dilation, ) * length
+    if isinstance(padding, str):
+        if padding == 'valid':
+            paddings = (0, ) * length
+        elif padding == 'same':
+            paddings = ()
+            for d, k in zip(dilations, kernel_dims):
+                total_padding = d * (k - 1)
+                paddings += (total_padding // 2, )
+    elif isinstance(padding, tuple):
+        paddings = padding
+    else:
+        paddings = (padding, ) * length
 
     output_dims = []
     for idx, input_dim in enumerate(input_dims):
@@ -530,7 +593,7 @@ def _conv_trans_flops_compute(
 ):
     batch_size = input.shape[0]
     in_channels = input.shape[1]
-    out_channels = weight.shape[0]
+    out_channels = weight.shape[1]
     kernel_dims = list(weight.shape[2:])
     input_dims = list(input.shape[2:])
 
@@ -619,15 +682,23 @@ def _instance_norm_flops_compute(
     return input.numel() * (5 if has_affine else 4), 0
 
 
-def _upsample_flops_compute(input, **kwargs):
+def _upsample_flops_compute(*args, **kwargs):
+    input = args[0]
     size = kwargs.get('size', None)
+    if size is None and len(args) > 1:
+        size = args[1]
+
     if size is not None:
         if isinstance(size, tuple) or isinstance(size, list):
             return int(_prod(size)), 0
         else:
             return int(size), 0
+
     scale_factor = kwargs.get('scale_factor', None)
+    if scale_factor is None and len(args) > 2:
+        scale_factor = args[2]
     assert scale_factor is not None, "either size or scale_factor should be defined"
+
     flops = input.numel()
     if isinstance(scale_factor, tuple) and len(scale_factor) == len(input):
         flops * int(_prod(scale_factor))
@@ -889,10 +960,11 @@ def _reload_tensor_methods():
 
 
 def _rnn_flops(flops, rnn_module, w_ih, w_hh, input_size):
+    input_size, hidden_size = w_ih.shape
     # matrix matrix mult ih state and internal state
-    flops += w_ih.shape[0] * w_ih.shape[1]
+    flops += 2 * input_size * hidden_size - hidden_size
     # matrix matrix mult hh state and internal state
-    flops += w_hh.shape[0] * w_hh.shape[1]
+    flops += 2 * hidden_size * hidden_size - hidden_size
     if isinstance(rnn_module, (nn.RNN, nn.RNNCell)):
         # add both operations
         flops += rnn_module.hidden_size
@@ -1109,20 +1181,19 @@ def get_module_duration(module):
     return duration
 
 
-def get_model_profile(
-    model,
-    input_shape=None,
-    args=[],
-    kwargs={},
-    print_profile=True,
-    detailed=True,
-    module_depth=-1,
-    top_modules=1,
-    warm_up=1,
-    as_string=True,
-    output_file=None,
-    ignore_modules=None,
-):
+def get_model_profile(model,
+                      input_shape=None,
+                      args=[],
+                      kwargs={},
+                      print_profile=True,
+                      detailed=True,
+                      module_depth=-1,
+                      top_modules=1,
+                      warm_up=1,
+                      as_string=True,
+                      output_file=None,
+                      ignore_modules=None,
+                      mode='forward'):
     """Returns the total floating-point operations, MACs, and parameters of a model.
 
     Example:
@@ -1168,18 +1239,29 @@ def get_model_profile(
 
         args = [input]
     assert (len(args) > 0) or (len(kwargs) > 0), "args and/or kwargs must be specified if input_shape is None"
-
     for _ in range(warm_up):
         if kwargs:
-            _ = model(*args, **kwargs)
+            if mode == 'forward':
+                _ = model(*args, **kwargs)
+            if mode == 'generate':
+                _ = model.generate(*args, **kwargs)
         else:
-            _ = model(*args)
+            if mode == 'forward':
+                _ = model(*args)
+            if mode == 'generate':
+                _ = model.generate(*args)
     prof.start_profile(ignore_list=ignore_modules)
 
     if kwargs:
-        _ = model(*args, **kwargs)
+        if mode == 'forward':
+            _ = model(*args, **kwargs)
+        if mode == 'generate':
+            _ = model.generate(*args, **kwargs)
     else:
-        _ = model(*args)
+        if mode == 'forward':
+            _ = model(*args)
+        if mode == 'generate':
+            _ = model.generate(*args)
 
     flops = prof.get_total_flops()
     macs = prof.get_total_macs()

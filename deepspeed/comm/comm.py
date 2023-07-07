@@ -145,8 +145,8 @@ def init_deepspeed_backend(ds_backend, timeout, init_method):
     global mpi_backend
     global ccl_backend
 
-    rank = int(os.environ["RANK"])
-    size = int(os.environ["WORLD_SIZE"])
+    rank = int(os.getenv('RANK', '-1'))
+    size = int(os.getenv('WORLD_SIZE', '-1'))
 
     if ds_backend == NCCL_BACKEND:
         utils.logger.warn("NCCL backend in DeepSpeed not yet implemented")
@@ -256,7 +256,7 @@ def reduce_scatter_fn(output_tensor,
     else:
         if get_rank() == 0:
             utils.logger.warning_once("unable to find torch.distributed.reduce_scatter_tensor. will fall back to "
-                                      "torch.distributed.all_gather which will result in suboptimal performance. "
+                                      "torch.distributed.reduce_scatter which will result in suboptimal performance. "
                                       "please consider upgrading your pytorch installation.")
         input_tensor_lst = list(torch.chunk(tensor, cdb.get_world_size(group)))
         return reduce_scatter(output_tensor,
@@ -405,11 +405,13 @@ def monitored_barrier(group=None,
     return cdb.barrier(group=group, timeout=timeout, wait_all_ranks=wait_all_ranks)
 
 
-def log_summary():
+def log_summary(show_straggler=False):
     global cdb
     barrier(log_name='log_summary_barrier')
     if cdb.get_rank() == 0:
-        comms_logger.log_all()
+        comms_logger.log_all(print_log=True, show_straggler=show_straggler)
+    else:
+        comms_logger.log_all(print_log=False, show_straggler=show_straggler)
     barrier(log_name='log_summary_barrier')
 
 
@@ -488,7 +490,7 @@ def all_reduce_coalesced(tensors,
                          prof=False,
                          log_name='all_reduce',
                          debug=get_caller_func()):
-    global cbd
+    global cdb
     return cdb.all_reduce_coalesced(tensors, op, group, async_op)
 
 
@@ -557,6 +559,21 @@ def get_global_rank(group=None, group_rank=0):
     return cdb.get_global_rank(group, group_rank)
 
 
+def get_all_ranks_from_group(group=None):
+    global cdb
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    rank = 0
+    group_ranks = []
+    try:
+        while True:
+            group_ranks.append(cdb.get_global_rank(group, rank))
+            rank += 1
+    except RuntimeError:
+        pass
+    return group_ranks
+
+
 # Main DeepSpeed Comms. public API.
 def init_distributed(dist_backend=None,
                      auto_mpi_discovery=True,
@@ -589,13 +606,14 @@ def init_distributed(dist_backend=None,
         dist_init_required = cdb is None or not cdb.is_initialized()
 
     if cdb is None:
-        init_deepspeed_backend(get_accelerator().communication_backend_name(), timeout, init_method)
-        set_backend()
-        utils.logger.info(f'cdb={cdb}')
-    if cdb is None and torch.distributed.is_initialized():
-        # The user initialized torch.dist themselves, create cdb and short-circuit
-        cdb = TorchBackend(dist_backend, timeout, init_method)
-        return
+        if torch.distributed.is_initialized():
+            # The user initialized torch.dist themselves, create cdb and short-circuit
+            cdb = TorchBackend(dist_backend, timeout, init_method)
+            return
+        else:
+            init_deepspeed_backend(get_accelerator().communication_backend_name(), timeout, init_method)
+            set_backend()
+            utils.logger.info(f'cdb={cdb}')
 
     if dist_init_required is False:
         assert (
