@@ -14,7 +14,6 @@ import torch.multiprocessing as mp
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 import deepspeed.comm as dist
-from torch.multiprocessing import Process
 
 import pytest
 from _pytest.outcomes import Skipped
@@ -97,6 +96,8 @@ class DistributedExec(ABC):
     init_distributed = True
     set_dist_env = True
     requires_cuda_env = True
+    reuse_dist_env = False
+    pool_cache = {}
 
     @abstractmethod
     def run(self):
@@ -127,57 +128,51 @@ class DistributedExec(ABC):
                 pass  # test methods can have kwargs that are not fixtures
         return fixture_kwargs
 
+    def _get_pool(self, num_procs):
+        if num_procs not in self.pool_cache:
+            self.pool_cache[num_procs] = mp.Pool(processes=num_procs)
+        return self.pool_cache[num_procs]
+
+    def _close_pools(self):
+        for pool in self.pool_cache.values():
+            pool.close()
+            pool.join()
+        self.pool_cache = {}
+
     def _launch_procs(self, num_procs):
         if get_accelerator().is_available() and get_accelerator().device_count() < num_procs:
             pytest.skip(
                 f"Skipping test because not enough GPUs are available: {num_procs} required, {get_accelerator().device_count()} available"
             )
         mp.set_start_method('forkserver', force=True)
-        skip_msg = mp.Queue()  # Allows forked processes to share pytest.skip reason
-        processes = []
-        for local_rank in range(num_procs):
-            p = Process(target=self._dist_init, args=(local_rank, num_procs, skip_msg))
-            p.start()
-            processes.append(p)
 
-        # Now loop and wait for a test to complete. The spin-wait here isn't a big
-        # deal because the number of processes will be O(#GPUs) << O(#CPUs).
-        any_done = False
-        start = time.time()
-        while (not any_done) and ((time.time() - start) < DEEPSPEED_TEST_TIMEOUT):
-            for p in processes:
-                if not p.is_alive():
-                    any_done = True
-                    break
-            time.sleep(.1)  # So we don't hog CPU
+        pool = self._get_pool(num_procs)
+        args = [(local_rank, num_procs) for local_rank in range(num_procs)]
+        skip_msgs_async = pool.starmap_async(self._dist_init, args)
 
-        # If we hit the timeout, then presume a test is hanged
-        if not any_done:
-            for p in processes:
-                p.terminate()
-            pytest.exit("Test hanged, exiting", returncode=0)
+        try:
+            skip_msgs = skip_msgs_async.get(DEEPSPEED_TEST_TIMEOUT)
+        except mp.TimeoutError:
+            # Shortcut to exit pytest in the case of a hanged test. This
+            # usually means an environment error and the rest of tests will
+            # hang (causing super long unit test runtimes)
+            pytest.exit("Test hanged, exiting", pytrace=False, returncode=0)
 
-        # Wait for all other processes to complete
-        for p in processes:
-            p.join(DEEPSPEED_UNIT_WORKER_TIMEOUT)
+        if any(skip_msgs):
+            assert len(set(skip_msgs)) == 1, "Multiple different skip messages received"
+            pytest.skip(skip_msgs[0])
 
-        failed = [(rank, p) for rank, p in enumerate(processes) if p.exitcode != 0]
-        for rank, p in failed:
-            # If it still hasn't terminated, kill it because it hung.
-            if p.exitcode is None:
-                p.terminate()
-                pytest.fail(f'Worker {rank} hung.', pytrace=False)
-            if p.exitcode < 0:
-                pytest.fail(f'Worker {rank} killed by signal {-p.exitcode}', pytrace=False)
-            if p.exitcode > 0:
-                pytest.fail(f'Worker {rank} exited with code {p.exitcode}', pytrace=False)
+        _ = pool.map(self._dist_destroy)
 
-        if not skip_msg.empty():
-            # This assumed all skip messages are the same, it may be useful to
-            # add a check here to assert all exit messages are equal
-            pytest.skip(skip_msg.get())
+    def _dist_destroy(self, force=False):
+        if force or ((self.init_distributed or dist.is_initialized()) and not self.reuse_dist_env):
+            # make sure all ranks finish at the same time
+            dist.barrier()
+            # tear down after test completes
+            dist.destroy_process_group()
 
-    def _dist_init(self, local_rank, num_procs, skip_msg):
+    def _dist_init(self, local_rank, num_procs):
+        skip_msg = ''
         """Initialize deepspeed.comm and execute the user function. """
         if self.set_dist_env:
             os.environ['MASTER_ADDR'] = '127.0.0.1'
@@ -193,7 +188,7 @@ class DistributedExec(ABC):
         if get_accelerator().is_available():
             set_accelerator_visible()
 
-        if self.init_distributed:
+        if self.init_distributed and not dist.is_initialized():
             deepspeed.init_distributed(dist_backend=self.backend)
             dist.barrier()
 
@@ -204,15 +199,11 @@ class DistributedExec(ABC):
             self.run(**self._fixture_kwargs)
         except BaseException as e:
             if isinstance(e, Skipped):
-                skip_msg.put(e.msg)
+                skip_msg = e.msg
             else:
                 raise e
 
-        if self.init_distributed or dist.is_initialized():
-            # make sure all ranks finish at the same time
-            dist.barrier()
-            # tear down after test completes
-            dist.destroy_process_group()
+        return skip_msg
 
 
 class DistributedFixture(DistributedExec):

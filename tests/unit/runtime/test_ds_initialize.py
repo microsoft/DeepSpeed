@@ -10,7 +10,7 @@ from torch.optim import Optimizer, Adam, AdamW
 from torch.optim.lr_scheduler import _LRScheduler, LambdaLR
 
 from unit.simple_model import SimpleModel, random_dataloader
-from unit.common import DistributedTest
+from unit.new_common import DistributedTest
 from unit.util import required_torch_version, bf16_required_version_check, required_amp_check
 
 import deepspeed
@@ -117,6 +117,7 @@ class TestConfigOptimizer(DistributedTest):
 @pytest.mark.parametrize('grad_accum_dtype', [None, 'fp16', 'bf16', 'fp32'])
 class TestOptimizerImplementation(DistributedTest):
     world_size = 1
+    reuse_dist_env = True
 
     def test(self, optimizer_extension, model_dtype, grad_accum_dtype):
         if optimizer_extension == 'zero1':

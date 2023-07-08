@@ -73,7 +73,5 @@ def pytest_runtest_call(item):
 @pytest.hookimpl(tryfirst=True)
 def pytest_fixture_setup(fixturedef, request):
     if getattr(fixturedef.func, "is_dist_fixture", False):
-        #for val in dir(request):
-        #    print(val.upper(), getattr(request, val), "\n")
         dist_fixture_class = fixturedef.func()
         dist_fixture_class(request)
