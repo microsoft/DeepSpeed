@@ -10,7 +10,7 @@ from torch.optim import Optimizer, Adam, AdamW
 from torch.optim.lr_scheduler import _LRScheduler, LambdaLR
 
 from unit.simple_model import SimpleModel, random_dataloader
-from unit.new_common import DistributedTest
+from unit.common import DistributedTest
 from unit.util import required_torch_version, bf16_required_version_check, required_amp_check
 
 import deepspeed
