@@ -67,6 +67,12 @@ def get_accelerator():
                     f'CPU_Accelerator requires intel_extension_for_pytorch, which is not installed on this system.')
         elif accelerator_name == 'cuda':
             pass
+        elif accelerator_name == 'mps':
+            try:
+                import torch.mps
+            except ImportError as e:
+                raise ValueError(
+                    f'MPS_Accelerator requires torch.mps, which is not installed on this system.')
         else:
             raise ValueError(
                 f'DS_ACCELERATOR must be one of "cuda", "cpu", or "xpu".  Value "{accelerator_name}" is not supported')
@@ -92,7 +98,11 @@ def get_accelerator():
                 import intel_extension_for_pytorch  # noqa: F401,F811
                 accelerator_name = 'cpu'
             except ImportError as e:
-                accelerator_name = 'cuda'
+                try :
+                    import torch.mps
+                    accelerator_name = 'mps'
+                except ImportError as e:
+                    accelerator_name = 'cuda'
         ds_set_method = 'auto detect'
 
     # 3. Set ds_accelerator accordingly
@@ -105,6 +115,9 @@ def get_accelerator():
     elif accelerator_name == 'xpu':
         # XPU_Accelerator is already imported in detection stage
         ds_accelerator = XPU_Accelerator()
+    elif accelerator_name == 'mps':
+        from .mps_accelerator import MPS_Accelerator
+        ds_accelerator = MPS_Accelerator()
     _validate_accelerator(ds_accelerator)
     if accel_logger is not None:
         accel_logger.info(f"Setting ds_accelerator to {ds_accelerator._name} ({ds_set_method})")
