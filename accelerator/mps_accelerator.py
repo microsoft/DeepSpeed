@@ -205,9 +205,9 @@ class MPS_Accelerator(DeepSpeedAccelerator):
             # if successful this also means we're doing a local install and not JIT compile path
             from op_builder import __deepspeed__  # noqa: F401
 
-            return "op_builder.cpu"
+            return "op_builder"
         except ImportError:
-            return "deepspeed.ops.op_builder.cpu"
+            return "deepspeed.ops.op_builder"
 
     # create an instance of op builder, specified by class_name
 
