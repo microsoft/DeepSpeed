@@ -20,7 +20,7 @@ except ImportError:
 class MPS_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
         self._name = "mps"
-        self._communication_backend_name = "mccl"
+        self._communication_backend_name = None
 
     def is_synchronized_device(self):
         return False
