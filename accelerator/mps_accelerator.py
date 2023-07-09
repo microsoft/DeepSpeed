@@ -146,7 +146,7 @@ class MPS_Accelerator(DeepSpeedAccelerator):
         return
 
     def is_available(self):
-        return hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+        return hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
 
     def range_push(self, msg):
         return
@@ -194,7 +194,7 @@ class MPS_Accelerator(DeepSpeedAccelerator):
 
     def on_accelerator(self, tensor):
         device_str = str(tensor.device)
-        if device_str.startswith('mps'):
+        if device_str.startswith("mps"):
             return True
         else:
             return False
@@ -204,6 +204,7 @@ class MPS_Accelerator(DeepSpeedAccelerator):
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
             from op_builder import __deepspeed__  # noqa: F401
+
             return "op_builder.cpu"
         except ImportError:
             return "deepspeed.ops.op_builder.cpu"
@@ -220,8 +221,10 @@ class MPS_Accelerator(DeepSpeedAccelerator):
 
     def get_op_builder(self, class_name):
         from deepspeed.ops.op_builder.cpu import NotImplementedBuilder
+
         return NotImplementedBuilder
 
     def build_extension(self):
         from torch.utils.cpp_extension import BuildExtension
+
         return BuildExtension
