@@ -100,7 +100,7 @@ class DistributedExec(ABC):
     set_dist_env = True
     requires_cuda_env = True
     reuse_dist_env = False
-    pool_cache = {}
+    _pool_cache = {}
 
     @abstractmethod
     def run(self):
@@ -142,11 +142,15 @@ class DistributedExec(ABC):
         mp.set_start_method('forkserver', force=True)
 
         # Create process pool or use cached one
-        master_port = None
-        if num_procs not in pytest._pool_cache:
-            pytest._pool_cache[num_procs] = mp.Pool(processes=num_procs)
+        if self.reuse_dist_env:
+            master_port = None
+            if num_procs not in self._pool_cache:
+                self._pool_cache[num_procs] = mp.Pool(processes=num_procs)
+                master_port = get_master_port()
+            pool = self._pool_cache[num_procs]
+        else:
+            pool = mp.Pool(processes=num_procs)
             master_port = get_master_port()
-        pool = pytest._pool_cache[num_procs]
 
         # Run the test
         args = [(local_rank, num_procs, master_port) for local_rank in range(num_procs)]
@@ -161,7 +165,7 @@ class DistributedExec(ABC):
             pytest.exit("Test hanged, exiting", pytrace=False, returncode=0)
 
         # Tear down distributed environment and close process pools
-        self._close_pools()
+        self._close_pool(pool, num_procs)
 
         # If we skipped a test, propagate that to this process
         if any(skip_msgs):
@@ -208,13 +212,11 @@ class DistributedExec(ABC):
             dist.barrier()
             dist.destroy_process_group()
 
-    def _close_pools(self, force=False):
+    def _close_pool(self, pool, num_procs, force=False):
         if force or not self.reuse_dist_env:
-            for num_procs, pool in pytest._pool_cache.items():
-                msg = pool.starmap(self._dist_destroy, [() for _ in range(num_procs)])
-                pool.close()
-                pool.join()
-            pytest._pool_cache = {}
+            msg = pool.starmap(self._dist_destroy, [() for _ in range(num_procs)])
+            pool.close()
+            pool.join()
 
 
 class DistributedFixture(DistributedExec):

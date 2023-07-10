@@ -70,16 +70,14 @@ def pytest_runtest_call(item):
         item.runtest = lambda: True  # Dummy function so test is not run twice
 
 
-pytest._pool_cache = {}
-
-
 # We allow DistributedTest to reuse distributed environments. When the last
 # test for a class is run, we want to make sure those distributed environments
 # are destroyed.
 def pytest_runtest_teardown(item, nextitem):
     if not nextitem:
         dist_test_class = item.cls()
-        dist_test_class._close_pools(force=True)
+        for num_procs, pool in dist_test_class._pool_cache.items():
+            dist_test_class._close_pool(pool, num_procs, force=True)
 
 
 @pytest.hookimpl(tryfirst=True)
