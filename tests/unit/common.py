@@ -45,7 +45,7 @@ def get_master_port():
     # Select a random open port
     sock = socket.socket()
     sock.bind(('', 0))
-    return sock.getsockname()[1]
+    return str(sock.getsockname()[1])
 
 
 def set_accelerator_visible():
@@ -143,10 +143,10 @@ class DistributedExec(ABC):
 
         # Create process pool or use cached one
         master_port = None
-        if num_procs not in self.pool_cache:
-            self.pool_cache[num_procs] = mp.Pool(processes=num_procs)
+        if num_procs not in pytest._pool_cache:
+            pytest._pool_cache[num_procs] = mp.Pool(processes=num_procs)
             master_port = get_master_port()
-        pool = self.pool_cache[num_procs]
+        pool = pytest._pool_cache[num_procs]
 
         # Run the test
         args = [(local_rank, num_procs, master_port) for local_rank in range(num_procs)]
@@ -160,13 +160,13 @@ class DistributedExec(ABC):
             # hang (causing super long unit test runtimes)
             pytest.exit("Test hanged, exiting", pytrace=False, returncode=0)
 
+        # Tear down distributed environment and close process pools
+        self._close_pools()
+
         # If we skipped a test, propagate that to this process
         if any(skip_msgs):
             assert len(set(skip_msgs)) == 1, "Multiple different skip messages received"
             pytest.skip(skip_msgs[0])
-
-        # Tear down distributed environment and close process pools
-        self._close_pools()
 
     def _dist_run(self, local_rank, num_procs, master_port):
         skip_msg = ''
@@ -210,11 +210,11 @@ class DistributedExec(ABC):
 
     def _close_pools(self, force=False):
         if force or not self.reuse_dist_env:
-            for num_procs, pool in self.pool_cache.items():
+            for num_procs, pool in pytest._pool_cache.items():
                 msg = pool.starmap(self._dist_destroy, [() for _ in range(num_procs)])
                 pool.close()
                 pool.join()
-            self.pool_cache = {}
+            pytest._pool_cache = {}
 
 
 class DistributedFixture(DistributedExec):
