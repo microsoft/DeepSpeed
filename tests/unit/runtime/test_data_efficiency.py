@@ -6,7 +6,7 @@
 import torch
 import os
 import deepspeed
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from unit.common import DistributedTest
 from unit.simple_model import Curriculum_SimpleModel, SimpleModel, random_dataloader, random_dataset
 

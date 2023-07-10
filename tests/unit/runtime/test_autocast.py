@@ -6,7 +6,7 @@
 import pytest
 import torch
 from deepspeed.runtime.zero.linear import LinearModuleForZeroStage3
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from unit.common import DistributedTest
 
 

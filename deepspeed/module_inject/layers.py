@@ -9,7 +9,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from torch.nn.parameter import Parameter
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 
 class LinearAllreduce(nn.Module):

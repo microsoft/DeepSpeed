@@ -10,7 +10,7 @@ import torch
 
 import deepspeed
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 # If the intermediate size attribute is set DEFAULT_INTERMEDIATE_SIZE
 # it is assumed the intermediate size is 4x the embedding dimension

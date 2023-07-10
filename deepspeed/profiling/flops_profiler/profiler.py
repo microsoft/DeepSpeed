@@ -11,7 +11,7 @@ from functools import partial
 from typing import List, Optional
 from collections import OrderedDict
 import numpy as np
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed.moe.layer import MoE
 
 Tensor = torch.Tensor

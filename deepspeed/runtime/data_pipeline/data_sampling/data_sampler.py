@@ -26,7 +26,7 @@ import numpy as np
 
 import deepspeed.comm as dist
 from deepspeed.utils import logger
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from ..constants import *
 from ..curriculum_scheduler import CurriculumScheduler
 from .indexed_dataset import MMapIndexedDataset

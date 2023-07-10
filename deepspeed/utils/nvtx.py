@@ -3,7 +3,7 @@
 
 # DeepSpeed Team
 
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 
 def instrument_w_nvtx(func):

@@ -27,7 +27,7 @@ import os
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
 from .constants import *
 from .reduce_op import *
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed.comm.ccl import CCLBackend
 
 from deepspeed.utils.comms_logging import CommsLogger

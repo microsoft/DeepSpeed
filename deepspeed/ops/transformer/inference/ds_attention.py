@@ -7,7 +7,7 @@ import math
 import torch
 import torch.nn as nn
 from deepspeed import comm as dist
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from .op_binding import LinearOp, VectorMatMulOp, SoftmaxContextOp, QKVGemmOp, SoftmaxOp
 
 minus_inf = -10000.0

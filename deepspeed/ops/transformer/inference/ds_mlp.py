@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from deepspeed import comm as dist
 from deepspeed.utils.types import GATED_ACTIVATION_TYPES
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from .op_binding import MLPGemmOp, VectorMatMulOp, GELUGemmOp, ResidualAddOp
 
 

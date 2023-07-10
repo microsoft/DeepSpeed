@@ -14,7 +14,7 @@ import time
 import gc
 import math
 from deepspeed import comm as dist
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from torch import nn
 from deepspeed.utils import logger
 

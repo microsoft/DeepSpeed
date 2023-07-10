@@ -16,7 +16,7 @@ from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW,
 from deepspeed.utils import groups, logger, log_dist
 from deepspeed import comm as dist
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, CLIP_GRAD
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 
 class FP16_Optimizer(DeepSpeedOptimizer):

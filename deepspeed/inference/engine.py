@@ -22,7 +22,7 @@ from ..comm.comm import init_distributed
 from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
 from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from ..module_inject.policy import TransformerPolicy
 from ..module_inject.auto_tp import AutoTP
 

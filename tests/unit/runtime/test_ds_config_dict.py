@@ -11,7 +11,7 @@ import hjson
 import argparse
 
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 from unit.common import DistributedTest, get_test_path
 from unit.simple_model import SimpleModel, create_config_from_dict, random_dataloader

@@ -10,7 +10,7 @@ from deepspeed.utils.logging import log_dist
 
 from deepspeed.ops.transformer.inference.ds_mlp import DeepSpeedMLP
 from deepspeed.ops.transformer.inference.ds_attention import DeepSpeedSelfAttention, BloomSelfAttention
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
 import deepspeed
 if deepspeed.HAS_TRITON:

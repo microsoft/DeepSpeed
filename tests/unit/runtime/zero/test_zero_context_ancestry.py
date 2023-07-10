@@ -6,7 +6,7 @@
 import torch
 import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 from utils import setup_serial_env
 from unit.common import DistributedTest

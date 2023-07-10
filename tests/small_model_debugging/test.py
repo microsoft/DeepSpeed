@@ -6,7 +6,7 @@
 import torch
 from deepspeed.pt.deepspeed_linear import LinearModuleForZeroStage3
 from deepspeed.pt.log_utils import logger
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 
 def see_memory_usage(message):

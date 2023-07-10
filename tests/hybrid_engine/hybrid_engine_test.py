@@ -8,7 +8,7 @@ import torch
 from transformers import AutoModelForCausalLM
 import deepspeed
 import argparse
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 deepspeed.runtime.utils.see_memory_usage('pre test', force=True)
 

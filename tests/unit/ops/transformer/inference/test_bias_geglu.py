@@ -7,7 +7,7 @@ import pytest
 import torch
 import deepspeed
 from deepspeed.ops.op_builder import InferenceBuilder
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed.utils.types import ActivationFuncType
 from .inference_test_utils import allclose, get_dtypes
 

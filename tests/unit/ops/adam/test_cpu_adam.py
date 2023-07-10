@@ -9,7 +9,7 @@ import pytest
 from cpuinfo import get_cpu_info
 
 import deepspeed
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed.ops.adam import FusedAdam
 from deepspeed.ops.op_builder import CPUAdamBuilder
 from unit.common import DistributedTest

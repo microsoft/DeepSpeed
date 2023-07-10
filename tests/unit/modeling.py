@@ -48,7 +48,7 @@ import torch.nn.init as init
 #from numba import cuda
 
 #from deepspeed_cuda import DeepSpeedSoftmaxConfig, DeepSpeedSoftmax
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 logger = logging.getLogger(__name__)
 

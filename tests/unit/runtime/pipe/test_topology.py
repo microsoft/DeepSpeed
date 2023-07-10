@@ -12,7 +12,7 @@ from deepspeed.runtime.pipe.topology import PipelineParallelGrid as Grid
 from deepspeed.runtime.pipe.topology import ProcessTopology as Topo
 from deepspeed.runtime.pipe.topology import _prime_factors
 
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from unit.common import DistributedTest
 
 

@@ -23,7 +23,7 @@ from deepspeed.runtime.engine import DeepSpeedEngine
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.utils.zero_to_fp32 import load_state_dict_from_zero_checkpoint
 from deepspeed.runtime.zero.utils import ZeRORuntimeException
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 
 def run_unbalanced_gradients(model, data_loader):

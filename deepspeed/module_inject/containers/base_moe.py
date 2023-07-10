@@ -7,7 +7,7 @@
 from .base import *
 from deepspeed import comm as dist
 import deepspeed.ops.transformer as transformer_inference
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 
 class BaseTransformerMoEContainer(BaseTransformerContainer):

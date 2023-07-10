@@ -28,7 +28,7 @@ except ModuleNotFoundError:
 from deepspeed.utils import groups, logger
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from numpy import prod
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 from deepspeed.module_inject.policy import transpose
 from torch.nn import functional as F

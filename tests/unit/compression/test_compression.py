@@ -13,7 +13,7 @@ from unit.modeling import BertConfig
 from unit.modelingpreln import BertEncoder as BertEncoderPreln
 from deepspeed.compression.basic_layer import LinearLayer_Compress, ColumnParallelLinear_Compress, RowParallelLinear_Compress
 from deepspeed.compression.helper import convert_conv1d_to_linear
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from unit.common import DistributedTest
 from unit.util import required_minimum_torch_version, required_maximum_torch_version
 

@@ -8,7 +8,7 @@ import pytest
 from unit.simple_model import SimpleModel
 from deepspeed import OnDevice
 from packaging import version as pkg_version
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from unit.common import DistributedTest
 
 

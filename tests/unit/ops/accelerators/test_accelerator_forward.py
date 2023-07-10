@@ -12,7 +12,7 @@ from torch import nn
 from unit.modelingpreln import BertEncoder as BertEncoderPreln
 from unit.modeling import BertLayerNorm, BertConfig, BertEncoder as BertEncoderPostln
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from unit.common import DistributedTest
 
 

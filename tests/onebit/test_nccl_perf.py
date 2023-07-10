@@ -12,7 +12,7 @@ import os
 
 from deepspeed.runtime.comm.nccl import NcclBackend
 from deepspeed.utils.timer import SynchronizedWallClockTimer
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from statistics import mean
 
 timers = SynchronizedWallClockTimer()

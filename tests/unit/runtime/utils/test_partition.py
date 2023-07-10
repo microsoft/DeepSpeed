@@ -12,7 +12,7 @@ from deepspeed.runtime.utils import partition_uniform
 from deepspeed.runtime.utils import partition_balanced
 from deepspeed.runtime.utils import prefix_sum_inc
 from deepspeed.runtime.utils import PartitionedTensor
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 from unit.common import DistributedTest
 

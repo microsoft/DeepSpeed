@@ -156,6 +156,10 @@ For models running on multi-GPU or multi-node, only change of the model parallel
 
 The DeepSpeed Flops Profiler can be used with the DeepSpeed runtime or as a standalone package. When using DeepSpeed for model training, the profiler can be configured in the deepspeed [configuration file](/docs/config-json/#flops-profiler) without user code changes. To use the flops profiler outside the DeepSpeed runtime, install DeepSpeed and import the `flops_profiler` package to use the APIs directly. Examples of each usage are given below.
 
+- [Overview](#overview)
+- [Flops Measurement](#flops-measurement)
+- [Multi-GPU, Multi-node, Data Parallelism, and Model Parallelism](#multi-gpu-multi-node-data-parallelism-and-model-parallelism)
+- [Usage](#usage)
   - [Usage With the DeepSpeed Runtime](#usage-with-the-deepspeed-runtime)
     - [Example: Megatron-LM](#example-megatron-lm)
   - [Usage Outside the DeepSpeed Runtime](#usage-outside-the-deepspeed-runtime)
@@ -316,7 +320,7 @@ The following example shows how to profile AlexNet using the DeepSpeed flops pro
 import torchvision.models as models
 import torch
 from deepspeed.profiling.flops_profiler import get_model_profile
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 with get_accelerator().device(0):
     model = models.alexnet()
@@ -342,7 +346,7 @@ from functools import partial
 import torch
 from transformers import BertForSequenceClassification, BertTokenizer
 from deepspeed.profiling.flops_profiler import get_model_profile
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 
 def bert_input_constructor(batch_size, seq_len, tokenizer):

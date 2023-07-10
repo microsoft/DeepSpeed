@@ -14,7 +14,7 @@ import deepspeed.ops.transformer as transformer_inference
 from .layers import LinearLayer, Normalize, EmbeddingLayer, OPTEmbedding, RMSNormalize
 import torch
 import gc
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 import re
 
 

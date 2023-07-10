@@ -93,7 +93,7 @@ from ..git_version_info import version
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist, print_configuration
 
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 from deepspeed.runtime.config import DtypeEnum
 

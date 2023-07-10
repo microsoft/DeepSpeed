@@ -9,7 +9,7 @@ import pytest
 
 import deepspeed
 from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed.ops.op_builder import CPUAdagradBuilder
 from unit.common import DistributedTest
 

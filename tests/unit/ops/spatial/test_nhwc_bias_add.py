@@ -6,7 +6,7 @@
 import pytest
 import torch
 from deepspeed.ops.transformer.inference.bias_add import nhwc_bias_add
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 
 def allclose(x, y):

@@ -15,7 +15,7 @@ import torch
 from torch import Tensor
 
 from deepspeed import comm as dist
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed.utils import logger
 
 

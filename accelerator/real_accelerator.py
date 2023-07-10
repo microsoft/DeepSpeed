@@ -16,7 +16,7 @@ try:
 except ImportError as e:
     dsa1 = None
 try:
-    from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator as dsa2
+    from accelerator.abstract_accelerator import DeepSpeedAccelerator as dsa2
 except ImportError as e:
     dsa2 = None
 
@@ -121,7 +121,7 @@ def set_accelerator(accel_obj):
 
 '''
 -----------[code] test_get.py -----------
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 my_accelerator = get_accelerator()
 logger.info(f'{my_accelerator._name=}')
 logger.info(f'{my_accelerator._communication_backend=}')

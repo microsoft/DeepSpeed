@@ -6,7 +6,7 @@
 import torch
 import triton
 import triton.language as tl
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 
 @triton.jit

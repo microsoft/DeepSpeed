@@ -6,7 +6,7 @@
 import pytest
 import torch
 import deepspeed
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
 from .inference_test_utils import get_dtypes
 

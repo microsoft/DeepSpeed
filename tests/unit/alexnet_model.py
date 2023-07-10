@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import deepspeed
 import deepspeed.comm as dist
 import deepspeed.runtime.utils as ds_utils
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed.runtime.pipe.module import PipelineModule, LayerSpec
 
 

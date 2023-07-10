@@ -9,7 +9,7 @@ from torch.autograd import Function
 import torch.nn as nn
 from packaging import version as pkg_version
 from deepspeed.utils.logging import log_dist
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
 
 # Cuda modules will be imported if needed

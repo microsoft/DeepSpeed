@@ -15,7 +15,7 @@ from .ds_attention import DeepSpeedSelfAttention
 from .config import DeepSpeedInferenceConfig
 from ....moe.sharded_moe import TopKGate
 from deepspeed import comm as dist
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
 
 

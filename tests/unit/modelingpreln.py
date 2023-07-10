@@ -44,7 +44,7 @@ import deepspeed.comm as dist
 from torch.nn import Module
 import torch.nn.functional as F
 import torch.nn.init as init
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 #from numba import cuda
 

@@ -30,7 +30,7 @@ res = subprocess.run(
     capture_output=True,
 )
 if res.returncode == 0:
-    err('Error: The string "torch.cuda" was found.\nPlease replace all calls to torch.cuda with "get_accelerator()" and add the following import line:\n\n    from deepspeed.accelerator import get_accelerator\n\nIf your code is mean to be cuda specific, please add the following comment in the line with torch.cuda:\n\n    #ignore-cuda\n'
+    err('Error: The string "torch.cuda" was found.\nPlease replace all calls to torch.cuda with "get_accelerator()" and add the following import line:\n\n    from accelerator import get_accelerator\n\nIf your code is mean to be cuda specific, please add the following comment in the line with torch.cuda:\n\n    #ignore-cuda\n'
         )
     err(res.stdout.decode("utf-8"))
     sys.exit(1)
@@ -44,7 +44,7 @@ res = subprocess.run(
     capture_output=True,
 )
 if res.returncode == 0:
-    err('Error: The string ".cuda()" was found. This implies convert a tensor to cuda tensor.  Please replace all calls to tensor.cuda() with "tensor.to(get_accelerator().device_name())" and add the following import line:\nfrom deepspeed.accelerator import get_accelerator'
+    err('Error: The string ".cuda()" was found. This implies convert a tensor to cuda tensor.  Please replace all calls to tensor.cuda() with "tensor.to(get_accelerator().device_name())" and add the following import line:\nfrom accelerator import get_accelerator'
         )
     err(res.stdout.decode("utf-8"))
     sys.exit(1)
@@ -67,7 +67,7 @@ if res.returncode == 0:
 Error: The string ".is_cuda" was found. This implies checking if a tensor is a cuda tensor.
        Please replace all calls to "tensor.is_cuda" with "get_accelerator().on_accelerator(tensor)",
        and add the following import line:
-       'from deepspeed.accelerator import get_accelerator'
+       'from accelerator import get_accelerator'
 ''')
     err(res.stdout.decode("utf-8"))
     sys.exit(1)

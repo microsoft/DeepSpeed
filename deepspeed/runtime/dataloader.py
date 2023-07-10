@@ -5,7 +5,7 @@
 
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 from deepspeed.runtime.data_pipeline.data_sampling.data_sampler import DeepSpeedDataSampler
 from deepspeed.runtime.data_pipeline.constants import CURRICULUM_LEARNING, \

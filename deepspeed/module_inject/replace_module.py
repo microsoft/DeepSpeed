@@ -12,7 +12,7 @@ import deepspeed.ops.transformer as transformer_inference
 from deepspeed.ops.transformer.inference.diffusers_attention import DeepSpeedDiffusersAttention
 from deepspeed.ops.transformer.inference.diffusers_transformer_block import DeepSpeedDiffusersTransformerBlock
 from deepspeed.ops.transformer.inference.diffusers_2d_transformer import Diffusers2DTransformerConfig
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from .replace_policy import HFGPT2LayerPolicy
 from .replace_policy import replace_policies, generic_policies
 

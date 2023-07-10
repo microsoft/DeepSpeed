@@ -6,7 +6,7 @@
 from abc import ABC, abstractmethod
 from deepspeed.utils.types import ActivationFuncType, NormType
 import torch
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 transformer_param_names = (
         'attn_qkvw', \

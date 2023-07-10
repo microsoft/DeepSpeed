@@ -24,7 +24,7 @@ from torch.nn import init
 from torch.nn.modules.module import Module
 from deepspeed.runtime.utils import noop_decorator
 from deepspeed import comm as dist
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 
 def print_rank_0(message, debug=False, force=False):

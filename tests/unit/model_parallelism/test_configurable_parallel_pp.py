@@ -14,7 +14,7 @@ from unit.common import DistributedTest, DistributedFixture
 from unit.megatron_model import get_megatron_version
 from unit.megatron_model import MockGPT2ModelPipe as GPT2ModelPipe
 from deepspeed.utils import RepeatingLoader
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from unit.util import required_minimum_torch_version, required_maximum_torch_version
 
 pytestmark = pytest.mark.skipif(not required_minimum_torch_version(major_version=1, minor_version=5),

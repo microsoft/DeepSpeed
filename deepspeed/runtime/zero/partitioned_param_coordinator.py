@@ -15,7 +15,7 @@ from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.partitioned_param_profiler import PartitionedParameterProfiler
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 import logging
 
 

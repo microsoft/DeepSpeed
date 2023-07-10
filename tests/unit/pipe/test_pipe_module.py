@@ -14,7 +14,7 @@ import pytest
 import deepspeed
 from deepspeed.pipe import PipelineModule
 from deepspeed.utils import RepeatingLoader
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 from unit.common import DistributedTest
 

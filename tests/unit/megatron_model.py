@@ -10,7 +10,7 @@ import math
 
 from .common import get_test_path
 from deepspeed.pipe import PipelineModule, LayerSpec
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 
 def get_megatron_version():

@@ -13,7 +13,7 @@ from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
 from deepspeed.ops.adam import FusedAdam
 from deepspeed.utils.nvtx import instrument_w_nvtx
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 
 def _initialize_parameter_parallel_groups(parameter_parallel_size=None):

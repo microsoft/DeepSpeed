@@ -9,7 +9,7 @@ import filecmp
 import torch
 import deepspeed
 import deepspeed.comm as dist
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed.ops.op_builder import AsyncIOBuilder
 from unit.common import DistributedTest
 

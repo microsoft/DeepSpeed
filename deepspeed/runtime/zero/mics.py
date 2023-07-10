@@ -17,7 +17,7 @@ from deepspeed.runtime.zero.parameter_offload import (DeepSpeedZeRoOffload, is_z
 from deepspeed.runtime.zero.partition_parameters import Init, AllGatherCoalescedHandle, ZeroParamStatus
 from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
 from deepspeed.utils import instrument_w_nvtx, log_dist
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from torch import Tensor
 from torch.nn import Parameter
 

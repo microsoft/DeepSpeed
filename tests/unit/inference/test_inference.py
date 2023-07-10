@@ -19,7 +19,7 @@ from transformers.models.roberta.modeling_roberta import RobertaLayer
 from huggingface_hub import HfApi
 from deepspeed.model_implementations import DeepSpeedTransformerInference
 from torch import nn
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):

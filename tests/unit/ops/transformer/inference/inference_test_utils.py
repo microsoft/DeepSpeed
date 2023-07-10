@@ -4,7 +4,7 @@
 # DeepSpeed Team
 
 import torch
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 TOLERANCES = None
 

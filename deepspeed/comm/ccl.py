@@ -7,7 +7,7 @@ Copyright 2021 The Microsoft DeepSpeed Team
 '''
 
 import torch
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from .reduce_op import ReduceOp
 from .torch import TorchBackend
 

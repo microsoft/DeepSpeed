@@ -6,7 +6,7 @@
 import time
 from numpy import mean
 from deepspeed.utils.logging import log_dist
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed import comm as dist
 
 try:

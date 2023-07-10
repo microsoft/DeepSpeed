@@ -17,7 +17,7 @@ import gc
 
 import torch
 from torch._utils import _flatten_dense_tensors
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed.ops.op_builder import UtilsBuilder
 
 from apex_C import flatten as flatten_apex

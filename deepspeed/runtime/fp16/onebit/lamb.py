@@ -8,7 +8,7 @@ import torch
 import numpy as np
 from deepspeed import comm as dist
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 
 class OnebitLamb(torch.optim.Optimizer):

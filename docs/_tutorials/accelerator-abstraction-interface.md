@@ -4,14 +4,16 @@ tags: getting-started
 ---
 
 # Contents
-  * [Introduction](#introduction)
-  * [Write accelerator agnostic models](#write-accelerator-agnostic-models)
-    * [Port accelerator runtime calls](#port-accelerator-runtime-calls)
-    * [Port accelerator device name](#port-accelerator-device-name)
-    * [Tensor operations](#tensor-operations)
-    * [Communication backend](#communication-backend)
-  * [Run DeepSpeed model on different accelerators](#run-deepspeed-model-on-different-accelerators)
-  * [Implement new accelerator extension](#implement-new-accelerator-extension)
+- [Contents](#contents)
+- [Introduction](#introduction)
+- [Write accelerator agnostic models](#write-accelerator-agnostic-models)
+  - [Port accelerator runtime calls](#port-accelerator-runtime-calls)
+  - [Port accelerator device name](#port-accelerator-device-name)
+  - [Tensor operations](#tensor-operations)
+  - [Communication backend](#communication-backend)
+- [Run DeepSpeed model on different accelerators](#run-deepspeed-model-on-different-accelerators)
+- [Run DeepSpeed model on CPU](#run-deepspeed-model-on-cpu)
+- [Implement new accelerator extension](#implement-new-accelerator-extension)
 
 # Introduction
 The DeepSpeed Accelerator Abstraction allows user to run large language model seamlessly on various Deep Learning acceleration hardware with DeepSpeed.   It offers a set of accelerator runtime and accelerator op builder interface which can be implemented for different hardware.  This means user can write large language model code without hardware specific code.  With DeepSpeed Accelerator Abstraction, the same large language model can run on different hardware platform, without the need to rewrite model code.  This makes running large language model on different hardware easier.
@@ -24,7 +26,7 @@ This document covers three topics related to DeepSpeed Accelerator Abstraction I
 # Write accelerator agnostic models
 In this part, you will learn how to write a model that does not contain HW specific code, or how to port a model that run on a specific HW only to be accelerator agnostic.  To do this, we first import `get_accelerator` from `deepspeed.accelerator`
 ```
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 ```
 Note: `get_accelerator()` is the entrance to DeepSpeed Accelerator Abstraction Interface
 ## Port accelerator runtime calls

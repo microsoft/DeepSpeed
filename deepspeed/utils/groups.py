@@ -28,7 +28,7 @@
 from deepspeed import comm as dist
 from deepspeed.utils import log_dist
 from deepspeed.utils.exceptions import DeprecatedException
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 # Expert parallel group that the current rank belongs to.
 _EXPERT_PARALLEL_GROUP = {}
 # Expert data parallel group that the current rank belongs to.

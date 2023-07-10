@@ -10,7 +10,7 @@ import torch
 import deepspeed
 from transformers import pipeline
 from unit.common import DistributedTest
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 
 @pytest.mark.inference

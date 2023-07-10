@@ -6,7 +6,7 @@
 import torch
 import math
 import torch.nn as nn
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed import comm as dist
 from ..op_binding import MLPGemmOp, VectorMatMulOp, GELUGemmOp, ResidualAddOp
 

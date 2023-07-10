@@ -5,7 +5,7 @@
 
 import torch
 import pytest
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed.ops import op_builder
 
 quantizer_cuda_module = None

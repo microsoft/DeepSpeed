@@ -10,7 +10,7 @@ import pytest
 import random
 import numpy as np
 import deepspeed.comm as dist
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from unit.common import DistributedTest, DistributedFixture
 from unit.megatron_model import get_gpt2_model, get_megatron_version
 from unit.util import required_minimum_torch_version, required_maximum_torch_version

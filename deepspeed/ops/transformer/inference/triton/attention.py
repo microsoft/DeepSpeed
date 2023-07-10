@@ -6,7 +6,7 @@
 import math
 import torch
 import torch.nn as nn
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 from deepspeed import comm as dist
 from deepspeed.ops.transformer.inference.op_binding import LinearOp, VectorMatMulOp, SoftmaxContextOp, QKVGemmOp
 from deepspeed.ops.transformer.inference.triton import (

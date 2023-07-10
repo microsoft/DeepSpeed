@@ -6,7 +6,7 @@
 import torch
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 import time
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 device = 'cpu'
 model_size = 1 * 1024**3

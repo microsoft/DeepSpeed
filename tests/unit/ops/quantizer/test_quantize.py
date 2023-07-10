@@ -6,7 +6,7 @@
 import pytest
 import torch
 from deepspeed.ops import op_builder
-from deepspeed.accelerator import get_accelerator
+from accelerator import get_accelerator
 
 inference_module = None
 
