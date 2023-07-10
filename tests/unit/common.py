@@ -4,8 +4,11 @@
 # DeepSpeed Team
 
 import os
+import re
 import time
 import inspect
+import socket
+import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -35,11 +38,10 @@ def get_xdist_worker_id():
 
 
 def get_master_port():
-    master_port = os.environ.get('DS_TEST_PORT', '29503')
-    xdist_worker_id = get_xdist_worker_id()
-    if xdist_worker_id is not None:
-        master_port = str(int(master_port) + xdist_worker_id)
-    return master_port
+    # Select a random open port
+    sock = socket.socket()
+    sock.bind(('', 0))
+    return sock.getsockname()[1]
 
 
 def set_accelerator_visible():
@@ -49,7 +51,6 @@ def set_accelerator_visible():
         xdist_worker_id = 0
     if cuda_visible is None:
         # CUDA_VISIBLE_DEVICES is not set, discover it using accelerator specific command instead
-        import subprocess
         if get_accelerator().device_name() == 'cuda':
             is_rocm_pytorch = hasattr(torch.version, 'hip') and torch.version.hip is not None
             if is_rocm_pytorch:
@@ -60,7 +61,6 @@ def set_accelerator_visible():
                 nvidia_smi = subprocess.check_output(['nvidia-smi', '--list-gpus'])
                 num_accelerators = len(nvidia_smi.decode('utf-8').strip().split('\n'))
         elif get_accelerator().device_name() == 'xpu':
-            import re
             clinfo = subprocess.check_output(['clinfo'])
             lines = clinfo.decode('utf-8').strip().split('\n')
             num_accelerators = 0
@@ -128,27 +128,26 @@ class DistributedExec(ABC):
                 pass  # test methods can have kwargs that are not fixtures
         return fixture_kwargs
 
-    def _get_pool(self, num_procs):
-        if num_procs not in self.pool_cache:
-            self.pool_cache[num_procs] = mp.Pool(processes=num_procs)
-        return self.pool_cache[num_procs]
-
-    def _close_pools(self):
-        for pool in self.pool_cache.values():
-            pool.close()
-            pool.join()
-        self.pool_cache = {}
-
     def _launch_procs(self, num_procs):
+        # Verify we have enough accelerator devices to run this test
         if get_accelerator().is_available() and get_accelerator().device_count() < num_procs:
             pytest.skip(
                 f"Skipping test because not enough GPUs are available: {num_procs} required, {get_accelerator().device_count()} available"
             )
+
+        # Set start method to `forkserver` (or `fork`)
         mp.set_start_method('forkserver', force=True)
 
-        pool = self._get_pool(num_procs)
-        args = [(local_rank, num_procs) for local_rank in range(num_procs)]
-        skip_msgs_async = pool.starmap_async(self._dist_init, args)
+        # Create process pool or use cached one
+        master_port = None
+        if num_procs not in self.pool_cache:
+            self.pool_cache[num_procs] = mp.Pool(processes=num_procs)
+            master_port = get_master_port()
+        pool = self.pool_cache[num_procs]
+
+        # Run the test
+        args = [(local_rank, num_procs, master_port) for local_rank in range(num_procs)]
+        skip_msgs_async = pool.starmap_async(self._dist_run, args)
 
         try:
             skip_msgs = skip_msgs_async.get(DEEPSPEED_TEST_TIMEOUT)
@@ -158,42 +157,38 @@ class DistributedExec(ABC):
             # hang (causing super long unit test runtimes)
             pytest.exit("Test hanged, exiting", pytrace=False, returncode=0)
 
+        # If we skipped a test, propagate that to this process
         if any(skip_msgs):
             assert len(set(skip_msgs)) == 1, "Multiple different skip messages received"
             pytest.skip(skip_msgs[0])
 
-        _ = pool.map(self._dist_destroy)
+        # Tear down distributed environment and close process pools
+        self._close_pools()
 
-    def _dist_destroy(self, force=False):
-        if force or ((self.init_distributed or dist.is_initialized()) and not self.reuse_dist_env):
-            # make sure all ranks finish at the same time
-            dist.barrier()
-            # tear down after test completes
-            dist.destroy_process_group()
-
-    def _dist_init(self, local_rank, num_procs):
+    def _dist_run(self, local_rank, num_procs, master_port):
         skip_msg = ''
-        """Initialize deepspeed.comm and execute the user function. """
-        if self.set_dist_env:
-            os.environ['MASTER_ADDR'] = '127.0.0.1'
-            os.environ['MASTER_PORT'] = get_master_port()
-            os.environ['LOCAL_RANK'] = str(local_rank)
-            # NOTE: unit tests don't support multi-node so local_rank == global rank
-            os.environ['RANK'] = str(local_rank)
-            os.environ['WORLD_SIZE'] = str(num_procs)
+        if not dist.is_initialized():
+            """ Initialize deepspeed.comm and execute the user function. """
+            if self.set_dist_env:
+                os.environ['MASTER_ADDR'] = '127.0.0.1'
+                os.environ['MASTER_PORT'] = str(master_port)
+                os.environ['LOCAL_RANK'] = str(local_rank)
+                # NOTE: unit tests don't support multi-node so local_rank == global rank
+                os.environ['RANK'] = str(local_rank)
+                os.environ['WORLD_SIZE'] = str(num_procs)
 
-        # turn off NCCL logging if set
-        os.environ.pop('NCCL_DEBUG', None)
+            # turn off NCCL logging if set
+            os.environ.pop('NCCL_DEBUG', None)
 
-        if get_accelerator().is_available():
-            set_accelerator_visible()
+            if get_accelerator().is_available():
+                set_accelerator_visible()
 
-        if self.init_distributed and not dist.is_initialized():
-            deepspeed.init_distributed(dist_backend=self.backend)
-            dist.barrier()
+            if self.init_distributed:
+                deepspeed.init_distributed(dist_backend=self.backend)
+                dist.barrier()
 
-        if get_accelerator().is_available():
-            get_accelerator().set_device(local_rank)
+            if get_accelerator().is_available():
+                get_accelerator().set_device(local_rank)
 
         try:
             self.run(**self._fixture_kwargs)
@@ -204,6 +199,18 @@ class DistributedExec(ABC):
                 raise e
 
         return skip_msg
+
+    def _dist_destroy(self):
+        if self.init_distributed or dist.is_initialized():
+            dist.destroy_process_group()
+
+    def _close_pools(self, force=False):
+        if force or not self.reuse_dist_env:
+            for num_procs, pool in self.pool_cache.items():
+                msg = pool.starmap(self._dist_destroy, [() for _ in range(num_procs)])
+                pool.close()
+                pool.join()
+            self.pool_cache = {}
 
 
 class DistributedFixture(DistributedExec):

@@ -70,6 +70,15 @@ def pytest_runtest_call(item):
         item.runtest = lambda: True  # Dummy function so test is not run twice
 
 
+# We allow DistributedTest to reuse distributed environments. When the last
+# test for a class is run, we want to make sure those distributed environments
+# are destroyed.
+def pytest_runtest_teardown(item, nextitem):
+    if not nextitem:
+        dist_test_class = item.cls()
+        dist_test_class._close_pools(force=True)
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_fixture_setup(fixturedef, request):
     if getattr(fixturedef.func, "is_dist_fixture", False):
