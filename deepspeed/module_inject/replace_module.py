@@ -461,7 +461,14 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 else:
                     class_name = prev_class_name + '.' + prev_name
                 checking_key = prefix + '.' + class_name + '.' + name + '.' if class_name != "" else prefix + '.' + name + '.'
-                if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm] and state_dict != None:
+                try:
+                    import transformers
+                    LlamaRMSNorm = transformers.models.llama.modeling_llama.LlamaRMSNorm
+                except:
+                    LlamaRMSNorm = None
+                if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm, LlamaRMSNorm] and state_dict != None:
+                    if child.__class__ is LlamaRMSNorm and not child.weight.is_meta:
+                        continue
                     if any(checking_key in item for item in state_dict):
                         load(child, state_dict, checking_key, mp_group)
                     else:
@@ -772,6 +779,12 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
         if embedding_weight is not None and hasattr(replaced_module, "lm_head") and hasattr(
                 replaced_module.lm_head, "weight") and replaced_module.lm_head.weight.is_meta:
             replaced_module.lm_head.weight = embedding_weight
+    if sd is not None:
+        if 'lm_head.weight' in sd.keys() and hasattr(replaced_module, 'lm_head'):
+            replaced_module.lm_head.weight = torch.nn.parameter.Parameter(
+                data=torch.empty_like(sd['lm_head.weight'].data, device="cpu"),
+                requires_grad=sd['lm_head.weight'].data.requires_grad)
+            replaced_module.lm_head.weight.data.copy_(sd['lm_head.weight'])
     return replaced_module
 
 
@@ -820,7 +833,12 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
         OPTLearnedPositionalEmbedding = transformers.models.opt.modeling_opt.OPTLearnedPositionalEmbedding
     except:
         OPTLearnedPositionalEmbedding = None
-    load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm, OPTLearnedPositionalEmbedding]
+    try:
+        import transformers
+        LlamaRMSNorm = transformers.models.llama.modeling_llama.LlamaRMSNorm
+    except:
+        LlamaRMSNorm = None
+    load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm, OPTLearnedPositionalEmbedding, LlamaRMSNorm]
     for name, child in model.named_children():
         if child.__class__ in policies:
             replaced_module = policies[child.__class__][0](child,
