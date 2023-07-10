@@ -1867,7 +1867,12 @@ class DeepSpeedEngine(Module):
         if self.gradient_accumulation_steps() > 1 and scale_wrt_gas:
             loss = self._scale_loss_by_gas(loss.float())
 
-        # Log training Loss
+        # Log training loss
+        if self.is_gradient_accumulation_boundary():
+            self.losses = [loss.mean().item()]
+        else:
+            self.losses.append(loss.mean().item())
+
         if self.monitor.enabled:
             if self.is_gradient_accumulation_boundary():
                 if self.global_rank == 0:
@@ -1878,10 +1883,6 @@ class DeepSpeedEngine(Module):
                     )]
                     self.monitor.write_events(self.summary_events)
 
-        if self.is_gradient_accumulation_boundary():
-            self.losses = []
-        else:
-            self.losses.append(loss.mean().item())
 
         self._start_timers(self.engine_timers.backward_timers)
 
