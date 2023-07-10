@@ -74,7 +74,7 @@ def pytest_runtest_call(item):
 # test for a class is run, we want to make sure those distributed environments
 # are destroyed.
 def pytest_runtest_teardown(item, nextitem):
-    if not nextitem:
+    if getattr(item.cls, "reuse_dist_env", False) and not nextitem:
         dist_test_class = item.cls()
         for num_procs, pool in dist_test_class._pool_cache.items():
             dist_test_class._close_pool(pool, num_procs, force=True)
