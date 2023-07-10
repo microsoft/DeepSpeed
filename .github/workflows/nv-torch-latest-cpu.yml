@@ -43,5 +43,5 @@ jobs:
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
-          pytest -n 4 unit/ --torch_ver="1.12"
-          pytest -m 'sequential' unit/ --torch_ver="1.12"
+          TRANSFORMERS_CACHE=~/tmp/transformers_cache/ pytest -n 4 unit/ --torch_ver="1.12"
+          TRANSFORMERS_CACHE=~/tmp/transformers_cache/ pytest -m 'sequential' unit/ --torch_ver="1.12"

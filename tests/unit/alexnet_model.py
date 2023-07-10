@@ -124,6 +124,7 @@ def train_cifar(model, config, num_steps=400, average_dp_losses=True, fp16=True,
                                                model=model,
                                                model_parameters=[p for p in model.parameters()],
                                                training_data=trainset)
+        engine.training_dataloader.num_local_io_workers = 0  # We can't do nested mp.pool
 
         losses = []
         for step in range(num_steps):

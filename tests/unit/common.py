@@ -208,7 +208,7 @@ class DistributedExec(ABC):
         return skip_msg
 
     def _dist_destroy(self):
-        if self.init_distributed or dist.is_initialized():
+        if (dist is not None) and dist.is_initialized():
             dist.barrier()
             dist.destroy_process_group()
 

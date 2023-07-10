@@ -126,9 +126,9 @@ class TestOptimizerImplementation(DistributedTest):
             zero_stage = 2
         else:
             zero_stage = 0
-        amp = True if optimizer_extension == 'amp' else False
-        fp16 = True if model_dtype == 'fp16' else False
-        bf16 = True if model_dtype == 'bf16' else False
+        amp = (optimizer_extension == 'amp')
+        fp16 = (model_dtype == 'fp16')
+        bf16 = (model_dtype == 'bf16')
         # Skip checks
         if bf16 and not bf16_required_version_check():
             pytest.skip(
