@@ -205,6 +205,7 @@ class DistributedExec(ABC):
 
     def _dist_destroy(self):
         if self.init_distributed or dist.is_initialized():
+            dist.barrier()
             dist.destroy_process_group()
 
     def _close_pools(self, force=False):
