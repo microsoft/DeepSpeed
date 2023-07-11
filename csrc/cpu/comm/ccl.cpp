@@ -468,9 +468,7 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
         default: data_type_fallback = true;
     }
 
-    if (data_size > MAX_BUF_SIZE || (numel % 16) != 0 ||
-        data_type_fallback ||
-        !all_ranks_local_p) {
+    if (data_size > MAX_BUF_SIZE || (numel % 16) != 0 || data_type_fallback || !all_ranks_local_p) {
         // fallback to oneccl allreduce
         CCLCHECK(ccl::allreduce(data.data_ptr(),
                                 data.data_ptr(),
