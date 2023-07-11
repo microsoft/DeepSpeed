@@ -41,11 +41,9 @@ class TestPipeCifar10(DistributedTest):
     def test(self, topo_config):
         skip_on_arch(min_arch=7)
 
-        global_batch_size = 4
-        assert global_batch_size % self.world_size == 0
         config_dict = {
-            "train_batch_size": global_batch_size,
-            "train_micro_batch_size_per_gpu": int(global_batch_size / self.world_size),
+            "train_batch_size": 4,
+            "grandient_accumulation_steps": 1,
             "steps_per_print": 20,
             "optimizer": {
                 "type": "Adam",

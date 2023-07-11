@@ -343,11 +343,9 @@ class TestOneBitAdamFP16Pipeline(DistributedTest):
     world_size = 4
 
     def test(self, topo_config):
-        global_batch_size = 4
-        assert global_batch_size % self.world_size == 0, "Global batch size must be divisible by world size"
         config_dict = {
-            "train_batch_size": global_batch_size,
-            "train_micro_batch_size_per_gpu": int(global_batch_size / self.world_size),
+            "train_batch_size": 4,
+            "grandient_accumulation_steps": 1,
             "steps_per_print": 20,
             "optimizer": {
                 "type": "OneBitAdam",
@@ -377,7 +375,7 @@ class TestOneBitAdamFP16Pipeline(DistributedTest):
         }
 
         topo = PipeTopo(**topo_config)
-        steps = 10
+        steps = 100
 
         # TODO: Add correctness tests/asserts comparing with baseline?
         test_net = AlexNetPipe()
@@ -702,11 +700,9 @@ class TestZeroOneAdamFP16Pipeline(DistributedTest):
     world_size = 4
 
     def test(self, topo_config):
-        global_batch_size = 4
-        assert global_batch_size % self.world_size == 0, "Global batch size must be divisible by world size"
         config_dict = {
-            "train_batch_size": global_batch_size,
-            "train_micro_batch_size_per_gpu": int(global_batch_size / self.world_size),
+            "train_batch_size": 4,
+            "grandient_accumulation_steps": 1,
             "steps_per_print": 20,
             "optimizer": {
                 "type": "ZeroOneAdam",
@@ -739,7 +735,7 @@ class TestZeroOneAdamFP16Pipeline(DistributedTest):
         }
 
         topo = PipeTopo(**topo_config)
-        steps = 10
+        steps = 100
 
         # TODO: Add correctness tests/asserts comparing with baseline?
         test_net = AlexNetPipe()
@@ -1090,11 +1086,9 @@ class TestOneBitLambFP16Pipeline(DistributedTest):
     world_size = 4
 
     def test(self, topo_config):
-        global_batch_size = 4
-        assert global_batch_size % self.world_size == 0, "Global batch size must be divisible by world size"
         config_dict = {
-            "train_batch_size": global_batch_size,
-            "train_micro_batch_size_per_gpu": int(global_batch_size / self.world_size),
+            "train_batch_size": 4,
+            "grandient_accumulation_steps": 1,
             "steps_per_print": 20,
             "optimizer": {
                 "type": "OneBitLamb",
@@ -1124,7 +1118,7 @@ class TestOneBitLambFP16Pipeline(DistributedTest):
         }
 
         topo = PipeTopo(**topo_config)
-        steps = 10
+        steps = 100
 
         # TODO: Add correctness tests/asserts comparing with baseline?
         test_net = AlexNetPipe()
