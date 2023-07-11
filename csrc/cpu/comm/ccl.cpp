@@ -11,10 +11,10 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <iostream>
-#include <cstdlib>
-#include <oneapi/ccl.hpp>
 #include <atomic>
+#include <cstdlib>
+#include <iostream>
+#include <oneapi/ccl.hpp>
 
 // SHM building blocks
 struct SharedData {
@@ -106,31 +106,70 @@ inline __m256i cvt_fp32_to_bf16(const __m512 src)
 void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in)
     __attribute__((target("avx512bw")));
 
-void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace) __attribute__((target("avx512bw")));
+void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
+    __attribute__((target("avx512bw")));
 
-void reduce_all_bf16_buffers(struct allreduce_workspace* workspace, int num_elements, int num_buffers)
+void reduce_2_f32_buffers(int num_elements, void* in_out, void* in)
+    __attribute__((target("avx512bw")));
+
+void reduce_f32_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
+    __attribute__((target("avx512bw")));
+
+void reduce_all_buffers(struct allreduce_workspace* workspace,
+                        int num_elements,
+                        c10::ScalarType scalar_type,
+                        int num_buffers)
 {
-    if (num_buffers >=3 && num_buffers <=8) {
-        reduce_bf16_buffers(num_elements, num_buffers, workspace);
-    } else {
-        for (int i = 1; i < num_buffers; i++) {
-            reduce_2_bf16_buffers(num_elements, workspace[0].buffer, workspace[i].buffer);
-        }
+    switch (scalar_type) {
+        case c10::ScalarType::BFloat16:
+            if (num_buffers >= 3 && num_buffers <= 8) {
+                reduce_bf16_buffers(num_elements, num_buffers, workspace);
+            } else {
+                for (int i = 1; i < num_buffers; i++) {
+                    reduce_2_bf16_buffers(num_elements, workspace[0].buffer, workspace[i].buffer);
+                }
+            }
+            break;
+        case c10::ScalarType::Float:
+            if (num_buffers >= 3 && num_buffers <= 8) {
+                reduce_f32_buffers(num_elements, num_buffers, workspace);
+            } else {
+                for (int i = 1; i < num_buffers; i++) {
+                    reduce_2_f32_buffers(num_elements, workspace[0].buffer, workspace[i].buffer);
+                }
+            }
+            break;
+        default: assert(!"Should not get here");
     }
 }
 
 #define REPEAT(N, x) REPEAT_##N(x)
 #define REPEAT_1(x) x(1)
-#define REPEAT_2(x) REPEAT_1(x);x(2)
-#define REPEAT_3(x) REPEAT_2(x);x(3)
-#define REPEAT_4(x) REPEAT_3(x);x(4)
-#define REPEAT_5(x) REPEAT_4(x);x(5)
-#define REPEAT_6(x) REPEAT_5(x);x(6)
-#define REPEAT_7(x) REPEAT_6(x);x(7)
+#define REPEAT_2(x) \
+    REPEAT_1(x);    \
+    x(2)
+#define REPEAT_3(x) \
+    REPEAT_2(x);    \
+    x(3)
+#define REPEAT_4(x) \
+    REPEAT_3(x);    \
+    x(4)
+#define REPEAT_5(x) \
+    REPEAT_4(x);    \
+    x(5)
+#define REPEAT_6(x) \
+    REPEAT_5(x);    \
+    x(6)
+#define REPEAT_7(x) \
+    REPEAT_6(x);    \
+    x(7)
 
-#define CVT_ADD(x) do {\
-        auto in##x##_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[x].buffer + i))); \
-        inout_val = _mm512_add_ps(inout_val, in##x##_val);} while(0)
+#define CVT_ADD_BF16(x)                                                                \
+    do {                                                                               \
+        auto in##x##_val =                                                             \
+            cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[x].buffer + i))); \
+        inout_val = _mm512_add_ps(inout_val, in##x##_val);                             \
+    } while (0)
 
 // num_elements must be divisible by 16 (caller check)
 void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
@@ -138,26 +177,13 @@ void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_wor
     for (int i = 0; i < num_elements * 2; i += 32) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0].buffer + i)));
         switch (num_buffers) {
-            case 8:
-                REPEAT(7, CVT_ADD);
-                break;
-            case 7:
-                REPEAT(6, CVT_ADD);
-                break;
-            case 6:
-                REPEAT(5, CVT_ADD);
-                break;
-            case 5:
-                REPEAT(4, CVT_ADD);
-                break;
-            case 4:
-                REPEAT(3, CVT_ADD);
-                break;
-            case 3:
-                REPEAT(2, CVT_ADD);
-                break;
-            default:
-                assert(!"Should not get here.");
+            case 8: REPEAT(7, CVT_ADD_BF16); break;
+            case 7: REPEAT(6, CVT_ADD_BF16); break;
+            case 6: REPEAT(5, CVT_ADD_BF16); break;
+            case 5: REPEAT(4, CVT_ADD_BF16); break;
+            case 4: REPEAT(3, CVT_ADD_BF16); break;
+            case 3: REPEAT(2, CVT_ADD_BF16); break;
+            default: assert(!"Should not get here.");
         }
         _mm256_storeu_si256((__m256i*)(workspace[0].buffer + i), cvt_fp32_to_bf16(inout_val));
     }
@@ -170,6 +196,40 @@ void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
         auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
         inout_val = _mm512_add_ps(inout_val, in1_val);
         _mm256_storeu_si256((__m256i*)((char*)in_out + i), cvt_fp32_to_bf16(inout_val));
+    }
+}
+
+#define CVT_ADD_F32(x)                                                         \
+    do {                                                                       \
+        auto in##x##_val = _mm256_loadu_ps((float*)(workspace[x].buffer + i)); \
+        inout_val = _mm256_add_ps(inout_val, in##x##_val);                     \
+    } while (0)
+
+// num_elements must be divisible by 16 (caller check)
+void reduce_f32_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
+{
+    for (int i = 0; i < num_elements * 4; i += 32) {
+        auto inout_val = _mm256_loadu_ps((float*)(workspace[0].buffer + i));
+        switch (num_buffers) {
+            case 8: REPEAT(7, CVT_ADD_F32); break;
+            case 7: REPEAT(6, CVT_ADD_F32); break;
+            case 6: REPEAT(5, CVT_ADD_F32); break;
+            case 5: REPEAT(4, CVT_ADD_F32); break;
+            case 4: REPEAT(3, CVT_ADD_F32); break;
+            case 3: REPEAT(2, CVT_ADD_F32); break;
+            default: assert(!"Should not get here.");
+        }
+        _mm256_storeu_ps((float*)(workspace[0].buffer + i), inout_val);
+    }
+}
+
+void reduce_2_f32_buffers(int num_elements, void* in_out, void* in1)
+{
+    for (int i = 0; i < num_elements * 4; i += 32) {
+        auto inout_val = _mm256_loadu_ps((float*)((char*)in_out + i));
+        auto in1_val = _mm256_loadu_ps((float*)((char*)in1 + i));
+        inout_val = _mm256_add_ps(inout_val, in1_val);
+        _mm256_storeu_ps((float*)((char*)in_out + i), inout_val);
     }
 }
 
@@ -202,15 +262,13 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
 {
     if (is_initialized) return;
 
-    // Check whetehr all ranks is on the same physical machine.
+    // Check whether all ranks is on the same physical machine.
     // If true, we will use an SHM based low latency allreduce
 
     int ws = std::stoi(std::getenv("WORLD_SIZE"));
     int ls = std::stoi(std::getenv("LOCAL_SIZE"));
 
-    if (ws >= 1 && ws == ls) {
-        all_ranks_local_p = true;
-    }
+    if (ws >= 1 && ws == ls) { all_ranks_local_p = true; }
 
     world_size = size;
     world_rank = rank;
@@ -228,15 +286,19 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
     // create shared workspace for SHM based allreduce
     if (all_ranks_local_p) {
         if (rank == 0) {
-            workspace = (struct allreduce_workspace*)malloc(size * sizeof(struct allreduce_workspace));
-            shared_create(
-                &allreduce_buffer, SHM_BUFFER_NAME, workspace, size * sizeof(struct allreduce_workspace));
+            workspace =
+                (struct allreduce_workspace*)malloc(size * sizeof(struct allreduce_workspace));
+            shared_create(&allreduce_buffer,
+                          SHM_BUFFER_NAME,
+                          workspace,
+                          size * sizeof(struct allreduce_workspace));
             workspace = (struct allreduce_workspace*)allreduce_buffer.bytes;
             for (int i = 0; i < size; i++) { workspace[i].state = 0; }
         }
         CCLCHECK(ccl::barrier(_get_comm_from_group()).wait());
         if (rank != 0) {
-            shared_open(&allreduce_buffer, SHM_BUFFER_NAME, size * sizeof(struct allreduce_workspace));
+            shared_open(
+                &allreduce_buffer, SHM_BUFFER_NAME, size * sizeof(struct allreduce_workspace));
         }
         workspace = (struct allreduce_workspace*)allreduce_buffer.bytes;
     }
@@ -397,10 +459,18 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
 
     auto numel = data.numel();
 
-    if (numel * 2 > MAX_BUF_SIZE
-        || (numel % 16) != 0
-        || data.scalar_type() != c10::ScalarType::BFloat16
-        || !all_ranks_local_p) {
+    int data_size = 0;
+    bool data_type_fallback = false;
+
+    switch (data.scalar_type()) {
+        case c10::ScalarType::BFloat16: data_size = numel * 2; break;
+        case c10::ScalarType::Float: data_size = numel * 4; break;
+        default: data_type_fallback = true;
+    }
+
+    if (data_size > MAX_BUF_SIZE || (numel % 16) != 0 ||
+        data_type_fallback ||
+        !all_ranks_local_p) {
         // fallback to oneccl allreduce
         CCLCHECK(ccl::allreduce(data.data_ptr(),
                                 data.data_ptr(),
@@ -414,7 +484,7 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
 
     auto data_ptr = data.data_ptr();
 
-    memcpy(workspace[world_rank].buffer, data_ptr, numel * 2);
+    memcpy(workspace[world_rank].buffer, data_ptr, data_size);
     std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank].state = 1;
 
@@ -424,14 +494,14 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
             // wait until the other rank copy the buffer
             wait_buffer_state_until(i, 1);
         }
-        reduce_all_bf16_buffers(workspace, numel, world_size);
+        reduce_all_buffers(workspace, numel, data.scalar_type(), world_size);
         std::atomic_thread_fence(std::memory_order_release);
         workspace[world_rank].state = 2;
-        memcpy(data_ptr, workspace[0].buffer, numel * 2);
+        memcpy(data_ptr, workspace[0].buffer, data_size);
     }
     if (world_rank != 0) {
         wait_buffer_state_until(0, 2);
-        memcpy(data_ptr, workspace[0].buffer, numel * 2);
+        memcpy(data_ptr, workspace[0].buffer, data_size);
         std::atomic_thread_fence(std::memory_order_release);
         workspace[world_rank].state = 2;
     }
