@@ -27,8 +27,10 @@ class MPS_Accelerator(DeepSpeedAccelerator):
 
     # Device APIs
 
-    def device_name(self, device_index):
-        return "mps"
+        def device_name(self, device_index=None):
+            if device_index == None:
+                return 'mps'
+            return 'mps:{}'.format(device_index)
 
     def device(self, device_index):
         return None
