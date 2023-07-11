@@ -592,10 +592,10 @@ class AllGatherCoalescedHandle:
         if self.quantization:
             instrument_w_nvtx(self.quantization.quant_handle.wait)()
             flat_tensor = self.quantization.backend.dequantize(
-                self.quantization.quantized_param, self.quantization.scale_buffer).to(self.params[0].device)
+                self.quantization.quantized_param, self.quantization.scale_buffer,async_op=False).to(self.params[0].device)
 
             self.partitions: List[Parameter] = []
-            for i in range(self.quantization.world_size):
+            for i in range(self.world_size):
                 self.partitions.append(
                     flat_tensor.narrow(0, self.quantization.partition_sz * i, self.quantization.partition_sz))
 
@@ -637,9 +637,7 @@ class CUDAQuantizer:
     async_flag = True
     target_group_size = 8000  # the optimal size is 4k, so we set the target to be below 8k
     group_size_cache = dict()
-
-    def __init__(self):
-        self.quantizer_cuda_module = deepspeed.ops.op_builder.QuantizerBuilder().load()
+    quantizer_cuda_module = deepspeed.ops.op_builder.QuantizerBuilder().load()
 
     def quantize(self, param, groups=None):
         if groups is None:
@@ -667,9 +665,18 @@ class CUDAQuantizer:
         return self.quantizer_cuda_module.quantize(param.to(get_accelerator().device_name()), groups, 8,
                                                    self.quantizer_cuda_module.Symmetric)
 
-    def dequantize(self, quantized_param, scale):
-        return self.quantizer_cuda_module.dequantize(quantized_param, scale, scale.numel(), 8,
-                                                     self.quantizer_cuda_module.Symmetric)
+    def dequantize(self, quantized_param, scale, async_op=True):
+        if async_op:
+            return self.quantizer_cuda_module.dequantize(quantized_param, scale, scale.numel(), 8,
+                                                        self.quantizer_cuda_module.Symmetric)
+        else:
+            ret_values = self.quantizer_cuda_module.dequantize(quantized_param, scale, scale.numel(), 8,
+                                                        self.quantizer_cuda_module.Symmetric)
+            
+            assert torch.isfinite(ret_values).all(), f"dequantized values are not finite"
+            return ret_values
+        # return self.quantizer_cuda_module.dequantize(quantized_param, scale, scale.numel(), 8,
+        #                                              self.quantizer_cuda_module.Symmetric)
 
 
 def _no_gather_coalesced(params: Iterable[Parameter]) -> AllGatherCoalescedHandle:
@@ -1087,14 +1094,13 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
                     quant_scale_buffer = torch.empty(
                         scales.numel() * world_size,
-                        dtype=torch.float32,
+                        dtype=scales.dtype,
                         device=get_accelerator().current_device(),
                         requires_grad=False,
                     )
                     quant_handle = _dist_allgather_fn(scales.to(get_accelerator().current_device()),
                                                       quant_scale_buffer, ds_process_group)
                     quant_info = QuantizationInfo()
-
                     quant_info.quantized_param = param_buffer.narrow(0, 0, param.ds_numel).view(param.ds_shape).to(
                         param.device)
                     quant_info.backend = self.quantizer_module
@@ -1109,7 +1115,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     partition_sz = sum(p.ds_tensor.ds_numel * p.ds_secondary_tensor_num_of_groups for p in params)
 
                 flat_tensor = torch.empty(partition_sz * world_size,
-                                          dtype=get_only_unique_item(p.dtype
+                                          dtype=get_only_unique_item(p.ds_tensor.dtype
                                                                      for p in params) if not quantize else torch.int8,
                                           device=get_accelerator().current_device(),
                                           requires_grad=False)
@@ -1411,7 +1417,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     partitioned_tensor = torch.empty(partition_size, dtype=param.dtype, device=device)
                     # quantize the tensor if it's not trainable
                     if not param.requires_grad and self.quantized_nontrainable_weights:
-                        partitioned_tensor, partitioned_tensor.ds_quant_scale = self.quantizer_module.quantize(partitioned_tensor)
+                        partitioned_tensor, partitioned_tensor.ds_quant_scale = self.quantizer_module.quantize(
+                            partitioned_tensor)
 
                     if device == OffloadDeviceEnum.cpu and self.pin_memory:
                         partitioned_tensor = get_accelerator().pin_memory(partitioned_tensor)
@@ -1693,7 +1700,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         partition_size = sum([param.ds_tensor.ds_numel for param in param_list])
 
         tensor_size = partition_size * self.num_partitions
-        flat_tensor = torch.empty(tensor_size, dtype=param_list[0].dtype, device=self.local_device)
+        flat_tensor = torch.empty(tensor_size, dtype=param_list[0].ds_tensor.dtype, device=self.local_device)
         flat_tensor.requires_grad = False
         partitions = []
         for i in range(self.num_partitions):
@@ -1713,7 +1720,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         if hasattr(param_list[0], 'ds_quant_scale'):
             scale_size = sum([param.ds_tensor.ds_quant_scale.numel() for param in param_list])
             scale_tensor_size = scale_size * self.world_size
-            flat_scale_tensor = torch.empty(scale_tensor_size, dtype=param_list[0].ds_tensor.ds_quant_scale.dtype, device=self.local_device)
+            flat_scale_tensor = torch.empty(scale_tensor_size,
+                                            dtype=param_list[0].ds_tensor.ds_quant_scale.dtype,
+                                            device=self.local_device)
             flat_scale_tensor.requires_grad = False
             scale_partitions = []
             for i in range(self.world_size):
@@ -1724,19 +1733,26 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     for param in param_list:
                         param_scale_numel = param.ds_tensor.ds_quant_scale.ds_numel
 
-                        scale_partitions[i].narrow(0, offset, param_scale_numel).copy_(param.ds_tensor.ds_quant_scale.data)
+                        scale_partitions[i].narrow(0, offset,
+                                                   param_scale_numel).copy_(param.ds_tensor.ds_quant_scale.data)
 
                         offset += param_scale_numel
 
-        dist.all_gather(partitions, partitions[self.get_partition_rank()], group=self.get_partition_dp_group(param), async_op=False)
+        dist.all_gather(partitions,
+                        partitions[self.get_partition_rank()],
+                        group=self.get_partition_dp_group(param),
+                        async_op=False)
         if hasattr(param_list[0], 'ds_quant_scale'):
-            dist.all_gather(flat_scale_tensor, param_list[0].ds_quant_scale, group=self.get_partition_dp_group(param), async_op=False)
+            dist.all_gather(flat_scale_tensor,
+                            param_list[0].ds_quant_scale,
+                            group=self.get_partition_dp_group(param),
+                            async_op=False)
         param_offset = 0
 
         for param in param_list:
             param_partition_size = param.ds_tensor.ds_numel
             param_size = param.ds_numel
-            replicated_tensor = torch.empty(param.ds_shape, dtype=param.dtype, device=self.local_device)
+            replicated_tensor = torch.empty(param.ds_shape, dtype=param.ds_tensor.dtype, device=self.local_device)
 
             for i in range(self.num_partitions):
 

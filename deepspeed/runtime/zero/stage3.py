@@ -1359,10 +1359,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 f"Warning: quantize_nontrainable_params() called with zero_quantized_nontrainable_weights disabled, return without doing anything",
                 force=True)
             return
-
         quantizer_module = CUDAQuantizer()
 
         def quantize_dstensor(tensor):
+            assert tensor.dtype == torch.float16, f"quantize_dstensor() expects tensor.dtype == torch.float16, got {tensor.dtype}"
             partition_size = tensor.ds_numel
             ds_status = tensor.status
             final_location = tensor.final_location
@@ -1380,7 +1380,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             if hasattr(param, "ds_secondary_tensor") and not param.requires_grad and not hasattr(
                     param.ds_secondary_tensor, "ds_quant_scale") and param.ds_secondary_tensor is not None:
                 param.ds_secondary_tensor = quantize_dstensor(param.ds_secondary_tensor)
-        torch.cuda.synchronize()
+        get_accelerator().synchronize()
 
     def flatten_and_print(self, message, tensors, start=0, n=5):
         flatten_tensor = self.flatten(tensors)
