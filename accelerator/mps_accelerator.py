@@ -3,6 +3,8 @@
 
 # DeepSpeed Team
 
+import torch
+
 from .abstract_accelerator import DeepSpeedAccelerator
 
 # During setup stage torch may not be installed, pass on no torch will
@@ -29,25 +31,24 @@ class MPS_Accelerator(DeepSpeedAccelerator):
         return 'mps:{}'.format(device_index)
 
     def device(self, device_index):
-        return None
+        return torch.device('mps', index=0)
 
     def set_device(self, device_index):
         return
 
     def current_device(self):
-        return
+        return torch.device('mps', index=0)
 
     def current_device_name(self):
-        return
+        return "mps:0"
 
     def device_count(self):
-        return
+        return 1
 
     def synchronize(self, device_index=None):
         return torch.mps.synchronize()
 
     # RNG APIs
-
     def random(self):
         return torch.random
 

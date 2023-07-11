@@ -70,7 +70,9 @@ def get_accelerator():
         elif accelerator_name == 'mps':
             try:
                 import torch.mps
-            except ImportError as e:
+                # should use torch.mps.is_available() if it exists someday but this is used as proxy
+                torch.mps.current_allocated_memory()
+            except RuntimeError as e:
                 raise ValueError(f'MPS_Accelerator requires torch.mps, which is not installed on this system.')
         else:
             raise ValueError(
@@ -98,9 +100,11 @@ def get_accelerator():
                 accelerator_name = 'cpu'
             except ImportError as e:
                 try:
-                    import torch.mps  # noqa: F401,F811
+                    import torch.mps
+                    # should use torch.mps.is_available() if it exists someday but this is used as proxy
+                    torch.mps.current_allocated_memory()
                     accelerator_name = 'mps'
-                except ImportError as e:
+                except RuntimeError as e:
                     accelerator_name = 'cuda'
         ds_set_method = 'auto detect'
 
