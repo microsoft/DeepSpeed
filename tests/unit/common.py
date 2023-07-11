@@ -45,7 +45,7 @@ def get_master_port():
     # Select a random open port
     with socket.socket() as s:
         s.bind(('', 0))
-        return s.getsockname()[1]
+        return str(s.getsockname()[1])
 
 
 def set_accelerator_visible():
