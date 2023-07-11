@@ -120,11 +120,22 @@ def train_cifar(model, config, num_steps=400, average_dp_losses=True, fp16=True,
         trainset = cifar_trainset(fp16=fp16)
         config['local_rank'] = dist.get_rank()
 
+        # deepspeed_io defaults to creating a dataloader that uses a
+        # multiprocessing pool. Our tests use pools and we cannot nest pools in
+        # python. Therefore we're injecting this kwarg to ensure that no pools
+        # are used in the dataloader.
+        old_method = deepspeed.runtime.engine.DeepSpeedEngine.deepspeed_io
+
+        def new_method(*args, **kwargs):
+            kwargs["num_local_io_workers"] = 0
+            return old_method(*args, **kwargs)
+
+        deepspeed.runtime.engine.DeepSpeedEngine.deepspeed_io = new_method
+
         engine, _, _, _ = deepspeed.initialize(config=config,
                                                model=model,
                                                model_parameters=[p for p in model.parameters()],
                                                training_data=trainset)
-        engine.training_dataloader.num_local_io_workers = 0  # We can't do nested mp.pool
 
         losses = []
         for step in range(num_steps):
