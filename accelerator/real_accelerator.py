@@ -71,8 +71,7 @@ def get_accelerator():
             try:
                 import torch.mps
             except ImportError as e:
-                raise ValueError(
-                    f'MPS_Accelerator requires torch.mps, which is not installed on this system.')
+                raise ValueError(f'MPS_Accelerator requires torch.mps, which is not installed on this system.')
         else:
             raise ValueError(
                 f'DS_ACCELERATOR must be one of "cuda", "cpu", or "xpu".  Value "{accelerator_name}" is not supported')
@@ -98,8 +97,8 @@ def get_accelerator():
                 import intel_extension_for_pytorch  # noqa: F401,F811
                 accelerator_name = 'cpu'
             except ImportError as e:
-                try :
-                    import torch.mps
+                try:
+                    import torch.mps  # noqa: F401,F811
                     accelerator_name = 'mps'
                 except ImportError as e:
                     accelerator_name = 'cuda'

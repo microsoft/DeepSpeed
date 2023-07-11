@@ -3,10 +3,6 @@
 
 # DeepSpeed Team
 
-import os
-import pkgutil
-import importlib
-
 from .abstract_accelerator import DeepSpeedAccelerator
 
 # During setup stage torch may not be installed, pass on no torch will
@@ -18,6 +14,7 @@ except ImportError:
 
 
 class MPS_Accelerator(DeepSpeedAccelerator):
+
     def __init__(self):
         self._name = "mps"
         self._communication_backend_name = None
@@ -26,11 +23,10 @@ class MPS_Accelerator(DeepSpeedAccelerator):
         return False
 
     # Device APIs
-
-        def device_name(self, device_index=None):
-            if device_index == None:
-                return 'mps'
-            return 'mps:{}'.format(device_index)
+    def device_name(self, device_index=None):
+        if device_index == None:
+            return 'mps'
+        return 'mps:{}'.format(device_index)
 
     def device(self, device_index):
         return None
