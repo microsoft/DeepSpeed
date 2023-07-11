@@ -46,5 +46,5 @@ jobs:
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
-          pytest --forked -n 4 unit/
-          pytest --forked -m 'sequential' unit/
+          pytest $PYTEST_OPTS --forked -n 4 unit/
+          pytest $PYTEST_OPTS --forked -m 'sequential' unit/
