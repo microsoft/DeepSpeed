@@ -43,9 +43,9 @@ def get_xdist_worker_id():
 
 def get_master_port():
     # Select a random open port
-    sock = socket.socket()
-    sock.bind(('', 0))
-    return str(sock.getsockname()[1])
+    with socket.socket() as s:
+        s.bind(('', 0))
+        return s.getsockname()[1]
 
 
 def set_accelerator_visible():
@@ -142,8 +142,8 @@ class DistributedExec(ABC):
         mp.set_start_method('forkserver', force=True)
 
         # Create process pool or use cached one
+        master_port = None
         if self.reuse_dist_env:
-            master_port = None
             if num_procs not in self._pool_cache:
                 self._pool_cache[num_procs] = mp.Pool(processes=num_procs)
                 master_port = get_master_port()
@@ -162,7 +162,7 @@ class DistributedExec(ABC):
             # Shortcut to exit pytest in the case of a hanged test. This
             # usually means an environment error and the rest of tests will
             # hang (causing super long unit test runtimes)
-            pytest.exit("Test hanged, exiting", pytrace=False, returncode=0)
+            pytest.exit("Test hanged, exiting", returncode=0)
 
         # Tear down distributed environment and close process pools
         self._close_pool(pool, num_procs)
