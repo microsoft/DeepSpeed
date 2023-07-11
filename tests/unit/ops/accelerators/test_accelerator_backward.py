@@ -244,23 +244,22 @@ def run_backward(ds_config, seq_len, atol=1e-2, verbose=False):
     check_equal(base_grads, ds_grads, atol=atol, verbose=verbose)
 
 
-@pytest.mark.parametrize("is_preln", [True, False])
-@pytest.mark.parametrize("use_fp16", [True, False])
+# NOTE: Keep these different params as they have helped find divergence in behavior between AMD and NVIDIA.
+@pytest.mark.parametrize('batch_size, hidden_size, seq_len, heads, num_layers, is_preln, use_fp16, atol',
+                         [
+                             (64,160,128,2,24,False,True, 0.2),
+                             (64,1600,128,2,4,False,True, 0.2),
+                             (8,1600,128,25,3,True,True, 0.05),
+                             (8,160,128,2,3,True,True, 0.1),
+                             (8,1600,128,2,3,True,True, 0.05),
+                         ]) # yapf: disable
 class TestCUDABackward(DistributedTest):
     world_size = 1
     if is_rocm_pytorch():
         #This is to flush denorms in forward pass. Please refer to https://github.com/pytorch/pytorch/blob/main/docs/source/notes/numerical_accuracy.rst#reduced-precision-fp16-and-bf16-gemms-and-convolutions-on-amd-instinct-mi200-devices
         os.environ['ROCBLAS_INTERNAL_FP16_ALT_IMPL'] = '1'
 
-    def test_backward(self,
-                      is_preln,
-                      use_fp16,
-                      batch_size=8,
-                      hidden_size=160,
-                      seq_len=128,
-                      heads=2,
-                      num_layers=3,
-                      atol=0.1):
+    def test_backward(self, is_preln, use_fp16, batch_size, hidden_size, seq_len, heads, num_layers, atol):
         # Only run fp16 test cases on devices with FP16 capability.
         if not get_accelerator().is_fp16_supported() and (use_fp16 is True or is_preln is False):
             return
