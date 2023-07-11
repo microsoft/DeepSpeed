@@ -460,16 +460,16 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
     auto numel = data.numel();
 
     int data_size = 0;
+    bool data_type_fallback = false;
 
     switch (data.scalar_type()) {
         case c10::ScalarType::BFloat16: data_size = numel * 2; break;
         case c10::ScalarType::Float: data_size = numel * 4; break;
-        default: assert(!"Should not get here");
+        default: data_type_fallback = true;
     }
 
     if (data_size > MAX_BUF_SIZE || (numel % 16) != 0 ||
-        (data.scalar_type() != c10::ScalarType::BFloat16 &&
-         data.scalar_type() != c10::ScalarType::Float) ||
+        data_type_fallback ||
         !all_ranks_local_p) {
         // fallback to oneccl allreduce
         CCLCHECK(ccl::allreduce(data.data_ptr(),
