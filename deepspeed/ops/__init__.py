@@ -13,4 +13,6 @@ from . import transformer
 
 from .transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 
+from .flash_attention import DeepSpeedFlashAttn
+
 from ..git_version_info import compatible_ops as __compatible_ops__
