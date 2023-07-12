@@ -16,7 +16,6 @@ except ImportError:
 
 
 class MPS_Accelerator(DeepSpeedAccelerator):
-
     def __init__(self):
         self._name = "mps"
         self._communication_backend_name = None
@@ -27,17 +26,17 @@ class MPS_Accelerator(DeepSpeedAccelerator):
     # Device APIs
     def device_name(self, device_index=None):
         if device_index == None:
-            return 'mps'
-        return 'mps:{}'.format(device_index)
+            return "mps"
+        return "mps:{}".format(device_index)
 
     def device(self, device_index):
-        return torch.device('mps', index=0)
+        return torch.device("mps", index=0)
 
     def set_device(self, device_index):
         return
 
     def current_device(self):
-        return torch.device('mps', index=0)
+        return torch.device("mps", index=0)
 
     def current_device_name(self):
         return "mps:0"
@@ -132,7 +131,6 @@ class MPS_Accelerator(DeepSpeedAccelerator):
         return
 
     # Data types
-
     def is_bf16_supported(self):
         return False
 
@@ -140,7 +138,6 @@ class MPS_Accelerator(DeepSpeedAccelerator):
         return False
 
     # Misc
-
     def amp(self):
         return
 
@@ -209,7 +206,6 @@ class MPS_Accelerator(DeepSpeedAccelerator):
             return "deepspeed.ops.op_builder"
 
     # create an instance of op builder, specified by class_name
-
     def create_op_builder(self, op_name):
         builder_class = self.get_op_builder(op_name)
         if builder_class != None:
@@ -217,7 +213,6 @@ class MPS_Accelerator(DeepSpeedAccelerator):
         return None
 
     # return an op builder class, specified by class_name
-
     def get_op_builder(self, class_name):
         from deepspeed.ops.op_builder.cpu import NotImplementedBuilder
 
