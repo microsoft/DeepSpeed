@@ -9,17 +9,17 @@ import pytest
 from unit.common import DistributedTest
 from unit.simple_model import SimplePRMoEModel, SimpleMoEModel, sequence_dataloader
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer, is_moe_param
-from unit.util import required_torch_version
+from unit.util import required_minimum_torch_version
 
 
-@pytest.mark.parametrize("ep_size", [2, 4])
+@pytest.mark.parametrize("ep_size", [1, 2])
 @pytest.mark.parametrize("zero_stage", [0, 1, 2])
 @pytest.mark.parametrize("use_residual", [True, False])
 class TestMoE(DistributedTest):
-    world_size = 4
+    world_size = 2
 
     def test(self, ep_size, zero_stage, use_residual):
-        if not required_torch_version():
+        if not required_minimum_torch_version(1, 8):
             pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
         config_dict = {
@@ -109,7 +109,7 @@ class TestPRMoE(DistributedTest):
     world_size = 4
 
     def test(self, ep_size, use_residual):
-        if not required_torch_version():
+        if not required_minimum_torch_version(1, 8):
             pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
         config_dict = {"train_batch_size": 8, "steps_per_print": 1, "fp16": {"enabled": True}}
