@@ -58,8 +58,8 @@ class CCLBackend(TorchBackend):
         else:
             self.ccl_comm_op.all_reduce(tensor, op, group, async_op)
 
-    def all_reduce_low_latency(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
-        self.ccl_comm_op.all_reduce_low_latency(tensor, op, group, async_op)
+    def inference_allreduce(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
+        self.ccl_comm_op.inference_allreduce(tensor, op, group, async_op)
 
     def barrier(self, group=None, async_op=False):
         self.ccl_comm_op.barrier(group, async_op)

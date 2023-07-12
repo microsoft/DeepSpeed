@@ -483,15 +483,15 @@ def all_reduce(tensor,
 
 
 @timed_op
-def all_reduce_low_latency(tensor,
-                           op=ReduceOp.SUM,
-                           group=None,
-                           async_op=False,
-                           prof=False,
-                           log_name='all_reduce',
-                           debug=get_caller_func()):
+def inference_allreduce(tensor,
+                        op=ReduceOp.SUM,
+                        group=None,
+                        async_op=False,
+                        prof=False,
+                        log_name='all_reduce',
+                        debug=get_caller_func()):
     global cdb
-    return cdb.all_reduce_low_latency(tensor, op, group, async_op)
+    return cdb.inference_allreduce(tensor, op, group, async_op)
 
 
 @timed_op
