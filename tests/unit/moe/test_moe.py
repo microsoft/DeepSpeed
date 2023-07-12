@@ -12,11 +12,11 @@ from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optim
 from unit.util import required_minimum_torch_version
 
 
-@pytest.mark.parametrize("ep_size", [1, 2])
+@pytest.mark.parametrize("ep_size", [2, 4])
 @pytest.mark.parametrize("zero_stage", [0, 1, 2])
 @pytest.mark.parametrize("use_residual", [True, False])
 class TestMoE(DistributedTest):
-    world_size = 2
+    world_size = 4
 
     def test(self, ep_size, zero_stage, use_residual):
         if not required_minimum_torch_version(1, 8):
