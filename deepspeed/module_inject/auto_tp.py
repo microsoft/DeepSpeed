@@ -11,7 +11,7 @@ from .replace_policy import replace_policies
 from typing import Optional
 import torch
 from deepspeed import comm as dist
-from .layers import LinearAllreduce, LinearLayer
+from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce
 from deepspeed.accelerator import get_accelerator
 from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw
 
@@ -318,6 +318,9 @@ class AutoTP():
             del data
 
             setattr(child, "replaced", True)
+            if name == "lm_head" or name == 'embed_out':
+                return LmHeadLinearAllreduce(data_dc, dist.get_rank(), dist.get_world_size(), child.bias if child.bias is None else \
+                        torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), mp_group)
             return LinearAllreduce(torch.nn.parameter.Parameter(data_dc, requires_grad=False), child.bias if child.bias is None else \
                         torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), self.mp_group)
         else:
@@ -435,4 +438,22 @@ class AutoTP():
             else:
                 self.update_mp_params(child)
                 self._replace_module(child, name, class_name)
+        return r_module
+
+    def _replace_last_linear_module(self, r_module):
+        for name, child in r_module.named_children():
+            if name == "lm_head" or name == 'embed_out':
+                checking_key = name
+                if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm] and state_dict != None:
+                    if any(checking_key in item for item in state_dict):
+                        load(child, state_dict, checking_key, mp_group)
+                    else:
+                        continue
+                if len(child._buffers) != 0 and state_dict != None:
+                    load_buffer(child, state_dict, checking_key)
+                if child.__class__ in linear_policies:
+                    setattr(r_module, name, linear_policies[child.__class__](child, name, conv_linear_layer))
+                else:
+                    update_mp_params(child)
+                    _replace_module(child, name)
         return r_module

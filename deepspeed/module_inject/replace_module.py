@@ -275,6 +275,8 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         _autotp.update_linear_policies()
 
         # 4. Replace modules
+        if "lm_head" in str(module) or 'embed_out' in str(module):
+            return _autotp._replace_last_linear_module(module)
         return _autotp._replace_module(module)
 
     def replace_fn(child, _policy, layer_id=0, prefix="", state_dict=None):
@@ -551,6 +553,8 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
     policy = {}
     if orig_class is not None:
         policy.update({orig_class: (replace_fn, _replace_policy)})
+        origin_layer = torch.nn.modules.linear.Linear
+        policy.update({origin_layer: (replace_fn, (list(model.named_modules())[-1][0]))})
     else:
         for plcy in replace_policies:
             # instantiate a throw-away policy in order to populate the _orig_layer_class
@@ -599,7 +603,14 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
         Modified ``model``.
     """
     for name, child in model.named_children():
-        if child.__class__ in policies:
+        if name == "lm_head" or name == "embed_out":
+            if child.__class__ in policies:
+                replaced_module = policies[child.__class__][0](model,
+                                                               policies[child.__class__][-1],
+                                                               layer_id,
+                                                               prefix=prefix + name,
+                                                               state_dict=state_dict)
+        elif child.__class__ in policies:
             replaced_module = policies[child.__class__][0](child,
                                                            policies[child.__class__][-1],
                                                            layer_id,
