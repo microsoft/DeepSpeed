@@ -6,7 +6,7 @@
 import torch
 import time
 import os
-
+from typing import Optional
 from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
 
@@ -86,6 +86,24 @@ def build_bloom_alibi_tensor(attention_mask: torch.Tensor, num_heads: int, dtype
         return alibi.reshape(batch_size * num_heads, 1, seq_length).to(dtype)
 
 
+def build_mpt_atten_bias_tensor(self,
+                                device,
+                                dtype,
+                                attention_mask: Optional[torch.ByteTensor] = None,
+                                prefix_mask: Optional[torch.ByteTensor] = None,
+                                sequence_id: Optional[torch.LongTensor] = None):
+    (attn_bias, attention_mask) = self._attn_bias_orig(device,
+                                                       dtype,
+                                                       attention_mask=attention_mask,
+                                                       prefix_mask=prefix_mask,
+                                                       sequence_id=sequence_id)
+    if dist.is_initialized():
+        num_heads_per_rank = int(self.config.n_heads / dist.get_world_size())
+        offset = dist.get_rank() * num_heads_per_rank
+        attn_bias = attn_bias[:, offset:num_heads_per_rank + offset, :, :]
+    return attn_bias, attention_mask
+
+
 class InferenceEngine(Module):
     inference_mp_group = None
     inference_ep_group = None
@@ -146,6 +164,7 @@ class InferenceEngine(Module):
             # This is a hack to redefine the alibi func due to TP
             if config.tensor_parallel.tp_size > 1:
                 self.build_alibi_tensor()
+                self.build_attn_bias()
 
         if get_accelerator().device_name() == 'cuda' and config.enable_cuda_graph:
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
@@ -238,6 +257,12 @@ class InferenceEngine(Module):
         if hasattr(self.module, 'transformer'):
             if hasattr(self.module.transformer, 'build_alibi_tensor'):
                 self.module.transformer.build_alibi_tensor = build_bloom_alibi_tensor
+
+    def build_attn_bias(self):
+        if hasattr(self.module, 'transformer'):
+            if hasattr(self.module.transformer, '_attn_bias'):
+                self.module.transformer._attn_bias_orig = self.module.transformer._attn_bias
+                self.module.transformer.__class__._attn_bias = build_mpt_atten_bias_tensor
 
     def _pre_forward_hook(self, module, *inputs, **kwargs):
         if self.use_cuda_events:
