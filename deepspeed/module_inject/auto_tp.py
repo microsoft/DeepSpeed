@@ -114,14 +114,13 @@ class ReplaceWithTensorSlicing:
 
 class AutoTP():
 
-    def __init__(self, config, module, all_reduce_linears, prefix, state_dict, linear_layer_setting, orig_layer_impl):
-        self.config = config
+    def __init__(self, module, all_reduce_linears, prefix, state_dict, linear_layer_setting, orig_layer_impl):
         self.module = module
         self.all_reduce_linears = all_reduce_linears
         self.prefix = prefix
         self.state_dict = state_dict
 
-        self.mp_size = self.config.tensor_parallel.tp_size
+        self.mp_size = None
         self.mp_group = None
         self.linear_layer_setting = linear_layer_setting
         self.orig_layer_impl = orig_layer_impl

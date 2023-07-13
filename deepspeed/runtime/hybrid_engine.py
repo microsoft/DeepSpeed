@@ -7,6 +7,7 @@ import torch
 from deepspeed.inference.config import DeepSpeedInferenceConfig
 from deepspeed.module_inject.replace_policy import replace_policies
 from deepspeed.module_inject.utils import policy_to_ds_container
+from deepspeed.module_inject.auto_tp import AutoTP
 from .engine import DeepSpeedEngine
 from .utils import TLinear, get_inactive_params
 from deepspeed.runtime.zero import GatheredParameters
@@ -44,6 +45,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
 
         self.Z3_enabled = (self._config.zero_config.stage == 3)
         self.gather_all_layers = self._config.hybrid_engine.pin_parameters
+        self.autotp = self._config.hybrid_engine.auto_tp
 
         # inference containers / fwds
         self._inference_containers = []
@@ -134,6 +136,22 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
             nn.LayerNorm: (Normalize, ),
             OPTLearnedPositionalEmbedding: (OPTEmbedding, )
         })
+
+    def autotp_inference(self):
+        self.inference_policies = {}
+        parser_dict = AutoTP.tp_parser(self.module)
+        print("AutoTP: ", parser_dict)
+        for client_module, injection_policy in parser_dict:
+            if isinstance(injection_policy, str):
+                injection_policy_tuple = (injection_policy, )
+            else:
+                injection_policy_tuple = injection_policy
+
+            _autotp = AutoTP(self.module, injection_policy_tuple, '', None, None, client_module)
+            _autotp.set_tensor_parallel_config(self._config.hybrid_engine.inference_tp_size, self.mp_group)
+            _autotp.update_linear_polciies()
+            new_module = _autotp._replace_module(module)
+
 
     def _fuse_lora_layer(self, layer_id):
         self._inference_containers[layer_id].fuse_lora()
@@ -277,6 +295,75 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
 
         return generate_ret_vals
 
+    def autotp_generate(self, *inputs, **kwargs):
+        if self._total_batch_size is None:
+            bsz = inputs[0].shape[0] if len(inputs) > 0 else \
+                kwargs['input_ids'].shape[0]
+            self._total_batch_size = bsz * dist.get_world_size()
+
+        self._t0 = time.time()
+
+        if self.Z3_enabled and self.gather_all_layers:
+            if self._config.hybrid_engine.inference_tp_size > 1:
+                non_tp_params = []
+                for other_layer in self._other_layers:
+                    non_tp_params.extend(list(other_layer.parameters()))
+
+                partition_size = self._config.hybrid_engine.tp_gather_partition_size
+
+                # TODO(cmikeh2) Evaluate if this can be deferred when release_inference_cache
+                # is enabled.
+                gc.collect()
+                get_accelerator().empty_cache()
+
+                self._gather_latency = time.time() - self._t0
+
+                input_shape = inputs[0].shape if len(inputs) > 0 else \
+                                kwargs['input_ids'].shape
+                output = torch.zeros(
+                    (input_shape[0] * self._config.hybrid_engine.inference_tp_size, ) + input_shape[1:],
+                    dtype=inputs[0].dtype if len(inputs) > 0 else kwargs['input_ids'].dtype,
+                    device=inputs[0].device if len(inputs) > 0 else kwargs['input_ids'].device)
+                input_cont = inputs[0].contiguous() if len(inputs) > 0 else kwargs['input_ids'].contiguous()
+                dist.all_gather_into_tensor(output, input_cont, group=self.mp_group)
+
+                if len(inputs) > 0:
+                    inputs = (output, )
+                else:
+                    kwargs['input_ids'] = output
+
+                self.retake_inference_cache()
+
+                non_active_params = get_inactive_params(non_tp_params)
+                with GatheredParameters(non_active_params):
+                    generate_ret_vals = self._generate(*inputs, **kwargs)
+
+                rank = dist.get_rank(group=self.mp_group)
+                generate_ret_vals = generate_ret_vals[input_shape[0] * rank:input_shape[0] * (rank + 1)]
+
+        else:
+            if len(self.all_lora_params) > 0 and (not self.Z3_enabled):
+                self.fuse_lora_weight()
+
+            self.retake_inference_cache()
+            generate_ret_vals = self._generate(*inputs, **kwargs)
+
+            if len(self.all_lora_params) > 0:
+                if (not self.Z3_enabled):
+                    self.unfuse_lora_weight()
+                else:
+                    self.unfuse_lora_weight_non_pinned()
+                self.is_lora_fused = False
+
+        if self._config.hybrid_engine.release_inference_cache:
+            inference_cuda_module.release_workspace()
+            gc.collect()
+            get_accelerator().empty_cache()
+
+        self._generate_latency = time.time() - self._t0 - self._gather_latency
+
+        return generate_ret_vals
+
     def create_inference_containers(self, module, layer_id=0):
         for name, child in module.named_children():
             if child.__class__ in self.inference_policies:
@@ -350,9 +437,16 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
         else:
             self.mp_group = None
             self.mp_replace = None
-        self.populate_all_inference_policies()
+
         self.all_layers_params = list(self.module.parameters())
-        self.create_inference_containers(self.module)
+
+        if not self.auto_tp:
+            self.populate_all_inference_policies()
+            self.create_inference_containers(self.module)
+        else:
+            self.autotp_inference()
+            self._generate = self.module.generate
+            self.module.generate = self.autotp_generate()
 
         if len(self._inference_containers) > 0:
             self._generate = self.module.generate
