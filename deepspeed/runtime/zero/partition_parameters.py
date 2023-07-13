@@ -591,9 +591,8 @@ class AllGatherCoalescedHandle:
 
         if self.quantization:
             instrument_w_nvtx(self.quantization.quant_handle.wait)()
-            flat_tensor = self.quantization.backend.dequantize(self.quantization.quantized_param,
-                                                               self.quantization.scale_buffer,
-                                                               async_op=False).to(self.params[0].device)
+            flat_tensor = self.quantization.backend.dequantize(
+                self.quantization.quantized_param, self.quantization.scale_buffer).to(self.params[0].device)
 
             self.partitions: List[Parameter] = []
             for i in range(self.world_size):
@@ -666,7 +665,7 @@ class CUDAQuantizer:
         return self.quantizer_cuda_module.quantize(param.to(get_accelerator().device_name()), groups, 8,
                                                    self.quantizer_cuda_module.Symmetric)
 
-    def dequantize(self, quantized_param, scale, async_op=True):
+    def dequantize(self, quantized_param, scale):
         return self.quantizer_cuda_module.dequantize(quantized_param, scale, scale.numel(), 8,
                                                      self.quantizer_cuda_module.Symmetric)
 
