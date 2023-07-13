@@ -39,6 +39,7 @@ adam_configs = [["AdamW", False, False, False, (FusedAdam, True)],
     adam_configs)
 class TestAdamConfigs(DistributedTest):
     world_size = 1
+    reuse_dist_env = True
 
     def test(self,
              optimizer,
