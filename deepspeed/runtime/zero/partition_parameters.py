@@ -637,7 +637,11 @@ class CUDAQuantizer:
     async_flag = True
     target_group_size = 8000  # the optimal size is 4k, so we set the target to be below 8k
     group_size_cache = dict()
-    quantizer_cuda_module = deepspeed.ops.op_builder.QuantizerBuilder().load()
+    quantizer_cuda_module = None
+
+    def __init__(self) -> None:
+        if CUDAQuantizer.quantizer_cuda_module is None:
+            CUDAQuantizer.quantizer_cuda_module = deepspeed.ops.op_builder.QuantizerBuilder().load()
 
     def quantize(self, param, groups=None):
         if groups is None:
