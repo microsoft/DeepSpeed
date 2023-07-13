@@ -426,38 +426,14 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         def update_mp_params(child):
             if getattr(child, "replaced", False) == True:
                 return
-            if hasattr(child, 'n_heads'):
-                assert child.n_heads % mp_size == 0, "n_heads ({}) must be divisible by mp_size ({})".format(
-                    child.n_heads, mp_size)
-                child.n_heads = child.n_heads // mp_size
-            if hasattr(child, 'inner_dim'):
-                assert child.inner_dim % mp_size == 0, "inner_dim ({}) must be divisible by mp_size ({})".format(
-                    child.inner_dim, mp_size)
-                child.inner_dim = child.inner_dim // mp_size
-            if hasattr(child, 'num_heads'):
-                assert child.num_heads % mp_size == 0, "num_heads ({}) must be divisible by mp_size ({})".format(
-                    child.num_heads, mp_size)
-                child.num_heads = child.num_heads // mp_size
-            if hasattr(child, 'num_attention_heads'):
-                assert child.num_attention_heads % mp_size == 0, "num_attention_heads ({}) must be divisible by mp_size ({})".format(
-                    child.num_attention_heads, mp_size)
-                child.num_attention_heads = child.num_attention_heads // mp_size
-            if hasattr(child, 'num_attn_heads'):
-                assert child.num_attn_heads % mp_size == 0, "num_attn_heads ({}) must be divisible by mp_size ({})".format(
-                    child.num_attn_heads, mp_size)
-                child.num_attn_heads = child.num_attn_heads // mp_size
-            if hasattr(child, 'all_head_size'):
-                assert child.all_head_size % mp_size == 0, "all_head_size ({}) must be divisible by mp_size ({})".format(
-                    child.all_head_size, mp_size)
-                child.all_head_size = child.all_head_size // mp_size
-            if hasattr(child, 'embed_dim'):
-                assert child.embed_dim % mp_size == 0, "embed_dim must ({}) be divisible by mp_size ({})".format(
-                    child.embed_dim, mp_size)
-                child.embed_dim = child.embed_dim // mp_size
-            if hasattr(child, 'hidden_size'):
-                assert child.hidden_size % mp_size == 0, "hidden_size ({}) must be divisible by mp_size ({})".format(
-                    child.hidden_size, mp_size)
-                child.hidden_size = child.hidden_size // mp_size
+            for param in [
+                    "n_heads", "inner_dim", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads",
+                    "all_head_size", "embed_dim", "hidden_size"
+            ]:
+                if hasattr(child, param):
+                    param_val = getattr(child, param)
+                    assert param_val % mp_size == 0, f"{param} ({param_val}) must be divisible by mp_size ({mp_size})"
+                    setattr(child, param, param_val // mp_size)
             setattr(child, "replaced", True)
 
         conv_linear_layer = False
@@ -485,16 +461,26 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 else:
                     class_name = prev_class_name + '.' + prev_name
                 checking_key = prefix + '.' + class_name + '.' + name + '.' if class_name != "" else prefix + '.' + name + '.'
-                if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm] and state_dict != None:
+                if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm] and state_dict is not None:
                     if any(checking_key in item for item in state_dict):
                         load(child, state_dict, checking_key, mp_group)
                     else:
                         continue
-                if len(child._buffers) != 0 and state_dict != None:
+                if len(child._buffers) != 0 and state_dict is not None:
                     load_buffer(child, state_dict, checking_key)
                 if child.__class__ in linear_policies:
                     setattr(r_module, name, linear_policies[child.__class__](child, prev_name + '.' + name,
                                                                              conv_linear_layer))
+                elif any(isinstance(child, lp) for lp in linear_policies):
+                    # Added for falcon model support
+                    # Note: isinstance will account for class inheritance, child.__class__ does not
+                    key = None
+                    for lp in linear_policies:
+                        if isinstance(child, lp):
+                            key = lp
+                            break
+                    assert key is not None
+                    setattr(r_module, name, linear_policies[key](child, prev_name + '.' + name, conv_linear_layer))
                 else:
                     update_mp_params(child)
                     _replace_module(child, name, class_name)
@@ -521,7 +507,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         return new_module
 
-    if checkpoint_dict != None and not config.replace_with_kernel_inject:
+    if checkpoint_dict is not None and not config.replace_with_kernel_inject:
         # AutoTP shard loading
         checkpoint = checkpoint_dict["checkpoints"]
         pbar = tqdm.tqdm(total=len(checkpoint), desc=f"Loading {len(checkpoint)} checkpoint shards")
@@ -759,7 +745,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
         A modified ``model``.
     """
     sd = None
-    if checkpoint != None:
+    if checkpoint is not None:
         sd = torch.load(checkpoint, map_location='cpu')
     policy = {}
     if orig_class is not None:
@@ -778,7 +764,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
         "You can find some samples here: https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/module_inject/replace_policy.py"
 
     replaced_module, _ = _replace_module(model, policy, state_dict=sd)
-    if checkpoint != None:
+    if checkpoint is not None:
         embedding_weight = None
         for n, p in replaced_module.named_parameters():
             if "word_embeddings." in n or "embed_tokens." in n or "wte." in n:
@@ -847,7 +833,7 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
             layer_id += 1
         else:
             checking_key = prefix + name + '.'
-            if child.__class__ in load_layers and state_dict != None:
+            if child.__class__ in load_layers and state_dict is not None:
                 if any(checking_key in item for item in state_dict):
                     load(
                         child,
@@ -856,7 +842,7 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
                     )
                 else:
                     continue
-            if len(child._buffers) != 0 and state_dict != None:
+            if len(child._buffers) != 0 and state_dict is not None:
                 load_buffer(child, state_dict, checking_key)
             _, layer_id = _replace_module(child,
                                           policies,

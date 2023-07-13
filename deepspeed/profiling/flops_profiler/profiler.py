@@ -593,7 +593,7 @@ def _conv_trans_flops_compute(
 ):
     batch_size = input.shape[0]
     in_channels = input.shape[1]
-    out_channels = weight.shape[0]
+    out_channels = weight.shape[1]
     kernel_dims = list(weight.shape[2:])
     input_dims = list(input.shape[2:])
 
@@ -960,10 +960,11 @@ def _reload_tensor_methods():
 
 
 def _rnn_flops(flops, rnn_module, w_ih, w_hh, input_size):
+    input_size, hidden_size = w_ih.shape
     # matrix matrix mult ih state and internal state
-    flops += w_ih.shape[0] * w_ih.shape[1]
+    flops += 2 * input_size * hidden_size - hidden_size
     # matrix matrix mult hh state and internal state
-    flops += w_hh.shape[0] * w_hh.shape[1]
+    flops += 2 * hidden_size * hidden_size - hidden_size
     if isinstance(rnn_module, (nn.RNN, nn.RNNCell)):
         # add both operations
         flops += rnn_module.hidden_size
