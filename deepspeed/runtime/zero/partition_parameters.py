@@ -787,15 +787,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             See :meth:`deepspeed.init_distributed` for more information.
 
         .. note::
-            Can also be used as a decorator:
-
-            .. code-block:: python
-
-                @deepspeed.zero.Init()
-                def get_model():
-                    return MyLargeModel()
-
-        .. note::
             Only applicable to training with ZeRO-3.
 
         Examples
@@ -1331,7 +1322,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
     def _partition(self, param_list, force=False, has_been_updated=False):
         for param in param_list:
-            print_rank_0(f"Before Partitioning Param {param.ds_id} pri: {param.ds_tensor}", force=False)
+            print_rank_0(f"Before Partitioning Param {param.ds_id}", force=False)
             if self.zero_param_process_group is not None:
                 self._partition_param_sec(param, has_been_updated=has_been_updated)
             self._partition_param(param, has_been_updated=has_been_updated)
