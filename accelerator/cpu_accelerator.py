@@ -245,12 +245,14 @@ class CPU_Accelerator(DeepSpeedAccelerator):
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
             from op_builder import __deepspeed__  # noqa: F401
-            from op_builder.cpu import CCLCommBuilder, NotImplementedBuilder
+            from op_builder.cpu import CCLCommBuilder, FusedAdamBuilder, NotImplementedBuilder
         except ImportError:
-            from deepspeed.ops.op_builder.cpu import CCLCommBuilder, NotImplementedBuilder
+            from deepspeed.ops.op_builder.cpu import CCLCommBuilder, FusedAdamBuilder, NotImplementedBuilder
 
         if class_name == "CCLCommBuilder":
             return CCLCommBuilder
+        elif class_name == "FusedAdamBuilder":
+            return FusedAdamBuilder
         else:
             # return a NotImplementedBuilder to avoid get NoneType[Name] in unit tests
             return NotImplementedBuilder
