@@ -34,13 +34,8 @@ def _validate_accelerator(accel_obj):
     # accelerator.abstractor_accelerator
     # or deepspeed.accelerator.abstract_accelerator, consider accel_obj
     # is a conforming object
-    if not (
-        (dsa1 != None and isinstance(accel_obj, dsa1))
-        or (dsa2 != None and isinstance(accel_obj, dsa2))
-    ):
-        raise AssertionError(
-            f"{accel_obj.__class__.__name__} accelerator is not subclass of DeepSpeedAccelerator"
-        )
+    if not ((dsa1 != None and isinstance(accel_obj, dsa1)) or (dsa2 != None and isinstance(accel_obj, dsa2))):
+        raise AssertionError(f"{accel_obj.__class__.__name__} accelerator is not subclass of DeepSpeedAccelerator")
 
     # TODO: turn off is_available test since this breaks tests
     # assert accel_obj.is_available(), \
@@ -63,15 +58,13 @@ def get_accelerator():
                 from intel_extension_for_deepspeed import XPU_Accelerator  # noqa: F401
             except ImportError as e:
                 raise ValueError(
-                    f"XPU_Accelerator requires intel_extension_for_deepspeed, which is not installed on this system."
-                )
+                    f"XPU_Accelerator requires intel_extension_for_deepspeed, which is not installed on this system.")
         elif accelerator_name == "cpu":
             try:
                 import intel_extension_for_pytorch  # noqa: F401
             except ImportError as e:
                 raise ValueError(
-                    f"CPU_Accelerator requires intel_extension_for_pytorch, which is not installed on this system."
-                )
+                    f"CPU_Accelerator requires intel_extension_for_pytorch, which is not installed on this system.")
         elif accelerator_name == "cuda":
             pass
         elif accelerator_name == "mps":
@@ -81,13 +74,10 @@ def get_accelerator():
                 # should use torch.mps.is_available() if it exists someday but this is used as proxy
                 torch.mps.current_allocated_memory()
             except (RuntimeError, ImportError) as e:
-                raise ValueError(
-                    f"MPS_Accelerator requires torch.mps, which is not installed on this system."
-                )
+                raise ValueError(f"MPS_Accelerator requires torch.mps, which is not installed on this system.")
         else:
             raise ValueError(
-                f'DS_ACCELERATOR must be one of "cuda", "cpu", or "xpu".  Value "{accelerator_name}" is not supported'
-            )
+                f'DS_ACCELERATOR must be one of "cuda", "cpu", or "xpu".  Value "{accelerator_name}" is not supported')
         ds_set_method = "override"
 
     # 2. If no override, detect which accelerator to use automatically
@@ -140,9 +130,7 @@ def get_accelerator():
         ds_accelerator = MPS_Accelerator()
     _validate_accelerator(ds_accelerator)
     if accel_logger is not None:
-        accel_logger.info(
-            f"Setting ds_accelerator to {ds_accelerator._name} ({ds_set_method})"
-        )
+        accel_logger.info(f"Setting ds_accelerator to {ds_accelerator._name} ({ds_set_method})")
     return ds_accelerator
 
 
@@ -150,9 +138,7 @@ def set_accelerator(accel_obj):
     global ds_accelerator
     _validate_accelerator(accel_obj)
     if accel_logger is not None:
-        accel_logger.info(
-            f"Setting ds_accelerator to {accel_obj._name} (model specified)"
-        )
+        accel_logger.info(f"Setting ds_accelerator to {accel_obj._name} (model specified)")
     ds_accelerator = accel_obj
 
 
