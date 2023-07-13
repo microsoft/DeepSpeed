@@ -491,24 +491,34 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
         hidden_dim = 10
 
         model = SimpleFrozenModel(hidden_dim, empty_grad=False)
-        frozen_param_names = set([n for n, p in model.named_parameters() if not p.requires_grad])
 
         ds_engine, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
 
+        # Validate backwards-compatibility of including frozen parameters in checkpoint
         all_ckpt_folder = os.path.join(tmpdir, 'all_params')
         ds_engine.save_checkpoint(all_ckpt_folder)
+        all_params_ckpt_file = get_model_ckpt_name_for_rank(os.path.join(all_ckpt_folder, 'global_step0'), '00')
+        loaded_all_param_model = torch.load(all_params_ckpt_file)['module']
+        all_param_names = set([n for n, p in model.named_parameters()])
+        assert set(loaded_all_param_model.keys()) == all_param_names
 
+        # Validate exclusion of frozen parameters
         trainable_ckpt_folder = os.path.join(tmpdir, 'no_frozen_params')
         ds_engine.save_checkpoint(trainable_ckpt_folder, exclude_frozen_parameters=True)
 
-        all_params_ckpt_file = get_model_ckpt_name_for_rank(os.path.join(all_ckpt_folder, 'global_step0'), '00')
         trainable_ckpt_file = get_model_ckpt_name_for_rank(os.path.join(trainable_ckpt_folder, 'global_step0'), '00')
 
+        # Excluding frozen parameters should reduce checkpoint size
         assert os.path.getsize(all_params_ckpt_file) > os.path.getsize(trainable_ckpt_file)
 
-        trainable_param_model = torch.load(trainable_ckpt_file)
-        overlap_names = set.intersection(set(trainable_param_model.keys()), frozen_param_names)
+        loaded_trainable_param_model = torch.load(trainable_ckpt_file)['module']
+        frozen_param_names = set([n for n, p in model.named_parameters() if not p.requires_grad])
+        loaded_trainable_param_names = set(loaded_trainable_param_model.keys())
+        overlap_names = set.intersection(loaded_trainable_param_names, frozen_param_names)
         assert len(overlap_names) == 0
+
+        trainable_param_names = set([n for n, p in model.named_parameters() if p.requires_grad])
+        assert loaded_trainable_param_names == trainable_param_names
 
 
 class TestSaveTensorClone(DistributedTest):
