@@ -1,6 +1,12 @@
 name: nv-h100
 
 on:
+  pull_request:
+    branches:
+      '**'
+    paths-ignore:
+      - 'docs/**'
+      - 'blogs/**'
   schedule:
     - cron: "0 0 * * *"
 
