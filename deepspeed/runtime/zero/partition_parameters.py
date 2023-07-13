@@ -771,15 +771,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             See :meth:`deepspeed.init_distributed` for more information.
 
         .. note::
-            Can also be used as a decorator:
-
-            .. code-block:: python
-
-                @deepspeed.zero.Init()
-                def get_model():
-                    return MyLargeModel()
-
-        .. note::
             Only applicable to training with ZeRO-3.
 
         Examples
@@ -1336,7 +1327,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
     def _partition(self, param_list, force=False, has_been_updated=False):
         for param in param_list:
-            print_rank_0(f"Before Partitioning Param {param.ds_id} pri: {param.ds_tensor}", force=False)
+            print_rank_0(f"Before Partitioning Param {param.ds_id}", force=False)
             if self.zero_param_process_group is not None:
                 self._partition_param_sec(param, has_been_updated=has_been_updated)
             self._partition_param(param, has_been_updated=has_been_updated)
@@ -2009,13 +2000,15 @@ class GatheredParameters:
         else:
             # single param
             params = [params]
-
         # enable if at least one is zero-param, otherwise a noop
         if not any(is_zero_param(p) for p in params):
             self.enabled = False
             return
 
         self.params = [p for p in params if hasattr(p, "ds_id")]
+        self.params = sorted(
+            set(self.params), key=lambda x: x.ds_id
+        )  # remove the duplicates to prevent racing condition, we must also make sure the order is the same on all ranks otherwise we'll get deadlocks
         self.src_rank = None
         if modifier_rank is not None:
             if self.params[0].ds_process_group == dist.get_world_group():
