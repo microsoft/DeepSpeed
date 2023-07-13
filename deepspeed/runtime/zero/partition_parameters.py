@@ -666,17 +666,7 @@ class CUDAQuantizer:
                                                    self.quantizer_cuda_module.Symmetric)
 
     def dequantize(self, quantized_param, scale, async_op=True):
-        if async_op:
-            return self.quantizer_cuda_module.dequantize(quantized_param, scale, scale.numel(), 8,
-                                                        self.quantizer_cuda_module.Symmetric)
-        else:
-            ret_values = self.quantizer_cuda_module.dequantize(quantized_param, scale, scale.numel(), 8,
-                                                        self.quantizer_cuda_module.Symmetric)
-            
-            assert torch.isfinite(ret_values).all(), f"dequantized values are not finite"
-            return ret_values
-        # return self.quantizer_cuda_module.dequantize(quantized_param, scale, scale.numel(), 8,
-        #                                              self.quantizer_cuda_module.Symmetric)
+        return self.quantizer_cuda_module.dequantize(quantized_param, scale, scale.numel(), 8, self.quantizer_cuda_module.Symmetric)
 
 
 def _no_gather_coalesced(params: Iterable[Parameter]) -> AllGatherCoalescedHandle:

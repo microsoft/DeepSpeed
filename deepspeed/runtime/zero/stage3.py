@@ -1374,6 +1374,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             return tensor
 
         for param in self.module.parameters():
+            if hasattr(param, "ds_tensor") and (param.ds_tensor.numel() <=2048 or param.ds_numel<=500000):
+                # skip small parameters
+                continue
             if hasattr(param,
                        "ds_tensor") and not param.requires_grad and not hasattr(param.ds_tensor, "ds_quant_scale"):
                 param.ds_tensor = quantize_dstensor(param.ds_tensor)
