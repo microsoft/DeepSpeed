@@ -109,11 +109,19 @@ void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in)
 void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
     __attribute__((target("avx512bw")));
 
-void reduce_2_f32_buffers(int num_elements, void* in_out, void* in)
+void reduce_2_fp32_buffers(int num_elements, void* in_out, void* in)
     __attribute__((target("avx512bw")));
 
-void reduce_f32_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
+void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
     __attribute__((target("avx512bw")));
+
+// N_REDUCE_LIMIT is the number of buffers that can be reduced together in one shot.
+// Compared with do N-1 2-reduces which needs 2*(N-1) read and N-1 write,
+// N-reduce only needs N read and 1 write, this saves 2/3 memory bandwidth.
+// When increase N_REDUCE_LIMIT to a bigger number, do the following steps
+// 1. Extend REPEAT_<X> macros list down below
+// 2. Extend switch cases which call "REPEAT(X, ...)" down below
+#define N_REDUCE_LIMIT 8
 
 void reduce_all_buffers(struct allreduce_workspace* workspace,
                         int num_elements,
@@ -122,7 +130,7 @@ void reduce_all_buffers(struct allreduce_workspace* workspace,
 {
     switch (scalar_type) {
         case c10::ScalarType::BFloat16:
-            if (num_buffers >= 3 && num_buffers <= 8) {
+            if (num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
                 reduce_bf16_buffers(num_elements, num_buffers, workspace);
             } else {
                 for (int i = 1; i < num_buffers; i++) {
@@ -131,11 +139,11 @@ void reduce_all_buffers(struct allreduce_workspace* workspace,
             }
             break;
         case c10::ScalarType::Float:
-            if (num_buffers >= 3 && num_buffers <= 8) {
-                reduce_f32_buffers(num_elements, num_buffers, workspace);
+            if (num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
+                reduce_fp32_buffers(num_elements, num_buffers, workspace);
             } else {
                 for (int i = 1; i < num_buffers; i++) {
-                    reduce_2_f32_buffers(num_elements, workspace[0].buffer, workspace[i].buffer);
+                    reduce_2_fp32_buffers(num_elements, workspace[0].buffer, workspace[i].buffer);
                 }
             }
             break;
@@ -171,10 +179,16 @@ void reduce_all_buffers(struct allreduce_workspace* workspace,
         inout_val = _mm512_add_ps(inout_val, in##x##_val);                             \
     } while (0)
 
+// Reduce functions down below use vectorized algorithm, the number of bytes processed each
+// iteration depends on vector length.  256bit vector ==> 32 bytes, 512bit vector ==> 64 bytes
+// If you change implementation of reduce_2_bf16_buffers or reduce_2_fp32_buffers, check
+// whether this number needs to be changed
+#define VECTOR_LENGTH_IN_BYTES 32
+
 // num_elements must be divisible by 16 (caller check)
 void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
 {
-    for (int i = 0; i < num_elements * 2; i += 32) {
+    for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0].buffer + i)));
         switch (num_buffers) {
             case 8: REPEAT(7, CVT_ADD_BF16); break;
@@ -191,7 +205,7 @@ void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_wor
 
 void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
 {
-    for (int i = 0; i < num_elements * 2; i += 32) {
+    for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in_out + i)));
         auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
         inout_val = _mm512_add_ps(inout_val, in1_val);
@@ -206,9 +220,9 @@ void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
     } while (0)
 
 // num_elements must be divisible by 16 (caller check)
-void reduce_f32_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
+void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
 {
-    for (int i = 0; i < num_elements * 4; i += 32) {
+    for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = _mm256_loadu_ps((float*)(workspace[0].buffer + i));
         switch (num_buffers) {
             case 8: REPEAT(7, CVT_ADD_F32); break;
@@ -223,9 +237,9 @@ void reduce_f32_buffers(int num_elements, int num_buffers, struct allreduce_work
     }
 }
 
-void reduce_2_f32_buffers(int num_elements, void* in_out, void* in1)
+void reduce_2_fp32_buffers(int num_elements, void* in_out, void* in1)
 {
-    for (int i = 0; i < num_elements * 4; i += 32) {
+    for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = _mm256_loadu_ps((float*)((char*)in_out + i));
         auto in1_val = _mm256_loadu_ps((float*)((char*)in1 + i));
         inout_val = _mm256_add_ps(inout_val, in1_val);
@@ -468,7 +482,7 @@ void inference_allreduce(torch::Tensor& data, py::object op, py::object group, b
         default: data_type_fallback = true;
     }
 
-    if (data_size > MAX_BUF_SIZE || (numel % 16) != 0 || data_type_fallback || !all_ranks_local_p) {
+    if (data_size > MAX_BUF_SIZE || data_type_fallback || (data_size % VECTOR_LENGTH_IN_BYTES) != 0 || !all_ranks_local_p) {
         // fallback to oneccl allreduce
         CCLCHECK(ccl::allreduce(data.data_ptr(),
                                 data.data_ptr(),
