@@ -78,4 +78,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          filename: '.github/ISSUE_TEMPLATE/ci_failure_report.md'
+          filename: $(( $GITHUB_WORKSPACE }}/.github/ISSUE_TEMPLATE/ci_failure_report.md
