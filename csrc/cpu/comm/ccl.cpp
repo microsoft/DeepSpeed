@@ -281,9 +281,7 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
 
     auto ls_string = std::getenv("LOCAL_SIZE");
     int ls = 0;
-    if (ls_string != NULL) {
-        ls = std::stoi(std::getenv("LOCAL_SIZE"));
-    }
+    if (ls_string != NULL) { ls = std::stoi(std::getenv("LOCAL_SIZE")); }
 
     if (size >= 1 && size == ls) { all_ranks_local_p = true; }
 
@@ -485,7 +483,8 @@ void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, 
         default: data_type_fallback = true;
     }
 
-    if (data_size > MAX_BUF_SIZE || data_type_fallback || (data_size % VECTOR_LENGTH_IN_BYTES) != 0 || !all_ranks_local_p) {
+    if (data_size > MAX_BUF_SIZE || data_type_fallback ||
+        (data_size % VECTOR_LENGTH_IN_BYTES) != 0 || !all_ranks_local_p) {
         // fallback to oneccl allreduce
         CCLCHECK(ccl::allreduce(data.data_ptr(),
                                 data.data_ptr(),
