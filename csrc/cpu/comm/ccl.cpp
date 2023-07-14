@@ -279,10 +279,13 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
     // Check whether all ranks is on the same physical machine.
     // If true, we will use an SHM based low latency allreduce
 
-    int ws = std::stoi(std::getenv("WORLD_SIZE"));
-    int ls = std::stoi(std::getenv("LOCAL_SIZE"));
+    auto ls_string = std::getenv("LOCAL_SIZE");
+    int ls = 0;
+    if (ls_string != NULL) {
+        ls = std::stoi(std::getenv("LOCAL_SIZE"));
+    }
 
-    if (ws >= 1 && ws == ls) { all_ranks_local_p = true; }
+    if (size >= 1 && size == ls) { all_ranks_local_p = true; }
 
     world_size = size;
     world_rank = rank;
