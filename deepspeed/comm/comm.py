@@ -484,12 +484,12 @@ def all_reduce(tensor,
 
 @timed_op
 def inference_all_reduce(tensor,
-                        op=ReduceOp.SUM,
-                        group=None,
-                        async_op=False,
-                        prof=False,
-                        log_name='all_reduce',
-                        debug=get_caller_func()):
+                         op=ReduceOp.SUM,
+                         group=None,
+                         async_op=False,
+                         prof=False,
+                         log_name='all_reduce',
+                         debug=get_caller_func()):
     global cdb
     return cdb.inference_all_reduce(tensor, op, group, async_op)
 

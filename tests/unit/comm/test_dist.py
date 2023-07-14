@@ -122,6 +122,7 @@ class TestDistAllReduce(DistributedTest):
         dist.all_reduce(x)
         assert torch.all(x == result)
 
+
 class TestDistInferenceAllReduce(DistributedTest):
     device_count = get_accelerator().device_count()
     if device_count >= 4:
