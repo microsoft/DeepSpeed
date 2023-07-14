@@ -464,7 +464,7 @@ void all_reduce_caching(torch::Tensor& data,
                  .wait());
 }
 
-void inference_allreduce(torch::Tensor& data, py::object op, py::object group, bool async_op)
+void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, bool async_op)
 {
     static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
     static auto ReduceOpSum = (int)py::int_(ReduceOp.attr("SUM").attr("value"));
@@ -541,7 +541,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("get_world_size", &get_world_size, "get world size");
     m.def("broadcast", &broadcast, "ccl broadcast");
     m.def("all_reduce", &all_reduce, "ccl all_reduce");
-    m.def("inference_allreduce", &inference_allreduce, "low latency all_reduce implementation");
+    m.def("inference_all_reduce", &inference_all_reduce, "low latency all_reduce implementation");
     m.def("all_reduce_caching", &all_reduce_caching, "ccl all_reduce with caching");
     m.def("barrier", &barrier, "barrier");
 }
