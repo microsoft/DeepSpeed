@@ -146,7 +146,8 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
                 injection_policy_tuple = (injection_policy, )
             else:
                 injection_policy_tuple = injection_policy
-
+            self.inference_policies.update({client_module: (self.new_inference_container, injection_policy_tuple)})
+            )
             _autotp = AutoTP(self.module, injection_policy_tuple, '', None, None, client_module)
             _autotp.set_tensor_parallel_config(self._config.hybrid_engine.inference_tp_size, self.mp_group)
             _autotp.update_linear_polciies()
@@ -332,7 +333,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
                 else:
                     kwargs['input_ids'] = output
 
-                self.retake_inference_cache()
+                #self.retake_inference_cache()
 
                 non_active_params = get_inactive_params(non_tp_params)
                 with GatheredParameters(non_active_params):
@@ -390,6 +391,20 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
             else:
                 self.create_inference_containers(child, layer_id=layer_id)
 
+    def auto_tp_fwds(self, module):
+        for name, child in module.named_children():
+            if child.__class__ in self.inference_policies:
+                if self.inference_policies[child.__class__][0] == self.new_inference_container:
+                    self._orig_modules.append(child)
+                    self._orig_fwds.append(child.forward)
+                else:
+                    self._other_layers.append(self.inference_policies[child.__class__][0](
+                        weight=child.weight, bias=child.bias if hasattr(child, 'bias') else None))
+                    self._orig_modules_others.append(child)
+                    self._orig_fwds_others.append(child.forward)
+            else:
+                self.auto_tp_fwds(child)
+
     def create_inference_module(self):
         self.layer_params = []
         self.layer_lora_params = []
@@ -445,6 +460,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
             self.create_inference_containers(self.module)
         else:
             self.autotp_inference()
+            self.auto_tp_fwds()
             self._generate = self.module.generate
             self.module.generate = self.autotp_generate()
 

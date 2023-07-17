@@ -258,6 +258,8 @@ class AutoTP():
             if conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
             data = mp_replace.copy(new_weight, child.weight.data)
+
+            #todo: need to remove new tensor allocation to reduce memory
             new_bias = torch.empty((weight_shape[0]), device=child.weight.device, dtype=child.weight.dtype)
             if child.bias is not None:
                 new_bias.data.copy_(child.bias.data)
@@ -265,6 +267,8 @@ class AutoTP():
             return LinearAllreduce(data, child.bias if child.bias is None else \
                         torch.nn.parameter.Parameter(new_bias.to(get_accelerator().current_device_name())), self.mp_group)
         else:
+
+            #todo: need to remove new tensor allocation to reduce memory
             new_weight = torch.empty((
                 (weight_shape[1] if conv_linear_layer else weight_shape[0]) // self.mp_size,
                 weight_shape[0] // self.mp_size if conv_linear_layer else weight_shape[1],
@@ -275,6 +279,7 @@ class AutoTP():
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
             data = mp_replace.copy(new_weight, child.weight.data)
 
+            #todo: need to remove new tensor allocation to reduce memory
             new_bias = torch.empty((weight_shape[0] // self.mp_size),
                                     device=child.weight.device,
                                     dtype=child.weight.dtype)
@@ -288,6 +293,8 @@ class AutoTP():
             if getattr(child, "replaced", False) == True:
                 return
             mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
+
+            #todo: need to remove new tensor allocation to reduce memory
             new_weight = torch.empty((child.weight.shape[0], child.weight.shape[1] // self.mp_size),
                                      device=child.weight.device,
                                      dtype=child.weight.dtype)
