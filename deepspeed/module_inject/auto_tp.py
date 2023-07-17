@@ -443,7 +443,7 @@ class AutoTP():
     def _replace_last_linear_module(self, r_module):
         for name, child in r_module.named_children():
             if name == "lm_head" or name == 'embed_out':
-                checking_key = name
+                checking_key = name + '.'
                 if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm] and state_dict != None:
                     if any(checking_key in item for item in state_dict):
                         load(child, state_dict, checking_key, mp_group)
