@@ -71,11 +71,18 @@ jobs:
           pytest $PYTEST_OPTS -n 4 --verbose unit/
           pytest $PYTEST_OPTS -m 'sequential' unit/
 
+      - name: Test pwd
+        run: |
+          pwd
+          cd ../
+          pwd
+          ls -al
+
       # $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
       - name: Open GitHub issue if nightly CI fails
         if: failure()
         uses: JasonEtco/create-an-issue@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        #with:
-        #  filename: $(( $GITHUB_WORKSPACE }}/.github/ISSUE_TEMPLATE/ci_failure_report.md
+        with:
+          filename: ./.github/ISSUE_TEMPLATE/ci_failure_report.md
