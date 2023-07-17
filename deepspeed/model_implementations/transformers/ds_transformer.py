@@ -180,6 +180,12 @@ class DeepSpeedTransformerInference(nn.Module):
                                               self.norm_b,
                                               alibi)
 
+            print("attention input ", input)
+            print("input norm", inp_norm)
+            print("attention output ", attention_output)
+            # print("key ", key)
+            # print("value ", value)
+
             presents = (key, value)
             self.layer_past = presents if layer_past is None else None
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)

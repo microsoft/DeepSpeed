@@ -140,6 +140,7 @@ class DeepSpeedSelfAttention(nn.Module):
             self._attn_qkvw = self.attn_qkvw
             self._attn_qkvb = self.attn_qkvb
 
+        # print(self.config.pre_layer_norm) # true
         if not self.config.pre_layer_norm:
             qkv_out = self.linear_func(input=input,
                                        weight=self._attn_qkvw,
@@ -154,12 +155,19 @@ class DeepSpeedSelfAttention(nn.Module):
                                     bias=self._attn_qkvb,
                                     gamma=norm_w,
                                     beta=norm_b)
+        print("QKV out")
+        print(qkv_out[0].shape)
+        print(qkv_out[0][:,:,:4096].mean())
+        print(qkv_out[0][:,:,4096:8192].mean())
+        print(qkv_out[0][:,:,8192:12288].mean())
+        print(qkv_out[0])
 
         context_layer, key_layer, value_layer = self.compute_attention(qkv_out=qkv_out,
                                                                        input_mask=input_mask,
                                                                        layer_past=layer_past,
                                                                        alibi=alibi)
         output = self.vector_matmul_func(input=context_layer, weight=self.attn_ow)
+        output += self.attn_ob
         inp_norm = qkv_out[-1]
 
         if self.config.mlp_after_attn and self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
