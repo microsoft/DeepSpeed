@@ -32,8 +32,40 @@ class DS_BloomContainer(MetaTensorContainer, HybridEngineContainer, BaseTransfor
         return self.module
 
     def attention_qkv_mp(self, mp_replace, reversed_dim=False):
-        self.module.attention.attn_qkvw = mp_replace.copy(self.module.attention.attn_qkvw, self.qkvw)
-        self.module.attention.attn_qkvb = mp_replace.copy(self.module.attention.attn_qkvb, self.qkvb)
+        # The shape of qkv weight is like [3d, d], and it can be split alone column axis like this:
+        # [w_q_head1, w_k_head1, w_v_head1, w_q_head2, w_k_head2, w_v_head2, ...]
+        # So here we use mp_replace.copy instead of mp_replace.strided_copy.
+        attn_qkvw_dst = torch.empty_like(self.qkvw[:self.qkvw.shape[0]//mp_replace.mp_size], dtype=self.dtype)
+        attn_qkvb_dst = torch.empty_like(self.qkvb[:self.qkvw.shape[0]//mp_replace.mp_size], dtype=self.dtype)
+        self.module.attention.attn_qkvw = mp_replace.copy(attn_qkvw_dst, self.qkvw, int8=reversed_dim)
+        self.module.attention.attn_qkvb = mp_replace.copy(attn_qkvb_dst, self.qkvb, int8=reversed_dim)
+
+    def attention_o_mp(self, mp_replace, reversed_dim=False):
+        # row split
+        attn_ow_dst = torch.empty_like(self.dense_w[:, :self.dense_w.shape[0]//mp_replace.mp_size], dtype=self.dtype)
+        attn_ob_dst = torch.empty_like(self.dense_b, dtype=self.dtype)
+        self.module.attention.attn_ow = mp_replace.copy(attn_ow_dst, self.dense_w, int8=reversed_dim)
+        self.module.attention.attn_ob = mp_replace.copy(attn_ob_dst, self.dense_b, int8=reversed_dim)
+
+    def mlp_inter_mp(self, mp_replace, reversed_dim=False):
+        # column split
+        inter_w_dst = torch.empty_like(self._h4h_w[:self._h4h_w.shape[0]//mp_replace.mp_size], dtype=self.dtype)
+        inter_b_dst = torch.empty_like(self._h4h_b[:self._h4h_b.shape[0]//mp_replace.mp_size], dtype=self.dtype)
+        self.module.mlp.inter_w = mp_replace.copy(inter_w_dst, self._h4h_w, int8=reversed_dim)
+        self.module.mlp.inter_b = mp_replace.copy(inter_b_dst, self._h4h_b, int8=reversed_dim)
+
+    def mlp_output_mp(self, mp_replace, reversed_dim=False):
+        # row split
+        output_w_dst = torch.empty_like(self._4hh_w[:, :self._4hh_w.shape[1]//mp_replace.mp_size], dtype=self.dtype)
+        output_b_dst = torch.empty_like(self._4hh_b, dtype=self.dtype)
+        self.module.mlp.output_w = mp_replace.copy(output_w_dst, self._4hh_w, int8=reversed_dim)
+        self.module.mlp.output_b = mp_replace.copy(output_b_dst, self._4hh_b, int8=reversed_dim)
+
+    def release_memory(self,):
+        super().release_memory()
+        if self.module.layer_past is not None:
+            del self.module.layer_past
+            self.module.layer_past = None
 
     def get_lora_matched_pair(self):
         """
