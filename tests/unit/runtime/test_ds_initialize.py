@@ -11,7 +11,7 @@ from torch.optim.lr_scheduler import _LRScheduler, LambdaLR
 
 from unit.simple_model import SimpleModel, random_dataloader
 from unit.common import DistributedTest
-from unit.util import required_minimum_torch_version, bf16_required_version_check, required_amp_check
+from unit.util import required_torch_version, bf16_required_version_check, required_amp_check
 
 import deepspeed
 from deepspeed.ops.adam import FusedAdam
@@ -25,7 +25,7 @@ class TestNoOptim(DistributedTest):
     world_size = 1
 
     def test(self, zero_stage):
-        if zero_stage == 3 and not required_minimum_torch_version(1, 8):
+        if zero_stage == 3 and not required_torch_version(min_version=1.8):
             pytest.skip("zero-3 param offload requires at least torch 1.8")
 
         ds_config = {
