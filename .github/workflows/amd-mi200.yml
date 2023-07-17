@@ -74,6 +74,7 @@ jobs:
       - name: Test pwd
         if: failure()
         run: |
+          ls -al
           pwd
           cd ../
           pwd
