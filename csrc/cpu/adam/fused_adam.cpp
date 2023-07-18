@@ -20,7 +20,6 @@ void Adam_Optimizer::Step_1(float* _params,
                             float* _exp_avg,
                             float* _exp_avg_sq,
                             size_t _param_size,
-                            ds_half_precision_t* dev_params,
                             bool half_precision)
 {
     size_t rounded_size = 0;
@@ -31,7 +30,6 @@ void Adam_Optimizer::Step_1(float* _params,
                 _exp_avg,
                 _exp_avg_sq,
                 _param_size,
-                dev_params,
                 half_precision);
 #endif
     if (_param_size > rounded_size) {
@@ -86,7 +84,6 @@ void Adam_Optimizer::Step_4(float* _params,
                             float* _exp_avg,
                             float* _exp_avg_sq,
                             size_t _param_size,
-                            ds_half_precision_t* dev_params,
                             bool half_precision)
 {
     size_t rounded_size = 0;
@@ -97,7 +94,6 @@ void Adam_Optimizer::Step_4(float* _params,
                 _exp_avg,
                 _exp_avg_sq,
                 _param_size,
-                dev_params,
                 half_precision);
 #endif
     if (_param_size > rounded_size)
@@ -106,7 +102,6 @@ void Adam_Optimizer::Step_4(float* _params,
                (_exp_avg + rounded_size),
                (_exp_avg_sq + rounded_size),
                (_param_size - rounded_size),
-               (dev_params != nullptr ? (dev_params + rounded_size) : dev_params),
                half_precision);
 }
 
@@ -155,7 +150,6 @@ void Adam_Optimizer::Step_8(float* _params,
                             float* _exp_avg,
                             float* _exp_avg_sq,
                             size_t _param_size,
-                            ds_half_precision_t* dev_params,
                             bool half_precision)
 {
     size_t rounded_size = 0;
@@ -166,7 +160,6 @@ void Adam_Optimizer::Step_8(float* _params,
                 _exp_avg,
                 _exp_avg_sq,
                 _param_size,
-                dev_params,
                 half_precision);
 #endif
     if (_param_size > rounded_size)
@@ -175,7 +168,6 @@ void Adam_Optimizer::Step_8(float* _params,
                (_exp_avg + rounded_size),
                (_exp_avg_sq + rounded_size),
                (_param_size - rounded_size),
-               (dev_params != nullptr ? (dev_params + rounded_size) : dev_params),
                half_precision);
 }
 
@@ -214,7 +206,6 @@ int ds_adam_step(int optimizer_id,
                 exp_avg_ptr,
                 exp_avg_sq_ptr,
                 params_c.numel(),
-                nullptr,
                 (params.options().dtype() == at::kHalf));
 
     return 0;

@@ -21,7 +21,6 @@ typedef unsigned short ds_half_precision_t;
                      float* _exp_avg,                          \
                      float* _exp_avg_sq,                       \
                      size_t _param_size,                       \
-                     ds_half_precision_t* dev_param = nullptr, \
                      bool half_precision = false);
 
 class Adam_Optimizer {
@@ -55,7 +54,6 @@ public:
                   float* _exp_avg,
                   float* _exp_avg_sq,
                   size_t param_size,
-                  ds_half_precision_t* dev_param = nullptr,
                   bool half_precision = false);
 #endif
     STEP(1)
@@ -121,7 +119,6 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
                               float* _exp_avg,
                               float* _exp_avg_sq,
                               size_t _param_size,
-                              ds_half_precision_t* dev_params,
                               bool half_precision)
 {
     size_t new_rounded_size = 0;
