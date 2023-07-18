@@ -156,11 +156,11 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         #num of ranks in a ZeRO param partitioning group
         self.zero_hpz_partition_size = zero_hpz_partition_size
 
-        zpg = groups._get_zero_param_intra_parallel_group()
-        print_rank_0(f"ZeRO Stage 3 param partitioning group {self.zero_hpz_partition_size} {zpg}", force=False)
-        if self.zero_hpz_partition_size > 1 and zpg is None:
+        zero_param_parallel_group = groups._get_zero_param_intra_parallel_group()
+        print_rank_0(f"ZeRO Stage 3 param partitioning group {self.zero_hpz_partition_size} {zero_param_parallel_group}", force=False)
+        if self.zero_hpz_partition_size > 1 and zero_param_parallel_group is None:
             self._set_zero_group_parallelism()
-            zpg = groups._get_zero_param_intra_parallel_group()
+            zero_param_parallel_group = groups._get_zero_param_intra_parallel_group()
 
         self.parameter_offload = self.initialize_ds_offload(
             module=module,
@@ -174,7 +174,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             model_persistence_threshold=model_persistence_threshold,
             offload_param_config=offload_param_config,
             mpu=mpu,
-            zpg=zpg,
+            zero_param_parallel_group=zero_param_parallel_group,
             zero_quantized_weights=zero_quantized_weights,
             zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights)
 
@@ -379,7 +379,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         model_persistence_threshold,
         offload_param_config,
         mpu,
-        zpg,
+        zero_param_parallel_group,
         zero_quantized_weights,
         zero_quantized_nontrainable_weights,
     ):
@@ -394,7 +394,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                     model_persistence_threshold=model_persistence_threshold,
                                     offload_param_config=offload_param_config,
                                     mpu=mpu,
-                                    zero_param_parallel_group=zpg,
+                                    zero_param_parallel_group=zero_param_parallel_group,
                                     zero_quantized_weights=zero_quantized_weights,
                                     zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights)
 
@@ -2428,7 +2428,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         if len(self.persistent_parameters) > 0:
             self.persistent_parameters[0].partition(self.persistent_parameters)
-            self.persistent_parameters[0].all_gather(self.persistent_parameters)
+            # self.persistent_parameters[0].all_gather(self.persistent_parameters) # this will be done in checkpoint_event_epilogue() so remove it to prevent double all_gather
 
     def checkpoint_event_prologue(self):
         self._partition_all_parameters()

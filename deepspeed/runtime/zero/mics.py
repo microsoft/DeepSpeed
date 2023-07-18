@@ -156,7 +156,7 @@ class MiCS_Init(Init):
         # so that we can fallback later
         old_all_gather_coalesced = param.all_gather_coalesced
 
-        def _param_all_gather_coalesced(params, safe_mode=False, param_buffers=None):
+        def _param_all_gather_coalesced(params, param_buffers=None, **kwargs):
             """"""
             mics_comm_groups: MiCS_CommGroups = params[0].comm
             hierarchical_all_gather = has_hierarchical_all_gather_groups(mics_comm_groups)
@@ -308,22 +308,6 @@ class MiCS_Offload(DeepSpeedZeRoOffload):
     """ Wrapper to change the behavior for parameter sharding
     """
 
-    def __init__(self,
-                 module,
-                 timers,
-                 ds_config,
-                 overlap_comm=True,
-                 prefetch_bucket_size=50000000,
-                 max_reuse_distance=1000000000,
-                 max_live_parameters=1000000000,
-                 param_persistence_threshold=100000,
-                 model_persistence_threshold=sys.maxsize,
-                 offload_param_config=None,
-                 mpu=None):
-        super().__init__(module, timers, ds_config, overlap_comm, prefetch_bucket_size, max_reuse_distance,
-                         max_live_parameters, param_persistence_threshold, model_persistence_threshold,
-                         offload_param_config, mpu)
-
     def _convert_to_zero_parameters(self, ds_config, module, mpu):
         """ overload the parent class function for convert the parameters
 
@@ -404,24 +388,10 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
 
     def initialize_ds_offload(
         self,
-        module,
-        timers,
-        ds_config,
-        overlap_comm,
-        prefetch_bucket_size,
-        max_reuse_distance,
-        max_live_parameters,
-        param_persistence_threshold,
-        model_persistence_threshold,
-        offload_param_config,
-        mpu,
-        zpg=None,
-        zero_quantized_weights=False,
+        *args,
+        **kwargs,
     ):
-        assert not zero_quantized_weights and zpg is None, "MiCS is mutually exclusive with ZeRO++"
-        return MiCS_Offload(module, timers, ds_config, overlap_comm, prefetch_bucket_size, max_reuse_distance,
-                            max_live_parameters, param_persistence_threshold, model_persistence_threshold,
-                            offload_param_config, mpu)
+        return MiCS_Offload(*args, **kwargs)
 
     def partition_grads(self, params_to_release: List[Parameter], grad_partitions: List[Tensor]) -> None:
         grad_buffers = super().partition_grads(params_to_release, grad_partitions)
@@ -460,13 +430,3 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
                 grad_buff.view(-1).copy_(aggregated_buffer.narrow(0, offset, grad_buff.numel()))
                 offset += grad_buff.numel()
 
-    def load_state_dict(self,
-                        state_dict_list,
-                        load_optimizer_states=True,
-                        load_from_fp32_weights=False,
-                        checkpoint_folder=None):
-        r""" Loading the ZeRO-3/MiCS partitioned checkpoints
-        Because the self.dp_process_group is replaced with the communicator for
-        partition group we can call the load_state_dict logic from ZeRO-3.
-        """
-        super().load_state_dict(state_dict_list, load_optimizer_states, load_from_fp32_weights, checkpoint_folder)
