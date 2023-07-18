@@ -277,10 +277,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.use_separate_grad_accum = False
         if self.use_separate_grad_accum and not self.partition_gradients:
             self.use_grad_accum_for_reduction = True
-            self.reduction_dtype = self.gradient_accumulation_dtype
         else:
             self.use_grad_accum_for_reduction = False
-            self.reduction_dtype = self.dtype
 
         self.round_robin_bit16_groups = []
         self.round_robin_bit16_indices = []
@@ -298,7 +296,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             for param in param_group['params']:
                 if param.requires_grad:
                     param.grad_accum = None
-                    param.grad_reduc = None
                     trainable_parameters.append(param)
             self.bit16_groups.append(trainable_parameters)
 
@@ -658,7 +655,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if pipeline_parallel and self.contiguous_gradients:
             self.ipg_buffer = []
             buf_0 = torch.empty(int(self.reduce_bucket_size),
-                                dtype=self.reduction_dtype,
+                                dtype=self.dtype,
                                 device=get_accelerator().current_device_name())
             self.ipg_buffer.append(buf_0)
             self.ipg_index = 0
@@ -666,8 +663,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if not self.overlap_comm:
             for i, group in enumerate(self.bit16_groups):
                 for param in group:
-                    self.set_grad_reduc_pointer(param)
-                    if param.grad_reduc is not None:
+                    grad_reduc = self.get_gradient_for_reduction(param)
+                    if grad_reduc is not None:
                         self.reduce_ready_partitions_and_remove_grads(param, i)
         # reduce any pending grads in either hook/non-hook case
         self.overlapping_partition_gradients_reduce_epilogue()
@@ -828,38 +825,22 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     else:
                         param.grad_accum.add_(
                             param.grad.to(self.gradient_accumulation_dtype).view(param.grad_accum.shape))
-                    # Don't clear if you still need the native grad for reduction (stage 2)
-                    if self.use_grad_accum_for_reduction:
-                        param.grad = None
+                    param.grad = None
 
     def set_grad_accum_pointer(self):
         for group in self.bit16_groups:
             for param in group:
                 param.grad_accum = param.grad
 
+    def get_gradient_for_reduction(self, param):
+        return param.grad_accum.to(self.dtype) if self.use_grad_accum_for_reduction else param.grad
+
     # Clear the tensor the reduction gradient attribute is pointing to
     def clear_grad_reduc_pointer(self, param):
-        param.grad_reduc = None
         if self.use_grad_accum_for_reduction:
             param.grad_accum = None
         else:
             param.grad = None
-
-    # Point to the gradient tensor to use in reduction
-    def set_grad_reduc_pointer(self, param):
-        if self.use_grad_accum_for_reduction:
-            param.grad_reduc = param.grad_accum
-        else:
-            param.grad_reduc = param.grad
-
-    # Called after a memory defrag moves tensor object via copy
-    def reset_pointers_to_reduc_after_copy(self, param):
-        if self.use_grad_accum_for_reduction:
-            param.grad_accum = param.grad_reduc
-        else:
-            param.grad = param.grad_reduc
-            if self.partition_gradients or not self.use_separate_grad_accum:
-                param.grad_accum = param.grad
 
     def create_reduce_and_remove_grad_hooks(self):
         self.grad_accs = []
@@ -896,9 +877,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     ############### Independent Partition Gradient ########################
     def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):
-        if param.grad_reduc is None:
-            self.set_grad_reduc_pointer(param)
 
+        grad_reduc = self.get_gradient_for_reduction(param)
         if self.elements_in_ipg_bucket + param.numel() > self.reduce_bucket_size:
             self.report_ipg_memory_usage("In ipg_remove_grads before reduce_ipg_grads", param.numel())
             self.reduce_ipg_grads()
@@ -920,14 +900,13 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 # keeping the gradients contiguous to prevent memory fragmentation, and avoid flattening
                 new_grad_tensor = self.ipg_buffer[self.ipg_index].narrow(0, self.elements_in_ipg_bucket, param.numel())
                 new_grad_tensor.copy_(param.grad.view(-1))
-                param.grad_reduc.data = new_grad_tensor.data.view_as(param.grad_reduc)
-                self.reset_pointers_to_reduc_after_copy(param)
+                grad_reduc.data = new_grad_tensor.data.view_as(grad_reduc)
 
         self.elements_in_ipg_bucket += param.numel()
 
-        assert param.grad_reduc is not None, f"rank {dist.get_rank()} - Invalid to reduce Param {param_id} with None gradient"
+        assert grad_reduc is not None, f"rank {dist.get_rank()} - Invalid to reduce Param {param_id} with None gradient"
 
-        self.grads_in_ipg_bucket.append(param.grad_reduc)
+        self.grads_in_ipg_bucket.append(grad_reduc)
         self.params_in_ipg_bucket.append((i, param, param_id))
 
         #make sure the average tensor function knows how to average the gradients
@@ -992,13 +971,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             for i, param, param_id in self.params_in_ipg_bucket:
 
                 process_group = self.dp_process_group
+                grad_reduc = self.get_gradient_for_reduction(param)
                 #Averages gradients at parameter level if ipg has a moe param
                 #Otherwise averaging is done at the entire buffer level at the end of the loop
                 # MoE param have different groups
                 if self.ipg_bucket_has_moe_params:
                     process_group = self.expert_dp_process_group[param.group_name] if is_moe_param(
                         param) else self.dp_process_group
-                    param.grad_reduc.data.div_(dist.get_world_size(group=process_group))
+                    grad_reduc.data.div_(dist.get_world_size(group=process_group))
 
                 partition_ids = self.param_to_partition_ids[i][param_id]
                 assert all([p_id < dist.get_world_size(group=process_group) for p_id in partition_ids
@@ -1192,7 +1172,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         dest_tensor.copy_(src_tensor, non_blocking=True)
         param.grad = None  #offload only
         param.grad_accum = None  #offload only
-        param.grad_reduc = None  #offload only
 
     def complete_grad_norm_calculation_for_cpu_offload(self, params):
         total_norm = 0.0
@@ -1261,15 +1240,15 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
             see_memory_usage(f"before copying {total_size} gradients into partition")
             self.grads_in_partition = torch.empty(int(total_size),
-                                                  dtype=self.reduction_dtype,
+                                                  dtype=self.dtype,
                                                   device=get_accelerator().current_device_name())
             see_memory_usage(f"after copying {total_size} gradients into partition")
 
+        grad_reduc = self.get_gradient_for_reduction(param)
         # The allreduce buffer will be rewritten. Copy the gradients in partition to a new buffer
         new_grad_tensor = self.grads_in_partition.view(-1).narrow(0, self.grads_in_partition_offset, param.numel())
-        new_grad_tensor.copy_(param.grad_reduc.view(-1))
-        param.grad_reduc.data = new_grad_tensor.data.view_as(param.grad_reduc)
-        self.reset_pointers_to_reduc_after_copy(param)
+        new_grad_tensor.copy_(grad_reduc.view(-1))
+        grad_reduc.data = new_grad_tensor.data.view_as(grad_reduc)
         #print(f"Grad norm after copy to contiguous_buffer {param.grad.data.norm()}")
         self.grads_in_partition_offset += param.numel()
 
@@ -1543,12 +1522,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     if p.grad is not None:
                         p.grad.detach_()
                         p.grad.zero_()
-                    if p.grad_accum is not None:
-                        p.grad_accum.detach_()
-                        p.grad_accum.zero_()
-                    if p.grad_reduc is not None:
-                        p.grad_reduc.detach_()
-                        p.grad_reduc.zero_()
 
     def _model_parallel_all_reduce(self, tensor, op):
         """ Perform all reduce within model parallel group, if any.
@@ -1969,14 +1942,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.contiguous_gradients:
             self.ipg_buffer = []
             buf_0 = torch.empty(int(self.reduce_bucket_size),
-                                dtype=self.reduction_dtype,
+                                dtype=self.dtype,
                                 device=get_accelerator().current_device_name())
             self.ipg_buffer.append(buf_0)
 
             # Use double buffers to avoid data access conflict when overlap_comm is enabled.
             if self.overlap_comm:
                 buf_1 = torch.empty(int(self.reduce_bucket_size),
-                                    dtype=self.reduction_dtype,
+                                    dtype=self.dtype,
                                     device=get_accelerator().current_device_name())
                 self.ipg_buffer.append(buf_1)
             self.ipg_index = 0
