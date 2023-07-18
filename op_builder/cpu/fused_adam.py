@@ -5,8 +5,6 @@
 
 from .builder import CPUOpBuilder
 
-import sys
-
 
 class FusedAdamBuilder(CPUOpBuilder):
     BUILD_VAR = "DS_BUILD_FUSED_ADAM"
