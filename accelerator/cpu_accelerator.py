@@ -184,7 +184,10 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return False
 
     def supported_dtypes(self):
-        return [torch.float, torch.bfloat16]
+        return [
+            torch.float, torch.bfloat16, 'torch.HalfTensor', 'torch.FloatTensor', 'torch.DoubleTensor',
+            'torch.BFloat16Tensor'
+        ]
 
     # Tensor operations
 
