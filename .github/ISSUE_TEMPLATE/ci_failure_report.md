@@ -7,4 +7,4 @@ assignees: ''
 
 ---
 
-The Nightly CI for $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed.
+The Nightly CI for {{ env.GITHUB_SERVER_URL }}/{{ env.GITHUB_REPOSITORY }}/actions/runs/{{ env.GITHUB_RUN_ID }} failed.
