@@ -124,13 +124,7 @@ class TestDistAllReduce(DistributedTest):
 
 
 class TestDistInferenceAllReduce(DistributedTest):
-    device_count = get_accelerator().device_count()
-    if device_count >= 4:
-        world_size = [1, 2, 4]
-    elif device_count >= 2:
-        world_size = [1, 2]
-    else:
-        world_size = [1]
+    world_size = 4
 
     def test(self):
         x = torch.ones(1, 3).to(get_accelerator().device_name()) * (dist.get_rank() + 1)
