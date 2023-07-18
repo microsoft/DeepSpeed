@@ -1058,12 +1058,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 param_buffer = torch.empty(
                     buffer_size,
                     dtype=param_ds_tensor.dtype if not quantize else torch.int8,
-                    device=get_accelerator().current_device(),
+                    device=get_accelerator().current_device_name(),
                     requires_grad=False,
                 )
                 if not quantize:
                     handles = _dist_allgather_fn(
-                        param_ds_tensor.to(get_accelerator().current_device()),
+                        param_ds_tensor.to(get_accelerator().current_device_name()),
                         param_buffer,
                         ds_process_group,
                     )
@@ -1075,16 +1075,16 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         quantized_param = param_ds_tensor.data
                     else:
                         quantized_param, scales = self.quantizer_module.quantize(param_ds_tensor)
-                    handle = _dist_allgather_fn(quantized_param.to(get_accelerator().current_device()), param_buffer,
+                    handle = _dist_allgather_fn(quantized_param.to(get_accelerator().current_device_name()), param_buffer,
                                                 ds_process_group)
 
                     quant_scale_buffer = torch.empty(
                         scales.numel() * world_size,
                         dtype=scales.dtype,
-                        device=get_accelerator().current_device(),
+                        device=get_accelerator().current_device_name(),
                         requires_grad=False,
                     )
-                    quant_handle = _dist_allgather_fn(scales.to(get_accelerator().current_device()),
+                    quant_handle = _dist_allgather_fn(scales.to(get_accelerator().current_device_name()),
                                                       quant_scale_buffer, ds_process_group)
                     quant_info = QuantizationInfo()
                     quant_info.quantized_param = param_buffer.narrow(0, 0, param.ds_numel).view(param.ds_shape).to(
@@ -1103,7 +1103,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 flat_tensor = torch.empty(partition_sz * world_size,
                                           dtype=get_only_unique_item(p.ds_tensor.dtype
                                                                      for p in params) if not quantize else torch.int8,
-                                          device=get_accelerator().current_device(),
+                                          device=get_accelerator().current_device_name(),
                                           requires_grad=False)
                 if not quantize:
                     partitions: List[Parameter] = []
@@ -1135,29 +1135,29 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         use_secondary_tensor = True
                         if hasattr(params[0].ds_secondary_tensor, "ds_quant_scale"):
                             quantized_param = instrument_w_nvtx(torch.cat)(
-                                [p.ds_secondary_tensor.data.to(get_accelerator().current_device()) for p in params])
+                                [p.ds_secondary_tensor.data.to(get_accelerator().current_device_name()) for p in params])
                             scales = instrument_w_nvtx(torch.cat)([
-                                p.ds_secondary_tensor.ds_quant_scale.to(get_accelerator().current_device())
+                                p.ds_secondary_tensor.ds_quant_scale.to(get_accelerator().current_device_name())
                                 for p in params
                             ])
                         else:
                             quantized_param, scales = self.quantizer_module.quantize(
                                 instrument_w_nvtx(torch.cat)(
-                                    [p.ds_secondary_tensor.to(get_accelerator().current_device()) for p in params]))
+                                    [p.ds_secondary_tensor.to(get_accelerator().current_device_name()) for p in params]))
                     else:
                         if hasattr(params[0].ds_tensor, "ds_quant_scale"):
                             quantized_param = instrument_w_nvtx(
-                                torch.cat)([p.ds_tensor.data.to(get_accelerator().current_device()) for p in params])
+                                torch.cat)([p.ds_tensor.data.to(get_accelerator().current_device_name()) for p in params])
                             scales = instrument_w_nvtx(torch.cat)(
-                                [p.ds_tensor.ds_quant_scale.to(get_accelerator().current_device()) for p in params])
+                                [p.ds_tensor.ds_quant_scale.to(get_accelerator().current_device_name()) for p in params])
                         else:
                             quantized_param, scales = self.quantizer_module.quantize(
                                 instrument_w_nvtx(
-                                    torch.cat)([p.ds_tensor.to(get_accelerator().current_device()) for p in params]))
+                                    torch.cat)([p.ds_tensor.to(get_accelerator().current_device_name()) for p in params]))
                     quant_scale_buffer = torch.empty(
                         scales.numel() * world_size,
                         dtype=torch.float32,
-                        device=get_accelerator().current_device(),
+                        device=get_accelerator().current_device_name(),
                         requires_grad=False,
                     )
                     handle = _dist_allgather_fn(quantized_param, flat_tensor, ds_process_group)
