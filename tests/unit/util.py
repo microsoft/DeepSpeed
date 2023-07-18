@@ -55,10 +55,10 @@ def required_torch_version(min_version=None, max_version=None):
 
     torch_version = pkg_version.parse(torch.__version__)
 
-    if min_version and pkg_version.parse(min_version) > torch_version:
+    if min_version and pkg_version.parse(str(min_version)) > torch_version:
         return False
 
-    if max_version and pkg_version.parse(max_version) < torch_version:
+    if max_version and pkg_version.parse(str(max_version)) < torch_version:
         return False
 
     return True
