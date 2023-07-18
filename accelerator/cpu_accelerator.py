@@ -86,8 +86,8 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return None
 
     def stream(self, stream):
-        from deepspeed.runtime.utils import noop_decorator
-        return noop_decorator
+        from deepspeed.runtime.utils import noop_context
+        return noop_context()
 
     def current_stream(self, device_index=None):
         return None
