@@ -357,6 +357,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def destroy(self):
         self.parameter_offload.destroy()
+        del self.__ipg_bucket_flat_buffer
 
     def initialize_ds_offload(
         self,
@@ -1118,7 +1119,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             if safe_mode:
                 assert_ints_same_as_other_ranks([p.ds_id for p in self.params_in_ipg_bucket])
 
-            if self.contiguous_gradients and not self.reduce_scatter:
+            if self.contiguous_gradients and self.elements_in_ipg_bucket <= self.reduce_bucket_size and not self.reduce_scatter:
                 grad_bucket = self.__ipg_bucket_flat_buffer.narrow(0, 0, self.elements_in_ipg_bucket)
                 grad_partitions = self.__avg_scatter_contiguous_grads(grad_bucket)
             else:
@@ -1164,7 +1165,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
             partition = buffer_to_reduce[start_offset:end_offset]
             if param.partition_numel() != partition.numel():
-                padded_partition = torch.empty(param.partition_numel(), device=grad.device, dtype=grad.dtype)
+                padded_partition = torch.zeros(param.partition_numel(), device=grad.device, dtype=grad.dtype)
                 if partition.numel() > 0:
                     padded_partition[:partition.numel()] = partition
                 grad_partitions.append(padded_partition)
@@ -1891,7 +1892,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         # warn user about caching allocator flushes
         memory_stats = get_accelerator().memory_stats()
-        alloc_retries = memory_stats["num_alloc_retries"] if memory_stats != None else 0
+        alloc_retries = memory_stats["num_alloc_retries"] if memory_stats is not None else 0
         if alloc_retries > self.n_caching_allocator_flushes:
             if dist.get_rank() == 0:
                 logger.warning(
