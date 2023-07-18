@@ -229,7 +229,7 @@ int destroy_adam_optimizer(int optimizer_id)
 
 void multi_tensor_adam(int chunk_size,
                             at::Tensor noop_flag,
-                            std::vector<std::vector<at::Tensor>> tensor_lists,
+                            std::vector<std::vector<at::Tensor>> tensor_lists, /*gpmv*/
                             const float lr,
                             const float beta1,
                             const float beta2,
@@ -238,6 +238,12 @@ void multi_tensor_adam(int chunk_size,
                             const int mode,
                             const int bias_correction,
                             const float weight_decay) {
+    create_adam_optimizer(0);
+    for (int i = 0; i < tensor_lists[0].size(); i++) {
+        ds_adam_step(0, step, lr, beta1, beta2, epsilon, weight_decay, bias_correction,
+                     tensor_lists[1][i], tensor_lists[0][i], tensor_lists[2][i], tensor_lists[3][i]);
+    }
+    destroy_adam_optimizer(0);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
