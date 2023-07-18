@@ -677,7 +677,7 @@ class CUDAQuantizer:
 def _no_gather_coalesced(params: Iterable[Parameter]) -> AllGatherCoalescedHandle:
     for param in params:
         if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
-            raise RuntimeError(param.ds_summary())
+            raise RuntimeError(f"expect param.ds_status == ZeroParamStatus.NOT_AVAILABLE, got{param.ds_summary()}")
         param.ds_status = ZeroParamStatus.INFLIGHT
 
     params = sorted(params, key=lambda p: p.ds_id)
@@ -1001,7 +1001,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         @instrument_w_nvtx
         def all_gather_coalesced(params: Iterable[Parameter],
-                                 forward: bool,
+                                 forward: bool = True,
                                  safe_mode: bool = False,
                                  quantize: bool = False) -> AllGatherCoalescedHandle:
 
