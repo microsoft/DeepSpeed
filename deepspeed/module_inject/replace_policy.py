@@ -21,8 +21,8 @@ from .containers import InternLMLayerPolicy
 # transformer-based policies
 replace_policies = [
     HFBertLayerPolicy, HFGPTNEOLayerPolicy, GPTNEOXLayerPolicy, HFGPTJLayerPolicy, MegatronLayerPolicy,
-    HFGPT2LayerPolicy, BLOOMLayerPolicy, HFOPTLayerPolicy, HFCLIPLayerPolicy, HFDistilBertLayerPolicy, LLAMALayerPolicy,
-    InternLMLayerPolicy
+    HFGPT2LayerPolicy, BLOOMLayerPolicy, HFOPTLayerPolicy, HFCLIPLayerPolicy, HFDistilBertLayerPolicy,
+    LLAMALayerPolicy, InternLMLayerPolicy
 ]
 
 # non-transformer-based policies

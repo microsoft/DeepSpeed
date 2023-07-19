@@ -3,6 +3,10 @@
 
 # DeepSpeed Team
 
+# Copyright (c) wangruohui
+
+import sys
+
 from .base import *
 from .features import HybridSplitQKVContainer, HybridGatedMLPContainer
 from deepspeed.utils.types import ActivationFuncType, NormType
@@ -55,11 +59,11 @@ class DS_InternLMContainer(HybridGatedMLPContainer, HybridSplitQKVContainer, Bas
         Necessary to implement for `HybridSplitQKVContainer`
         """
         self.qw = self.policy.client_module.self_attn.q_proj.weight
-        self.qb = self.policy.client_module.self_attn.q_proj.weight
+        self.qb = self.policy.client_module.self_attn.q_proj.bias
         self.kw = self.policy.client_module.self_attn.k_proj.weight
-        self.kb = self.policy.client_module.self_attn.k_proj.weight
+        self.kb = self.policy.client_module.self_attn.k_proj.bias
         self.vw = self.policy.client_module.self_attn.v_proj.weight
-        self.vb = self.policy.client_module.self_attn.v_proj.weight
+        self.vb = self.policy.client_module.self_attn.v_proj.bias
 
     def set_mlp_gate(self):
         """
@@ -100,9 +104,9 @@ class DS_InternLMContainer(HybridGatedMLPContainer, HybridSplitQKVContainer, Bas
                        'attn_qkvb', [prefix + param_names[9], prefix + param_names[10], prefix + param_names[11]],
                        split_qkv=self.policy.split_qkv)
         maybe_copy(module.attention, sd, weight_quantizer, mp_replace, transformer_param_names[2],
-                    prefix + param_names[3])
+                   prefix + param_names[3])
         maybe_copy(module.attention, sd, weight_quantizer, mp_replace, transformer_param_names[3],
-                    prefix + param_names[12])
+                   prefix + param_names[12])
         maybe_copy_geglu(module.mlp, sd, weight_quantizer, mp_replace, 'inter_w',
                          [prefix + param_names[4], prefix + param_names[5]])
         maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, 'output_w', prefix + param_names[6])
@@ -120,8 +124,10 @@ class InternLMLayerPolicy(TransformerPolicy):
             norm_type=NormType.RMSNorm,
         )
         self.client_module = client_module
-        import sys
-        sys.path.append('/nvme/wangruohui/hfcache/modules')
+
+        from transformers.utils import HF_MODULES_CACHE
+
+        sys.path.append(HF_MODULES_CACHE)
         from transformers_modules.internlm.modeling_internlm import InternLMDecoderLayer
         InternLMLayerPolicy._orig_layer_class = InternLMDecoderLayer
 
