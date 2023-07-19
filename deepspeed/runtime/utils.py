@@ -51,15 +51,6 @@ class DummyOptim():
 def noop_decorator(func):
     return func
 
-class noop_context(object):
-    def __init__(self):
-        pass
-
-    def __enter__(self):
-        pass
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
 
 def ensure_directory_exists(filename):
     """Create the directory path to ``filename`` if it does not already exist.

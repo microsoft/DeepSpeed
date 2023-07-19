@@ -374,8 +374,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.reduce_bucket_size = int(reduce_bucket_size)
         self.allgather_bucket_size = int(allgather_bucket_size)
 
-        self.reduction_stream = None if get_accelerator().is_synchronized_device() else get_accelerator().Stream()
-        #self.copy_grad_stream = get_accelerator().Stream()
+        self.reduction_event = get_accelerator().Event(enable_timing=False, blocking=False)
+        self.reduction_stream = get_accelerator().Stream()
+        self.cpu_computation_stream = get_accelerator().Stream()
+        self.copy_grad_stream = get_accelerator().Stream()
         self.callback_queued = False
 
         self.param_dict = {}
@@ -902,8 +904,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def average_tensor(self, tensor):
         if self.overlap_comm:
             stream = self.reduction_stream
-            if not get_accelerator().is_synchronized_device():
-                stream.wait_stream(get_accelerator().current_stream())
+            stream.wait_stream(get_accelerator().current_stream())
         else:
             stream = get_accelerator().current_stream()
 

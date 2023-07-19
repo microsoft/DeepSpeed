@@ -119,7 +119,6 @@ def split_half_float_double_sparse(tensors):
         "torch.{}.DoubleTensor".format(device_type), "torch.{}.BFloat16Tensor".format(device_type),
         SparseTensor.type()
     ]
-    supported_types += get_accelerator().supported_dtypes()
 
     for t in tensors:
         assert t.type() in supported_types, f"attempting to reduce an unsupported grad type: {t.type()}"

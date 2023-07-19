@@ -86,8 +86,8 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return None
 
     def stream(self, stream):
-        from deepspeed.runtime.utils import noop_context
-        return noop_context()
+        from deepspeed.runtime.utils import noop_decorator
+        return noop_decorator
 
     def current_stream(self, device_index=None):
         return None
@@ -184,10 +184,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return False
 
     def supported_dtypes(self):
-        return [
-            torch.float, torch.bfloat16, 'torch.HalfTensor', 'torch.FloatTensor', 'torch.DoubleTensor',
-            'torch.BFloat16Tensor'
-        ]
+        return [torch.float, torch.bfloat16]
 
     # Tensor operations
 
@@ -251,14 +248,12 @@ class CPU_Accelerator(DeepSpeedAccelerator):
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
             from op_builder import __deepspeed__  # noqa: F401
-            from op_builder.cpu import CCLCommBuilder, FusedAdamBuilder, NotImplementedBuilder
+            from op_builder.cpu import CCLCommBuilder, NotImplementedBuilder
         except ImportError:
-            from deepspeed.ops.op_builder.cpu import CCLCommBuilder, FusedAdamBuilder, NotImplementedBuilder
+            from deepspeed.ops.op_builder.cpu import CCLCommBuilder, NotImplementedBuilder
 
         if class_name == "CCLCommBuilder":
             return CCLCommBuilder
-        elif class_name == "FusedAdamBuilder":
-            return FusedAdamBuilder
         else:
             # return a NotImplementedBuilder to avoid get NoneType[Name] in unit tests
             return NotImplementedBuilder
