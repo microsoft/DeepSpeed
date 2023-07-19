@@ -32,22 +32,22 @@ typedef unsigned short ds_half_precision_t;
                      bool adam_mode = true);
 
 #if defined(__AVX512__) or defined(__AVX256__)
-    template <int span>
-    void Step_AVX(size_t* rounded_size,
-                  float* _params,
-                  float* grads,
-                  float* _exp_avg,
-                  float* _exp_avg_sq,
-                  size_t param_size,
-                  float lr,
-                  float betta1,
-                  float betta2,
-                  float eps,
-                  float weight_decay,
-                  float bias_correction1,
-                  float bias_correction2,
-                  bool half_precision,
-                  bool adamw_mode);
+template <int span>
+void Step_AVX(size_t* rounded_size,
+              float* _params,
+              float* grads,
+              float* _exp_avg,
+              float* _exp_avg_sq,
+              size_t param_size,
+              float lr,
+              float betta1,
+              float betta2,
+              float eps,
+              float weight_decay,
+              float bias_correction1,
+              float bias_correction2,
+              bool half_precision,
+              bool adamw_mode);
 #endif
 STEP(1)
 STEP(4)
@@ -56,20 +56,20 @@ STEP(8)
 #if defined(__AVX512__) or defined(__AVX256__)
 template <int span>
 void Step_AVX(size_t* rounded_size,
-                              float* _params,
-                              float* grads,
-                              float* _exp_avg,
-                              float* _exp_avg_sq,
-                              size_t _param_size,
-                              float lr,
-                              float betta1,
-                              float betta2,
-                              float eps,
-                              float weight_decay,
-                              float bias_correction1,
-                              float bias_correction2,
-                              bool half_precision,
-                              bool adamw_mode)
+              float* _params,
+              float* grads,
+              float* _exp_avg,
+              float* _exp_avg_sq,
+              size_t _param_size,
+              float lr,
+              float betta1,
+              float betta2,
+              float eps,
+              float weight_decay,
+              float bias_correction1,
+              float bias_correction2,
+              bool half_precision,
+              bool adamw_mode)
 {
     size_t new_rounded_size = 0;
     int rshft = half_precision ? 1 : 0;

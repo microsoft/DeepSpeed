@@ -16,23 +16,37 @@ static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 // C++ interface
 
 void Step_1(float* _params,
-                            float* grads,
-                            float* _exp_avg,
-                            float* _exp_avg_sq,
-                            size_t _param_size,
-                            float lr,
-                            float betta1,
-                            float betta2,
-                            float eps,
-                            float weight_decay,
-                            float bias_correction1,
-                            float bias_correction2,
-                            bool half_precision,
-                            bool adamw_mode)
+            float* grads,
+            float* _exp_avg,
+            float* _exp_avg_sq,
+            size_t _param_size,
+            float lr,
+            float betta1,
+            float betta2,
+            float eps,
+            float weight_decay,
+            float bias_correction1,
+            float bias_correction2,
+            bool half_precision,
+            bool adamw_mode)
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<1>(&rounded_size, _params, grads, _exp_avg, _exp_avg_sq, _param_size, lr, betta1, betta2, eps, weight_decay, bias_correction1, bias_correction2, half_precision, adamw_mode);
+    Step_AVX<1>(&rounded_size,
+                _params,
+                grads,
+                _exp_avg,
+                _exp_avg_sq,
+                _param_size,
+                lr,
+                betta1,
+                betta2,
+                eps,
+                weight_decay,
+                bias_correction1,
+                bias_correction2,
+                half_precision,
+                adamw_mode);
 #endif
     if (_param_size > rounded_size) {
         float betta1_minus1 = 1 - betta1;
@@ -82,23 +96,37 @@ void Step_1(float* _params,
 }
 
 void Step_4(float* _params,
-                            float* grads,
-                            float* _exp_avg,
-                            float* _exp_avg_sq,
-                            size_t _param_size,
-                            float lr,
-                            float betta1,
-                            float betta2,
-                            float eps,
-                            float weight_decay,
-                            float bias_correction1,
-                            float bias_correction2,
-                            bool half_precision,
-                            bool adamw_mode)
+            float* grads,
+            float* _exp_avg,
+            float* _exp_avg_sq,
+            size_t _param_size,
+            float lr,
+            float betta1,
+            float betta2,
+            float eps,
+            float weight_decay,
+            float bias_correction1,
+            float bias_correction2,
+            bool half_precision,
+            bool adamw_mode)
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<4>(&rounded_size, _params, grads, _exp_avg, _exp_avg_sq, _param_size, lr, betta1, betta2, eps, weight_decay, bias_correction1, bias_correction2, half_precision, adamw_mode);
+    Step_AVX<4>(&rounded_size,
+                _params,
+                grads,
+                _exp_avg,
+                _exp_avg_sq,
+                _param_size,
+                lr,
+                betta1,
+                betta2,
+                eps,
+                weight_decay,
+                bias_correction1,
+                bias_correction2,
+                half_precision,
+                adamw_mode);
 #endif
     if (_param_size > rounded_size)
         Step_1((_params + rounded_size),
@@ -106,29 +134,49 @@ void Step_4(float* _params,
                (_exp_avg + rounded_size),
                (_exp_avg_sq + rounded_size),
                (_param_size - rounded_size),
-               lr, betta1, betta2, eps, weight_decay,
-               bias_correction1, bias_correction2,
-               half_precision, adamw_mode);
+               lr,
+               betta1,
+               betta2,
+               eps,
+               weight_decay,
+               bias_correction1,
+               bias_correction2,
+               half_precision,
+               adamw_mode);
 }
 
 void Step_8(float* _params,
-                            float* grads,
-                            float* _exp_avg,
-                            float* _exp_avg_sq,
-                            size_t _param_size,
-                            float lr,
-                            float betta1,
-                            float betta2,
-                            float eps,
-                            float weight_decay,
-                            float bias_correction1,
-                            float bias_correction2,
-                            bool half_precision,
-                            bool adamw_mode)
+            float* grads,
+            float* _exp_avg,
+            float* _exp_avg_sq,
+            size_t _param_size,
+            float lr,
+            float betta1,
+            float betta2,
+            float eps,
+            float weight_decay,
+            float bias_correction1,
+            float bias_correction2,
+            bool half_precision,
+            bool adamw_mode)
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<8>(&rounded_size, _params, grads, _exp_avg, _exp_avg_sq, _param_size, lr, betta1, betta2, eps, weight_decay, bias_correction1, bias_correction2, half_precision, adamw_mode);
+    Step_AVX<8>(&rounded_size,
+                _params,
+                grads,
+                _exp_avg,
+                _exp_avg_sq,
+                _param_size,
+                lr,
+                betta1,
+                betta2,
+                eps,
+                weight_decay,
+                bias_correction1,
+                bias_correction2,
+                half_precision,
+                adamw_mode);
 #endif
     if (_param_size > rounded_size)
         Step_4((_params + rounded_size),
@@ -136,9 +184,15 @@ void Step_8(float* _params,
                (_exp_avg + rounded_size),
                (_exp_avg_sq + rounded_size),
                (_param_size - rounded_size),
-               lr, betta1, betta2, eps, weight_decay,
-               bias_correction1, bias_correction2,
-               half_precision, adamw_mode);
+               lr,
+               betta1,
+               betta2,
+               eps,
+               weight_decay,
+               bias_correction1,
+               bias_correction2,
+               half_precision,
+               adamw_mode);
 }
 
 int ds_adam_step(int optimizer_id,
@@ -167,20 +221,25 @@ int ds_adam_step(int optimizer_id,
     float* exp_avg_ptr = (float*)exp_avg_c.data_ptr();
     float* exp_avg_sq_ptr = (float*)exp_avg_sq_c.data_ptr();
 
-    float bias_correction1 = 1.0f, bias_correction2= 1.0f;
+    float bias_correction1 = 1.0f, bias_correction2 = 1.0f;
     if (bias_correction == 1) {
         bias_correction1 = 1.0 - std::pow(beta1, step);
         bias_correction2 = 1 / sqrt(1.0 - std::pow(beta2, step));
     }
     Step_8(params_ptr,
-                grads_ptr,
-                exp_avg_ptr,
-                exp_avg_sq_ptr,
-                params_c.numel(),
-                lr, beta1, beta2, epsilon, weight_decay,
-                bias_correction1, bias_correction2,
-                (params.options().dtype() == at::kHalf),
-                adam_mode);
+           grads_ptr,
+           exp_avg_ptr,
+           exp_avg_sq_ptr,
+           params_c.numel(),
+           lr,
+           beta1,
+           beta2,
+           epsilon,
+           weight_decay,
+           bias_correction1,
+           bias_correction2,
+           (params.options().dtype() == at::kHalf),
+           adam_mode);
 
     return 0;
 }
