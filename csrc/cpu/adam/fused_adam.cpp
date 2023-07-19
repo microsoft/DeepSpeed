@@ -15,23 +15,31 @@ static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 
 // C++ interface
 
-void Adam_Optimizer::Step_1(float* _params,
+void Step_1(float* _params,
                             float* grads,
                             float* _exp_avg,
                             float* _exp_avg_sq,
                             size_t _param_size,
-                            bool half_precision)
+                            float lr,
+                            float betta1,
+                            float betta2,
+                            float eps,
+                            float weight_decay,
+                            float bias_correction1,
+                            float bias_correction2,
+                            bool half_precision,
+                            bool adamw_mode)
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<1>(&rounded_size, _params, grads, _exp_avg, _exp_avg_sq, _param_size, half_precision);
+    Step_AVX<1>(&rounded_size, _params, grads, _exp_avg, _exp_avg_sq, _param_size, lr, betta1, betta2, eps, weight_decay, bias_correction1, bias_correction2, half_precision, adamw_mode);
 #endif
     if (_param_size > rounded_size) {
-        float betta1_minus1 = 1 - _betta1;
-        float betta2_minus1 = 1 - _betta2;
+        float betta1_minus1 = 1 - betta1;
+        float betta2_minus1 = 1 - betta2;
 
-        float step_size = -1 * _alpha / _bias_correction1;
-        float w_decay = -1 * _alpha * _weight_decay;
+        float step_size = -1 * lr / bias_correction1;
+        float w_decay = -1 * lr * weight_decay;
         ds_half_precision_t* grads_cast_h;
         ds_half_precision_t* params_cast_h;
         if (half_precision) {
@@ -49,18 +57,18 @@ void Adam_Optimizer::Step_1(float* _params,
                 float param = half_precision ? (float)params_cast_h[k] : _params[k];
                 float momentum = _exp_avg[k];
                 float variance = _exp_avg_sq[k];
-                if (_weight_decay > 0 && !_adamw_mode) { grad = param * _weight_decay + grad; }
-                momentum = momentum * _betta1;
+                if (weight_decay > 0 && !adamw_mode) { grad = param * weight_decay + grad; }
+                momentum = momentum * betta1;
                 momentum = grad * betta1_minus1 + momentum;
 
-                variance = variance * _betta2;
+                variance = variance * betta2;
                 grad = grad * grad;
                 variance = grad * betta2_minus1 + variance;
 
                 grad = sqrt(variance);
-                grad = grad * _bias_correction2 + _eps;
+                grad = grad * bias_correction2 + eps;
                 grad = momentum / grad;
-                if (_weight_decay > 0 && _adamw_mode) { param += w_decay * param; }
+                if (weight_decay > 0 && adamw_mode) { param += w_decay * param; }
                 param = grad * step_size + param;
                 if (half_precision)
                     params_cast_h[k] = (ds_half_precision_t)param;
@@ -73,16 +81,24 @@ void Adam_Optimizer::Step_1(float* _params,
     }
 }
 
-void Adam_Optimizer::Step_4(float* _params,
+void Step_4(float* _params,
                             float* grads,
                             float* _exp_avg,
                             float* _exp_avg_sq,
                             size_t _param_size,
-                            bool half_precision)
+                            float lr,
+                            float betta1,
+                            float betta2,
+                            float eps,
+                            float weight_decay,
+                            float bias_correction1,
+                            float bias_correction2,
+                            bool half_precision,
+                            bool adamw_mode)
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<4>(&rounded_size, _params, grads, _exp_avg, _exp_avg_sq, _param_size, half_precision);
+    Step_AVX<4>(&rounded_size, _params, grads, _exp_avg, _exp_avg_sq, _param_size, lr, betta1, betta2, eps, weight_decay, bias_correction1, bias_correction2, half_precision, adamw_mode);
 #endif
     if (_param_size > rounded_size)
         Step_1((_params + rounded_size),
@@ -90,59 +106,29 @@ void Adam_Optimizer::Step_4(float* _params,
                (_exp_avg + rounded_size),
                (_exp_avg_sq + rounded_size),
                (_param_size - rounded_size),
-               half_precision);
+               lr, betta1, betta2, eps, weight_decay,
+               bias_correction1, bias_correction2,
+               half_precision, adamw_mode);
 }
 
-int create_adam_optimizer(int optimizer_id,
-                          float alpha = 1e-3,
-                          float betta1 = 0.9,
-                          float betta2 = 0.999,
-                          float eps = 1e-8,
-                          float weight_decay = 0,
-                          bool adamw_mode = true,
-                          bool should_log = false)
-{
-    auto opt =
-        std::make_shared<Adam_Optimizer>(alpha, betta1, betta2, eps, weight_decay, adamw_mode);
-
-    s_optimizers[optimizer_id] = opt;
-
-    if (should_log) {
-        std::string avx_type = "";
-#if defined(__AVX512__)
-        avx_type = "AVX512";
-#else
-#if defined(__AVX256__)
-        avx_type = "AVX2";
-#else
-        avx_type = "scalar";
-#endif
-#endif
-
-        printf("Adam Optimizer #%d is created with %s arithmetic capability.\n",
-               optimizer_id,
-               avx_type.c_str());
-        printf("Config: alpha=%f, betas=(%f, %f), weight_decay=%f, adam_w=%d\n",
-               alpha,
-               betta1,
-               betta2,
-               weight_decay,
-               (int)adamw_mode);
-    }
-
-    return 0;
-}
-
-void Adam_Optimizer::Step_8(float* _params,
+void Step_8(float* _params,
                             float* grads,
                             float* _exp_avg,
                             float* _exp_avg_sq,
                             size_t _param_size,
-                            bool half_precision)
+                            float lr,
+                            float betta1,
+                            float betta2,
+                            float eps,
+                            float weight_decay,
+                            float bias_correction1,
+                            float bias_correction2,
+                            bool half_precision,
+                            bool adamw_mode)
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<8>(&rounded_size, _params, grads, _exp_avg, _exp_avg_sq, _param_size, half_precision);
+    Step_AVX<8>(&rounded_size, _params, grads, _exp_avg, _exp_avg_sq, _param_size, lr, betta1, betta2, eps, weight_decay, bias_correction1, bias_correction2, half_precision, adamw_mode);
 #endif
     if (_param_size > rounded_size)
         Step_4((_params + rounded_size),
@@ -150,7 +136,9 @@ void Adam_Optimizer::Step_8(float* _params,
                (_exp_avg + rounded_size),
                (_exp_avg_sq + rounded_size),
                (_param_size - rounded_size),
-               half_precision);
+               lr, betta1, betta2, eps, weight_decay,
+               bias_correction1, bias_correction2,
+               half_precision, adamw_mode);
 }
 
 int ds_adam_step(int optimizer_id,
@@ -161,6 +149,7 @@ int ds_adam_step(int optimizer_id,
                  float epsilon,
                  float weight_decay,
                  bool bias_correction,
+                 bool adam_mode,
                  torch::Tensor& params,
                  torch::Tensor& grads,
                  torch::Tensor& exp_avg,
@@ -178,24 +167,20 @@ int ds_adam_step(int optimizer_id,
     float* exp_avg_ptr = (float*)exp_avg_c.data_ptr();
     float* exp_avg_sq_ptr = (float*)exp_avg_sq_c.data_ptr();
 
-    std::shared_ptr<Adam_Optimizer> opt =
-        std::static_pointer_cast<Adam_Optimizer>(s_optimizers[optimizer_id]);
-    opt->IncrementStep(step, beta1, beta2);
-    opt->update_state(lr, epsilon, weight_decay, bias_correction);
-
-    opt->Step_8(params_ptr,
+    float bias_correction1 = 1.0f, bias_correction2= 1.0f;
+    if (bias_correction == 1) {
+        bias_correction1 = 1.0 - std::pow(beta1, step);
+        bias_correction2 = 1 / sqrt(1.0 - std::pow(beta2, step));
+    }
+    Step_8(params_ptr,
                 grads_ptr,
                 exp_avg_ptr,
                 exp_avg_sq_ptr,
                 params_c.numel(),
-                (params.options().dtype() == at::kHalf));
-
-    return 0;
-}
-
-int destroy_adam_optimizer(int optimizer_id)
-{
-    s_optimizers.erase(optimizer_id);
+                lr, beta1, beta2, epsilon, weight_decay,
+                bias_correction1, bias_correction2,
+                (params.options().dtype() == at::kHalf),
+                adam_mode);
 
     return 0;
 }
@@ -212,7 +197,6 @@ void multi_tensor_adam(int chunk_size,
                        const int bias_correction,
                        const float weight_decay)
 {
-    create_adam_optimizer(0);
     for (int i = 0; i < tensor_lists[0].size(); i++) {
         ds_adam_step(0,
                      step,
@@ -222,21 +206,16 @@ void multi_tensor_adam(int chunk_size,
                      epsilon,
                      weight_decay,
                      bias_correction,
+                     mode,
                      tensor_lists[1][i],
                      tensor_lists[0][i],
                      tensor_lists[2][i],
                      tensor_lists[3][i]);
     }
-    destroy_adam_optimizer(0);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    /*
-    m.def("adam_update", &ds_adam_step, "DeepSpeed CPU Adam update (C++)");
-    m.def("create_adam", &create_adam_optimizer, "DeepSpeed CPU Adam (C++)");
-    m.def("destroy_adam", &destroy_adam_optimizer, "DeepSpeed CPU Adam destroy (C++)");
-    */
     m.def("multi_tensor_adam",
           &multi_tensor_adam,
           "Compute and apply gradient update to parameters for Adam optimizer");
