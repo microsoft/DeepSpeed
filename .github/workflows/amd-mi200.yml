@@ -44,10 +44,11 @@ jobs:
         run: |
           git clone https://github.com/ROCmSoftwarePlatform/apex.git
           cd apex
+          pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings="--global-option=--cpp_ext" --config-settings="--global-option=--cuda_ext" --target=/blob/amd-apex/ --upgrade .
           CURRENT_VER=$(git rev-parse HEAD)
           INSTALLED_VER=$(cat /blob/amd-apex/.venv_installed_version)
           if [[ "$CURRENT_VER" != "$INSTALLED_VER" ]]; then
-            pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--global-option=--cpp_ext" --config-settings "--global-option=--cuda_ext" --target=/blob/amd-apex/ --upgrade .
+            pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings="--global-option=--cpp_ext" --config-settings="--global-option=--cuda_ext" --target=/blob/amd-apex/ --upgrade .
             git rev-parse HEAD > /blob/amd-apex/.venv_installed_version
           fi
           echo PYTHONPATH=$PYTHONPATH:/blob/amd-apex/ >> $GITHUB_ENV
