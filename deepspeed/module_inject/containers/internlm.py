@@ -5,8 +5,6 @@
 
 # Copyright (c) wangruohui
 
-import sys
-
 from .base import *
 from .features import HybridSplitQKVContainer, HybridGatedMLPContainer
 from deepspeed.utils.types import ActivationFuncType, NormType
@@ -122,6 +120,7 @@ class DS_InternLMContainer(HybridGatedMLPContainer, HybridSplitQKVContainer, Bas
 
 
 class InternLMLayerPolicy(TransformerPolicy):
+    _orig_layer_class = None
 
     def __init__(self, client_module, inference=True):
         super().__init__(
@@ -130,12 +129,6 @@ class InternLMLayerPolicy(TransformerPolicy):
             norm_type=NormType.RMSNorm,
         )
         self.client_module = client_module
-
-        from transformers.utils import HF_MODULES_CACHE
-
-        sys.path.append(HF_MODULES_CACHE)
-        from transformers_modules.internlm.modeling_internlm import InternLMDecoderLayer
-        InternLMLayerPolicy._orig_layer_class = InternLMDecoderLayer
 
     def get_hidden_heads(self):
         return self.client_module.self_attn.q_proj.weight.shape[1], \
