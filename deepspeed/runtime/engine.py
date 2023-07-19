@@ -1142,10 +1142,6 @@ class DeepSpeedEngine(Module):
             if model_dtype == torch.bfloat16 and grad_accum_dtype == torch.float32 and self.zero_optimization_stage(
             ) == 1:
                 return BFLOAT16
-
-            if model_dtype != grad_accum_dtype:
-                raise NotImplementedError(
-                    "Model data type and gradient accumulation data type must be equal to use ZeRO")
             return ZERO_OPTIMIZATION
         elif amp_enabled:
             if model_dtype != grad_accum_dtype:
@@ -1409,9 +1405,10 @@ class DeepSpeedEngine(Module):
 
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
-        mics_shard_size = self.mics_shard_size()
 
-        model_dtype, grad_accum_dtype = self.get_data_types()
+        mics_shard_size = self.mics_shard_size()
+        model_dtype, gradient_accumulation_dtype = self.get_data_types()
+
         timers = self.timers if self.wall_clock_breakdown() else None
 
         if optimizer is None:
@@ -1467,6 +1464,7 @@ class DeepSpeedEngine(Module):
                 round_robin_gradients=round_robin_gradients,
                 has_moe_layers=self.has_moe_layers,
                 fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(),
+                gradient_accumulation_dtype=gradient_accumulation_dtype,
                 communication_data_type=self.communication_data_type,
                 elastic_checkpoint=self.zero_elastic_checkpoint())
 
@@ -1530,6 +1528,7 @@ class DeepSpeedEngine(Module):
                     gradient_predivide_factor=self.gradient_predivide_factor(),
                     gradient_accumulation_steps=self.gradient_accumulation_steps(),
                     aio_config=self.aio_config(),
+                    gradient_accumulation_dtype=gradient_accumulation_dtype,
                     communication_data_type=self.communication_data_type,
                     zero_hpz_partition_size=self.zero_hpz_partition_size(),
                     zero_quantized_weights=self.zero_quantized_weights())
@@ -1541,6 +1540,7 @@ class DeepSpeedEngine(Module):
 
     def _return_mics_optimizer(self, basic_optimizer, timers):
         from deepspeed.runtime.zero.mics import MiCS_Optimizer
+        model_dtype, gradient_accumulation_dtype = self.get_data_types()
         optimizer = MiCS_Optimizer(self.module,
                                    basic_optimizer,
                                    timers=timers,
@@ -1567,6 +1567,7 @@ class DeepSpeedEngine(Module):
                                    gradient_predivide_factor=self.gradient_predivide_factor(),
                                    gradient_accumulation_steps=self.gradient_accumulation_steps(),
                                    aio_config=self.aio_config(),
+                                   gradient_accumulation_dtype=gradient_accumulation_dtype,
                                    communication_data_type=self.communication_data_type)
         return optimizer
 
@@ -3236,24 +3237,30 @@ class DeepSpeedEngine(Module):
         e.g. in `zero_to_fp32`. Each dict entry is a pair of param names, where the key is the name
         of the variable that isn't stored and the value is the actual param holding data.
         """
-        shared_ds_ids = {}
+        shared_index = {}
         shared_params_by_full_name = {}
+
+        is_zero3_model = (self.zero_optimization_partition_weights()
+                          and any(hasattr(param, "ds_id") for param in self.module.parameters()))
 
         def get_layer_state_dict(module, prefix=""):
             # handle params
             for name, param in module.named_parameters(recurse=False):
-                if param is None or not hasattr(param, "ds_id"):
+                if param is None or (is_zero3_model and not hasattr(param, "ds_id")):
                     continue
                 key = prefix + name
-                # can't rely on param.data_ptr() as it will be reused as weights gets
-                # gathered and reduced, but param.ds_id is unique across all zero weights
+
+                # When weights are manged by stage 3, we can't rely on param.data_ptr() as it will be reused
+                # as weights get gathered and reduced, but param.ds_id is unique across all zero weights
                 # (and shared params will have the same param.ds_id)
-                if param.ds_id in shared_ds_ids:
+                param_id = param.ds_id if is_zero3_model else param.data_ptr()
+
+                if param_id in shared_index:
                     # shared weights
-                    #print(f"`{key}` is shared with `{shared_ds_ids[param.ds_id]}`")
-                    shared_params_by_full_name[key] = shared_ds_ids[param.ds_id]
+                    #print(f"`{key}` is shared with `{shared_index[param_id]}`")
+                    shared_params_by_full_name[key] = shared_index[param_id]
                 else:
-                    shared_ds_ids[param.ds_id] = key
+                    shared_index[param_id] = key
 
             for name, child in module.named_children():
                 if child is not None:
