@@ -129,10 +129,13 @@ class DeepSpeedTransformerInference(nn.Module):
             past_key_value=None,
             **kwargs):
 
+        # from deepspeed import print_tensor
         if x is not None:
             input = x
         if "hidden_states" in kwargs:
             input = kwargs["hidden_states"]
+
+        # print_tensor("block input ", input)
 
         input_mask = (input_mask if attn_mask is None else attn_mask) if attention_mask is None else attention_mask
 
@@ -179,8 +182,8 @@ class DeepSpeedTransformerInference(nn.Module):
                                               self.norm_w,
                                               self.norm_b,
                                               alibi)
-
-            # print("attention input ", input)
+            # print_tensor("attention_output ", attention_output)
+            # print_tensor("inp_norm ", inp_norm)
             # print("input norm", inp_norm)
             # print("attention output ", attention_output)
             # print("key ", key)
@@ -193,6 +196,7 @@ class DeepSpeedTransformerInference(nn.Module):
             if not self.config.pre_layer_norm:
                 output = inference_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
 
+            # print_tensor("mlp_output", output)
             output = output.to(input_type)
         if get_present:
             output = (output, presents)

@@ -342,3 +342,13 @@ def init_inference(model, config=None, **kwargs):
     engine = InferenceEngine(model, config=ds_inference_config)
 
     return engine
+
+
+def print_tensor(name, tensor):
+    import os
+    local_rank = int(os.environ.get('LOCAL_RANK', 0))
+    print(f"{name} on {local_rank}", tensor.shape,
+          tensor.mean().item(),
+          tensor.min().item(),
+          tensor.max().item(),
+          tensor.std().item())
