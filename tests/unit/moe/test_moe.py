@@ -6,6 +6,7 @@
 import torch
 import deepspeed
 import pytest
+import gc
 from unit.common import DistributedTest
 from unit.simple_model import SimplePRMoEModel, SimpleMoEModel, sequence_dataloader
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer, is_moe_param
@@ -102,6 +103,7 @@ class TestMoE(DistributedTest):
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
+            gc.collect()  # Must do this or we get a memory leak in this test
 
 
 @pytest.mark.parametrize("ep_size, use_residual", [(2, True), (2, False)])
