@@ -155,12 +155,12 @@ class DeepSpeedSelfAttention(nn.Module):
                                     bias=self._attn_qkvb,
                                     gamma=norm_w,
                                     beta=norm_b)
-        print("QKV out")
-        print(qkv_out[0].shape)
-        print(qkv_out[0][:,:,:4096].mean())
-        print(qkv_out[0][:,:,4096:8192].mean())
-        print(qkv_out[0][:,:,8192:12288].mean())
-        print(qkv_out[0])
+        # print("QKV out")
+        # print(qkv_out[0].shape)
+        # print(qkv_out[0][:,:,:4096].mean())
+        # print(qkv_out[0][:,:,4096:8192].mean())
+        # print(qkv_out[0][:,:,8192:12288].mean())
+        # print(qkv_out[0])
 
         context_layer, key_layer, value_layer = self.compute_attention(qkv_out=qkv_out,
                                                                        input_mask=input_mask,

@@ -180,9 +180,9 @@ class DeepSpeedTransformerInference(nn.Module):
                                               self.norm_b,
                                               alibi)
 
-            print("attention input ", input)
-            print("input norm", inp_norm)
-            print("attention output ", attention_output)
+            # print("attention input ", input)
+            # print("input norm", inp_norm)
+            # print("attention output ", attention_output)
             # print("key ", key)
             # print("value ", value)
 
