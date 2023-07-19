@@ -3,13 +3,13 @@
 
 // DeepSpeed Team
 
-#include "cpu_adam.h"
 #include <torch/extension.h>
 #include <cassert>
 #include <iostream>
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
+#include "cpu_adam.h"
 
 static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 
@@ -24,13 +24,7 @@ void Adam_Optimizer::Step_1(float* _params,
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<1>(&rounded_size,
-                _params,
-                grads,
-                _exp_avg,
-                _exp_avg_sq,
-                _param_size,
-                half_precision);
+    Step_AVX<1>(&rounded_size, _params, grads, _exp_avg, _exp_avg_sq, _param_size, half_precision);
 #endif
     if (_param_size > rounded_size) {
         float betta1_minus1 = 1 - _betta1;
@@ -88,13 +82,7 @@ void Adam_Optimizer::Step_4(float* _params,
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<4>(&rounded_size,
-                _params,
-                grads,
-                _exp_avg,
-                _exp_avg_sq,
-                _param_size,
-                half_precision);
+    Step_AVX<4>(&rounded_size, _params, grads, _exp_avg, _exp_avg_sq, _param_size, half_precision);
 #endif
     if (_param_size > rounded_size)
         Step_1((_params + rounded_size),
@@ -154,13 +142,7 @@ void Adam_Optimizer::Step_8(float* _params,
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<8>(&rounded_size,
-                _params,
-                grads,
-                _exp_avg,
-                _exp_avg_sq,
-                _param_size,
-                half_precision);
+    Step_AVX<8>(&rounded_size, _params, grads, _exp_avg, _exp_avg_sq, _param_size, half_precision);
 #endif
     if (_param_size > rounded_size)
         Step_4((_params + rounded_size),
@@ -219,20 +201,31 @@ int destroy_adam_optimizer(int optimizer_id)
 }
 
 void multi_tensor_adam(int chunk_size,
-                            at::Tensor noop_flag,
-                            std::vector<std::vector<at::Tensor>> tensor_lists, /*gpmv*/
-                            const float lr,
-                            const float beta1,
-                            const float beta2,
-                            const float epsilon,
-                            const int step,
-                            const int mode,
-                            const int bias_correction,
-                            const float weight_decay) {
+                       at::Tensor noop_flag,
+                       std::vector<std::vector<at::Tensor>> tensor_lists, /*gpmv*/
+                       const float lr,
+                       const float beta1,
+                       const float beta2,
+                       const float epsilon,
+                       const int step,
+                       const int mode,
+                       const int bias_correction,
+                       const float weight_decay)
+{
     create_adam_optimizer(0);
     for (int i = 0; i < tensor_lists[0].size(); i++) {
-        ds_adam_step(0, step, lr, beta1, beta2, epsilon, weight_decay, bias_correction,
-                     tensor_lists[1][i], tensor_lists[0][i], tensor_lists[2][i], tensor_lists[3][i]);
+        ds_adam_step(0,
+                     step,
+                     lr,
+                     beta1,
+                     beta2,
+                     epsilon,
+                     weight_decay,
+                     bias_correction,
+                     tensor_lists[1][i],
+                     tensor_lists[0][i],
+                     tensor_lists[2][i],
+                     tensor_lists[3][i]);
     }
     destroy_adam_optimizer(0);
 }

@@ -15,12 +15,12 @@
 #include <cmath>
 typedef unsigned short ds_half_precision_t;
 
-#define STEP(SPAN)                                             \
-    void Step_##SPAN(float* _params,                           \
-                     float* grads,                             \
-                     float* _exp_avg,                          \
-                     float* _exp_avg_sq,                       \
-                     size_t _param_size,                       \
+#define STEP(SPAN)                       \
+    void Step_##SPAN(float* _params,     \
+                     float* grads,       \
+                     float* _exp_avg,    \
+                     float* _exp_avg_sq, \
+                     size_t _param_size, \
                      bool half_precision = false);
 
 class Adam_Optimizer {
@@ -42,9 +42,7 @@ public:
           _adamw_mode(adamw_mode)
     {
     }
-    ~Adam_Optimizer()
-    {
-    }
+    ~Adam_Optimizer() {}
 
 #if defined(__AVX512__) or defined(__AVX256__)
     template <int span>
@@ -108,7 +106,6 @@ private:
     float _bias_correction2;
 
     bool _adamw_mode;
-
 };
 
 #if defined(__AVX512__) or defined(__AVX256__)
