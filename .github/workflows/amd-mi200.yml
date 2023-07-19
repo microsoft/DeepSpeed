@@ -44,7 +44,6 @@ jobs:
         run: |
           git clone https://github.com/ROCmSoftwarePlatform/apex.git
           cd apex
-          git rev-parse HEAD > /blob/amd-apex/.venv_installed_version
           CURRENT_VER=$(git rev-parse HEAD)
           INSTALLED_VER=$(cat /blob/amd-apex/.venv_installed_version)
           if [[ "$CURRENT_VER" != "$INSTALLED_VER" ]]; then
