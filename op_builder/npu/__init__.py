@@ -6,4 +6,4 @@
 
 # NPU related operators will be added in the future.
 
-from .no_impl import NPUNotImplementedBuilder
+from .no_impl import NotImplementedBuilder

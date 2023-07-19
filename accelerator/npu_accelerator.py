@@ -217,12 +217,12 @@ class NPU_Accelerator(DeepSpeedAccelerator):
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
             from op_builder import __deepspeed__  # noqa: F401
-            from op_builder.npu import NPUNotImplementedBuilder
+            from op_builder.npu import NotImplementedBuilder
         except ImportError:
-            from deepspeed.ops.op_builder.npu import NPUNotImplementedBuilder
+            from deepspeed.ops.op_builder.npu import NotImplementedBuilder
 
         # return a NPUNotImplementedBuilder to avoid get NoneType[Name] in unit tests
-        return NPUNotImplementedBuilder
+        return NotImplementedBuilder
 
     def build_extension(self):
         from torch.utils.cpp_extension import BuildExtension

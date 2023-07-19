@@ -6,9 +6,9 @@
 from .builder import NPUOpBuilder
 
 
-class NPUNotImplementedBuilder(NPUOpBuilder):
-    BUILD_VAR = "DS_BUILD_NPU_NOT_IMPLEMENTED"
-    NAME = "deepspeed_npu_not_implemented"
+class NotImplementedBuilder(NPUOpBuilder):
+    BUILD_VAR = "DS_BUILD_NOT_IMPLEMENTED"
+    NAME = "deepspeed_not_implemented"
 
     def __init__(self, name=None):
         name = self.NAME if name is None else name
