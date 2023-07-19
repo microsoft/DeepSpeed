@@ -4,7 +4,7 @@ runs:
   using: "composite"
   steps:
     - id: open-issue-on-fail
-      if: ${{ failure() }}
+      if: always()
       uses: JasonEtco/create-an-issue@v2
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
