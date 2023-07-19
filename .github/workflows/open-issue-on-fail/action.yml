@@ -1,0 +1,13 @@
+name: Open Issue on Test Failure
+
+runs:
+  using: "composite"
+  steps:
+    - id: open-issue-on-fail
+      if: failure()
+      uses: JasonEtco/create-an-issue@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        filename: ./.github/ISSUE_TEMPLATE/ci_failure_report.md
+        update_existing: true
