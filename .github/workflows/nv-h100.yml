@@ -56,4 +56,3 @@ jobs:
 
       - id: open-issue-on-fail
         uses: ./.github/workflows/open-issue-on-fail
-
