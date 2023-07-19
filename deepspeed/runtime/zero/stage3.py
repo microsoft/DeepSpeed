@@ -188,7 +188,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self.device = get_accelerator().current_device_name() if not self.offload_optimizer else OffloadDeviceEnum.cpu
         ### streams used for overlapping computation with communication
-        self.reduce_and_partition_stream = get_accelerator().Stream() if overlap_comm else get_accelerator(
+        self.reduce_and_partition_stream = None if get_accelerator().is_synchronized_device() else get_accelerator().Stream() if overlap_comm else get_accelerator(
         ).default_stream()
 
         ############################################################################
@@ -996,7 +996,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.__reduce_and_partition_ipg_grads()
         self.report_ipg_memory_usage(f"In ipg_epilogue after reduce_ipg_grads", 0)
 
-        self.reduce_and_partition_stream.synchronize()
+        if not get_accelerator().is_synchronized_device():
+            self.reduce_and_partition_stream.synchronize()
 
         #in case of cpu offload, averaged gradients are already in fp32_partitioned_groups_flat.grad
         #TODO: use a similar code path for both cpu_offload and non-cpu offload
@@ -1083,7 +1084,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     @instrument_w_nvtx
     @torch.no_grad()
     def __add_grad_to_ipg_bucket(self, param: Parameter) -> None:
-        self.reduce_and_partition_stream.wait_stream(get_accelerator().default_stream())
+        if not get_accelerator().is_synchronized_device():
+            self.reduce_and_partition_stream.wait_stream(get_accelerator().default_stream())
 
         if self.contiguous_gradients and self.elements_in_ipg_bucket + param.grad.numel() < self.reduce_bucket_size:
             # move the gradient to a contiguous buffer
@@ -1092,7 +1094,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 new_grad_tensor = self.__ipg_bucket_flat_buffer.narrow(0, self.elements_in_ipg_bucket,
                                                                        param.grad.numel()).view_as(param.grad)
                 new_grad_tensor.copy_(param.grad, non_blocking=True)
-                param.grad.record_stream(get_accelerator().current_stream())
+                if not get_accelerator().is_synchronized_device():
+                    param.grad.record_stream(get_accelerator().current_stream())
                 param.grad.data = new_grad_tensor
 
         self.params_in_ipg_bucket.append(param)
@@ -1130,9 +1133,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
             self.params_in_ipg_bucket.clear()
 
-            event = get_accelerator().Event()
-            event.record()
-            self.param_reduce_events.append(event)
+            if not get_accelerator().is_synchronized_device():
+                event = get_accelerator().Event()
+                event.record()
+                self.param_reduce_events.append(event)
 
     @instrument_w_nvtx
     def __avg_scatter_contiguous_grads(self, buffer_to_reduce: Tensor) -> List[Tensor]:
@@ -1317,7 +1321,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                         fp32_grad_tensor.copy_(grad_buffer)
 
             # free the gradient
-            param.grad.record_stream(get_accelerator().current_stream())
+            if not get_accelerator().is_synchronized_device():
+                param.grad.record_stream(get_accelerator().current_stream())
             param.grad = None
 
         if self.offload_optimizer and self.swap_optimizer:
@@ -1690,8 +1695,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # release all the gradient since we have already created a necessary copy in dp_grad_partition
         self.zero_grad(set_to_none=True)
 
-        for grad in filter(lambda g: get_accelerator().on_accelerator(g), self.averaged_gradients[sub_group_id]):
-            grad.record_stream(get_accelerator().current_stream())
+        if not get_accelerator().is_synchronized_device():
+            for grad in filter(lambda g: get_accelerator().on_accelerator(g), self.averaged_gradients[sub_group_id]):
+                grad.record_stream(get_accelerator().current_stream())
 
         self.averaged_gradients[sub_group_id] = None
 
@@ -1979,7 +1985,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 overflow_gpu = self.inf_or_nan_tracker.clone().to(torch.uint8)
                 self.inf_or_nan_tracker.zero_()
 
-            get_accelerator().default_stream().wait_stream(self.reduce_and_partition_stream)
+            if not get_accelerator().is_synchronized_device():
+                get_accelerator().default_stream().wait_stream(self.reduce_and_partition_stream)
             dist.all_reduce(overflow_gpu, op=dist.ReduceOp.MAX, group=self.dp_process_group)
 
         else:
@@ -2049,7 +2056,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         """get fp32 gradient partition dictionary
         accessed as grad_dict[parameter_group_index][parameter_index]
         """
-        self.reduce_and_partition_stream.synchronize()
+        if not get_accelerator().is_synchronized_device():
+            self.reduce_and_partition_stream.synchronize()
         grad_dict = collections.defaultdict(dict)
         if self.offload_optimizer:
             for group in self.fp16_groups:
@@ -2083,7 +2091,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if not param.requires_grad:
             return None
 
-        self.reduce_and_partition_stream.synchronize()
+        if not get_accelerator().is_synchronized_device():
+            self.reduce_and_partition_stream.synchronize()
 
         if self.offload_optimizer:
             group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
@@ -2098,7 +2107,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if not param.requires_grad:
             return None
 
-        self.reduce_and_partition_stream.synchronize()
+        if not get_accelerator().is_synchronized_device():
+            self.reduce_and_partition_stream.synchronize()
         group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
 
         if self._swappable_optimizer_subgroup(group_idx):
