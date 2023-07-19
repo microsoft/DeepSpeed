@@ -293,7 +293,6 @@ class DeepSpeedZeRoOffload(object):
         self.partition_all_parameters()
 
     def _convert_to_zero_parameters(self, ds_config, module, mpu):
-        # import pdb; pdb.set_trace()
         non_zero_params = [p for p in module.parameters() if not is_zero_param(p)]
         if non_zero_params:
             zero_params = [p for p in module.parameters() if is_zero_param(p)]

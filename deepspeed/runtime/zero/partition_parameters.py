@@ -328,14 +328,10 @@ class InsertPostInitMethodToModuleSubClasses(object):
             top_level_context = None
 
             if dist.get_rank() == 0:
-                # import pdb; pdb.set_trace()
                 billion_elems = InsertPostInitMethodToModuleSubClasses.num_module_elements / 1e9
                 num_params = InsertPostInitMethodToModuleSubClasses.num_module_parameters
-                billion_init_elems = InsertPostInitMethodToModuleSubClasses.num_init_elements / 1e9
-                num_init_params = InsertPostInitMethodToModuleSubClasses.num_init_parameters
                 logger.info(
-                    f"finished initializing model - num_params = {num_params}, num_elems = {billion_elems:.2f}B, num_init_params = {num_init_params}, num_init_elems = {billion_init_elems:.2f}B"
-                )
+                    f"finished initializing model - num_params = {num_params}, num_elems = {billion_elems:.2f}B")
 
         # Now that we cleaned up the metaclass injection, raise the exception.
         if exc_type is not None:
@@ -393,11 +389,6 @@ class InsertPostInitMethodToModuleSubClasses(object):
                     4. re-partitions the parameters
                     """
 
-                    # if not all(is_zero_param(p) for p in module_to_apply_fn_to.parameters(recurse=False)):
-                    # import pdb; pdb.set_trace()
-                    # non_init_params = [p for p in module_to_apply_fn_to.parameters(recurse=False) if not is_zero_param(p)]
-                    # zero_params = [p for p in module_to_apply_fn_to.parameters() if is_zero_param(p)]
-                    # zero_params[0].convert_to_zero_parameters(param_list=non_init_params)
                     # TODO Delay error checking for dangling partitioned parameters to post module init
                     # raise RuntimeError(f"not all parameters for {module_to_apply_fn_to.__class__.__name__}, "
                     #                    f"were zero params, is it possible that the parameters were "
@@ -917,7 +908,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         for param in param_list:
             if is_zero_param(param):
                 continue
-            # TODO reuse inner logic of __post_init_method
+
             param.data = param.data.to(self.local_device)
             self._zero_init_param(param)
 
