@@ -1144,7 +1144,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def set_norm_for_param_grad_in_gpu(self, param):
         param_id = self.get_param_id(param)
         if param.grad_accum is None:
-            accumulated_grad = param.grad_reduc
+            accumulated_grad = param.grad
         else:
             accumulated_grad = param.grad_accum
 
@@ -1163,7 +1163,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         dest_tensor = self.single_partition_of_fp32_groups[i].grad.view(-1).narrow(0, dest_offset, num_elements)
 
         if param.grad_accum is None:
-            src_tensor = param.grad_reduc.view(-1).narrow(0, source_offset, num_elements)
+            src_tensor = param.grad.view(-1).narrow(0, source_offset, num_elements)
         else:
             src_tensor = param.grad_accum.view(-1).narrow(0, source_offset, num_elements)
         if not self.fp16_master_weights_and_gradients:
@@ -1171,7 +1171,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         dest_tensor.copy_(src_tensor, non_blocking=True)
         param.grad = None  #offload only
-        param.grad_accum = None  #offload only
 
     def complete_grad_norm_calculation_for_cpu_offload(self, params):
         total_norm = 0.0
