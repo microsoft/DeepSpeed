@@ -22,4 +22,4 @@ class FusedAdamBuilder(CPUOpBuilder):
         return ['csrc/cpu/adam/fused_adam.cpp']
 
     def include_paths(self):
-        return ['csrc/cpu/includes', 'csrc/cpu/adam']
+        return ['csrc/includes', 'csrc/cpu/adam']
