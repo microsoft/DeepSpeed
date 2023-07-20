@@ -33,7 +33,7 @@ from deepspeed.accelerator import get_accelerator
 DLTS_HOSTFILE = "/job/hostfile"
 EXPORT_ENVS = ['MLFLOW', 'NCCL', 'PYTHON', 'MV2', 'UCX']
 EXPORT_ENVS += NEBULA_EXPORT_ENVS
-DEEPSPEED_ENVIRONMENT_NAME = ".deepspeed_env"
+DEEPSPEED_ENVIRONMENT_NAME = os.getenv("DEEPSPEED_ENV_FILE", ".deepspeed_env")
 DEEPSPEED_ENVIRONMENT_PATHS = [os.path.expanduser("~"), '.']
 PDSH_MAX_FAN_OUT = 1024
 
@@ -546,6 +546,7 @@ def main(args=None):
         for environ_path in DEEPSPEED_ENVIRONMENT_PATHS:
             environ_file = os.path.join(environ_path, DEEPSPEED_ENVIRONMENT_NAME)
             if os.path.isfile(environ_file):
+                logger.info(f"deepspeed_env file = {environ_file}")
                 with open(environ_file, 'r') as fd:
                     for var in fd.readlines():
                         key, val = var.split('=', maxsplit=1)
