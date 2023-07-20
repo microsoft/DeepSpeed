@@ -139,7 +139,11 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return
 
     def memory_stats(self, device_index=None):
-        return None
+        mem = self.get_rss()
+        mem_stat = {}
+        mem_stat['allocated_bytes.all.current'] = mem
+        mem_stat['allocated_bytes.all.peak'] = self.max_mem
+        return mem_stat
 
     def reset_peak_memory_stats(self, device_index=None):
         self.reset_rss()

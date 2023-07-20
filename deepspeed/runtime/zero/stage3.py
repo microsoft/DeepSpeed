@@ -188,8 +188,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self.device = get_accelerator().current_device_name() if not self.offload_optimizer else OffloadDeviceEnum.cpu
         ### streams used for overlapping computation with communication
-        self.reduce_and_partition_stream = None if get_accelerator().is_synchronized_device() else get_accelerator().Stream() if overlap_comm else get_accelerator(
-        ).default_stream()
+        self.reduce_and_partition_stream = None if get_accelerator().is_synchronized_device() else get_accelerator(
+        ).Stream() if overlap_comm else get_accelerator().default_stream()
 
         ############################################################################
 
@@ -1898,7 +1898,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         # warn user about caching allocator flushes
         memory_stats = get_accelerator().memory_stats()
-        alloc_retries = memory_stats["num_alloc_retries"] if memory_stats is not None else 0
+        alloc_retries = memory_stats.get("num_alloc_retries")
+        if alloc_retries == None:
+            alloc_retries = 0
         if alloc_retries > self.n_caching_allocator_flushes:
             if dist.get_rank() == 0:
                 logger.warning(
