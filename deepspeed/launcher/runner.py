@@ -549,12 +549,14 @@ def main(args=None):
         else:
             cmd = runner.get_cmd(env, active_resources)
 
-    logger.info(f"deepspeed_env name/path = {DEEPSPEED_ENVIRONMENT_NAME}")
+    logger.info(f"deepspeed_env name/path = {DEEPSPEED_ENVIRONMENT_PATHS}")
     for environ_path in DEEPSPEED_ENVIRONMENT_PATHS:
         environ_file = DEEPSPEED_ENVIRONMENT_NAME
         # handle if users to enter path for `DS_ENV_FILE`
+        logger.info(f"deepspeed_env name/path 1 = {DEEPSPEED_ENVIRONMENT_NAME}")
         if not os.path.isfile(environ_file):
             environ_file = os.path.join(environ_path, DEEPSPEED_ENVIRONMENT_NAME)
+            logger.info(f"deepspeed_env name/path 2 = {environ_file}")
         if os.path.isfile(environ_file):
             logger.info(f"deepspeed_env file = {environ_file}")
             with open(environ_file, 'r') as fd:
