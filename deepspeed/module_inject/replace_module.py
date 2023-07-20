@@ -304,6 +304,9 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
     seed = -1
     local_rank = -1
 
+    global num_heads
+    num_heads = -1
+
     mp_replace = ReplaceWithTensorSlicing(mp_group=config.tensor_parallel.tp_group,
                                           mp_size=config.tensor_parallel.tp_size)  #, out_dim=0, in_dim=1)
 
@@ -364,6 +367,11 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         return _container.module
 
+    def get_shard_size(total_size, num_slices):
+        num_units = num_heads
+        my_slices = num_units // num_slices + (1 if dist.get_rank() < (num_units % num_slices) else 0)
+        return total_size // num_units * my_slices
+
     def replace_wo_policy(module, all_reduce_linears, prefix="", state_dict=None):
         mp_size = config.tensor_parallel.tp_size
         mp_group = config.tensor_parallel.tp_group
@@ -374,12 +382,11 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
             mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
             weight_shape = child.weight.shape
             if name in all_reduce_linears:
-                new_weight = torch.empty((
-                    weight_shape[1] if conv_linear_layer else weight_shape[0],
-                    (weight_shape[0] if conv_linear_layer else weight_shape[1]) // mp_size,
-                ),
-                                         device=child.weight.device,
-                                         dtype=child.weight.dtype)
+                new_weight = torch.empty(
+                    (weight_shape[1] if conv_linear_layer else weight_shape[0],
+                     get_shard_size(weight_shape[0] if conv_linear_layer else weight_shape[1], mp_size)),
+                    device=child.weight.device,
+                    dtype=child.weight.dtype)
                 if conv_linear_layer:
                     child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
                 data = mp_replace.copy(new_weight, child.weight.data)
@@ -391,8 +398,8 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                             torch.nn.parameter.Parameter(new_bias.to(get_accelerator().current_device_name())), mp_group)
             else:
                 new_weight = torch.empty((
-                    (weight_shape[1] if conv_linear_layer else weight_shape[0]) // mp_size,
-                    weight_shape[0] // mp_size if conv_linear_layer else weight_shape[1],
+                    get_shard_size(weight_shape[1] if conv_linear_layer else weight_shape[0], mp_size),
+                    get_shard_size(weight_shape[0], mp_size) if conv_linear_layer else weight_shape[1],
                 ),
                                          device=child.weight.device,
                                          dtype=child.weight.dtype)
@@ -400,7 +407,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                     child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
                 data = mp_replace.copy(new_weight, child.weight.data)
 
-                new_bias = torch.empty((weight_shape[0] // mp_size),
+                new_bias = torch.empty(get_shard_size(weight_shape[0], mp_size),
                                        device=child.weight.device,
                                        dtype=child.weight.dtype)
                 bias_data = None if child.bias is None else mp_replace.copy(new_bias, child.bias.data).to(
@@ -412,13 +419,13 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
             if getattr(child, "replaced", False) == True:
                 return
             mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
-            new_weight = torch.empty((child.weight.shape[0], child.weight.shape[1] // mp_size),
+            new_weight = torch.empty((child.weight.shape[0], get_shard_size(child.weight.shape[1], mp_size)),
                                      device=child.weight.device,
                                      dtype=child.weight.dtype)
             data = mp_replace.copy(new_weight,
                                    child.weight.ds_tensor.data if hasattr(child.weight, 'ds_tensor') else \
                                    child.weight.data)
-            new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // mp_size)
+            new_embedding = nn.Embedding(child.weight.shape[0], get_shard_size(child.weight.shape[1], mp_size))
             new_embedding.weight.data.copy_(data)
             setattr(child, "replaced", True)
             return new_embedding
@@ -432,8 +439,13 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
             ]:
                 if hasattr(child, param):
                     param_val = getattr(child, param)
-                    assert param_val % mp_size == 0, f"{param} ({param_val}) must be divisible by mp_size ({mp_size})"
-                    setattr(child, param, param_val // mp_size)
+                    if param in ["n_heads", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads"]:
+                        global num_heads
+                        num_heads = param_val
+                        setattr(child, param, param_val // mp_size + (1 if dist.get_rank() <
+                                                                      (param_val % mp_size) else 0))
+                    else:
+                        setattr(child, param, get_shard_size(param_val, mp_size))
             setattr(child, "replaced", True)
 
         conv_linear_layer = False
