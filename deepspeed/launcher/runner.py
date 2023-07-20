@@ -176,10 +176,13 @@ def parse_args(args=None):
                         action="store_true",
                         help="Enable elastic training support in DeepSpeed.")
 
-    parser.add_argument("user_script", type=str, help="User script to launch, followed by any required "
+    parser.add_argument("user_script",
+                        type=str,
+                        help="User script to launch, followed by any required "
                         "arguments.")
 
-    parser.add_argument('user_args', nargs=argparse.REMAINDER)
+    parser.add_argument('user_args',
+                        nargs=argparse.REMAINDER)
 
     parser.add_argument("--bind_cores_to_rank",
                         action="store_true",
