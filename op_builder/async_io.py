@@ -39,7 +39,6 @@ class AsyncIOBuilder(OpBuilder):
             '-g',
             '-Wall',
             '-O0',
-            '-std=c++17',
             '-shared',
             '-fPIC',
             '-Wno-reorder',
