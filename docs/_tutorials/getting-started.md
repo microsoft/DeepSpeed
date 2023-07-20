@@ -237,7 +237,7 @@ dot-file named `.deepspeed_env` that contains a new-line separated list of
 `VAR=VAL` entries. The DeepSpeed launcher will look in the local path you are
 executing from and also in your home directory (`~/`). If you would like to
 override the default name of this file with your own, you can specify this
-with the environment variable, `DEEPSPEED_ENV_FILE`.  This is mostly useful
+with the environment variable, `DS_ENV_FILE`.  This is mostly useful
 if you are launching multiple jobs that all require different variables.
 
 As a concrete example, some clusters require special NCCL variables to set
