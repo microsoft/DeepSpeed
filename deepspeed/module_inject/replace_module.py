@@ -304,9 +304,6 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
     seed = -1
     local_rank = -1
 
-    global num_heads
-    num_heads = -1
-
     mp_replace = ReplaceWithTensorSlicing(mp_group=config.tensor_parallel.tp_group,
                                           mp_size=config.tensor_parallel.tp_size)  #, out_dim=0, in_dim=1)
 
@@ -368,7 +365,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         return _container.module
 
     def get_shard_size(total_size, num_slices):
-        num_units = num_heads
+        num_units = model_config.num_attention_heads
         my_slices = num_units // num_slices + (1 if dist.get_rank() < (num_units % num_slices) else 0)
         return total_size // num_units * my_slices
 
@@ -440,8 +437,6 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 if hasattr(child, param):
                     param_val = getattr(child, param)
                     if param in ["n_heads", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads"]:
-                        global num_heads
-                        num_heads = param_val
                         setattr(child, param, param_val // mp_size + (1 if dist.get_rank() <
                                                                       (param_val % mp_size) else 0))
                     else:
