@@ -975,6 +975,7 @@ def get_inactive_params(param_list):
     return [param for param in param_list if (hasattr(param, 'ds_id') and \
                             param.ds_status == ZeroParamStatus.NOT_AVAILABLE)]
 
+
 def required_torch_version(min_version=None, max_version=None):
     assert min_version or max_version, "Must provide a min_version or max_version argument"
 

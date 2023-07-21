@@ -3,8 +3,6 @@
 
 # DeepSpeed Team
 
-import torch
-
 from runtime.utils import required_torch_version
 
 
