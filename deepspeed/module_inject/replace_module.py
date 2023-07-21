@@ -365,9 +365,15 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         return _container.module
 
     def get_shard_size(total_size, num_slices):
-        num_heads = model_config.num_attention_heads
-        my_slices = num_heads // num_slices + (1 if dist.get_rank() < (num_heads % num_slices) else 0)
-        return total_size // num_heads * my_slices
+        if hasattr(model_config, 'num_attention_heads'):
+            num_heads = model_config.num_attention_heads
+            my_slices = num_heads // num_slices + (1 if dist.get_rank() < (num_heads % num_slices) else 0)
+            return total_size // num_heads * my_slices
+        else:
+            if total_size % num_slices == 0:
+                return total_size // num_slices
+            else:
+                assert False, f"Number of attention heads ({total_size}) must be divisible by mp_size ({num_slices})"
 
     def replace_wo_policy(module, all_reduce_linears, prefix="", state_dict=None):
         mp_size = config.tensor_parallel.tp_size
