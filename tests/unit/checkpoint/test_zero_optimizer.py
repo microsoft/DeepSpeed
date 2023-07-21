@@ -10,7 +10,7 @@ from deepspeed.accelerator import get_accelerator
 
 from unit.common import DistributedTest, DistributedFixture
 from unit.simple_model import *
-from unit.util import required_torch_version
+from runtime.utils import required_torch_version
 
 from unit.checkpoint.common import *
 

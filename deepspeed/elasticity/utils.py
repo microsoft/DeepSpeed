@@ -5,7 +5,7 @@
 
 import torch
 
-from unit.util import required_torch_version
+from runtime.utils import required_torch_version
 
 
 def is_torch_elastic_compatible():
