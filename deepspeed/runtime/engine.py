@@ -117,7 +117,7 @@ def split_half_float_double_sparse(tensors):
     supported_types = get_accelerator().supported_dtypes()
     
     for t in tensors:
-        assert t.dtype in supported_types, f"attempting to reduce an unsupported grad type: {t.type()}"
+        assert t.dtype in supported_types, f"attempting to reduce an unsupported grad type: {t.dtype}"
 
     buckets = []
     for i, dtype in enumerate(supported_types):
