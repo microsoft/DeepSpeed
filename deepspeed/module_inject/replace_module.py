@@ -491,8 +491,6 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 except:
                     LlamaRMSNorm = None
                 if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm, LlamaRMSNorm] and state_dict != None:
-                    if child.__class__ is LlamaRMSNorm and not child.weight.is_meta:
-                        continue
                     if any(checking_key in item for item in state_dict):
                         load(child, state_dict, checking_key, mp_group)
                     else:
