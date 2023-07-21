@@ -436,11 +436,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
             ]:
                 if hasattr(child, param):
                     param_val = getattr(child, param)
-                    if param in ["n_heads", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads"]:
-                        setattr(child, param, param_val // mp_size + (1 if dist.get_rank() <
-                                                                      (param_val % mp_size) else 0))
-                    else:
-                        setattr(child, param, get_shard_size(param_val, mp_size))
+                    setattr(child, param, get_shard_size(param_val, mp_size))
             setattr(child, "replaced", True)
 
         conv_linear_layer = False
