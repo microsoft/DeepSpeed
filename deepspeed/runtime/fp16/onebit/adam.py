@@ -90,7 +90,7 @@ class OnebitAdam(torch.optim.Optimizer):
 
         if self.comm_backend_name == 'nccl':
             assert (
-                (required_torch_version(min_version=1.8)
+                required_torch_version(min_version=1.8)
                 ), "Please use torch 1.8 or greater to enable NCCL backend in 1-bit Adam. Alternatively, please specify 'mpi' as the 'comm_backend_name' in config file to proceed with the MPI backend"
             assert dist.is_initialized() == True, "Please initialize the torch distributed backend."
             from deepspeed.runtime.comm.nccl import NcclBackend
