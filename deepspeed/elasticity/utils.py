@@ -3,7 +3,7 @@
 
 # DeepSpeed Team
 
-from runtime.utils import required_torch_version
+from deepspeed.runtime.utils import required_torch_version
 
 
 def is_torch_elastic_compatible():
