@@ -365,9 +365,9 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         return _container.module
 
     def get_shard_size(total_size, num_slices):
-        num_units = model_config.num_attention_heads
-        my_slices = num_units // num_slices + (1 if dist.get_rank() < (num_units % num_slices) else 0)
-        return total_size // num_units * my_slices
+        num_heads = model_config.num_attention_heads
+        my_slices = num_heads // num_slices + (1 if dist.get_rank() < (num_heads % num_slices) else 0)
+        return total_size // num_heads * my_slices
 
     def replace_wo_policy(module, all_reduce_linears, prefix="", state_dict=None):
         mp_size = config.tensor_parallel.tp_size
