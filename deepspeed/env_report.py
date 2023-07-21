@@ -88,9 +88,15 @@ def get_shm_size():
 
     shm_size = shm_stats.f_frsize * shm_stats.f_blocks
     shm_hbytes = human_readable_size(shm_size)
-    warn = None
+    warn = []
     if shm_size < 512 * 1024**2:
-        warn = f" {YELLOW} [WARNING] /dev/shm size might be too small, if running in docker increase to at least --shm-size='1gb' {END}"
+        warn.append(
+            f" {YELLOW} [WARNING] /dev/shm size might be too small, if running in docker increase to at least --shm-size='1gb' {END}"
+        )
+        if get_accelerator().communication_backend_name() == "nccl":
+            warn.append(
+                f" {YELLOW} [WARNING] see more details about NCCL requirements: https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting.html#sharing-data {END}"
+            )
     return shm_hbytes, warn
 
 
@@ -123,12 +129,13 @@ def debug_report():
 
     print("DeepSpeed general environment info:")
     for name, value in report:
-        warn = None
+        warns = []
         if isinstance(value, tuple):
-            value, warn = value
+            value, warns = value
         print(name, "." * (max_dots - len(name)), value)
-        if warn:
-            print(warn)
+        if warns:
+            for warn in warns:
+                print(warn)
 
 
 def parse_arguments():
