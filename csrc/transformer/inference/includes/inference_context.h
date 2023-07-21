@@ -60,8 +60,13 @@ public:
     {
         _workSpaceSize = 0;
         _workspace = 0;
-        if (cublasCreate(&_cublasHandle) != CUBLAS_STATUS_SUCCESS) {
-            auto message = std::string("Fail to create cublas handle.");
+
+        cublasStatus_t stat = cublasCreate(&_cublasHandle);
+        if (stat != CUBLAS_STATUS_SUCCESS) {
+            // It would be nice to use cublasGetStatusName and
+            // cublasGetStatusString, but they were only added in CUDA 11.4.2.
+            auto message = std::string("Failed to create cublas handle: cublasStatus_t was ") +
+                           std::to_string(stat);
             std::cerr << message << std::endl;
             throw std::runtime_error(message);
         }
@@ -136,7 +141,7 @@ public:
 
         if (_max_seq_len < min_out_tokens) {
             printf(
-                "Allocatable workspace available (%d tokens) is less than minimum requested "
+                "Allocatable workspace available (%ld tokens) is less than minimum requested "
                 "workspace (%d tokens)\n",
                 _max_seq_len,
                 min_out_tokens);
@@ -175,7 +180,7 @@ public:
         _workSpaceSize = workSpaceSize;
         _attention_unfused_workspace_offset = workSpaceSize - temp_size;
     }
-    inline size_t GetMaxTokenLenght() const { return _max_seq_len; }
+    inline size_t GetMaxTokenLength() const { return _max_seq_len; }
 
     cudaEvent_t GetCompEvent(int id) { return id == 1 ? _comp1_event : _comp2_event; }
 

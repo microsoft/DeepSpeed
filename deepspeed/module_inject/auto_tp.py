@@ -104,6 +104,16 @@ class AutoTP():
                         gem_list = gem_list + [layer_list[i - 1]]
                 elif 'out_proj' in layer:
                     gem_list = gem_list + [layer]
+                elif 'o_proj' in layer:
+                    gem_list = gem_list + [layer]
+                elif 'down_proj' in layer:
+                    gem_list = gem_list + [layer]
+                elif 'attention.dense' in layer and 'GPTNeoX' in str(model):
+                    gem_list = gem_list + [layer]
+                elif 'self_attention.dense' in layer and 'falcon' in str(
+                        type(module)):  # this is a hack to get the right linear layer for this model!
+                    gem_list = gem_list + [layer]
+
             layer_list = []
             if gem_list != []:
                 gem_list = list(set(gem_list))
