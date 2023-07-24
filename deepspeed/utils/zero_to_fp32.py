@@ -145,7 +145,8 @@ def parse_optim_states(files, ds_checkpoint_dir):
     for f in files:
         state_dict = torch.load(f, map_location=device)
         # immediately discard the potentially huge 2 optimizer states as we only care for fp32 master weights
-        del state_dict["optimizer_state_dict"]["optimizer_state_dict"]
+        # and also handle the case where it was already removed by another helper script
+        state_dict["optimizer_state_dict"].pop("optimizer_state_dict", None)      
         state_dicts.append(state_dict)
 
     if not ZERO_STAGE in state_dicts[0][OPTIMIZER_STATE_DICT]:
