@@ -143,7 +143,10 @@ def parse_optim_states(files, ds_checkpoint_dir):
     total_files = len(files)
     state_dicts = []
     for f in files:
-        state_dicts.append(torch.load(f, map_location=device))
+        state_dict = torch.load(f, map_location=device)
+        # immediately discard the potentially huge 2 optimizer states as we only care for fp32 master weights
+        del state_dict["optimizer_state_dict"]["optimizer_state_dict"]
+        state_dicts.append(state_dict)
 
     if not ZERO_STAGE in state_dicts[0][OPTIMIZER_STATE_DICT]:
         raise ValueError(f"{files[0]} is not a zero checkpoint")
