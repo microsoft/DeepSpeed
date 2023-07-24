@@ -147,7 +147,6 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
             else:
                 injection_policy_tuple = injection_policy
             self.inference_policies.update({client_module: (self.new_inference_container, injection_policy_tuple)})
-            )
             _autotp = AutoTP(self.module, injection_policy_tuple, '', None, None, client_module)
             _autotp.set_tensor_parallel_config(self._config.hybrid_engine.inference_tp_size, self.mp_group)
             _autotp.update_linear_polciies()
