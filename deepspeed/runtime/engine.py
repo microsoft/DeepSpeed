@@ -859,7 +859,7 @@ class DeepSpeedEngine(Module):
         elif self.bfloat16_enabled():
             model_dtype = torch.bfloat16
 
-        if self._config.grad_accum_dtype == None:
+        if self._config.grad_accum_dtype is None:
             if model_dtype == torch.bfloat16 and not self.zero_optimization():
                 grad_accum_dtype = torch.float32
             else:
@@ -968,7 +968,7 @@ class DeepSpeedEngine(Module):
             "variable, it is set by the deepspeed launcher, deepspeed.init_distributed, or the torch's launcher. If using a " \
             "different launcher please ensure LOCAL_RANK is set prior to initializing deepspeed."
 
-        if hasattr(args, 'local_rank') and args.local_rank != None:
+        if hasattr(args, 'local_rank') and args.local_rank is not None:
             assert isinstance(args.local_rank,
                               int), f"args.local_rank of {args.local_rank} is an unknown type {type(args.local_rank)}"
             if args.local_rank >= 0:
@@ -1142,10 +1142,6 @@ class DeepSpeedEngine(Module):
             if model_dtype == torch.bfloat16 and grad_accum_dtype == torch.float32 and self.zero_optimization_stage(
             ) == 1:
                 return BFLOAT16
-
-            if model_dtype != grad_accum_dtype:
-                raise NotImplementedError(
-                    "Model data type and gradient accumulation data type must be equal to use ZeRO")
             return ZERO_OPTIMIZATION
         elif amp_enabled:
             if model_dtype != grad_accum_dtype:
@@ -1409,9 +1405,10 @@ class DeepSpeedEngine(Module):
 
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
-        mics_shard_size = self.mics_shard_size()
 
-        model_dtype, grad_accum_dtype = self.get_data_types()
+        mics_shard_size = self.mics_shard_size()
+        model_dtype, gradient_accumulation_dtype = self.get_data_types()
+
         timers = self.timers if self.wall_clock_breakdown() else None
 
         if optimizer is None:
@@ -1467,6 +1464,7 @@ class DeepSpeedEngine(Module):
                 round_robin_gradients=round_robin_gradients,
                 has_moe_layers=self.has_moe_layers,
                 fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(),
+                gradient_accumulation_dtype=gradient_accumulation_dtype,
                 communication_data_type=self.communication_data_type,
                 elastic_checkpoint=self.zero_elastic_checkpoint())
 
@@ -1530,6 +1528,7 @@ class DeepSpeedEngine(Module):
                     gradient_predivide_factor=self.gradient_predivide_factor(),
                     gradient_accumulation_steps=self.gradient_accumulation_steps(),
                     aio_config=self.aio_config(),
+                    gradient_accumulation_dtype=gradient_accumulation_dtype,
                     communication_data_type=self.communication_data_type,
                     zero_hpz_partition_size=self.zero_hpz_partition_size(),
                     zero_quantized_weights=self.zero_quantized_weights())
@@ -1541,6 +1540,7 @@ class DeepSpeedEngine(Module):
 
     def _return_mics_optimizer(self, basic_optimizer, timers):
         from deepspeed.runtime.zero.mics import MiCS_Optimizer
+        model_dtype, gradient_accumulation_dtype = self.get_data_types()
         optimizer = MiCS_Optimizer(self.module,
                                    basic_optimizer,
                                    timers=timers,
@@ -1567,6 +1567,7 @@ class DeepSpeedEngine(Module):
                                    gradient_predivide_factor=self.gradient_predivide_factor(),
                                    gradient_accumulation_steps=self.gradient_accumulation_steps(),
                                    aio_config=self.aio_config(),
+                                   gradient_accumulation_dtype=gradient_accumulation_dtype,
                                    communication_data_type=self.communication_data_type)
         return optimizer
 
@@ -2438,8 +2439,15 @@ class DeepSpeedEngine(Module):
         dist.all_gather(tensor_list, value, group=dp_group)
         return tensor_list
 
-    def module_state_dict(self, destination=None, prefix="", keep_vars=False):
+    def module_state_dict(self, destination=None, prefix="", keep_vars=False, exclude_frozen_parameters=False):
         sd = self.module.state_dict(destination, prefix, keep_vars)
+
+        # Remove frozen parameter weights from state_dict if specified
+        if exclude_frozen_parameters:
+            for n, p in self.module.named_parameters():
+                if not p.requires_grad:
+                    del sd[n]
+
         if self.random_ltd_enabled():
             sd = remove_random_ltd_state_dict(sd)
         return sd
@@ -2895,7 +2903,7 @@ class DeepSpeedEngine(Module):
             elif not valid:
                 logger.warning(msg)
 
-    def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
+    def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True, exclude_frozen_parameters=False):
         """Save training checkpoint
 
         Arguments:
@@ -2904,6 +2912,7 @@ class DeepSpeedEngine(Module):
                 used if not provided. Tag name must be the same across all ranks.
             client_state: Optional. State dictionary used for saving required training states in the client code.
             save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
+            exclude_frozen_parameters: Optional. Exclude frozen parameters from checkpointed state.
         Important: all processes must call this method and not just the process with rank 0. It is
         because each process needs to save its master weights and scheduler+optimizer states. This
         method will hang waiting to synchronize with other processes if it's called just for the
@@ -2936,7 +2945,10 @@ class DeepSpeedEngine(Module):
         if self.has_moe_layers:
             self.save_non_zero_checkpoint = False
             self._create_checkpoint_file(save_dir, tag, False)
-            self._save_moe_checkpoint(save_dir, tag, client_state=client_state)
+            self._save_moe_checkpoint(save_dir,
+                                      tag,
+                                      client_state=client_state,
+                                      exclude_frozen_parameters=exclude_frozen_parameters)
 
         # We distribute the task of saving layer checkpoint files among
         # data parallel instances, so all procs should call _save_checkpoint.
@@ -2944,7 +2956,10 @@ class DeepSpeedEngine(Module):
         # parallel rank 0 save the general model params.
         if not self.has_moe_layers:
             self._create_checkpoint_file(save_dir, tag, False)
-            self._save_checkpoint(save_dir, tag, client_state=client_state)
+            self._save_checkpoint(save_dir,
+                                  tag,
+                                  client_state=client_state,
+                                  exclude_frozen_parameters=exclude_frozen_parameters)
 
         if self.save_zero_checkpoint:
             self._create_zero_checkpoint_files(save_dir, tag)
@@ -2973,7 +2988,7 @@ class DeepSpeedEngine(Module):
 
         return full_state_dict
 
-    def _save_moe_checkpoint(self, save_dir, tag, client_state={}):
+    def _save_moe_checkpoint(self, save_dir, tag, client_state={}, exclude_frozen_parameters=False):
         save_path = self._get_ckpt_name(save_dir, tag)
         # A hack to save the checkpointing directory. Pipeline parallelism overrides
         # module_state_dict() and uses this path to save the model. module_state_dict()
@@ -3048,7 +3063,8 @@ class DeepSpeedEngine(Module):
         self.checkpoint_engine.save(optimizer_state, file_path)
 
         # get non-moe parameters
-        model_state_dict = self._get_non_moe_state_dict(self.module_state_dict())
+        model_state_dict = self._get_non_moe_state_dict(
+            self.module_state_dict(exclude_frozen_parameters=exclude_frozen_parameters))
 
         if expp_rank == 0:
             # TODO: update num experts info,.. in checkpoint
@@ -3105,20 +3121,20 @@ class DeepSpeedEngine(Module):
 
         return success
 
-    def _save_checkpoint(self, save_dir, tag, client_state={}):
+    def _save_checkpoint(self, save_dir, tag, client_state={}, exclude_frozen_parameters=False):
 
         save_path = self._get_ckpt_name(save_dir, tag)
 
         zero_optimizer_state = self.zero_optimization() or self.bfloat16_enabled()
 
-        save_frozen_param = self.zero_optimization_partition_gradients()
+        save_frozen_param = self.zero_optimization_partition_gradients() and not exclude_frozen_parameters
 
         # A hack to save the checkpointing directory. Pipeline parallelism overrides
         # module_state_dict() and uses this path to save the model. module_state_dict()
         # then instead just returns None.  The module_state_dict() implementation in
         # PipelineEngine expects the save path to be set in self._curr_ckpt_path.
         self._curr_ckpt_path = os.path.join(save_dir, tag)
-        module = self.module_state_dict()
+        module = self.module_state_dict(exclude_frozen_parameters=exclude_frozen_parameters)
         self._curr_ckpt_path = None
 
         state = dict(module=module,
@@ -3236,24 +3252,30 @@ class DeepSpeedEngine(Module):
         e.g. in `zero_to_fp32`. Each dict entry is a pair of param names, where the key is the name
         of the variable that isn't stored and the value is the actual param holding data.
         """
-        shared_ds_ids = {}
+        shared_index = {}
         shared_params_by_full_name = {}
+
+        is_zero3_model = (self.zero_optimization_partition_weights()
+                          and any(hasattr(param, "ds_id") for param in self.module.parameters()))
 
         def get_layer_state_dict(module, prefix=""):
             # handle params
             for name, param in module.named_parameters(recurse=False):
-                if param is None or not hasattr(param, "ds_id"):
+                if param is None or (is_zero3_model and not hasattr(param, "ds_id")):
                     continue
                 key = prefix + name
-                # can't rely on param.data_ptr() as it will be reused as weights gets
-                # gathered and reduced, but param.ds_id is unique across all zero weights
+
+                # When weights are manged by stage 3, we can't rely on param.data_ptr() as it will be reused
+                # as weights get gathered and reduced, but param.ds_id is unique across all zero weights
                 # (and shared params will have the same param.ds_id)
-                if param.ds_id in shared_ds_ids:
+                param_id = param.ds_id if is_zero3_model else param.data_ptr()
+
+                if param_id in shared_index:
                     # shared weights
-                    #print(f"`{key}` is shared with `{shared_ds_ids[param.ds_id]}`")
-                    shared_params_by_full_name[key] = shared_ds_ids[param.ds_id]
+                    #print(f"`{key}` is shared with `{shared_index[param_id]}`")
+                    shared_params_by_full_name[key] = shared_index[param_id]
                 else:
-                    shared_ds_ids[param.ds_id] = key
+                    shared_index[param_id] = key
 
             for name, child in module.named_children():
                 if child is not None:
