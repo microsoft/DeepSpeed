@@ -273,7 +273,8 @@ def free_param(param: Parameter) -> None:
     if get_accelerator().on_accelerator(param.data):
         # need to make sure that we don't free the parameter while it is still
         # being used for computation
-        param.data.record_stream(get_accelerator().current_stream())
+        if not get_accelerator().is_synchronized_device():
+            param.data.record_stream(get_accelerator().current_stream())
     # param.data doesn't store anything meaningful in partitioned state
     param.data = torch.empty(0, dtype=param.dtype, device=param.device)
     param.ds_status = ZeroParamStatus.NOT_AVAILABLE
@@ -609,7 +610,8 @@ class AllGatherCoalescedHandle:
             param.ds_status = ZeroParamStatus.AVAILABLE
 
             for part_to_copy in partitions:
-                part_to_copy.record_stream(get_accelerator().current_stream())
+                if not get_accelerator().is_synchronized_device():
+                    part_to_copy.record_stream(get_accelerator().current_stream())
 
             param_offset += ds_tensor_numel
 
@@ -1668,7 +1670,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             start = self.get_partition_rank() * partition_size
             end = start + partition_size
             #print_rank_0("REduce scatter was executed for param {param.ds_id}")
-            if start < param.ds_numel and end > param.ds_numel:
+            if start < param.ds_numel < end:
                 elements = param.ds_numel - start
                 param.grad.view(-1).narrow(0, start, elements).copy_(reduced_partition.narrow(0, 0, elements))
 
