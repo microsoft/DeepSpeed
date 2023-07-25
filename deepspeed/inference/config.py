@@ -7,9 +7,8 @@ import torch
 import deepspeed
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
-from pydantic import ConfigDict, Field
-from pydantic import field_validator
-from typing import Dict, Union
+from pydantic import ConfigDict, Field, FieldValidationInfo, field_validator
+from typing import Dict, Union, Any, Optional
 from enum import Enum
 
 
@@ -119,9 +118,9 @@ class QuantizationConfig(DeepSpeedConfigModel):
 
 # todo: brainstorm on how to do ckpt loading for DS inference
 class InferenceCheckpointConfig(DeepSpeedConfigModel):
-    checkpoint_dir: str = None
-    save_mp_checkpoint_path: str = None
-    base_dir: str = None
+    checkpoint_dir: Optional[str] = None
+    save_mp_checkpoint_path: Optional[str] = None
+    base_dir: Optional[str] = None
 
 
 class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
@@ -197,12 +196,12 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     """
 
     #todo: refactor the following 3 into the new checkpoint_config
-    checkpoint: Union[str, Dict] = None
+    checkpoint: Optional[Union[str, Dict]] = None
     """
     Path to deepspeed compatible checkpoint or path to JSON with load policy.
     """
 
-    base_dir: str = None
+    base_dir: Optional[str] = None
     """
     This shows the root directory under which all the checkpoint files exists.
     This can be passed through the json config too.
@@ -213,7 +212,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     specifying whether the inference-module is created with empty or real Tensor
     """
 
-    save_mp_checkpoint_path: str = None
+    save_mp_checkpoint_path: Optional[str] = None
     """
     The path for which we want to save the loaded model with a checkpoint. This
     feature is used for adjusting the parallelism degree to help alleviate the
@@ -245,16 +244,16 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
         deprecated=True,
         deprecated_msg="This parameter is no longer needed, please remove from your call to DeepSpeed-inference")
 
-    injection_policy: Dict = Field(None, alias="injection_dict")
+    injection_policy: Optional[Dict] = Field(None, alias="injection_dict")
     """
     Dictionary mapping a client nn.Module to its corresponding injection
     policy. e.g., `{BertLayer : deepspeed.inference.HFBertLayerPolicy}`
     """
 
-    injection_policy_tuple: tuple = None
+    injection_policy_tuple: Optional[tuple] = None
     """ TODO: Add docs """
 
-    config: Dict = Field(None, alias="args")  # todo: really no need for this field if we can refactor
+    config: Optional[Dict] = Field(None, alias="args")  # todo: really no need for this field if we can refactor
 
     max_out_tokens: int = Field(1024, alias="max_tokens")
     """
@@ -279,24 +278,26 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     Deprecated, please use the ``tensor_parallel` config to control model
     parallelism.
     """
-    mpu: object = Field(None, deprecated=True, new_param="tensor_parallel.mpu")
+    mpu: Optional[object] = Field(None, deprecated=True, new_param="tensor_parallel.mpu")
     ep_size: int = Field(1, deprecated=True, new_param="moe.ep_size")
-    ep_group: object = Field(None, alias="expert_group", deprecated=True, new_param="moe.ep_group")
-    ep_mp_group: object = Field(None, alias="expert_mp_group", deprecated=True, new_param="moe.ep_mp_group")
+    ep_group: Optional[object] = Field(None, alias="expert_group", deprecated=True, new_param="moe.ep_group")
+    ep_mp_group: Optional[object] = Field(None, alias="expert_mp_group", deprecated=True, new_param="moe.ep_mp_group")
     moe_experts: list = Field([1], deprecated=True, new_param="moe.moe_experts")
     moe_type: MoETypeEnum = Field(MoETypeEnum.standard, deprecated=True, new_param="moe.type")
 
     @field_validator("moe")
-    def moe_backward_compat(cls, field_value, values):
-        if isinstance(field_value, bool):
-            return DeepSpeedMoEConfig(moe=field_value)
-        return field_value
+    @classmethod
+    def moe_backward_compat(cls, v: Union[bool, DeepSpeedMoEConfig], info: FieldValidationInfo) -> DeepSpeedMoEConfig:
+        if isinstance(v, bool):
+            return DeepSpeedMoEConfig(moe=v)
+        return v
 
     @field_validator("use_triton")
-    def has_triton(cls, field_value, values):
-        if field_value and not deepspeed.HAS_TRITON:
+    @classmethod
+    def has_triton(cls, v: bool, info: FieldValidationInfo) -> bool:
+        if v and not deepspeed.HAS_TRITON:
             raise ValueError('Triton needs to be installed to use deepspeed with triton kernels')
-        return field_value
+        return v
 
     # TODO[pydantic]: The following keys were removed: `json_encoders`.
     # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
