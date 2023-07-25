@@ -109,8 +109,57 @@ class ReplaceWithTensorSlicing:
         dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
         if hasattr(src, 'scale'):
             dst.scale = src.scale
-
         return dst
+
+
+class Loading():
+
+    def load_buffer(self, module, state_dict, prefix):
+        for name in module._buffers.keys():
+            if module._buffers[name].data.is_meta:
+                module._buffers[name] = torch.nn.parameter.Parameter(
+                    data=torch.empty_like(module._buffers[name].data, device="cpu"),
+                    requires_grad=module._buffers[name].data.requires_grad)
+            if prefix + name in state_dict.keys():
+                module._buffers[name].data.copy_(state_dict[prefix + name])
+
+    def load(self, module, state_dict, prefix, mp_group=None):
+        mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
+        if hasattr(module, 'weight'):
+            if module.weight.data.is_meta:
+                # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                module.weight = torch.nn.parameter.Parameter(data=torch.empty_like(module.weight.data, device="cpu"),
+                                                             requires_grad=module.weight.data.requires_grad)
+                if 'query_key_value' in prefix:
+                    module.weight = mp_replace.strided_copy(module.weight.data,
+                                                            state_dict[prefix + 'weight'],
+                                                            num_splits=3)
+                else:
+                    module.weight = mp_replace.copy(module.weight.data, state_dict[prefix + 'weight'])
+        else:
+            if hasattr(module, 'norm') and hasattr(module.norm, 'weight'):
+                if module.norm.weight.data.is_meta:
+                    # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                    module.norm.weight = torch.nn.parameter.Parameter(
+                        data=torch.empty_like(module.norm.weight.data, device="cpu"),
+                        requires_grad=module.norm.weight.data.requires_grad)
+                module.norm.weight = mp_replace.copy(module.norm.weight.data, state_dict[prefix + 'weight'])
+
+        if prefix + 'bias' in state_dict.keys():
+            if hasattr(module, 'bias'):
+                if module.bias.data.is_meta:
+                    # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                    module.bias = torch.nn.parameter.Parameter(data=torch.empty_like(module.bias.data, device="cpu"),
+                                                               requires_grad=module.bias.data.requires_grad)
+                module.bias = mp_replace.copy(module.bias, state_dict[prefix + 'bias'])
+            else:
+                if hasattr(module, 'norm') and hasattr(module.norm, 'bias'):
+                    if module.norm.bias.data.is_meta:
+                        # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                        module.norm.bias = torch.nn.parameter.Parameter(
+                            data=torch.empty_like(module.norm.bias.data, device="cpu"),
+                            requires_grad=module.norm.bias.data.requires_grad)
+                    module.norm.bias = mp_replace.copy(module.norm.bias, state_dict[prefix + 'bias'])
 
 
 class AutoTP():
@@ -289,9 +338,9 @@ class AutoTP():
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
 
         if hasattr(child.weight, 'ds_tensor'):
-            data = child.weight.ds_tensor.data.split(weight_shape[1] // self.mp_size, dim=1)
+            data = child.weight.ds_tensor.data.split(child.weight.shape[1] // self.mp_size, dim=1)
         else:
-            data = child.weight.data.split(weight_shape[1] // self.mp_size, dim=1)
+            data = child.weight.data.split(child.weight.shape[1] // self.mp_size, dim=1)
         data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
 
         new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // self.mp_size)
@@ -308,7 +357,7 @@ class AutoTP():
         ]:
             if hasattr(child, param):
                 param_val = getattr(child, param)
-                assert param_val % self.mp_size == 0, f"{param} ({param_val}) must be divisible by mp_size ({mp_size})"
+                assert param_val % self.mp_size == 0, f"{param} ({param_val}) must be divisible by mp_size ({self.mp_size})"
                 setattr(child, param, param_val // self.mp_size)
         setattr(child, "replaced", True)
 
@@ -340,11 +389,11 @@ class AutoTP():
             checking_key = self.prefix + '.' + class_name + '.' + name + '.' if class_name != "" else self.prefix + '.' + name + '.'
             if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm] and self.state_dict is not None:
                 if any(checking_key in item for item in self.state_dict):
-                    load(child, self.state_dict, checking_key, self.mp_group)
+                    Loading.load(child, self.state_dict, checking_key, self.mp_group)
                 else:
                     continue
             if len(child._buffers) != 0 and self.state_dict is not None:
-                load_buffer(child, self.state_dict, checking_key)
+                Loading.load_buffer(child, self.state_dict, checking_key)
             if child.__class__ in self.linear_policies:
                 setattr(r_module, name, self.linear_policies[child.__class__](child, prev_name + '.' + name,
                                                                               self.conv_linear_layer))
