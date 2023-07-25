@@ -243,10 +243,8 @@ class PipelineEngine(DeepSpeedEngine):
         self._force_grad_boundary = True
         if self.pipeline_enable_backward_allreduce:
             if self.bfloat16_enabled():
-                if self.zero_optimization_stage() < ZeroStageEnum.gradients:
-                    self._bf16_reduce_grads()
-                else:
-                    raise NotImplementedError("PP+BF16 only work for ZeRO Stage 1")
+                # PP+BF16 work for ZeRO Stage 1
+                self._bf16_reduce_grads()
             else:
                 self.allreduce_gradients(bucket_size=MEMORY_OPT_ALLREDUCE_SIZE)
         self._force_grad_boundary = False
