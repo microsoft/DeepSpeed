@@ -519,7 +519,7 @@ class TestAutoTensorParallelism(DistributedTest):
         print(local_rank, "deepspeed", ds_output)
         assert assert_fn(bs_output, ds_output)
 
-    @pytest.mark.world_size(5)
+    @pytest.mark.world_size(3)
     def test_odd_world_size(
         self,
         model_w_task,
@@ -534,7 +534,7 @@ class TestAutoTensorParallelism(DistributedTest):
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
-        world_size = int(os.getenv("WORLD_SIZE", "5"))
+        world_size = int(os.getenv("WORLD_SIZE", "3"))
 
         # We have to load these large models on CPU with pipeline because not
         # enough GPU memory
