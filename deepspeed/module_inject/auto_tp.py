@@ -15,6 +15,7 @@ from deepspeed import comm as dist
 from .layers import LinearAllreduce, LinearLayer
 from deepspeed.accelerator import get_accelerator
 
+
 class ReplaceWithTensorSlicing:
 
     def __init__(self, mp_group=None, mp_size=1, out_dim=1, in_dim=0):
@@ -126,7 +127,6 @@ class AutoTP():
         self.orig_layer_impl = orig_layer_impl
         self.linear_policies = None
         self.conv_linear_layer = False
-
 
     def in_module_list(module, module_list):
         for item in module_list:
@@ -255,7 +255,8 @@ class AutoTP():
             if conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
 
-            data = child.weight.data.split((weight_shape[0] if conv_linear_layer else weight_shape[1]) // self.mp_size, dim=1)
+            data = child.weight.data.split((weight_shape[0] if conv_linear_layer else weight_shape[1]) // self.mp_size,
+                                           dim=1)
             data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
 
             setattr(child, "replaced", True)
@@ -268,7 +269,8 @@ class AutoTP():
             if conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
 
-            data = child.weight.data.split((weight_shape[1] if conv_linear_layer else weight_shape[0]) // self.mp_size, dim=0)
+            data = child.weight.data.split((weight_shape[1] if conv_linear_layer else weight_shape[0]) // self.mp_size,
+                                           dim=0)
             data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
 
             #todo: conv_linear_layer needs an extra split step
@@ -281,35 +283,34 @@ class AutoTP():
             setattr(child, "replaced", True)
             return LinearLayer(weight=data.to(get_accelerator().current_device_name()), bias=bias_data)
 
-
     def _slice_embedding(self, child, name, conv_linear_layer):
-            if getattr(child, "replaced", False) == True:
-                return
-            mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
+        if getattr(child, "replaced", False) == True:
+            return
+        mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
 
-            if hasattr(child.weight, 'ds_tensor'):
-                data = child.weight.ds_tensor.data.split(weight_shape[1] // self.mp_size, dim=1)
-            else:
-                data = child.weight.data.split(weight_shape[1] // self.mp_size, dim=1)
-            data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
+        if hasattr(child.weight, 'ds_tensor'):
+            data = child.weight.ds_tensor.data.split(weight_shape[1] // self.mp_size, dim=1)
+        else:
+            data = child.weight.data.split(weight_shape[1] // self.mp_size, dim=1)
+        data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
 
-            new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // self.mp_size)
-            new_embedding.weight.data.copy_(data)
-            setattr(child, "replaced", True)
-            return new_embedding
+        new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // self.mp_size)
+        new_embedding.weight.data.copy_(data)
+        setattr(child, "replaced", True)
+        return new_embedding
 
     def update_mp_params(self, child):
-            if getattr(child, "replaced", False) == True:
-                return
-            for param in [
-                    "n_heads", "inner_dim", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads",
-                    "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads"
-            ]:
-                if hasattr(child, param):
-                    param_val = getattr(child, param)
-                    assert param_val % self.mp_size == 0, f"{param} ({param_val}) must be divisible by mp_size ({mp_size})"
-                    setattr(child, param, param_val // self.mp_size)
-            setattr(child, "replaced", True)
+        if getattr(child, "replaced", False) == True:
+            return
+        for param in [
+                "n_heads", "inner_dim", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads",
+                "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads"
+        ]:
+            if hasattr(child, param):
+                param_val = getattr(child, param)
+                assert param_val % self.mp_size == 0, f"{param} ({param_val}) must be divisible by mp_size ({mp_size})"
+                setattr(child, param, param_val // self.mp_size)
+        setattr(child, "replaced", True)
 
     def update_linear_polciies(self):
         self.conv_linear_layer = False
@@ -346,7 +347,7 @@ class AutoTP():
                 load_buffer(child, self.state_dict, checking_key)
             if child.__class__ in self.linear_policies:
                 setattr(r_module, name, self.linear_policies[child.__class__](child, prev_name + '.' + name,
-                                                                            self.conv_linear_layer))
+                                                                              self.conv_linear_layer))
             elif any(isinstance(child, lp) for lp in self.linear_policies):
                 # Added for falcon model support
                 # Note: isinstance will account for class inheritance, child.__class__ does not
@@ -356,7 +357,8 @@ class AutoTP():
                         key = lp
                         break
                 assert key is not None
-                setattr(r_module, name, self.linear_policies[key](child, prev_name + '.' + name, self.conv_linear_layer))
+                setattr(r_module, name, self.linear_policies[key](child, prev_name + '.' + name,
+                                                                  self.conv_linear_layer))
             else:
                 self.update_mp_params(child)
                 self._replace_module(child, name, class_name)

@@ -152,7 +152,6 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
             _autotp.update_linear_polciies()
             new_module = _autotp._replace_module(module)
 
-
     def _fuse_lora_layer(self, layer_id):
         self._inference_containers[layer_id].fuse_lora()
 
