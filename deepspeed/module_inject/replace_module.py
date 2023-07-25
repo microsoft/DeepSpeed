@@ -15,6 +15,7 @@ from deepspeed.ops.transformer.inference.diffusers_2d_transformer import Diffuse
 from deepspeed.accelerator import get_accelerator
 from .replace_policy import HFGPT2LayerPolicy
 from .replace_policy import replace_policies, generic_policies
+from .auto_tp import AutoTP
 
 from deepspeed import comm as dist
 from torch import nn
@@ -365,128 +366,19 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         return _container.module
 
     def replace_wo_policy(module, all_reduce_linears, prefix="", state_dict=None):
-        mp_size = config.tensor_parallel.tp_size
-        mp_group = config.tensor_parallel.tp_group
+        #mp_replace = ReplaceWithTensorSlicing(mp_group=config.tensor_parallel.tp_group)
 
-        def _replace(child, name, conv_linear_layer):
-            if getattr(child, "replaced", False) == True:
-                return
-            mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
-            weight_shape = child.weight.shape
-            if name in all_reduce_linears:
-                new_weight = torch.empty((
-                    weight_shape[1] if conv_linear_layer else weight_shape[0],
-                    (weight_shape[0] if conv_linear_layer else weight_shape[1]) // mp_size,
-                ),
-                                         device=child.weight.device,
-                                         dtype=child.weight.dtype)
-                if conv_linear_layer:
-                    child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
-                data = mp_replace.copy(new_weight, child.weight.data)
-                new_bias = torch.empty((weight_shape[0]), device=child.weight.device, dtype=child.weight.dtype)
-                if child.bias is not None:
-                    new_bias.data.copy_(child.bias.data)
-                setattr(child, "replaced", True)
-                return LinearAllreduce(data, child.bias if child.bias is None else \
-                            torch.nn.parameter.Parameter(new_bias.to(get_accelerator().current_device_name())), mp_group)
-            else:
-                new_weight = torch.empty((
-                    (weight_shape[1] if conv_linear_layer else weight_shape[0]) // mp_size,
-                    weight_shape[0] // mp_size if conv_linear_layer else weight_shape[1],
-                ),
-                                         device=child.weight.device,
-                                         dtype=child.weight.dtype)
-                if conv_linear_layer:
-                    child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
-                data = mp_replace.copy(new_weight, child.weight.data)
+        # 1. Create AutoTP object
+        _autotp = AutoTP(module, all_reduce_linears, prefix, state_dict, linear_layer_setting, orig_layer_impl)
 
-                new_bias = torch.empty((weight_shape[0] // mp_size),
-                                       device=child.weight.device,
-                                       dtype=child.weight.dtype)
-                bias_data = None if child.bias is None else mp_replace.copy(new_bias, child.bias.data).to(
-                    get_accelerator().current_device_name())
-                setattr(child, "replaced", True)
-                return LinearLayer(weight=data.to(get_accelerator().current_device_name()), bias=bias_data)
+        # 2. Set the tensor parallelism config
+        _autotp.set_tensor_parallel_config(config.tensor_parallel.tp_size, config.tensor_parallel.tp_group)
 
-        def _slice_embedding(child, name, conv_linear_layer):
-            if getattr(child, "replaced", False) == True:
-                return
-            mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
-            new_weight = torch.empty((child.weight.shape[0], child.weight.shape[1] // mp_size),
-                                     device=child.weight.device,
-                                     dtype=child.weight.dtype)
-            data = mp_replace.copy(new_weight,
-                                   child.weight.ds_tensor.data if hasattr(child.weight, 'ds_tensor') else \
-                                   child.weight.data)
-            new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // mp_size)
-            new_embedding.weight.data.copy_(data)
-            setattr(child, "replaced", True)
-            return new_embedding
+        # 3. Set linear policies
+        _autotp.update_linear_polciies()
 
-        def update_mp_params(child):
-            if getattr(child, "replaced", False) == True:
-                return
-            for param in [
-                    "n_heads", "inner_dim", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads",
-                    "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads"
-            ]:
-                if hasattr(child, param):
-                    param_val = getattr(child, param)
-                    assert param_val % mp_size == 0, f"{param} ({param_val}) must be divisible by mp_size ({mp_size})"
-                    setattr(child, param, param_val // mp_size)
-            setattr(child, "replaced", True)
-
-        conv_linear_layer = False
-        if linear_layer_setting is not None:
-            linear_policies = {linear_layer_setting[0]: _replace}
-            if len(linear_layer_setting) == 2:
-                linear_policies.update({linear_layer_setting[1]: _slice_embedding})
-        else:
-            if orig_layer_impl is HFGPT2LayerPolicy._orig_layer_class:
-                try:
-                    import transformers
-                    conv_linear_layer = True
-                    linear_policies = {transformers.model_utils.Conv1D: _replace}
-                except ImportError:
-                    linear_policies = {nn.Linear: _replace}
-            else:
-                linear_policies = {nn.Linear: _replace, nn.Embedding: _slice_embedding}
-
-        def _replace_module(r_module, prev_name='', prev_class_name=''):
-            for name, child in r_module.named_children():
-                if prev_class_name == "":
-                    class_name = prev_name
-                elif prev_name == "":
-                    class_name = prev_class_name
-                else:
-                    class_name = prev_class_name + '.' + prev_name
-                checking_key = prefix + '.' + class_name + '.' + name + '.' if class_name != "" else prefix + '.' + name + '.'
-                if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm] and state_dict is not None:
-                    if any(checking_key in item for item in state_dict):
-                        load(child, state_dict, checking_key, mp_group)
-                    else:
-                        continue
-                if len(child._buffers) != 0 and state_dict is not None:
-                    load_buffer(child, state_dict, checking_key)
-                if child.__class__ in linear_policies:
-                    setattr(r_module, name, linear_policies[child.__class__](child, prev_name + '.' + name,
-                                                                             conv_linear_layer))
-                elif any(isinstance(child, lp) for lp in linear_policies):
-                    # Added for falcon model support
-                    # Note: isinstance will account for class inheritance, child.__class__ does not
-                    key = None
-                    for lp in linear_policies:
-                        if isinstance(child, lp):
-                            key = lp
-                            break
-                    assert key is not None
-                    setattr(r_module, name, linear_policies[key](child, prev_name + '.' + name, conv_linear_layer))
-                else:
-                    update_mp_params(child)
-                    _replace_module(child, name, class_name)
-            return r_module
-
-        return _replace_module(module)
+        # 4. Replace modules
+        return _autotp._replace_module(module)
 
     def replace_fn(child, _policy, layer_id=0, prefix="", state_dict=None):
         training = False  # todo: refactor this part to go in the config
