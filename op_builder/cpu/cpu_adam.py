@@ -17,7 +17,7 @@ class CPUAdamBuilder(CPUOpBuilder):
         return f'deepspeed.ops.adam.{self.NAME}_op'
 
     def sources(self):
-        return ['csrc/adam/cpu_adam.cpp']
+        return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/cpu_adam_impl.cpp']
 
     def libraries_args(self):
         args = super().libraries_args()

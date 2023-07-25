@@ -17,7 +17,7 @@ class FusedAdamBuilder(CPUOpBuilder):
         return f'deepspeed.ops.adam.{self.NAME}_op'
 
     def sources(self):
-        return ['csrc/cpu/adam/fused_adam.cpp']
+        return ['csrc/cpu/adam/fused_adam.cpp', 'csrc/adam/cpu_adam_impl.cpp']
 
     def include_paths(self):
-        return ['csrc/includes', 'csrc/cpu/adam']
+        return ['csrc/includes']
