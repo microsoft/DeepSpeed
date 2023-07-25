@@ -21,7 +21,9 @@ class ConvX(torch.nn.Conv1d):
     def __init__(self, *args):
         super().__init__(*args)
         # This would not be partitioned before bugfix 5ca8167
-        self.param_in = torch.nn.Parameter(torch.FloatTensor(5).uniform_())
+        # self.param_in = torch.nn.Parameter(torch.FloatTensor(5).uniform_())
+        # TODO PR #3866: zero.Init cannot wrap typed allocators, such as torch.FloatTensor, torch.HalfTensor, etc.
+        self.param_in = torch.nn.Parameter(torch.tensor(5, dtype=torch.float).uniform_())
 
     def forward(self, x):
         return x
@@ -32,7 +34,7 @@ class ConvNet(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.conv1 = ConvX(1, 3, 4)
-        self.param = torch.nn.Parameter(torch.FloatTensor(5).uniform_())
+        self.param = torch.nn.Parameter(torch.tensor(5, dtype=torch.float).uniform_())
 
     def forward(self, x):
         return x
