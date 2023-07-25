@@ -290,8 +290,6 @@ empty_buffers = {}
 class InsertPostInitMethodToModuleSubClasses(object):
     num_module_parameters = 0
     num_module_elements = 0
-    num_init_parameters = 0
-    num_init_elements = 0
 
     def __init__(self, enabled=True, mem_efficient_linear=True, ds_config=None, dtype=None):
         self.mem_efficient_linear = mem_efficient_linear
@@ -937,16 +935,14 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             InsertPostInitMethodToModuleSubClasses.num_module_parameters += 1
             InsertPostInitMethodToModuleSubClasses.num_module_elements += param.numel()
             if not is_zero_param(param):
-                InsertPostInitMethodToModuleSubClasses.num_init_parameters += 1
-                InsertPostInitMethodToModuleSubClasses.num_init_elements += param.numel()
-                assert get_accelerator().on_accelerator(param), \
-                    f"param `{name}` in {module.__class__.__name__}. This is probably caused by an unsupported tensor creation function. Please file an issue."
+                if not get_accelerator().on_accelerator(param):
+                    param.data = param.data.to(self.local_device)
                 self._zero_init_param(param)
                 print_rank_0(
                     f"Partitioning param {debug_param2name_id_shape(param)} module={debug_module2name(module)}")
 
         see_memory_usage(
-            f"Param count {InsertPostInitMethodToModuleSubClasses.num_init_elements}. After converting and partitioning params in {module.__class__.__name__}",
+            f"Param count {InsertPostInitMethodToModuleSubClasses.num_module_elements}. After converting and partitioning params in {module.__class__.__name__}",
             force=False)
 
     def _convert_to_deepspeed_param(self, param):
