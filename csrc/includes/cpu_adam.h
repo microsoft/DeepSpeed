@@ -273,3 +273,20 @@ int ds_adam_step(int optimizer_id,
                  torch::Tensor& grads,
                  torch::Tensor& exp_avg,
                  torch::Tensor& exp_avg_sq);
+
+int ds_adam_step_plus_copy(int optimizer_id,
+                           size_t step,
+                           float lr,
+                           float beta1,
+                           float beta2,
+                           float epsilon,
+                           float weight_decay,
+                           bool bias_correction,
+                           torch::Tensor& params,
+                           torch::Tensor& grads,
+                           torch::Tensor& exp_avg,
+                           torch::Tensor& exp_avg_sq,
+                           torch::Tensor& gpu_params);
+
+int destroy_adam_optimizer(int optimizer_id);
+
