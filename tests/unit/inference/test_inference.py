@@ -13,13 +13,17 @@ from deepspeed.git_version_info import torch_info
 from unit.common import DistributedTest
 from packaging import version as pkg_version
 from deepspeed.ops.op_builder import OpBuilder
-from transformers import pipeline
+from transformers import pipeline, AutoTokenizer
 from transformers.models.t5.modeling_t5 import T5Block
 from transformers.models.roberta.modeling_roberta import RobertaLayer
 from huggingface_hub import HfApi
 from deepspeed.model_implementations import DeepSpeedTransformerInference
 from torch import nn
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder import InferenceBuilder
+
+if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
+    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
@@ -88,37 +92,6 @@ def verify_models():
     _missing_task_models = _models_to_be_tested.difference(_test_models)
     if _missing_task_models:
         pytest.fail(f"Model(s) do not have an assigned task: {_missing_task_models}")
-
-
-# Fixture to add skips for certain configurations
-@pytest.fixture()
-def invalid_test(model_w_task, dtype, enable_cuda_graph, enable_triton):
-    model, task = model_w_task
-    msg = ""
-    if enable_cuda_graph and (torch_info["cuda_version"] == "0.0"):
-        msg = "CUDA not detected, cannot use CUDA Graph"
-    elif enable_cuda_graph and pkg_version.parse(torch.__version__) < pkg_version.parse("1.10"):
-        msg = "CUDA Graph is only available in torch versions >= 1.10"
-    elif "gpt-j-6b" in model:
-        if dtype != torch.half:
-            msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
-        elif enable_cuda_graph:
-            msg = f"Not enough GPU memory to run {model} with CUDA Graph enabled"
-    elif "gpt-neox-20b" in model:  # TODO: remove this when neox issues resolved
-        msg = "Skipping gpt-neox-20b for now"
-    elif ("gpt-neox-20b" in model) and (dtype != torch.half):
-        msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
-    elif ("bloom" in model) and (dtype != torch.half):
-        msg = f"Bloom models only support half precision, cannot use dtype {dtype}"
-    elif ("bert" not in model.lower()) and enable_cuda_graph:
-        msg = "Non bert/roberta models do no support CUDA Graph"
-    elif enable_triton and not (dtype in [torch.half]):
-        msg = "Triton is for fp16"
-    elif enable_triton and not deepspeed.HAS_TRITON:
-        msg = "triton needs to be installed for the test"
-    elif ("bert" not in model.lower()) and enable_triton:
-        msg = "Triton kernels do not support Non bert/roberta models yet"
-    return msg
 
 
 """ Fixtures for inference config """
@@ -257,6 +230,36 @@ def check_injection(model):
     verify_injection(model)
 
 
+# Verify that test is valid
+def validate_test(model_w_task, dtype, enable_cuda_graph, enable_triton):
+    model, task = model_w_task
+    msg = ""
+    if enable_cuda_graph and (torch_info["cuda_version"] == "0.0"):
+        msg = "CUDA not detected, cannot use CUDA Graph"
+    elif enable_cuda_graph and pkg_version.parse(torch.__version__) < pkg_version.parse("1.10"):
+        msg = "CUDA Graph is only available in torch versions >= 1.10"
+    elif "gpt-j-6b" in model:
+        if dtype != torch.half:
+            msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
+        elif enable_cuda_graph:
+            msg = f"Not enough GPU memory to run {model} with CUDA Graph enabled"
+    elif "gpt-neox-20b" in model:  # TODO: remove this when neox issues resolved
+        msg = "Skipping gpt-neox-20b for now"
+    elif ("gpt-neox-20b" in model) and (dtype != torch.half):
+        msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
+    elif ("bloom" in model) and (dtype != torch.half):
+        msg = f"Bloom models only support half precision, cannot use dtype {dtype}"
+    elif ("bert" not in model.lower()) and enable_cuda_graph:
+        msg = "Non bert/roberta models do no support CUDA Graph"
+    elif enable_triton and not (dtype in [torch.half]):
+        msg = "Triton is for fp16"
+    elif enable_triton and not deepspeed.HAS_TRITON:
+        msg = "triton needs to be installed for the test"
+    elif ("bert" not in model.lower()) and enable_triton:
+        msg = "Triton kernels do not support Non bert/roberta models yet"
+    return msg
+
+
 @pytest.mark.inference
 class TestModelTask(DistributedTest):
     world_size = 1
@@ -270,11 +273,11 @@ class TestModelTask(DistributedTest):
         query,
         inf_kwargs,
         assert_fn,
-        invalid_test,
         perf_meas=True,
     ):
-        if invalid_test:
-            pytest.skip(invalid_test)
+        invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph, enable_triton)
+        if invalid_test_msg:
+            pytest.skip(invalid_test_msg)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -353,10 +356,10 @@ class TestMPSize(DistributedTest):
         query,
         inf_kwargs,
         assert_fn,
-        invalid_test,
     ):
-        if invalid_test:
-            pytest.skip(invalid_test)
+        invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
+        if invalid_test_msg:
+            pytest.skip(invalid_test_msg)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -381,6 +384,46 @@ class TestMPSize(DistributedTest):
 
 
 @pytest.mark.seq_inference
+@pytest.mark.parametrize("model_w_task", [("tiiuae/falcon-7b", "text-generation")], ids=["falcon"])
+class TestAutoTP(DistributedTest):
+    world_size = 1
+
+    def test(
+        self,
+        model_w_task,
+        query,
+        inf_kwargs,
+        assert_fn,
+    ):
+        # TODO: enable this test for H100 tests
+        pytest.skip("Not enough GPU memory for this on V100 runners")
+        model, task = model_w_task
+        dtype = torch.bfloat16
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+
+        # We have to load these large models on CPU with pipeline because not
+        # enough GPU memory
+        tokenizer = AutoTokenizer.from_pretrained(model, use_fast=True)
+        pipe = pipeline(task,
+                        model=model,
+                        tokenizer=tokenizer,
+                        torch_dtype=dtype,
+                        trust_remote_code=True,
+                        device=torch.device("cpu"),
+                        framework="pt")
+        #bs_output = pipe(query, **inf_kwargs)
+
+        pipe.model = deepspeed.init_inference(pipe.model, mp_size=self.world_size, replace_with_kernel_inject=False)
+        # Switch device to GPU so that input tensors are not on CPU
+        pipe.device = torch.device(get_accelerator().device_name(local_rank))
+        ds_output = pipe(query, **inf_kwargs)
+
+        #print(local_rank, "baseline", bs_output)
+        print(local_rank, "deepspeed", ds_output)
+        #assert assert_fn(bs_output, ds_output)
+
+
+@pytest.mark.seq_inference
 @pytest.mark.parametrize(
     "model_w_task, injection_policy",
     [
@@ -394,7 +437,6 @@ class TestMPSize(DistributedTest):
     ids=["t5", "roberta"],
 )
 @pytest.mark.parametrize("dtype", [torch.float], ids=["fp32"])
-@pytest.mark.parametrize("enable_cuda_graph", [False], ids=["noCG"])
 class TestInjectionPolicy(DistributedTest):
     world_size = [1, 2]
 
@@ -405,12 +447,11 @@ class TestInjectionPolicy(DistributedTest):
         query,
         inf_kwargs,
         assert_fn,
-        invalid_test,
         dtype,
-        enable_cuda_graph,
     ):
-        if invalid_test:
-            pytest.skip(invalid_test)
+        invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
+        if invalid_test_msg:
+            pytest.skip(invalid_test_msg)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -445,7 +486,6 @@ class TestInjectionPolicy(DistributedTest):
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float16], ids=["fp16"])
-@pytest.mark.parametrize("enable_cuda_graph", [False], ids=["noCG"])
 class TestAutoTensorParallelism(DistributedTest):
     world_size = [2]
 
@@ -455,12 +495,11 @@ class TestAutoTensorParallelism(DistributedTest):
         query,
         inf_kwargs,
         assert_fn,
-        invalid_test,
         dtype,
-        enable_cuda_graph,
     ):
-        if invalid_test:
-            pytest.skip(invalid_test)
+        invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
+        if invalid_test_msg:
+            pytest.skip(invalid_test_msg)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
