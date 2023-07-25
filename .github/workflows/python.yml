@@ -20,7 +20,7 @@ jobs:
   version-check:
     strategy:
       matrix:
-        pyVersion: ["3.6", "3.7", "3.8", "3.9", "3.10"]
+        pyVersion: ["3.7", "3.8", "3.9", "3.10"]
       fail-fast: false
 
     runs-on: ubuntu-20.04
@@ -36,7 +36,6 @@ jobs:
             python --version
         - name: Install deepspeed
           run: |
-            pip3 install -U pip
             pip3 install .
         - name: DS Report
           run: |
