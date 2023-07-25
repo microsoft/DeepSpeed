@@ -258,13 +258,9 @@ class AutoTP():
             data = child.weight.data.split((weight_shape[0] if conv_linear_layer else weight_shape[1]) // self.mp_size, dim=1)
             data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
 
-            #todo: need to remove new tensor allocation to reduce memory
-            new_bias = torch.empty((weight_shape[0]), device=child.weight.device, dtype=child.weight.dtype)
-            if child.bias is not None:
-                new_bias.data.copy_(child.bias.data)
             setattr(child, "replaced", True)
             return LinearAllreduce(data, child.bias if child.bias is None else \
-                        torch.nn.parameter.Parameter(new_bias.to(get_accelerator().current_device_name())), self.mp_group)
+                        torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), self.mp_group)
         else:
 
             # if conv_linear_layer [weight_shape[1] // mp_size, weight_shape[0] // mp_size]
@@ -277,12 +273,11 @@ class AutoTP():
 
             #todo: conv_linear_layer needs an extra split step
 
-            #todo: need to remove new tensor allocation to reduce memory
-            new_bias = torch.empty((weight_shape[0] // self.mp_size),
-                                    device=child.weight.device,
-                                    dtype=child.weight.dtype)
-            bias_data = None if child.bias is None else mp_replace.copy(new_bias, child.bias.data).to(
-                get_accelerator().current_device_name())
+            if child.bias is not None:
+                bias_data = child.bias.data.split(weight_shape[0] // self.mp_size, dim=0)
+                bias_data = bias_data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
+            else:
+                bias_data = None
             setattr(child, "replaced", True)
             return LinearLayer(weight=data.to(get_accelerator().current_device_name()), bias=bias_data)
 
