@@ -364,16 +364,26 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         return _container.module
 
-    def get_shard_size(total_size, num_slices):
-        if hasattr(model_config, 'num_attention_heads'):
-            num_heads = model_config.num_attention_heads
-            my_slices = num_heads // num_slices + (1 if dist.get_rank() < (num_heads % num_slices) else 0)
-            return total_size // num_heads * my_slices
+    def get_shard_size(total_size, mp_size):
+        num_kv_heads = None
+
+        # 1. Try to get num_key_heads from model_config.num_key_value_heads
+        if hasattr(model_config, 'num_key_value_heads'):
+            num_kv_heads = model_config.num_key_value_heads
+
+        # 2. Fallback to model_config.num_attention_heads when necessary
+        if num_kv_heads == None and hasattr(model_config, 'num_attention_heads'):
+            num_kv_heads = model_config.num_attention_heads
+
+        # 3. When we have num_kv_heads defined, uneven division is possible, otherwise enforce even division
+        if num_kv_heads != None:
+            my_slices = num_kv_heads // mp_size + (1 if dist.get_rank() < (num_kv_heads % mp_size) else 0)
+            return total_size // num_kv_heads * my_slices
         else:
-            if total_size % num_slices == 0:
-                return total_size // num_slices
+            if total_size % mp_size == 0:
+                return total_size // mp_size
             else:
-                assert False, f"Number of attention heads ({total_size}) must be divisible by mp_size ({num_slices})"
+                assert False, f"Number of attention heads ({total_size}) must be divisible by mp_size ({mp_size})"
 
     def replace_wo_policy(module, all_reduce_linears, prefix="", state_dict=None):
         mp_size = config.tensor_parallel.tp_size
