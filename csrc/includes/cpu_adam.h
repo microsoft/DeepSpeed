@@ -289,4 +289,3 @@ int ds_adam_step_plus_copy(int optimizer_id,
                            torch::Tensor& gpu_params);
 
 int destroy_adam_optimizer(int optimizer_id);
-
