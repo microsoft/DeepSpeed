@@ -524,8 +524,8 @@ class PipelineEngine(DeepSpeedEngine):
 
             assert self.global_rank in self.grid.pp_group
             losses = torch.Tensor([self.dp_group_loss, agg_loss]).to(self.device)
-            dist.broadcast(tensor=losses, src=self.global_rank, group=self.mpu.get_pipe_parallel_group())
-
+            if self.is_pipe_parallel:
+                dist.broadcast(tensor=losses, src=self.global_rank, group=self.mpu.get_pipe_parallel_group())
         else:
             # Get loss from last stage
             src_rank = self.grid.stage_to_global(self.num_stages - 1)
@@ -1237,7 +1237,7 @@ class PipelineEngine(DeepSpeedEngine):
             f'current alloc={new_alloced:0.4f}GB (delta={delta_alloced:0.4f}GB max={max_alloced:0.4f}GB) '
             f'current cache={new_cached:0.4f}GB (delta={delta_cached:0.4f}GB max={max_cached:0.4f}GB)')
 
-    def module_state_dict(self):
+    def module_state_dict(self, exclude_frozen_parameters=False):
         """Override hack to save a pipe model and return the directory path of the save.
 
         This method should only be called by DeepSpeed's ``save_checkpoint()``. The
@@ -1251,7 +1251,9 @@ class PipelineEngine(DeepSpeedEngine):
         assert self._curr_ckpt_path is not None, \
             "PipelineEngine expects module_state_dict() to be called from save_checkpoint()"
 
-        self.module.save_state_dict(self._curr_ckpt_path, checkpoint_engine=self.checkpoint_engine)
+        self.module.save_state_dict(self._curr_ckpt_path,
+                                    checkpoint_engine=self.checkpoint_engine,
+                                    exclude_frozen_params=exclude_frozen_parameters)
         return None
 
     def load_module_state_dict(self, checkpoint, strict=True, custom_load_fn=None):

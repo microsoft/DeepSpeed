@@ -40,7 +40,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
     def device_count(self):
         device_count = int(os.environ.get('LOCAL_SIZE', 0))
         if device_count > 0:
-            return os.environ.get('LOCAL_SIZE')
+            return device_count
         else:
             from deepspeed.utils.numa import get_numa_cores
             # Count NUMA node for number of cpu accelerators. On machine with HBM
@@ -48,9 +48,11 @@ class CPU_Accelerator(DeepSpeedAccelerator):
             # Ignore these NUMA nodes with no cores.
             numa_core_lists = get_numa_cores()
             numa_count = 0
+            prev_core_list = []
             for core_list in numa_core_lists:
-                if len(core_list) > 0:
+                if len(core_list) > 0 and core_list != prev_core_list:
                     numa_count += 1
+                    prev_core_list = core_list
             return numa_count
 
     def synchronize(self, device_index=None):
@@ -181,7 +183,10 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return True
 
     def is_fp16_supported(self):
-        return True
+        return False
+
+    def supported_dtypes(self):
+        return [torch.float, torch.bfloat16]
 
     # Tensor operations
 
