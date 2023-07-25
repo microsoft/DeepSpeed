@@ -122,16 +122,13 @@ class LLAMALayerPolicy(TransformerPolicy):
             LLAMALayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
-        try: # for zero stage 3
-            return self.client_module.self_attn.hidden_size, \
-            self.client_module.self_attn.num_heads, \
-            self.client_module.input_layernorm.variance_epsilon, \
-            self.client_module.mlp.gate_proj.weight.ds_shape[0] # mlp Need intermediate hidden size
-        except:
-            return self.client_module.self_attn.q_proj.weight.shape[1], \
-                    self.client_module.self_attn.num_heads, \
-                    self.client_module.input_layernorm.variance_epsilon, \
-                    self.client_module.mlp.gate_proj.weight.shape[0]
+        hidden_heads = (
+            getattr(self.client_module.self_attn.q_proj.weight, "ds_shape", self.client_module.self_attn.q_proj.weight.shape)[1],
+            self.client_module.self_attn.num_heads,
+            self.client_module.input_layernorm.variance_epsilon,
+            getattr(self.client_module.mlp.gate_proj.weight, "ds_shape", self.client_module.mlp.gate_proj.weight.shape)[0],
+        )
+        return hidden_heads
 
     def attention(self, enable_training=False):
         qw = self.client_module.self_attn.q_proj.weight
