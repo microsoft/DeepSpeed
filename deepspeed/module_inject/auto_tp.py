@@ -249,19 +249,13 @@ class AutoTP():
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
         weight_shape = child.weight.shape
         if name in self.all_reduce_linears:
-            # new_weight = torch.empty((
-            #     weight_shape[1] if conv_linear_layer else weight_shape[0],
-            #     (weight_shape[0] if conv_linear_layer else weight_shape[1]) // self.mp_size,
-            # ),
-            #                             device=child.weight.device,
-            #                             dtype=child.weight.dtype)
+            # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
+            # else [weight_shape[0], weight_shape[1] // mp_size]
+
             if conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
-            # data = mp_replace.copy(new_weight, child.weight.data)
 
-            data = child.weight.data.split((weight_shape[0] if conv_linear_layer else weight_shape[1]) // self.mp_size,
-                dim = 0 if conv_linear_layer else 1)
-            #data = data[dist.get_rank(group=self.mp_group)]
+            data = child.weight.data.split((weight_shape[0] if conv_linear_layer else weight_shape[1]) // self.mp_size, dim=1)
             data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
 
             #todo: need to remove new tensor allocation to reduce memory
@@ -273,16 +267,15 @@ class AutoTP():
                         torch.nn.parameter.Parameter(new_bias.to(get_accelerator().current_device_name())), self.mp_group)
         else:
 
-            #todo: need to remove new tensor allocation to reduce memory
-            new_weight = torch.empty((
-                (weight_shape[1] if conv_linear_layer else weight_shape[0]) // self.mp_size,
-                weight_shape[0] // self.mp_size if conv_linear_layer else weight_shape[1],
-            ),
-                                        device=child.weight.device,
-                                        dtype=child.weight.dtype)
+            # if conv_linear_layer [weight_shape[1] // mp_size, weight_shape[0] // mp_size]
+            # else [weight_shape[0] // mp_size, weight_shape[1]]
             if conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
-            data = mp_replace.copy(new_weight, child.weight.data)
+
+            data = child.weight.data.split((weight_shape[1] if conv_linear_layer else weight_shape[0]) // self.mp_size, dim=0)
+            data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
+
+            #todo: conv_linear_layer needs an extra split step
 
             #todo: need to remove new tensor allocation to reduce memory
             new_bias = torch.empty((weight_shape[0] // self.mp_size),
@@ -299,13 +292,12 @@ class AutoTP():
                 return
             mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
 
-            #todo: need to remove new tensor allocation to reduce memory
-            new_weight = torch.empty((child.weight.shape[0], child.weight.shape[1] // self.mp_size),
-                                     device=child.weight.device,
-                                     dtype=child.weight.dtype)
-            data = mp_replace.copy(new_weight,
-                                   child.weight.ds_tensor.data if hasattr(child.weight, 'ds_tensor') else \
-                                   child.weight.data)
+            if hasattr(child.weight, 'ds_tensor'):
+                data = child.weight.ds_tensor.data.split(weight_shape[1] // self.mp_size, dim=1)
+            else:
+                data = child.weight.data.split(weight_shape[1] // self.mp_size, dim=1)
+            data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
+
             new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // self.mp_size)
             new_embedding.weight.data.copy_(data)
             setattr(child, "replaced", True)
