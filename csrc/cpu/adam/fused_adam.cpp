@@ -3,12 +3,6 @@
 
 // DeepSpeed Team
 
-#include <torch/extension.h>
-#include <cassert>
-#include <iostream>
-#include <memory>
-#include <type_traits>
-#include <unordered_map>
 #include "cpu_adam.h"
 
 // C++ interface

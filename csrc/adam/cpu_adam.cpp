@@ -4,20 +4,6 @@
 // DeepSpeed Team
 
 #include "cpu_adam.h"
-#include <torch/extension.h>
-#include <cassert>
-#include <iostream>
-#include <memory>
-#include <type_traits>
-#include <unordered_map>
-
-#if defined(__ENABLE_CUDA__)
-#include <cuda_runtime_api.h>
-#include "cublas_v2.h"
-#include "cuda.h"
-#include "curand.h"
-#include "custom_cuda_layers.h"
-#endif
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
