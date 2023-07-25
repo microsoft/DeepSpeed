@@ -3,7 +3,7 @@
 
 # DeepSpeed Team
 
-from pydantic import model_validator
+from typing import Optional
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 
@@ -34,10 +34,10 @@ class WandbConfig(DeepSpeedConfigModel):
     enabled: bool = False
     """ Whether logging to WandB is enabled. Requires `wandb` package is installed. """
 
-    group: str = None
+    group: Optional[str] = None
     """ Name for the WandB group. This can be used to group together runs. """
 
-    team: str = None
+    team: Optional[str] = None
     """ Name for the WandB team. """
 
     project: str = "deepspeed"
@@ -63,6 +63,10 @@ class CSVConfig(DeepSpeedConfigModel):
 class DeepSpeedMonitorConfig(DeepSpeedConfigModel):
     """Sets parameters for various monitoring methods."""
 
+    @property
+    def enabled(self) -> bool:
+        return any((self.tensorboard.enabled, self.wandb.enabled, self.csv_monitor.enabled))
+
     tensorboard: TensorBoardConfig = {}
     """ TensorBoard monitor, requires `tensorboard` package is installed. """
 
@@ -71,9 +75,3 @@ class DeepSpeedMonitorConfig(DeepSpeedConfigModel):
 
     csv_monitor: CSVConfig = {}
     """ Local CSV output of monitoring data. """
-
-    @model_validator
-    def check_enabled(cls, values):
-        values["enabled"] = values.get("tensorboard").enabled or values.get("wandb").enabled or values.get(
-            "csv_monitor").enabled
-        return values

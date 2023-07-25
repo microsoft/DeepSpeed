@@ -56,11 +56,11 @@ class DeepSpeedConfigModel(BaseModel):
         super().__init__(**data)
         self._deprecated_fields_check(self)
 
-    def _process_deprecated_field(self, pydantic_config, field):
+    def _process_deprecated_field(self, pydantic_config, field_name, field):
         # Get information about the deprecated field
         fields_set = pydantic_config.__fields_set__
-        dep_param = field.name
-        kwargs = field.field_info.extra
+        dep_param = field_name
+        kwargs = field.json_schema_extra
         new_param_fn = kwargs.get("new_param_fn", lambda x: x)
         param_value = new_param_fn(getattr(pydantic_config, dep_param))
         new_param = kwargs.get("new_param", "")
@@ -97,9 +97,11 @@ class DeepSpeedConfigModel(BaseModel):
 
     def _deprecated_fields_check(self, pydantic_config):
         fields = pydantic_config.model_fields
-        for field in fields.values():
-            if field.field_info.extra.get("deprecated", False):
-                self._process_deprecated_field(pydantic_config, field)
+        for field_name, field in fields.items():
+            if getattr(field, "json_schema_extra") is None:
+                continue
+            if field.json_schema_extra.get("deprecated", False):
+                self._process_deprecated_field(pydantic_config, field_name, field)
 
     model_config = ConfigDict(validate_default=True,
                               validate_assignment=True,
@@ -112,7 +114,7 @@ class DeepSpeedConfigModel(BaseModel):
 def get_config_default(config, field_name):
     assert field_name in config.model_fields, f"'{field_name}' is not a field in {config}"
     assert not config.model_fields.get(
-        field_name).required, f"'{field_name}' is a required field and does not have a default value"
+        field_name).is_required(), f"'{field_name}' is a required field and does not have a default value"
     return config.model_fields.get(field_name).default
 
 

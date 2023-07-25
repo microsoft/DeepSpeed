@@ -92,22 +92,22 @@ class QuantTypeEnum(str, Enum):
 
 
 class BaseQuantConfig(DeepSpeedConfigModel):
-    enabled = True
-    num_bits = 8
+    enabled: bool = True
+    num_bits: int = 8
     q_type: QuantTypeEnum = QuantTypeEnum.sym
     q_groups: int = 1
 
 
 class WeightQuantConfig(BaseQuantConfig):
-    enabled = True
+    enabled: bool = True
 
 
 class ActivationQuantConfig(BaseQuantConfig):
-    enabled = True
+    enabled: bool = True
 
 
 class QKVQuantConfig(DeepSpeedConfigModel):
-    enabled = True
+    enabled: bool = True
 
 
 class QuantizationConfig(DeepSpeedConfigModel):

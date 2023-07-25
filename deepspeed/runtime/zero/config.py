@@ -3,9 +3,9 @@
 
 # DeepSpeed Team
 
-from pydantic import Field, field_validator
+from pydantic import Field, model_validator
 import sys
-from typing import Optional
+from typing import Any, Optional
 from enum import Enum
 from deepspeed.runtime.config_utils import get_scalar_param, pp_int, DeepSpeedConfigModel
 from deepspeed.utils import logger
@@ -117,7 +117,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     the allgather for large model sizes
     """
 
-    overlap_comm: bool = None  # None for dynamic default value (see validator `overlap_comm_valid` below)
+    overlap_comm: Optional[bool] = None  # None for dynamic default value (see validator `overlap_comm_valid` below)
     """
     Attempts to overlap the reduction of the gradients with backward computation
     """
@@ -157,7 +157,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     parameters). Used by ZeRO3-Offload and ZeRO-Infinity
     """
 
-    cpu_offload_param: bool = Field(
+    cpu_offload_param: Optional[bool] = Field(
         None,
         deprecated=True,
         new_param="offload_param",
@@ -165,7 +165,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     )
     """ Deprecated, please use ``offload_param`` """
 
-    cpu_offload_use_pin_memory: bool = Field(
+    cpu_offload_use_pin_memory: Optional[bool] = Field(
         None,
         deprecated=True,
         new_param="offload_param or offload_optimizer",
@@ -173,7 +173,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     )
     """ Deprecated, please use ``offload_param`` or ``offload_optimizer`` """
 
-    cpu_offload: bool = Field(
+    cpu_offload: Optional[bool] = Field(
         None,
         deprecated=True,
         new_param="offload_optimizer",
@@ -194,7 +194,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     latency-bound messages).
     """
 
-    model_persistence_threshold: int = Field(pp_int(sys.maxsize, "sys.maxsize"),
+    model_persistence_threshold: int = Field(int(pp_int(sys.maxsize, "sys.maxsize")),
                                              ge=0,
                                              alias="stage3_model_persistence_threshold")
     """
@@ -275,9 +275,9 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     """
 
     # Validators
-    @field_validator("overlap_comm")
-    def overlap_comm_valid(cls, field_value, values):
-        if field_value is None:
-            assert ("stage" in values), "DeepSpeedZeroConfig: 'stage' must be defined before 'overlap_comm'"
-            field_value = values["stage"] == ZeroStageEnum.weights
-        return field_value
+    @model_validator(mode="after")
+    @classmethod
+    def overlap_comm_valid(cls, data: Any) -> Any:
+        if data.overlap_comm is None:
+            data.overlap_comm = (data.stage == ZeroStageEnum.weights)
+        return data
