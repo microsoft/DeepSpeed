@@ -1880,7 +1880,6 @@ class DeepSpeedEngine(Module):
                     )]
                     self.monitor.write_events(self.summary_events)
 
-
         self._start_timers(self.engine_timers.backward_timers)
 
         assert self.optimizer is not None and not isinstance(self.optimizer, DummyOptim), \
