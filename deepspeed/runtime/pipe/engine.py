@@ -15,7 +15,6 @@ from deepspeed.accelerator import get_accelerator
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
 from ..utils import PartitionedTensor
 from ..dataloader import RepeatingLoader
-from ..zero.config import ZeroStageEnum
 from ..activation_checkpointing import checkpointing as ds_checkpointing
 
 from .module import PipelineModule, PipelineError
