@@ -36,6 +36,7 @@ jobs:
             python --version
         - name: Install deepspeed
           run: |
+            pip3 install -U pip
             pip3 install .
         - name: DS Report
           run: |
