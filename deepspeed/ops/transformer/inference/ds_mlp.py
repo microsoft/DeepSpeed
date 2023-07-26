@@ -74,7 +74,7 @@ class DeepSpeedMLP(nn.Module):
 
         if len(DeepSpeedMLP._inter_w_buffers) == 0:
             DeepSpeedMLP._inter_w_buffers = [
-                torch.empty(self.intm_w_sz_per_partition, self.config.hidden_size, dtype=data_type, device=device), 
+                torch.empty(self.intm_w_sz_per_partition, self.config.hidden_size, dtype=data_type, device=device),
                 torch.empty(self.intm_w_sz_per_partition, dtype=data_type_fp, device=device)
             ]
 
