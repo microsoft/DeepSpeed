@@ -75,6 +75,14 @@ void wait_buffer_state_until(int index, int state)
         ;
 }
 
+void wait_buffer_state_until_not(int index, int state)
+{
+    volatile int* state_ptr = &(workspace[index].state);
+
+    while (*state_ptr == state)
+        ;
+}
+
 __m512 cvt_bf16_to_fp32(const __m256i src) __attribute__((target("avx512bw")));
 inline __m512 cvt_bf16_to_fp32(const __m256i src)
 {
@@ -526,7 +534,10 @@ void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, 
         workspace[world_rank].state = 0;
     }
     if (world_rank != 0) {
-        wait_buffer_state_until(0, 0);
+        // if rank 0 spin too fast it could be in state 1 of next allreduce
+        // in this case wait_buffer_state_until(0, 0) may cause deadlock
+        // what we are certain is when rank 0 finishes the state won't be 2
+        wait_buffer_state_until_not(0, 2);
         workspace[world_rank].state = 0;
     }
 }
