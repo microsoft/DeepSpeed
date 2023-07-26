@@ -53,7 +53,7 @@ class LmHeadLinearAllreduce(nn.Module):
         output = torch.matmul(input[:, :, self.rank * input_shard:(self.rank + 1) * input_shard],
                               self.weight.transpose(-1, -2))
         if self.mp_group is not None:
-            dist.all_reduce(output, group=self.mp_group)
+            dist.inference_all_reduce(output, group=self.mp_group)
         if self.bias is not None:
             output += self.bias
         return output
