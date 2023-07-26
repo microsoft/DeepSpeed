@@ -7,11 +7,11 @@ on:
 jobs:
   unit-tests:
     runs-on: [self-hosted, nvidia, h100]
-    container:
-       image: ubuntu:latest
-       volumes:
-           - /:/host/
-       options: --privileged
+    # container:
+    #    image: ubuntu:latest
+    #    volumes:
+    #        - /:/host/
+    #    options: --privileged
     steps:
       - name: unit-tests
         continue-on-error: true
