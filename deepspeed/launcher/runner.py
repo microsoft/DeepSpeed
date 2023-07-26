@@ -496,6 +496,8 @@ def main(args=None):
             deepspeed_launch.append("--module")
         if args.no_local_rank:
             deepspeed_launch.append("--no_local_rank")
+        if args.no_ssh_check:
+            deepspeed_launch.append("--no_ssh_check")
         if args.save_pid:
             deepspeed_launch += ["--save_pid", f"{os.getpid()}"]
         if args.enable_each_rank_log:
