@@ -114,7 +114,7 @@ class ReplaceWithTensorSlicing:
 
 class Loading():
 
-    def load_buffer(self, module, state_dict, prefix):
+    def load_buffer(module, state_dict, prefix):
         for name in module._buffers.keys():
             if module._buffers[name].data.is_meta:
                 module._buffers[name] = torch.nn.parameter.Parameter(
@@ -123,7 +123,7 @@ class Loading():
             if prefix + name in state_dict.keys():
                 module._buffers[name].data.copy_(state_dict[prefix + name])
 
-    def load(self, module, state_dict, prefix, mp_group=None):
+    def load(module, state_dict, prefix, mp_group=None):
         mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
         if hasattr(module, 'weight'):
             if module.weight.data.is_meta:
