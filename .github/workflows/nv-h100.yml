@@ -11,7 +11,7 @@ jobs:
        image: ubuntu:latest
        volumes:
            - /:/host/
-       options: --privileged --network=host
+       options: --privileged
     steps:
       - name: unit-tests
         continue-on-error: true
