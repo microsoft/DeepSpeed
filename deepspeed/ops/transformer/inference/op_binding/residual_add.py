@@ -21,9 +21,11 @@ class ResidualAddOp(BaseOp):
                 self.residual_add_func = self.inference_module.residual_add_bias_bf16
             else:
                 self.residual_add_func = self.inference_module.residual_add_bias_fp32
-            self._vector_add = self.inference_module._vector_add
         except AttributeError:
             self.residual_add_func = None
+        try:
+            self._vector_add = self.inference_module._vector_add
+        except AttributeError:
             self._vector_add = None
 
     def forward(self,
@@ -35,7 +37,7 @@ class ResidualAddOp(BaseOp):
                 attention_bias: Optional[torch.Tensor] = None,
                 final_bias: Optional[torch.Tensor] = None):
 
-        if self.residual_add_func != None:
+        if self.residual_add_func is not None:
             if final_bias is None:
                 residual = self._vector_add(residual, hidden_state, 1.0 / self.config.mp_size)
             else:
