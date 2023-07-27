@@ -1,6 +1,12 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 from deepspeed.utils.logging import warning_once
 import re
+
 
 def split_by_qkvlist_and_refuse(qkv_list, split_size, split_dim=0, cat_dim=0):
     qkv_split_list = [torch.split(mat, split_size, dim=split_dim) for mat in qkv_list]
@@ -9,7 +15,8 @@ def split_by_qkvlist_and_refuse(qkv_list, split_size, split_dim=0, cat_dim=0):
     ]
     return tp_fusedqkv_list
 
-def require_tp_fused_qkvw(name,mp_size):
+
+def require_tp_fused_qkvw(name, mp_size):
     fused_qkvw_name_list = ['qkv_proj', 'query_key_value']
 
     if mp_size == 1:
@@ -19,7 +26,8 @@ def require_tp_fused_qkvw(name,mp_size):
             return True
     return False
 
-def prepare_tp_fused_qkvw(module_str, src, mp_size,gpu_index):
+
+def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
     if src == None:
         return
     fused_type_dict = {
@@ -41,7 +49,7 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size,gpu_index):
         src_split = list(torch.split(num_mp_blocks, num_mp_blocks.shape[1] // 3, dim=1))
         src_split = [x.reshape(codegen_mp_num * mp_size, -1, shape[1]) for x in src_split]
 
-        split_fusedqkv = split_by_qkvlist_and_refuse(src_split,shape[0] // 3 // mp_size, 0, 1)
+        split_fusedqkv = split_by_qkvlist_and_refuse(src_split, shape[0] // 3 // mp_size, 0, 1)
         tp_fuseqkv_weight = torch.cat(split_fusedqkv, dim=0).reshape(shape[0], -1)
 
         return tp_fuseqkv_weight[gpu_index * dst_shape:(gpu_index + 1) * dst_shape]
@@ -52,10 +60,10 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size,gpu_index):
         shape = input.shape
         dst_shape = shape[0] // mp_size
         src_split = torch.split(input, shape[0] // 3, dim=0)
-        
-        split_fusedqkv = split_by_qkvlist_and_refuse(src_split,shape[0] // 3 // mp_size)
+
+        split_fusedqkv = split_by_qkvlist_and_refuse(src_split, shape[0] // 3 // mp_size)
         tp_fuseqkv_weight = torch.cat(split_fusedqkv, dim=0)
-        
+
         return tp_fuseqkv_weight[gpu_index * dst_shape:(gpu_index + 1) * dst_shape]
 
     def _bloom_type_transpose(input, mp_size):
@@ -81,5 +89,5 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size,gpu_index):
         if re.search(module_name, module_str):
             return _transpose_fused_qkvw(src, mp_size, fused_type)
     warning_once(f"Unrecognized fusedkqv weight type, default to using bloom type,"
-                    f"please check in prepare_tp_fused_qkvw() to avoid potential calculation errors")
+                 f"please check in prepare_tp_fused_qkvw() to avoid potential calculation errors")
     return src
