@@ -552,6 +552,7 @@ def prefix_sum_inc(weights):
 
 
 def partition_uniform(num_items, num_parts):
+    import numpy
     parts = [0] * (num_parts + 1)
     # First check for the trivial edge case
     if num_items <= num_parts:
@@ -559,10 +560,17 @@ def partition_uniform(num_items, num_parts):
             parts[p] = min(p, num_items)
         return parts
 
-    chunksize = floor(num_items / num_parts)
-    for p in range(num_parts):
-        parts[p] = min(chunksize * p, num_items)
-    parts[num_parts] = num_items
+    chunksize = num_items // num_parts
+    residual = num_items - (chunksize * num_parts)
+
+    parts = numpy.arange(
+        0, (num_parts + 1) * chunksize, chunksize
+    )
+
+    for i in range(residual):
+        parts[i + 1 :] += 1
+    parts = parts.tolist()
+
     return parts
 
 
