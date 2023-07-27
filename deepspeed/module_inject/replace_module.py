@@ -466,8 +466,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                     LlamaRMSNorm = transformers.models.llama.modeling_llama.LlamaRMSNorm
                 except:
                     LlamaRMSNorm = None
-                if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm, LLamaRMSNorm] and state_dict is not None:
-
+                if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm, LlamaRMSNorm] and state_dict is not None:
                     if any(checking_key in item for item in state_dict):
                         load(child, state_dict, checking_key, mp_group)
                     else:
