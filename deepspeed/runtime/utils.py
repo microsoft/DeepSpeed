@@ -14,7 +14,6 @@ import os
 import psutil
 import gc
 from math import sqrt
-from math import floor
 from bisect import bisect_left
 from packaging import version as pkg_version
 
@@ -563,12 +562,10 @@ def partition_uniform(num_items, num_parts):
     chunksize = num_items // num_parts
     residual = num_items - (chunksize * num_parts)
 
-    parts = numpy.arange(
-        0, (num_parts + 1) * chunksize, chunksize
-    )
+    parts = numpy.arange(0, (num_parts + 1) * chunksize, chunksize)
 
     for i in range(residual):
-        parts[i + 1 :] += 1
+        parts[i + 1:] += 1
     parts = parts.tolist()
 
     return parts
