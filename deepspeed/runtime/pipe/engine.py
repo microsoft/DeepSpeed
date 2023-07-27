@@ -13,6 +13,11 @@ from deepspeed.utils.timer import ThroughputTimer
 from deepspeed.accelerator import get_accelerator
 
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
+from deepspeed.utils.timer import FORWARD_MICRO_TIMER, FORWARD_GLOBAL_TIMER, BACKWARD_MICRO_TIMER, \
+    BACKWARD_GLOBAL_TIMER, BACKWARD_INNER_MICRO_TIMER, BACKWARD_INNER_GLOBAL_TIMER, \
+    BACKWARD_REDUCE_MICRO_TIMER, BACKWARD_REDUCE_GLOBAL_TIMER, \
+    STEP_MICRO_TIMER, STEP_GLOBAL_TIMER
+
 from ..utils import PartitionedTensor
 from ..dataloader import RepeatingLoader
 from ..zero.config import ZeroStageEnum
@@ -25,6 +30,13 @@ from . import schedule
 TARGET_ID = -2
 LOG_STAGE = -2
 DATA_PARALLEL_ID = -2
+
+BATCH_INPUT_TIMER = 'batch_input'
+TRAIN_BATCH_TIMER = 'train_batch'
+PIPE_SEND_OUTPUT_TIMER = 'pipe_send_output'
+PIPE_SEND_GRAD_TIMER = 'pipe_send_grad'
+PIPE_RECV_INPUT_TIMER = 'pipe_recv_input'
+PIPE_RECV_GRAD_TIMER = 'pipe_recv_grad'
 
 
 def is_even(number):
@@ -55,7 +67,8 @@ class PipelineEngine(DeepSpeedEngine):
         super().__init__(*super_args, **super_kwargs)
         assert isinstance(self.module, PipelineModule), "model must base PipelineModule"
 
-        assert self.zero_optimization_stage() < 2, "ZeRO-2 and ZeRO-3 are incompatible with pipeline parallelism"
+        assert self.zero_optimization_stage(
+        ) < ZeroStageEnum.gradients, "ZeRO-2 and ZeRO-3 are incompatible with pipeline parallelism"
 
         # We schedule the all-reduces, so disable it in super().backward()
         self.enable_backward_allreduce = False
@@ -195,18 +208,18 @@ class PipelineEngine(DeepSpeedEngine):
         # XXX look into timer reporting timing
         # Initialize some timers because of early weirdness.
         if self.wall_clock_breakdown():
-            self.timers('forward_microstep').start()
-            self.timers('forward_microstep').stop()
-            self.timers('backward_microstep').start()
-            self.timers('backward_microstep').stop()
-            self.timers('backward_inner_microstep').start()
-            self.timers('backward_inner_microstep').stop()
-            self.timers('backward_allreduce_microstep').start()
-            self.timers('backward_allreduce_microstep').stop()
-            self.timers('backward_allreduce').start()
-            self.timers('backward_allreduce').stop()
-            self.timers('step_microstep').start()
-            self.timers('step_microstep').stop()
+            self.timers(FORWARD_MICRO_TIMER).start()
+            self.timers(FORWARD_MICRO_TIMER).stop()
+            self.timers(BACKWARD_MICRO_TIMER).start()
+            self.timers(BACKWARD_MICRO_TIMER).stop()
+            self.timers(BACKWARD_INNER_MICRO_TIMER).start()
+            self.timers(BACKWARD_INNER_MICRO_TIMER).stop()
+            self.timers(BACKWARD_REDUCE_MICRO_TIMER).start()
+            self.timers(BACKWARD_REDUCE_MICRO_TIMER).stop()
+            self.timers(BACKWARD_REDUCE_GLOBAL_TIMER).start()
+            self.timers(BACKWARD_REDUCE_GLOBAL_TIMER).stop()
+            self.timers(STEP_MICRO_TIMER).start()
+            self.timers(STEP_MICRO_TIMER).stop()
 
     def set_has_attention_mask(self, value):
         assert isinstance(value, bool)
@@ -243,10 +256,8 @@ class PipelineEngine(DeepSpeedEngine):
         self._force_grad_boundary = True
         if self.pipeline_enable_backward_allreduce:
             if self.bfloat16_enabled():
-                if self.zero_optimization_stage() < ZeroStageEnum.gradients:
-                    self._bf16_reduce_grads()
-                else:
-                    raise NotImplementedError("PP+BF16 only work for ZeRO Stage 1")
+                # PP+BF16 work for ZeRO Stage 1
+                self._bf16_reduce_grads()
             else:
                 self.allreduce_gradients(bucket_size=MEMORY_OPT_ALLREDUCE_SIZE)
         self._force_grad_boundary = False
@@ -329,18 +340,18 @@ class PipelineEngine(DeepSpeedEngine):
         self._compute_loss = True
 
         # Do the work
-        self.timers('train_batch').start()
+        self.timers(TRAIN_BATCH_TIMER).start()
         sched = schedule.TrainSchedule(micro_batches=self.micro_batches,
                                        stages=self.num_stages,
                                        stage_id=self.stage_id)
         self._exec_schedule(sched)
         self.agg_train_loss = self._aggregate_total_loss()
 
-        self.timers('train_batch').stop()
+        self.timers(TRAIN_BATCH_TIMER).stop()
 
         if self.global_steps % self.steps_per_print() == 0:
             if self.global_rank == 0:
-                elapsed = self.timers('train_batch').elapsed(reset=True) / 1000.0
+                elapsed = self.timers(TRAIN_BATCH_TIMER).elapsed(reset=True) / 1000.0
                 iter_time = elapsed / self.steps_per_print()
                 tput = self.train_batch_size() / iter_time
                 print(f'steps: {self.global_steps} '
@@ -355,7 +366,12 @@ class PipelineEngine(DeepSpeedEngine):
             self.monitor.write_events(self.summary_events)
 
         if self.wall_clock_breakdown() and self.global_steps % self.steps_per_print() == 0:
-            self.timers.log(['pipe_send_output', 'pipe_send_grad', 'pipe_recv_input', 'pipe_recv_grad'])
+            self.timers.log([
+                PIPE_SEND_OUTPUT_TIMER,
+                PIPE_SEND_GRAD_TIMER,
+                PIPE_RECV_INPUT_TIMER,
+                PIPE_RECV_GRAD_TIMER,
+            ])
 
         # TODO: should return precisely what loss returned and allow others to be queried?
         return self.agg_train_loss
@@ -693,10 +709,10 @@ class PipelineEngine(DeepSpeedEngine):
         outputs = self.pipe_buffers['outputs'][buffer_id]
 
         if self.wall_clock_breakdown():
-            self.timers('backward_microstep').start()
-            self.timers('backward').start()
-            self.timers('backward_inner_microstep').start()
-            self.timers('backward_inner').start()
+            self.timers(BACKWARD_MICRO_TIMER).start()
+            self.timers(BACKWARD_GLOBAL_TIMER).start()
+            self.timers(BACKWARD_INNER_MICRO_TIMER).start()
+            self.timers(BACKWARD_INNER_GLOBAL_TIMER).start()
 
         # Reconstruct if we previously partitioned the output. We must be
         # careful to also restore the computational graph of the tensors we partitioned.
@@ -744,16 +760,16 @@ class PipelineEngine(DeepSpeedEngine):
         grad_tensors = None
 
         if self.wall_clock_breakdown():
-            self.timers('backward_inner').stop()
-            self.timers('backward_inner_microstep').stop()
-            self.timers('backward').stop()
-            self.timers('backward_microstep').stop()
+            self.timers(BACKWARD_INNER_MICRO_TIMER).stop()
+            self.timers(BACKWARD_INNER_GLOBAL_TIMER).stop()
+            self.timers(BACKWARD_MICRO_TIMER).stop()
+            self.timers(BACKWARD_GLOBAL_TIMER).stop()
 
         self.mem_status('AFTER BWD')
 
     def _exec_load_micro_batch(self, buffer_id):
         if self.wall_clock_breakdown():
-            self.timers('batch_input').start()
+            self.timers(BATCH_INPUT_TIMER).start()
 
         batch = self._next_batch()
 
@@ -790,7 +806,7 @@ class PipelineEngine(DeepSpeedEngine):
             self.pipe_buffers['labels'][buffer_id] = loaded
 
         if self.wall_clock_breakdown():
-            self.timers('batch_input').stop()
+            self.timers(BATCH_INPUT_TIMER).stop()
 
     def _send_tensor_meta(self, buffer, recv_stage):
         """ Communicate metadata about upcoming p2p transfers.
@@ -912,7 +928,7 @@ class PipelineEngine(DeepSpeedEngine):
 
     def _exec_send_activations(self, buffer_id):
         if self.wall_clock_breakdown():
-            self.timers('pipe_send_output').start()
+            self.timers(PIPE_SEND_OUTPUT_TIMER).start()
 
         outputs = self.pipe_buffers['outputs'][buffer_id]
 
@@ -944,11 +960,11 @@ class PipelineEngine(DeepSpeedEngine):
             outputs = tuple(outputs)
 
         if self.wall_clock_breakdown():
-            self.timers('pipe_send_output').stop()
+            self.timers(PIPE_SEND_OUTPUT_TIMER).stop()
 
     def _exec_send_grads(self, buffer_id):
         if self.wall_clock_breakdown():
-            self.timers('pipe_send_grad').start()
+            self.timers(PIPE_SEND_GRAD_TIMER).start()
 
         inputs = self.pipe_buffers['inputs'][buffer_id]
 
@@ -1000,11 +1016,11 @@ class PipelineEngine(DeepSpeedEngine):
         self.pipe_buffers['inputs'][buffer_id] = None
 
         if self.wall_clock_breakdown():
-            self.timers('pipe_send_grad').stop()
+            self.timers(PIPE_SEND_GRAD_TIMER).stop()
 
     def _exec_recv_activations(self, buffer_id):
         if self.wall_clock_breakdown():
-            self.timers('pipe_recv_input').start()
+            self.timers(PIPE_RECV_INPUT_TIMER).start()
 
         recvd = None
 
@@ -1043,11 +1059,11 @@ class PipelineEngine(DeepSpeedEngine):
         self.pipe_buffers['inputs'][buffer_id] = recvd
 
         if self.wall_clock_breakdown():
-            self.timers('pipe_recv_input').stop()
+            self.timers(PIPE_RECV_GRAD_TIMER).stop()
 
     def _exec_recv_grads(self, buffer_id):
         if self.wall_clock_breakdown():
-            self.timers('pipe_recv_grad').start()
+            self.timers(PIPE_RECV_GRAD_TIMER).start()
 
         outputs = self.pipe_buffers['outputs'][buffer_id]
         # XXX these shapes are hardcoded for Megatron
@@ -1100,12 +1116,12 @@ class PipelineEngine(DeepSpeedEngine):
                 p2p.recv(buffer, self.next_stage)
 
         if self.wall_clock_breakdown():
-            self.timers('pipe_recv_grad').stop()
+            self.timers(PIPE_RECV_GRAD_TIMER).stop()
 
     def _exec_optimizer_step(self, lr_kwargs=None):
         if self.wall_clock_breakdown():
-            self.timers('step_microstep').start()
-            self.timers('step').start()
+            self.timers(STEP_MICRO_TIMER).start()
+            self.timers(STEP_GLOBAL_TIMER).start()
         self.mem_status('BEFORE STEP', reset_max=True)
 
         self._force_grad_boundary = True
@@ -1122,15 +1138,25 @@ class PipelineEngine(DeepSpeedEngine):
             self.monitor.write_events(self.summary_events)
 
         if self.wall_clock_breakdown():
-            self.timers('step_microstep').stop()
-            self.timers('step').stop()
+            self.timers(STEP_MICRO_TIMER).stop()
+            self.timers(STEP_GLOBAL_TIMER).stop()
             if self.global_steps % self.steps_per_print() == 0:
                 self.timers.log([
-                    'batch_input', 'forward_microstep', 'backward_microstep', 'backward_inner_microstep',
-                    'backward_allreduce_microstep', 'backward_tied_allreduce_microstep', 'step_microstep'
+                    BATCH_INPUT_TIMER,
+                    FORWARD_MICRO_TIMER,
+                    BACKWARD_MICRO_TIMER,
+                    BACKWARD_INNER_MICRO_TIMER,
+                    BACKWARD_REDUCE_MICRO_TIMER,
+                    STEP_MICRO_TIMER,
                 ])
             if self.global_steps % self.steps_per_print() == 0:
-                self.timers.log(['forward', 'backward', 'backward_inner', 'backward_allreduce', 'step'])
+                self.timers.log([
+                    FORWARD_GLOBAL_TIMER,
+                    BACKWARD_GLOBAL_TIMER,
+                    BACKWARD_INNER_GLOBAL_TIMER,
+                    BACKWARD_REDUCE_GLOBAL_TIMER,
+                    STEP_GLOBAL_TIMER,
+                ])
 
     def _zero_grads(self, inputs):
         if isinstance(inputs, torch.Tensor):
@@ -1237,7 +1263,7 @@ class PipelineEngine(DeepSpeedEngine):
             f'current alloc={new_alloced:0.4f}GB (delta={delta_alloced:0.4f}GB max={max_alloced:0.4f}GB) '
             f'current cache={new_cached:0.4f}GB (delta={delta_cached:0.4f}GB max={max_cached:0.4f}GB)')
 
-    def module_state_dict(self):
+    def module_state_dict(self, exclude_frozen_parameters=False):
         """Override hack to save a pipe model and return the directory path of the save.
 
         This method should only be called by DeepSpeed's ``save_checkpoint()``. The
@@ -1251,7 +1277,9 @@ class PipelineEngine(DeepSpeedEngine):
         assert self._curr_ckpt_path is not None, \
             "PipelineEngine expects module_state_dict() to be called from save_checkpoint()"
 
-        self.module.save_state_dict(self._curr_ckpt_path, checkpoint_engine=self.checkpoint_engine)
+        self.module.save_state_dict(self._curr_ckpt_path,
+                                    checkpoint_engine=self.checkpoint_engine,
+                                    exclude_frozen_params=exclude_frozen_parameters)
         return None
 
     def load_module_state_dict(self, checkpoint, strict=True, custom_load_fn=None):
