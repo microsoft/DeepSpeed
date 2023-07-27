@@ -1159,8 +1159,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         def partition(param_list=None, backward=False, hierarchy=0, has_been_updated=False):
             cls = param
-            print_rank_0(f"{'--'*hierarchy}----Partitioning param {debug_param2name_id_shape_device(cls)}",
-                         force=False)
+            # print_rank_0(f"{'--'*hierarchy}----Partitioning param {debug_param2name_id_shape_device(cls)}",
+            #              force=False)
             if param_list is None:
                 param_list = [cls]
             self._partition(param_list, has_been_updated=has_been_updated)
@@ -1299,7 +1299,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
     def _partition(self, param_list, force=False, has_been_updated=False):
         for param in param_list:
-            print_rank_0(f"Before Partitioning Param {param.ds_id} pri: {param.ds_tensor}", force=False)
+            print_rank_0(f"Before Partitioning Param {param.ds_id}", force=False)
             if self.zero_param_process_group is not None:
                 self._partition_param_sec(param, has_been_updated=has_been_updated)
             self._partition_param(param, has_been_updated=has_been_updated)
@@ -1313,7 +1313,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
     def _partition_param(self, param, buffer=None, has_been_updated=False):
         assert param.ds_status is not ZeroParamStatus.INFLIGHT, f" {param} Cannot partition a param in flight"
         global reuse_buffers
-        print_rank_0(f"Param id {param.ds_id} status is {param.ds_status}", force=False)
+        # print_rank_0(f"Param id {param.ds_id} status is {param.ds_status}", force=False)
         if param.ds_status is ZeroParamStatus.AVAILABLE:
             print_rank_0(f"Partitioning param id {param.ds_id} reuse buffers {reuse_buffers}", force=False)
             # if reuse_buffers and False:
