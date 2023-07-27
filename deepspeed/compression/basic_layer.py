@@ -170,7 +170,7 @@ class LinearLayer_Compress(nn.Linear):
 
         if method == 'l1':
             # compute the l1 norm of each column
-            weight_norm = torch.norm(self.weight.data, p=1, dim=1)
+            weight_norm = torch.linalg.norm(self.weight.data, ord=1, dim=1)
             mask = TopKBinarizer.apply(weight_norm, self.row_pruning_ratio, False)
             mask = mask.view(-1, 1)
             mask = mask.to(self.weight.device)
@@ -465,7 +465,7 @@ class Conv2dLayer_Compress(nn.Conv2d):
 
         if method == 'l1':
             # compute the l1 norm of each conv2d kernel (the last three dimension)
-            weight_norm = torch.norm(self.weight.data, p=1, dim=[1, 2, 3])
+            weight_norm = torch.linalg.norm(self.weight.data, ord=1, dim=[1, 2, 3])
             mask = TopKBinarizer.apply(weight_norm, self.channel_pruning_ratio, False)
             mask = mask.view(-1, 1, 1, 1)
             mask = mask.to(self.weight.device)
@@ -618,7 +618,7 @@ class BNLayer_Compress(nn.BatchNorm2d):
 
 
 def _reduce(input_):
-    """All-reduce the the input tensor across model parallel group."""
+    """All-reduce the input tensor across model parallel group."""
     group = g_mpu.get_model_parallel_group()
 
     # Bypass the function if we are using only 1 GPU.

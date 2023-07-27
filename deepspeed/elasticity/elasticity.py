@@ -44,7 +44,7 @@ def get_valid_gpus(batch_size, micro_batches, min_valid_gpus, max_valid_gpus):
         if batch_size % micro_batch == 0:
 
             max_gpus = batch_size // micro_batch
-            if max_gpus >= min_valid_gpus and max_gpus <= max_valid_gpus:
+            if min_valid_gpus <= max_gpus <= max_valid_gpus:
                 valid_gpus.append(max_gpus)
 
             # find all factors less than max_gpus / 2
@@ -148,7 +148,7 @@ def _get_compatible_gpus_v02(micro_batches,
 
         for micro_batch in micro_batches:
             if final_batch_size // current_num_gpus % micro_batch == 0:
-                if candidate_microbatch == None:
+                if candidate_microbatch is None:
                     candidate_microbatch = micro_batch
                 if prefer_larger and candidate_microbatch < micro_batch:
                     candidate_microbatch = micro_batch
