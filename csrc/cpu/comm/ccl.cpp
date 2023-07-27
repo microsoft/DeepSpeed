@@ -174,6 +174,7 @@ void reduce_all_buffers(struct allreduce_workspace* workspace,
 // num_elements must be divisible by 16 (caller check)
 void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
 {
+#pragma omp parallel for
     for (int i = 0; i < num_elements * 2; i += 32) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0].buffer + i)));
         switch (num_buffers) {
@@ -191,6 +192,7 @@ void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_wor
 
 void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
 {
+#pragma omp parallel for
     for (int i = 0; i < num_elements * 2; i += 32) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in_out + i)));
         auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
@@ -208,6 +210,7 @@ void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
 // num_elements must be divisible by 16 (caller check)
 void reduce_f32_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
 {
+#pragma omp parallel for
     for (int i = 0; i < num_elements * 4; i += 32) {
         auto inout_val = _mm256_loadu_ps((float*)(workspace[0].buffer + i));
         switch (num_buffers) {
@@ -225,6 +228,7 @@ void reduce_f32_buffers(int num_elements, int num_buffers, struct allreduce_work
 
 void reduce_2_f32_buffers(int num_elements, void* in_out, void* in1)
 {
+#pragma omp parallel for
     for (int i = 0; i < num_elements * 4; i += 32) {
         auto inout_val = _mm256_loadu_ps((float*)((char*)in_out + i));
         auto in1_val = _mm256_loadu_ps((float*)((char*)in1 + i));
@@ -455,7 +459,7 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
     static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
     static auto ReduceOpSum = (int)py::int_(ReduceOp.attr("SUM").attr("value"));
 
-    assert (py::int_(op.attr("value")) == ReduceOpSum);
+    assert(py::int_(op.attr("value")) == ReduceOpSum);
 
     auto numel = data.numel();
 
@@ -468,9 +472,7 @@ void all_reduce_low_latency(torch::Tensor& data, py::object op, py::object group
         default: data_type_fallback = true;
     }
 
-    if (data_size > MAX_BUF_SIZE || (numel % 16) != 0 ||
-        data_type_fallback ||
-        !all_ranks_local_p) {
+    if (data_size > MAX_BUF_SIZE || (numel % 16) != 0 || data_type_fallback || !all_ranks_local_p) {
         // fallback to oneccl allreduce
         CCLCHECK(ccl::allreduce(data.data_ptr(),
                                 data.data_ptr(),
