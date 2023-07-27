@@ -131,7 +131,7 @@ If you encounter difficulties during compilation using the default system enviro
 conda env create -n deepspeed -f environment.yml --force
 ```
 
-and try above install commmands after activating it.
+and try above install commands after activating it.
 
 ## Building for the correct architectures
 
