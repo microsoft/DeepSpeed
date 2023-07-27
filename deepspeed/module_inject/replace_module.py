@@ -777,7 +777,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
         if embedding_weight is not None and hasattr(replaced_module, "lm_head") and hasattr(
                 replaced_module.lm_head, "weight") and replaced_module.lm_head.weight.is_meta:
             replaced_module.lm_head.weight = embedding_weight
-    
+
     return replaced_module
 
 
