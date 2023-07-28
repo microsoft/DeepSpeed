@@ -49,7 +49,7 @@ for a complete list of options for configuration and performance tuning.
         ZeRO-Infinity and ZeRO-Offload work best with our heavily optimized
         :class:`deepspeed.ops.adam.DeepSpeedCPUAdam` optimizer. We recommend using
         our `optimizer config <https://www.deepspeed.ai/docs/config-json/#optimizer-parameters>`_
-        to instruct :meth:`deepspeed.initialize` to build the optimizer for you. `Module.apply <https://pytorch.org/docs/stable/generated/torch.nn.Module.html>`_
+        to instruct :meth:`deepspeed.initialize` to build the optimizer for you.
 
 ZeRO Configurations
 ===================
@@ -312,7 +312,7 @@ DeepSpeed can automatically detect the following external parameter scenarios:
 .. `Module.apply <https://pytorch.org/docs/stable/generated/torch.nn.Module.html?highlight=module+apply#torch.nn.Module.apply>`_
 Overriding Module.apply
 ===============================
-`Module.apply <https://pytorch.org/docs/stable/generated/torch.nn.Module.html>`_is a convenient mechanism for customizing model initialization.
+A convenient mechanism for customizing model initialization is `Module.apply <https://pytorch.org/docs/stable/generated/torch.nn.Module.html?highlight=module+apply#torch.nn.Module.apply>`_.
 With ZeRO stage 3, ``Module.apply`` implementations must account for parameter partitioning by ``zero.Init`` during model initialization. The default behavior of ZeRO stage 3 is to automatically
 handle this issue by overriding ``Module.apply`` to ensure that parameters are gathered before access by ``Module.apply``. The benefit of this approach is development convenience, since
 users are saved the burden of manual parameter coordination in ``Module.apply``. However, the downside is slow model initialization, since all the model parameters (e.g., billions) are gathered
