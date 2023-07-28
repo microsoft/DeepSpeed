@@ -153,12 +153,12 @@ The following model families have been successfully tested with automatic tensor
 - yoso
 - bloom
 - mpt
-
+- codegen
+- glm
 # Unsupported Models
 
 The following models are not currently supported with automatic tensor parallelism. They may still be compatible with other DeepSpeed features (e.g., kernel injection for Bloom):
 
-- codegen
 - deberta
 - flaubert
 - fsmt
