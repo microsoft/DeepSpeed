@@ -22,7 +22,6 @@ from .load_checkpoint import load_model_with_checkpoint
 import time
 
 from .utils import policy_to_ds_container
-
 import gc
 
 
@@ -572,17 +571,20 @@ from ..pipe import PipelineModule
 import re
 
 
-def skip_level_0_prefix(model, name):
+def skip_level_0_prefix(model, state_dict):
     model = str(model)
     key = re.search(r": (.*?)Model", model)
     if key is None:
         key = re.search(r": (.*?)Stack", model)
     if key is None:
         key = re.match(r"(.*?)Model", model)
-    if key is not None and key.group(1).lower() in "bloom":
-        # if keys start with 'model.', don't skip level 0 prefix
-        if not re.match("^model[.]", name):
-            return True
+    # if keys start with 'model.', don't skip level 0 prefix
+    if state_dict != None:
+        for item in state_dict.keys():
+            if re.match("^model[.]", item):
+                return False
+    if key is not None and key.group(1).lower() in ["bloom", "opt"]:
+        return True
     return False
 
 
@@ -615,7 +617,8 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
             layer_id += 1
         else:
             checking_key = prefix + name + '.'
-            if child.__class__ in load_layers and state_dict is not None:
+            if (child.__class__ in load_layers
+                    or child._get_name() in ["LPLayerNorm", "SharedEmbedding"]) and state_dict is not None:
                 if any(checking_key in item for item in state_dict):
                     Loading.load(
                         child,
@@ -628,7 +631,7 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
                 Loading.load_buffer(child, state_dict, checking_key)
             _, layer_id = _replace_module(child,
                                           policies,
-                                          prefix if level_id == 0 and skip_level_0_prefix(model, name) else \
+                                          prefix if level_id == 0 and skip_level_0_prefix(model, state_dict) else \
                                           prefix + name + '.',
                                           layer_id=layer_id,
                                           level_id=level_id + 1,
