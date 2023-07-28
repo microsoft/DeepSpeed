@@ -49,7 +49,7 @@ for a complete list of options for configuration and performance tuning.
         ZeRO-Infinity and ZeRO-Offload work best with our heavily optimized
         :class:`deepspeed.ops.adam.DeepSpeedCPUAdam` optimizer. We recommend using
         our `optimizer config <https://www.deepspeed.ai/docs/config-json/#optimizer-parameters>`_
-        to instruct :meth:`deepspeed.initialize` to build the optimizer for you.
+        to instruct :meth:`deepspeed.initialize` to build the optimizer for you. `Module.apply <https://pytorch.org/docs/stable/generated/torch.nn.Module.html>`_
 
 ZeRO Configurations
 ===================
@@ -309,6 +309,17 @@ DeepSpeed can automatically detect the following external parameter scenarios:
 .. autofunction:: deepspeed.zero.unregister_external_parameter
 
 
+.. `Module.apply <https://pytorch.org/docs/stable/generated/torch.nn.Module.html?highlight=module+apply#torch.nn.Module.apply>`_
+Overriding Module.apply
+===============================
+`Module.apply <https://pytorch.org/docs/stable/generated/torch.nn.Module.html>`_is a convenient mechanism for customizing model initialization.
+With ZeRO stage 3, ``Module.apply`` implementations must account for parameter partitioning by ``zero.Init`` during model initialization. The default behavior of ZeRO stage 3 is to automatically
+handle this issue by overriding ``Module.apply`` to ensure that parameters are gathered before access by ``Module.apply``. The benefit of this approach is development convenience, since
+users are saved the burden of manual parameter coordination in ``Module.apply``. However, the downside is slow model initialization, since all the model parameters (e.g., billions) are gathered
+even though the common usage of ``Module.apply`` is to customize a few parameters. Developers can disable this default behavior by setting the ``override_module_apply`` configuration knob to ``False``,
+for faster model initialization at the cost of manually handling partitioned parameters in their ``Module.apply`` implementations.
+
+
 Memory-Centric Tiling
 ---------------------
 
@@ -389,13 +400,3 @@ The following code snippet illustrates this functionality.
 
     # Free GPU memory consumed by model parameters
     ds_engine.empty_partition_cache()
-
-
-Overriding Module.apply
----------------------
-`Module.apply <https://pytorch.org/docs/stable/generated/torch.nn.Module.html?highlight=module+apply#torch.nn.Module.apply>`_is a convenient mechanism for customizing model initialization.
-With ZeRO stage 3, ``Module.apply`` implementations must account for parameter partitioning by ``zero.Init`` during model initialization. The default behavior of ZeRO stage 3 is to automatically
-handle this issue by overriding ``Module.apply`` to ensure that parameters are gathered before access by ``Module.apply``. The benefit of this approach is development convenience, since
-users are saved the burden of manual parameter coordination in ``Module.apply``. However, the downside is slow model initialization, since all the model parameters (i.e., billions) are gathered
-even though the common usage of ``Module.apply`` is to customize only a few parameters. Developers can disable this default behavior by setting the ``override_module_apply`` configuration knob to `False`,
-for faster model initialization at the cost of manually handling partitioned parameters in their ``Module.apply`` implementations.
