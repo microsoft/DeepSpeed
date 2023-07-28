@@ -807,7 +807,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
                 model = deepspeed.zero.Init(module=model)
         """
-        # import pdb; pdb.set_trace()
         if config is not None:
             config_dict_or_path = config
             logger.warning(
