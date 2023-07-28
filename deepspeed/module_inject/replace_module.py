@@ -4,7 +4,6 @@
 # DeepSpeed Team
 
 import os
-from typing import Optional
 import torch
 import tqdm
 import deepspeed
@@ -13,117 +12,21 @@ from deepspeed.ops.transformer.inference.diffusers_attention import DeepSpeedDif
 from deepspeed.ops.transformer.inference.diffusers_transformer_block import DeepSpeedDiffusersTransformerBlock
 from deepspeed.ops.transformer.inference.diffusers_2d_transformer import Diffusers2DTransformerConfig
 from deepspeed.accelerator import get_accelerator
-from .replace_policy import HFGPT2LayerPolicy
 from .replace_policy import replace_policies, generic_policies
+<<<<<<< HEAD
 from .auto_tp import AutoTP
+=======
+from .auto_tp import AutoTP, ReplaceWithTensorSlicing, Loading
+>>>>>>> mosm/inf-refactor
 
 from deepspeed import comm as dist
 from torch import nn
 
-from .layers import LinearAllreduce, LinearLayer
 from .load_checkpoint import load_model_with_checkpoint
 import time
 
 from .utils import policy_to_ds_container
-
 import gc
-
-
-class ReplaceWithTensorSlicing:
-
-    def __init__(self, mp_group=None, mp_size=1, out_dim=1, in_dim=0):
-        if mp_group is not None:
-            self.gpu_index = dist.get_rank(group=mp_group)
-        else:
-            self.gpu_index = 0
-        self.out_dim = out_dim
-        self.in_dim = in_dim
-        self.mp_size = mp_size
-
-    def merge_assert(self, dim1, dim2):
-        assert dim1 > dim2, \
-            'Merging tensors is not allowed here! Please use deepspeed load_checkpoint\
-            for merging your checkpoints before replacing the transformer layer with\
-            inference-kernels'
-
-    def strided_copy(self,
-                     dst: Optional[torch.Tensor],
-                     src: Optional[torch.Tensor],
-                     num_splits: int,
-                     int8: bool = False,
-                     allocate_tensor: bool = False):
-        if src is None:
-            return src
-        src_shape = src.shape
-        dst_shape = dst.shape
-
-        outer_dim = 0 if int8 else -1
-
-        if allocate_tensor:
-            dst = torch.empty_like(dst)
-
-        src_split = torch.split(src.data, src.shape[outer_dim] // num_splits, dim=outer_dim)
-        if (len(src_shape) == 2 and len(dst_shape) == 2):
-            if src_shape[outer_dim] == dst_shape[self.out_dim]:
-                dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
-                dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
-                if hasattr(src, 'scale'):
-                    dst.scale = src.scale
-                return dst
-            self.merge_assert(src_shape[outer_dim], dst_shape[self.out_dim])
-            qkv_size = dst_shape[self.out_dim] // num_splits
-            qkv_split = [torch.split(src_s, qkv_size, dim=outer_dim) for src_s in src_split]
-            weight_split = [
-                torch.cat([qkv_s[i] for qkv_s in qkv_split], axis=outer_dim) for i in range(len(qkv_split[0]))
-            ]
-            dst = dst.reshape(-1).data.copy_(weight_split[self.gpu_index].contiguous().reshape(-1)).reshape(
-                weight_split[self.gpu_index].shape)
-        else:
-            if src_shape[0] == dst_shape[0]:
-                return torch.nn.parameter.Parameter(src)
-            qkv_size = dst_shape[0] // num_splits
-            qkv_split = [torch.split(src_s, qkv_size, dim=0) for src_s in src_split]
-            bias_split = [torch.cat([qkv_s[i] for qkv_s in qkv_split], axis=0) for i in range(len(qkv_split[0]))]
-            dst.data.copy_(bias_split[self.gpu_index].contiguous())
-
-        dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
-        if hasattr(src, 'scale'):
-            dst.scale = src.scale
-        return dst
-
-    def copy(self, dst, src, int8=False, allocate_tensor=False):
-        if src is None:
-            return src
-        assert not dst.data.is_meta  # the torch.Tensor.copy_ method used below will silently fail on meta tensors
-        if allocate_tensor:
-            dst = torch.empty_like(dst)
-        outer_dim = 0 if int8 else 1
-        inner_dim = 1 if int8 else 0
-        src_shape = src.shape
-        dst_shape = dst.shape
-        if (len(src_shape) == 2 and len(dst_shape) == 2):
-
-            if src_shape[inner_dim] == dst_shape[self.in_dim] and src_shape[outer_dim] == dst_shape[self.out_dim]:
-                dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
-            else:
-                if src_shape[inner_dim] != dst_shape[self.in_dim]:
-                    self.merge_assert(src_shape[inner_dim], dst_shape[self.in_dim])
-                    dst.data.copy_(src[:, self.gpu_index * dst_shape[self.in_dim]: (self.gpu_index + 1) * dst_shape[self.in_dim]] if inner_dim == 1 else \
-                                   src[self.gpu_index * dst_shape[self.in_dim]: (self.gpu_index + 1) * dst_shape[self.in_dim], :])
-                else:
-                    self.merge_assert(src_shape[outer_dim], dst_shape[self.out_dim])
-                    dst.data.copy_(src[:, self.gpu_index * dst_shape[self.out_dim]: (self.gpu_index + 1) * dst_shape[self.out_dim]] if outer_dim == 1 else \
-                                   src[self.gpu_index * dst_shape[self.out_dim]: (self.gpu_index + 1) * dst_shape[self.out_dim], :])
-        else:
-            if src_shape[0] == dst_shape[0]:
-                dst = src if src.dtype == dst.dtype else dst.data.copy_(src)
-            else:
-                dst.data.copy_(src[self.gpu_index * dst_shape[-1]:(self.gpu_index + 1) * dst_shape[-1]])
-        dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
-        if hasattr(src, 'scale'):
-            dst.scale = src.scale
-
-        return dst
 
 
 def get_transformer_name(replaced_module):
@@ -377,7 +280,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         # 3. Set linear policies
         _autotp.update_linear_polciies()
 
-        # 3. Replace modules
+        # 4. Replace modules
         return _autotp._replace_module(module)
 
     def replace_fn(child, _policy, layer_id=0, prefix="", state_dict=None):
@@ -672,28 +575,21 @@ from ..pipe import PipelineModule
 import re
 
 
-def skip_level_0_prefix(model, name):
+def skip_level_0_prefix(model, state_dict):
     model = str(model)
     key = re.search(r": (.*?)Model", model)
     if key is None:
         key = re.search(r": (.*?)Stack", model)
     if key is None:
         key = re.match(r"(.*?)Model", model)
-    if key is not None and key.group(1).lower() in "bloom":
-        # if keys start with 'model.', don't skip level 0 prefix
-        if not re.match("^model[.]", name):
-            return True
+    # if keys start with 'model.', don't skip level 0 prefix
+    if state_dict != None:
+        for item in state_dict.keys():
+            if re.match("^model[.]", item):
+                return False
+    if key is not None and key.group(1).lower() in ["bloom", "opt"]:
+        return True
     return False
-
-
-def load_buffer(module, state_dict, prefix):
-    for name in module._buffers.keys():
-        if module._buffers[name].data.is_meta:
-            module._buffers[name] = torch.nn.parameter.Parameter(
-                data=torch.empty_like(module._buffers[name].data, device="cpu"),
-                requires_grad=module._buffers[name].data.requires_grad)
-        if prefix + name in state_dict.keys():
-            module._buffers[name].data.copy_(state_dict[prefix + name])
 
 
 def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_dict=None):
@@ -725,9 +621,10 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
             layer_id += 1
         else:
             checking_key = prefix + name + '.'
-            if child.__class__ in load_layers and state_dict is not None:
+            if (child.__class__ in load_layers
+                    or child._get_name() in ["LPLayerNorm", "SharedEmbedding"]) and state_dict is not None:
                 if any(checking_key in item for item in state_dict):
-                    load(
+                    Loading.load(
                         child,
                         state_dict,
                         checking_key,
@@ -735,10 +632,10 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
                 else:
                     continue
             if len(child._buffers) != 0 and state_dict is not None:
-                load_buffer(child, state_dict, checking_key)
+                Loading.load_buffer(child, state_dict, checking_key)
             _, layer_id = _replace_module(child,
                                           policies,
-                                          prefix if level_id == 0 and skip_level_0_prefix(model, name) else \
+                                          prefix if level_id == 0 and skip_level_0_prefix(model, state_dict) else \
                                           prefix + name + '.',
                                           layer_id=layer_id,
                                           level_id=level_id + 1,
@@ -747,42 +644,3 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
     # Add the reset_cache func to the model, so that it can be called in the beginning of text-generation.
     model.reset_cache = transformer_inference.DeepSpeedTransformerInference.reset_cache
     return model, layer_id
-
-
-def load(module, state_dict, prefix, mp_group=None):
-    mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
-    if hasattr(module, 'weight'):
-        if module.weight.data.is_meta:
-            # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
-            module.weight = torch.nn.parameter.Parameter(data=torch.empty_like(module.weight.data, device="cpu"),
-                                                         requires_grad=module.weight.data.requires_grad)
-            if 'query_key_value' in prefix:
-                module.weight = mp_replace.strided_copy(module.weight.data,
-                                                        state_dict[prefix + 'weight'],
-                                                        num_splits=3)
-            else:
-                module.weight = mp_replace.copy(module.weight.data, state_dict[prefix + 'weight'])
-    else:
-        if hasattr(module, 'norm') and hasattr(module.norm, 'weight'):
-            if module.norm.weight.data.is_meta:
-                # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
-                module.norm.weight = torch.nn.parameter.Parameter(data=torch.empty_like(module.norm.weight.data,
-                                                                                        device="cpu"),
-                                                                  requires_grad=module.norm.weight.data.requires_grad)
-            module.norm.weight = mp_replace.copy(module.norm.weight.data, state_dict[prefix + 'weight'])
-
-    if prefix + 'bias' in state_dict.keys():
-        if hasattr(module, 'bias'):
-            if module.bias.data.is_meta:
-                # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
-                module.bias = torch.nn.parameter.Parameter(data=torch.empty_like(module.bias.data, device="cpu"),
-                                                           requires_grad=module.bias.data.requires_grad)
-            module.bias = mp_replace.copy(module.bias, state_dict[prefix + 'bias'])
-        else:
-            if hasattr(module, 'norm') and hasattr(module.norm, 'bias'):
-                if module.norm.bias.data.is_meta:
-                    # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
-                    module.norm.bias = torch.nn.parameter.Parameter(data=torch.empty_like(module.norm.bias.data,
-                                                                                          device="cpu"),
-                                                                    requires_grad=module.norm.bias.data.requires_grad)
-                module.norm.bias = mp_replace.copy(module.norm.bias, state_dict[prefix + 'bias'])

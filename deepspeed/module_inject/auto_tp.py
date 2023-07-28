@@ -14,6 +14,7 @@ import torch
 from deepspeed import comm as dist
 from .layers import LinearAllreduce, LinearLayer
 from deepspeed.accelerator import get_accelerator
+from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw
 
 
 class ReplaceWithTensorSlicing:
@@ -109,8 +110,57 @@ class ReplaceWithTensorSlicing:
         dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
         if hasattr(src, 'scale'):
             dst.scale = src.scale
-
         return dst
+
+
+class Loading():
+
+    def load_buffer(module, state_dict, prefix):
+        for name in module._buffers.keys():
+            if module._buffers[name].data.is_meta:
+                module._buffers[name] = torch.nn.parameter.Parameter(
+                    data=torch.empty_like(module._buffers[name].data, device="cpu"),
+                    requires_grad=module._buffers[name].data.requires_grad)
+            if prefix + name in state_dict.keys():
+                module._buffers[name].data.copy_(state_dict[prefix + name])
+
+    def load(module, state_dict, prefix, mp_group=None):
+        mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
+        if hasattr(module, 'weight'):
+            if module.weight.data.is_meta:
+                # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                module.weight = torch.nn.parameter.Parameter(data=torch.empty_like(module.weight.data, device="cpu"),
+                                                             requires_grad=module.weight.data.requires_grad)
+                if 'query_key_value' in prefix:
+                    module.weight = mp_replace.strided_copy(module.weight.data,
+                                                            state_dict[prefix + 'weight'],
+                                                            num_splits=3)
+                else:
+                    module.weight = mp_replace.copy(module.weight.data, state_dict[prefix + 'weight'])
+        else:
+            if hasattr(module, 'norm') and hasattr(module.norm, 'weight'):
+                if module.norm.weight.data.is_meta:
+                    # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                    module.norm.weight = torch.nn.parameter.Parameter(
+                        data=torch.empty_like(module.norm.weight.data, device="cpu"),
+                        requires_grad=module.norm.weight.data.requires_grad)
+                module.norm.weight = mp_replace.copy(module.norm.weight.data, state_dict[prefix + 'weight'])
+
+        if prefix + 'bias' in state_dict.keys():
+            if hasattr(module, 'bias'):
+                if module.bias.data.is_meta:
+                    # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                    module.bias = torch.nn.parameter.Parameter(data=torch.empty_like(module.bias.data, device="cpu"),
+                                                               requires_grad=module.bias.data.requires_grad)
+                module.bias = mp_replace.copy(module.bias, state_dict[prefix + 'bias'])
+            else:
+                if hasattr(module, 'norm') and hasattr(module.norm, 'bias'):
+                    if module.norm.bias.data.is_meta:
+                        # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                        module.norm.bias = torch.nn.parameter.Parameter(
+                            data=torch.empty_like(module.norm.bias.data, device="cpu"),
+                            requires_grad=module.norm.bias.data.requires_grad)
+                    module.norm.bias = mp_replace.copy(module.norm.bias, state_dict[prefix + 'bias'])
 
 
 class AutoTP():
@@ -148,7 +198,7 @@ class AutoTP():
         return mlist
 
     def supported(model):
-        unsupported = ['codegen', 'deberta', 'flaubert', 'fsmt', 'gpt2', 'led', 'longformer', 'xlm', 'xlnet']
+        unsupported = ['deberta', 'flaubert', 'fsmt', 'gpt2', 'led', 'longformer', 'xlm', 'xlnet']
         model = str(model)
         key = re.search(r": (.*?)Model", model)
         if key is None:
@@ -246,8 +296,23 @@ class AutoTP():
     def _replace(self, child, name, conv_linear_layer):
         if getattr(child, "replaced", False) == True:
             return
-        mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
         weight_shape = child.weight.shape
+        if name == 'attn.Wqkv' and self.module._get_name() == 'MPTBlock':
+            # MPT block qkv weight's allocation is different from other models, it's [3,num_head,head_dim,hidden_size]
+            # instead of [num_head,3,head_dim,hidden_size]
+            new_weight = torch.empty((
+                weight_shape[0] // self.mp_size,
+                weight_shape[1],
+            ),
+                                     device=child.weight.device,
+                                     dtype=child.weight.dtype)
+            reversed_dim = True
+            mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group, out_dim=0)
+            # todo: can we remove new tensor allocation if we use strided copy?
+            mp_replace.strided_copy(new_weight, child.weight.data, num_splits=3, int8=reversed_dim)
+            setattr(child, "replaced", True)
+            return LinearLayer(weight=new_weight.to(get_accelerator().current_device_name()), bias=None)
+        mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
         if name in self.all_reduce_linears:
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
             # else [weight_shape[0], weight_shape[1] // mp_size]
@@ -269,17 +334,29 @@ class AutoTP():
             if conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
 
-            data = child.weight.data.split((weight_shape[1] if conv_linear_layer else weight_shape[0]) // self.mp_size,
-                                           dim=0)
-            data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
+            if require_tp_fused_qkvw(name, self.mp_size):
+                #for detecting fused type
+                module_str = str(self.module).strip()
+                #The copy is a regular copy, The shape of dst and src is the same
+                data = prepare_tp_fused_qkvw(module_str, child.weight.data, self.mp_size, mp_replace.gpu_index)
 
-            #todo: conv_linear_layer needs an extra split step
-
-            if child.bias is not None:
-                bias_data = child.bias.data.split(weight_shape[0] // self.mp_size, dim=0)
-                bias_data = bias_data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
+                bias_data = None if child.bias is None else prepare_tp_fused_qkvw(
+                    module_str, child.bias.data, self.mp_size, mp_replace.gpu_index).to(
+                        get_accelerator().current_device_name())
             else:
-                bias_data = None
+                data = child.weight.data.split(
+                    (weight_shape[1] if conv_linear_layer else weight_shape[0]) // self.mp_size, dim=0)
+                data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
+
+                #todo: conv_linear_layer needs an extra split step
+
+                if child.bias is not None:
+                    bias_data = child.bias.data.split(weight_shape[0] // self.mp_size, dim=0)
+                    bias_data = bias_data[dist.get_rank(group=self.mp_group)].to(
+                        get_accelerator().current_device_name())
+                else:
+                    bias_data = None
+
             setattr(child, "replaced", True)
             return LinearLayer(weight=data.to(get_accelerator().current_device_name()), bias=bias_data)
 
@@ -289,9 +366,9 @@ class AutoTP():
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
 
         if hasattr(child.weight, 'ds_tensor'):
-            data = child.weight.ds_tensor.data.split(weight_shape[1] // self.mp_size, dim=1)
+            data = child.weight.ds_tensor.data.split(child.weight.shape[1] // self.mp_size, dim=1)
         else:
-            data = child.weight.data.split(weight_shape[1] // self.mp_size, dim=1)
+            data = child.weight.data.split(child.weight.shape[1] // self.mp_size, dim=1)
         data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
 
         new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // self.mp_size)
@@ -308,7 +385,7 @@ class AutoTP():
         ]:
             if hasattr(child, param):
                 param_val = getattr(child, param)
-                assert param_val % self.mp_size == 0, f"{param} ({param_val}) must be divisible by mp_size ({mp_size})"
+                assert param_val % self.mp_size == 0, f"{param} ({param_val}) must be divisible by mp_size ({self.mp_size})"
                 setattr(child, param, param_val // self.mp_size)
         setattr(child, "replaced", True)
 
@@ -338,13 +415,14 @@ class AutoTP():
             else:
                 class_name = prev_class_name + '.' + prev_name
             checking_key = self.prefix + '.' + class_name + '.' + name + '.' if class_name != "" else self.prefix + '.' + name + '.'
-            if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm] and self.state_dict is not None:
+            if (child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm]
+                    or child._get_name() in ["LPLayerNorm", "SharedEmbedding"]) and self.state_dict is not None:
                 if any(checking_key in item for item in self.state_dict):
-                    load(child, self.state_dict, checking_key, self.mp_group)
+                    Loading.load(child, self.state_dict, checking_key, self.mp_group)
                 else:
                     continue
             if len(child._buffers) != 0 and self.state_dict is not None:
-                load_buffer(child, self.state_dict, checking_key)
+                Loading.load_buffer(child, self.state_dict, checking_key)
             if child.__class__ in self.linear_policies:
                 setattr(r_module, name, self.linear_policies[child.__class__](child, prev_name + '.' + name,
                                                                               self.conv_linear_layer))
