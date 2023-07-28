@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <immintrin.h>
 #include <math.h>
+#include <omp.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -205,6 +206,7 @@ void reduce_all_buffers(struct allreduce_workspace* workspace,
 // num_elements must be divisible by 16 (caller check)
 void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
 {
+#pragma omp parallel for
     for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0].buffer + i)));
         switch (num_buffers) {
@@ -222,6 +224,7 @@ void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_wor
 
 void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
 {
+#pragma omp parallel for
     for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in_out + i)));
         auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
@@ -239,6 +242,7 @@ void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
 // num_elements must be divisible by 16 (caller check)
 void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
 {
+#pragma omp parallel for
     for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = _mm256_loadu_ps((float*)(workspace[0].buffer + i));
         switch (num_buffers) {
@@ -256,6 +260,7 @@ void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_wor
 
 void reduce_2_fp32_buffers(int num_elements, void* in_out, void* in1)
 {
+#pragma omp parallel for
     for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = _mm256_loadu_ps((float*)((char*)in_out + i));
         auto in1_val = _mm256_loadu_ps((float*)((char*)in1 + i));
