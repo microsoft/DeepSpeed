@@ -527,6 +527,7 @@ class HybridEngineConfig(DeepSpeedConfigModel):
     release_inference_cache: bool = False
     pin_parameters: bool = True
     tp_gather_partition_size: int = 8
+    auto_tp: bool = False
 
 
 def get_hybrid_engine_config(param_dict):
