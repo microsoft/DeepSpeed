@@ -63,7 +63,11 @@ from deepspeed.runtime.sparse_tensor import SparseTensor
 from deepspeed.runtime import lr_schedules
 from deepspeed.utils import groups
 from deepspeed.utils import logger, log_dist, instrument_w_nvtx
-from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
+from deepspeed.utils.timer import NoopTimer, ThroughputTimer, SynchronizedWallClockTimer, \
+    FORWARD_MICRO_TIMER, BACKWARD_MICRO_TIMER, BACKWARD_INNER_MICRO_TIMER, BACKWARD_REDUCE_MICRO_TIMER, \
+    STEP_MICRO_TIMER, \
+    FORWARD_GLOBAL_TIMER, BACKWARD_GLOBAL_TIMER, BACKWARD_INNER_GLOBAL_TIMER, BACKWARD_REDUCE_GLOBAL_TIMER, \
+    STEP_GLOBAL_TIMER
 from deepspeed.utils.debug import debug_extract_module_and_param_names
 from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
@@ -125,18 +129,6 @@ def split_half_float_double_sparse(tensors):
         if bucket:
             buckets.append((dtype, bucket))
     return buckets
-
-
-FORWARD_MICRO_TIMER = 'forward_microstep'
-FORWARD_GLOBAL_TIMER = 'forward'
-BACKWARD_MICRO_TIMER = 'backward_microstep'
-BACKWARD_GLOBAL_TIMER = 'backward'
-BACKWARD_INNER_MICRO_TIMER = 'backward_inner_microstep'
-BACKWARD_INNER_GLOBAL_TIMER = 'backward_inner'
-BACKWARD_REDUCE_MICRO_TIMER = 'backward_allreduce_microstep'
-BACKWARD_REDUCE_GLOBAL_TIMER = 'backward_allreduce'
-STEP_MICRO_TIMER = 'step_microstep'
-STEP_GLOBAL_TIMER = 'step'
 
 
 class EngineTimers(object):
@@ -229,7 +221,7 @@ class DeepSpeedEngine(Module):
 
         self._is_gradient_accumulation_boundary = None
         self.scale_wrt_gas = None
-        self.losses = []
+        self.losses = 0.0
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
@@ -723,6 +715,13 @@ class DeepSpeedEngine(Module):
     def zero_optimization_partition_weights(self):
         return self.zero_optimization_stage() >= ZeroStageEnum.weights
 
+    def is_first_weights_partition_group(self):
+        ret = True if self.mics_shard_size() < 0 \
+            and self.zero_optimization_partition_weights() else False
+        if self.mics_shard_size() > 0 and self.global_rank < self.mics_shard_size():
+            ret = True
+        return ret
+
     def zero_contiguous_gradients(self):
         return self._config.zero_config.contiguous_gradients
 
@@ -902,7 +901,8 @@ class DeepSpeedEngine(Module):
         # only the first data parallel process needs to store the model checkpoint
         # if you want to use node local storage this must be done by rank 0 on each
         # node
-        self.save_non_zero_checkpoint = (rank == 0) or self.zero_optimization_partition_weights()
+        self.save_non_zero_checkpoint = (rank == 0) or (self.zero_optimization_partition_weights()
+                                                        and self.is_first_weights_partition_group())
 
         if self.zero_optimization() or self.bfloat16_enabled():
             param_rank = dist.get_rank(group=self.optimizer.dp_process_group)
@@ -1045,23 +1045,22 @@ class DeepSpeedEngine(Module):
 
     def _configure_distributed_model(self, model):
         self._set_client_model(model)
-
-        is_zero3_model = self.zero_optimization_partition_weights() and any(
+        is_zero_init_model = self.zero_optimization_partition_weights() and any(
             [hasattr(param, "ds_id") for param in self.module.parameters()])
 
         if self.fp16_enabled():
-            if is_zero3_model:
+            if is_zero_init_model:
                 self.__check_params(self.module, torch.half)
             self.module.half()
         elif self.bfloat16_enabled():
-            if is_zero3_model:
+            if is_zero_init_model:
                 self.__check_params(self.module, torch.bfloat16)
             self.module.bfloat16()
         else:
             self.__check_params(self.module, torch.float)
 
         # zero.Init() handles device placement of model
-        if not self.dont_change_device:
+        if not (self.dont_change_device or is_zero_init_model):
             self.module.to(self.device)
 
         # MoE related initialization
@@ -1101,7 +1100,7 @@ class DeepSpeedEngine(Module):
         self.expert_parallel_group = groups._get_expert_parallel_group_dict()
         self.expert_data_parallel_group = groups._get_expert_data_parallel_group_dict()
 
-        if not self.amp_enabled():
+        if not (self.amp_enabled() or is_zero_init_model):
             self._broadcast_model()
 
     # check if parameters are duplicated in optimizer param_groups
@@ -1341,7 +1340,7 @@ class DeepSpeedEngine(Module):
                 or self.optimizer_name() in [ONEBIT_ADAM_OPTIMIZER, ZERO_ONE_ADAM_OPTIMIZER]:
             if self.dynamic_loss_scale():
                 log_dist(f'Creating fp16 optimizer with dynamic loss scale', ranks=[0])
-                timers = self.timers if self.wall_clock_breakdown() else None
+                timers = self.timers if self.wall_clock_breakdown() else NoopTimer()
                 optimizer = FP16_Optimizer(
                     optimizer,
                     deepspeed=self,
@@ -1388,7 +1387,7 @@ class DeepSpeedEngine(Module):
 
         log_dist('Creating BF16 optimizer', ranks=[0])
 
-        timers = self.timers if self.wall_clock_breakdown() else None
+        timers = self.timers if self.wall_clock_breakdown() else NoopTimer()
         optimizer = BF16_Optimizer(optimizer,
                                    self.param_names,
                                    mpu=self.mpu,
@@ -1405,7 +1404,7 @@ class DeepSpeedEngine(Module):
         mics_shard_size = self.mics_shard_size()
         model_dtype, gradient_accumulation_dtype = self.get_data_types()
 
-        timers = self.timers if self.wall_clock_breakdown() else None
+        timers = self.timers if self.wall_clock_breakdown() else NoopTimer()
 
         if optimizer is None:
             optimizer = DummyOptim(list(self.module.parameters()))
@@ -1820,7 +1819,7 @@ class DeepSpeedEngine(Module):
 
         # if deepspeed.comm.get_rank() == 0:
         log_dist(
-            f"rank={dist.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f})",
+            f"time (ms) | fwd: {fwd_time:.2f} (fwd_moe: {moe_time:.2f}, 1st_a2a: {falltoall:.2f}, 2nd_a2a: {salltoall:.2f}, top_k: {gate_time:.2f})",
             ranks=[0])
 
     @instrument_w_nvtx
@@ -1864,21 +1863,17 @@ class DeepSpeedEngine(Module):
         if self.gradient_accumulation_steps() > 1 and scale_wrt_gas:
             loss = self._scale_loss_by_gas(loss.float())
 
-        # Log training Loss
+        # Log training loss
+        self.losses += loss.mean().item()
         if self.monitor.enabled:
             if self.is_gradient_accumulation_boundary():
                 if self.global_rank == 0:
                     self.summary_events = [(
                         f"Train/Samples/train_loss",
-                        sum(self.losses) / self.gradient_accumulation_steps(),
+                        self.losses,
                         self.global_samples,
                     )]
                     self.monitor.write_events(self.summary_events)
-
-        if self.is_gradient_accumulation_boundary():
-            self.losses = []
-        else:
-            self.losses.append(loss.mean().item())
 
         self._start_timers(self.engine_timers.backward_timers)
 
@@ -2041,6 +2036,7 @@ class DeepSpeedEngine(Module):
         if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
             self._report_progress(self.global_steps + 1)
 
+        self.losses = 0.0
         self.global_steps += 1
         self.global_samples += self.train_batch_size()
 
