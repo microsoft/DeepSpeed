@@ -1,8 +1,8 @@
 name: nv-h100
 
-on:
-  schedule:
-    - cron: "0 0 * * *"
+#on:
+#  schedule:
+#    - cron: "0 0 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
