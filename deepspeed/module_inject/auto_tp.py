@@ -8,7 +8,6 @@ import re
 
 from torch import nn
 from .replace_policy import replace_policies
-from .replace_policy import HFGPT2LayerPolicy
 from typing import Optional
 import torch
 from deepspeed import comm as dist
@@ -319,8 +318,8 @@ class AutoTP():
 
             if self.conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
-            data = child.weight.data.split((weight_shape[0] if self.conv_linear_layer else weight_shape[1]) // self.mp_size,
-                                           dim=1)
+            data = child.weight.data.split(
+                (weight_shape[0] if self.conv_linear_layer else weight_shape[1]) // self.mp_size, dim=1)
             data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
             setattr(child, "replaced", True)
@@ -343,14 +342,14 @@ class AutoTP():
                     module_str, child.bias.data, self.mp_size, mp_replace.gpu_index).to(
                         get_accelerator().current_device_name())
             else:
-                data = child.weight.data.split(
-                    (weight_shape[0]) // self.mp_size, dim=1 if self.conv_linear_layer else 0)
+                data = child.weight.data.split((weight_shape[0]) // self.mp_size,
+                                               dim=1 if self.conv_linear_layer else 0)
                 data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
                 if child.bias is not None:
-                    bias_data = child.bias.data.split((weight_shape[1] if self.conv_linear_layer else weight_shape[0]) // self.mp_size, dim=0)
-                    bias_data = bias_data[mp_replace.gpu_index].to(
-                        get_accelerator().current_device_name())
+                    bias_data = child.bias.data.split(
+                        (weight_shape[1] if self.conv_linear_layer else weight_shape[0]) // self.mp_size, dim=0)
+                    bias_data = bias_data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
                 else:
                     bias_data = None
 
