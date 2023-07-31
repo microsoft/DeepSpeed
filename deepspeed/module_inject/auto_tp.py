@@ -317,21 +317,20 @@ class AutoTP():
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
             # else [weight_shape[0], weight_shape[1] // mp_size]
 
-            if conv_linear_layer:
+            if self.conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
-
-            data = child.weight.data.split((weight_shape[0] if conv_linear_layer else weight_shape[1]) // self.mp_size,
+            data = child.weight.data.split((weight_shape[0] if self.conv_linear_layer else weight_shape[1]) // self.mp_size,
                                            dim=1)
-            data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
+            data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
             setattr(child, "replaced", True)
             return LinearAllreduce(data, child.bias if child.bias is None else \
                         torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), self.mp_group)
         else:
 
-            # if conv_linear_layer [weight_shape[1] // mp_size, weight_shape[0] // mp_size]
+            # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
             # else [weight_shape[0] // mp_size, weight_shape[1]]
-            if conv_linear_layer:
+            if self.conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
 
             if require_tp_fused_qkvw(name, self.mp_size):
@@ -345,14 +344,12 @@ class AutoTP():
                         get_accelerator().current_device_name())
             else:
                 data = child.weight.data.split(
-                    (weight_shape[1] if conv_linear_layer else weight_shape[0]) // self.mp_size, dim=0)
-                data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
-
-                #todo: conv_linear_layer needs an extra split step
+                    (weight_shape[0]) // self.mp_size, dim=1 if self.conv_linear_layer else 0)
+                data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
                 if child.bias is not None:
-                    bias_data = child.bias.data.split(weight_shape[0] // self.mp_size, dim=0)
-                    bias_data = bias_data[dist.get_rank(group=self.mp_group)].to(
+                    bias_data = child.bias.data.split((weight_shape[1] if self.conv_linear_layer else weight_shape[0]) // self.mp_size, dim=0)
+                    bias_data = bias_data[mp_replace.gpu_index].to(
                         get_accelerator().current_device_name())
                 else:
                     bias_data = None
@@ -369,7 +366,7 @@ class AutoTP():
             data = child.weight.ds_tensor.data.split(child.weight.shape[1] // self.mp_size, dim=1)
         else:
             data = child.weight.data.split(child.weight.shape[1] // self.mp_size, dim=1)
-        data = data[dist.get_rank(group=self.mp_group)].to(get_accelerator().current_device_name())
+        data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
         new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // self.mp_size)
         new_embedding.weight.data.copy_(data)
@@ -396,11 +393,11 @@ class AutoTP():
             if len(self.linear_layer_setting) == 2:
                 self.linear_policies.update({self.linear_layer_setting[1]: self._slice_embedding})
         else:
-            if self.orig_layer_impl is HFGPT2LayerPolicy._orig_layer_class:
+            import transformers
+            if self.orig_layer_impl is transformers.models.gpt2.modeling_gpt2.GPT2Block:
                 try:
-                    import transformers
                     self.conv_linear_layer = True
-                    self.linear_policies = {transformers.model_utils.Conv1D: self._replace}
+                    self.linear_policies = {transformers.pytorch_utils.Conv1D: self._replace}
                 except ImportError:
                     self.linear_policies = {nn.Linear: self._replace}
             else:
