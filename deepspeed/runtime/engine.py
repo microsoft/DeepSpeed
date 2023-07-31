@@ -121,7 +121,7 @@ def split_half_float_double_sparse(tensors):
 
     buckets = []
     for i, dtype in enumerate(supported_types):
-        bucket = [t for t in tensors if t.type() == dtype]
+        bucket = [t for t in tensors if t.dtype == dtype]
         if bucket:
             buckets.append((dtype, bucket))
     return buckets
