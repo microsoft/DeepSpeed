@@ -123,9 +123,9 @@ fail. Therefore, if you need to you can override the default location with the h
  TORCH_EXTENSIONS_DIR=./torch-extensions deepspeed ...
 ```
 
-### conda environment for building from source
+### Conda environment for building from source
 
-If you encounter difficulties during compilation using the default system environment, you can try the conda environment we provide, which includes the necessary compilation toolchain and PyTorch.
+If you encounter difficulties during compilation using the default system environment, you can try the conda environment provided, which includes the necessary compilation toolchain and PyTorch.
 
 ```bash
 conda env create -n deepspeed -f environment.yml --force
