@@ -719,6 +719,13 @@ class DeepSpeedEngine(Module):
     def zero_optimization_partition_weights(self):
         return self.zero_optimization_stage() >= ZeroStageEnum.weights
 
+    def is_first_weights_partition_group(self):
+        ret = True if self.mics_shard_size() < 0 \
+            and self.zero_optimization_partition_weights() else False
+        if self.mics_shard_size() > 0 and self.global_rank < self.mics_shard_size():
+            ret = True
+        return ret
+
     def zero_contiguous_gradients(self):
         return self._config.zero_config.contiguous_gradients
 
@@ -898,7 +905,8 @@ class DeepSpeedEngine(Module):
         # only the first data parallel process needs to store the model checkpoint
         # if you want to use node local storage this must be done by rank 0 on each
         # node
-        self.save_non_zero_checkpoint = (rank == 0) or self.zero_optimization_partition_weights()
+        self.save_non_zero_checkpoint = (rank == 0) or (self.zero_optimization_partition_weights()
+                                                        and self.is_first_weights_partition_group())
 
         if self.zero_optimization() or self.bfloat16_enabled():
             param_rank = dist.get_rank(group=self.optimizer.dp_process_group)
@@ -1041,23 +1049,22 @@ class DeepSpeedEngine(Module):
 
     def _configure_distributed_model(self, model):
         self._set_client_model(model)
-
-        is_zero3_model = self.zero_optimization_partition_weights() and any(
+        is_zero_init_model = self.zero_optimization_partition_weights() and any(
             [hasattr(param, "ds_id") for param in self.module.parameters()])
 
         if self.fp16_enabled():
-            if is_zero3_model:
+            if is_zero_init_model:
                 self.__check_params(self.module, torch.half)
             self.module.half()
         elif self.bfloat16_enabled():
-            if is_zero3_model:
+            if is_zero_init_model:
                 self.__check_params(self.module, torch.bfloat16)
             self.module.bfloat16()
         else:
             self.__check_params(self.module, torch.float)
 
         # zero.Init() handles device placement of model
-        if not self.dont_change_device:
+        if not (self.dont_change_device or is_zero_init_model):
             self.module.to(self.device)
 
         # MoE related initialization
@@ -1097,7 +1104,7 @@ class DeepSpeedEngine(Module):
         self.expert_parallel_group = groups._get_expert_parallel_group_dict()
         self.expert_data_parallel_group = groups._get_expert_data_parallel_group_dict()
 
-        if not self.amp_enabled():
+        if not (self.amp_enabled() or is_zero_init_model):
             self._broadcast_model()
 
     # check if parameters are duplicated in optimizer param_groups
