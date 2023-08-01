@@ -16,6 +16,7 @@ import gc
 from math import sqrt
 from math import floor
 from bisect import bisect_left
+from packaging import version as pkg_version
 
 import torch
 from deepspeed import comm as dist
@@ -50,6 +51,18 @@ class DummyOptim():
 
 def noop_decorator(func):
     return func
+
+
+class noop_context(object):
+
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
 
 
 def ensure_directory_exists(filename):
@@ -240,7 +253,7 @@ class CheckOverflow(object):
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
         overflow_gpu = get_accelerator().ByteTensor([overflow])
-        # deepspeeed.comm.all_reduce(overflow_gpu,
+        # deepspeed.comm.all_reduce(overflow_gpu,
         #                             op=deepspeed.comm.ReduceOp.MAX,
         #                             group=mpu.get_model_parallel_group())
         if has_moe_params:
@@ -973,3 +986,17 @@ def get_inactive_params(param_list):
     from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
     return [param for param in param_list if (hasattr(param, 'ds_id') and \
                             param.ds_status == ZeroParamStatus.NOT_AVAILABLE)]
+
+
+def required_torch_version(min_version=None, max_version=None):
+    assert min_version or max_version, "Must provide a min_version or max_version argument"
+
+    torch_version = pkg_version.parse(torch.__version__)
+
+    if min_version and pkg_version.parse(str(min_version)) > torch_version:
+        return False
+
+    if max_version and pkg_version.parse(str(max_version)) < torch_version:
+        return False
+
+    return True

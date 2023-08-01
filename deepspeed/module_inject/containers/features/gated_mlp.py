@@ -48,7 +48,14 @@ class HybridGatedMLPContainer(HybridEngineContainer):
                                       int8=reversed_dim,
                                       allocate_tensor=reversed_dim) if src is not None else None
         else:
-            super().mlp_inter_mp(mp_replace)
+            self.module.mlp.inter_w = mp_replace.strided_copy(self.module.mlp.inter_w,
+                                                              self._h4h_w,
+                                                              num_splits=2,
+                                                              int8=reversed_dim)
+            self.module.mlp.inter_b = mp_replace.strided_copy(self.module.mlp.inter_b,
+                                                              self._h4h_b,
+                                                              num_splits=2,
+                                                              int8=reversed_dim)
 
     def release_mlp(self):
         super().release_mlp()
@@ -84,18 +91,26 @@ class HybridGatedMLPContainer(HybridEngineContainer):
             del data
 
     def set_mlp_params_wo_copy(self, Z3_enabled=False):
+        self.module.mlp.output_w = self._4hh_w
+        self.module.mlp.output_b = self._4hh_b
+
         if not Z3_enabled:
-            self.module.mlp.inter_w = self.inter_up_w
-            self.module.mlp.inter_b = self.inter_up_b
+            # In initialize_tensors, we create a fused inter projection with the appropriate shape
+            # and copy the up projection and gate projection into it
+            self.module.mlp.inter_w = self._h4h_w
+            self.module.mlp.inter_b = self._h4h_b
+
             self.inter_up_w.data = self._h4h_w[:self.inter_up_w.shape[0], :]
-            self.inter_up_b.data = self._h4h_b[:self.inter_up_w.shape[0]] if self._h4h_b is not None else None
             self.inter_gate_w.data = self._h4h_w[self.inter_up_w.shape[0]:, :]
-            self.inter_gate_b.data = self._h4h_b[self.inter_up_w.shape[0]:] if self._h4h_b is not None else None
+
+            if self.inter_up_b is not None:
+                self.inter_up_b.data = self._h4h_b[:self.inter_up_w.shape[0]] if self._h4h_b is not None else None
+                self.inter_gate_b.data = self._h4h_b[self.inter_up_w.shape[0]:] if self._h4h_b is not None else None
         else:
-            self.module.inter_up_w = self.inter_up_w
-            self.module.inter_up_b = self.inter_up_b
-            self.module.inter_gate_w = self.inter_gate_w
-            self.module.inter_gate_b = self.inter_gate_b
+            self.module.mlp.inter_up_w = self.inter_up_w
+            self.module.mlp.inter_up_b = self.inter_up_b
+            self.module.mlp.inter_gate_w = self.inter_gate_w
+            self.module.mlp.inter_gate_b = self.inter_gate_b
 
     def get_mlp_params(self):
         params = super().get_mlp_params()

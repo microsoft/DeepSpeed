@@ -47,13 +47,36 @@ class HybridEngineContainer(ABC):
         pass
 
     @abstractmethod
-    def set_lora_params(self, lora_params):
+    def set_lora_params(self):
         """
         If available, set the LoRA parameters for the module.  An implementation
         for this would iterate over all parameters of the model and use the `maybe_get_lora` helper
         method to check if the parameter does in fact have any LoRA params.
         """
         raise NotImplementedError("A set_lora_params() function must be defined for the relevant parameters.")
+
+    @abstractmethod
+    def get_lora_matched_pair(self):
+        """Get the pair of lora params and its matched model parameters."""
+        raise NotImplementedError("get_lora_matched_pair() must be defined for the relevant parameters.")
+
+    def fuse_lora(self):
+        """Fuse the LoRA parameters for the inference mode."""
+        for maybe_lora_param, param in self.get_lora_matched_pair():
+            if len(maybe_lora_param) == 3:
+                lora_right_weight, \
+                lora_left_weight, \
+                lora_scaling = maybe_lora_param
+                param.data += lora_scaling * torch.matmul(lora_left_weight.t(), lora_right_weight.t())
+
+    def unfuse_lora(self):
+        """Unfuse the LoRA parameters for the training mode."""
+        for maybe_lora_param, param in self.get_lora_matched_pair():
+            if len(maybe_lora_param) == 3:
+                lora_right_weight, \
+                lora_left_weight, \
+                lora_scaling = maybe_lora_param
+                param.data -= lora_scaling * torch.matmul(lora_left_weight.t(), lora_right_weight.t())
 
     def apply_tensor_parallelism(self, mp_replace, reversed_dim=False):
         """
@@ -94,8 +117,8 @@ class HybridEngineContainer(ABC):
         general_params = [
             (self.module.attention.attn_ow, self.dense_w),
             (self.module.attention.attn_ob, self.dense_b),
-            (self.module.attn_nw, self.attn_nw),
-            (self.module.attn_nb, self.attn_nb),
+            (self.module.mlp.attn_nw, self.attn_nw),
+            (self.module.mlp.attn_nb, self.attn_nb),
             (self.module.norm_w, self.input_nw),
             (self.module.norm_b, self.input_nb),
         ]
@@ -154,6 +177,8 @@ class HybridEngineContainer(ABC):
         """
         Return a list of all parameters that would have LoRA for the module.
         """
+        if not hasattr(self, "lora_params"):
+            self.set_lora_params()
         return self.lora_params
 
     def set_params_wo_copy(self, Z3_enabled=False):
@@ -168,7 +193,7 @@ class HybridEngineContainer(ABC):
         self.set_attn_params_wo_copy(Z3_enabled=Z3_enabled)
         self.set_mlp_params_wo_copy(Z3_enabled=Z3_enabled)
 
-    def set_attn_params_wo_copy(self, Z3_enabled=False):
+    def set_attn_params_wo_copy(self, **kwargs):
         """
         Narrower sub-method for finer grained overriding.
         """
@@ -177,7 +202,7 @@ class HybridEngineContainer(ABC):
         self.module.attention.attn_qkvw = self.qkvw
         self.module.attention.attn_qkvb = self.qkvb
 
-    def set_mlp_params_wo_copy(self, Z3_enabled=False):
+    def set_mlp_params_wo_copy(self, **kwargs):
         """
         Narrower sub-method for finer grained overriding.
         """

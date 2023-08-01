@@ -12,6 +12,12 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from packaging import version as pkg_version
 
+try:
+    import triton  # noqa: F401
+    HAS_TRITON = True
+except ImportError:
+    HAS_TRITON = False
+
 from . import ops
 from . import module_inject
 
@@ -145,7 +151,7 @@ def initialize(args=None,
     if hasattr(args, "deepspeed_config") and args.deepspeed_config is not None:
         assert config is None, "Not sure how to proceed, we were given deepspeed configs in the deepspeed arguments and deepspeed.initialize() function call"
         config = args.deepspeed_config
-    assert config != None, "DeepSpeed requires --deepspeed_config to specify configuration file"
+    assert config is not None, "DeepSpeed requires --deepspeed_config to specify configuration file"
 
     if not isinstance(model, PipelineModule):
         config_class = DeepSpeedConfig(config, mpu)
@@ -188,6 +194,9 @@ def initialize(args=None,
                                 collate_fn=collate_fn,
                                 config=config,
                                 config_class=config_class)
+
+    # Restore zero.Init context if necessary
+    zero.partition_parameters.restore_init_context()
 
     return_items = [engine, engine.optimizer, engine.training_dataloader, engine.lr_scheduler]
     return tuple(return_items)

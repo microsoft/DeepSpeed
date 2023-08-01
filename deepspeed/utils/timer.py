@@ -7,7 +7,17 @@ import time
 from numpy import mean
 from deepspeed.utils.logging import log_dist
 from deepspeed.accelerator import get_accelerator
-from deepspeed import comm as dist
+
+FORWARD_MICRO_TIMER = 'fwd_microstep'
+FORWARD_GLOBAL_TIMER = 'fwd'
+BACKWARD_MICRO_TIMER = 'bwd_microstep'
+BACKWARD_GLOBAL_TIMER = 'bwd'
+BACKWARD_INNER_MICRO_TIMER = 'bwd_inner_microstep'
+BACKWARD_INNER_GLOBAL_TIMER = 'bwd_inner'
+BACKWARD_REDUCE_MICRO_TIMER = 'bwd_allreduce_microstep'
+BACKWARD_REDUCE_GLOBAL_TIMER = 'bwd_allreduce'
+STEP_MICRO_TIMER = 'step_microstep'
+STEP_GLOBAL_TIMER = 'step'
 
 try:
     import psutil
@@ -40,27 +50,43 @@ class SynchronizedWallClockTimer:
             self.name_ = name
             self.started_ = False
             self.event_timers = []
+            self.use_host_timer = get_accelerator().is_synchronized_device()
             self.start_event = None
             self.elapsed_records = None
+            self.start_time = 0.0
+            self.end_time = 0.0
 
         def start(self):
             """Start the timer."""
             assert not self.started_, f"{self.name_} timer has already been started"
-            self.start_event = get_accelerator().Event(enable_timing=True)
-            self.start_event.record()
+            if self.use_host_timer:
+                self.start_time = time.time()
+            else:
+                event_class = get_accelerator().Event
+                self.start_event = event_class(enable_timing=True)
+                self.start_event.record()
             self.started_ = True
 
         def stop(self, reset=False, record=False):
             """Stop the timer."""
             assert self.started_, "timer is not started"
-            end_event = get_accelerator().Event(enable_timing=True)
-            end_event.record()
-            self.event_timers.append(CudaEventTimer(self.start_event, end_event))
-            self.start_event = None
+            event_class = get_accelerator().Event
+            if self.use_host_timer:
+                self.end_time = time.time()
+                self.event_timers.append(self.end_time - self.start_time)
+            else:
+                event_class = get_accelerator().Event
+                end_event = event_class(enable_timing=True)
+                end_event.record()
+                self.event_timers.append(CudaEventTimer(self.start_event, end_event))
+                self.start_event = None
             self.started_ = False
 
         def _get_elapsed_msec(self):
-            self.elapsed_records = [et.get_elapsed_msec() for et in self.event_timers]
+            if self.use_host_timer:
+                self.elapsed_records = [et * 1000.0 for et in self.event_timers]
+            else:
+                self.elapsed_records = [et.get_elapsed_msec() for et in self.event_timers]
             self.event_timers.clear()
             return sum(self.elapsed_records)
 
@@ -115,7 +141,7 @@ class SynchronizedWallClockTimer:
     def log(self, names, normalizer=1.0, reset=True, memory_breakdown=False, ranks=None):
         """Log a group of timers."""
         assert normalizer > 0.0
-        string = f"rank={dist.get_rank()} time (ms)"
+        string = f"time (ms)"
         for name in names:
             if name in self.timers:
                 elapsed_time = (self.timers[name].elapsed(reset=reset) / normalizer)
@@ -132,6 +158,41 @@ class SynchronizedWallClockTimer:
                 elapsed_time = (self.timers[name].mean() * 1000.0 / normalizer)
                 means[name] = elapsed_time
         return means
+
+
+class NoopTimer:
+
+    class Timer:
+
+        def start(self):
+            ...
+
+        def reset(self):
+            ...
+
+        def stop(self, **kwargs):
+            ...
+
+        def elapsed(self, **kwargs):
+            return 0
+
+        def mean(self):
+            return 0
+
+    def __init__(self):
+        self.timer = self.Timer()
+
+    def __call__(self, name):
+        return self.timer
+
+    def get_timers(self):
+        return {}
+
+    def log(self, names, normalizer=1.0, reset=True, memory_breakdown=False, ranks=None):
+        ...
+
+    def get_mean(self, names, normalizer=1.0, reset=True):
+        ...
 
 
 class ThroughputTimer:
@@ -238,7 +299,7 @@ def trim_mean(data, trim_percent):
     Returns:
         float: Trimmed mean.
     """
-    assert trim_percent >= 0.0 and trim_percent <= 1.0
+    assert 0.0 <= trim_percent <= 1.0
     n = len(data)
     # Account for edge case of empty list
     if len(data) == 0:
