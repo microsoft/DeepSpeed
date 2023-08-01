@@ -326,7 +326,6 @@ class AutoTP():
             return LinearAllreduce(data, child.bias if child.bias is None else \
                         torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), self.mp_group)
         else:
-
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
             # else [weight_shape[0] // mp_size, weight_shape[1]]
             if self.conv_linear_layer:
@@ -342,8 +341,8 @@ class AutoTP():
                     module_str, child.bias.data, self.mp_size, mp_replace.gpu_index).to(
                         get_accelerator().current_device_name())
             else:
-                data = child.weight.data.split((weight_shape[0]) // self.mp_size,
-                                               dim=1 if self.conv_linear_layer else 0)
+                data = child.weight.data.split(((weight_shape[1] if self.conv_linear_layer else weight_shape[0])) // self.mp_size,
+                                               dim=0)
                 data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
                 if child.bias is not None:
@@ -377,7 +376,7 @@ class AutoTP():
             return
         for param in [
                 "n_heads", "inner_dim", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads",
-                "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads"
+                "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads", "split_size"
         ]:
             if hasattr(child, param):
                 param_val = getattr(child, param)
