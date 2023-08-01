@@ -41,7 +41,7 @@ jobs:
   rocm-build-ops:
     runs-on: ubuntu-20.04
     container:
-      image: rocm/pytorch:rocm5.4_ubuntu20.04_py3.8_pytorch_1.12.1_base
+      image: rocm/pytorch:latest
 
     steps:
         - uses: actions/checkout@v2
