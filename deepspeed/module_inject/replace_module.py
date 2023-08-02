@@ -98,7 +98,6 @@ def generic_injection(module, dtype=None, enable_cuda_graph=True):
         config = transformer_inference.DeepSpeedInferenceConfig(
             hidden_size=hidden_size,
             heads=heads,
-            #fp16=fp16,
             dtype=dtype,
             triangular_masking=False,
             max_out_tokens=4096,
