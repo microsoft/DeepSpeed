@@ -362,7 +362,7 @@ class TestStableDiffusion(DistributedTest):
             mp_size=1,
             dtype=torch.half,
             replace_method="auto",
-            replace_with_kernel_inject=False,
+            replace_with_kernel_inject=True,
             enable_cuda_graph=False,
         )
         deepspeed_image = pipe(prompt, guidance_scale=7.5).images[0]
