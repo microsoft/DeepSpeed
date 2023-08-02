@@ -371,9 +371,7 @@ class InferenceEngine(Module):
         checkpoint = SDLoaderFactory.get_sd_loader_json(checkpoint_dir,
                                                         self.checkpoint_engine) if checkpoint_dir is not None else None
 
-        generic_injection(self.module,
-                          dtype=config.dtype,
-                          enable_cuda_graph=config.enable_cuda_graph)
+        generic_injection(self.module, dtype=config.dtype, enable_cuda_graph=config.enable_cuda_graph)
 
         if isinstance(self.module, torch.nn.Module):
             # config is our DeepSpeedInferenceConfig and self.config is the HF model config
