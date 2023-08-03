@@ -902,7 +902,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             else:
                 # keeping the gradients contiguous to prevent memory fragmentation, and avoid flattening
                 new_grad_tensor = self.ipg_buffer[self.ipg_index].narrow(0, self.elements_in_ipg_bucket, param.numel())
-                new_grad_tensor.copy_(param.grad.view(-1))
+                new_grad_tensor.copy_(grad_reduc.view(-1))
                 grad_reduc.data = new_grad_tensor.data.view_as(grad_reduc)
 
         self.elements_in_ipg_bucket += param.numel()
