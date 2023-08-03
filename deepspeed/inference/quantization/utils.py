@@ -120,7 +120,7 @@ class DeQuantizer:
 
     def dequantize(self, tensor: Tensor, quant_scale: Tensor, quant_min: Tensor) -> Tensor:
         # Use customized CUDA quantization kernel if possible.
-        if False and self.config['group_size'] % 8 == 0 and \
+        if self.config['group_size'] % 8 == 0 and \
                 self.config['num_bits'] == 4 and \
                 self.config['group_dim'] == len(tensor.shape) - 1 and \
                     self.dtype == torch.float16 and device == 'cuda':
@@ -128,7 +128,6 @@ class DeQuantizer:
             last_dimension_size = self.config['group_size']
             if self.config['num_bits'] == 4:
                 last_dimension_size = last_dimension_size // 2
-
             quantized_tensor = get_quantizer_cuda_module().dequantize_int4_to_half_experimental(
                 tensor.reshape(-1, last_dimension_size), quant_scale, quant_min,
                 tensor.numel() // last_dimension_size, self.config['group_size'])

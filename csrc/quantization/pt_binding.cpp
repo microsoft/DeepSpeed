@@ -142,7 +142,7 @@ at::Tensor dequantize_int4_to_half_experimental(at::Tensor& data_in,
                                                 int num_group,
                                                 int group_size)
 {
-    auto output_options = at::TensorOptions().dtype(at::kHalf);
+    auto output_options = at::TensorOptions().dtype(at::kHalf).device(at::kCUDA);
     auto output = torch::empty({num_group, group_size}, output_options);
 
     launch_dequantize_int4_to_half_experimental((uint8_t*)data_in.data_ptr(),
