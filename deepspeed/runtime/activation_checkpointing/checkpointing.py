@@ -775,8 +775,6 @@ def non_reentrant_checkpoint(function, *args):
     fwd_cuda_rng_state = get_accelerator().get_rng_state()
     fwd_cuda_rng_state_tracker = get_cuda_rng_tracker().get_states()
 
-    see_memory_usage("Before running forward on the layer", force=False)
-
     if PARTITION_ACTIVATIONS:
         new_args = get_partitioned_activations_for_backward(args, inputs, CONTIGUOUS_CHECKPOINTING)
         assert len(new_args) % 2 == 0, f'save_for_backward called with odd number of args, {len(new_args)}'
@@ -797,6 +795,8 @@ def non_reentrant_checkpoint(function, *args):
     def checkpoint_pack(tensor_from_forward):
         res = Holder()
         weak_holder_list.append(weakref.ref(res))
+        if tensor_from_forward.requires_grad and tensor_from_forward.is_leaf:
+            leaf_tensors.append(tensor_from_forward)
         return res
     
     def checkpoint_unpack(holder_from_backward):
@@ -812,8 +812,6 @@ def non_reentrant_checkpoint(function, *args):
                 
                 detached_activations = tensor_from_replay.detach()
                 storage[weak_holder_list[unpack_counter - 1]()] = detached_activations
-                if tensor_from_replay.requires_grad and tensor_from_replay.is_leaf:
-                    leaf_tensors.append(tensor_from_replay)
                 
                 return
             
@@ -911,12 +909,28 @@ def non_reentrant_checkpoint(function, *args):
             get_accelerator().synchronize()
     
     torch.autograd.graph.register_multi_grad_hook(leaf_tensors, after_backward_hook)
-    
 
     with torch.autograd.graph.saved_tensors_hooks(checkpoint_pack, checkpoint_unpack):
-        output = function(*inputs_cuda)
+        outputs = function(*inputs_cuda)
+
+    see_memory_usage("After running forward on the layer", force=False)
+
+    if PROFILE_TIME:
+        timers(FORWARD_GLOBAL_TIMER).stop()
+        timers.log([FORWARD_GLOBAL_TIMER])
+    if SYNCHRONIZE:
+        get_accelerator().synchronize()
+
+    all_outputs = []
+    if torch.is_tensor(outputs):
+        all_outputs += [outputs]
+    else:
+        all_outputs += outputs
     
-    return output
+    if len(all_outputs) == 1:
+        return all_outputs[0]
+    else:
+        return tuple(all_outputs)
 
 
 def checkpoint(function, *args):
