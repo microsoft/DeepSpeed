@@ -328,6 +328,8 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         ckpt_mp_size = checkpoint_dict.get('tp_size', len(ckpt_list))
         ckpt_mp_size = checkpoint_dict.get('mp_size', ckpt_mp_size)
         base_dir1 = checkpoint_dict.get('base_dir', config.base_dir)
+        if base_dir1 is None:
+            base_dir1 = ""
 
         if ckpt_type == 'pp' and type(checkpoint) is list:
             pbar = tqdm.tqdm(total=len(checkpoint), desc=f"Loading {len(checkpoint)} checkpoint shards")
