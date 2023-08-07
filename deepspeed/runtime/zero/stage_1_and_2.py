@@ -1262,7 +1262,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 _, _, param_id = self.params_in_ipg_bucket[0]
                 assert self.get_param_id(self.extra_large_param_to_reduce
                                          ) == param_id, "param in ipg bucket does not match extra-large param"
-                self.average_tensor(self.extra_large_param_to_reduce.grad.view(-1))
+                extra_large_grad_reduc = self.get_gradient_for_reduction(self.extra_large_param_to_reduce)
+                self.average_tensor(extra_large_grad_reduc.view(-1))
                 self.extra_large_param_to_reduce = None
             else:
                 self.average_tensor(self.ipg_buffer[self.ipg_index])
@@ -1520,7 +1521,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 if set_to_none:
                     p.grad = None  # epilogue and in step
                     p.grad_accum = None
-                    p.grad_reduc = None
                 else:
                     if p.grad is not None:
                         p.grad.detach_()
@@ -1629,7 +1629,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def free_grad_in_param_list(self, param_list):
         for p in param_list:
             p.grad = None  # in step
-            p.grad_reduc = None
             p.grad_accum = None
 
     def reset_cpu_buffers(self):
@@ -1941,7 +1940,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
         # Only for Stage 1, Mode 2
-        if self.use_separate_grad_accum and not self.partition_gradients:
+        if self.use_grad_accum_for_reduction:
             self.update_separate_grad_accum()
         else:
             self.set_grad_accum_pointer()
