@@ -908,10 +908,10 @@ def non_reentrant_checkpoint(function, *args):
         if SYNCHRONIZE:
             get_accelerator().synchronize()
     
-    torch.autograd.graph.register_multi_grad_hook(leaf_tensors, after_backward_hook)
 
     with torch.autograd.graph.saved_tensors_hooks(checkpoint_pack, checkpoint_unpack):
         outputs = function(*inputs_cuda)
+        torch.autograd.graph.register_multi_grad_hook(leaf_tensors, after_backward_hook)
 
     see_memory_usage("After running forward on the layer", force=False)
 
