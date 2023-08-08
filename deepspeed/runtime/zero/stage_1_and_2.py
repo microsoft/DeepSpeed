@@ -836,7 +836,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 param.grad_accum = param.grad
 
     def get_gradient_for_reduction(self, param):
-        return param.grad_accum.to(self.dtype) if self.use_grad_accum_for_reduction else param.grad
+        if self.use_grad_accum_for_reduction:
+            return param.grad_accum.to(self.dtype) if param.grad_accum is not None else None
+        else:
+            return param.grad
 
     # Clear the tensor the reduction gradient attribute is pointing to
     def clear_grad_reduc_pointer(self, param):
