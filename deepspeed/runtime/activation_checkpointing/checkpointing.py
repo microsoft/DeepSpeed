@@ -791,6 +791,7 @@ def non_reentrant_checkpoint(function, *args):
     storage: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
     weak_holder_list = []
     leaf_tensors = []
+    backward_visited_leaf_nodes = 0
 
     def checkpoint_pack(tensor_from_forward):
         res = Holder()
@@ -900,18 +901,23 @@ def non_reentrant_checkpoint(function, *args):
         return storage[holder_from_backward]
 
     def after_backward_hook(_nonuse_grads):
-        see_memory_usage("After backward checkpointing code after backward", force=False)
+        nonlocal leaf_tensors, backward_visited_leaf_nodes
+        backward_visited_leaf_nodes += 1
+        
+        if backward_visited_leaf_nodes == len(leaf_tensors):
+            see_memory_usage("After backward checkpointing code after backward", force=False)
 
-        if PROFILE_TIME:
-            timers('backward').stop()
-            timers.log(['backward'])
-        if SYNCHRONIZE:
-            get_accelerator().synchronize()
+            if PROFILE_TIME:
+                timers('backward').stop()
+                timers.log(['backward'])
+            if SYNCHRONIZE:
+                get_accelerator().synchronize()
     
 
     with torch.autograd.graph.saved_tensors_hooks(checkpoint_pack, checkpoint_unpack):
         outputs = function(*inputs_cuda)
-        torch.autograd.graph.register_multi_grad_hook(leaf_tensors, after_backward_hook)
+        for leaf_tensor in leaf_tensors:
+            leaf_tensor.register_hook(after_backward_hook)
 
     see_memory_usage("After running forward on the layer", force=False)
 
