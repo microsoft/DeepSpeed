@@ -40,7 +40,7 @@ jobs:
       - name: Install deepspeed
         run: |
           pip install diffusers
-          pip install .[dev,1bit,autotuning,inf,sd]
+          pip install .[dev,1bit,autotuning,inf,triton]
           ds_report
 
       - name: Python environment
