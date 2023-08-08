@@ -801,6 +801,7 @@ def non_reentrant_checkpoint(function, *args):
         return res
     
     def checkpoint_unpack(holder_from_backward):
+        nonlocal deepspeed_saved_tensors, non_tensor_args, tensor_flags
         if len(storage) == 0:
             unpack_counter = 0
 
