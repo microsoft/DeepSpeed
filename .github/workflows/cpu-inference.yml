@@ -1,16 +1,12 @@
 name: cpu-inference
 
 on:
-  push:
-    branches:
-      - 'staging**'
-    paths-ignore:
-      - 'docs/**'
-      - 'blogs/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
       - 'blogs/**'
+  merge_group:
+    branches: [ master ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -79,7 +75,5 @@ jobs:
         run: |
           source oneCCL/build/_install/env/setvars.sh
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
-          if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
-          TRANSFORMERS_CACHE=~/tmp/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest -m 'inference' unit/inference/test_inference_config.py
-          TRANSFORMERS_CACHE=~/tmp/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest -k TestDistAllReduce unit/comm/test_dist.py
+          TRANSFORMERS_CACHE=~/tmp/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest -m 'seq_inference' -m 'inference_ops' -m 'inference' unit/

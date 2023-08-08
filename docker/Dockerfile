@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.7.0-devel-ubuntu18.04
+FROM nvidia/cuda:11.7.1-devel-ubuntu18.04
 
 ENV DEBIAN_FRONTEND noninteractive
 
@@ -154,7 +154,7 @@ RUN pip install psutil \
 ###############################################################################
 ENV SSH_PORT=2222
 RUN cat /etc/ssh/sshd_config > ${STAGE_DIR}/sshd_config && \
-        sed "0,/^#Port 22/s//Port ${SSH_PORT}/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config
+        sed "0,/^Port 22/s//Port ${SSH_PORT}/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config
 
 ##############################################################################
 # PyTorch
