@@ -4,7 +4,7 @@ coverage
 docutils<0.18
 future
 importlib-metadata>=4
-megatron-lm @ git+https://github.com/NVIDIA/Megatron-LM.git@d80433e
+megatron-lm @ git+https://github.com/NVIDIA/Megatron-LM.git@d80433e1a0dd78a3bfd70e7e72d51d90169139fc
 pre-commit>=2.20.0
 pytest
 pytest-forked
