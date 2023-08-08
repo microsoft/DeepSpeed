@@ -638,7 +638,6 @@ class PipelineEngine(DeepSpeedEngine):
 
         # Zero out the gradients each time we use the tensor because only the data in
         # tensor changes across batches
-        self._zero_grads(inputs)
 
         outputs = super().forward(inputs)
 
@@ -777,7 +776,6 @@ class PipelineEngine(DeepSpeedEngine):
             loaded = None
             if torch.is_tensor(batch[0]):
                 loaded = batch[0].clone().to(self.device).detach()
-                loaded.requires_grad = loaded.is_floating_point()
             else:
                 assert isinstance(batch[0], (tuple, list))
                 # Assume list or tuple
@@ -785,7 +783,6 @@ class PipelineEngine(DeepSpeedEngine):
                 for x in batch[0]:
                     assert torch.is_tensor(x)
                     mine = x.clone().detach().to(self.device)
-                    mine.requires_grad = mine.is_floating_point()
                     loaded.append(mine)
                 loaded = tuple(loaded)
 
@@ -1158,14 +1155,7 @@ class PipelineEngine(DeepSpeedEngine):
                     STEP_GLOBAL_TIMER,
                 ])
 
-    def _zero_grads(self, inputs):
-        if isinstance(inputs, torch.Tensor):
-            if inputs.grad is not None:
-                inputs.grad.data.zero_()
-        else:
-            for t in inputs:
-                if t.grad is not None:
-                    t.grad.data.zero_()
+
 
     def _allocate_zeros(self, shape, **kwargs):
         """ Allocate a tensor of zeros on the engine's device.
