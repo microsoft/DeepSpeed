@@ -17,8 +17,8 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.utils import required_torch_version
 from unit.common import DistributedTest
 
-pytestmark = pytest.mark.skipif(not required_torch_version(min_version=1.5),
-                                reason='Megatron-LM package requires Pytorch version 1.5 or above')
+pytestmark = pytest.mark.skipif(not required_torch_version(min_version=1.5, max_version=1.13),
+                                reason='Megatron-LM package requires Pytorch version >=1.5 and <=1.13')
 
 
 def reset_random(seed=1234):
@@ -224,10 +224,7 @@ class TestCompression(DistributedTest):
         assert isinstance(compressed_model.layer[0].attention.self.key, LinearLayer_Compress)
         assert isinstance(compressed_model.layer[0].attention.self.value, LinearLayer_Compress)
 
-    @pytest.mark.skip(reason="megatron-lm is currently broken so this test cannot be run.")
     def test_mpu_compress(self, tmpdir):
-        if not required_torch_version(max_version=1.13):
-            pytest.skip("megatron not compatible with torch >1.13")
         from megatron import mpu
         args_defaults = {
             'num_layers': 2,
