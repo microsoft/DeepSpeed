@@ -193,6 +193,8 @@ def parse_args(args=None):
                         "numbers and range. i.e. 1,3-5,7 => [1,3,4,5,7].  When not "
                         "specified, all cores on system would be used rank binding")
 
+    parser.add_argument("--port", type=int, default=22, help="SSH port to use for remote connections")
+
     return parser.parse_args(args=args)
 
 
@@ -432,7 +434,7 @@ def main(args=None):
     if multi_node_exec and not args.no_ssh_check:
         first_host = list(active_resources.keys())[0]
         try:
-            subprocess.check_call(f'ssh -o PasswordAuthentication=no {first_host} hostname',
+            subprocess.check_call(f'ssh -o PasswordAuthentication=no -p {args.port} {first_host} hostname',
                                   stderr=subprocess.DEVNULL,
                                   stdout=subprocess.DEVNULL,
                                   shell=True)
@@ -564,6 +566,7 @@ def main(args=None):
         else:
             cmd = runner.get_cmd(env, active_resources)
 
+    env["PDSH_SSH_ARGS_APPEND"] += f" -p {args.port} "
     logger.info(f"cmd = {' '.join(cmd)}")
     result = subprocess.Popen(cmd, env=env)
 
