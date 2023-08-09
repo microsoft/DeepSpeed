@@ -707,6 +707,19 @@ class CheckpointFunction(torch.autograd.Function):
 
 
 def non_reentrant_checkpoint(function, *args):
+    """This function is union of `torch.utils.checkpoint._checkpoint_without_reentrant` and `CheckpointFunction` in this module
+
+    This function is aim to solve the back probagation error raised from all input requires no grad.
+    * has already been implemented in pytorch for a while, the solution is stable at most time except for jit module mode.
+    * can help to solve the issue which is hacked by `deepspeed.runtime.pipe.module.PipelineModule._is_checkpointable`
+
+    Main modifications compared to the implementation of torch:
+    1. adapt to the signature of `checkpoint` function in this module
+    2. solve the non-deterministic by random state management consistent with deepspeed `CheckpointFunction`
+    3. when there is partition or cpu checkpointing, gather them in the unpack_hook during back probagation
+    4. make all after backward blocks in the hook which will executed after all leaf nodes backward execution.
+    5. above 4. is inspired by `torch.autograd.graph.register_multi_grad_hook`, which is only implemented after 2.0.0
+    """
     global mpu, timers, SYNCHRONIZE, PROFILE_TIME
 
     deepspeed_saved_tensors = None
@@ -714,6 +727,7 @@ def non_reentrant_checkpoint(function, *args):
     tensor_flags = None
 
     def save_args_for_backward(*all_args):
+        """keep this function to reduce the modification from original implementation"""
         nonlocal deepspeed_saved_tensors, non_tensor_args, tensor_flags
         tensor_args, non_tensor_args, tensor_flags = extract_tensors(all_objects=all_args)
         deepspeed_saved_tensors = tensor_args
@@ -787,26 +801,43 @@ def non_reentrant_checkpoint(function, *args):
         save_args_for_backward(*args)
 
     class Holder():
+        """the place holder object used as activations to save memory"""
         pass
 
+    # weakref seems utilized to discover the tensor deletion before a whole
+    # forward backward pair loop finished
     storage: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
     weak_holder_list = []
     leaf_tensors = []
     backward_visited_leaf_nodes = 0
 
     def checkpoint_pack(tensor_from_forward):
+        """used to record the activation order in the `weak_holder_list`
+
+        the activation order in holder list is consistent between the first forward and recomputing forward.
+        * the jit compiled forward will break the order consistency *
+        """
         res = Holder()
         weak_holder_list.append(weakref.ref(res))
+
+        # if this is a leaf tensor, save it for backward progression trace
+        # leaf tensor used to be input or parameters, which is not activations and
+        # has no memory overhead
         if tensor_from_forward.requires_grad and tensor_from_forward.is_leaf:
             leaf_tensors.append(tensor_from_forward)
         return res
 
     def checkpoint_unpack(holder_from_backward):
+        """retrieve the activations from recompute"""
         nonlocal deepspeed_saved_tensors, non_tensor_args, tensor_flags
+
+        # if this is the first step of backward probagation, recompute the graph and save
+        # all the activations with the same order as `checkpoint_pack` does
         if len(storage) == 0:
             unpack_counter = 0
 
             def replay_pack(tensor_from_replay):
+                """save recompute activations"""
                 nonlocal unpack_counter
                 unpack_counter += 1
 
@@ -819,6 +850,7 @@ def non_reentrant_checkpoint(function, *args):
                 return
 
             def replay_unpack(none_value):
+                """recompute graph need not to backward"""
                 raise RuntimeError("You are calling backwards on a tensor that is never exposed.")
 
             global timers
@@ -852,6 +884,7 @@ def non_reentrant_checkpoint(function, *args):
 
             global cuda_device, transport_stream, PARTITION_ACTIVATIONS
 
+            # gather inputs which is partitioned or checkpointed before first forward
             if PARTITION_ACTIVATIONS:
                 # with get_accelerator().stream(transport_stream):
                 inputs = gather_partitioned_activations(deepspeed_saved_tensors,
@@ -900,6 +933,7 @@ def non_reentrant_checkpoint(function, *args):
         return storage[holder_from_backward]
 
     def after_backward_hook(_nonuse_grads):
+        """the hook registered to all leaf tensors"""
         nonlocal leaf_tensors, backward_visited_leaf_nodes
         backward_visited_leaf_nodes += 1
 
