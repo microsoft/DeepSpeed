@@ -57,15 +57,19 @@ DS_BUILD_FUSED_LAMB=1 pip install deepspeed
 
 Available `DS_BUILD` options include:
 * `DS_BUILD_OPS` toggles all ops
+* `DS_BUILD_AIO` builds asynchronous (NVMe) I/O op
+* `DS_BUILD_CCL_COMM` builds the communication collective libs
 * `DS_BUILD_CPU_ADAM` builds the CPUAdam op
 * `DS_BUILD_FUSED_ADAM` builds the FusedAdam op (from [apex](https://github.com/NVIDIA/apex))
+* `DS_BUILD_CPU_ADAGRAD` builds the CPUAdagrad op
 * `DS_BUILD_FUSED_LAMB` builds the FusedLamb op
+* `DS_BUILD_QUANTIZER` builds the quantizer op
+* `DS_BUILD_RANDOM_LTD` builds the random ltd op
 * `DS_BUILD_SPARSE_ATTN` builds the sparse attention op
 * `DS_BUILD_TRANSFORMER` builds the transformer op
 * `DS_BUILD_TRANSFORMER_INFERENCE` builds the transformer-inference op
 * `DS_BUILD_STOCHASTIC_TRANSFORMER` builds the stochastic transformer op
 * `DS_BUILD_UTILS` builds various optimized utilities
-* `DS_BUILD_AIO` builds asynchronous (NVMe) I/O op
 
 To speed up the build-all process, you can parallelize the compilation process with:
 
@@ -122,6 +126,16 @@ fail. Therefore, if you need to you can override the default location with the h
 ```bash
  TORCH_EXTENSIONS_DIR=./torch-extensions deepspeed ...
 ```
+
+### Conda environment for building from source
+
+If you encounter difficulties during compilation using the default system environment, you can try the conda environment provided, which includes the necessary compilation toolchain and PyTorch.
+
+```bash
+conda env create -n deepspeed -f environment.yml --force
+```
+
+and try above install commands after activating it.
 
 ## Building for the correct architectures
 

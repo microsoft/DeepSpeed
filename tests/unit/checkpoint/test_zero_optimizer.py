@@ -7,10 +7,10 @@ import deepspeed
 from deepspeed.ops.op_builder import CPUAdamBuilder
 from deepspeed.checkpoint.utils import clone_tensors_for_torch_save, get_model_ckpt_name_for_rank
 from deepspeed.accelerator import get_accelerator
+from deepspeed.runtime.utils import required_torch_version
 
 from unit.common import DistributedTest, DistributedFixture
 from unit.simple_model import *
-from unit.util import required_torch_version
 
 from unit.checkpoint.common import *
 
@@ -19,6 +19,29 @@ import pytest
 
 class TestZeROCheckpoint(DistributedTest):
     world_size = 2
+
+    @pytest.mark.parametrize('zero_stage', [3])
+    def test_pipeline_checkpoint_loading(self, tmpdir, zero_stage):
+        config_dict = {
+            "train_batch_size": 2,
+            "optimizer": {
+                "type": 'Adam'
+            },
+            "fp16": {
+                "enabled": True,
+                "initial_scale_power": 8
+            },
+            "zero_optimization": {
+                "stage": zero_stage,
+                "pipeline_loading_checkpoint": True,
+            }
+        }
+        hidden_dim = 10
+
+        with deepspeed.zero.Init():
+            models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
+
+        checkpoint_correctness_verification(config_dict, models, hidden_dim, tmpdir, load_module_only=True)
 
     @pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer', [(1, False, 'Adam'), (2, False, 'Adam'),
                                                                              (2, True, 'deepspeed_adam'),

@@ -143,7 +143,11 @@ def parse_optim_states(files, ds_checkpoint_dir):
     total_files = len(files)
     state_dicts = []
     for f in files:
-        state_dicts.append(torch.load(f, map_location=device))
+        state_dict = torch.load(f, map_location=device)
+        # immediately discard the potentially huge 2 optimizer states as we only care for fp32 master weights
+        # and also handle the case where it was already removed by another helper script
+        state_dict["optimizer_state_dict"].pop("optimizer_state_dict", None)
+        state_dicts.append(state_dict)
 
     if not ZERO_STAGE in state_dicts[0][OPTIMIZER_STATE_DICT]:
         raise ValueError(f"{files[0]} is not a zero checkpoint")
@@ -570,9 +574,14 @@ if __name__ == "__main__":
         "output_file",
         type=str,
         help="path to the pytorch fp32 state_dict output file (e.g. path/checkpoint-12/pytorch_model.bin)")
+    parser.add_argument("-t",
+                        "--tag",
+                        type=str,
+                        default=None,
+                        help="checkpoint tag used as a unique identifier for checkpoint. e.g., global_step1")
     parser.add_argument("-d", "--debug", action='store_true', help="enable debug")
     args = parser.parse_args()
 
     debug = args.debug
 
-    convert_zero_checkpoint_to_fp32_state_dict(args.checkpoint_dir, args.output_file)
+    convert_zero_checkpoint_to_fp32_state_dict(args.checkpoint_dir, args.output_file, tag=args.tag)

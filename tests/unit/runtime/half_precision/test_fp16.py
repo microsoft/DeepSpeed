@@ -10,12 +10,12 @@ import pytest
 from deepspeed.ops.adam import FusedAdam
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel, SimpleOptimizer, random_dataloader, SimpleMoEModel, sequence_dataloader
-from unit.util import required_torch_version
+from deepspeed.runtime.utils import required_torch_version
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import CPUAdamBuilder
 
 try:
-    from apex import amp  # noqa: F401
+    from apex import amp  # noqa: F401 # type: ignore
     _amp_available = True
 except ImportError:
     _amp_available = False
