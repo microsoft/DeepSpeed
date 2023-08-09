@@ -5,72 +5,45 @@
 
 # TODO: add tests with model parallelism for activation partitioning and other features.
 
+import sys
+import torch
+import pytest
+from importlib import util
+
 from deepspeed.runtime.activation_checkpointing.checkpointing import non_reentrant_checkpoint
-from test_activation_checkpointing import *
-from test_activation_checkpointing import (_mixed_mask, _bool_to_float, _prep_inputs, _match_outputs)
+from unit.common import DistributedTest
+
+ORG_SPEC = util.find_spec('test_activation_checkpointing')
+test_act_ckpt = util.module_from_spec(ORG_SPEC)
+ORG_SPEC.loader.exec_module(test_act_ckpt)
+sys.modules['test_act_ckpt'] = test_act_ckpt
+test_act_ckpt.ckpt = non_reentrant_checkpoint
+
+HIDDEN_DIM = test_act_ckpt.HIDDEN_DIM
+
+MaskedLinear = test_act_ckpt.MaskedLinear
+MaskedLinearSeq = test_act_ckpt.MaskedLinearSeq
+MaskedLinearSeqDup = test_act_ckpt.MaskedLinearSeqDup
+DropMaskLinear = test_act_ckpt.DropMaskLinear
+LinearNonTensorInput = test_act_ckpt.LinearNonTensorInput
+LinearNonTensorOutput = test_act_ckpt.LinearNonTensorOutput
+
+_test_activation_checkpoint = test_act_ckpt._test_activation_checkpoint
+_mixed_mask = test_act_ckpt._mixed_mask
+_bool_to_float = test_act_ckpt._bool_to_float
+_test_activation_checkpoint_ordering = test_act_ckpt._test_activation_checkpoint_ordering
 
 
-def _compute(module, *inputs, do_checkpoint=False):
-    if do_checkpoint:
-        outputs = non_reentrant_checkpoint(module, *inputs)
-    else:
-        outputs = module(*inputs)
-
-    if torch.is_tensor(outputs):
-        outputs = (outputs, )
-
-    sum(o.sum() for o in outputs if torch.is_tensor(o) and o.requires_grad).backward()
-
-    grads = [p.grad for p in module.parameters()]
-    input_grads = [inp.grad for inp in inputs if torch.is_tensor(inp)]
-
-    return {
-        'outputs': outputs,
-        'module_grads': grads,
-        'input_grads': input_grads,
-    }
+class TestActivationCheckpointWithGrad(test_act_ckpt.TestActivationCheckpoint):
+    pass
 
 
-def _test_activation_checkpoint(module, *inputs):
-    # Move to device
-    module.to(get_accelerator().device_name())
-
-    # Get rid of dropouts until we fork the RNG between tests.
-    module.eval()
-
-    module_ = deepcopy(module)
-    inputs_ = _prep_inputs(*inputs)
-    base = _compute(module_, *inputs_, do_checkpoint=False)
-
-    module_ = deepcopy(module)
-    inputs_ = _prep_inputs(*inputs)
-    test = _compute(module_, *inputs_, do_checkpoint=True)
-
-    for group in base.keys():
-        for b, t in zip(base[group], test[group]):
-            _match_outputs(b, t)
+class TestCheckpointNonTensorWithGrad(test_act_ckpt.TestCheckpointNonTensor):
+    pass
 
 
-def _test_activation_checkpoint_ordering(module, expected_ordering, *inputs):
-    # Move to device
-    module.to(get_accelerator().device_name())
-
-    # Get rid of dropouts until we fork the RNG between tests.
-    module.eval()
-
-    module_ = deepcopy(module)
-    inputs_ = _prep_inputs(*inputs)
-    test = _compute(module_, *inputs_, do_checkpoint=True)
-
-    outputs = test['outputs']
-    test_ordering = []
-    for item in outputs:
-        if type(item) in [list, tuple]:
-            test_ordering += [torch.is_tensor(t) for t in item]
-        else:
-            test_ordering += [torch.is_tensor(item)]
-
-    assert expected_ordering == test_ordering
+class TestCheckpointNonTensorOutputOrderingWithGrad(test_act_ckpt.TestCheckpointNonTensorOutputOrdering):
+    pass
 
 
 # both bool and float are important, as bool is not differentiable
