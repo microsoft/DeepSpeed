@@ -9,7 +9,7 @@ tags: getting-started
 
 * Installing is as simple as `pip install deepspeed`, [see more details](/tutorials/advanced-install/).
 * To get started with DeepSpeed on AzureML, please see the [AzureML Examples GitHub](https://github.com/Azure/azureml-examples/tree/main/python-sdk/workflows/train/deepspeed)
-* DeepSpeed has direct integrations with [HuggingFace Transformers](https://github.com/huggingface/transformers) and [PyTorch Lightning](https://github.com/PyTorchLightning/pytorch-lightning). HuggingFace Transformers users can now easily accelerate their models with DeepSpeed through a simple ``--deepspeed`` flag + config file [See more details](https://huggingface.co/transformers/main_classes/trainer.html#deepspeed). PyTorch Lightning provides easy access to DeepSpeed through the Lightning Trainer [See more details](https://pytorch-lightning.readthedocs.io/en/stable/advanced/multi_gpu.html?highlight=deepspeed#deepspeed).
+* DeepSpeed has direct integrations with [HuggingFace Transformers](https://github.com/huggingface/transformers) and [PyTorch Lightning](https://github.com/PyTorchLightning/pytorch-lightning). HuggingFace Transformers users can now easily accelerate their models with DeepSpeed through a simple ``--deepspeed`` flag + config file [See more details](https://huggingface.co/docs/transformers/main_classes/deepspeed). PyTorch Lightning provides easy access to DeepSpeed through the Lightning Trainer [See more details](https://pytorch-lightning.readthedocs.io/en/stable/advanced/multi_gpu.html?highlight=deepspeed#deepspeed).
 * DeepSpeed on AMD can be used via our [ROCm images](https://hub.docker.com/r/deepspeed/rocm501/tags), e.g., `docker pull deepspeed/rocm501:ds060_pytorch110`.
 
 
@@ -235,7 +235,11 @@ propagate all NCCL and PYTHON related environment variables that are set. If
 you would like to propagate additional variables you can specify them in a
 dot-file named `.deepspeed_env` that contains a new-line separated list of
 `VAR=VAL` entries. The DeepSpeed launcher will look in the local path you are
-executing from and also in your home directory (`~/`).
+executing from and also in your home directory (`~/`). If you would like to
+override the default name of this file or path and name with your own, you
+can specify this with the environment variable, `DS_ENV_FILE`.  This is
+mostly useful if you are launching multiple jobs that all require different
+variables.
 
 As a concrete example, some clusters require special NCCL variables to set
 prior to training. The user can simply add these variables to a

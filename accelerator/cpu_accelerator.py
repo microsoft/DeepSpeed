@@ -5,7 +5,7 @@
 
 import torch
 from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
-import oneccl_bindings_for_pytorch  # noqa: F401
+import oneccl_bindings_for_pytorch  # noqa: F401 # type: ignore
 import psutil
 import os
 
@@ -40,7 +40,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
     def device_count(self):
         device_count = int(os.environ.get('LOCAL_SIZE', 0))
         if device_count > 0:
-            return os.environ.get('LOCAL_SIZE')
+            return device_count
         else:
             from deepspeed.utils.numa import get_numa_cores
             # Count NUMA node for number of cpu accelerators. On machine with HBM
@@ -48,9 +48,11 @@ class CPU_Accelerator(DeepSpeedAccelerator):
             # Ignore these NUMA nodes with no cores.
             numa_core_lists = get_numa_cores()
             numa_count = 0
+            prev_core_list = []
             for core_list in numa_core_lists:
-                if len(core_list) > 0:
+                if len(core_list) > 0 and core_list != prev_core_list:
                     numa_count += 1
+                    prev_core_list = core_list
             return numa_count
 
     def synchronize(self, device_index=None):
@@ -86,8 +88,8 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return None
 
     def stream(self, stream):
-        from deepspeed.runtime.utils import noop_decorator
-        return noop_decorator
+        from deepspeed.runtime.utils import noop_context
+        return noop_context()
 
     def current_stream(self, device_index=None):
         return None
@@ -137,7 +139,11 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return
 
     def memory_stats(self, device_index=None):
-        return self.get_rss()
+        mem = self.get_rss()
+        mem_stat = {}
+        mem_stat['allocated_bytes.all.current'] = mem
+        mem_stat['allocated_bytes.all.peak'] = self.max_mem
+        return mem_stat
 
     def reset_peak_memory_stats(self, device_index=None):
         self.reset_rss()
@@ -181,7 +187,10 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return True
 
     def is_fp16_supported(self):
-        return True
+        return False
+
+    def supported_dtypes(self):
+        return [torch.float, torch.bfloat16]
 
     # Tensor operations
 
@@ -220,7 +229,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         try:
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
-            from op_builder import __deepspeed__  # noqa: F401
+            from op_builder import __deepspeed__  # noqa: F401 # type: ignore
             return "op_builder.cpu"
         except ImportError:
             return "deepspeed.ops.op_builder.cpu"
@@ -244,13 +253,17 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         try:
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
-            from op_builder import __deepspeed__  # noqa: F401
-            from op_builder.cpu import CCLCommBuilder, NotImplementedBuilder
+            from op_builder import __deepspeed__  # noqa: F401 # type: ignore
+            from op_builder.cpu import CCLCommBuilder, FusedAdamBuilder, CPUAdamBuilder, NotImplementedBuilder
         except ImportError:
-            from deepspeed.ops.op_builder.cpu import CCLCommBuilder, NotImplementedBuilder
+            from deepspeed.ops.op_builder.cpu import CCLCommBuilder, FusedAdamBuilder, CPUAdamBuilder, NotImplementedBuilder
 
         if class_name == "CCLCommBuilder":
             return CCLCommBuilder
+        elif class_name == "FusedAdamBuilder":
+            return FusedAdamBuilder
+        elif class_name == "CPUAdamBuilder":
+            return CPUAdamBuilder
         else:
             # return a NotImplementedBuilder to avoid get NoneType[Name] in unit tests
             return NotImplementedBuilder

@@ -459,7 +459,7 @@ class OpBuilder(ABC):
                 f"Unable to JIT load the {self.name} op due to it not being compatible due to hardware/software issue. {self.error_log}"
             )
         try:
-            import ninja  # noqa: F401
+            import ninja  # noqa: F401 # type: ignore
         except ImportError:
             raise RuntimeError(f"Unable to JIT load the {self.name} op due to ninja not being installed.")
 
@@ -623,7 +623,8 @@ class CUDAOpBuilder(OpBuilder):
                                     sources=self.strip_empty_entries(self.sources()),
                                     include_dirs=self.strip_empty_entries(self.include_paths()),
                                     libraries=self.strip_empty_entries(self.libraries_args()),
-                                    extra_compile_args=compile_args)
+                                    extra_compile_args=compile_args,
+                                    extra_link_args=self.strip_empty_entries(self.extra_ldflags()))
 
         if self.is_rocm_pytorch():
             # hip converts paths to absolute, this converts back to relative
