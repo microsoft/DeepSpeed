@@ -2656,7 +2656,10 @@ class DeepSpeedEngine(Module):
 
         load_zero_checkpoint = self.zero_optimization() or self.bfloat16_enabled()
         if load_zero_checkpoint and load_path is not None:
-            success = False #self._load_zero_checkpoint(load_dir, tag, load_optimizer_states=load_optimizer_states)
+            if load_optimizer_states and not load_module_only:
+                success = self._load_zero_checkpoint(load_dir, tag, load_optimizer_states=load_optimizer_states)
+            else:
+                success = False
             if not success:
                 self.optimizer._restore_from_bit16_weights()
 
@@ -2711,9 +2714,9 @@ class DeepSpeedEngine(Module):
 
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
 
-        if True: #load_module_only:
+        if load_module_only:
             deepspeed_states = ['module']
-            if self.optimizer is not None: # and self.fp16_enabled():
+            if self.optimizer is not None:
                 self.optimizer.refresh_fp32_params()
         else:
             if self.has_moe_layers:
