@@ -13,6 +13,8 @@ from importlib import util
 from deepspeed.runtime.activation_checkpointing.checkpointing import non_reentrant_checkpoint
 from unit.common import DistributedTest
 
+# the hack to clone the module `test_activation_checkpointing` and inject
+# `non_reentrant_checkpoint` as the `ckpt` of the origin test module
 ORG_SPEC = util.find_spec('test_activation_checkpointing')
 test_act_ckpt = util.module_from_spec(ORG_SPEC)
 ORG_SPEC.loader.exec_module(test_act_ckpt)
@@ -35,23 +37,27 @@ _test_activation_checkpoint_ordering = test_act_ckpt._test_activation_checkpoint
 
 
 class TestActivationCheckpointWithGrad(test_act_ckpt.TestActivationCheckpoint):
+    """test `non_reentrant_checkpoint` can still checkpoint activations for inputs with grad"""
     pass
 
 
 class TestCheckpointNonTensorWithGrad(test_act_ckpt.TestCheckpointNonTensor):
+    """test `non_reentrant_checkpoint` can still checkpoint activations for inputs with grad"""
     pass
 
 
 class TestCheckpointNonTensorOutputOrderingWithGrad(test_act_ckpt.TestCheckpointNonTensorOutputOrdering):
+    """test `non_reentrant_checkpoint` can still checkpoint activations for inputs with grad"""
     pass
 
 
-# both bool and float are important, as bool is not differentiable
+# below classes are used to test the graph with inputs have no grad and parameters has grad, namely partial graph?
 @pytest.mark.parametrize('mask', [
     _mixed_mask(),
     _bool_to_float(_mixed_mask()),
 ])
 class TestActivationCheckpointWithoutGrad(DistributedTest):
+    """test all input tensors without grad"""
     world_size = 1
 
     def test_ckpt_inputs1_outputs1(self, mask):
@@ -82,6 +88,7 @@ class TestActivationCheckpointWithoutGrad(DistributedTest):
 
 @pytest.mark.parametrize('non_tensor', [None, 2, True, (None, 2.5), (None, True, torch.randn(HIDDEN_DIM))])
 class TestCheckpointNonTensorWithoutGrad(DistributedTest):
+    """test all input tensors without grad"""
     world_size = 1
 
     def test_ckpt_non_tensor_input(self, non_tensor):
@@ -99,6 +106,7 @@ class TestCheckpointNonTensorWithoutGrad(DistributedTest):
     None, (torch.randn(HIDDEN_DIM), 2.5), (None, torch.randn(HIDDEN_DIM), True), (None, True, torch.randn(HIDDEN_DIM))
 ])
 class TestCheckpointNonTensorOutputOrderingWithoutGrad(DistributedTest):
+    """test all input tensors without grad"""
     world_size = 1
 
     def test_ckpt_non_tensor_output_ordering(self, non_tensor_output):
