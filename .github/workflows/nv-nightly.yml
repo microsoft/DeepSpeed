@@ -52,5 +52,10 @@ jobs:
           cd tests
           pytest $PYTEST_OPTS --forked -m 'nightly' unit/ --torch_ver="1.13" --cuda_ver="11.6"
 
-      - id: open-issue-on-fail
-        uses: ./.github/workflows/open-issue-on-fail
+      - name: Open GitHub issue if nightly CI fails
+        if: failure()
+        uses: JasonEtco/create-an-issue@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          filename: .github/ISSUE_TEMPLATE/ci_failure_report.md
