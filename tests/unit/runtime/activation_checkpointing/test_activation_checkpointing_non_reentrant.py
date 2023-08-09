@@ -6,14 +6,72 @@
 # TODO: add tests with model parallelism for activation partitioning and other features.
 
 from deepspeed.runtime.activation_checkpointing.checkpointing import non_reentrant_checkpoint
-import test_activation_checkpointing
 from test_activation_checkpointing import *
-from test_activation_checkpointing import (
-    _bool_to_float, _compute, _match_outputs, _mixed_mask,
-    _prep_inputs, _test_activation_checkpoint, _test_activation_checkpoint_ordering
-)
+from test_activation_checkpointing import (_mixed_mask, _bool_to_float, _prep_inputs, _match_outputs)
 
-ckpt = non_reentrant_checkpoint
+
+def _compute(module, *inputs, do_checkpoint=False):
+    if do_checkpoint:
+        outputs = non_reentrant_checkpoint(module, *inputs)
+    else:
+        outputs = module(*inputs)
+
+    if torch.is_tensor(outputs):
+        outputs = (outputs, )
+
+    sum(o.sum() for o in outputs if torch.is_tensor(o) and o.requires_grad).backward()
+
+    grads = [p.grad for p in module.parameters()]
+    input_grads = [inp.grad for inp in inputs if torch.is_tensor(inp)]
+
+    return {
+        'outputs': outputs,
+        'module_grads': grads,
+        'input_grads': input_grads,
+    }
+
+
+def _test_activation_checkpoint(module, *inputs):
+    # Move to device
+    module.to(get_accelerator().device_name())
+
+    # Get rid of dropouts until we fork the RNG between tests.
+    module.eval()
+
+    module_ = deepcopy(module)
+    inputs_ = _prep_inputs(*inputs)
+    base = _compute(module_, *inputs_, do_checkpoint=False)
+
+    module_ = deepcopy(module)
+    inputs_ = _prep_inputs(*inputs)
+    test = _compute(module_, *inputs_, do_checkpoint=True)
+
+    for group in base.keys():
+        for b, t in zip(base[group], test[group]):
+            _match_outputs(b, t)
+
+
+def _test_activation_checkpoint_ordering(module, expected_ordering, *inputs):
+    # Move to device
+    module.to(get_accelerator().device_name())
+
+    # Get rid of dropouts until we fork the RNG between tests.
+    module.eval()
+
+    module_ = deepcopy(module)
+    inputs_ = _prep_inputs(*inputs)
+    test = _compute(module_, *inputs_, do_checkpoint=True)
+
+    outputs = test['outputs']
+    test_ordering = []
+    for item in outputs:
+        if type(item) in [list, tuple]:
+            test_ordering += [torch.is_tensor(t) for t in item]
+        else:
+            test_ordering += [torch.is_tensor(item)]
+
+    assert expected_ordering == test_ordering
+
 
 # both bool and float are important, as bool is not differentiable
 @pytest.mark.parametrize('mask', [

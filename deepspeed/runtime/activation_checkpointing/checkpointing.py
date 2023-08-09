@@ -712,6 +712,7 @@ def non_reentrant_checkpoint(function, *args):
     deepspeed_saved_tensors = None
     non_tensor_args = None
     tensor_flags = None
+
     def save_args_for_backward(*all_args):
         nonlocal deepspeed_saved_tensors, non_tensor_args, tensor_flags
         tensor_args, non_tensor_args, tensor_flags = extract_tensors(all_objects=all_args)
@@ -784,7 +785,7 @@ def non_reentrant_checkpoint(function, *args):
         save_args_for_backward(*new_args)
     else:
         save_args_for_backward(*args)
-    
+
     class Holder():
         pass
 
@@ -799,7 +800,7 @@ def non_reentrant_checkpoint(function, *args):
         if tensor_from_forward.requires_grad and tensor_from_forward.is_leaf:
             leaf_tensors.append(tensor_from_forward)
         return res
-    
+
     def checkpoint_unpack(holder_from_backward):
         nonlocal deepspeed_saved_tensors, non_tensor_args, tensor_flags
         if len(storage) == 0:
@@ -808,18 +809,18 @@ def non_reentrant_checkpoint(function, *args):
             def replay_pack(tensor_from_replay):
                 nonlocal unpack_counter
                 unpack_counter += 1
-                
+
                 if weak_holder_list[unpack_counter - 1]() is None:
                     return
-                
+
                 detached_activations = tensor_from_replay.detach()
                 storage[weak_holder_list[unpack_counter - 1]()] = detached_activations
-                
+
                 return
-            
+
             def replay_unpack(none_value):
                 raise RuntimeError("You are calling backwards on a tensor that is never exposed.")
-            
+
             global timers
             see_memory_usage("In backward", force=False)
             # removing pointers to the contiguous buffer memory
@@ -887,24 +888,21 @@ def non_reentrant_checkpoint(function, *args):
             torch.set_rng_state(bwd_cpu_rng_state)
             _set_cuda_rng_state(bwd_cuda_rng_state)
             get_cuda_rng_tracker().set_states(bwd_cuda_rng_state_tracker)
-            
+
             deepspeed_saved_tensors = None
             non_tensor_args = None
             tensor_flags = None
 
-
         if holder_from_backward not in storage:
-            raise RuntimeError(
-                "Attempt to retrieve a tensor saved by autograd multiple times without checkpoint"
-                " recomputation being triggered in between, this is not currently supported."
-            )
-        
+            raise RuntimeError("Attempt to retrieve a tensor saved by autograd multiple times without checkpoint"
+                               " recomputation being triggered in between, this is not currently supported.")
+
         return storage[holder_from_backward]
 
     def after_backward_hook(_nonuse_grads):
         nonlocal leaf_tensors, backward_visited_leaf_nodes
         backward_visited_leaf_nodes += 1
-        
+
         if backward_visited_leaf_nodes == len(leaf_tensors):
             see_memory_usage("After backward checkpointing code after backward", force=False)
 
@@ -913,7 +911,6 @@ def non_reentrant_checkpoint(function, *args):
                 timers.log(['backward'])
             if SYNCHRONIZE:
                 get_accelerator().synchronize()
-    
 
     with torch.autograd.graph.saved_tensors_hooks(checkpoint_pack, checkpoint_unpack):
         outputs = function(*inputs_cuda)
@@ -933,7 +930,7 @@ def non_reentrant_checkpoint(function, *args):
         all_outputs += [outputs]
     else:
         all_outputs += outputs
-    
+
     if len(all_outputs) == 1:
         return all_outputs[0]
     else:
