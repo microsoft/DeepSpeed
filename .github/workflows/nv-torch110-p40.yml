@@ -1,4 +1,4 @@
-name: nv-torch19-p40
+name: nv-torch110-p40
 
 on:
   pull_request:
