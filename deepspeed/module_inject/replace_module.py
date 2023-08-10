@@ -16,6 +16,7 @@ from .replace_policy import replace_policies, generic_policies
 from .auto_tp import AutoTP, ReplaceWithTensorSlicing, Loading
 
 from deepspeed import comm as dist
+from deepspeed.utils.tp_shard import set_num_kv_heads
 from torch import nn
 
 from .load_checkpoint import load_model_with_checkpoint
@@ -263,27 +264,6 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         return _container.module
 
-    def get_shard_size(total_size, mp_size):
-        num_kv_heads = None
-
-        # 1. Try to get num_key_heads from model_config.num_key_value_heads
-        if hasattr(model_config, 'num_key_value_heads'):
-            num_kv_heads = model_config.num_key_value_heads
-
-        # 2. Fallback to model_config.num_attention_heads when necessary
-        if num_kv_heads == None and hasattr(model_config, 'num_attention_heads'):
-            num_kv_heads = model_config.num_attention_heads
-
-        # 3. When we have num_kv_heads defined, uneven division is possible, otherwise enforce even division
-        if num_kv_heads != None:
-            my_slices = num_kv_heads // mp_size + (1 if dist.get_rank() < (num_kv_heads % mp_size) else 0)
-            return total_size // num_kv_heads * my_slices
-        else:
-            if total_size % mp_size == 0:
-                return total_size // mp_size
-            else:
-                assert False, f"Number of attention heads ({total_size}) must be divisible by mp_size ({mp_size})"
-
     def replace_wo_policy(module, all_reduce_linears, prefix="", state_dict=None):
         #mp_replace = ReplaceWithTensorSlicing(mp_group=config.tensor_parallel.tp_group)
 
@@ -293,10 +273,22 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         # 2. Set the tensor parallelism config
         _autotp.set_tensor_parallel_config(config.tensor_parallel.tp_size, config.tensor_parallel.tp_group)
 
-        # 3. Set linear policies
+        # 3. Try to get num_key_heads from model_config.num_key_value_heads
+        num_kv_heads = None
+        if hasattr(model_config, 'num_key_value_heads'):
+            num_kv_heads = model_config.num_key_value_heads
+
+        # 4. Fallback to model_config.num_attention_heads when necessary
+        if num_kv_heads == None and hasattr(model_config, 'num_attention_heads'):
+            num_kv_heads = model_config.num_attention_heads
+
+        # 5. When we have num_kv_heads defined, uneven division is possible, otherwise enforce even division
+        set_num_kv_heads(num_kv_heads)
+
+        # 6. Set linear policies
         _autotp.update_linear_policies()
 
-        # 4. Replace modules
+        # 7. Replace modules
         return _autotp._replace_module(module)
 
     def replace_fn(child, _policy, layer_id=0, prefix="", state_dict=None):

@@ -14,6 +14,7 @@ from deepspeed import comm as dist
 from .layers import LinearAllreduce, LinearLayer
 from deepspeed.accelerator import get_accelerator
 from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw
+from deepspeed.utils.tp_shard import get_shard_size
 
 
 class ReplaceWithTensorSlicing:
@@ -300,7 +301,7 @@ class AutoTP():
             # MPT block qkv weight's allocation is different from other models, it's [3,num_head,head_dim,hidden_size]
             # instead of [num_head,3,head_dim,hidden_size]
             new_weight = torch.empty((
-                weight_shape[0] // self.mp_size,
+                get_shard_size(weight_shape[0], self.mp_size),
                 weight_shape[1],
             ),
                                      device=child.weight.device,
@@ -319,7 +320,7 @@ class AutoTP():
             if self.conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
             data = child.weight.data.split(
-                (weight_shape[0] if self.conv_linear_layer else weight_shape[1]) // self.mp_size, dim=1)
+                get_shard_size(weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size), dim=1)
             data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
             setattr(child, "replaced", True)
@@ -342,13 +343,13 @@ class AutoTP():
                     module_str, child.bias.data, self.mp_size, mp_replace.gpu_index).to(
                         get_accelerator().current_device_name())
             else:
-                data = child.weight.data.split((weight_shape[0]) // self.mp_size,
+                data = child.weight.data.split(get_shard_size(weight_shape[0], self.mp_size),
                                                dim=1 if self.conv_linear_layer else 0)
                 data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
                 if child.bias is not None:
                     bias_data = child.bias.data.split(
-                        (weight_shape[1] if self.conv_linear_layer else weight_shape[0]) // self.mp_size, dim=0)
+                        get_shard_size(weight_shape[1] if self.conv_linear_layer else weight_shape[0], self.mp_size), dim=0)
                     bias_data = bias_data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
                 else:
                     bias_data = None
@@ -362,12 +363,12 @@ class AutoTP():
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
 
         if hasattr(child.weight, 'ds_tensor'):
-            data = child.weight.ds_tensor.data.split(child.weight.shape[1] // self.mp_size, dim=1)
+            data = child.weight.ds_tensor.data.split(get_shard_size(child.weight.shape[1], self.mp_size), dim=1)
         else:
-            data = child.weight.data.split(child.weight.shape[1] // self.mp_size, dim=1)
+            data = child.weight.data.split(get_shard_size(child.weight.shape[1], self.mp_size), dim=1)
         data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
-        new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // self.mp_size)
+        new_embedding = nn.Embedding(child.weight.shape[0], get_shard_size(child.weight.shape[1], self.mp_size))
         new_embedding.weight.data.copy_(data)
         setattr(child, "replaced", True)
         return new_embedding
@@ -381,8 +382,8 @@ class AutoTP():
         ]:
             if hasattr(child, param):
                 param_val = getattr(child, param)
-                assert param_val % self.mp_size == 0, f"{param} ({param_val}) must be divisible by mp_size ({self.mp_size})"
-                setattr(child, param, param_val // self.mp_size)
+                #assert param_val % self.mp_size == 0, f"{param} ({param_val}) must be divisible by mp_size ({self.mp_size})"
+                setattr(child, param, get_shard_size(param_val, self.mp_size))
         setattr(child, "replaced", True)
 
     def update_linear_policies(self):
@@ -401,27 +402,6 @@ class AutoTP():
                     self.linear_policies = {nn.Linear: self._replace}
             else:
                 self.linear_policies = {nn.Linear: self._replace, nn.Embedding: self._slice_embedding}
-
-    def get_shard_size(total_size, mp_size):
-        num_kv_heads = None
-
-        # 1. Try to get num_key_heads from model_config.num_key_value_heads
-        if hasattr(model_config, 'num_key_value_heads'):
-            num_kv_heads = model_config.num_key_value_heads
-
-        # 2. Fallback to model_config.num_attention_heads when necessary
-        if num_kv_heads == None and hasattr(model_config, 'num_attention_heads'):
-            num_kv_heads = model_config.num_attention_heads
-
-        # 3. When we have num_kv_heads defined, uneven division is possible, otherwise enforce even division
-        if num_kv_heads != None:
-            my_slices = num_kv_heads // mp_size + (1 if dist.get_rank() < (num_kv_heads % mp_size) else 0)
-            return total_size // num_kv_heads * my_slices
-        else:
-            if total_size % mp_size == 0:
-                return total_size // mp_size
-            else:
-                assert False, f"Number of attention heads ({total_size}) must be divisible by mp_size ({mp_size})"
 
     def _replace_module(self, r_module, prev_name='', prev_class_name=''):
         for name, child in r_module.named_children():
