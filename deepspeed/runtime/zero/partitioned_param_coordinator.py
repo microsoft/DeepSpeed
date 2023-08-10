@@ -413,15 +413,21 @@ class PartitionedParameterCoordinator:
     def __all_gather_params(self, params: Set[Parameter], forward: bool) -> None:
         quantized_params = []
         nonquantized_params = []
+        skipquantization_params = []
         for param in params:
             if hasattr(param.ds_tensor, 'ds_quant_scale'):
                 quantized_params.append(param)
+            elif param.ds_numel<500000:
+                skipquantization_params.append(param)
             else:
                 nonquantized_params.append(param)
+        # print_rank_0(f"{sum([p.ds_numel for p in quantized_params+nonquantized_params])} quantized params, {sum(p.ds_numel for p in skipquantization_params)} skipquantization params", force=True)
         if quantized_params:
             self.__all_gather_params_(quantized_params, forward, quantize=True)
         if nonquantized_params:
             self.__all_gather_params_(nonquantized_params, forward, quantize=self.zero_quantized_weights)
+        if skipquantization_params:
+            self.__all_gather_params_(skipquantization_params, forward, quantize=False)
 
     def __all_gather_params_(self, params: Set[Parameter], forward: bool, quantize: bool = False) -> None:
         """for each partitioned parameter, kick off an async allgather and store
