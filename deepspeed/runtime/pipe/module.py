@@ -364,7 +364,9 @@ class PipelineModule(nn.Module):
                     # need to revisit
                     dummy_tensor = inputs[1]
                     inputs = inputs[0]
-                
+                else:
+                    dummy_tensor = inputs[-1]
+                    inputs = inputs[:-1]
                 for idx, layer in enumerate(self.forward_funcs[start:end]):
                     self.curr_layer = idx + self._local_start
                     if self.seed_layers:
