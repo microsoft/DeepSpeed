@@ -22,10 +22,13 @@ from deepspeed.runtime.state_dict_factory import SDLoaderFactory
 from deepspeed.accelerator import get_accelerator
 from deepspeed.checkpoint.utils import clone_tensors_for_torch_save
 from enum import Enum
+
+
 class CkptLayer_Enum(Enum):
-    not_ckpt_layer=0
-    normal_ckpt_layer=1
-    warp_ckpt_layer=2
+    not_ckpt_layer = 0
+    normal_ckpt_layer = 1
+    warp_ckpt_layer = 2
+
 
 class PipelineError(Exception):
     """Errors related to the use of deepspeed.PipelineModule """
@@ -88,17 +91,20 @@ class TiedLayerSpec(LayerSpec):
 
 
 class ModuleWrapper(nn.Module):
-    """Some  input with requires_grad=False will prevent the checkpoint activation layer from obtaining grads, 
+    """Some  input with requires_grad=False will prevent the checkpoint activation layer from obtaining grads,
     and the requires_grad of the output of checkpoint activation layer will also be False, using this wrapper ad first layer could solve this problem
-    """    
+    """
+
     def __init__(self, module):
         super().__init__()
         self.module = module
 
-    def forward(self,x, dummy_arg=None):
+    def forward(self, x, dummy_arg=None):
         assert dummy_arg is not None
         x = self.module(x)
         return x
+
+
 class PipelineModule(nn.Module):
     """Modules to be parallelized with pipeline parallelism.
 
@@ -337,7 +343,7 @@ class PipelineModule(nn.Module):
         # will see a different offset.
         self.micro_offset += 1
 
-        def exec_range_func(start, end ,warp_layer=False):
+        def exec_range_func(start, end, warp_layer=False):
             ''' Helper function to be used with checkpoint()
             Adapted from torch.utils.checkpoint:checkpoint_sequential()
             '''
@@ -355,12 +361,13 @@ class PipelineModule(nn.Module):
                             self.seed_fn(new_seed)
                         else:
                             ds_utils.set_random_seed(new_seed)
-                    
+
                     inputs = layer(inputs)
                 return inputs
+
             def exec_func_warp(*inputs):
                 # Single tensor inputs need to be unwrapped
-                if len(inputs)==2:
+                if len(inputs) == 2:
                     # need to revisit
                     dummy_tensor = inputs[1]
                     inputs = inputs[0]
@@ -375,12 +382,12 @@ class PipelineModule(nn.Module):
                             self.seed_fn(new_seed)
                         else:
                             ds_utils.set_random_seed(new_seed)
-                    if idx==0:
-                        inputs = layer(inputs,dummy_tensor)
-                    else: 
+                    if idx == 0:
+                        inputs = layer(inputs, dummy_tensor)
+                    else:
                         inputs = layer(inputs)
                 return inputs
-                
+
             return exec_func if not warp_layer else exec_func_warp
 
         if self.activation_checkpoint_interval == 0:
@@ -401,9 +408,10 @@ class PipelineModule(nn.Module):
                 if self._is_checkpointable(funcs) == CkptLayer_Enum.warp_ckpt_layer:
                     if not self.is_wrapped_ckptlayer:
                         self.forward_funcs[start_idx] = ModuleWrapper(self.forward_funcs[start_idx])
-                        self.is_wrapped_ckptlayer=True   
+                        self.is_wrapped_ckptlayer = True
 
-                    x = self.activation_checkpoint_func(exec_range_func(start_idx, end_idx,warp_layer=True), *x,self.dummy_tensor.to(get_accelerator().current_device()))
+                    x = self.activation_checkpoint_func(exec_range_func(start_idx, end_idx, warp_layer=True), *x,
+                                                        self.dummy_tensor.to(get_accelerator().current_device()))
                 elif self._is_checkpointable(funcs) == CkptLayer_Enum.normal_ckpt_layer:
                     x = self.activation_checkpoint_func(exec_range_func(start_idx, end_idx), *x)
                 else:
@@ -655,13 +663,8 @@ class PipelineModule(nn.Module):
 
             layer.load_state_dict(checkpoint, strict=strict)
 
-
-
         self._synchronize_tied_weights()
 
-
-
-        
     def _is_checkpointable(self, funcs):
         # This is an unfortunate hack related to torch and deepspeed activation checkpoint implementations.
         # Some layers like torch.nn.Embedding will not receive grads if checkpointed, which breaks things.
@@ -670,12 +673,12 @@ class PipelineModule(nn.Module):
         #     return all('ParallelTransformerLayerPipe' in f.__class__.__name__ for f in funcs)
         # if self.checkpointable_layers is not None:
         #     return all(f.__class__.__name__ in self.checkpointable_layers for f in funcs)
-        if isinstance(funcs[0],ModuleWrapper):
+        if isinstance(funcs[0], ModuleWrapper):
             return CkptLayer_Enum.warp_ckpt_layer
         params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
         if any(len(list(p)) > 0 for p in params):
             if not self.is_wrapped_ckptlayer:
                 return CkptLayer_Enum.warp_ckpt_layer
 
-            return CkptLayer_Enum.normal_ckpt_layer            
+            return CkptLayer_Enum.normal_ckpt_layer
         return CkptLayer_Enum.not_ckpt_layer

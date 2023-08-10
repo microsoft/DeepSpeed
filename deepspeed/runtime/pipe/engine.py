@@ -1155,8 +1155,6 @@ class PipelineEngine(DeepSpeedEngine):
                     STEP_GLOBAL_TIMER,
                 ])
 
-
-
     def _allocate_zeros(self, shape, **kwargs):
         """ Allocate a tensor of zeros on the engine's device.
 
