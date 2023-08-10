@@ -28,7 +28,7 @@ jobs:
 
       - name: Install pytorch
         run: |
-          pip install -U --no-build-isolation --cache-dir $TORCH_CACHE torch==1.9.0+cu111 torchvision==0.10.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
+          pip install -U --cache-dir $TORCH_CACHE torch==1.10.0+cu111 torchvision==0.11.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -43,7 +43,6 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          pip list
           pip install .[dev,1bit,autotuning] --no-build-isolation
           ds_report
 
@@ -55,7 +54,7 @@ jobs:
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
-          pytest $PYTEST_OPTS --forked -n 4 unit/ --torch_ver="1.9" --cuda_ver="11.1"
+          pytest $PYTEST_OPTS --forked -n 4 unit/ --torch_ver="1.10" --cuda_ver="11.1"
 
       - name: Open GitHub issue if nightly CI fails
         if: failure()
