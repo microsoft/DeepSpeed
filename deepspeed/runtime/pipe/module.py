@@ -88,7 +88,7 @@ class TiedLayerSpec(LayerSpec):
 
 
 class ModuleWrapper(nn.Module):
-    """Some  input with requires_grad=False will prevent the checkpoint activation layer from obtaining derivatives, 
+    """Some  input with requires_grad=False will prevent the checkpoint activation layer from obtaining grads, 
     and the requires_grad of the output of checkpoint activation layer will also be False, using this wrapper ad first layer could solve this problem
     """    
     def __init__(self, module):
@@ -655,10 +655,7 @@ class PipelineModule(nn.Module):
 
             layer.load_state_dict(checkpoint, strict=strict)
 
-            # if self._grid.data_parallel_id == 0:
-            #     logger.info(
-            #         f'RANK={self.global_rank} Loaded layer={idx+self._local_start} file={load_path}'
-            #     )
+
 
         self._synchronize_tied_weights()
 
@@ -678,14 +675,7 @@ class PipelineModule(nn.Module):
         params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
         if any(len(list(p)) > 0 for p in params):
             if not self.is_wrapped_ckptlayer:
-                #require warp
-                # dummy_tensor = torch.ones(1, dtype=torch.float32, requires_grad=True)
-                # funcs[0] = ModuleWrapper(funcs[0])
-                # self.is_wrapped_ckptlayer=True
-                # if isinstance(funcs[0],ModuleWrapper):
-                #     print("kuqikuqi")
                 return CkptLayer_Enum.warp_ckpt_layer
-            # print(type(funcs[0]))
 
             return CkptLayer_Enum.normal_ckpt_layer            
         return CkptLayer_Enum.not_ckpt_layer
