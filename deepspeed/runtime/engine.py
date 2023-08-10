@@ -2333,9 +2333,9 @@ class DeepSpeedEngine(Module):
             if sparse_bucket:                 
                 self.sparse_allreduce_no_retain(sparse_bucket, dp_group=dp_group)
                  
-         for _, dense_bucket in dense_bucket_tuple:
+        for _, dense_bucket in dense_bucket_tuple:
             if dense_bucket:
-               self.allreduce_no_retain(dense_bucket, dp_group=dp_group, numel_per_bucket=elements_per_buffer)
+                self.allreduce_no_retain(dense_bucket, dp_group=dp_group, numel_per_bucket=elements_per_buffer)
               
     def _reduce_expert_gradients(self, expert_grads, elements_per_buffer):
         for ep_name, expert_grads_group in expert_grads.items():
