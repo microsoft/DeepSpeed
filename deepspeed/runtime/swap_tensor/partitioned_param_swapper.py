@@ -313,7 +313,7 @@ class AsyncPartitionedParameterSwapper(object):
     def swap_into_buffer(self, param, dest_buffer):
         assert param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE, f"param {param.ds_id} is already available or inflight"
 
-        require_swap_buffer = not (dest_buffer.is_pinned() and self._is_io_aligned(dest_buffer.numel()))
+        require_swap_buffer = not (get_accelerator().is_pinned(dest_buffer) and self._is_io_aligned(dest_buffer.numel()))
 
         if require_swap_buffer:
             assert len(self.available_buffer_ids) > 0, f"No buffer available to swap param {param.ds_id}."

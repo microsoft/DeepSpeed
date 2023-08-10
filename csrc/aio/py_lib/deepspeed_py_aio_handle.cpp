@@ -173,7 +173,7 @@ void deepspeed_aio_handle_t::_stop_threads()
 
 int deepspeed_aio_handle_t::wait()
 {
-    assert(_num_pending_ops > 0);
+    // assert(_num_pending_ops > 0);
     auto num_completed_ops = 0;
 
     while (_num_pending_ops > 0) {

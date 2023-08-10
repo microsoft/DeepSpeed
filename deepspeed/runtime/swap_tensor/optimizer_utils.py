@@ -15,7 +15,7 @@ from deepspeed.runtime.swap_tensor.constants import *
 from deepspeed.runtime.swap_tensor.utils import swap_in_tensors, swap_out_tensors, \
     MIN_AIO_BYTES, AIO_ALIGNED_BYTES, get_sized_buffers
 from deepspeed.runtime.swap_tensor.utils import SwapBufferManager, SwapBufferPool
-
+from deepspeed.accelerator import get_accelerator
 
 class FlattenedTensorSwapInfo(object):
 
@@ -90,7 +90,7 @@ class OptimizerStateSwapInfo(object):
         return [grad.path for grad in self.swapped_gradients.values()]
 
     def get_unpinned_state_tensors(self):
-        return [t for t in self.tensors if not t.is_pinned()]
+        return [t for t in self.tensors if not get_accelerator().is_pinned(t)]
 
     def read_unswapped_gradients(self, dest_buffer):
         num_elem_count = 0
@@ -216,7 +216,7 @@ class OptimizerSwapper(object):
                                              fp16_pinned_buffers, fp32_parameters):
         assert len(fp32_parameters) == len(fp16_partitions_info)
         assert len(fp32_parameters) == len(fp16_num_elems)
-        assert all([buffer.is_pinned() for buffer in fp16_pinned_buffers])
+        assert all([get_accelerator().is_pinned(buffer) for buffer in fp16_pinned_buffers])
 
         fp32_swap_paths = self._get_swap_paths(parameters=fp32_parameters, num_elems=fp16_num_elems)
 
@@ -363,7 +363,7 @@ class OptimizerSwapper(object):
             for dst, src in zip(compute_buffers, src_tensors):
                 dst.data.copy_(src.data)
 
-            swap_lengths = [self._io_aligned_numel(t.numel()) for t in src_tensors]
+            swap_lengths = [self._io_aligned_numel(unpinned_tensors[-1].numel())] * len(src_tensors)
             swap_buffers = get_sized_buffers(pinned_buffers, swap_lengths)
 
             swap_paths = dest_paths[i:(i + swap_tensor_count)]
