@@ -193,7 +193,7 @@ def parse_args(args=None):
                         "numbers and range. i.e. 1,3-5,7 => [1,3,4,5,7].  When not "
                         "specified, all cores on system would be used rank binding")
 
-    parser.add_argument("--port", type=int, default=22, help="SSH port to use for remote connections")
+    parser.add_argument("--ssh_port", type=int, default=22, help="SSH port to use for remote connections")
 
     return parser.parse_args(args=args)
 
@@ -434,10 +434,16 @@ def main(args=None):
     if multi_node_exec and not args.no_ssh_check:
         first_host = list(active_resources.keys())[0]
         try:
-            subprocess.check_call(f'ssh -o PasswordAuthentication=no -p {args.port} {first_host} hostname',
-                                  stderr=subprocess.DEVNULL,
-                                  stdout=subprocess.DEVNULL,
-                                  shell=True)
+            if args.ssh_port is not None:  # only specify ssh port if it is specified
+                subprocess.check_call(f'ssh -o PasswordAuthentication=no -p {args.ssh_port} {first_host} hostname',
+                                      stderr=subprocess.DEVNULL,
+                                      stdout=subprocess.DEVNULL,
+                                      shell=True)
+            else:
+                subprocess.check_call(f'ssh -o PasswordAuthentication=no {first_host} hostname',
+                                      stderr=subprocess.DEVNULL,
+                                      stdout=subprocess.DEVNULL,
+                                      shell=True)
         except subprocess.CalledProcessError:
             raise RuntimeError(
                 f"Using hostfile at {args.hostfile} but host={first_host} was not reachable via ssh. If you are running with a single node please remove {args.hostfile} or setup passwordless ssh."
@@ -562,11 +568,10 @@ def main(args=None):
                         runner.add_export(key, val)
 
         if args.launcher == PDSH_LAUNCHER:
-            cmd, kill_cmd = runner.get_cmd(env, active_resources)
+            cmd, kill_cmd, env = runner.get_cmd(env, active_resources)
         else:
             cmd = runner.get_cmd(env, active_resources)
 
-    env["PDSH_SSH_ARGS_APPEND"] += f" -p {args.port} "
     logger.info(f"cmd = {' '.join(cmd)}")
     result = subprocess.Popen(cmd, env=env)
 
