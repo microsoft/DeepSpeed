@@ -2324,6 +2324,20 @@ class DeepSpeedEngine(Module):
 
     def _reduce_non_expert_gradients(self, grads, elements_per_buffer):
         split_sparse_tensor_buckets, split_dense_tensor_buckets = split_half_float_double_sparse(grads)
+        
+        if self.pipeline_parallelism:
+             dp_group = self.mpu.get_data_parallel_group()
+        else:
+             dp_group = groups._get_data_parallel_group()
+        
+        for _, sparse_bucket in sparse_bucket_tuple:
+            if sparse_bucket:                 
+                self.sparse_allreduce_no_retain(sparse_bucket, dp_group=dp_group)
+                 
+         for _, dense_bucket in dense_bucket_tuple:
+            if dense_bucket:
+               self.allreduce_no_retain(dense_bucket, dp_group=dp_group, numel_per_bucket=elements_per_buffer)
+              
         for _, sparse_bucket_tuple, dense_bucket_tuple in enumerate(zip(split_sparse_tensor_buckets,split_dense_tensor_buckets)):
             sparse_bucket_type, sparse_bucket = sparse_bucket_tuple
             dense_bucket_type, dense_bucket = dense_bucket_tuple
