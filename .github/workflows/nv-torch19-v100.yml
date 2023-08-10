@@ -43,6 +43,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
+          pip list
           pip install .[dev,1bit,autotuning] --no-build-isolation
           ds_report
 
