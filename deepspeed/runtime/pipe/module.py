@@ -368,7 +368,6 @@ class PipelineModule(nn.Module):
             def exec_func_warp(*inputs):
                 # Single tensor inputs need to be unwrapped
                 if len(inputs) == 2:
-                    # need to revisit
                     dummy_tensor = inputs[1]
                     inputs = inputs[0]
                 else:
@@ -663,16 +662,15 @@ class PipelineModule(nn.Module):
 
             layer.load_state_dict(checkpoint, strict=strict)
 
+            # if self._grid.data_parallel_id == 0:
+            #     logger.info(
+            #         f'RANK={self.global_rank} Loaded layer={idx+self._local_start} file={load_path}'
+            #     )
+
         self._synchronize_tied_weights()
 
     def _is_checkpointable(self, funcs):
-        # This is an unfortunate hack related to torch and deepspeed activation checkpoint implementations.
-        # Some layers like torch.nn.Embedding will not receive grads if checkpointed, which breaks things.
-        # I presume it's related to the discrete inputs that cannot require_grad? Need to revisit.
-        # if self.__class__.__name__ in ('GPTModelPipe', 'GPT2ModelPipe'):
-        #     return all('ParallelTransformerLayerPipe' in f.__class__.__name__ for f in funcs)
-        # if self.checkpointable_layers is not None:
-        #     return all(f.__class__.__name__ in self.checkpointable_layers for f in funcs)
+
         if isinstance(funcs[0], ModuleWrapper):
             return CkptLayer_Enum.warp_ckpt_layer
         params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
