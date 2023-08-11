@@ -53,22 +53,6 @@ class Quantizer:
             , f'Tensor shape: {tensor.shape} quantization config {self.config}'
 
         tensor = torch.clone(tensor)
-        # Use customized CUDA quantization kernel if possible.
-        # TODO: Current ZERO++ INT4 asymmetric kernel has numeric issue.
-        # Uncomment this code block when Heyang's fix is merged.
-        # if self.config.group_size % 8 == 0 and \
-        #         self.config.group_dim == len(tensor.shape) - 1 and \
-        #         self.config.num_bits == 4:
-        #     shape = list(tensor.shape)
-        #     shape[-1] = shape[-1] // 2
-        #     quantized_tensor, scale_and_min = quantizer_cuda_module.quantize(
-        #         tensor.reshape(-1, self.config.group_size),
-        #         tensor.numel() // self.config.group_size,
-        #         self.config.num_bits,
-        #         quantizer_cuda_module.Asymmetric)
-        #     return quantized_tensor.reshape(shape), \
-        #         torch.narrow(scale_and_min, -1, 0, 1), \
-        #             torch.narrow(scale_and_min, -1, 1, 1)
 
         shape = tensor.shape
         num_groups = shape[self.config['group_dim']] // self.config['group_size']
@@ -137,20 +121,6 @@ class DeQuantizer:
                 shape[-1] = shape[-1] * 2
 
             return quantized_tensor.reshape(shape)
-
-            # quantized_tensor = quantizer_cuda_module.dequantize(
-            #     tensor.reshape(-1, last_dimension_size),
-            #     torch.concat([quant_scale, quant_min], dim=-1),
-            #     tensor.numel() // last_dimension_size,
-            #     self.config['num_bits'],
-            #     quantizer_cuda_module.Asymmetric
-            # )
-
-            # shape = list(tensor.shape)
-            # if self.config['num_bits'] == 4:
-            #     shape[-1] = shape[-1] * 2
-
-            # return quantized_tensor.reshape(shape)
 
         if self.config['num_bits'] == 4:
             tensor = self._decompress_uint4_to_uint8(tensor)
