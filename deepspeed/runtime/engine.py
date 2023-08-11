@@ -119,18 +119,18 @@ except ImportError:
 def split_half_float_double_sparse(tensors):
     device_type = get_accelerator().device_name()
     supported_types = get_accelerator().supported_dtypes()
-    
+
     for t in tensors:
         assert t.dtype in supported_types, f"attempting to reduce an unsupported grad type: {t.dtype}"
 
-    sparse_tensor_buckets,dense_tensor_buckets = [], []
+    sparse_tensor_buckets, dense_tensor_buckets = [], []
     for i, dtype in enumerate(supported_types):
         sparse_bucket = [t for t in tensors if t.dtype == SparseTensor.dtype]
         dense_bucket = [t for t in tensors if t.dtype != SparseTensor.dtype]
         if sparse_bucket:
             sparse_tensor_buckets.append((dtype, sparse_bucket))
         if dense_bucket:
-            dense_tensor_buckets.append((dtype,dense_bucket))
+            dense_tensor_buckets.append((dtype, dense_bucket))
     return sparse_tensor_buckets, dense_tensor_buckets
 
 
@@ -2323,28 +2323,28 @@ class DeepSpeedEngine(Module):
 
     def _reduce_non_expert_gradients(self, grads, elements_per_buffer):
         split_sparse_tensor_buckets, split_dense_tensor_buckets = split_half_float_double_sparse(grads)
-        
+
         if self.pipeline_parallelism:
-             dp_group = self.mpu.get_data_parallel_group()
+            dp_group = self.mpu.get_data_parallel_group()
         else:
-             dp_group = groups._get_data_parallel_group()
-        
+            dp_group = groups._get_data_parallel_group()
+
         for _, sparse_bucket in sparse_bucket_tuple:
-            if sparse_bucket:                 
+            if sparse_bucket:
                 self.sparse_allreduce_no_retain(sparse_bucket, dp_group=dp_group)
-                 
+
         for _, dense_bucket in dense_bucket_tuple:
             if dense_bucket:
                 self.allreduce_no_retain(dense_bucket, dp_group=dp_group, numel_per_bucket=elements_per_buffer)
-              
+
     def _reduce_expert_gradients(self, expert_grads, elements_per_buffer):
         for ep_name, expert_grads_group in expert_grads.items():
             split_sparse_tensor_buckets, split_dense_tensor_buckets = split_half_float_double_sparse(grads)
-            
+
             for _, sparse_bucket in sparse_bucket_tuple:
-                if sparse_bucket:                 
+                if sparse_bucket:
                     self.sparse_allreduce_no_retain(sparse_bucket, groups._get_expert_data_parallel_group(ep_name))
-                 
+
             for _, dense_bucket in dense_bucket_tuple:
                 if dense_bucket:
                     # Separate between diff groups
