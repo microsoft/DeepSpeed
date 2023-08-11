@@ -1338,7 +1338,7 @@ class TestZeroAdamOptimizerStepCount(DistributedTest):
 
 @pytest.mark.parametrize("zero_stage", [1, 2, 3])
 class TestZeroFrozenWeights(DistributedTest):
-    world_size = 1
+    world_size = 2
 
     def test(self, zero_stage):
         config_dict = {
