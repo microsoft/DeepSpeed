@@ -553,12 +553,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
         "No default policy found! Please specify your policy injection_policy (like {BertLayer:HFBEertLayerPolicy})." +\
         "You can find some samples here: https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/module_inject/replace_policy.py"
 
-    # print(f"original policies {replace_policies}")
-    # print(f"Replacing modules using policy: {policy}")
-    # print(model)
     replaced_module, _ = _replace_module(model, policy, state_dict=sd)
-    # print(f"Replace module:")
-    # print(replaced_module)
     if checkpoint is not None:
         embedding_weight = None
         for n, p in replaced_module.named_parameters():
@@ -607,7 +602,6 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
         OPTLearnedPositionalEmbedding = None
     load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm, OPTLearnedPositionalEmbedding]
     for name, child in model.named_children():
-        # print(child.__class__)
         if child.__class__ in policies:
             replaced_module = policies[child.__class__][0](child,
                                                            policies[child.__class__][-1],
