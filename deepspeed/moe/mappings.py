@@ -3,24 +3,6 @@
 
 # DeepSpeed Team
 
-# The file has been adapted from the following Megatron-LM file:
-# https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/mpu/mappings.py
-# Git commit hash: 9dc3c42a84aa656f583703cf8b6b4f79f712b796
-# We retain the following copyright from the original files:
-
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import torch
 import deepspeed
 

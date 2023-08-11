@@ -715,7 +715,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                  dtype=None,
                  mpu=None,
                  zero_param_parallel_group=None,
-                 zero_quantized_weights=False):
+                 zero_quantized_weights=False,
+                 sequence_data_parallel_group=None):
         """A context to enable massive model construction for training with
         ZeRO-3. Models are automatically partitioned (or, sharded) across the
         system and converted to half precision.
@@ -811,6 +812,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             config_dict_or_path = config
             logger.warning(
                 f'zero.Init: the `config` argument is deprecated. Please use `config_dict_or_path` instead.')
+        print(f"config_dict_or_path: {config_dict_or_path}")
         _ds_config = deepspeed.runtime.config.DeepSpeedConfig(config_dict_or_path,
                                                               mpu) if config_dict_or_path is not None else None
         if _ds_config is not None:
@@ -819,10 +821,17 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         if not dist.is_initialized():
             init_distributed()
             assert dist.is_initialized(), "Parameters cannot be scattered without initializing deepspeed.comm"
-        if data_parallel_group is None:
+
+        if data_parallel_group is None and sequence_data_parallel_group is None:
             self.ds_process_group = dist.get_world_group()
-        else:
+        elif sequence_data_parallel_group is not None:
+            self.ds_process_group = sequence_data_parallel_group
+        elif data_parallel_group is not None:
             self.ds_process_group = data_parallel_group
+        else:  # both given
+            raise ValueError(
+                "Both 'data_parallel_group' and 'sequence_data_parallel_group' were specified. Please provide only one of these arguments."
+            )
 
         self.rank = dist.get_rank(group=self.ds_process_group)
         self.dp_world_size = dist.get_world_size(group=self.ds_process_group)
