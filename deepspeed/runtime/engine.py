@@ -3303,7 +3303,7 @@ class DeepSpeedEngine(Module):
         try:
             os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
         except Exception as e:
-            print(f"Warning: Could not change permissions for {dst} due to error: {e}. Continuing without changing permissions.")
+            logger.info(f'Warning: Could not change permissions for {dst} due to error: {e}. Continuing without changing permissions.')
 
     def _save_zero_checkpoint(self, save_path, tag):
         zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
