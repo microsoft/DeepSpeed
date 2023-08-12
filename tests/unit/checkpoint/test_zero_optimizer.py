@@ -4,12 +4,13 @@
 # DeepSpeed Team
 
 import deepspeed
+from types import SimpleNamespace
 from deepspeed.ops.op_builder import CPUAdamBuilder
 from deepspeed.checkpoint.utils import clone_tensors_for_torch_save, get_model_ckpt_name_for_rank
 from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.utils import required_torch_version
 
-from unit.common import DistributedTest, DistributedFixture
+from unit.common import DistributedTest, DistributedFixture, get_master_port
 from unit.simple_model import *
 
 from unit.checkpoint.common import *
@@ -576,3 +577,38 @@ class TestSaveTensorClone(DistributedTest):
         torch.save(clone_state_dict, clone_ckpt_file)
 
         compare_state_dicts(torch.load(ref_ckpt_file), torch.load(clone_ckpt_file))
+
+
+
+class TestZeRONonDistributed:
+    os.environ['MASTER_ADDR'] = '127.0.0.1'
+    os.environ['MASTER_PORT'] = get_master_port()
+    os.environ['LOCAL_RANK'] = '0'
+    os.environ['RANK'] = '0'
+    os.environ['WORLD_SIZE'] = '1'
+
+    def test_chmod_exception_handling(self, monkeypatch):
+        
+        config_dict = {"train_batch_size": 1, "zero_optimization": {"stage": 0}}
+        args = SimpleNamespace(local_rank=0)
+        net = SimpleModel(hidden_dim=4)
+        engine, _, _, _ = deepspeed.initialize(args=args,
+                                               config=config_dict,
+                                               model=net,
+                                               model_parameters=net.parameters())
+                                               
+        log_messages = []
+        def mock_logger_info(message, *args, **kwargs):
+            log_messages.append(message)
+
+        monkeypatch.setattr("deepspeed.utils.logger.info", mock_logger_info)
+        """
+            This is presented for use-cases like Azure Storage File Share (where permissions are not allowed)
+            We use a fake file for this test (file not existing would present a simliar issue as not being able to chmod)
+        """
+        fake_recovery_script_dst = os.path.join("tmp", "zero_to_fp32.py")
+        engine._change_recovery_script_permissions(fake_recovery_script_dst)
+
+        import re
+        expected_message = f'Warning: Could not change permissions for {fake_recovery_script_dst} due to error: .* Continuing without changing permissions.'
+        assert re.match(expected_message, log_messages[0]), "Logged message does not match expected pattern"

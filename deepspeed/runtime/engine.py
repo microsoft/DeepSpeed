@@ -3299,10 +3299,14 @@ class DeepSpeedEngine(Module):
         dst = os.path.join(save_path, script)
         #logger.info(f"creating recovery script {dst}")
         copyfile(src, dst)
+        self._change_recovery_script_permissions(dst)
+
+    def _change_recovery_script_permissions(self, dst):
         # make executable (safeguard for file shares - Azure as example)
         try:
             os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
         except Exception as e:
+            #this message is used in unit test TestZeRONonDistributed
             logger.info(f'Warning: Could not change permissions for {dst} due to error: {e}. Continuing without changing permissions.')
 
     def _save_zero_checkpoint(self, save_path, tag):
