@@ -579,13 +579,10 @@ class TestSaveTensorClone(DistributedTest):
         compare_state_dicts(torch.load(ref_ckpt_file), torch.load(clone_ckpt_file))
 
 
-
-class TestZeRONonDistributed:
-    os.environ['MASTER_ADDR'] = '127.0.0.1'
-    os.environ['MASTER_PORT'] = get_master_port()
-    os.environ['LOCAL_RANK'] = '0'
-    os.environ['RANK'] = '0'
-    os.environ['WORLD_SIZE'] = '1'
+class TestZeRONonDistributed(DistributedTest):
+    world_size = 1
+    init_distributed = False
+    set_dist_env = False
 
     def test_chmod_exception_handling(self, monkeypatch):
         
