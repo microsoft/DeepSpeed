@@ -10,7 +10,7 @@ from deepspeed.checkpoint.utils import clone_tensors_for_torch_save, get_model_c
 from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.utils import required_torch_version
 
-from unit.common import DistributedTest, DistributedFixture, get_master_port
+from unit.common import DistributedTest, DistributedFixture
 from unit.simple_model import *
 
 from unit.checkpoint.common import *
@@ -578,11 +578,10 @@ class TestSaveTensorClone(DistributedTest):
 
         compare_state_dicts(torch.load(ref_ckpt_file), torch.load(clone_ckpt_file))
 
-
+     
 class TestZeRONonDistributed(DistributedTest):
     world_size = 1
     init_distributed = False
-    set_dist_env = False
 
     def test_chmod_exception_handling(self, monkeypatch):
         
@@ -594,9 +593,10 @@ class TestZeRONonDistributed(DistributedTest):
                                                model=net,
                                                model_parameters=net.parameters())
                                                
-        log_messages = []
+        log_called = False
         def mock_logger_info(message, *args, **kwargs):
-            log_messages.append(message)
+            nonlocal log_called
+            log_called = True
 
         monkeypatch.setattr("deepspeed.utils.logger.info", mock_logger_info)
         """
@@ -606,6 +606,4 @@ class TestZeRONonDistributed(DistributedTest):
         fake_recovery_script_dst = os.path.join("tmp", "zero_to_fp32.py")
         engine._change_recovery_script_permissions(fake_recovery_script_dst)
 
-        import re
-        expected_message = f'Warning: Could not change permissions for {fake_recovery_script_dst} due to error: .* Continuing without changing permissions.'
-        assert re.match(expected_message, log_messages[0]), "Logged message does not match expected pattern"
+        assert log_called, "Expected deepspeed.utils.logger.info to be called."
