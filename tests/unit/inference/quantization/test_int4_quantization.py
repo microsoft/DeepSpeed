@@ -6,6 +6,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+from unit.common import DistributedTest
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.quantization.quantization import _init_group_wise_weight_quantization
 from deepspeed.inference.quantization.utils import Quantizer, DeQuantizer
@@ -19,6 +20,10 @@ from typing import Dict
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])
 device = get_accelerator().device_name() if get_accelerator().is_available() else 'cpu'
+
+if (TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10)):
+    pytest.skip("torch.Tensor.bitwise_left_shift in INT4 quantizer needs torch 1.10 or above.",
+                allow_module_level=True)
 
 
 def reset_random(seed=1234):
@@ -68,7 +73,7 @@ def zero3_post_init_quantization_test_helper(cpu_offload: bool, nvme_offload: bo
                 "stage3_max_live_parameters": 2 * hf_config.hidden_size * hf_config.hidden_size
             },
             "steps_per_print": 2000,
-            "train_batch_size": 1,
+            "train_micro_batch_size_per_gpu": 1,
             "wall_clock_breakdown": False,
             'weight_quantization': {
                 'post_init_quant': {
@@ -186,7 +191,7 @@ def zero3_quantized_initialization_test_helper(cpu_offload: bool, nvme_offload: 
                 "stage3_max_live_parameters": 2 * hf_config.hidden_size * hf_config.hidden_size
             },
             "steps_per_print": 2000,
-            "train_batch_size": 1,
+            "train_micro_batch_size_per_gpu": 1,
             "wall_clock_breakdown": False,
             'weight_quantization': {
                 'quantized_initialization': {
@@ -245,183 +250,150 @@ def zero3_quantized_initialization_test_helper(cpu_offload: bool, nvme_offload: 
     assert mean_diff < 0.4, f'Numeric error exceed threshold, relative error {mean_diff} (threshold 0.4)'
 
 
-@pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10),
-                    reason='torch.Tensor.bitwise_left_shift in INT4 quantizer needs torch 1.10 or above.')
-def test_model_quantization():
-    reset_random()
+class TestQuantizedInt4(DistributedTest):
 
-    config = AutoConfig.from_pretrained('facebook/opt-125m')
+    def test_model_quantization(self):
+        reset_random()
 
-    with torch.no_grad():
-        model = OPTDecoderLayer(config).half().to(device)
-        bits = 4
+        config = AutoConfig.from_pretrained('facebook/opt-125m')
 
-        ds_config = {
-            'weight_quantization': {
-                'post_init_quant': {
-                    'fc': {
-                        'num_bits': bits,
-                        'group_size': 64,
-                        'group_dim': 0,
-                        'symmetric': False
-                    },
-                    'self_attn.q_proj': {
-                        'num_bits': bits,
-                        'group_size': 64,
-                        'group_dim': 0,
-                        'symmetric': False
-                    },
-                    'self_attn.k_proj': {
-                        'num_bits': bits,
-                        'group_size': 64,
-                        'group_dim': 0,
-                        'symmetric': False
-                    },
-                    'self_attn.v_proj': {
-                        'num_bits': bits,
-                        'group_size': 64,
-                        'group_dim': 0,
-                        'symmetric': False
-                    },
-                    'self_attn.out_proj': {
-                        'num_bits': bits,
-                        'group_size': 64,
-                        'group_dim': 0,
-                        'symmetric': False
+        with torch.no_grad():
+            model = OPTDecoderLayer(config).half().to(device)
+            bits = 4
+
+            ds_config = {
+                'weight_quantization': {
+                    'post_init_quant': {
+                        'fc': {
+                            'num_bits': bits,
+                            'group_size': 64,
+                            'group_dim': 0,
+                            'symmetric': False
+                        },
+                        'self_attn.q_proj': {
+                            'num_bits': bits,
+                            'group_size': 64,
+                            'group_dim': 0,
+                            'symmetric': False
+                        },
+                        'self_attn.k_proj': {
+                            'num_bits': bits,
+                            'group_size': 64,
+                            'group_dim': 0,
+                            'symmetric': False
+                        },
+                        'self_attn.v_proj': {
+                            'num_bits': bits,
+                            'group_size': 64,
+                            'group_dim': 0,
+                            'symmetric': False
+                        },
+                        'self_attn.out_proj': {
+                            'num_bits': bits,
+                            'group_size': 64,
+                            'group_dim': 0,
+                            'symmetric': False
+                        }
                     }
                 }
             }
-        }
 
-        model = _init_group_wise_weight_quantization(model, ds_config)
+            model = _init_group_wise_weight_quantization(model, ds_config)
 
-        assert type(model.fc1) is QuantizedLinear
-        assert type(model.fc2) is QuantizedLinear
-        assert type(model.self_attn.q_proj) is QuantizedLinear
-        assert type(model.self_attn.k_proj) is QuantizedLinear
-        assert type(model.self_attn.v_proj) is QuantizedLinear
-        assert type(model.self_attn.out_proj) is QuantizedLinear
+            assert type(model.fc1) is QuantizedLinear
+            assert type(model.fc2) is QuantizedLinear
+            assert type(model.self_attn.q_proj) is QuantizedLinear
+            assert type(model.self_attn.k_proj) is QuantizedLinear
+            assert type(model.self_attn.v_proj) is QuantizedLinear
+            assert type(model.self_attn.out_proj) is QuantizedLinear
 
+    @pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
+    def test_quantized_linear(self):
+        reset_random()
 
-@pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
-@pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10),
-                    reason='torch.Tensor.bitwise_left_shift in INT4 quantizer needs torch 1.10 or above.')
-def test_quantized_linear():
-    reset_random()
+        layers = []
 
-    layers = []
+        for idx in range(5):
+            layers.append(
+                (f'layer_{idx}', nn.Linear(in_features=128, out_features=128, dtype=torch.float16, device=device)))
 
-    for idx in range(5):
-        layers.append((f'layer_{idx}', nn.Linear(in_features=128, out_features=128, dtype=torch.float16,
-                                                 device=device)))
+        input_tensor = torch.randn(32, 128, dtype=torch.float16, device=device)
+        with torch.no_grad():
+            model = nn.Sequential(OrderedDict(layers))
 
-    input_tensor = torch.randn(32, 128, dtype=torch.float16, device=device)
-    with torch.no_grad():
-        model = nn.Sequential(OrderedDict(layers))
+            ref_output = model(input_tensor)
 
-        ref_output = model(input_tensor)
-
-        ds_config = {
-            'weight_quantization': {
-                'post_init_quant': {
-                    'layer': {
-                        'num_bits': 4,
-                        'group_size': 64,
-                        'group_dim': 0,
-                        'symmetric': False
+            ds_config = {
+                'weight_quantization': {
+                    'post_init_quant': {
+                        'layer': {
+                            'num_bits': 4,
+                            'group_size': 64,
+                            'group_dim': 0,
+                            'symmetric': False
+                        }
                     }
                 }
             }
-        }
 
-        model = _init_group_wise_weight_quantization(model, ds_config)
+            model = _init_group_wise_weight_quantization(model, ds_config)
 
-        assert type(model.layer_0) is QuantizedLinear
-        assert type(model.layer_1) is QuantizedLinear
-        assert type(model.layer_2) is QuantizedLinear
-        assert type(model.layer_3) is QuantizedLinear
-        assert type(model.layer_4) is QuantizedLinear
+            assert type(model.layer_0) is QuantizedLinear
+            assert type(model.layer_1) is QuantizedLinear
+            assert type(model.layer_2) is QuantizedLinear
+            assert type(model.layer_3) is QuantizedLinear
+            assert type(model.layer_4) is QuantizedLinear
 
-        output = model(input_tensor)
+            output = model(input_tensor)
 
-        mean_diff = torch.mean(torch.abs(ref_output - output))
+            mean_diff = torch.mean(torch.abs(ref_output - output))
 
-        # This threshold value is emperically selected.
-        assert mean_diff < 0.15, f'Numeric error exceed threshold, mean diff {mean_diff}'
+            # This threshold value is emperically selected.
+            assert mean_diff < 0.15, f'Numeric error exceed threshold, mean diff {mean_diff}'
 
+    def test_float_int4_quantization(self):
+        reset_random()
+        quantization_test_helper(torch.float32, 4)
 
-@pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10),
-                    reason='torch.Tensor.bitwise_left_shift in INT4 quantizer needs torch 1.10 or above.')
-def test_float_int4_quantization():
-    reset_random()
-    quantization_test_helper(torch.float32, 4)
+    @pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
+    def test_half_int4_quantization(self):
+        reset_random()
+        quantization_test_helper(torch.float16, 4)
 
+    def test_float_int8_quantization(self):
+        reset_random()
+        quantization_test_helper(torch.float32, 8)
 
-@pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
-@pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10),
-                    reason='torch.Tensor.bitwise_left_shift in INT4 quantizer needs torch 1.10 or above.')
-def test_half_int4_quantization():
-    reset_random()
-    quantization_test_helper(torch.float16, 4)
+    def test_half_int8_quantization(self):
+        reset_random()
+        quantization_test_helper(torch.float16, 8)
 
+    @pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
+    def test_zero3_int4_post_init_quant(self):
+        reset_random()
+        zero3_post_init_quantization_test_helper(cpu_offload=False, nvme_offload=False)
 
-@pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10),
-                    reason='torch.Tensor.bitwise_left_shift in INT4 quantizer needs torch 1.10 or above.')
-def test_float_int8_quantization():
-    reset_random()
-    quantization_test_helper(torch.float32, 8)
+    @pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
+    def test_zero3_int4_post_init_quant_cpu_offload(self):
+        reset_random()
+        zero3_post_init_quantization_test_helper(cpu_offload=True, nvme_offload=False)
 
+    @pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
+    def test_zero3_int4_post_init_quant_nvme_offload(self):
+        reset_random()
+        zero3_post_init_quantization_test_helper(cpu_offload=False, nvme_offload=True)
 
-@pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10),
-                    reason='torch.Tensor.bitwise_left_shift in INT4 quantizer needs torch 1.10 or above.')
-def test_half_int8_quantization():
-    reset_random()
-    quantization_test_helper(torch.float16, 8)
+    @pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
+    def test_zero3_int4_quantized_initialization(self):
+        reset_random()
+        zero3_quantized_initialization_test_helper(cpu_offload=False, nvme_offload=False)
 
+    @pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
+    def test_zero3_int4_quantized_initialization_cpu_offload(self):
+        reset_random()
+        zero3_quantized_initialization_test_helper(cpu_offload=True, nvme_offload=False)
 
-@pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
-@pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10),
-                    reason='torch.Tensor.bitwise_left_shift in INT4 quantizer needs torch 1.10 or above.')
-def test_zero3_int4_post_init_quant():
-    reset_random()
-    zero3_post_init_quantization_test_helper(cpu_offload=False, nvme_offload=False)
-
-
-@pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
-@pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10),
-                    reason='torch.Tensor.bitwise_left_shift in INT4 quantizer needs torch 1.10 or above.')
-def test_zero3_int4_post_init_quant_cpu_offload():
-    reset_random()
-    zero3_post_init_quantization_test_helper(cpu_offload=True, nvme_offload=False)
-
-
-@pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
-@pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10),
-                    reason='torch.Tensor.bitwise_left_shift in INT4 quantizer needs torch 1.10 or above.')
-def test_zero3_int4_post_init_quant_nvme_offload():
-    reset_random()
-    zero3_post_init_quantization_test_helper(cpu_offload=False, nvme_offload=True)
-
-
-@pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
-@pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10),
-                    reason='torch.Tensor.bitwise_left_shift in INT4 quantizer needs torch 1.10 or above.')
-def test_zero3_int4_quantized_initialization():
-    reset_random()
-    zero3_quantized_initialization_test_helper(cpu_offload=False, nvme_offload=False)
-
-
-@pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
-@pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10),
-                    reason='torch.Tensor.bitwise_left_shift in INT4 quantizer needs torch 1.10 or above.')
-def test_zero3_int4_quantized_initialization_cpu_offload():
-    reset_random()
-    zero3_quantized_initialization_test_helper(cpu_offload=True, nvme_offload=False)
-
-
-@pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
-@pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10),
-                    reason='torch.Tensor.bitwise_left_shift in INT4 quantizer needs torch 1.10 or above.')
-def test_zero3_int4_quantized_initialization_nvme_offload():
-    reset_random()
-    zero3_quantized_initialization_test_helper(cpu_offload=False, nvme_offload=True)
+    @pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
+    def test_zero3_int4_quantized_initialization_nvme_offload(self):
+        reset_random()
+        zero3_quantized_initialization_test_helper(cpu_offload=False, nvme_offload=True)
