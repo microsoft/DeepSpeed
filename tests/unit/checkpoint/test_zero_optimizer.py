@@ -587,9 +587,13 @@ class TestZeRONonDistributed(DistributedTest):
     def test_chmod_exception_handling(self, monkeypatch, zero_stage):
 
         config_dict = {
-            "optimizer": {"type": "AdamW"},
+            "optimizer": {
+                "type": "AdamW"
+            },
             "train_batch_size": 1,
-            "zero_optimization": {"stage": zero_stage}
+            "zero_optimization": {
+                "stage": zero_stage
+            }
         }
         args = SimpleNamespace(local_rank=0)
         net = SimpleModel(hidden_dim=4)
@@ -599,6 +603,7 @@ class TestZeRONonDistributed(DistributedTest):
                                                model_parameters=net.parameters())
 
         log_called = False
+
         def mock_logger_info(message, *args, **kwargs):
             nonlocal log_called
             log_called = True
