@@ -233,7 +233,7 @@ class OpBuilder(ABC):
         valid = False
         check_cmd = 'dpkg -l'
         for lib in libraries:
-            result = subprocess.Popen(f'dpkg -l {lib}', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            result = subprocess.Popen(f'{check_cmd} {lib}', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             valid = valid or result.wait() == 0
         return valid
 
