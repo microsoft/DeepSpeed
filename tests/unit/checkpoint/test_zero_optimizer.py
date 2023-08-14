@@ -583,9 +583,14 @@ class TestZeRONonDistributed(DistributedTest):
     world_size = 1
     init_distributed = False
 
-    def test_chmod_exception_handling(self, monkeypatch):
+    @pytest.mark.parametrize('zero_stage', [1, 2, 3])
+    def test_chmod_exception_handling(self, monkeypatch, zero_stage):
         
-        config_dict = {"train_batch_size": 1, "zero_optimization": {"stage": 0}}
+        config_dict = {
+            "optimizer": {"type": "AdamW"},
+            "train_batch_size": 1,
+            "zero_optimization": {"stage": zero_stage}
+        }
         args = SimpleNamespace(local_rank=0)
         net = SimpleModel(hidden_dim=4)
         engine, _, _, _ = deepspeed.initialize(args=args,
