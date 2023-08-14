@@ -3305,7 +3305,7 @@ class DeepSpeedEngine(Module):
         # make executable (safeguard for file shares - Azure as example)
         try:
             os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
-        except Exception as e:
+        except PermissionError as e:
             #this message is used in unit test TestZeRONonDistributed
             logger.info(f'Warning: Could not change permissions for {dst} due to error: {e}. Continuing without changing permissions.')
 
