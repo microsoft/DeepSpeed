@@ -65,8 +65,10 @@ extras_require = {
     'autotuning': fetch_requirements('requirements/requirements-autotuning.txt'),
     'autotuning_ml': fetch_requirements('requirements/requirements-autotuning-ml.txt'),
     'sparse_attn': fetch_requirements('requirements/requirements-sparse_attn.txt'),
+    'sparse': fetch_requirements('requirements/requirements-sparse_pruning.txt'),
     'inf': fetch_requirements('requirements/requirements-inf.txt'),
-    'sd': fetch_requirements('requirements/requirements-sd.txt')
+    'sd': fetch_requirements('requirements/requirements-sd.txt'),
+    'triton': fetch_requirements('requirements/requirements-triton.txt'),
 }
 
 # Add specific cupy version to both onebit extension variants.
@@ -153,6 +155,7 @@ install_ops = dict.fromkeys(ALL_OPS.keys(), False)
 for op_name, builder in ALL_OPS.items():
     op_compatible = builder.is_compatible()
     compatible_ops[op_name] = op_compatible
+    compatible_ops["deepspeed_not_implemented"] = False
 
     # If op is requested but not available, throw an error.
     if op_enabled(op_name) and not op_compatible:
@@ -298,7 +301,7 @@ setup(name='deepspeed',
           'Programming Language :: Python :: 3.8', 'Programming Language :: Python :: 3.9',
           'Programming Language :: Python :: 3.10'
       ],
-      license='MIT',
+      license='Apache Software License 2.0',
       ext_modules=ext_modules,
       cmdclass=cmdclass)
 

@@ -5,7 +5,7 @@
 
 from .base import *
 from .features.meta_tensor import MetaTensorContainer
-from .features.megatron import MegatronContainer
+from .features.hybrid_megatron import HybridMegatronContainer
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
 import torch
 from ..policy import TransformerPolicy
@@ -13,8 +13,10 @@ from ..policy import transformer_param_names
 from ..policy import maybe_copy
 from packaging import version as pkg_version
 
+from ..policy import maybe_get_lora
 
-class DS_GPTNEOXContainer(MetaTensorContainer, MegatronContainer, BaseTransformerContainer):
+
+class DS_GPTNEOXContainer(MetaTensorContainer, HybridMegatronContainer, BaseTransformerContainer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -31,6 +33,30 @@ class DS_GPTNEOXContainer(MetaTensorContainer, MegatronContainer, BaseTransforme
             self.module.config.rotate_every_two = False
 
         return self.module
+
+    def get_lora_matched_pair(self):
+        """
+        Necessary to implement for `HybridEngineContainer`
+        """
+        fc1_lora, fc2_lora, qkv_lora, out_lora = self.get_lora_params()
+        ret = [(fc1_lora, self._h4h_w), (fc2_lora, self._4hh_w), (qkv_lora, self.qkvw), (out_lora, self.dense_w)]
+        return ret
+
+    def set_lora_params(self):
+        """
+        Necessary to implement for `HybridEngineContainer`
+        """
+        if GPTNEOXLayerPolicy.version == 0:
+            attention = self.policy.client_module.attention
+        else:
+            attention = self.policy.client_module.self_attention
+
+        self.lora_params = [
+            maybe_get_lora(p) for p in [
+                self.policy.client_module.mlp.dense_h_to_4h, self.policy.client_module.mlp.dense_4h_to_h,
+                attention.query_key_value, attention.dense
+            ]
+        ]
 
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
@@ -91,12 +117,10 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
         else:
             attention = self.client_module.self_attention
 
-        return self.client_module.attention.query_key_value.weight.shape[1], \
+        return self.client_module.attention.hidden_size, \
                 self.client_module.attention.num_attention_heads, \
-                self.client_module.input_layernorm.eps
-
-    def get_q_k_v(self):
-        return None
+                self.client_module.input_layernorm.eps, \
+                DEFAULT_INTERMEDIATE_SIZE
 
     def attention(self, enable_training=False):
         if GPTNEOXLayerPolicy.version == 0:
@@ -109,7 +133,7 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
                attention.dense.weight, \
                attention.dense.bias
 
-    def mlp(self):
+    def mlp(self, enable_training=False):
         return self.client_module.mlp.dense_h_to_4h.weight, \
                self.client_module.mlp.dense_h_to_4h.bias, \
                self.client_module.mlp.dense_4h_to_h.weight, \
@@ -120,6 +144,3 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
                self.client_module.post_attention_layernorm.bias, \
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
-
-    def get_lora_params(self):
-        return []

@@ -12,9 +12,16 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from packaging import version as pkg_version
 
+try:
+    import triton  # noqa: F401 # type: ignore
+    HAS_TRITON = True
+except ImportError:
+    HAS_TRITON = False
+
 from . import ops
 from . import module_inject
 
+from .accelerator import get_accelerator
 from .runtime.engine import DeepSpeedEngine, DeepSpeedOptimizerCallable, DeepSpeedSchedulerCallable
 from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from .runtime.hybrid_engine import DeepSpeedHybridEngine
@@ -49,6 +56,9 @@ __version__ = version
 __version_major__, __version_minor__, __version_patch__ = _parse_version(__version__)
 __git_hash__ = git_hash
 __git_branch__ = git_branch
+
+# Set to torch's distributed package or deepspeed.comm based inside DeepSpeedEngine init
+dist = None
 
 
 def initialize(args=None,
@@ -119,6 +129,11 @@ def initialize(args=None,
 
     assert model is not None, "deepspeed.initialize requires a model"
 
+    global dist
+    from deepspeed import comm as dist
+    dist_backend = get_accelerator().communication_backend_name()
+    dist.init_distributed(dist_backend=dist_backend, dist_init_required=dist_init_required)
+
     # Set config using config_params for backwards compat
     if config is None and config_params is not None:
         config = config_params
@@ -136,7 +151,7 @@ def initialize(args=None,
     if hasattr(args, "deepspeed_config") and args.deepspeed_config is not None:
         assert config is None, "Not sure how to proceed, we were given deepspeed configs in the deepspeed arguments and deepspeed.initialize() function call"
         config = args.deepspeed_config
-    assert config != None, "DeepSpeed requires --deepspeed_config to specify configuration file"
+    assert config is not None, "DeepSpeed requires --deepspeed_config to specify configuration file"
 
     if not isinstance(model, PipelineModule):
         config_class = DeepSpeedConfig(config, mpu)
@@ -179,6 +194,9 @@ def initialize(args=None,
                                 collate_fn=collate_fn,
                                 config=config,
                                 config_class=config_class)
+
+    # Restore zero.Init context if necessary
+    zero.partition_parameters.restore_init_context()
 
     return_items = [engine, engine.optimizer, engine.training_dataloader, engine.lr_scheduler]
     return tuple(return_items)
