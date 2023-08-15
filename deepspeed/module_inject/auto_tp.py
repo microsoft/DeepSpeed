@@ -350,12 +350,13 @@ class AutoTP():
                     bias_data = child.bias.data.split(
                         (weight_shape[1] if self.conv_linear_layer else weight_shape[0]) // self.mp_size, dim=0)
                     bias_data = bias_data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+                    bias_data = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
                 else:
                     bias_data = None
 
             setattr(child, "replaced", True)
             return LinearLayer(weight=torch.nn.parameter.Parameter(data.to(get_accelerator().current_device_name()), requires_grad=False), \
-                        bias=torch.nn.parameter.Parameter(bias_data, requires_grad=False))
+                        bias=bias_data)
 
     def _slice_embedding(self, child, name, conv_linear_layer):
         if getattr(child, "replaced", False) == True:
