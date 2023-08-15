@@ -45,5 +45,5 @@ jobs:
           cd DeepSpeedExamples/applications/DeepSpeed-Chat
           pip install -r requirements.txt
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
-          cd tests
+          cd training/tests
           pytest $PYTEST_OPTS ./
