@@ -367,7 +367,7 @@ class AutoTP():
         else:
             data = child.weight.data.split(child.weight.shape[1] // self.mp_size, dim=1)
         data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
-        data =  torch.nn.parameter.Parameter(data, requires_grad=False)
+        data = torch.nn.parameter.Parameter(data, requires_grad=False)
 
         new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // self.mp_size)
         new_embedding.weight.data.copy_(data)
