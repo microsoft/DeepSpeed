@@ -323,7 +323,7 @@ class AutoTP():
             data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
             setattr(child, "replaced", True)
-            return LinearAllreduce(data, child.bias if child.bias is None else \
+            return LinearAllreduce(torch.nn.parameter.Parameter(data, requires_grad=False), child.bias if child.bias is None else \
                         torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), self.mp_group)
         else:
 
@@ -354,7 +354,8 @@ class AutoTP():
                     bias_data = None
 
             setattr(child, "replaced", True)
-            return LinearLayer(weight=data.to(get_accelerator().current_device_name()), bias=bias_data)
+            return LinearLayer(weight=torch.nn.parameter.Parameter(data.to(get_accelerator().current_device_name()), requires_grad=False), \
+                        bias=torch.nn.parameter.Parameter(bias_data, requires_grad=False))
 
     def _slice_embedding(self, child, name, conv_linear_layer):
         if getattr(child, "replaced", False) == True:
@@ -366,6 +367,7 @@ class AutoTP():
         else:
             data = child.weight.data.split(child.weight.shape[1] // self.mp_size, dim=1)
         data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+        data =  torch.nn.parameter.Parameter(data, requires_grad=False)
 
         new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // self.mp_size)
         new_embedding.weight.data.copy_(data)
