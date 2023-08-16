@@ -4,6 +4,7 @@
 # DeepSpeed Team
 
 import deepspeed
+from types import SimpleNamespace
 from deepspeed.ops.op_builder import CPUAdamBuilder
 from deepspeed.checkpoint.utils import clone_tensors_for_torch_save, get_model_ckpt_name_for_rank
 from deepspeed.accelerator import get_accelerator
@@ -19,6 +20,29 @@ import pytest
 
 class TestZeROCheckpoint(DistributedTest):
     world_size = 2
+
+    @pytest.mark.parametrize('zero_stage', [3])
+    def test_pipeline_checkpoint_loading(self, tmpdir, zero_stage):
+        config_dict = {
+            "train_batch_size": 2,
+            "optimizer": {
+                "type": 'Adam'
+            },
+            "fp16": {
+                "enabled": True,
+                "initial_scale_power": 8
+            },
+            "zero_optimization": {
+                "stage": zero_stage,
+                "pipeline_loading_checkpoint": True,
+            }
+        }
+        hidden_dim = 10
+
+        with deepspeed.zero.Init():
+            models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
+
+        checkpoint_correctness_verification(config_dict, models, hidden_dim, tmpdir, load_module_only=True)
 
     @pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer', [(1, False, 'Adam'), (2, False, 'Adam'),
                                                                              (2, True, 'deepspeed_adam'),
@@ -553,3 +577,43 @@ class TestSaveTensorClone(DistributedTest):
         torch.save(clone_state_dict, clone_ckpt_file)
 
         compare_state_dicts(torch.load(ref_ckpt_file), torch.load(clone_ckpt_file))
+
+
+class TestZeRONonDistributed(DistributedTest):
+    world_size = 1
+    init_distributed = False
+
+    @pytest.mark.parametrize('zero_stage', [1, 2, 3])
+    def test_chmod_exception_handling(self, monkeypatch, zero_stage):
+
+        config_dict = {
+            "optimizer": {
+                "type": "AdamW"
+            },
+            "train_batch_size": 1,
+            "zero_optimization": {
+                "stage": zero_stage
+            }
+        }
+        args = SimpleNamespace(local_rank=0)
+        net = SimpleModel(hidden_dim=4)
+        engine, _, _, _ = deepspeed.initialize(args=args,
+                                               config=config_dict,
+                                               model=net,
+                                               model_parameters=net.parameters())
+
+        log_called = False
+
+        def mock_logger_info(message, *args, **kwargs):
+            nonlocal log_called
+            log_called = True
+
+        monkeypatch.setattr("deepspeed.utils.logger.info", mock_logger_info)
+        """
+            This is presented for use-cases like Azure Storage File Share (where permissions are not allowed)
+            We use a fake file for this test (file not existing would present a similar issue as not being able to chmod)
+        """
+        fake_recovery_script_dst = os.path.join("tmp", "zero_to_fp32.py")
+        engine._change_recovery_script_permissions(fake_recovery_script_dst)
+
+        assert log_called, "Expected deepspeed.utils.logger.info to be called."
