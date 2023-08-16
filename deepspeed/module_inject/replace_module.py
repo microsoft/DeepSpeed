@@ -19,7 +19,7 @@ from .replace_policy import replace_policies, generic_policies
 from deepspeed import comm as dist
 from torch import nn
 
-from .layers import LinearAllreduce, LinearLayer
+from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce
 from .load_checkpoint import load_model_with_checkpoint
 import time
 
@@ -387,6 +387,9 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 if child.bias is not None:
                     new_bias.data.copy_(child.bias.data)
                 setattr(child, "replaced", True)
+                if name == "lm_head" or name == 'embed_out':
+                    return LmHeadLinearAllreduce(data, dist.get_rank(), dist.get_world_size(), child.bias if child.bias is None else \
+                            torch.nn.parameter.Parameter(new_bias.to(get_accelerator().current_device_name())), mp_group)
                 return LinearAllreduce(data, child.bias if child.bias is None else \
                             torch.nn.parameter.Parameter(new_bias.to(get_accelerator().current_device_name())), mp_group)
             else:
@@ -428,7 +431,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 return
             for param in [
                     "n_heads", "inner_dim", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads",
-                    "all_head_size", "embed_dim", "hidden_size"
+                    "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads"
             ]:
                 if hasattr(child, param):
                     param_val = getattr(child, param)
@@ -451,6 +454,24 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                     linear_policies = {nn.Linear: _replace}
             else:
                 linear_policies = {nn.Linear: _replace, nn.Embedding: _slice_embedding}
+
+        def _replace_last_linear_module(r_module):
+            for name, child in r_module.named_children():
+                if name == "lm_head" or name == 'embed_out':
+                    checking_key = name + '.'
+                    if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm] and state_dict != None:
+                        if any(checking_key in item for item in state_dict):
+                            load(child, state_dict, checking_key, mp_group)
+                        else:
+                            continue
+                    if len(child._buffers) != 0 and state_dict != None:
+                        load_buffer(child, state_dict, checking_key)
+                    if child.__class__ in linear_policies:
+                        setattr(r_module, name, linear_policies[child.__class__](child, name, conv_linear_layer))
+                    else:
+                        update_mp_params(child)
+                        _replace_module(child, name)
+            return r_module
 
         def _replace_module(r_module, prev_name='', prev_class_name=''):
             for name, child in r_module.named_children():
@@ -491,6 +512,8 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                     _replace_module(child, name, class_name)
             return r_module
 
+        if "lm_head" in str(module) or 'embed_out' in str(module):
+            return _replace_last_linear_module(module)
         return _replace_module(module)
 
     def replace_fn(child, _policy, layer_id=0, prefix="", state_dict=None):
@@ -755,6 +778,8 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
     policy = {}
     if orig_class is not None:
         policy.update({orig_class: (replace_fn, _replace_policy)})
+        origin_layer = torch.nn.modules.linear.Linear
+        policy.update({origin_layer: (replace_fn, (list(model.named_modules())[-1][0]))})
     else:
         for plcy in replace_policies:
             # instantiate a throw-away policy in order to populate the _orig_layer_class
@@ -777,6 +802,12 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
         if embedding_weight is not None and hasattr(replaced_module, "lm_head") and hasattr(
                 replaced_module.lm_head, "weight") and replaced_module.lm_head.weight.is_meta:
             replaced_module.lm_head.weight = embedding_weight
+    #if sd is not None:
+    #    if 'lm_head.weight' in sd.keys() and hasattr(replaced_module, 'lm_head'):
+    #        replaced_module.lm_head.weight = torch.nn.parameter.Parameter(
+    #            data=torch.empty_like(sd['lm_head.weight'].data, device="cpu"),
+    #            requires_grad=sd['lm_head.weight'].data.requires_grad)
+    #        replaced_module.lm_head.weight.data.copy_(sd['lm_head.weight'])
     return replaced_module
 
 
@@ -832,7 +863,14 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
         LlamaRMSNorm = None
     load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm, OPTLearnedPositionalEmbedding, LlamaRMSNorm]
     for name, child in model.named_children():
-        if child.__class__ in policies:
+        if name == "lm_head" or name =="embed_out":
+            if child.__class__ in policies:
+                replaced_module = policies[child.__class__][0](model,
+                                                               policies[child.__class__][-1],
+                                                               layer_id,
+                                                               prefix=prefix + name,
+                                                               state_dict=state_dict)
+        elif child.__class__ in policies:
             replaced_module = policies[child.__class__][0](child,
                                                            policies[child.__class__][-1],
                                                            layer_id,
