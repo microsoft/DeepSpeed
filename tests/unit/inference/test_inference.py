@@ -155,8 +155,8 @@ def inf_kwargs(model_w_task):
     if task == "text-generation":
         if model == "EleutherAI/gpt-j-6b":
             # This model on V100 is hitting memory problems that limit the number of output tokens
-            return {"do_sample": False, "max_length": 12}
-        return {"do_sample": False, "max_length": 20}
+            return {"do_sample": False, "temperature": 1.0, "max_length": 12}
+        return {"do_sample": False, "temperature": 1.0, "max_length": 20}
     else:
         return {}
 
@@ -478,12 +478,8 @@ class TestInjectionPolicy(DistributedTest):
 @pytest.mark.seq_inference
 @pytest.mark.parametrize(
     "model_w_task",
-    [
-        ("Helsinki-NLP/opus-mt-en-de", "translation"),
-    ],
-    ids=[
-        "marian",
-    ],
+    [("Helsinki-NLP/opus-mt-en-de", "translation"), ("Salesforce/codegen-350M-mono", "text-generation")],
+    ids=["marian", "codegen"],  #codegen has fusedqkv weight.
 )
 @pytest.mark.parametrize("dtype", [torch.float16], ids=["fp16"])
 class TestAutoTensorParallelism(DistributedTest):
