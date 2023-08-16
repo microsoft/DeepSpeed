@@ -9,7 +9,7 @@ on:
     branches: [ master ]
   schedule:
     - cron: "0 0 * * *"
-  workflow_dispatch
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
