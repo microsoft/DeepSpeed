@@ -50,6 +50,12 @@ class DS_LLAMAContainer(HybridGatedMLPContainer, HybridSplitQKVContainer, BaseTr
             ]
         ]
 
+    def get_lora_matched_pair(self):
+        up_proj_lora, gate_proj_lora, down_proj_lora, q_lora, k_lora, v_lora, out_lora = self.get_lora_params()
+        ret = [(up_proj_lora, self.inter_up_w), (gate_proj_lora, self.inter_gate_w), (down_proj_lora, self._4hh_w),
+               (out_lora, self.dense_w), (q_lora, self.qw), (k_lora, self.kw), (v_lora, self.vw)]
+        return ret
+
     def set_q_k_v(self):
         """
         Necessary to implement for `HybridSplitQKVContainer`
@@ -116,10 +122,15 @@ class LLAMALayerPolicy(TransformerPolicy):
             LLAMALayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
-        return self.client_module.self_attn.q_proj.weight.shape[1], \
-                self.client_module.self_attn.num_heads, \
-                self.client_module.input_layernorm.variance_epsilon, \
-                self.client_module.mlp.gate_proj.weight.shape[0]
+        hidden_heads = (
+            getattr(self.client_module.self_attn.q_proj.weight, "ds_shape",
+                    self.client_module.self_attn.q_proj.weight.shape)[1],
+            self.client_module.self_attn.num_heads,
+            self.client_module.input_layernorm.variance_epsilon,
+            getattr(self.client_module.mlp.gate_proj.weight, "ds_shape",
+                    self.client_module.mlp.gate_proj.weight.shape)[0],
+        )
+        return hidden_heads
 
     def attention(self, enable_training=False):
         qw = self.client_module.self_attn.q_proj.weight
