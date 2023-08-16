@@ -536,6 +536,21 @@ class TestLMCorrectness(DistributedTest):
         import lm_eval.tasks
         import lm_eval.evaluator
 
+        # The bootstrap_stderr function in lm_eval.metrics uses a
+        # multiprocessing Pool to increase performance. Since we use a Pool for
+        # our distributed tests and cannot nest Pools, we must redefine and
+        # patch this function with a version that does not use Pool.
+        def no_pool_bootstrap_stderr(f, xs, iters):
+            from lm_eval.metrics import _bootstrap_internal
+            from lm_eval.metrics import sample_stddev
+            res = []
+            chunk_size = min(1000, iters)
+            for i in range(iters // chunk_size):
+                res.extend(_bootstrap_internal(f, chunk_size)((i, xs)))
+            return sample_stddev(res)
+
+        lm_eval.metrics.bootstrap_stderr = no_pool_bootstrap_stderr
+
         local_rank = os.getenv("LOCAL_RANK", "0")
         device = torch.device(get_accelerator().device_name(local_rank))
         dtype = torch.float
