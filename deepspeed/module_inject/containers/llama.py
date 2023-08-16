@@ -105,6 +105,7 @@ class DS_LLAMAContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSpli
         maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[8], prefix + param_names[7])
         maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[10], prefix + param_names[8])
 
+        module.mlp.output_b = None
 
 class LLAMALayerPolicy(TransformerPolicy):
 
