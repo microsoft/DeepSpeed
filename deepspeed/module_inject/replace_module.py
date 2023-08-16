@@ -275,7 +275,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         _autotp.update_linear_policies()
 
         # 4. Replace modules
-        if "lm_head" in str(module) or 'embed_out' in str(module):
+        if "lm_head" in all_reduce_linears or "embed_out" in all_reduce_linears:
             return _autotp._replace_last_linear_module(module)
         return _autotp._replace_module(module)
 
@@ -306,6 +306,13 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         if embedding_weight is not None and hasattr(module, "lm_head") and hasattr(
                 module.lm_head, "weight") and module.lm_head.weight.is_meta:
             module.lm_head.weight = embedding_weight
+        # enable tensor parallel for the last linear
+        if hasattr(module, "lm_head") and hasattr(module.lm_head, "weight") and not module.lm_head.weight.is_meta:
+            module = replace_wo_policy(module, ("lm_head", ), 0, "lm_head")
+        elif hasattr(module, "embed_out") and hasattr(module.embed_out,
+                                                      "weight") and not module.embed_out.weight.is_meta:
+            module = replace_wo_policy(module, ("embed_out", ), 0, "embed_out")
+        return module
 
     if checkpoint_dict is not None and not config.replace_with_kernel_inject:
         # AutoTP shard loading
@@ -320,7 +327,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                              checkpoint=checkpoint_file)
             pbar.update(1)
             gc.collect()
-        set_lm_head(replaced_module)
+        replaced_module = set_lm_head(replaced_module)
     else:
         replaced_module = replace_module(model=model,
                                          orig_class=orig_layer_impl,
@@ -553,8 +560,6 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
     policy = {}
     if orig_class is not None:
         policy.update({orig_class: (replace_fn, _replace_policy)})
-        origin_layer = torch.nn.modules.linear.Linear
-        policy.update({origin_layer: (replace_fn, (list(model.named_modules())[-1][0]))})
     else:
         for plcy in replace_policies:
             # instantiate a throw-away policy in order to populate the _orig_layer_class
@@ -603,14 +608,7 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
         Modified ``model``.
     """
     for name, child in model.named_children():
-        if name == "lm_head" or name == "embed_out":
-            if child.__class__ in policies:
-                replaced_module = policies[child.__class__][0](model,
-                                                               policies[child.__class__][-1],
-                                                               layer_id,
-                                                               prefix=prefix + name,
-                                                               state_dict=state_dict)
-        elif child.__class__ in policies:
+        if child.__class__ in policies:
             replaced_module = policies[child.__class__][0](child,
                                                            policies[child.__class__][-1],
                                                            layer_id,

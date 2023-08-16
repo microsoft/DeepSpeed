@@ -319,8 +319,10 @@ class AutoTP():
 
             setattr(child, "replaced", True)
             if name == "lm_head" or name == 'embed_out':
-                return LmHeadLinearAllreduce(data_dc, dist.get_rank(), dist.get_world_size(), child.bias if child.bias is None else \
-                        torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), mp_group)
+                return LmHeadLinearAllreduce(
+                    torch.nn.parameter.Parameter(data_dc, requires_grad=False), dist.get_rank(), dist.get_world_size(),
+                    child.bias if child.bias is None else torch.nn.parameter.Parameter(
+                        child.bias.to(get_accelerator().current_device_name())), self.mp_group)
             return LinearAllreduce(torch.nn.parameter.Parameter(data_dc, requires_grad=False), child.bias if child.bias is None else \
                         torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), self.mp_group)
         else:
@@ -441,19 +443,14 @@ class AutoTP():
         return r_module
 
     def _replace_last_linear_module(self, r_module):
-        for name, child in r_module.named_children():
-            if name == "lm_head" or name == 'embed_out':
-                checking_key = name + '.'
-                if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm] and state_dict != None:
-                    if any(checking_key in item for item in state_dict):
-                        load(child, state_dict, checking_key, mp_group)
-                    else:
-                        continue
-                if len(child._buffers) != 0 and state_dict != None:
-                    load_buffer(child, state_dict, checking_key)
-                if child.__class__ in linear_policies:
-                    setattr(r_module, name, linear_policies[child.__class__](child, name, conv_linear_layer))
-                else:
-                    update_mp_params(child)
-                    _replace_module(child, name)
+        if hasattr(r_module, "lm_head"):
+            name = "lm_head"
+            child = r_module.lm_head
+        elif hasattr(r_module, "embed_out"):
+            name = "embed_out"
+            child = r_module.embed_out
+        else:
+            return r_module
+        if child.__class__ in self.linear_policies:
+            setattr(r_module, name, self.linear_policies[child.__class__](child, name, self.conv_linear_layer))
         return r_module
