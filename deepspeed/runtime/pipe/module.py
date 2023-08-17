@@ -27,7 +27,7 @@ from enum import Enum
 class CkptLayer_Enum(Enum):
     not_ckpt_layer = 0
     normal_ckpt_layer = 1
-    warp_ckpt_layer = 2
+    wrap_ckpt_layer = 2
 
 
 class PipelineError(Exception):
@@ -343,7 +343,7 @@ class PipelineModule(nn.Module):
         # will see a different offset.
         self.micro_offset += 1
 
-        def exec_range_func(start, end, warp_layer=False):
+        def exec_range_func(start, end, wrap_layer=False):
             ''' Helper function to be used with checkpoint()
             Adapted from torch.utils.checkpoint:checkpoint_sequential()
             '''
@@ -365,7 +365,7 @@ class PipelineModule(nn.Module):
                     inputs = layer(inputs)
                 return inputs
 
-            def exec_func_warp(*inputs):
+            def exec_func_wrap(*inputs):
                 # Single tensor inputs need to be unwrapped
                 if len(inputs) == 2:
                     dummy_tensor = inputs[1]
@@ -387,7 +387,7 @@ class PipelineModule(nn.Module):
                         inputs = layer(inputs)
                 return inputs
 
-            return exec_func if not warp_layer else exec_func_warp
+            return exec_func if not wrap_layer else exec_func_wrap
 
         if self.activation_checkpoint_interval == 0:
             func = exec_range_func(0, len(self.forward_funcs))
@@ -404,12 +404,12 @@ class PipelineModule(nn.Module):
                 if not isinstance(x, tuple):
                     x = (x, )
 
-                if self._is_checkpointable(funcs) == CkptLayer_Enum.warp_ckpt_layer:
+                if self._is_checkpointable(funcs) == CkptLayer_Enum.wrap_ckpt_layer:
                     if not self.is_wrapped_ckptlayer:
                         self.forward_funcs[start_idx] = ModuleWrapper(self.forward_funcs[start_idx])
                         self.is_wrapped_ckptlayer = True
 
-                    x = self.activation_checkpoint_func(exec_range_func(start_idx, end_idx, warp_layer=True), *x,
+                    x = self.activation_checkpoint_func(exec_range_func(start_idx, end_idx, wrap_layer=True), *x,
                                                         self.dummy_tensor.to(get_accelerator().current_device()))
                 elif self._is_checkpointable(funcs) == CkptLayer_Enum.normal_ckpt_layer:
                     x = self.activation_checkpoint_func(exec_range_func(start_idx, end_idx), *x)
@@ -672,11 +672,11 @@ class PipelineModule(nn.Module):
     def _is_checkpointable(self, funcs):
 
         if isinstance(funcs[0], ModuleWrapper):
-            return CkptLayer_Enum.warp_ckpt_layer
+            return CkptLayer_Enum.wrap_ckpt_layer
         params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
         if any(len(list(p)) > 0 for p in params):
             if not self.is_wrapped_ckptlayer:
-                return CkptLayer_Enum.warp_ckpt_layer
+                return CkptLayer_Enum.wrap_ckpt_layer
 
             return CkptLayer_Enum.normal_ckpt_layer
         return CkptLayer_Enum.not_ckpt_layer
