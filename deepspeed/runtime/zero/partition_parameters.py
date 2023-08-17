@@ -233,11 +233,7 @@ def zero_wrapper_for_fp_tensor_constructor(fn: Callable, target_fp_dtype: torch.
             kwargs['device'] = torch.device(get_accelerator().device_name(os.environ["LOCAL_RANK"]))
         tensor: Tensor = fn(*args, **kwargs)
         if tensor.is_floating_point():
-            requires_grad = tensor.requires_grad
-            tensor = tensor.to(target_fp_dtype)
-            if requires_grad:
-                # detach from graph with <ToCopyBackward> and re-enable `requires_grad`
-                tensor = tensor.detach_().requires_grad_()
+            tensor.data = tensor.data.to(target_fp_dtype)
 
         return tensor
 
