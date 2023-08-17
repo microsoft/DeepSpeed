@@ -1095,8 +1095,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         quantized_param = param_ds_tensor.data
                     else:
                         quantized_param, scales = self.quantizer_module.quantize(param_ds_tensor)
-                    handle = _dist_allgather_fn(quantized_param.to(get_accelerator().current_device_name()), param_buffer,
-                                                ds_process_group)
+                    handle = _dist_allgather_fn(quantized_param.to(get_accelerator().current_device_name()),
+                                                param_buffer, ds_process_group)
 
                     quant_scale_buffer = torch.empty(
                         scales.numel() * world_size,
@@ -1154,26 +1154,29 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     if params[0].ds_secondary_tensor is not None and not forward:
                         use_secondary_tensor = True
                         if hasattr(params[0].ds_secondary_tensor, "ds_quant_scale"):
-                            quantized_param = instrument_w_nvtx(torch.cat)(
-                                [p.ds_secondary_tensor.data.to(get_accelerator().current_device_name()) for p in params])
+                            quantized_param = instrument_w_nvtx(torch.cat)([
+                                p.ds_secondary_tensor.data.to(get_accelerator().current_device_name()) for p in params
+                            ])
                             scales = instrument_w_nvtx(torch.cat)([
                                 p.ds_secondary_tensor.ds_quant_scale.to(get_accelerator().current_device_name())
                                 for p in params
                             ])
                         else:
                             quantized_param, scales = self.quantizer_module.quantize(
-                                instrument_w_nvtx(torch.cat)(
-                                    [p.ds_secondary_tensor.to(get_accelerator().current_device_name()) for p in params]))
+                                instrument_w_nvtx(torch.cat)([
+                                    p.ds_secondary_tensor.to(get_accelerator().current_device_name()) for p in params
+                                ]))
                     else:
                         if hasattr(params[0].ds_tensor, "ds_quant_scale"):
-                            quantized_param = instrument_w_nvtx(
-                                torch.cat)([p.ds_tensor.data.to(get_accelerator().current_device_name()) for p in params])
-                            scales = instrument_w_nvtx(torch.cat)(
-                                [p.ds_tensor.ds_quant_scale.to(get_accelerator().current_device_name()) for p in params])
+                            quantized_param = instrument_w_nvtx(torch.cat)(
+                                [p.ds_tensor.data.to(get_accelerator().current_device_name()) for p in params])
+                            scales = instrument_w_nvtx(torch.cat)([
+                                p.ds_tensor.ds_quant_scale.to(get_accelerator().current_device_name()) for p in params
+                            ])
                         else:
                             quantized_param, scales = self.quantizer_module.quantize(
-                                instrument_w_nvtx(
-                                    torch.cat)([p.ds_tensor.to(get_accelerator().current_device_name()) for p in params]))
+                                instrument_w_nvtx(torch.cat)(
+                                    [p.ds_tensor.to(get_accelerator().current_device_name()) for p in params]))
                     quant_scale_buffer = torch.empty(
                         scales.numel() * world_size,
                         dtype=torch.float32,

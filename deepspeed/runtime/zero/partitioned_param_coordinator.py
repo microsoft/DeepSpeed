@@ -443,7 +443,9 @@ class PartitionedParameterCoordinator:
             with get_accelerator().stream(self.__allgather_stream):
                 event_name = __class__.FORWARD_ALL_GATHER if forward else __class__.BACKWARD_ALL_GATHER
                 self.__profiler.start_event(event_name)
-                handle = partitioned_params[0].all_gather_coalesced(partitioned_params, forward=forward, quantize=quantize)
+                handle = partitioned_params[0].all_gather_coalesced(partitioned_params,
+                                                                    forward=forward,
+                                                                    quantize=quantize)
                 self.__profiler.stop_event(event_name, all_gather_numel)
 
             for param in partitioned_params:

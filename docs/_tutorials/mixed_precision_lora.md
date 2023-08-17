@@ -52,5 +52,3 @@ model.optimizer.quantize_nontrainable_params()
 ```
 
 Congratulations! You have completed the Mixed Precision LoRA tutorial.
-
-

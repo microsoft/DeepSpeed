@@ -81,7 +81,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     """
 
-    def __init__(self,
+    def __init__(
+        self,
         module,
         init_optimizer,
         timers,
@@ -163,7 +164,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.zero_hpz_partition_size = zero_hpz_partition_size
 
         zero_param_parallel_group = groups._get_zero_param_intra_parallel_group()
-        print_rank_0(f"ZeRO Stage 3 param partitioning group {self.zero_hpz_partition_size} {zero_param_parallel_group}", force=False)
+        print_rank_0(
+            f"ZeRO Stage 3 param partitioning group {self.zero_hpz_partition_size} {zero_param_parallel_group}",
+            force=False)
         if self.zero_hpz_partition_size > 1 and zero_param_parallel_group is None:
             self._set_zero_group_parallelism()
             zero_param_parallel_group = groups._get_zero_param_intra_parallel_group()
