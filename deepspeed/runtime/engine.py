@@ -1137,9 +1137,8 @@ class DeepSpeedEngine(Module):
 
                 if self.global_rank == 0:
                     logger.warning("**** You are using ZeRO with an untested optimizer, proceed with caution *****")
-
             if model_dtype == torch.bfloat16 and grad_accum_dtype == torch.float32 and self.zero_optimization_stage(
-            ) == 1:
+            ) == 1 and not self.zero_cpu_offload():
                 return BFLOAT16
             return ZERO_OPTIMIZATION
         elif amp_enabled:
@@ -1453,7 +1452,7 @@ class DeepSpeedEngine(Module):
                 expert_data_parallel_group=self.expert_data_parallel_group if self.has_moe_layers else None,
                 reduce_scatter=self.zero_reduce_scatter(),
                 overlap_comm=overlap_comm,
-                cpu_offload=self.zero_cpu_offload(),
+                offload_optimizer_config=self.zero_offload_optimizer(),
                 mpu=self.mpu,
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor(),
@@ -2035,7 +2034,7 @@ class DeepSpeedEngine(Module):
                     # XXX Hack to work with Megatron 2.0 and DeepSpeed pipelines.
                     # We don't currently have a way to specify lr_kwargs from
                     # pipe_engine.train_batch()
-                    self.lr_scheduler.step(increment=self.train_batch_size())
+                    self.lr_scheduler.step(self.train_batch_size())
 
         if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
             self._report_progress(self.global_steps + 1)
@@ -2793,6 +2792,16 @@ class DeepSpeedEngine(Module):
         return load_path, client_state
 
     def _load_zero_checkpoint(self, load_dir, tag, load_optimizer_states=True):
+
+        load_serial = None
+        # When use loading checkpoint serial, checkpoint loading start from local rank 0,
+        # all other local rank would be paused, waiting for its rank-1 peer ready and its notification.
+        if self._config.zero_config.pipeline_loading_checkpoint:
+            assert self.zero_optimization_stage(
+            ) == ZeroStageEnum.weights, "Only stage3 support for pipeline checkpoint loading"
+            load_serial = torch.zeros(1).to(self.device)
+            if dist.get_local_rank() != 0:
+                dist.recv(tensor=load_serial, src=dist.get_rank() - 1)
         if self.load_universal_checkpoint():
             zero_sd_list = None
             checkpoint_folder = f'{os.path.join(load_dir, tag)}'
@@ -2811,7 +2820,8 @@ class DeepSpeedEngine(Module):
         self.optimizer.load_state_dict(state_dict_list=zero_sd_list,
                                        load_optimizer_states=load_optimizer_states,
                                        load_from_fp32_weights=self.zero_load_from_fp32_weights(),
-                                       checkpoint_folder=checkpoint_folder)
+                                       checkpoint_folder=checkpoint_folder,
+                                       load_serial=load_serial)
 
         if self.load_universal_checkpoint():
             logger.info(f'loaded universal zero checkpoints from {checkpoint_folder} for rank {self.global_rank}')
@@ -3289,8 +3299,17 @@ class DeepSpeedEngine(Module):
         dst = os.path.join(save_path, script)
         #logger.info(f"creating recovery script {dst}")
         copyfile(src, dst)
-        # make executable
-        os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
+        self._change_recovery_script_permissions(dst)
+
+    def _change_recovery_script_permissions(self, dst):
+        # make executable (safeguard for file shares - Azure as example)
+        try:
+            os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
+        except (FileNotFoundError, PermissionError) as e:
+            #this message is used in unit test TestZeRONonDistributed
+            logger.info(
+                f'Warning: Could not change permissions for {dst} due to error: {e}. Continuing without changing permissions.'
+            )
 
     def _save_zero_checkpoint(self, save_path, tag):
         zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
