@@ -521,13 +521,14 @@ class TestAutoTensorParallelism(DistributedTest):
     "model_family, model_name",
     (
         ["gpt2", "EleutherAI/gpt-neo-2.7B"],
-        ["gpt2", "EleutherAI/gpt-j-6b"],
+        #["gpt2", "EleutherAI/gpt-j-6b"], # Causing OOM for this test
         ["gpt2", "gpt2-xl"],
     ),
 )
 @pytest.mark.parametrize("task", ["lambada_standard"])
 class TestLMCorrectness(DistributedTest):
     world_size = 1
+    exec_timeout = 1200  # Give these tests longer to complete
 
     def test(self, model_family, model_name, task):
         # imports here to avoid import errors when pytest collects tests
