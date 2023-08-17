@@ -14,7 +14,7 @@ from deepspeed import comm as dist
 from .layers import LinearAllreduce, LinearLayer
 from deepspeed.accelerator import get_accelerator
 from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw
-from deepspeed.utils.tp_shard import get_shard_size
+from deepspeed.utils.tp_shard import get_shard_size, get_shard_size_list
 
 
 class ReplaceWithTensorSlicing:
@@ -320,7 +320,7 @@ class AutoTP():
             if self.conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
             data = child.weight.data.split(
-                get_shard_size(weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size), dim=1)
+                get_shard_size_list(weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size), dim=1)
             data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
             setattr(child, "replaced", True)
@@ -343,13 +343,13 @@ class AutoTP():
                     module_str, child.bias.data, self.mp_size, mp_replace.gpu_index).to(
                         get_accelerator().current_device_name())
             else:
-                data = child.weight.data.split(get_shard_size(weight_shape[0], self.mp_size),
+                data = child.weight.data.split(get_shard_size_list(weight_shape[0], self.mp_size),
                                                dim=1 if self.conv_linear_layer else 0)
                 data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
                 if child.bias is not None:
                     bias_data = child.bias.data.split(
-                        get_shard_size(weight_shape[1] if self.conv_linear_layer else weight_shape[0], self.mp_size), dim=0)
+                        get_shard_size_list(weight_shape[1] if self.conv_linear_layer else weight_shape[0], self.mp_size), dim=0)
                     bias_data = bias_data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
                     bias_data = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
                 else:
@@ -365,9 +365,9 @@ class AutoTP():
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
 
         if hasattr(child.weight, 'ds_tensor'):
-            data = child.weight.ds_tensor.data.split(get_shard_size(child.weight.shape[1], self.mp_size), dim=1)
+            data = child.weight.ds_tensor.data.split(get_shard_size_list(child.weight.shape[1], self.mp_size), dim=1)
         else:
-            data = child.weight.data.split(get_shard_size(child.weight.shape[1], self.mp_size), dim=1)
+            data = child.weight.data.split(get_shard_size_list(child.weight.shape[1], self.mp_size), dim=1)
         data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
         data = torch.nn.parameter.Parameter(data, requires_grad=False)
 
