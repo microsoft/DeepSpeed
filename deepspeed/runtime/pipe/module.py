@@ -92,7 +92,7 @@ class TiedLayerSpec(LayerSpec):
 
 class ModuleWrapper(nn.Module):
     """Some  input with requires_grad=False will prevent the checkpoint activation layer from obtaining grads,
-    and the requires_grad of the output of checkpoint activation layer will also be False, using this wrapper ad first layer could solve this problem
+    and the requires_grad of the output of checkpoint activation layer will also be False, using this wrapper at first layer could solve this problem
     """
 
     def __init__(self, module):
