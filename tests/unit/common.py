@@ -41,11 +41,24 @@ def get_xdist_worker_id():
     return None
 
 
-def get_master_port():
-    # Select a random open port
-    with socket.socket() as s:
-        s.bind(('', 0))
-        return str(s.getsockname()[1])
+def get_master_port(base_port=29500, port_range_size=1000):
+    xdist_worker_id = get_xdist_worker_id()
+    if xdist_worker_id is not None:
+        # Make xdist workers use different port ranges to avoid race conditions
+        base_port += port_range_size * xdist_worker_id
+
+    # Select first open port in range
+    port = base_port
+    max_port = base_port + port_range_size
+    sock = socket.socket()
+    while port < max_port:
+        try:
+            sock.bind(('', port))
+            sock.close()
+            return str(port)
+        except OSError:
+            port += 1
+    raise IOError('no free ports')
 
 
 def set_accelerator_visible():
@@ -182,6 +195,9 @@ class DistributedExec(ABC):
                 os.environ['LOCAL_RANK'] = str(local_rank)
                 # NOTE: unit tests don't support multi-node so local_rank == global rank
                 os.environ['RANK'] = str(local_rank)
+                # In case of multiprocess launching LOCAL_SIZE should be same as WORLD_SIZE
+                # DeepSpeed single node launcher would also set LOCAL_SIZE accordingly
+                os.environ['LOCAL_SIZE'] = str(num_procs)
                 os.environ['WORLD_SIZE'] = str(num_procs)
 
             # turn off NCCL logging if set

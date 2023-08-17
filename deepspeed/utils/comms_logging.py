@@ -44,7 +44,7 @@ def calc_bw_log(comm_op, size, duration):
         size *= n
         tput = (size / duration)
         busbw = (size / duration) * ((n - 1) / n)
-    elif comm_op == "all_reduce" or comm_op == "all_reduce_coalesced":
+    elif comm_op == "all_reduce" or comm_op == "all_reduce_coalesced" or comm_op == "inference_all_reduce":
         tput = (size * 2 / duration)
         busbw = (size / duration) * (2 * (n - 1) / n)
     elif comm_op == "send" or comm_op == "recv" or comm_op == "isend" or comm_op == "irecv" or comm_op == "broadcast" or comm_op == "reduce" or comm_op == "gather" or comm_op == "scatter" or comm_op == "barrier":
@@ -102,7 +102,6 @@ class CommsLogger:
 
     # Add log entry
     def append(self, raw_name, record_name, latency, msg_size):
-        import deepspeed.comm as dist
         algbw, busbw = calc_bw_log(raw_name, msg_size, latency)
         if record_name in self.comms_dict.keys():
             # If this comm_op has already been logged with this message size, just add to existing record
@@ -120,11 +119,7 @@ class CommsLogger:
         # If verbose, print every comm op
         # TODO: Add to tensorboard
         if self.verbose:
-            n = dist.get_world_size()
-            log_str = f"rank={dist.get_rank()} | comm op: " + record_name + " | time (ms): {:.2f}".format(latency)
-            log_str += " | msg size: " + convert_size(msg_size)
-            log_str += " | algbw (Gbps): {:.2f} ".format(algbw)
-            log_str += " | busbw (Gbps): {:.2f} ".format(busbw)
+            log_str = f"comm op: {record_name} | time (ms): {latency:.2f} | msg size: {convert_size(msg_size)} | algbw (Gbps): {algbw:.2f} | busbw (Gbps): {busbw:.2f}"
             log_dist(log_str, [0])
 
     # Print summary at end of iteration, epoch, or training

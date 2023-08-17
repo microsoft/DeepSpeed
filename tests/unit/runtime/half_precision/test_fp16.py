@@ -10,12 +10,12 @@ import pytest
 from deepspeed.ops.adam import FusedAdam
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel, SimpleOptimizer, random_dataloader, SimpleMoEModel, sequence_dataloader
-from unit.util import required_torch_version
+from deepspeed.runtime.utils import required_torch_version
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import CPUAdamBuilder
 
 try:
-    from apex import amp  # noqa: F401
+    from apex import amp  # noqa: F401 # type: ignore
     _amp_available = True
 except ImportError:
     _amp_available = False
@@ -160,7 +160,7 @@ class TestFP16OptimizerForMoE(DistributedTest):
     world_size = 2
 
     def test_unfused_gradnorm(self, monkeypatch):
-        if not required_torch_version():
+        if not required_torch_version(min_version=1.8):
             pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
         config_dict = {"train_batch_size": 2, "steps_per_print": 1, "fp16": {"enabled": True}}
@@ -188,7 +188,7 @@ class TestFP16OptimizerForMoE(DistributedTest):
             engine.step()
 
     def test_fused_gradnorm(self, monkeypatch):
-        if not required_torch_version():
+        if not required_torch_version(min_version=1.8):
             pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
         config_dict = {"train_batch_size": 2, "steps_per_print": 1, "fp16": {"enabled": True}}
@@ -218,7 +218,7 @@ class TestFP16OptimizerForMoE(DistributedTest):
 
     @pytest.mark.parametrize("fused_lamb_legacy", [(False), (True)])
     def test_lamb_gradnorm(self, monkeypatch, fused_lamb_legacy: bool):
-        if not required_torch_version():
+        if not required_torch_version(min_version=1.8):
             pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
         config_dict = {

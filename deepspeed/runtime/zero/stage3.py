@@ -31,6 +31,11 @@ from deepspeed.accelerator import get_accelerator
 # with gradient partitioning and without
 pg_correctness_test = False
 
+OPTIMIZER_SWAP_IN_STATE_TIMER = 'optimizer_swap_in_state'
+INIT_OPTIMIZER_TIMER = 'init_optimizer_state'
+OPTIMIZER_SWAP_OUT_STATE_TIMER = 'optimizer_swap_out_state'
+OPTIMIZER_STEP_TIMER = 'optimizer_step'
+
 
 def print_rank_0(message, debug=False, force=False):
     rank = dist.get_rank()
@@ -76,8 +81,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     """
 
-    def __init__(
-        self,
+    def __init__(self,
         module,
         init_optimizer,
         timers,
@@ -101,6 +105,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         sub_group_size=1000000000000,
         mpu=None,
         clip_grad=0.0,
+        gradient_accumulation_dtype=torch.float32,
         communication_data_type=torch.float16,
         postscale_gradients=True,
         gradient_predivide_factor=1.0,
@@ -137,6 +142,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.flatten = _flatten_dense_tensors
         self.unflatten = _unflatten_dense_tensors
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
+        self.gradient_accumulation_dtype = gradient_accumulation_dtype
         self._global_grad_norm = 0.
 
         self.custom_loss_scaler = False
@@ -193,8 +199,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self.device = get_accelerator().current_device_name() if not self.offload_optimizer else OffloadDeviceEnum.cpu
         ### streams used for overlapping computation with communication
-        self.reduce_and_partition_stream = get_accelerator().Stream() if overlap_comm else get_accelerator(
-        ).default_stream()
+        self.reduce_and_partition_stream = None if get_accelerator().is_synchronized_device() else get_accelerator(
+        ).Stream() if overlap_comm else get_accelerator().default_stream()
 
         ############################################################################
 
@@ -444,7 +450,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         all_params = list(itertools.chain.from_iterable(self.fp16_groups))
 
         self.grad_partitions_flat_buffer: Tensor = torch.zeros(sum(p.partition_numel() for p in all_params),
-                                                               dtype=self.dtype,
+                                                               dtype=self.gradient_accumulation_dtype,
                                                                device=self.device)
         if self.offload_optimizer_pin_memory:
             self.grad_partitions_flat_buffer = get_accelerator().pin_memory(self.grad_partitions_flat_buffer)
@@ -907,9 +913,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if self.swap_optimizer:
             self.optimizer_swapper.init_timers()
 
-        INIT_OPTIMIZER_TIMER = 'init_optimizer_state'
         timer_names.add(INIT_OPTIMIZER_TIMER)
-        self.start_timers([INIT_OPTIMIZER_TIMER])
+        self.timers(INIT_OPTIMIZER_TIMER).start()
 
         for i, group in enumerate(self.fp16_groups):
             swappable_optimizer_subgroup = self._swappable_optimizer_subgroup(i)
@@ -951,8 +956,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if is_adagrad:
             self.optimizer = torch.optim.Adagrad(self.fp32_partitioned_groups_flat, **self.optimizer.defaults)
 
-        self.stop_timers([INIT_OPTIMIZER_TIMER])
-        self.log_timers(timer_names)
+        self.timers(INIT_OPTIMIZER_TIMER).stop()
+        self.timers.log(timer_names)
 
         if self.swap_optimizer:
             self.optimizer_swapper.log_timers()
@@ -1005,22 +1010,18 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.__reduce_and_partition_ipg_grads()
         self.report_ipg_memory_usage(f"In ipg_epilogue after reduce_ipg_grads", 0)
 
-        self.reduce_and_partition_stream.synchronize()
+        if not get_accelerator().is_synchronized_device():
+            self.reduce_and_partition_stream.synchronize()
 
         #in case of cpu offload, averaged gradients are already in fp32_partitioned_groups_flat.grad
         #TODO: use a similar code path for both cpu_offload and non-cpu offload
         if not self.offload_optimizer:
             for i, sub_group in enumerate(self.fp16_groups):
+                #TODO: This is redundant
                 self.averaged_gradients[i] = [
                     self.__param_id_to_grad_partition[param.ds_id]
                     if param.requires_grad else torch.zeros_like(param.ds_tensor) for param in sub_group
                 ]
-                # self.averaged_gradients[i] = self.get_flat_partition(
-                #     self.fp16_groups[i],
-                #     0,
-                #     self.fp32_partitioned_groups_flat[i].numel(),
-                #     return_tensor_list=True)
-
         # this method gets called after every backward. need to increment
         # here because if it gets incremented in backward() the micro step
         # id will be off by one when we do the reduce and partition at the.
@@ -1092,7 +1093,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     @instrument_w_nvtx
     @torch.no_grad()
     def __add_grad_to_ipg_bucket(self, param: Parameter) -> None:
-        self.reduce_and_partition_stream.wait_stream(get_accelerator().default_stream())
+        if not get_accelerator().is_synchronized_device():
+            self.reduce_and_partition_stream.wait_stream(get_accelerator().default_stream())
 
         if self.contiguous_gradients and self.elements_in_ipg_bucket + param.grad.numel() < self.reduce_bucket_size:
             # move the gradient to a contiguous buffer
@@ -1101,7 +1103,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 new_grad_tensor = self.__ipg_bucket_flat_buffer.narrow(0, self.elements_in_ipg_bucket,
                                                                        param.grad.numel()).view_as(param.grad)
                 new_grad_tensor.copy_(param.grad, non_blocking=True)
-                param.grad.record_stream(get_accelerator().current_stream())
+                if not get_accelerator().is_synchronized_device():
+                    param.grad.record_stream(get_accelerator().current_stream())
                 param.grad.data = new_grad_tensor
 
         self.params_in_ipg_bucket.append(param)
@@ -1139,9 +1142,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
             self.params_in_ipg_bucket.clear()
 
-            event = get_accelerator().Event()
-            event.record()
-            self.param_reduce_events.append(event)
+            if not get_accelerator().is_synchronized_device():
+                event = get_accelerator().Event()
+                event.record()
+                self.param_reduce_events.append(event)
 
     @instrument_w_nvtx
     def __avg_scatter_contiguous_grads(self, buffer_to_reduce: Tensor) -> List[Tensor]:
@@ -1293,12 +1297,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 # operations and so it can be used asynchronously
                 grad_buffer = grad_buffer.to(grad_partition.device, non_blocking=True)
             elif get_accelerator().on_accelerator(grad_buffer):
-                grad_buffer.add_(grad_partition)
+                grad_buffer.add_(grad_partition.to(self.gradient_accumulation_dtype).view(grad_buffer.shape))
             else:
                 # if dst is CPU, copy first to src device, do the addition
                 # there, then move back to dst. adding directly to cpu is very slow
                 cuda_grad_buffer = grad_buffer.to(grad_partition.device, non_blocking=True)
-                cuda_grad_buffer.add_(grad_partition)
+                cuda_grad_buffer.add_(grad_partition.to(self.gradient_accumulation_dtype).view(cuda_grad_buffer.shape))
                 grad_buffer.copy_(cuda_grad_buffer, non_blocking=True)
                 # ensure grad buffer is a CUDA buffer to speed up the next few
                 # operations and so it can be used asynchronously
@@ -1326,7 +1330,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                         fp32_grad_tensor.copy_(grad_buffer)
 
             # free the gradient
-            param.grad.record_stream(get_accelerator().current_stream())
+            if not get_accelerator().is_synchronized_device():
+                param.grad.record_stream(get_accelerator().current_stream())
             param.grad = None
 
         if self.offload_optimizer and self.swap_optimizer:
@@ -1526,10 +1531,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
             tensor_size = tensor.numel()
 
-            if (current_index >= start_index and current_index < end_index):
+            if start_index <= current_index < end_index:
                 params_in_partition.append(tensor)
 
-            elif start_index > current_index and start_index < (current_index + tensor_size):
+            elif current_index < start_index < (current_index + tensor_size):
                 params_in_partition.append(tensor)
 
                 assert (first_offset == 0
@@ -1676,26 +1681,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     def reset_cpu_buffers(self):
         self.norm_for_param_grads = {}
 
-    def log_timers(self, timer_names):
-        if self.timers is None:
-            return
-
-        self.timers.log(names=list(timer_names))
-
-    def start_timers(self, timer_names):
-        if self.timers is None:
-            return
-
-        for name in timer_names:
-            self.timers(name).start()
-
-    def stop_timers(self, timer_names):
-        if self.timers is None:
-            return
-
-        for name in timer_names:
-            self.timers(name).stop()
-
     def _pre_step(self):
         self.micro_step_id = 0
 
@@ -1733,13 +1718,14 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # release all the gradient since we have already created a necessary copy in dp_grad_partition
         self.zero_grad(set_to_none=True)
 
-        for grad in filter(lambda g: get_accelerator().on_accelerator(g), self.averaged_gradients[sub_group_id]):
-            grad.record_stream(get_accelerator().current_stream())
+        if not get_accelerator().is_synchronized_device():
+            for grad in filter(lambda g: get_accelerator().on_accelerator(g), self.averaged_gradients[sub_group_id]):
+                grad.record_stream(get_accelerator().current_stream())
 
         self.averaged_gradients[sub_group_id] = None
 
     @instrument_w_nvtx
-    def _prepare_sub_group(self, sub_group_id, timer_names=set()):
+    def _prepare_sub_group(self, sub_group_id, timer_names):
         see_memory_usage(f'Before prepare optimizer sub group {sub_group_id}', force=False)
         if self._swappable_optimizer_subgroup(sub_group_id):
             self._optimizer_states_and_gradient_swap_in(sub_group_id, timer_names)
@@ -1747,26 +1733,25 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self._prepare_fp32_grad_for_sub_group(sub_group_id)
         see_memory_usage(f'After prepare optimizer sub group {sub_group_id}', force=False)
 
-    def _optimizer_states_and_gradient_swap_in(self, sub_group_id, timer_names=set()):
+    def _optimizer_states_and_gradient_swap_in(self, sub_group_id, timer_names):
         param_length = self.fp16_partitioned_groups_flat_numel[sub_group_id]
         fp32_param_id = id(self.fp32_partitioned_groups_flat[sub_group_id])
         assert self._swappable_optimizer_subgroup(sub_group_id), \
             f'Parameter {fp32_param_id} of numel={param_length} is not swappable'
 
-        OPTIMIZER_SWAP_IN_STATE = 'optimizer_swap_in_state'
         see_memory_usage(f'pre-step Before swapping in optimizer tensors {sub_group_id}', force=False)
-        self.start_timers([OPTIMIZER_SWAP_IN_STATE])
+        timer_names.add(OPTIMIZER_SWAP_IN_STATE_TIMER)
+        self.timers(OPTIMIZER_SWAP_IN_STATE_TIMER).start()
 
         self.optimizer_swapper.swap_in_optimizer_state(
             parameter=self.fp32_partitioned_groups_flat[sub_group_id],
             async_parameter=self.next_swappable_fp32_partitioned_groups[sub_group_id])
 
-        self.stop_timers([OPTIMIZER_SWAP_IN_STATE])
-        timer_names.add(OPTIMIZER_SWAP_IN_STATE)
+        self.timers(OPTIMIZER_SWAP_IN_STATE_TIMER).stop()
         see_memory_usage(f'pre-step After swapping in optimizer tensors {sub_group_id}', force=False)
 
     @instrument_w_nvtx
-    def _release_sub_group(self, sub_group_id, timer_names=set()):
+    def _release_sub_group(self, sub_group_id, timer_names):
         see_memory_usage(f'Before release optimizer sub group {sub_group_id}', force=False)
         # get rid of the fp32 gradients. Not needed anymore
         if not self.offload_optimizer:
@@ -1796,23 +1781,22 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         return self.flatten(padded_tensor_list)
 
-    def _optimizer_states_and_gradient_swap_out(self, sub_group_id, timer_names=set()):
+    def _optimizer_states_and_gradient_swap_out(self, sub_group_id, timer_names):
         param_length = self.fp16_partitioned_groups_flat_numel[sub_group_id]
         fp32_param_id = id(self.fp32_partitioned_groups_flat[sub_group_id])
         assert self._swappable_optimizer_subgroup(sub_group_id), \
             f'Parameter {fp32_param_id} of numel={param_length} is not swappable'
 
-        OPTIMIZER_SWAP_OUT_STATE = 'optimizer_swap_out_state'
         see_memory_usage(f'post-step Before swapping out optimizer tensors {sub_group_id}', force=False)
-        self.start_timers([OPTIMIZER_SWAP_OUT_STATE])
+        timer_names.add(OPTIMIZER_SWAP_OUT_STATE_TIMER)
+        self.timers(OPTIMIZER_SWAP_OUT_STATE_TIMER).start()
 
         self.optimizer_swapper.swap_out_optimizer_state(
             parameter=self.fp32_partitioned_groups_flat[sub_group_id],
             async_swap=self.next_swappable_fp32_partitioned_groups[sub_group_id] is not None)
 
-        self.stop_timers([OPTIMIZER_SWAP_OUT_STATE])
+        self.timers(OPTIMIZER_SWAP_OUT_STATE_TIMER).stop()
         see_memory_usage(f'post-step After swapping out optimizer tensors {sub_group_id}', force=False)
-        timer_names.add(OPTIMIZER_SWAP_OUT_STATE)
 
         # get rid of the fp32 gradients. Not needed anymore
         self.fp32_partitioned_groups_flat[sub_group_id].grad = None
@@ -1851,7 +1835,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         return self.overflow
 
     @instrument_w_nvtx
-    def _post_step(self, timer_names=set()):
+    def _post_step(self, timer_names):
         if self.offload_optimizer:
             self.reset_cpu_buffers()
 
@@ -1864,7 +1848,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self.invalidate_secondary_tensor()
 
-        self.log_timers(timer_names)
+        self.timers.log(timer_names)
 
         see_memory_usage('After zero_optimizer step', force=False)
         print_rank_0(f"------------------Finishing Step-----------------------")
@@ -1890,7 +1874,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     def step(self, closure=None):
         """
             Not supporting closure.
-            """
+        """
         self._pre_step()
         self._partition_all_parameters()
 
@@ -1908,8 +1892,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         timer_names = set()
 
-        timer_names.add('optimizer_step')
-        self.start_timers(['optimizer_step'])
+        timer_names.add(OPTIMIZER_STEP_TIMER)
+        self.timers(OPTIMIZER_STEP_TIMER).start()
 
         #update parameters one sub group at a time
         for sub_group_id, group in enumerate(self.fp16_groups):
@@ -1929,13 +1913,15 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             #release memory or swap out optimizer states of fp32 parameters
             self._release_sub_group(sub_group_id, timer_names)
 
-        self.stop_timers(['optimizer_step'])
+        self.timers(OPTIMIZER_STEP_TIMER).stop()
 
         self._post_step(timer_names)
 
         # warn user about caching allocator flushes
         memory_stats = get_accelerator().memory_stats()
-        alloc_retries = memory_stats["num_alloc_retries"] if memory_stats is not None else 0
+        alloc_retries = memory_stats.get("num_alloc_retries")
+        if alloc_retries == None:
+            alloc_retries = 0
         if alloc_retries > self.n_caching_allocator_flushes:
             if dist.get_rank() == 0:
                 logger.warning(
@@ -2022,7 +2008,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 overflow_gpu = self.inf_or_nan_tracker.clone().to(torch.uint8)
                 self.inf_or_nan_tracker.zero_()
 
-            get_accelerator().default_stream().wait_stream(self.reduce_and_partition_stream)
+            if not get_accelerator().is_synchronized_device():
+                get_accelerator().default_stream().wait_stream(self.reduce_and_partition_stream)
             dist.all_reduce(overflow_gpu, op=dist.ReduceOp.MAX, group=self.dp_process_group)
 
         else:
@@ -2092,7 +2079,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         """get fp32 gradient partition dictionary
         accessed as grad_dict[parameter_group_index][parameter_index]
         """
-        self.reduce_and_partition_stream.synchronize()
+        if not get_accelerator().is_synchronized_device():
+            self.reduce_and_partition_stream.synchronize()
         grad_dict = collections.defaultdict(dict)
         if self.offload_optimizer:
             for group in self.fp16_groups:
@@ -2126,7 +2114,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if not param.requires_grad:
             return None
 
-        self.reduce_and_partition_stream.synchronize()
+        if not get_accelerator().is_synchronized_device():
+            self.reduce_and_partition_stream.synchronize()
 
         if self.offload_optimizer:
             group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
@@ -2141,7 +2130,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if not param.requires_grad:
             return None
 
-        self.reduce_and_partition_stream.synchronize()
+        if not get_accelerator().is_synchronized_device():
+            self.reduce_and_partition_stream.synchronize()
         group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
 
         if self._swappable_optimizer_subgroup(group_idx):
@@ -2390,7 +2380,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                         state_dict_list,
                         load_optimizer_states=True,
                         load_from_fp32_weights=False,
-                        checkpoint_folder=None):
+                        checkpoint_folder=None,
+                        load_serial=None):
         r"""Loading a ZeRO checkpoint
         Arguments:
             state_dict_list: List of all saved ZeRO checkpoints, one for each saved partition.
@@ -2425,6 +2416,18 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self._rigid_load_state_dict(state_dict_list[dist.get_rank(group=self.dp_process_group)],
                                     load_optimizer_states=load_optimizer_states)
+
+        # when use loading checkpoint serial, after finish loading, we need to
+        # delete the temp state_dict_list variable to save memory, then trigger
+        # the next rank's loading
+        if load_serial != None:
+            load_serial += 1
+            rank = dist.get_rank(group=self.dp_process_group)
+            local_rank = dist.get_local_rank()
+            del state_dict_list[rank]
+            rank_end = dist.get_world_size() - 1
+            if local_rank != rank_end:
+                dist.send(tensor=load_serial, dst=rank + 1)
 
         if len(self.persistent_parameters) > 0:
             self.persistent_parameters[0].partition(self.persistent_parameters)
