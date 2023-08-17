@@ -165,7 +165,7 @@ class MiCS_Init(Init):
             elif dist.has_coalescing_manager():
                 return self._flat_all_gather_with_coalescing_manager(params, param_buffers)
             else:
-                return old_all_gather_coalesced(params, safe_mode)
+                return old_all_gather_coalesced(params, **kwargs)
 
         # change the all_gather_coalesced method
         param.all_gather_coalesced = _param_all_gather_coalesced
