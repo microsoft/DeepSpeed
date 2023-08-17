@@ -636,9 +636,6 @@ class PipelineEngine(DeepSpeedEngine):
             inputs = inputs[0] if len(inputs) == 1 else inputs
             self.pipe_buffers['inputs'][buffer_id] = inputs
 
-        # Zero out the gradients each time we use the tensor because only the data in
-        # tensor changes across batches
-
         outputs = super().forward(inputs)
 
         # Reset activation checkpointing buffers.
