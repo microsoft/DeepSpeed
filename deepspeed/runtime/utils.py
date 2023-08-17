@@ -945,7 +945,8 @@ def all_gather_dp_groups(partitioned_param_groups, dp_process_group, start_align
         dp_world_size = dist.get_world_size(group=dp_process_group[group_id])
 
         if dp_world_size == 1:
-            # no groups share optimizer states.
+            # no groups share optimizer states
+            # pipeline parallel with bf16 will default call this even if dp size = 1.
             continue
         num_shards = max(1, partitioned_params[partition_id].numel() * dp_world_size // allgather_bucket_size)
 
