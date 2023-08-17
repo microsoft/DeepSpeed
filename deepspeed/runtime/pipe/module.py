@@ -351,7 +351,14 @@ class PipelineModule(nn.Module):
 
             def exec_func(*inputs):
                 # Single tensor inputs need to be unwrapped
-                if len(inputs) == 1:
+                if wrap_layer:
+                    if len(inputs) == 2:
+                        dummy_tensor = inputs[1]
+                        inputs = inputs[0]
+                    else:
+                        dummy_tensor = inputs[-1]
+                        inputs = inputs[:-1]
+                elif len(inputs) == 1:
                     inputs = inputs[0]
                 for idx, layer in enumerate(self.forward_funcs[start:end]):
                     self.curr_layer = idx + self._local_start
@@ -361,33 +368,14 @@ class PipelineModule(nn.Module):
                             self.seed_fn(new_seed)
                         else:
                             ds_utils.set_random_seed(new_seed)
-
-                    inputs = layer(inputs)
-                return inputs
-
-            def exec_func_wrap(*inputs):
-                # Single tensor inputs need to be unwrapped
-                if len(inputs) == 2:
-                    dummy_tensor = inputs[1]
-                    inputs = inputs[0]
-                else:
-                    dummy_tensor = inputs[-1]
-                    inputs = inputs[:-1]
-                for idx, layer in enumerate(self.forward_funcs[start:end]):
-                    self.curr_layer = idx + self._local_start
-                    if self.seed_layers:
-                        new_seed = (self.base_seed * local_micro_offset) + self.curr_layer
-                        if self.seed_fn:
-                            self.seed_fn(new_seed)
-                        else:
-                            ds_utils.set_random_seed(new_seed)
-                    if idx == 0:
+                    if wrap_layer and idx == 0:
+                        # the first checkpoint layer is wrapped by ModuleWrapper and get a dummy_tensor with requires_grad=True
                         inputs = layer(inputs, dummy_tensor)
                     else:
                         inputs = layer(inputs)
                 return inputs
 
-            return exec_func if not wrap_layer else exec_func_wrap
+            return exec_func
 
         if self.activation_checkpoint_interval == 0:
             func = exec_range_func(0, len(self.forward_funcs))
