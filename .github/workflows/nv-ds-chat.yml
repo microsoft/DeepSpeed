@@ -42,7 +42,11 @@ jobs:
 
       - name: DS-Chat unit tests
         run: |
-          git clone -b dse_branch https://github.com/microsoft/DeepSpeedExamples.git
+          BRANCH="master"
+          if [[ ! -z "${{ github.event.inputs.dse_branch }}" ]]; then
+              BRANCH="${{ github.event.inputs.dse_branch }}"
+          fi
+          git clone -b $BRANCH https://github.com/microsoft/DeepSpeedExamples.git
           cd DeepSpeedExamples/applications/DeepSpeed-Chat
           pip install -r requirements.txt
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
