@@ -1,14 +1,12 @@
-"""
-Copyright 2022 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import os
 import torch
 import types
-
-from .constants import (FP32_WEIGHT_KEY,
-                        PARAM,
-                        VOCAB_DIVISIBILITY_PADDING_TENSOR,
-                        CAT_DIM)
+from .constants import (FP32_WEIGHT_KEY, PARAM, VOCAB_DIVISIBILITY_PADDING_TENSOR, CAT_DIM)
 
 
 def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
@@ -45,27 +43,18 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
         # the converter to universal currently strips the original padding completely so the saved
         # weight is padding-free and we just need to add new padding depending on the target TP
         # degree
-        vocab_divisibility_padding_tensor = ckpt_dict.get(
-            VOCAB_DIVISIBILITY_PADDING_TENSOR,
-            None)
+        vocab_divisibility_padding_tensor = ckpt_dict.get(VOCAB_DIVISIBILITY_PADDING_TENSOR, None)
         if vocab_divisibility_padding_tensor is not None:
             # In the absence of data passed from the user wrt new padded vocab specific to tp degree
             # we can again derive that data by reverse engineering the target shapes like so:
             padded_target_vocab_size = self.shape[0] * tp_world_size
             if padded_target_vocab_size > full_hp_param.shape[0]:
                 # Need to expand
-                padding_tensor = vocab_divisibility_padding_tensor.expand(
-                    padded_target_vocab_size - full_hp_param.shape[0])
+                padding_size = padded_target_vocab_size - full_hp_param.shape[0]
                 # Implement the following concat in efficient way using pad
                 #full_hp_param = torch.cat((full_hp_param, padding_tensor), 0)
-                full_hp_param = torch.nn.functional.pad(full_hp_param,
-                                                        (0,
-                                                         0,
-                                                         0,
-                                                         padding_tensor.shape[0]),
-                                                        "constant",
-                                                        0)
-                full_hp_param[:-padding_tensor.shape[0], :] = padding_tensor
+                full_hp_param = torch.nn.functional.pad(full_hp_param, (0, 0, 0, padding_size), "constant", 0)
+                full_hp_param[:-padding_size, :] = vocab_divisibility_padding_tensor
             else:
                 # Need to shrink or keep the same
                 full_hp_param = full_hp_param[:padded_target_vocab_size, :]
@@ -78,8 +67,7 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
 
         assert full_param_numel == tp_world_size * tp_slice_numel, \
             f'Loading {ckpt_file} full param numel {full_param_numel} != tensor slice numel {tp_slice_numel} * tp_world_size {tp_world_size}'
-        dst_tensor = hp_mapping.hp_fragment if key == FP32_WEIGHT_KEY else hp_mapping.get_optim_state_fragment(
-            key)
+        dst_tensor = hp_mapping.hp_fragment if key == FP32_WEIGHT_KEY else hp_mapping.get_optim_state_fragment(key)
 
         #        print(f"{full_hp_param.shape=} {full_param_numel=} {folder=}")
         #        print(f"{dst_tensor.shape=} {dst_tensor.numel()=}{folder=}")
@@ -92,9 +80,7 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
         tp_hp_slice = tp_hp_slice.flatten()
 
         lp_frag_address = hp_mapping.lp_fragment_address
-        tp_hp_fragment = tp_hp_slice.narrow(0,
-                                            lp_frag_address.start,
-                                            lp_frag_address.numel)
+        tp_hp_fragment = tp_hp_slice.narrow(0, lp_frag_address.start, lp_frag_address.numel)
         assert dst_tensor.numel() == lp_frag_address.numel, \
             f'Load checkpoint {key} dst_tensor numel {dst_tensor.numel()} != src numel {lp_frag_address.numel}'
 
@@ -106,5 +92,4 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
 
 def enable_universal_checkpoint(param_list):
     for param in param_list:
-        param.load_hp_checkpoint_state = types.MethodType(load_hp_checkpoint_state,
-                                                          param)
+        param.load_hp_checkpoint_state = types.MethodType(load_hp_checkpoint_state, param)

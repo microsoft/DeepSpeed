@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 # Configuration file for the Sphinx documentation builder.
 #
 # This file only contains a selection of the most common options. For a full
@@ -20,7 +25,8 @@ copyright = '2020, Microsoft'
 author = 'Microsoft'
 
 # The full version, including alpha/beta/rc tags
-release = '0.6'
+with open("../../../version.txt", "r") as f:
+    release = f.readline().rstrip()
 
 master_doc = 'index'
 
@@ -37,9 +43,24 @@ extensions = [
     'sphinx.ext.viewcode',
     'recommonmark',
     'sphinx_rtd_theme',
+    'sphinxcontrib.autodoc_pydantic',
+    'sphinx.ext.autosectionlabel',
 ]
 
 pygments_style = 'sphinx'
+
+# autodoc_pyandtic config
+autodoc_pydantic_model_show_field_summary = False
+autodoc_pydantic_field_signature_prefix = ' '
+autodoc_pydantic_model_signature_prefix = 'class'
+autodoc_pydantic_model_show_json = False
+autodoc_pydantic_model_show_config_summary = False
+autodoc_pydantic_model_show_config_member = False
+autodoc_pydantic_model_show_validator_summary = False
+autodoc_pydantic_model_show_validator_members = False
+autodoc_pydantic_model_summary_list_order = 'bysource'
+autodoc_pydantic_model_member_order = 'bysource'
+autodoc_pydantic_field_list_validators = False
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -75,6 +96,6 @@ sys.path.insert(0, os.path.abspath('../../../'))
 # Prepend module names to class descriptions?
 add_module_names = True
 
-autoclass_content = 'both'
+autoclass_content = 'auto'
 
 autodoc_mock_imports = ["apex", "mpi4py", "tensorboardX", "numpy", "cupy"]

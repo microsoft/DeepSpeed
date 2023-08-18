@@ -57,15 +57,19 @@ DS_BUILD_FUSED_LAMB=1 pip install deepspeed
 
 Available `DS_BUILD` options include:
 * `DS_BUILD_OPS` toggles all ops
+* `DS_BUILD_AIO` builds asynchronous (NVMe) I/O op
+* `DS_BUILD_CCL_COMM` builds the communication collective libs
 * `DS_BUILD_CPU_ADAM` builds the CPUAdam op
 * `DS_BUILD_FUSED_ADAM` builds the FusedAdam op (from [apex](https://github.com/NVIDIA/apex))
+* `DS_BUILD_CPU_ADAGRAD` builds the CPUAdagrad op
 * `DS_BUILD_FUSED_LAMB` builds the FusedLamb op
+* `DS_BUILD_QUANTIZER` builds the quantizer op
+* `DS_BUILD_RANDOM_LTD` builds the random ltd op
 * `DS_BUILD_SPARSE_ATTN` builds the sparse attention op
 * `DS_BUILD_TRANSFORMER` builds the transformer op
 * `DS_BUILD_TRANSFORMER_INFERENCE` builds the transformer-inference op
 * `DS_BUILD_STOCHASTIC_TRANSFORMER` builds the stochastic transformer op
 * `DS_BUILD_UTILS` builds various optimized utilities
-* `DS_BUILD_AIO` builds asynchronous (NVMe) I/O op
 
 To speed up the build-all process, you can parallelize the compilation process with:
 
@@ -123,6 +127,16 @@ fail. Therefore, if you need to you can override the default location with the h
  TORCH_EXTENSIONS_DIR=./torch-extensions deepspeed ...
 ```
 
+### Conda environment for building from source
+
+If you encounter difficulties during compilation using the default system environment, you can try the conda environment provided, which includes the necessary compilation toolchain and PyTorch.
+
+```bash
+conda env create -n deepspeed -f environment.yml --force
+```
+
+and try above install commands after activating it.
+
 ## Building for the correct architectures
 
 If you're getting the following error:
@@ -146,6 +160,33 @@ It will also make the build faster when you only build for a few architectures.
 This is also recommended to ensure your exact architecture is used. Due to a variety of technical reasons, a distributed pytorch binary isn't built to fully support all architectures, skipping binary compatible ones, at a potential cost of underutilizing your full card's compute capabilities. To see which architectures get included during the deepspeed build from source - save the log and grep for `-gencode` arguments.
 
 The full list of nvidia GPUs and their compute capabilities can be found [here](https://developer.nvidia.com/cuda-gpus).
+
+## CUDA version mismatch
+
+If you're getting the following error:
+
+```
+Exception: >- DeepSpeed Op Builder: Installed CUDA version {VERSION} does not match the version torch was compiled with {VERSION}, unable to compile cuda/cpp extensions without a matching cuda version.
+```
+You have a misaligned version of CUDA installed compared to the version of CUDA
+used to compile torch. A mismatch in the major version is likely to result in
+errors or unexpected behavior.
+
+The easiest fix for this error is changing the CUDA version installed (check
+with `nvcc --version`) or updating the torch version to match the installed
+CUDA version (check with `python3 -c "import torch; print(torch.__version__)"`).
+
+We only require that the major version matches (e.g., 11.1 and 11.8). However,
+note that even a mismatch in the minor version _may still_ result in unexpected
+behavior and errors, so it's recommended to match both major and minor versions.
+When there's a minor version mismatch, DeepSpeed will log a warning.
+
+If you want to skip this check and proceed with the mismatched CUDA versions,
+use the following environment variable, but beware of unexpected behavior:
+
+```bash
+DS_SKIP_CUDA_CHECK=1
+```
 
 ## Feature specific dependencies
 

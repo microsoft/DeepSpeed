@@ -63,7 +63,7 @@ Updated with MoE Layers
 
 ### Pyramid-Residual MoE
 
-Recently, we proposed a novel [Pyramid-Residual MoE](https://arxiv.org/abs/2201.05596]) (PR-MoE) model architecture. To create such an MoE model, the users need to do two additional things: 1) To make a pyramid structure, pass num_experts as a list e.g. [4, 8] and 2) Use the ```use_residual``` flag to indicate that the MoE layer is now a Residual MoE layer.
+Recently, we proposed a novel [Pyramid-Residual MoE](https://arxiv.org/abs/2201.05596) (PR-MoE) model architecture. To create such an MoE model, the users need to do two additional things: 1) To make a pyramid structure, pass num_experts as a list e.g. [4, 8] and 2) Use the ```use_residual``` flag to indicate that the MoE layer is now a Residual MoE layer.
 
 ```python
 self.experts = deepspeed.moe.layer.MoE(hidden_size=input_dim, expert=ExpertModule(), num_experts=[..], ep_size=ep_size, use_residual=True)
@@ -165,4 +165,4 @@ We have devised a new technique called “Random Token Selection” that greatly
 
 ## Advanced MoE usage
 
-We have added an example of applying MoE to NLG models. Please read more in this [newsletter](https://www.deepspeed.ai/news/2021/12/09/deepspeed-moe-nlg.html) and [tutorial](/tutorials/mixture-of-experts-nlg/).
+We have added an example of applying MoE to NLG models. Please read more in this [newsletter](https://www.deepspeed.ai/2021/12/09/deepspeed-moe-nlg.html) and [tutorial](/tutorials/mixture-of-experts-nlg/).

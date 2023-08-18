@@ -1,9 +1,11 @@
-'''
-Copyright 2020 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 
-from ..op_builder import QuantizerBuilder
+from deepspeed.ops.op_builder import QuantizerBuilder
 
 # Cuda modules will be imported if needed
 quantizer_cuda_module = None

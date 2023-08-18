@@ -1,15 +1,14 @@
 name: nv-transformers-v100
 
 on:
-  push:
-    branches:
-      - 'master'
-      - 'staging**'
-    paths-ignore:
-      - 'docs/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
+      - 'blogs/**'
+  merge_group:
+    branches: [ master ]
+  schedule:
+    - cron: "0 0 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,49 +19,44 @@ jobs:
     runs-on: [self-hosted, nvidia, cu111, v100]
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - name: environment
+      - id: setup-venv
+        uses: ./.github/workflows/setup-venv
+
+      - name: Install pytorch
         run: |
-          echo "JobID: $AISC_NODE_INSTANCE_ID"
-          nvidia-smi
-          which python
-          python --version
-          which nvcc
-          nvcc --version
-          pip install --upgrade pip
-          pip uninstall --yes torch torchvision
-          pip install torch==1.8.2+cu111 torchvision==0.9.2+cu111 -f https://download.pytorch.org/whl/lts/1.8/torch_lts.html
+          # use the same pytorch version as transformers CI
+            pip install -U --cache-dir $TORCH_CACHE torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
-          sudo apt-get update
-          sudo apt-get install -y libaio-dev
 
-      - name: Python environment
+      - name: Install transformers
         run: |
-          pip list
-
-      - name: Install deepspeed
-        run: |
-          pip uninstall --yes deepspeed
-          pip install .[dev,autotuning]
-          ds_report
-
-      - name: HF transformers tests
-        run: |
-          if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           git clone https://github.com/huggingface/transformers
           cd transformers
           # if needed switch to the last known good SHA until transformers@master is fixed
           # git checkout 1cc453d33
           git rev-parse --short HEAD
-          # scipy/sklearn required for tests, using the 'dev' extra forces torch re-install
+          pip install .
+
+      - name: Install deepspeed
+        run: |
+          pip install .[dev,autotuning]
+          ds_report
+
+      - name: Python environment
+        run: |
+          pip list
+
+      - name: HF transformers tests
+        run: |
+          unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
+          cd transformers
           pip install .[testing]
           # find reqs used in ds integration tests
           find examples/pytorch -regextype posix-egrep -regex '.*(language-modeling|question-answering|summarization|image-classification|text-classification|translation).*/requirements.txt' -exec grep -v 'torch' {} \; | xargs -I {} pip install --upgrade {}
-          # force datasets version due to issues
-          pip install datasets==2.2.2
           # force protobuf version due to issues
           pip install "protobuf<4.21.0"
           pip list
-          WANDB_DISABLED=true TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --color=yes --durations=0 --verbose tests/deepspeed
+          WANDB_DISABLED=true RUN_SLOW=1 pytest $PYTEST_OPTS tests/deepspeed

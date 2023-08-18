@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from typing import List, Tuple, Dict
 import torch
 from .layer import MoE
@@ -6,6 +11,7 @@ from .layer import MoE
 def has_moe_layers(m):
     has_moe = False
     num_experts = 0
+
     for _, module in m.named_modules():
         if isinstance(module, MoE):
             has_moe = True
@@ -21,8 +27,7 @@ def is_moe_param(param: torch.Tensor) -> bool:
 
 
 def split_params_into_shared_and_expert_params(
-        params: List[torch.nn.Parameter]) -> Tuple[torch.nn.Parameter,
-                                                   torch.nn.Parameter]:
+        params: List[torch.nn.Parameter]) -> Tuple[torch.nn.Parameter, torch.nn.Parameter]:
     shared_params, expert_params = [], []
     for p in params:
         if is_moe_param(p):
@@ -33,8 +38,7 @@ def split_params_into_shared_and_expert_params(
 
 
 def split_params_grads_into_shared_and_expert_params(
-        group: List[torch.nn.Parameter]) -> Tuple[torch.nn.Parameter,
-                                                  torch.nn.Parameter]:
+        group: List[torch.nn.Parameter]) -> Tuple[torch.nn.Parameter, torch.nn.Parameter]:
     """Split grad of parameters into grads of non-expert params
     and grads of expert params. This is useful while computing
     grad-norms for clipping and overflow detection
@@ -59,8 +63,7 @@ def split_params_grads_into_shared_and_expert_params(
 
 
 def split_params_into_different_moe_groups_for_optimizer(param_groups: Tuple[Dict],
-                                                         max_group_size=178956971
-                                                         ) -> Tuple[Dict]:
+                                                         max_group_size=178956971) -> Tuple[Dict]:
     """Split parameters into different MoE groups for optimizer
 
     Args:
@@ -98,8 +101,7 @@ def split_params_into_different_moe_groups_for_optimizer(param_groups: Tuple[Dic
                     if ori_key == 'params':
                         group_moe[param_group['name']][key][ori_key] = []
                     else:
-                        group_moe[
-                            param_group['name']][key][ori_key] = param_group[ori_key]
+                        group_moe[param_group['name']][key][ori_key] = param_group[ori_key]
     # Assign param
     for param_group in param_groups:
         new_params = []
