@@ -84,7 +84,7 @@ def _module_match(module):
     return None
 
 
-def generic_injection(module, fp16=False, bf16=False, enable_cuda_graph=True):
+def generic_injection(module, dtype=None, enable_cuda_graph=True):
 
     def replace_attn(child, policy):
         policy_attn = policy.attention(child)
@@ -98,8 +98,7 @@ def generic_injection(module, fp16=False, bf16=False, enable_cuda_graph=True):
         config = transformer_inference.DeepSpeedInferenceConfig(
             hidden_size=hidden_size,
             heads=heads,
-            fp16=fp16,
-            bf16=bf16,
+            dtype=dtype,
             triangular_masking=False,
             max_out_tokens=4096,
         )
@@ -132,8 +131,8 @@ def generic_injection(module, fp16=False, bf16=False, enable_cuda_graph=True):
     if isinstance(module, torch.nn.Module):
         pass
     else:
-        if fp16 is False and bf16 is False:
-            raise ValueError("Generic injection only supported with FP16 or BF16")
+        if dtype not in [torch.float16, torch.half]:
+            raise ValueError("Generic injection only supported with FP16")
 
         try:
             import diffusers
@@ -274,7 +273,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         _autotp.set_tensor_parallel_config(config.tensor_parallel.tp_size, config.tensor_parallel.tp_group)
 
         # 3. Set linear policies
-        _autotp.update_linear_polciies()
+        _autotp.update_linear_policies()
 
         # 4. Replace modules
         return _autotp._replace_module(module)

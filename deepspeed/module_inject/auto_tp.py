@@ -308,7 +308,7 @@ class AutoTP():
             data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
             setattr(child, "replaced", True)
-            return LinearAllreduce(data, child.bias if child.bias is None else \
+            return LinearAllreduce(torch.nn.parameter.Parameter(data, requires_grad=False), child.bias if child.bias is None else \
                         torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), self.mp_group)
         else:
 
@@ -335,11 +335,13 @@ class AutoTP():
                     bias_data = child.bias.data.split(
                         (weight_shape[1] if self.conv_linear_layer else weight_shape[0]) // self.mp_size, dim=0)
                     bias_data = bias_data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+                    bias_data = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
                 else:
                     bias_data = None
 
             setattr(child, "replaced", True)
-            return LinearLayer(weight=data.to(get_accelerator().current_device_name()), bias=bias_data)
+            return LinearLayer(weight=torch.nn.parameter.Parameter(data.to(get_accelerator().current_device_name()), requires_grad=False), \
+                        bias=bias_data)
 
     def _slice_embedding(self, child, name, conv_linear_layer):
         if getattr(child, "replaced", False) == True:
@@ -351,6 +353,7 @@ class AutoTP():
         else:
             data = child.weight.data.split(child.weight.shape[1] // self.mp_size, dim=1)
         data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+        data = torch.nn.parameter.Parameter(data, requires_grad=False)
 
         new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // self.mp_size)
         new_embedding.weight.data.copy_(data)
@@ -370,7 +373,7 @@ class AutoTP():
                 setattr(child, param, param_val // self.mp_size)
         setattr(child, "replaced", True)
 
-    def update_linear_polciies(self):
+    def update_linear_policies(self):
         self.conv_linear_layer = False
         if self.linear_layer_setting is not None:
             self.linear_policies = {self.linear_layer_setting[0]: self._replace}
