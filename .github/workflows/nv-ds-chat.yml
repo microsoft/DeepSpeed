@@ -46,6 +46,7 @@ jobs:
           if [[ ! -z "${{ github.event.inputs.dse_branch }}" ]]; then
               BRANCH="${{ github.event.inputs.dse_branch }}"
           fi
+          echo "DeepSpeedExamples Branch: $BRANCH"
           git clone -b $BRANCH https://github.com/microsoft/DeepSpeedExamples.git
           cd DeepSpeedExamples/applications/DeepSpeed-Chat
           pip install -r requirements.txt
