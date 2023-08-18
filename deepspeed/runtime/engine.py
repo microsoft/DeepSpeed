@@ -85,6 +85,7 @@ from deepspeed.runtime.data_pipeline.data_routing.helper import remove_random_lt
 from deepspeed.runtime.data_pipeline.data_routing.basic_layer import RandomLayerTokenDrop
 
 from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
+from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
 
 from .pipe.module import PipelineModule
 from .utils import get_ma_status
@@ -867,6 +868,12 @@ class DeepSpeedEngine(Module):
             grad_accum_dtype = DtypeEnum(self._config.grad_accum_dtype).value
 
         return (model_dtype, grad_accum_dtype)
+
+    def _optimizer_has_ckpt_event_prologue(self):
+        return self.optimizer is not None and hasattr(self.optimizer, 'checkpoint_event_prologue')
+
+    def _optimizer_has_ckpt_event_epilogue(self):
+        return self.optimizer is not None and hasattr(self.optimizer, 'checkpoint_event_epilogue')
 
     def _configure_lr_scheduler(self, client_lr_scheduler):
         # First check for scheduler in json configuration
@@ -2504,11 +2511,14 @@ class DeepSpeedEngine(Module):
                     moe_layer_id += 1
 
     def load_module_state_dict(self, checkpoint, strict=True, custom_load_fn=None, fetch_z3_params=False):
+        if fetch_z3_params:
+            params_to_fetch = [
+                p for p in self.module.parameters()
+                if hasattr(p, 'ds_id') and p.ds_status == ZeroParamStatus.NOT_AVAILABLE
+            ]
+        else:
+            params_to_fetch = []
 
-        def z3_params_to_fetch(param_list):
-            return [p for p in param_list if hasattr(p, 'ds_id') and p.ds_status == ZeroParamStatus.NOT_AVAILABLE]
-
-        params_to_fetch = z3_params_to_fetch(self.module.parameters()) if fetch_z3_params else []
         with deepspeed.zero.GatheredParameters(params_to_fetch, modifier_rank=0):
             module_state_dict = checkpoint['module']
             if custom_load_fn:
@@ -2647,7 +2657,7 @@ class DeepSpeedEngine(Module):
                     )
                     return None, None
 
-        if self.optimizer and hasattr(self.optimizer, 'checkpoint_event_prologue'):
+        if self._optimizer_has_ckpt_event_prologue():
             # Prepare for checkpoint load by ensuring all parameters are partitioned
             self.optimizer.checkpoint_event_prologue()
 
@@ -2666,7 +2676,7 @@ class DeepSpeedEngine(Module):
             if not success:
                 self.optimizer._restore_from_bit16_weights()
 
-        if self.optimizer and hasattr(self.optimizer, 'checkpoint_event_epilogue'):
+        if self._optimizer_has_ckpt_event_epilogue():
             self.optimizer.checkpoint_event_epilogue()
 
         return load_path, client_states
@@ -2695,7 +2705,6 @@ class DeepSpeedEngine(Module):
 
         fetch_z3_params = False
         if self.zero_optimization_partition_weights() and not load_optimizer_states:
-            from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
             checkpoint['module'] = get_fp32_state_dict_from_zero_checkpoint(load_dir)
             fetch_z3_params = True
 
@@ -2939,7 +2948,7 @@ class DeepSpeedEngine(Module):
         process with rank 0.
 
         """
-        if hasattr(self.optimizer, 'checkpoint_event_prologue'):
+        if self._optimizer_has_ckpt_event_prologue():
             # Custom preparation for checkpoint save, if applicable
             self.optimizer.checkpoint_event_prologue()
 
@@ -2985,7 +2994,7 @@ class DeepSpeedEngine(Module):
             self._create_zero_checkpoint_files(save_dir, tag)
             self._save_zero_checkpoint(save_dir, tag)
 
-        if hasattr(self.optimizer, 'checkpoint_event_epilogue'):
+        if self._optimizer_has_ckpt_event_epilogue():
             self.optimizer.checkpoint_event_epilogue()
 
         # Save latest checkpoint tag
@@ -3387,13 +3396,15 @@ class DeepSpeedEngine(Module):
                     get_layer_state_dict(child, prefix + name + ".")
 
         # Prepare for checkpoint save by ensuring all parameters are partitioned
-        self.optimizer.checkpoint_event_prologue()
+        if self._optimizer_has_ckpt_event_prologue():
+            self.optimizer.checkpoint_event_prologue()
 
         see_memory_usage("before get_layer_state_dict", force=False)
         get_layer_state_dict(self.module, prefix="")
         see_memory_usage("after get_layer_state_dict", force=False)
 
-        self.optimizer.checkpoint_event_epilogue()
+        if self._optimizer_has_ckpt_event_epilogue():
+            self.optimizer.checkpoint_event_epilogue()
 
         return state_dict
 
