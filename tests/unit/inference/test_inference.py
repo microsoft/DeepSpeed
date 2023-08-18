@@ -573,6 +573,7 @@ class TestLMCorrectness(DistributedTest):
         get_accelerator().synchronize()
         bs_time = time.time() - start
 
+        getattr(lm, model_family).to("cpu")
         ds_model = deepspeed.init_inference(
             getattr(lm, model_family),
             mp_size=1,
