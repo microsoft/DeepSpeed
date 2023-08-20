@@ -1329,14 +1329,14 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     handles.append(handle)
                 else:
                     all_gather_list.append(param)
-
+        # note: param_list may contain params that are already in flight / aviailable. So we need to use all_gather_list
         if not async_op:
-            if len(param_list) == 1:
+            if len(all_gather_list) == 1:
                 ret_value = self._allgather_params(all_gather_list, hierarchy=hierarchy)
             else:
                 all_gather_quantize_list = []
                 all_gather_nonquantize_list = []
-                for param in param_list:
+                for param in all_gather_list:
                     if hasattr(param.ds_tensor,
                                "ds_quant_scale") or (hasattr(param, "ds_secondary_tensor")
                                                      and hasattr(param.ds_secondary_tensor, "ds_quant_scale")):
