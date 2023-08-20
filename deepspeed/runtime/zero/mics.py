@@ -318,11 +318,12 @@ class MiCS_Offload(DeepSpeedZeRoOffload):
                  max_live_parameters=1000000000,
                  param_persistence_threshold=100000,
                  model_persistence_threshold=sys.maxsize,
+                 dp_process_group=None,
                  offload_param_config=None,
                  mpu=None):
         super().__init__(module, timers, ds_config, overlap_comm, prefetch_bucket_size, max_reuse_distance,
                          max_live_parameters, param_persistence_threshold, model_persistence_threshold,
-                         offload_param_config, mpu)
+                         dp_process_group, offload_param_config, mpu)
 
     def _convert_to_zero_parameters(self, ds_config, module, mpu):
         """ overload the parent class function for convert the parameters
@@ -414,6 +415,7 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
         max_live_parameters,
         param_persistence_threshold,
         model_persistence_threshold,
+        dp_process_group,
         offload_param_config,
         mpu,
         zpg=None,
@@ -422,7 +424,7 @@ class MiCS_Optimizer(DeepSpeedZeroOptimizer_Stage3):
         assert not zero_quantized_weights and zpg is None, "MiCS is mutually exclusive with ZeRO++"
         return MiCS_Offload(module, timers, ds_config, overlap_comm, prefetch_bucket_size, max_reuse_distance,
                             max_live_parameters, param_persistence_threshold, model_persistence_threshold,
-                            offload_param_config, mpu)
+                            dp_process_group, offload_param_config, mpu)
 
     def partition_grads(self, params_to_release: List[Parameter], grad_partitions: List[Tensor]) -> None:
         grad_buffers = super().partition_grads(params_to_release, grad_partitions)
