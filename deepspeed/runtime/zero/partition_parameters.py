@@ -252,7 +252,10 @@ def get_new_tensor_fn_for_dtype(dtype: torch.dtype) -> Callable:
 
     def new_tensor(cls, *args) -> Tensor:
         device = torch.device(get_accelerator().device_name(os.environ["LOCAL_RANK"]))
-        tensor = _orig_torch_empty(0, device=device).new_empty(*args)
+        if 'size' not in args:
+            tensor = _orig_torch_empty(0, device=device).new_empty(0)
+        else:
+            tensor = _orig_torch_empty(0, device=device).new_empty(*args)
         if tensor.is_floating_point():
             tensor = tensor.to(dtype)
 
