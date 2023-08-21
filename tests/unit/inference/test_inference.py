@@ -426,7 +426,7 @@ class TestLowCpuMemUsage(DistributedTest):
         print(local_rank, "deepspeed", ds_output)
         assert assert_fn(bs_output, ds_output)
 
-        
+
 @pytest.mark.parametrize("model_w_task", [("tiiuae/falcon-7b", "text-generation")], ids=["falcon"])
 class TestAutoTP(DistributedTest):
     world_size = 1
