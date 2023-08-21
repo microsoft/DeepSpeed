@@ -389,6 +389,11 @@ class TestMPSize(DistributedTest):
                            "text-generation")],
                          ids=["gpt-j"])
 class TestLowCpuMemUsage(DistributedTest):
+    world_size = 1
+
+    def test(
+        self,
+        model_w_task,
         dtype,
         query,
         inf_kwargs,
