@@ -1,9 +1,16 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from deepspeed import comm as dist
 global num_kv_heads
+
 
 def set_num_kv_heads(num):
     global num_kv_heads
     num_kv_heads = num
+
 
 def get_shard_size(total_size, mp_size, rank=None):
     global num_kv_heads
@@ -18,6 +25,7 @@ def get_shard_size(total_size, mp_size, rank=None):
             return total_size // mp_size
         else:
             assert False, f"Number of attention heads ({total_size}) must be divisible by mp_size ({mp_size})"
+
 
 def get_shard_size_list(total_size, mp_size):
     shard_sizes = []

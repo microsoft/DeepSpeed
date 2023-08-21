@@ -319,8 +319,9 @@ class AutoTP():
 
             if self.conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
-            data = child.weight.data.split(
-                get_shard_size_list(weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size), dim=1)
+            data = child.weight.data.split(get_shard_size_list(
+                weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size),
+                                           dim=1)
             data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
             setattr(child, "replaced", True)
@@ -348,8 +349,9 @@ class AutoTP():
                 data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
                 if child.bias is not None:
-                    bias_data = child.bias.data.split(
-                        get_shard_size_list(weight_shape[1] if self.conv_linear_layer else weight_shape[0], self.mp_size), dim=0)
+                    bias_data = child.bias.data.split(get_shard_size_list(
+                        weight_shape[1] if self.conv_linear_layer else weight_shape[0], self.mp_size),
+                                                      dim=0)
                     bias_data = bias_data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
                     bias_data = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
                 else:
