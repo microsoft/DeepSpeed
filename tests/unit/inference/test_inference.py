@@ -384,10 +384,7 @@ class TestMPSize(DistributedTest):
 
 
 @pytest.mark.seq_inference
-@pytest.mark.parametrize("model_w_task",
-                         [("EleutherAI/gpt-j-6B",
-                           "text-generation")],
-                         ids=["gpt-j"])
+@pytest.mark.parametrize("model_w_task", [("EleutherAI/gpt-j-6B", "text-generation")], ids=["gpt-j"])
 class TestLowCpuMemUsage(DistributedTest):
     world_size = 1
 
@@ -411,11 +408,7 @@ class TestLowCpuMemUsage(DistributedTest):
 
         # We have to load these large models on CPU with pipeline because not
         # enough GPU memory
-        pipe = pipeline(task,
-                        model=model,
-                        tokenizer=tokenizer,
-                        device=-1,
-                        framework="pt")
+        pipe = pipeline(task, model=model, tokenizer=tokenizer, device=-1, framework="pt")
         bs_output = pipe(query, **inf_kwargs)
 
         pipe.model = deepspeed.init_inference(pipe.model,
