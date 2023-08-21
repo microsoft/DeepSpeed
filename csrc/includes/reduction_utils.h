@@ -1,6 +1,7 @@
-/*
-Copyright 2022 The Microsoft DeepSpeed Team
-*/
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
 
 #pragma once
 
@@ -263,7 +264,7 @@ DS_D_INLINE __half init<ROpType::Min>()
 }
 
 template <>
-__half init<ROpType::Max>()
+DS_D_INLINE __half init<ROpType::Max>()
 {
     constexpr __half_raw neg_inf = {0xFC00};
     return __half(neg_inf);
@@ -514,11 +515,11 @@ DS_D_INLINE void partitioned_block(cg::thread_block& tb,
                                    float& val)
 {
     if (num_threads <= hw_warp_size) {
-        _warp<Op, num_threads>(warp, val);
+        _warp<Op, num_threads>(warp, &val);
     } else {
         constexpr int num_warps = num_threads / hw_warp_size;
         const int warp_offset = warp.meta_group_rank() & ~(num_warps - 1);
-        _block<num_warps, Op>(tb, warp, val, warp_offset);
+        _block<num_warps, Op>(tb, warp, &val, warp_offset);
     }
 }
 

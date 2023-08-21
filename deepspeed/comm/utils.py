@@ -1,35 +1,11 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import os
-import torch
 import inspect
 from deepspeed.utils import get_caller_func
-
-
-def older_torch():
-    '''
-        Helper to lookup torch version. For versions less than 1.8, torch.dist
-        used torch.distributed.group.WORLD as the default group argument instead of None.
-        See more details at: https://github.com/pytorch/pytorch/pull/48767
-    '''
-    TORCH_MAJOR = int(torch.__version__.split('.')[0])
-    TORCH_MINOR = int(torch.__version__.split('.')[1])
-    if TORCH_MAJOR == 1 and TORCH_MINOR < 8:
-        return True
-    else:
-        return False
-
-
-def has_allgather_base():
-    '''
-        Helper to check if torch.distributed has _all_gather_base
-    '''
-    return hasattr(torch.distributed, "_all_gather_base")
-
-
-def has_reduce_scatter_base():
-    '''
-        Helper to check if torch.distributed has _reduce_scatter_base
-    '''
-    return hasattr(torch.distributed, "_reduce_scatter_base")
 
 
 def get_local_rank_from_launcher():
@@ -82,11 +58,7 @@ def get_world_size_from_launcher():
 
 def get_default_args(func):
     signature = inspect.signature(func)
-    return {
-        k: v.default
-        for k,
-        v in signature.parameters.items() if v.default is not inspect.Parameter.empty
-    }
+    return {k: v.default for k, v in signature.parameters.items() if v.default is not inspect.Parameter.empty}
 
 
 # We need this hacky function since torch doesn't consistently name or place the input tensor args
@@ -96,6 +68,9 @@ def get_tensor_position(func):
     # most colls
     if 'tensor' in sig_params:
         arg = 'tensor'
+    # all_reduce_coalesced coll
+    elif 'tensors' in sig_params:
+        arg = 'tensors'
     # reduce scatter coll
     elif 'input_list' in sig_params:
         arg = 'input_list'
@@ -115,6 +90,8 @@ def get_tensor_kwarg(func, kwargs):
 
     if 'tensor' in func_args:
         arg = func_args['tensor']
+    elif 'tensors' in func_args:
+        arg = func_args['tensors']
     elif 'input_list' in func_args:
         arg = func_args['input_list']
     elif 'input_tensor_list' in func_args:

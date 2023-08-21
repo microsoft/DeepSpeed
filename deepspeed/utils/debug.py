@@ -1,4 +1,7 @@
-""" debug utils """
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 # For lazy import with printflock()
 fcntl = None
@@ -80,7 +83,7 @@ def printflock(*msgs):
 
     """
     global fcntl
-    if fcntl == None:
+    if fcntl is None:
         import fcntl
 
     with open(__file__, "r") as fh:
@@ -127,6 +130,7 @@ def log_rank_file(rank, *msgs):
 
 
 def print_backward_tensors(tensor):
+
     def _print_bwd_tensors(grad_fn):
         print(f"Backward tensors in {grad_fn}")
         for funcs in grad_fn.next_functions:
@@ -134,9 +138,7 @@ def print_backward_tensors(tensor):
                 try:
                     tensor = getattr(funcs[0], 'variable')
                     print(funcs[0])
-                    print(
-                        f"Tensor - id: {id(tensor)}, shape: {tensor.shape}, data: {tensor}, grad: {tensor.grad}"
-                    )
+                    print(f"Tensor - id: {id(tensor)}, shape: {tensor.shape}, data: {tensor}, grad: {tensor.grad}")
                 except AttributeError as e:
                     _print_bwd_tensors(funcs[0])
 
