@@ -86,7 +86,7 @@ Megatron-DeepSpeed/examples_deepspeed/sequence_parallel$ bash ds_pretrain_gpt_30
 
 Please note that our sequence parallelism feature is currently incompatible with Megatron-LM's tensor or pipeline parallelism.
 
-3. Enabling DS-Seq with FlashAttention
+## 3. Enabling DS-Seq with FlashAttention?
 
 DeepSpeed's sequence parallelism can be combined with different types of attention implementations to further improve the memory and compute efficiency of long sequence training:
 
