@@ -395,11 +395,7 @@ class TestLowCpuMemUsage(DistributedTest):
         query,
         inf_kwargs,
         assert_fn,
-        invalid_model_task_config,
     ):
-        if invalid_model_task_config:
-            pytest.skip(invalid_model_task_config)
-
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
