@@ -425,6 +425,7 @@ class TestLowCpuMemUsage(DistributedTest):
         assert assert_fn(bs_output, ds_output)
 
 
+@pytest.mark.seq_inference
 @pytest.mark.parametrize("model_w_task", [("tiiuae/falcon-7b", "text-generation")], ids=["falcon"])
 class TestAutoTP(DistributedTest):
     world_size = 1
