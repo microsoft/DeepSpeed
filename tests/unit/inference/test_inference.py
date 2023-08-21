@@ -389,7 +389,7 @@ class TestMPSize(DistributedTest):
                            "text-generation")],
                          ids=["gpt-j"])
 class TestLowCpuMemUsage(DistributedTest):
-          dtype,
+        dtype,
         query,
         inf_kwargs,
         assert_fn,
