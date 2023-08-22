@@ -1,4 +1,4 @@
-## DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models
+# DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models
 
 <img src="./media/image1.png" style="width:6.4in;height:3.6in" />
 
@@ -104,7 +104,7 @@ transforms *output context* tensor of attention computation to sequence
 (*N/P*) parallel for subsequent operators (MLP MatMul, layer norm etc)
 in the remaining modules of transformer layer block.
 
-## Significant Communication Volume Reduction
+### Significant Communication Volume Reduction
 
 What distinguishes DeepSpeed-Ulysses from the other existing
 long-sequence approaches is our much smaller aggregate communication
@@ -139,7 +139,7 @@ extremely long sequences while achieving significantly higher training
 efficiency compared to the existing approaches. Our evaluation results
 match this analysis.  
   
-Additional Highlights of DeepSpeed-Ulysses
+### Additional Highlights of DeepSpeed-Ulysses
 
 1)  An Attention Agnostic Solution
 
@@ -195,7 +195,7 @@ iii) throughput with sparse attention and comparison with existing
 system, iv) convergence study of Deep sequence parallelism. We discuss
 and present evaluations from each of these categories next.
 
-Sequence Length Scalability
+### Sequence Length Scalability
 
 The first set of experiments is strong scaling of sequence length up to
 1 million tokens on 1.2 billion parameter GPT model. Results of this
@@ -210,7 +210,7 @@ length at appropriate GPU count.
 Figure 2: DeepSpeed sequence parallelism strong scalability evaluation
 at different sequence length and GPU counts
 
-Dense Attention Evaluation
+### Dense Attention Evaluation
 
 Next, we evaluate DeepSpeed sequence parallelism on 30 billion parameter
 dense attention model and benchmark against Megatron sequence
@@ -241,7 +241,7 @@ parallelism.
 Figure 3: Evaluation of DeepSpeed and Megatron LM sequence parallelism on 30B
 parameter model with dense attention
 
-Sparse Attention Evaluation
+### Sparse Attention Evaluation
 
 Similarly, we evaluate DeepSpeed sequence parallelism on 30 billion
 parameter sparse attention model and benchmark against Megatron sequence
@@ -265,7 +265,7 @@ the performance of the local sparse attention implementation in future.
 Figure 4: Evaluation of DeepSpeed and Megatron LM sequence parallelism on 30B
 parameter model with block sparse attention
 
-Convergence Study
+### Convergence Study
 
 Lastly, Figure 5 shows convergence of a 1.3 billion GPT model at 32K
 sequence length on 8 A100 GPUs with sequence parallelism degree set at 4
