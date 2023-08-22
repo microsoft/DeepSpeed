@@ -116,7 +116,7 @@ On modern clusters with intra-node NVSwitch interconnect and inter-node
 fat tree IB topology, the communication volume transmitted per link for
 an all-to-all for aggregate message of size *M* over *P* GPUs is *M/P*.
 For a transformer model with hidden size h, sequence length of N, and
-parallelism degree of P, DS-Sequence performs all-to-all for the QKV
+parallelism degree of P, DeepSpeed sequence parallelism performs all-to-all for the QKV
 projections with an aggregate message size of *3Nh* before the attention
 computation, and another all-2-all for output context projection with a
 size *Nh* for each transformer layer. Therefore, DeepSpeed sequence
@@ -139,7 +139,7 @@ extremely long sequences while achieving significantly higher training
 efficiency compared to the existing approaches. Our evaluation results
 match this analysis.  
   
-Additional Highlights of DS-Sequence
+Additional Highlights of DeepSpeed-Ulysses
 
 1)  An Attention Agnostic Solution
 
@@ -238,7 +238,7 @@ parallelism.
 
 <img src="./media/image5.png" style="width:5in;height:4in" />
 
-Figure 3: Evaluation of DeepSpeed Sequence and Megatron LM on 30B
+Figure 3: Evaluation of DeepSpeed and Megatron LM sequence parallelism on 30B
 parameter model with dense attention
 
 Sparse Attention Evaluation
@@ -262,8 +262,8 @@ the performance of the local sparse attention implementation in future.
 
 <img src="./media/image6.png" style="width:5in;height:4in" />
 
-Figure 4: Evaluation of DeepSpeed Sequence and Megatron LM on 30B
-parameter model with blocked sparse attention
+Figure 4: Evaluation of DeepSpeed and Megatron LM sequence parallelism on 30B
+parameter model with block sparse attention
 
 Convergence Study
 
