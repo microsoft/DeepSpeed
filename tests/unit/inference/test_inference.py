@@ -383,7 +383,7 @@ class TestMPSize(DistributedTest):
         assert assert_fn(bs_output, ds_output)
 
 
-@pytest.mark.seq_inference
+@pytest.mark.inference
 @pytest.mark.parametrize("model_w_task", [("gpt2", "text-generation")], ids=["gpt2"])
 class TestLowCpuMemUsage(DistributedTest):
     world_size = 1
