@@ -13,7 +13,7 @@ from deepspeed.git_version_info import torch_info
 from unit.common import DistributedTest
 from packaging import version as pkg_version
 from deepspeed.ops.op_builder import OpBuilder
-from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
+from transformers import pipeline, AutoTokenizer
 from transformers.models.t5.modeling_t5 import T5Block
 from transformers.models.roberta.modeling_roberta import RobertaLayer
 from huggingface_hub import HfApi
@@ -399,7 +399,7 @@ class TestLowCpuMemUsage(DistributedTest):
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
-        pipe = pipeline(task, model=model, model_kwargs={"low_cpu_mem_usage":True}, device=local_rank, framework="pt")
+        pipe = pipeline(task, model=model, model_kwargs={"low_cpu_mem_usage": True}, device=local_rank, framework="pt")
         bs_output = pipe(query, **inf_kwargs)
         pipe.model = deepspeed.init_inference(pipe.model,
                                               mp_size=self.world_size,
