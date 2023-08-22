@@ -2162,7 +2162,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if not param.requires_grad:
             return
 
-        assert value.numel() == param.ds_numel, f'{value.numel()=} != {param.ds_numel=}'
+        assert value.numel() == param.ds_numel, f'{value.numel()} != {param.ds_numel}'
 
         fp32_opt_state_partition, group_idx = self._get_fp32_opt_state_partition(param, optim_state_key)
         my_rank = dist.get_rank(group=self.dp_process_group)
