@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 # tests directory-specific settings - this file is run automatically by pytest before any tests are run
 
@@ -42,16 +45,14 @@ def check_environment(pytestconfig):
     expected_cuda_version = pytestconfig.getoption("cuda_ver")
     if expected_torch_version is None:
         warnings.warn(
-            "Running test without verifying torch version, please provide an expected torch version with --torch_ver"
-        )
+            "Running test without verifying torch version, please provide an expected torch version with --torch_ver")
     elif not validate_version(expected_torch_version, torch.__version__):
         pytest.exit(
             f"expected torch version {expected_torch_version} did not match found torch version {torch.__version__}",
             returncode=2)
     if expected_cuda_version is None:
         warnings.warn(
-            "Running test without verifying cuda version, please provide an expected cuda version with --cuda_ver"
-        )
+            "Running test without verifying cuda version, please provide an expected cuda version with --cuda_ver")
     elif not validate_version(expected_cuda_version, torch.version.cuda):
         pytest.exit(
             f"expected cuda version {expected_cuda_version} did not match found cuda version {torch.version.cuda}",
@@ -69,10 +70,18 @@ def pytest_runtest_call(item):
         item.runtest = lambda: True  # Dummy function so test is not run twice
 
 
+# We allow DistributedTest to reuse distributed environments. When the last
+# test for a class is run, we want to make sure those distributed environments
+# are destroyed.
+def pytest_runtest_teardown(item, nextitem):
+    if getattr(item.cls, "reuse_dist_env", False) and not nextitem:
+        dist_test_class = item.cls()
+        for num_procs, pool in dist_test_class._pool_cache.items():
+            dist_test_class._close_pool(pool, num_procs, force=True)
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_fixture_setup(fixturedef, request):
     if getattr(fixturedef.func, "is_dist_fixture", False):
-        #for val in dir(request):
-        #    print(val.upper(), getattr(request, val), "\n")
         dist_fixture_class = fixturedef.func()
         dist_fixture_class(request)

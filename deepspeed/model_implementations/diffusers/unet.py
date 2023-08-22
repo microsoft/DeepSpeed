@@ -1,11 +1,14 @@
-'''
-Copyright 2022 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 from ..features.cuda_graph import CUDAGraph
 
 
 class DSUNet(CUDAGraph, torch.nn.Module):
+
     def __init__(self, unet, enable_cuda_graph=True):
         super().__init__(enable_cuda_graph=enable_cuda_graph)
         self.unet = unet
@@ -59,5 +62,12 @@ class DSUNet(CUDAGraph, torch.nn.Module):
 
         self.cuda_graph_created = True
 
-    def _forward(self, sample, timestamp, encoder_hidden_states, return_dict=True):
-        return self.unet(sample, timestamp, encoder_hidden_states, return_dict)
+    def _forward(self, sample, timestamp, encoder_hidden_states, return_dict=True, cross_attention_kwargs=None):
+        if cross_attention_kwargs:
+            return self.unet(sample,
+                             timestamp,
+                             encoder_hidden_states,
+                             return_dict,
+                             cross_attention_kwargs=cross_attention_kwargs)
+        else:
+            return self.unet(sample, timestamp, encoder_hidden_states, return_dict)

@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import pytest
 from unit.common import DistributedTest
@@ -41,14 +44,9 @@ class TestStage2IgnoreUnusedParameters(DistributedTest):
         hidden_dim = 4
 
         model = UnusedParametersModel(hidden_dim=hidden_dim)
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                                  model=model,
-                                                  model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
-        data_loader = random_dataloader(model=model,
-                                        total_samples=10,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        data_loader = random_dataloader(model=model, total_samples=10, hidden_dim=hidden_dim, device=model.device)
 
         def _loop():
             for n, batch in enumerate(data_loader):

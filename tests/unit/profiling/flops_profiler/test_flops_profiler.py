@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 import pytest
@@ -6,11 +9,13 @@ import deepspeed
 from deepspeed.profiling.flops_profiler import get_model_profile
 from unit.simple_model import SimpleModel, random_dataloader
 from unit.common import DistributedTest
+from deepspeed.runtime.utils import required_torch_version
+from deepspeed.accelerator import get_accelerator
 
-TORCH_MAJOR = int(torch.__version__.split('.')[0])
-TORCH_MINOR = int(torch.__version__.split('.')[1])
-pytestmark = pytest.mark.skipif(TORCH_MAJOR < 1
-                                or (TORCH_MAJOR == 1 and TORCH_MINOR < 3),
+if torch.half not in get_accelerator().supported_dtypes():
+    pytest.skip(f"fp16 not supported, valid dtype: {get_accelerator().supported_dtypes()}", allow_module_level=True)
+
+pytestmark = pytest.mark.skipif(not required_torch_version(min_version=1.3),
                                 reason='requires Pytorch version 1.3 or above')
 
 
@@ -22,35 +27,25 @@ TOLERANCE = 0.05
 
 
 class LeNet5(torch.nn.Module):
+
     def __init__(self, n_classes):
         super(LeNet5, self).__init__()
 
         self.feature_extractor = torch.nn.Sequential(
-            torch.nn.Conv2d(in_channels=1,
-                            out_channels=6,
-                            kernel_size=5,
-                            stride=1),
+            torch.nn.Conv2d(in_channels=1, out_channels=6, kernel_size=5, stride=1),
             torch.nn.Tanh(),
             torch.nn.AvgPool2d(kernel_size=2),
-            torch.nn.Conv2d(in_channels=6,
-                            out_channels=16,
-                            kernel_size=5,
-                            stride=1),
+            torch.nn.Conv2d(in_channels=6, out_channels=16, kernel_size=5, stride=1),
             torch.nn.Tanh(),
             torch.nn.AvgPool2d(kernel_size=2),
-            torch.nn.Conv2d(in_channels=16,
-                            out_channels=120,
-                            kernel_size=5,
-                            stride=1),
+            torch.nn.Conv2d(in_channels=16, out_channels=120, kernel_size=5, stride=1),
             torch.nn.Tanh(),
         )
 
         self.classifier = torch.nn.Sequential(
-            torch.nn.Linear(in_features=120,
-                            out_features=84),
+            torch.nn.Linear(in_features=120, out_features=84),
             torch.nn.Tanh(),
-            torch.nn.Linear(in_features=84,
-                            out_features=n_classes),
+            torch.nn.Linear(in_features=84, out_features=n_classes),
         )
 
     def forward(self, x):
@@ -90,9 +85,7 @@ class TestFlopsProfiler(DistributedTest):
         hidden_dim = 10
         model = SimpleModel(hidden_dim, empty_grad=False)
 
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                            model=model,
-                                            model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
         data_loader = random_dataloader(model=model,
                                         total_samples=50,

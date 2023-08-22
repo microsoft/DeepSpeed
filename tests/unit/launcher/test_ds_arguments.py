@@ -1,8 +1,12 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import argparse
 import pytest
 import deepspeed
+from deepspeed.utils.numa import parse_range_list
 
 
 def basic_parser():
@@ -82,12 +86,7 @@ def test_no_ds_parser():
 def test_core_deepscale_arguments():
     parser = basic_parser()
     parser = deepspeed.add_config_arguments(parser)
-    args = parser.parse_args(
-        ['--num_epochs',
-         '2',
-         '--deepspeed',
-         '--deepspeed_config',
-         'foo.json'])
+    args = parser.parse_args(['--num_epochs', '2', '--deepspeed', '--deepspeed_config', 'foo.json'])
     assert args
 
     assert hasattr(args, 'num_epochs')
@@ -100,3 +99,35 @@ def test_core_deepscale_arguments():
     assert hasattr(args, 'deepspeed_config')
     assert type(args.deepspeed_config) == str
     assert args.deepspeed_config == 'foo.json'
+
+
+def test_core_binding_arguments():
+    core_list = parse_range_list("0,2-4,6,8-9")
+    assert core_list == [0, 2, 3, 4, 6, 8, 9]
+
+    try:
+        # negative case for range overlapping
+        core_list = parse_range_list("0,2-6,5-9")
+    except ValueError as e:
+        pass
+    else:
+        # invalid core list must fail
+        assert False
+
+    try:
+        # negative case for reverse order -- case 1
+        core_list = parse_range_list("8,2-6")
+    except ValueError as e:
+        pass
+    else:
+        # invalid core list must fail
+        assert False
+
+    try:
+        # negative case for reverse order -- case 2
+        core_list = parse_range_list("1,6-2")
+    except ValueError as e:
+        pass
+    else:
+        # invalid core list must fail
+        assert False

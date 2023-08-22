@@ -1,6 +1,7 @@
-'''
-Copyright 2019 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
@@ -14,6 +15,7 @@ from deepspeed.runtime.constants import GRADIENT_ACCUMULATION_STEPS, \
 
 
 class RepeatingLoader:
+
     def __init__(self, loader):
         """Wraps an iterator to allow for infinite iteration. This is especially useful
         for DataLoader types that we wish to automatically restart upon completion.
@@ -37,6 +39,7 @@ class RepeatingLoader:
 
 
 class DeepSpeedDataLoader(object):
+
     def __init__(self,
                  dataset,
                  batch_size,
@@ -55,30 +58,26 @@ class DeepSpeedDataLoader(object):
         self.batch_size = batch_size
         self.curriculum_learning_enabled = False
         if CURRICULUM_LEARNING in deepspeed_dataloader_config:
-            self.curriculum_learning_enabled = deepspeed_dataloader_config[
-                CURRICULUM_LEARNING]
+            self.curriculum_learning_enabled = deepspeed_dataloader_config[CURRICULUM_LEARNING]
 
         if self.curriculum_learning_enabled:
-            data_sampler = DeepSpeedDataSampler(
-                self.deepspeed_dataloader_config[DATA_EFFICIENCY],
-                len(dataset),
-                self.batch_size,
-                data_parallel_rank,
-                data_parallel_world_size,
-                self.deepspeed_dataloader_config[DATA_PARALLEL_GROUP],
-                self.deepspeed_dataloader_config[GRADIENT_ACCUMULATION_STEPS],
-                self.deepspeed_dataloader_config[GLOBAL_RANK],
-                drop_last=dataloader_drop_last)
+            data_sampler = DeepSpeedDataSampler(self.deepspeed_dataloader_config[DATA_EFFICIENCY],
+                                                len(dataset),
+                                                self.batch_size,
+                                                data_parallel_rank,
+                                                data_parallel_world_size,
+                                                self.deepspeed_dataloader_config[DATA_PARALLEL_GROUP],
+                                                self.deepspeed_dataloader_config[GRADIENT_ACCUMULATION_STEPS],
+                                                self.deepspeed_dataloader_config[GLOBAL_RANK],
+                                                drop_last=dataloader_drop_last)
             device_count = get_accelerator().device_count()
-            num_local_io_workers = self.deepspeed_dataloader_config[
-                DATA_SAMPLING_NUM_WORKERS]
+            num_local_io_workers = self.deepspeed_dataloader_config[DATA_SAMPLING_NUM_WORKERS]
         else:
             if local_rank >= 0:
                 if data_sampler is None:
-                    data_sampler = DistributedSampler(
-                        dataset=dataset,
-                        num_replicas=data_parallel_world_size,
-                        rank=data_parallel_rank)
+                    data_sampler = DistributedSampler(dataset=dataset,
+                                                      num_replicas=data_parallel_world_size,
+                                                      rank=data_parallel_rank)
                 device_count = 1
             else:
                 if data_sampler is None:

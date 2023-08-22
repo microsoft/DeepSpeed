@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 import deepspeed.comm as dist
@@ -83,9 +86,7 @@ if rank == 0:
 minlat = round(min(time_list) * convert)
 maxlat = round(max(time_list) * convert)
 meanlat = round(mean(time_list) * convert, places)
-print("min, max, and mean = {} ms, {} ms, {} ms".format(minlat,
-                                                        maxlat,
-                                                        meanlat)) if rank == 0 else None
+print("min, max, and mean = {} ms, {} ms, {} ms".format(minlat, maxlat, meanlat)) if rank == 0 else None
 #print("tensor shape", a.shape)
 duration = meanlat / 1e3
 tput = ((tensor_size * 4) / duration)

@@ -1,7 +1,10 @@
-'''Copyright The Microsoft DeepSpeed Team'''
-'''
-    Various symbolic constants used for model checkpointing
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+"""
+Various symbolic constants used for model checkpointing
+"""
 
 #########################################
 # Optimizer checkpoint keys
@@ -24,6 +27,8 @@ FP32_WEIGHT_KEY = "fp32"
 PARAM = 'param'
 PARAM_SHAPES = 'param_shapes'
 BUFFER_NAMES = 'buffer_names'
+FROZEN_PARAM_SHAPES = 'frozen_param_shapes'
+FROZEN_PARAM_FRAGMENTS = 'frozen_param_fragments'
 
 #########################################
 # Checkpoint naming constants

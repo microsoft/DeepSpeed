@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import os
 
@@ -23,5 +26,5 @@ class CheckpointEngine(object):
         pass
 
     def commit(self, tag):
-        # to tell checkpoint services if all files are readys.
+        # to tell checkpoint services if all files are ready.
         pass
