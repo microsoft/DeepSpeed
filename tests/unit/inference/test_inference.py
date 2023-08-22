@@ -391,12 +391,12 @@ class TestLowCpuMemUsage(DistributedTest):
     def test(
         self,
         model_w_task,
-        dtype,
         query,
         inf_kwargs,
         assert_fn,
     ):
         model, task = model_w_task
+        dtype = torch.float16
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
         pipe = pipeline(task, model=model, model_kwargs={"low_cpu_mem_usage": True}, device=local_rank, framework="pt")
