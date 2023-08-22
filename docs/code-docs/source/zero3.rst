@@ -387,7 +387,7 @@ Sometimes, a user may want to modify parameters or optimizer states outside of t
 .. autofunction:: deepspeed.utils.safe_set_full_optimizer_state
 
 
-These routines can be used at any point after `deepspeed.initialize()` as shown in the following snippet.
+These routines can be used at any point after initialization of the DeepSpeed engine (i.e., ``deepspeed.initialize()``) as shown in the following snippet.
 
 .. code-block:: python
 
@@ -395,7 +395,7 @@ These routines can be used at any point after `deepspeed.initialize()` as shown 
     from deepspeed.utils import safe_set_full_fp32_param, safe_set_full_optimizer_state
     # Here is an example to zero all the fp32 parameters and optimizer states.
     for n, lp in model.named_parameters():
-        # Assume zero stage 1 and 2, since stage 3 requires a gather to assemble lp
+        # Assume zero stage 1 or 2, since stage 3 requires a gather to assemble lp
         zero_tensor = torch.zeros_like(lp)
 
         hp = safe_set_full_fp32_param(lp, zero_tensor)
