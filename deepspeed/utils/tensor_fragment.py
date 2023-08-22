@@ -115,10 +115,11 @@ def safe_get_full_fp32_param(param):
 
 
 def safe_set_full_fp32_param(param, value):
-    """ Update the partitioned fp32 parameter of a low-precision (e.g., fp16) parameter.
+    """Update the partitioned fp32 parameter of a low-precision (e.g., fp16) parameter.
 
         Args:
             param (``torch.nn.Parameter``): A model parameter
+            value (``torch.Tensor``): New value
     """
     # ZeRO stage 3 param
     if hasattr(param, 'ds_id'):
@@ -134,6 +135,7 @@ def safe_get_full_optimizer_state(param, optim_state_key):
 
         Args:
             param (``torch.nn.Parameter``): A model parameter
+            optim_state_key (``string``): Key value of optimizer state (e.g., `exp_avg` in Adam optimizer)
     """
     # ZeRO stage 3 param
     if hasattr(param, 'ds_id'):
@@ -146,10 +148,12 @@ def safe_get_full_optimizer_state(param, optim_state_key):
 
 
 def safe_set_full_optimizer_state(param, value, optim_state_key):
-    """ Update the partitioned fp32 optimizer state of a low-precision (e.g., fp16) parameter.
+    """Update the partitioned fp32 optimizer state of a low-precision (e.g., fp16) parameter.
 
         Args:
             param (``torch.nn.Parameter``): A model parameter
+            value (``torch.Tensor``): New value
+            optim_state_key (``string``): Key value of optimizer state (e.g., `exp_avg` in Adam optimizer)
     """
     # ZeRO stage 3 param
     if hasattr(param, 'ds_id'):
