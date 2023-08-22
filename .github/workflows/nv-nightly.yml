@@ -1,6 +1,9 @@
 name: nv-nightly
 
 on:
+  pull_request:
+    branches:
+      '**'
   schedule:
     - cron: "0 0 * * *"
 
