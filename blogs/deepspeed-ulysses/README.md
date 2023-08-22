@@ -1,8 +1,11 @@
 # DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models
 
-<img src="./media/image1.png" style="width:6.4in;height:3.6in" />
+<div align="center">
+<img src="./media/image1.png" style="width:6.4in;height:3.4in" />
 
 <img src="./media/image2.png" style="width:6.53617in;height:2.56in" />
+
+</div>
 
 ## Introduction
 
@@ -58,36 +61,38 @@ heads while re-partitioning along the sequence dimension.
 The key properties of DeepSpeed-Ulysses and its implementation released
 with this blog are as follows:  
   
-i) ***4x larger sequence lengths*** than existing systems, while
+*  ***4x larger sequence lengths*** than existing systems, while
 enabling training with sequences with ***over a million tokens***.
 
-ii\) Communication reduction of ***over 10x*** compared to existing
+* Communication reduction of ***over 10x*** compared to existing
 systems, resulting in throughput improvements of ***up to 2.5x***, and
 sustained throughput of over 175 TFlops/GPU (over 54% of hardware peak).
 
-iii\) Fully general and implementation agnostic attention: DeepSpeed
-sequence parallelism (Ulysses) supports dense as well as sparse
+* Fully general and implementation agnostic attention: DeepSpeed
+sequence parallelism supports dense as well as sparse
 attention, and it works with efficient attention implementations such as
 FlashAttention v2.
 
-iv\) Support for massive model training: DeepSpeed sequence parallelism
+* Support for massive model training: DeepSpeed sequence parallelism
 works together with ZeRO-3 to not only support large sequence lengths
 but also massive model sizes.
 
-v\) Easy-to-use and portable, requiring minimal code changes to the
+* Easy-to-use and portable, requiring minimal code changes to the
 existing training frameworks.
 
-In subsequent sections, we provide detailed discussion of DeepSpeed
-sequence parallelism core design, communication complexity analysis,
+In subsequent sections, we provide detailed discussion of DeepSpeed-Ulysses
+core design, communication complexity analysis,
 experimental evaluation and comparison with existing work and highlight
 of usability and guide on usage.
 
 ## Core Design of DeepSpeed-Ulysses
 
+<div align="center">
 <img src="./media/image3.png" style="width:6.3479in;height:2.89442in"
 alt="A diagram of a computer Description automatically generated" />
 
-Figure 1: DeepSpeed Sequence Parallelism (DeepSpeed-Ulysses) Design
+*Figure 1: DeepSpeed sequence parallelism (DeepSpeed-Ulysses) design*
+</div>
 
 Figure 1 shows the core design of DeepSpeed-Ulysses. As with the known
 transformer architecture, the design consists of input sequences *N*
@@ -205,10 +210,12 @@ number of GPUs and sequence length scales linearly relative to and
 maintains similar computation throughput across different sequence
 length at appropriate GPU count.
 
+<div align="center">
 <img src="./media/image4.png" style="width:5in;height:4in" />
 
-Figure 2: DeepSpeed sequence parallelism strong scalability evaluation
-at different sequence length and GPU counts
+*Figure 2: DeepSpeed sequence parallelism strong scalability evaluation
+at different sequence length and GPU count.*
+</div>
 
 ### Dense Attention Evaluation
 
@@ -236,10 +243,12 @@ parallelism benefits from efficient all-to-all communication relative to
 *all-gather* communication as applied in Megatron-LM sequence
 parallelism.
 
+<div align="center">
 <img src="./media/image5.png" style="width:5in;height:4in" />
 
-Figure 3: Evaluation of DeepSpeed and Megatron LM sequence parallelism on 30B
-parameter model with dense attention
+*Figure 3: Evaluation of DeepSpeed and Megatron LM sequence parallelism on 30B
+parameter model with dense attention.*
+</div>
 
 ### Sparse Attention Evaluation
 
@@ -260,10 +269,12 @@ increases. We expect this gap in performance between DeepSpeed and
 Megatron to increase further for larger sequence lengths as we improve
 the performance of the local sparse attention implementation in future.
 
+<div align="center">
 <img src="./media/image6.png" style="width:5in;height:4in" />
 
-Figure 4: Evaluation of DeepSpeed and Megatron LM sequence parallelism on 30B
-parameter model with block sparse attention
+*Figure 4: Evaluation of DeepSpeed and Megatron LM sequence parallelism on 30B
+parameter model with block sparse attention.*
+</div>
 
 ### Convergence Study
 
@@ -276,11 +287,13 @@ technique that enables training of long sequence Transformer model, thus
 there is no (negative) on quality of trained models, this assertion is
 validated through experiments and is shown in Figure 5.
 
-<img src="./media/image7.png" style="width:6.5in;height:4.52431in"
+<div align="center">
+<img src="./media/image7.png" style="width:5.8in;height:3.6in"
 alt="A graph showing a loss of a stock market Description automatically generated with medium confidence" />
 
-Figure 5: Convergence evaluation of DeepSpeed Sequence with different
-ZeRO memory optimization stages
+*Figure 5: Convergence evaluation of DeepSpeed Sequence with different
+ZeRO memory optimization stages.*
+</div>
 
 ## DeepSpeed-Ulysses Software Accessibility
 
@@ -293,7 +306,9 @@ from deepspeed.sequence.layer import DistributedAttention
 \# Replace the original self-attention (attn) with DeepSpeed-Ulysses’s
 self-attention
 
+``` python
 dist_attn = DistributedAttention(attn, get_sequence_parallel_group())
+```
 
 Compared to other libraries that support sequence parallelism, such as
 Megatron-LM, DeepSpeed-Ulysses does not require model refactoring.
