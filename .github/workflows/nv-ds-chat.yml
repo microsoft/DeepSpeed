@@ -1,16 +1,19 @@
-name: nv-nightly
+name: nv-ds-chat
 
 on:
   schedule:
     - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      dse_branch:
+        description: 'DeepSpeedExamples Branch'
+        required: false
+        default: 'master'
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-permissions:
-    contents: read
-    issues: write
 
 jobs:
   unit-tests:
@@ -24,33 +27,32 @@ jobs:
 
       - name: Install pytorch
         run: |
-          pip install -U --cache-dir $TORCH_CACHE torch==1.13.1 torchvision --extra-index-url https://download.pytorch.org/whl/cu116
+          pip3 install -U --cache-dir $TORCH_CACHE torch
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
-      - name: Install transformers
-        run: |
-          git clone https://github.com/huggingface/transformers
-          cd transformers
-          # if needed switch to the last known good SHA until transformers@master is fixed
-          # git checkout 1cc453d33
-          git rev-parse --short HEAD
-          pip install .
-
       - name: Install deepspeed
         run: |
-          pip install .[dev,1bit,autotuning,inf]
+          pip install .[dev]
           ds_report
 
       - name: Python environment
         run: |
           pip list
 
-      - name: Unit tests
+      - name: DS-Chat unit tests
         run: |
+          BRANCH="master"
+          if [[ ! -z "${{ github.event.inputs.dse_branch }}" ]]; then
+              BRANCH="${{ github.event.inputs.dse_branch }}"
+          fi
+          echo "DeepSpeedExamples Branch: $BRANCH"
+          git clone -b $BRANCH https://github.com/microsoft/DeepSpeedExamples.git
+          cd DeepSpeedExamples/applications/DeepSpeed-Chat
+          pip install -r requirements.txt
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
-          cd tests
-          pytest $PYTEST_OPTS --forked -m 'nightly' unit/ --torch_ver="1.13" --cuda_ver="11.6"
+          cd training/tests
+          pytest $PYTEST_OPTS ./
 
       - name: Open GitHub issue if nightly CI fails
         if: failure()
