@@ -3,6 +3,10 @@ title: "Curriculum Learning: A Regularization Method for Efficient and Stable Bi
 tags: training pre-training
 ---
 
+**Watch out!**
+On 12/12/2022, we released DeepSpeed Data Efficiency Library which provides a more general curriculum learning support. This legacy curriculum learning feature below is still supported but we recommend to use the Data Efficiency Library ([tutorial](/tutorials/data-efficiency/)).
+{: .notice--warning}
+
 **Note:**
 This tutorial was updated on 10/29/2021. Changes include: 1) A more detailed tuning strategy. 2) Pipeline parallelism support. 3) Token-based learning rate decay. 4) A new GPT-2 example at [github.com/microsoft/Megatron-DeepSpeed](https://github.com/microsoft/Megatron-DeepSpeed). See details below.
 {: .notice--info}
@@ -33,6 +37,7 @@ Curriculum learning can be used by setting the `curriculum_learning` key in the 
     "loss_scale": 0,
     "loss_scale_window": 1000,
     "hysteresis": 2,
+    "consecutive_hysteresis": false,
     "min_loss_scale": 1
   },
   "curriculum_learning": {
@@ -109,7 +114,7 @@ After the update on 10/29/2021, now there are two curriculum learning examples f
 
 We provide two curriculum learning examples for Megatron-LM GPT-2 pre-training:
 
-The first one is at [Megatron-DeepSpeed/tree/main/examples/curriculum_learning](https://github.com/microsoft/Megatron-DeepSpeed/tree/main/examples/curriculum_learning). This integration is based on a newer Megatron-LM fork, and only this curriculum learning example supports pipeline parallelism. However, as of 10/29/2021, we haven't verified ZeRO-2 and ZeRO-3 on this fork. Overall, we highly recommend you to use this example if your model does not require ZeRO-2/3.
+The first one is at [Megatron-DeepSpeed/tree/main/examples_deepspeed/curriculum_learning](https://github.com/microsoft/Megatron-DeepSpeed/tree/main/examples_deepspeed/curriculum_learning). This integration is based on a newer Megatron-LM fork, and only this curriculum learning example supports pipeline parallelism. However, as of 10/29/2021, we haven't verified ZeRO-2 and ZeRO-3 on this fork. Overall, we highly recommend you to use this example if your model does not require ZeRO-2/3.
 
 The second one is at [DeepSpeedExamples/Megatron-LM-v1.1.5-ZeRO3/curriculum_learning/](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM-v1.1.5-ZeRO3/curriculum_learning). This integration is based on an older Megatron-LM hard copy that we will eventually deprecate and this curriculum learning example does not support pipeline parallelism. We recommend you to ONLY use this example if your model requires ZeRO-2/3.
 
@@ -126,7 +131,7 @@ In our [paper](https://arxiv.org/abs/2108.06084) section 5.4 we demonstrate that
 
 ### 2.3 Token-based training termination
 
-Because curriculum learning changes length of each sequence/sample during training, it is very hard/impossible to use number of steps/samples to terminate the training exactly at the desired number of tokens. Thus, we add a `--train-tokens` config for accurate token-based termination. We recommend increasing your original `--train-samples` or `--train-iters` to a large enough number (e.g., 3X of what you used for baseline), and set `--train-tokens` at the exact desired number of training tokens.
+Because curriculum learning changes the length of each sequence/sample during training, it is very hard/impossible to use  a number of steps/samples to terminate the training exactly at the desired number of tokens. Thus, we add a `--train-tokens` config for accurate token-based termination. We recommend increasing your original `--train-samples` or `--train-iters` to a large enough number (e.g., 3X of what you used for baseline), and set `--train-tokens` at the exact desired number of training tokens.
 
 ### 2.4 Token-based LR decay
 

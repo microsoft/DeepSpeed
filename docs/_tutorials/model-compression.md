@@ -25,7 +25,7 @@ If the model is very deep, you may consider using this method. It works much bet
 
 Layer reduction can be enabled and configured using the DeepSpeed config JSON file ([configuration details](/docs/config-json/#layer-reduction)). Users have the freedom to select any depth by `keep_number_layer` and any subset of the network layers by `teacher_layer`. In addition, users also can choose whether to reinitialize the input/output layers from the given model (teacher model) by `other_module_name`.
 
-To apply layer reduction for task-specific compression, we provide an example on how to do so for BERT fine-tuning. Layer reduction is about resetting the depth of network architecture and reinitialization of weight parameters, which happens before the training process. The example includes the following changes to the client code (`model_compression/bert/run_glue_no_trainer.py` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples)):
+To apply layer reduction for task-specific compression, we provide an example on how to do so for BERT fine-tuning. Layer reduction is about resetting the depth of network architecture and reinitialization of weight parameters, which happens before the training process. The example includes the following changes to the client code (`compression/bert/run_glue_no_trainer.py` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples)):
 
 (1) When initial the model, the number of layers in the model config should be the same as `keep_number_layer` in DeepSpeed config JSON file. For Hugging Face BERT example, set `config.num_hidden_layers = ds_config["compression_training"]["layer_reduction"]["keep_number_layer"]`.
 
@@ -36,8 +36,8 @@ To apply layer reduction for task-specific compression, we provide an example on
 One can run our layer reduction example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
-DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
-DeepSpeedExamples/model_compression/bert$ bash bash_script/layer_reduction.sh
+DeepSpeedExamples/compression/bert$ pip install -r requirements.txt
+DeepSpeedExamples/compression/bert$ bash bash_script/layer_reduction.sh
 ```
 
 And the final result is:
@@ -47,13 +47,11 @@ Epoch: 18 | Time: 12m 38s
 Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8340295466123281/0.8339096826688365
 ```
 
-<!-- TODO: uncomment the below task-agnostic tutorial after the code example is fixed and released. -->
-
-<!-- To apply layer reduction for task-agnostic compression, we provide an example on how to do so in the GPT pre-training stage.
+To apply layer reduction for task-agnostic compression, we provide an example on how to do so in the GPT pre-training stage.
 
 Step 1: Obtain the latest version of the [Megatron-DeepSpeed](https://github.com/microsoft/Megatron-DeepSpeed).
 
-Step 2: Enter `Megatron-DeepSpeed/examples/compression` directory.
+Step 2: Enter `Megatron-DeepSpeed/examples_deepspeed/compression` directory.
 
 Step 3: Run the example bash script such as `ds_pretrain_gpt_125M_dense_cl_kd.sh`. The args related to the pre-training distillation are:
 
@@ -69,16 +67,14 @@ Step 3: Run the example bash script such as `ds_pretrain_gpt_125M_dense_cl_kd.sh
 
 Apart from the above configs, you may also need to modify the data path in the `data_options` so that the trainer knows the data location. To make things slightly easier, we provide several example scripts for running distillation for different model sizes, including 350M (`ds_pretrain_gpt_350M_dense_kd.sh`) and 1.3B models (`ds_pretrain_gpt_1.3B_dense_cl_kd.sh`). We also empirically found that a staged KD often led to a better pre-trained distilled model on downstream tasks. Therefore, we suggest an easy approach to early-stop KD by not setting `--kd` in the script provided (e.g., disabling KD in the remaining 40% of training).
 
-Step 4 (optional): After distilling the model, one can also choose to further quantize the distilled model by running the script `125M-Int8-test-64gpu-distilled-group48.sh`, which quantizes both the weights and activations of a distilled model with INT8 quantizer (the weight and activation quantization are introduced in the following sections). We provide the perplexity results and zero-shot evaluation results (average across 10 tasks) in the following table.
+Step 4: After distilling the model, one can also choose to further quantize the distilled model by running the script `125M-L10-Int8-test-64gpu-distilled-group48.sh`, which quantizes both the weights and activations of a distilled model with INT8 quantizer (the weight and activation quantization are introduced in the following sections). note that you need to set the `-reset-iteration` flag when performing the quantization. We provide the zero-shot perplexity result from WikiText-2 and LAMBADA in the following table.
 
-| ---: | ---: | ---: |
-| **GPT (125M)** | **PPL** | **Zero-shot evaluation** |
-| Uncompressed | 8.92 | 32.01 |
-| Pretraining distillation | 9.36 | 31.74 |
-| Quantization only | 9.39 | 31.96 |
-| Pretraining distillation + quantization | 9.86 | 31.32 | -->
-
-<!-- TODO: Is the PPL the validation PPL or wikitext PPL? And there is no description about which 10 tasks are used, maybe it's better to just show one common task result (e.g., WikiText-2). -->
+| **GPT (125M)** | **#Layers** | **wikitex2 perplexity** | **LAMBADA** |
+| ---------- |---------- |---------- |---------- |
+| Uncompressed | 12 | 29.6 | 39.5 |
+| Quantization only | 12 | 29.8 | 39.7 |
+| Distillation only | 10 | 31.9 | 39.2 |
+| Distillation + quantization | 10 | 32.28 | 38.7 |
 
 ### 1.2 Weight Quantization
 **What is weight quantization**
@@ -101,7 +97,7 @@ Weight quantization can be enabled and configured using the DeepSpeed config JSO
 
 (4)`start_bit` and `target_bit`, to simplify the first experiment we suggest to set them the same such that we apply quantization to the target bit once the iteration reaches `schedule_offset`.
 
-There are two changes to the client code (`model_compression/bert/run_glue_no_trainer.py` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples)):
+There are two changes to the client code (`compression/bert/run_glue_no_trainer.py` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples)):
 
 (1) After initialization of the model, apply `init_compression` function to the model with DeepSpeed JSON configurations.
 
@@ -110,8 +106,8 @@ There are two changes to the client code (`model_compression/bert/run_glue_no_tr
 One can run our weight quantization example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
-DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
-DeepSpeedExamples/model_compression/bert$ bash bash_script/quant_weight.sh
+DeepSpeedExamples/compression/bert$ pip install -r requirements.txt
+DeepSpeedExamples/compression/bert$ bash bash_script/quant_weight.sh
 ```
 
 And the final result is:
@@ -143,8 +139,8 @@ The client code change is the same as [weight quantization](#12-weight-quantizat
 One can run our activation quantization example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
-DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
-DeepSpeedExamples/model_compression/bert$ bash bash_script/quant_activation.sh
+DeepSpeedExamples/compression/bert$ pip install -r requirements.txt
+DeepSpeedExamples/compression/bert$ bash bash_script/quant_activation.sh
 ```
 
 And the final result is:
@@ -162,7 +158,7 @@ Pruning aims to reduce the number of parameters and operations involved in gener
 
 | **Method**            | **Type**     |
 | --------------------- | ------------ |
-| [Sparse pruning](#141-sparse-pruning)  | Unstructured |
+| [Sparse pruning](#141-sparse-pruning)  | Unstructured and Structured |
 | [Row pruning](#142-row-pruning)     | Structured    |
 | [Head pruning](#143-head-pruning)     | Structured    |
 | [Channel pruning](#144-channel-pruning) | Structured    |
@@ -170,7 +166,7 @@ Pruning aims to reduce the number of parameters and operations involved in gener
 #### 1.4.1 Sparse Pruning
 **What is sparse pruning**
 
-Sparse pruning means we set some of the elements in each weight matrix with zero values. There is no structure pattern in the zero values. One way to perform pruning is based on the absolute value of the weight parameters, see for instance [this paper](https://arxiv.org/abs/1506.02626).
+Sparse pruning means we set some of the elements in each weight matrix with zero values. Relying on the pruning method user chosen, the zero values may have structured pattern or unstructured pattern. One way to perform pruning is based on the absolute value of the weight parameters, see for instance [this paper](https://arxiv.org/abs/1506.02626). Another way to perform pruning is based on the weights' effect to the loss function when they are masked, see for instance [this paper](https://arxiv.org/abs/1810.02340).
 
 **When to use sparse pruning**
 
@@ -182,19 +178,21 @@ Sparse pruning can be enabled and configured using the DeepSpeed config JSON fil
 
 (1)`schedule_offset`, we empirically find that when using `method: topk`, it’s better to set the `schedule_offset` to a large value such as 10% of the total training steps.
 
-(2)`method`, we support L1 norm and topk methods. Users are welcome to contribute more methods.
+(2)`method`, we support L1 norm, topk and snip_momentum methods. Users are welcome to contribute more methods.
 
-(3)`sp1`, users can expand more groups such as `sp2`, `sp3`, etc.
+(3)`sp1`, users can expand more groups such as `sp2`, `sp3`, etc. Note this is not needed for snip_momentum method.
 
-(4)`dense_ratio`, for unstructured sparse pruning, the dense ratio could be less than 0.1 for BRET-base model while still yielding a good accuracy. For ResNet-50, the dense ratio could be as low as 0.3 while still having good accuracy on ImageNet.
+(4)`dense_ratio`, for unstructured sparse pruning, the dense ratio could be less than 0.1 for BRET-base model while still yielding a good accuracy. For ResNet-50, the dense ratio could be as low as 0.3 while still having good accuracy on ImageNet. for structured sparse pruning like snip_momentum, the dense ratio should be specified in shared_parameters and is used to calculate the global sparsity ratio.
+
+(5)`frequency`, `block_pattern` and `schedule_offset_end`, they are used to specify the pruning frequency on steps, the block-wise pruning pattern (NxM and N in M), and the end steps for pruning. For snip_momentum method, these configurations are mandatory.
 
 The client code change is the same as [weight quantization](#12-weight-quantization).
 
 One can run our sparse pruning example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
-DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
-DeepSpeedExamples/model_compression/bert$ bash bash_script/pruning_sparse.sh
+DeepSpeedExamples/compression/bert$ pip install -r requirements.txt
+DeepSpeedExamples/compression/bert$ bash bash_script/pruning_sparse.sh
 ```
 
 And the final result is:
@@ -228,8 +226,8 @@ The client code change is the same as [weight quantization](#12-weight-quantizat
 One can run our row pruning example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
-DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
-DeepSpeedExamples/model_compression/bert$ bash bash_script/pruning_row.sh
+DeepSpeedExamples/compression/bert$ pip install -r requirements.txt
+DeepSpeedExamples/compression/bert$ bash bash_script/pruning_row.sh
 ```
 
 And the final result is:
@@ -265,8 +263,8 @@ The client code change is the same as [weight quantization](#12-weight-quantizat
 One can run our head pruning example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
-DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
-DeepSpeedExamples/model_compression/bert$ bash bash_script/pruning_head.sh
+DeepSpeedExamples/compression/bert$ pip install -r requirements.txt
+DeepSpeedExamples/compression/bert$ bash bash_script/pruning_head.sh
 ```
 
 And the final result is:
@@ -292,7 +290,7 @@ One can run our channel pruning example in [DeepSpeedExamples](https://github.co
 
 ```shell
 pip install torch torchvision
-DeepSpeedExamples/model_compression/cifar$ bash run_compress.sh
+DeepSpeedExamples/compression/cifar$ bash run_compress.sh
 ```
 
 And the final result is:
@@ -320,8 +318,8 @@ When you want to quantize the transformer-based model to INT8 or INT4/INT8 forma
 One can run our BERT example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
-DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
-DeepSpeedExamples/model_compression/bert$ bash bash_script/ZeroQuant/zero_quant.sh
+DeepSpeedExamples/compression/bert$ pip install -r requirements.txt
+DeepSpeedExamples/compression/bert$ bash bash_script/ZeroQuant/zero_quant.sh
 ```
 
 And the final result is:
@@ -333,8 +331,8 @@ Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.842791
 One can run our GPT example by:
 
 ```shell
-DeepSpeedExamples/model_compression/gpt2$ pip install -r requirements.txt
-DeepSpeedExamples/model_compression/gpt2$ bash bash_script/run_zero_quant.sh
+DeepSpeedExamples/compression/gpt2$ pip install -r requirements.txt
+DeepSpeedExamples/compression/gpt2$ bash bash_script/run_zero_quant.sh
 ```
 
 And the final result is:
@@ -365,22 +363,22 @@ If you want to significantly compress your models while retaining competitive pe
 
 **How to use XTC**
 
-**Installation:** Examples of XTC extreme compression for BERT models are at `model_compression/bert/bash_script/XTC` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples). You will need to install the requirements by:
+**Installation:** Examples of XTC extreme compression for BERT models are at `compression/bert/bash_script/XTC` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples). You will need to install the requirements by:
 
 ```shell
-DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
+DeepSpeedExamples/compression/bert$ pip install -r requirements.txt
 ```
 
 **Implementation of XTC methods:**
 To accommodate users who do not have a fine-tuned model or task-specific model for compression, with the arg `--model_name_or_path yoshitomo-matsubara/bert-base-uncased-${TASK_NAME}` our python script `run_glue_no_trainer.py` automatically downloads the models from Hugging Face. Users can also use their own models with better accuracy as the teacher and the student model initialization.
 
 ### 3.1  One-bit or Two-bit BERT-base (12-layer) with 8-bit activation quantization
-For the configurations, see `model_compression/bert/config/XTC/ds_config_W1A8_Qgroup1_fp32.json` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples). In our paper, we used FP32 (`"fp16": {"enabled": false}`) to perform training, while directly applying 8-bit quantization (`"bits": 8`) to the activations and 1-bit quantization (`"start_bits": 1, "target_bits": 1`) to the attention (query, key, val) and feedforward weight matrices (`"modules": ["attention.self", "intermediate", "output.dense"]`) at the beginning of the training (`"schedule_offset": 0`).  In addition, we also apply 1-bit quantization to `word_embeddings` as weight quantization.
+For the configurations, see `compression/bert/config/XTC/ds_config_W1A8_Qgroup1_fp32.json` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples). In our paper, we used FP32 (`"fp16": {"enabled": false}`) to perform training, while directly applying 8-bit quantization (`"bits": 8`) to the activations and 1-bit quantization (`"start_bits": 1, "target_bits": 1`) to the attention (query, key, val) and feedforward weight matrices (`"modules": ["attention.self", "intermediate", "output.dense"]`) at the beginning of the training (`"schedule_offset": 0`).  In addition, we also apply 1-bit quantization to `word_embeddings` as weight quantization.
 
 One can run this example by:
 
 ```shell
-DeepSpeedExamples/model_compression/bert$ bash bash_script/XTC/quant_1bit.sh
+DeepSpeedExamples/compression/bert$ bash bash_script/XTC/quant_1bit.sh
 ```
 
 And the final result is:
@@ -389,7 +387,7 @@ And the final result is:
 Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8293428425878757/0.8396053702196908
 ```
 
-The other important feature we would like to mention is the `quantize_groups` inside `weight_quantization`, which is set to be 1 here to match our XTC paper's FP32 training setup. We find that under FP16 training, smaller number of quantization group (e.g., 1 or 2) could lead to unstable training. Thus, we recommend using larger number of groups (e.g., 64) under FP16. `model_compression/bert/config/ds_config_W1A8_Qgroup64_fp16.json` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) is the FP16 example configurations, where `"fp16": {"enabled": true}` and `"weight_quantization": {"shared_parameters": {"quantize_weight_in_forward": false}}` are different from FP32 case.
+The other important feature we would like to mention is the `quantize_groups` inside `weight_quantization`, which is set to be 1 here to match our XTC paper's FP32 training setup. We find that under FP16 training, smaller number of quantization group (e.g., 1 or 2) could lead to unstable training. Thus, we recommend using larger number of groups (e.g., 64) under FP16. `compression/bert/config/ds_config_W1A8_Qgroup64_fp16.json` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) is the FP16 example configurations, where `"fp16": {"enabled": true}` and `"weight_quantization": {"shared_parameters": {"quantize_weight_in_forward": false}}` are different from FP32 case.
 
 With this config, we quantize the existing fined-tuned models downloaded from Hugging Face. For 2-bit weight quantization, user needs to update the ds_config JSON file. To give a sense of the compression performance of downloaded models compared to our paper, we collect the results (1/2-bit BERT on MNLI and QQP with 18 training epochs) in table below. The difference between this tutorial and paper is because they use different checkpoints. Data augmentation introduces in [TinyBERT](https://github.com/huawei-noah/Pretrained-Language-Model/tree/master/TinyBERT) will help significantly for smaller tasks (such as mrpc, rte, sst-b and cola). See more details in [our paper](https://arxiv.org/abs/2206.01859).
 
@@ -401,12 +399,12 @@ This section consists of two parts: (a) we first perform a light-weight layer re
 
 **3.2.1 Light-weight Layer Reduction**
 
-`model_compression/bert/config/XTC/ds_config_layer_reduction_fp16.json` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) is the example configuration for reducing the 12-layer BERT-base to a 6-layer one. The student’s layers are initialized from i-layer of the teacher with i= [1, 3 ,5 ,7 ,9 ,11] (note that the layer starts from 0), which is called `Skip-BERT_5` in our XTC paper. In addition, student’s modules including embedding, pooler and classifier are also initialized from teacher. For 5-layer layer reduction, one needs to change the configs in `ds_config_layer_reduction_fp16.json` to `"keep_number_layer": 5`, `"teacher_layer": [2, 4 ,6, 8, 10]`(like in `model_compression/bert/config/ds_config_TEMPLATE.json`).
+`compression/bert/config/XTC/ds_config_layer_reduction_fp16.json` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) is the example configuration for reducing the 12-layer BERT-base to a 6-layer one. The student’s layers are initialized from i-layer of the teacher with i= [1, 3 ,5 ,7 ,9 ,11] (note that the layer starts from 0), which is called `Skip-BERT_5` in our XTC paper. In addition, student’s modules including embedding, pooler and classifier are also initialized from teacher. For 5-layer layer reduction, one needs to change the configs in `ds_config_layer_reduction_fp16.json` to `"keep_number_layer": 5`, `"teacher_layer": [2, 4 ,6, 8, 10]`(like in `compression/bert/config/ds_config_TEMPLATE.json`).
 
 One can run this example by:
 
 ```shell
-DeepSpeedExamples/model_compression/bert$ bash bash_script/XTC/layer_reduction.sh
+DeepSpeedExamples/compression/bert$ bash bash_script/XTC/layer_reduction.sh
 ```
 
 And the final result is:
@@ -415,7 +413,7 @@ And the final result is:
 Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8377992868059093/0.8365541090317331
 ```
 
-Notably, when using one-stage knowledge distillation (`--distill_method one_stage`), the difference between the outputs of teacher and student models (att_loss and rep_loss) also need to be consistent with the initialization. See the function `_kd_function` under `forward_loss` in `model_compression/bert/util.py`.
+Notably, when using one-stage knowledge distillation (`--distill_method one_stage`), the difference between the outputs of teacher and student models (att_loss and rep_loss) also need to be consistent with the initialization. See the function `_kd_function` under `forward_loss` in `compression/bert/util.py`.
 
 For mnli/qqp, we set `--num_train_epochs 36`, `--learning_rate 5e-5`, and with the JSON config above. The results are given below (we also include the fp16 training results). Using fp32 clearly results in more stable performance than fp16, although fp16 can speed up the training time.
 
@@ -423,12 +421,12 @@ For mnli/qqp, we set `--num_train_epochs 36`, `--learning_rate 5e-5`, and with t
 
 **3.2.2 One-bit or Two-bit quantization for 6-layer (5-layer) BERT**
 
-Given the above layer-reduced models ready, we now continue to compress the model with 1/2-bit quantization. `model_compression/bert/config/XTC/ds_config_layer_reduction_W1Q8_fp32.json` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) is the example configuration where we set the layer reduction to be true on top of `model_compression/bert/config/XTC/ds_config_W1A8_Qgroup1_fp32.json`. In addition to the configuration, we need to update the path for the student model using `--pretrained_dir_student` in the script `model_compression/bert/bash_script/XTC/layer_reduction_1bit.sh`. User can train with a different teacher model by adding `--pretrained_dir_teacher`.
+Given the above layer-reduced models ready, we now continue to compress the model with 1/2-bit quantization. `compression/bert/config/XTC/ds_config_layer_reduction_W1Q8_fp32.json` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) is the example configuration where we set the layer reduction to be true on top of `compression/bert/config/XTC/ds_config_W1A8_Qgroup1_fp32.json`. In addition to the configuration, we need to update the path for the student model using `--pretrained_dir_student` in the script `compression/bert/bash_script/XTC/layer_reduction_1bit.sh`. User can train with a different teacher model by adding `--pretrained_dir_teacher`.
 
 One can run this example by:
 
 ```shell
-DeepSpeedExamples/model_compression/bert$ bash bash_script/XTC/layer_reduction_1bit.sh
+DeepSpeedExamples/compression/bert$ bash bash_script/XTC/layer_reduction_1bit.sh
 ```
 
 And the final result is:
