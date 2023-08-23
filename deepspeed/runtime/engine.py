@@ -1290,9 +1290,7 @@ class DeepSpeedEngine(Module):
 
             optimizer = OnebitLamb(model_parameters, self, **optimizer_parameters)
             if not self.fp16_enabled():
-                logger.warning(
-                    f"Currently the convergence of 1-bit Lamb is only verified under FP16"
-                )
+                logger.warning(f"Currently the convergence of 1-bit Lamb is only verified under FP16")
         elif self.optimizer_name() == MUADAM_OPTIMIZER:
             try:
                 from mup import MuAdam

@@ -1,20 +1,19 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import deepspeed
 import torch
 import pytest
 
 from mup.shape import set_base_shapes
 
-from .common import distributed_test
 from .simple_model import SimpleModel, args_from_dict, random_dataloader
 
 
-@pytest.mark.parametrize("optimizer, expected_opt_class",
-                         [("MuAdam",
-                           torch.optim.Adam),
-                          ("MuAdamW",
-                           torch.optim.AdamW),
-                          ("MuSGD",
-                           torch.optim.SGD)])
+@pytest.mark.parametrize("optimizer, expected_opt_class", [("MuAdam", torch.optim.Adam),
+                                                           ("MuAdamW", torch.optim.AdamW), ("MuSGD", torch.optim.SGD)])
 @pytest.mark.parametrize("zero_offload", [True, False])
 def test_mup_optimizers(tmpdir, optimizer, zero_offload, expected_opt_class):
     config_dict = {
@@ -38,18 +37,13 @@ def test_mup_optimizers(tmpdir, optimizer, zero_offload, expected_opt_class):
     }
     args = args_from_dict(tmpdir, config_dict)
 
-    @distributed_test(world_size=[1])
     def helper(args):
+        world_size = 1
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
         set_base_shapes(model, None)
-        model, _, _, _ = deepspeed.initialize(args=args,
-                                              model=model,
-                                              model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
+        model, _, _, _ = deepspeed.initialize(args=args, model=model, model_parameters=model.parameters())
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
