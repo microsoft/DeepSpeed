@@ -2,11 +2,18 @@
 Copyright 2020 The Microsoft DeepSpeed Team
 """
 import os
+import sys
 import time
-import torch
 import importlib
 from pathlib import Path
 import subprocess
+import shlex
+import shutil
+import tempfile
+import distutils.ccompiler
+import distutils.log
+import distutils.sysconfig
+from distutils.errors import CompileError, LinkError
 from abc import ABC, abstractmethod
 
 YELLOW = '\033[93m'
@@ -15,6 +22,13 @@ WARNING = f"{YELLOW} [WARNING] {END}"
 
 DEFAULT_TORCH_EXTENSION_PATH = "/tmp/torch_extensions"
 DEFAULT_COMPUTE_CAPABILITIES = "6.0;6.1;7.0"
+
+try:
+    import torch
+except ImportError:
+    print(
+        f"{WARNING} unable to import torch, please install it if you want to pre-compile any deepspeed ops."
+    )
 
 
 def installed_cuda_version():
@@ -47,14 +61,31 @@ def get_default_compute_capatabilities():
     return compute_caps
 
 
+# list compatible minor CUDA versions - so that for example pytorch built with cuda-11.0 can be used
+# to build deepspeed and system-wide installed cuda 11.2
+cuda_minor_mismatch_ok = {
+    10: ["10.0",
+         "10.1",
+         "10.2"],
+    11: ["11.0",
+         "11.1",
+         "11.2",
+         "11.3"],
+}
+
+
 def assert_no_cuda_mismatch():
     cuda_major, cuda_minor = installed_cuda_version()
     sys_cuda_version = f'{cuda_major}.{cuda_minor}'
     torch_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
     # This is a show-stopping error, should probably not proceed past this
     if sys_cuda_version != torch_cuda_version:
-        if sys_cuda_version == "11.1" and torch_cuda_version == "11.0":
-            # it works to build against installed cuda-11.1 while torch was built with cuda-11.0
+        if (cuda_major in cuda_minor_mismatch_ok
+                and sys_cuda_version in cuda_minor_mismatch_ok[cuda_major]
+                and torch_cuda_version in cuda_minor_mismatch_ok[cuda_major]):
+            print(f"Installed CUDA version {sys_cuda_version} does not match the "
+                  f"version torch was compiled with {torch.version.cuda} "
+                  "but since the APIs are compatible, accepting this combination")
             return
         raise Exception(
             f"Installed CUDA version {sys_cuda_version} does not match the "
@@ -136,13 +167,113 @@ class OpBuilder(ABC):
             valid = valid or result.wait() == 0
         return valid
 
+    def has_function(self, funcname, libraries, verbose=False):
+        '''
+        Test for existence of a function within a tuple of libraries.
+
+        This is used as a smoke test to check whether a certain library is avaiable.
+        As a test, this creates a simple C program that calls the specified function,
+        and then distutils is used to compile that program and link it with the specified libraries.
+        Returns True if both the compile and link are successful, False otherwise.
+        '''
+        tempdir = None  # we create a temporary directory to hold various files
+        filestderr = None  # handle to open file to which we redirect stderr
+        oldstderr = None  # file descriptor for stderr
+        try:
+            # Echo compile and link commands that are used.
+            if verbose:
+                distutils.log.set_verbosity(1)
+
+            # Create a compiler object.
+            compiler = distutils.ccompiler.new_compiler(verbose=verbose)
+
+            # Configure compiler and linker to build according to Python install.
+            distutils.sysconfig.customize_compiler(compiler)
+
+            # Create a temporary directory to hold test files.
+            tempdir = tempfile.mkdtemp()
+
+            # Define a simple C program that calls the function in question
+            prog = "void %s(void); int main(int argc, char** argv) { %s(); return 0; }" % (
+                funcname,
+                funcname)
+
+            # Write the test program to a file.
+            filename = os.path.join(tempdir, 'test.c')
+            with open(filename, 'w') as f:
+                f.write(prog)
+
+            # Redirect stderr file descriptor to a file to silence compile/link warnings.
+            if not verbose:
+                filestderr = open(os.path.join(tempdir, 'stderr.txt'), 'w')
+                oldstderr = os.dup(sys.stderr.fileno())
+                os.dup2(filestderr.fileno(), sys.stderr.fileno())
+
+            # Attempt to compile the C program into an object file.
+            cflags = shlex.split(os.environ.get('CFLAGS', ""))
+            objs = compiler.compile([filename],
+                                    extra_preargs=self.strip_empty_entries(cflags))
+
+            # Attempt to link the object file into an executable.
+            # Be sure to tack on any libraries that have been specified.
+            ldflags = shlex.split(os.environ.get('LDFLAGS', ""))
+            compiler.link_executable(objs,
+                                     os.path.join(tempdir,
+                                                  'a.out'),
+                                     extra_preargs=self.strip_empty_entries(ldflags),
+                                     libraries=libraries)
+
+            # Compile and link succeeded
+            return True
+
+        except CompileError:
+            return False
+
+        except LinkError:
+            return False
+
+        except:
+            return False
+
+        finally:
+            # Restore stderr file descriptor and close the stderr redirect file.
+            if oldstderr is not None:
+                os.dup2(oldstderr, sys.stderr.fileno())
+            if filestderr is not None:
+                filestderr.close()
+
+            # Delete the temporary directory holding the test program and stderr files.
+            if tempdir is not None:
+                shutil.rmtree(tempdir)
+
+    def strip_empty_entries(self, args):
+        '''
+        Drop any empty strings from the list of compile and link flags
+        '''
+        return [x for x in args if len(x) > 0]
+
+    def cpu_arch(self):
+        if not self.command_exists('lscpu'):
+            self.warning(
+                f"{self.name} attempted to query 'lscpu' to detect the CPU architecture. "
+                "However, 'lscpu' does not appear to exist on "
+                "your system, will fall back to use -march=native.")
+            return '-march=native'
+
+        result = subprocess.check_output('lscpu', shell=True)
+        result = result.decode('utf-8').strip().lower()
+        if 'ppc64le' in result:
+            # gcc does not provide -march on PowerPC, use -mcpu instead
+            return '-mcpu=native'
+        return '-march=native'
+
     def simd_width(self):
         if not self.command_exists('lscpu'):
             self.warning(
-                f"{self.name} is attempted to query 'lscpu' to detect the existence "
+                f"{self.name} attempted to query 'lscpu' to detect the existence "
                 "of AVX instructions. However, 'lscpu' does not appear to exist on "
                 "your system, will fall back to non-vectorized execution.")
-            return ''
+            return '-D__SCALAR__'
 
         result = subprocess.check_output('lscpu', shell=True)
         result = result.decode('utf-8').strip().lower()
@@ -151,7 +282,7 @@ class OpBuilder(ABC):
                 return '-D__AVX512__'
             elif 'avx2' in result:
                 return '-D__AVX256__'
-        return ''
+        return '-D__SCALAR__'
 
     def python_requirements(self):
         '''
@@ -196,11 +327,12 @@ class OpBuilder(ABC):
 
     def builder(self):
         from torch.utils.cpp_extension import CppExtension
-        return CppExtension(name=self.absolute_name(),
-                            sources=self.sources(),
-                            include_dirs=self.include_paths(),
-                            extra_compile_args={'cxx': self.cxx_args()},
-                            extra_link_args=self.extra_ldflags())
+        return CppExtension(
+            name=self.absolute_name(),
+            sources=self.strip_empty_entries(self.sources()),
+            include_dirs=self.strip_empty_entries(self.include_paths()),
+            extra_compile_args={'cxx': self.strip_empty_entries(self.cxx_args())},
+            extra_link_args=self.strip_empty_entries(self.extra_ldflags()))
 
     def load(self, verbose=True):
         from ...git_version_info import installed_ops, torch_info
@@ -240,15 +372,17 @@ class OpBuilder(ABC):
         os.makedirs(ext_path, exist_ok=True)
 
         start_build = time.time()
+        sources = [self.deepspeed_src_path(path) for path in self.sources()]
+        extra_include_paths = [
+            self.deepspeed_src_path(path) for path in self.include_paths()
+        ]
         op_module = load(
             name=self.name,
-            sources=[self.deepspeed_src_path(path) for path in self.sources()],
-            extra_include_paths=[
-                self.deepspeed_src_path(path) for path in self.include_paths()
-            ],
-            extra_cflags=self.cxx_args(),
-            extra_cuda_cflags=self.nvcc_args(),
-            extra_ldflags=self.extra_ldflags(),
+            sources=self.strip_empty_entries(sources),
+            extra_include_paths=self.strip_empty_entries(extra_include_paths),
+            extra_cflags=self.strip_empty_entries(self.cxx_args()),
+            extra_cuda_cflags=self.strip_empty_entries(self.nvcc_args()),
+            extra_ldflags=self.strip_empty_entries(self.extra_ldflags()),
             verbose=verbose)
         build_duration = time.time() - start_build
         if verbose:
@@ -332,9 +466,34 @@ class CUDAOpBuilder(OpBuilder):
         from torch.utils.cpp_extension import CUDAExtension
         assert_no_cuda_mismatch()
         return CUDAExtension(name=self.absolute_name(),
-                             sources=self.sources(),
-                             include_dirs=self.include_paths(),
+                             sources=self.strip_empty_entries(self.sources()),
+                             include_dirs=self.strip_empty_entries(self.include_paths()),
+                             libraries=self.strip_empty_entries(self.libraries_args()),
                              extra_compile_args={
-                                 'cxx': self.cxx_args(),
-                                 'nvcc': self.nvcc_args()
+                                 'cxx': self.strip_empty_entries(self.cxx_args()),
+                                 'nvcc': self.strip_empty_entries(self.nvcc_args())
                              })
+
+    def cxx_args(self):
+        if sys.platform == "win32":
+            return ['-O2']
+        else:
+            return ['-O3', '-std=c++14', '-g', '-Wno-reorder']
+
+    def nvcc_args(self):
+        args = [
+            '-O3',
+            '--use_fast_math',
+            '-std=c++17' if sys.platform == "win32" else '-std=c++14',
+            '-U__CUDA_NO_HALF_OPERATORS__',
+            '-U__CUDA_NO_HALF_CONVERSIONS__',
+            '-U__CUDA_NO_HALF2_OPERATORS__'
+        ]
+
+        return args + self.compute_capability_args()
+
+    def libraries_args(self):
+        if sys.platform == "win32":
+            return ['cublas', 'curand']
+        else:
+            return []

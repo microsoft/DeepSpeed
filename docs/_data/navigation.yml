@@ -37,8 +37,6 @@ lnav:
         url: /docs/config-json/#communication-options
       - title: "FP16"
         url: /docs/config-json/#fp16-training-options
-      - title: "AMP"
-        url: /docs/config-json/#automatic-mixed-precision-amp-training-options
       - title: "Gradient Clipping"
         url: /docs/config-json/#gradient-clipping
       - title: "ZeRO optimizations"
@@ -47,6 +45,8 @@ lnav:
         url: /docs/config-json/#parameter-offloading
       - title: "Optimizer Offloading"
         url: /docs/config-json/#optimizer-offloading
+      - title: "Asynchronous I/O"
+        url: /docs/config-json/#asynchronous-io
       - title: "Logging"
         url: /docs/config-json/#logging
       - title: "Flops Profiler"
@@ -68,14 +68,22 @@ lnav:
         url: /tutorials/bert-pretraining/
       - title: "CIFAR-10"
         url: /tutorials/cifar-10/
+      - title: "Curriculum Learning"
+        url: /tutorials/curriculum-learning/
       - title: "Flops Profiler"
         url: /tutorials/flops-profiler/
       - title: "GAN"
         url: /tutorials/gan/
+      - title: "Inference"
+        url: /tutorials/inference-tutorial/
       - title: "Learning Rate Range Test"
         url: /tutorials/lrrt/
       - title: "Megatron-LM GPT2"
         url: /tutorials/megatron/
+      - title: "Mixture-of-Experts (MoE)"
+        url: /tutorials/mixture-of-experts/
+      - title: "Mixture-of-Quantization"
+        url: /tutorials/MoQ-tutorial/
       - title: "One-Cycle Schedule"
         url: /tutorials/one-cycle/
       - title: "One-Bit Adam"

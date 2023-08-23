@@ -1,6 +1,9 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
+import distutils.spawn
+import subprocess
+
 from .builder import OpBuilder
 
 
@@ -30,6 +33,9 @@ class AsyncIOBuilder(OpBuilder):
         return ['csrc/aio/py_lib', 'csrc/aio/common']
 
     def cxx_args(self):
+        # -O0 for improved debugging, since performance is bound by I/O
+        CPU_ARCH = self.cpu_arch()
+        SIMD_WIDTH = self.simd_width()
         return [
             '-g',
             '-Wall',
@@ -38,19 +44,63 @@ class AsyncIOBuilder(OpBuilder):
             '-shared',
             '-fPIC',
             '-Wno-reorder',
-            '-march=native',
+            CPU_ARCH,
             '-fopenmp',
+            SIMD_WIDTH,
             '-laio',
-            self.simd_width()
         ]
 
     def extra_ldflags(self):
         return ['-laio']
 
+    def check_for_libaio_pkg(self):
+        libs = dict(
+            dpkg=["-l",
+                  "libaio-dev",
+                  "apt"],
+            pacman=["-Q",
+                    "libaio",
+                    "pacman"],
+            rpm=["-q",
+                 "libaio-devel",
+                 "yum"],
+        )
+
+        found = False
+        for pkgmgr, data in libs.items():
+            flag, lib, tool = data
+            path = distutils.spawn.find_executable(pkgmgr)
+            if path is not None:
+                cmd = f"{pkgmgr} {flag} {lib}"
+                result = subprocess.Popen(cmd,
+                                          stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE,
+                                          shell=True)
+                if result.wait() == 0:
+                    found = True
+                else:
+                    self.warning(
+                        f"{self.NAME}: please install the {lib} package with {tool}")
+                break
+        return found
+
     def is_compatible(self):
-        aio_libraries = ['libaio-dev']
-        aio_compatible = self.libraries_installed(aio_libraries)
+        # Check for the existence of libaio by using distutils
+        # to compile and link a test program that calls io_submit,
+        # which is a function provided by libaio that is used in the async_io op.
+        # If needed, one can define -I and -L entries in CFLAGS and LDFLAGS
+        # respectively to specify the directories for libaio.h and libaio.so.
+        aio_compatible = self.has_function('io_submit', ('aio', ))
         if not aio_compatible:
             self.warning(
-                f"{self.NAME} requires the libraries: {aio_libraries} but are missing.")
+                f"{self.NAME} requires the dev libaio .so object and headers but these were not found."
+            )
+
+            # Check for the libaio package via known package managers
+            # to print suggestions on which package to install.
+            self.check_for_libaio_pkg()
+
+            self.warning(
+                "If libaio is already installed (perhaps from source), try setting the CFLAGS and LDFLAGS environment variables to where it can be found."
+            )
         return super().is_compatible() and aio_compatible

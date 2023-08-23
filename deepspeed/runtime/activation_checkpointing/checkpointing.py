@@ -405,7 +405,7 @@ class CheckpointFunction(torch.autograd.Function):
                     f"----contiguous Memory Checkpointing {CONTIGUOUS_CHECKPOINTING} with {num_layers} total layers"
                 )
                 logger.info(f"----Synchronization {SYNCHRONIZE}")
-                logger.info(f"----Profiling {PROFILE_TIME}")
+                logger.info(f"----Profiling time in checkpointing {PROFILE_TIME}")
 
             cuda_device = torch.cuda.current_device()
             transport_stream = torch.cuda.Stream(device=cuda_device)
@@ -416,7 +416,7 @@ class CheckpointFunction(torch.autograd.Function):
 
             inputs = []
             for i, item in enumerate(args[:-1]):
-                if not torch.is_tensor(item):
+                if not torch.is_tensor(item) or mp_size > item.numel():
                     inputs.append(item)
                     continue
 
@@ -725,11 +725,11 @@ def reset():
         size_offsets = []
 
 
-def _configure_using_config_file(deepspeed_config, mpu=None):
+def _configure_using_config_file(config, mpu=None):
     global num_layers, PARTITION_ACTIVATIONS, CONTIGUOUS_CHECKPOINTING, \
         PA_TO_CPU, SYNCHRONIZE, PROFILE_TIME
 
-    config = DeepSpeedConfig(deepspeed_config, mpu=mpu).activation_checkpointing_config
+    config = DeepSpeedConfig(config, mpu=mpu).activation_checkpointing_config
     if dist.get_rank() == 0:
         logger.info(config.repr())
     PARTITION_ACTIVATIONS = config.partition_activations

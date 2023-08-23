@@ -3,26 +3,44 @@ Copyright 2020 The Microsoft DeepSpeed Team
 
 DeepSpeed library
 
-Create a new wheel via the following command: python setup.py bdist_wheel
+To build wheel on Windows:
+    1. Install pytorch, such as pytorch 1.8 + cuda 11.1
+    2. Install visual cpp build tool
+    3. Launch cmd console with Administrator privilege for creating required symlink folders
+
+Create a new wheel via the following command:
+    python setup.py bdist_wheel
 
 The wheel will be located at: dist/*.whl
 """
 
 import os
+import sys
 import shutil
 import subprocess
 import warnings
 from setuptools import setup, find_packages
 import time
 
+torch_available = True
 try:
     import torch
     from torch.utils.cpp_extension import BuildExtension
 except ImportError:
-    raise ImportError('Unable to import torch, please visit https://pytorch.org/ '
-                      'to see how to properly install torch on your system.')
+    torch_available = False
+    print('[WARNING] Unable to import torch, pre-compiling ops will be disabled. ' \
+        'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
 
 from op_builder import ALL_OPS, get_default_compute_capatabilities
+
+RED_START = '\033[31m'
+RED_END = '\033[0m'
+ERROR = f"{RED_START} [ERROR] {RED_END}"
+
+
+def abort(msg):
+    print(f"{ERROR} {msg}")
+    assert False, msg
 
 
 def fetch_requirements(path):
@@ -38,7 +56,7 @@ extras_require = {
 }
 
 # If MPI is available add 1bit-adam requirements
-if torch.cuda.is_available():
+if torch_available and torch.cuda.is_available():
     if shutil.which('ompi_info') or shutil.which('mpiname'):
         cupy = f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}"
         extras_require['1bit_adam'].append(cupy)
@@ -53,12 +71,17 @@ extras_require['all'] = list(all_extras)
 cmdclass = {}
 
 # For any pre-installed ops force disable ninja
-cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
+if torch_available:
+    cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
 
-TORCH_MAJOR = torch.__version__.split('.')[0]
-TORCH_MINOR = torch.__version__.split('.')[1]
+if torch_available:
+    TORCH_MAJOR = torch.__version__.split('.')[0]
+    TORCH_MINOR = torch.__version__.split('.')[1]
+else:
+    TORCH_MAJOR = "0"
+    TORCH_MINOR = "0"
 
-if not torch.cuda.is_available():
+if torch_available and not torch.cuda.is_available():
     # Fix to allow docker builds, similar to https://github.com/NVIDIA/apex/issues/486
     print(
         "[WARNING] Torch did not find cuda available, if cross-compiling or running with cpu only "
@@ -69,26 +92,47 @@ if not torch.cuda.is_available():
 
 ext_modules = []
 
-# Default to pre-install kernels to false so we rely on JIT
-BUILD_OP_DEFAULT = int(os.environ.get('DS_BUILD_OPS', 0))
+# Default to pre-install kernels to false so we rely on JIT on Linux, opposite on Windows.
+BUILD_OP_PLATFORM = 1 if sys.platform == "win32" else 0
+BUILD_OP_DEFAULT = int(os.environ.get('DS_BUILD_OPS', BUILD_OP_PLATFORM))
 print(f"DS_BUILD_OPS={BUILD_OP_DEFAULT}")
+
+if BUILD_OP_DEFAULT:
+    assert torch_available, "Unable to pre-compile ops without torch installed. Please install torch before attempting to pre-compile ops."
 
 
 def command_exists(cmd):
-    result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
-    return result.wait() == 0
+    if sys.platform == "win32":
+        result = subprocess.Popen(f'{cmd}', stdout=subprocess.PIPE, shell=True)
+        return result.wait() == 1
+    else:
+        result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
+        return result.wait() == 0
+
+
+def op_envvar(op_name):
+    assert hasattr(ALL_OPS[op_name], 'BUILD_VAR'), \
+        f"{op_name} is missing BUILD_VAR field"
+    return ALL_OPS[op_name].BUILD_VAR
 
 
 def op_enabled(op_name):
-    assert hasattr(ALL_OPS[op_name], 'BUILD_VAR'), \
-        f"{op_name} is missing BUILD_VAR field"
-    env_var = ALL_OPS[op_name].BUILD_VAR
+    env_var = op_envvar(op_name)
     return int(os.environ.get(env_var, BUILD_OP_DEFAULT))
 
 
+compatible_ops = dict.fromkeys(ALL_OPS.keys(), False)
 install_ops = dict.fromkeys(ALL_OPS.keys(), False)
 for op_name, builder in ALL_OPS.items():
     op_compatible = builder.is_compatible()
+    compatible_ops[op_name] = op_compatible
+
+    # If op is requested but not available, throw an error
+    if op_enabled(op_name) and not op_compatible:
+        env_var = op_envvar(op_name)
+        if env_var not in os.environ:
+            builder.warning(f"One can disable {op_name} with {env_var}=0")
+        abort(f"Unable to pre-compile {op_name}")
 
     # If op is compatible update install reqs so it can potentially build/run later
     if op_compatible:
@@ -97,10 +141,9 @@ for op_name, builder in ALL_OPS.items():
 
     # If op install enabled, add builder to extensions
     if op_enabled(op_name) and op_compatible:
+        assert torch_available, f"Unable to pre-compile {op_name}, please first install torch"
         install_ops[op_name] = op_enabled(op_name)
         ext_modules.append(builder.builder())
-
-compatible_ops = {op_name: op.is_compatible() for (op_name, op) in ALL_OPS.items()}
 
 print(f'Install Ops={install_ops}')
 
@@ -119,6 +162,21 @@ if command_exists('git') and 'DS_BUILD_STRING' not in os.environ:
 else:
     git_hash = "unknown"
     git_branch = "unknown"
+
+
+def create_dir_symlink(src, dest):
+    if not os.path.islink(dest):
+        if os.path.exists(dest):
+            os.remove(dest)
+        assert not os.path.exists(dest)
+        os.symlink(src, dest)
+
+
+if sys.platform == "win32":
+    # This creates a symbolic links on Windows.
+    # It needs Administrator privilege to create symlinks on Windows.
+    create_dir_symlink('..\\..\\csrc', '.\\deepspeed\\ops\\csrc')
+    create_dir_symlink('..\\..\\op_builder', '.\\deepspeed\\ops\\op_builder')
 
 # Parse the DeepSpeed version string from version.txt
 version_str = open('version.txt', 'r').read().strip()
@@ -143,7 +201,7 @@ else:
 torch_version = ".".join([TORCH_MAJOR, TORCH_MINOR])
 # Set cuda_version to 0.0 if cpu-only
 cuda_version = "0.0"
-if torch.version.cuda is not None:
+if torch_available and torch.version.cuda is not None:
     cuda_version = ".".join(torch.version.cuda.split('.')[:2])
 torch_info = {"version": torch_version, "cuda_version": cuda_version}
 

@@ -65,7 +65,7 @@ def test_gather_update():
         assert torch.equal(l.weight, torch.zeros_like(l.weight))
 
 
-config_dict = {
+config = {
     "train_batch_size": 1,
     "steps_per_print": 1,
     "optimizer": {
@@ -109,7 +109,7 @@ def test_ext_param_getattr():
     engine, optim, _, _ = deepspeed.initialize(args=args,
                                                model=net,
                                                model_parameters=net.parameters(),
-                                               config_params=config_dict)
+                                               config=config)
 
     with deepspeed.zero.GatheredParameters(net.linear1.weight):
         assert net.linear1.weight.numel() == net.dim**2
@@ -214,7 +214,7 @@ def test_ext_param_return():
     engine, optim, _, _ = deepspeed.initialize(args=args,
                                                model=net,
                                                model_parameters=net.parameters(),
-                                               config_params=config_dict)
+                                               config=config)
 
     for _ in range(5):
         input = torch.rand(net.dim).to(engine.device).half()
@@ -234,7 +234,7 @@ def test_ext_param_returnobj():
     engine, optim, _, _ = deepspeed.initialize(args=args,
                                                model=net,
                                                model_parameters=net.parameters(),
-                                               config_params=config_dict)
+                                               config=config)
 
     for _ in range(5):
         input = torch.rand(net.dim).to(engine.device).half()
@@ -243,3 +243,120 @@ def test_ext_param_returnobj():
         assert len(net.dangler._external_params) == 0
         engine.backward(loss)
         engine.step()
+
+
+class ModelContainerVariableOutputType(ModelContainer):
+    def __init__(self, dim=16, output_type=dict):
+        super().__init__()
+        self.output_type = output_type
+        self.dim = dim
+        self.linear1 = torch.nn.Linear(dim, dim)
+
+    def forward(self, input):
+        act1 = self.linear1(input)
+        if self.output_type is dict:
+            return {'loss': act1.sum()}
+        if self.output_type is torch.tensor:
+            return act1.sum()
+
+
+@pytest.mark.parametrize('output_type', [torch.tensor, dict, None])
+def test_stage_3_output_type(output_type):
+    setup_serial_env()
+    print()
+
+    net = ModelContainerVariableOutputType(output_type=output_type)
+
+    args = SimpleNamespace(local_rank=0)
+    engine, optim, _, _ = deepspeed.initialize(args=args,
+                                               model=net,
+                                               model_parameters=net.parameters(),
+                                               config=config)
+
+    for _ in range(1):
+        input = torch.rand(net.dim).to(engine.device).half()
+        loss = engine(input)
+        if loss is not None:
+            if isinstance(loss, dict):
+                loss = loss['loss']
+            engine.backward(loss)
+            engine.step()
+
+
+# test that no sub-class or super-class is missed
+class ConvX(torch.nn.Conv1d):
+    def __init__(self, *args):
+        super().__init__(*args)
+        # This would not be partitioned before bugfix 5ca8167
+        self.param_in = torch.nn.Parameter(torch.FloatTensor(5).uniform_())
+
+    def forward(self, x):
+        return x
+
+
+class ConvNet(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = ConvX(1, 3, 4)
+        self.param = torch.nn.Parameter(torch.FloatTensor(5).uniform_())
+
+    def forward(self, x):
+        return x
+
+
+def test_subclass_param():
+    setup_serial_env()
+    with deepspeed.zero.Init(config=config):
+        model = ConvNet()
+
+    assert model.param.ds_status == ZeroParamStatus.NOT_AVAILABLE
+    assert model.conv1.param_in.ds_status == ZeroParamStatus.NOT_AVAILABLE
+
+
+# test that sub-classes get params that aren't prematurely partitioned and thus requiring gathering
+# fixed by https://github.com/microsoft/DeepSpeed/pull/1202
+class GrandPa(torch.nn.Module):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.param_grandpa = torch.nn.Parameter(torch.ones(5))
+        self.param_grandpa.data = (self.param_grandpa.data +
+                                   1).data  # test param is not yet partitioned
+
+
+class Pa(GrandPa):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.param_pa = torch.nn.Parameter(torch.ones(5))
+        self.param_pa.data = (self.param_pa.data +
+                              1).data  # test param is not yet partitioned
+        self.param_grandpa.data = (self.param_grandpa.data +
+                                   1).data  # test param is not yet partitioned
+
+
+class Son(Pa):
+    def __init__(self):
+        super().__init__()
+        self.param = torch.nn.Parameter(torch.ones(5))
+        self.param.data = (self.param.data + 1).data  # test param is not yet partitioned
+        self.param_pa.data = (self.param_pa.data +
+                              1).data  # test param is not yet partitioned
+        self.param_grandpa.data = (self.param_grandpa.data +
+                                   1).data  # test param is not yet partitioned
+
+
+def test_subclass_param_init():
+    setup_serial_env()
+    with deepspeed.zero.Init(config=config):
+        model = Son().cpu()
+
+    # test that all params have been partitioned
+    assert model.param_grandpa.ds_status == ZeroParamStatus.NOT_AVAILABLE
+    assert model.param_pa.ds_status == ZeroParamStatus.NOT_AVAILABLE
+    assert model.param.ds_status == ZeroParamStatus.NOT_AVAILABLE
+
+    # test that the weights manipulation during each __init__ worked in all w/o needing gathering
+    ones = torch.ones(5).half().cuda()
+    with deepspeed.zero.GatheredParameters(list(model.parameters(recurse=False))):
+        assert torch.equal(model.param, ones + 1)
+        assert torch.equal(model.param_pa, ones + 2)
+        assert torch.equal(model.param_grandpa, ones + 3)

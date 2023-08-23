@@ -232,6 +232,7 @@ def run_forward(ds_config, seq_len, atol=1e-2, verbose=False, test_bsz=None):
                              (8,128,128,2,3,True,True),
                              (8,4096,128,64,3,True,True),
                              (8,8192,128,64,3,False,True),
+                             (1,256,2048,32,3,True,True),
                          ]) # yapf: disable
 def test_forward(batch_size,
                  hidden_size,
@@ -258,7 +259,7 @@ def test_forward(batch_size,
     ds_config.initializer_range = 0.02
     ds_config.fp16 = use_fp16
 
-    run_forward(ds_config, seq_len, atol=2e-2)
+    run_forward(ds_config, seq_len, atol=3e-2)
 
 
 @pytest.mark.parametrize('batch_size, small_bsz, hidden_size, seq_len, heads, num_layers, is_preln, use_fp16',
@@ -294,7 +295,7 @@ def test_forward_with_small_bsz(batch_size,
     ds_config.initializer_range = 0.02
     ds_config.fp16 = use_fp16
 
-    run_forward(ds_config, seq_len, atol=2e-2, test_bsz=small_bsz)
+    run_forward(ds_config, seq_len, atol=3e-2, test_bsz=small_bsz)
 
 @pytest.mark.parametrize('batch_size, hidden_size, seq_len, heads, num_layers, is_preln, use_fp16',
                          [

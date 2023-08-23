@@ -4,15 +4,22 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import sys
 import types
 
+from packaging import version as pkg_version
+
 from . import ops
+from . import module_inject
 
 from .runtime.engine import DeepSpeedEngine
 from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from .runtime.pipe.engine import PipelineEngine
+from .inference.engine import InferenceEngine
+
 from .runtime.lr_schedules import add_tuning_arguments
 from .runtime.config import DeepSpeedConfig, DeepSpeedConfigError
 from .runtime.activation_checkpointing import checkpointing
 from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
+from .module_inject import replace_transformer_layer, revert_transformer_layer
+
 from .utils import log_dist
 from .utils.distributed import init_distributed
 
@@ -25,9 +32,8 @@ from .git_version_info import version, git_hash, git_branch
 
 def _parse_version(version_str):
     '''Parse a version string and extract the major, minor, and patch versions.'''
-    import re
-    matched = re.search('^(\d+)\.(\d+)\.(\d+)', version_str)
-    return int(matched.group(1)), int(matched.group(2)), int(matched.group(3))
+    ver = pkg_version.parse(version_str)
+    return ver.major, ver.minor, ver.micro
 
 
 # Export version information
@@ -58,11 +64,13 @@ def initialize(args=None,
                mpu=None,
                dist_init_required=None,
                collate_fn=None,
+               config=None,
                config_params=None):
     """Initialize the DeepSpeed Engine.
 
     Arguments:
-        args: an object containing local_rank and deepspeed_config fields. This is optional if `config_params` is passed.
+        args: an object containing local_rank and deepspeed_config fields.
+            This is optional if `config` is passed.
 
         model: Required: nn.module class before apply any wrappers
 
@@ -87,8 +95,10 @@ def initialize(args=None,
             mini-batch of Tensor(s).  Used when using batched loading from a
             map-style dataset.
 
-        config_params: Optional: Instead of requiring args.deepspeed_config you can pass your deepspeed config
-            as a dictionary instead.
+        config: Optional: Instead of requiring args.deepspeed_config you can pass your deepspeed config
+            as an argument instead, as a path or a dictionary.
+
+        config_params: Optional: Same as `config`, kept for backwards compatibility.
 
     Returns:
         A tuple of ``engine``, ``optimizer``, ``training_dataloader``, ``lr_scheduler``
@@ -122,6 +132,7 @@ def initialize(args=None,
                                  mpu=mpu,
                                  dist_init_required=dist_init_required,
                                  collate_fn=collate_fn,
+                                 config=config,
                                  config_params=config_params)
     else:
         assert mpu is None, "mpu must be None with pipeline parallelism"
@@ -134,6 +145,7 @@ def initialize(args=None,
                                 mpu=model.mpu(),
                                 dist_init_required=dist_init_required,
                                 collate_fn=collate_fn,
+                                config=config,
                                 config_params=config_params)
 
     return_items = [
@@ -210,3 +222,66 @@ def add_config_arguments(parser):
     parser = _add_core_arguments(parser)
 
     return parser
+
+
+def init_inference(model,
+                   mp_size=1,
+                   mpu=None,
+                   checkpoint=None,
+                   module_key='module',
+                   dtype=None,
+                   injection_policy=None,
+                   replace_method='auto',
+                   quantization_setting=None):
+    """Initialize the DeepSpeed InferenceEngine.
+
+    Arguments:
+        model: Required: nn.module class before apply any wrappers
+
+        mp_size: Optional: Desired model parallel size, default is 1 meaning no
+            model parallelism.
+
+        mpu: Optional: A model parallelism unit object that implements
+            get_{model,data}_parallel_{rank,group,world_size}()
+
+        checkpoint: Optional: Path to deepspeed compatible checkpoint or path to
+            JSON with load policy.
+
+        dtype: Optional: Desired model data type, will convert model to this type.
+            Supported target types: torch.half, torch.int8, torch.float
+
+        injection_policy: Optional: Dictionary mapping a client nn.Module to its corresponding
+            injection policy. e.g., {BertLayer : deepspeed.inference.HFBertLayerPolicy}
+
+        replace_method: Optional: If 'auto' DeepSpeed will automatically try and replace
+            model modules with its optimized versions. If an injection_policy is set this will
+            override the automatic replacement behavior.
+
+        quantization_setting: Optional: Quantization settings used for quantizing your model using the MoQ.
+            The setting can be one element or a tuple. If one value is passed in, we consider it as the number
+            of groups used in quantization. A tuple is passed in if we want to mention that there is extra-grouping
+            for the MLP part of a Transformer layer (e.g. (True, 8) shows we quantize the model using 8 groups for
+            all the network except the MLP part that we use 8 extra grouping).
+
+    Returns:
+        A deepspeed.InferenceEngine wrapped model.
+    """
+    log_dist("DeepSpeed info: version={}, git-hash={}, git-branch={}".format(
+        __version__,
+        __git_hash__,
+        __git_branch__),
+             ranks=[0])
+
+    if isinstance(model, PipelineModule):
+        raise NotImplementedError("pipeline module support is not implemented yet")
+    else:
+        engine = InferenceEngine(model,
+                                 mp_size,
+                                 mpu,
+                                 checkpoint,
+                                 dtype,
+                                 injection_policy,
+                                 replace_method,
+                                 quantization_setting)
+
+    return engine

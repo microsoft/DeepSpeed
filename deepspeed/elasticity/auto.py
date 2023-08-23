@@ -130,6 +130,7 @@ def get_relaunch_rank_for_pod_level_retry(new_hostset, old_hostset, host_to_ip_m
     relaunch_rank = rank_mapping[first_host][0]
     return int(relaunch_rank)
 
+
 def get_relaunch_rank(new_hostset, old_hostset):
     # get list of hosts valid on both old and new, this ensures we are re-launched
     # on a node that is still alive and not new
@@ -170,6 +171,7 @@ def handle_pod_level_retry_event(state, new_hosts, old_hosts, new_config_hosts, 
     wait_on_available_nodes(new_hosts)
     relaunch(state)
 
+
 def handle_scaling_event(state, new_hosts, old_hosts, new_config_hosts):
     assert len(new_hosts) == len(new_config_hosts), "new hosts and new config hosts don't align, {new_hosts} != {new_config_hosts}"
 
@@ -204,6 +206,7 @@ def get_config_host_set(ssh_config_path):
     config_hostset = set(re.findall("Host (worker-[0-9]+)", config))
     assert len(config_hostset) > 0, f"Unable to find any hosts in config={config}"
     return config_hostset
+
 
 def get_config_ip_set(ssh_config_path):
     #TODO: support host parsing for non worker-[0-9]+ pattern
