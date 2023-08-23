@@ -21,6 +21,27 @@ except ImportError:
     _amp_available = False
 amp_available = pytest.mark.skipif(not _amp_available, reason="apex/amp is not installed")
 
+def get_grouped_optimizer_parameters(model):
+    param_optimizer = list(model.named_parameters())
+    param_optimizer = [n for n in param_optimizer if "pooler" not in n[0]]
+    no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
+
+    optimizer_grouped_parameters = [
+        {
+            "params": [
+                p for n, p in param_optimizer if not any(no_d in n for no_d in no_decay)
+            ],
+            "weight_decay": 0.1,
+        },
+        {
+            "params": [
+                p for n, p in param_optimizer if any(no_d in n for no_d in no_decay)
+            ],
+            "weight_decay": 0.0,
+        },
+    ]
+    return optimizer_grouped_parameters
+
 
 class TestLambFP32GradClip(DistributedTest):
     world_size = 2
@@ -40,7 +61,7 @@ class TestLambFP32GradClip(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
-        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=get_grouped_optimizer_parameters(model))
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -73,7 +94,7 @@ class TestLambFP16(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
-        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=get_grouped_optimizer_parameters(model))
         data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -98,7 +119,7 @@ class TestLambFP16(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim, empty_grad=True)
-        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=get_grouped_optimizer_parameters(model))
         data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -127,7 +148,7 @@ class TestAdamFP32EmptyGrad(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim, empty_grad=True)
-        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=get_grouped_optimizer_parameters(model))
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -247,7 +268,7 @@ class TestFP16OptimizerForMoE(DistributedTest):
         model = SimpleMoEModel(hidden_dim, ep_size=2)
         engine, optimizer, _, _ = deepspeed.initialize(config=config_dict,
                                                        model=model,
-                                                       model_parameters=model.parameters(),
+                                                       model_parameters=get_grouped_optimizer_parameters(model),
                                                        dist_init_required=False)
         monkeypatch.setattr(optimizer, 'unscale_and_clip_grads', mock_unscale_and_clip_grads)
         optimizer.fused_lamb_legacy = fused_lamb_legacy
@@ -318,7 +339,7 @@ class TestAdamFP16ZeroOneCycleCompatibility(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
-        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=get_grouped_optimizer_parameters(model))
         data_loader = random_dataloader(model=model, total_samples=10, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
