@@ -302,12 +302,11 @@ DeepSpeed-Ulysses can be easily integrated into your code with just a
 few lines of simple code changes. Here is an example of how to enable
 it:
 
+```python
 from deepspeed.sequence.layer import DistributedAttention
 
-\# Replace the original self-attention (attn) with DeepSpeed-Ulysses’s
-self-attention
+# Replace the original self-attention (attn) with DeepSpeed-Ulysses’s self-attention
 
-``` python
 dist_attn = DistributedAttention(attn, get_sequence_parallel_group())
 ```
 
