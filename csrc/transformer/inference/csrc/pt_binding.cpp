@@ -531,19 +531,20 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                1);
 
     if (layer_id == num_layers - 1) InferenceContext::Instance().advance_tokens();
-    auto prev_key = torch::from_blob(workspace + offset,
-                                     {bsz, heads, all_tokens, k},
-                                     {(int64_t) (hidden_dim * InferenceContext::Instance().GetMaxTokenLength()),
-                                      (int64_t) (k * InferenceContext::Instance().GetMaxTokenLength()),
-                                      k,
-                                      1},
-                                     options);
+    auto prev_key =
+        torch::from_blob(workspace + offset,
+                         {bsz, heads, all_tokens, k},
+                         {(int64_t)(hidden_dim * InferenceContext::Instance().GetMaxTokenLength()),
+                          (int64_t)(k * InferenceContext::Instance().GetMaxTokenLength()),
+                          k,
+                          1},
+                         options);
 
     auto prev_value =
         torch::from_blob(workspace + offset + value_offset,
                          {bsz, heads, all_tokens, k},
-                         {(int64_t) (hidden_dim * InferenceContext::Instance().GetMaxTokenLength()),
-                          (int64_t) (k * InferenceContext::Instance().GetMaxTokenLength()),
+                         {(int64_t)(hidden_dim * InferenceContext::Instance().GetMaxTokenLength()),
+                          (int64_t)(k * InferenceContext::Instance().GetMaxTokenLength()),
                           k,
                           1},
                          options);
@@ -1567,8 +1568,8 @@ std::vector<at::Tensor> ds_rms_mlp_gemm(at::Tensor& input,
 
     auto output = at::from_blob(output_ptr, input.sizes(), options);
     auto inp_norm = at::from_blob(inp_norm_ptr, input.sizes(), options);
-    auto intermediate_gemm =
-        at::from_blob(intermediate_ptr, {input.size(0), input.size(1), (int64_t) mlp_1_out_neurons}, options);
+    auto intermediate_gemm = at::from_blob(
+        intermediate_ptr, {input.size(0), input.size(1), (int64_t)mlp_1_out_neurons}, options);
 
     auto act_func_type = static_cast<ActivationFuncType>(activation_type);
 

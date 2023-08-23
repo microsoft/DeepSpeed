@@ -9,7 +9,6 @@
 #include <vector>
 #include "quantization.h"
 
-
 template <typename T>
 at::Tensor ds_quantize(at::Tensor& vals, int groups, int bits)
 {
@@ -194,7 +193,7 @@ std::vector<at::Tensor> quantized_reduction(at::Tensor& input_vals,
                               .device(at::kCUDA)
                               .requires_grad(false);
     const int64_t scales_elems = (quantize::requires_offset(quant_type)) ? 2 : 1;
-    auto scales = torch::empty({(int64_t) out_groups, scales_elems}, scales_options);
+    auto scales = torch::empty({(int64_t)out_groups, scales_elems}, scales_options);
 
     auto output_options = at::TensorOptions()
                               .dtype(at::kChar)
