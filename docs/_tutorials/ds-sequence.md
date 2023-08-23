@@ -1,21 +1,21 @@
 ---
-title: "Getting Started with DeepSpeed Sequence for Training Transformer Models with Extreme Long Sequences"
+title: "Getting Started with DeepSpeed-Ulysses for Training Transformer Models with Extreme Long Sequences"
 tags: training
 ---
 
-In this tutorial we describe how to enable DeepSpeed Sequence (DS-Seq). DS-Seq is a simple but highly communication and memory efficient mechanism for training of large transformer models with massive sequence lengths. It partitions input tensors along the sequence dimension and uses a communication-efficient all-2-all collective for distributed attention computations. Additionally, DS-Seq incorporates advanced modeling and system optimizations, such as Flash attention, sparse attention, and ZeRO optimizer, to optimize both computational efficiency and memory usage. Training with DeepSpeed Sequence allows both model size and sequence length to scale near indefinitely unbounded by single GPU memory limitation and at a high fraction of peak compute performance. Currently, DS-Seq can handle sequences up to 1 million in length (10 times the size of a complete Harry Potter book!) on 64 A100 GPUs. Please read our [DS-Seq blog](blog link) to learn more! 
+In this tutorial we describe how to enable DeepSpeed-Ulysses. DeepSpeed-Ulysses is a simple but highly communication and memory efficient mechanism sequence parallelism approach for training of large transformer models with massive sequence lengths. It partitions input tensors along the sequence dimension and uses a communication-efficient all-2-all collective for distributed attention computations. Additionally, DeepSpeed-Ulysses incorporates advanced modeling and system optimizations, such as Flash attention, sparse attention, and ZeRO optimizer, to optimize both computational efficiency and memory usage. Training with DeepSpeed sequence parallelism allows both model size and sequence length to scale near indefinitely unbounded by single GPU memory limitation and at a high fraction of peak compute performance. Currently, DeepSpeed-Ulysses can handle sequences up to 1 million in length (10 times the size of a complete Harry Potter book!) on 64 A100 GPUs. Please read our [DeepSpeed-Ulysses blog](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-ulysses) to learn more! 
 
 ## 1. Installation
 
 You will need to install DeepSpeed v0.10.2 or higher to use the DeepSpeed Sequence feature. Installing DeepSpeed is as simple as `pip install deepspeed`, [see more details](/tutorials/getting-started/).
 
 
-## 2. How to use DS-Seq in your application?
+## 2. How to use DeepSpeed-Ulysses in your application?
 
-Integrating DS-Seq into your training code is easy, and in this section we describe how to integrate DeepSpeed Sequence through our [Megatron-DeepSpeed](https://github.com/microsoft/Megatron-DeepSpeed) code repo.
+Integrating DS-Seq into your training code is easy, and in this section we describe how to integrate DeepSpeed-Ulysses through our [Megatron-DeepSpeed](https://github.com/microsoft/Megatron-DeepSpeed) code repo.
 
 
-* **Replace attention module**: First, you need to update your attention module with DS-Seq DistributedAttention. Here, we use the attention from [Megatron-DeepSpeed ](https://github.com/microsoft/Megatron-DeepSpeed/blob/main/megatron/model/transformer.py) which is the causal attention used in GPT-3 like model training. Rewrite the attention block:
+* **Replace attention module**: First, you need to update your attention module with DeepSpeed-Ulysses DistributedAttention. Here, we use the attention from [Megatron-DeepSpeed ](https://github.com/microsoft/Megatron-DeepSpeed/blob/main/megatron/model/transformer.py) which is the causal attention used in GPT-3 like model training. Rewrite the attention block:
 
 ```python
 def __init__():
@@ -86,7 +86,7 @@ Megatron-DeepSpeed/examples_deepspeed/sequence_parallel$ bash ds_pretrain_gpt_30
 
 Please note that our sequence parallelism feature is currently incompatible with Megatron-LM's tensor or pipeline parallelism.
 
-## 3. Enabling DS-Seq with FlashAttention?
+## 3. Enabling DeepSpeed-Ulysses with FlashAttention?
 
 DeepSpeed's sequence parallelism can be combined with different types of attention implementations to further improve the memory and compute efficiency of long sequence training:
 
