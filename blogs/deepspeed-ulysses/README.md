@@ -1,7 +1,11 @@
+<div align="center">
+
 # DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models
 
+</div>
+
 <div align="center">
-<img src="./media/image1.png" style="width:6.4in;height:3.4in" />
+<img src="./media/image1.png" style="width:6.25in;height:3.0in" />
 
 <img src="./media/image2.png" style="width:6.53617in;height:2.56in" />
 
@@ -171,8 +175,7 @@ by the model states. Therefore, to support large sequence length
 training with large language model, DeepSpeed sequence parallelism is
 integrated with ZeRO-3.
 
-ZeRO Redundancy Optimizer Stage 3 (ZeRO-3) \[link reference to ZeRO
-paper/blog here\] is a memory optimization technique for training large
+[ZeRO Redundancy Optimizer Stage 3 (ZeRO-3)](https://www.microsoft.com/en-us/research/blog/zero-deepspeed-new-system-optimizations-enable-training-models-with-over-100-billion-parameters/) is a memory optimization technique for training large
 models. Unlike the classic data parallel training of neural networks
 where model states are replicated across data parallel ranks, ZeRO-3
 optimizes memory usage by partitioning model states across data parallel
@@ -288,7 +291,7 @@ there is no (negative) on quality of trained models, this assertion is
 validated through experiments and is shown in Figure 5.
 
 <div align="center">
-<img src="./media/image7.png" style="width:5.8in;height:3.6in"
+<img src="./media/image7.png" style="width:5.0in;height:3.2in"
 alt="A graph showing a loss of a stock market Description automatically generated with medium confidence" />
 
 *Figure 5: Convergence evaluation of DeepSpeed Sequence with different
@@ -333,8 +336,8 @@ We welcome contributions and collaboration as we together push forward
 on what is possible when long context window is no longer a limitation.
 DeepSpeed-Ulysses is part of the bigger DeepSpeed ecosystem of
 large-scale AI training and inference. For more details on all DeepSpeed
-technologies and innovations, please see visit our website and follow us
-on X, formerly Twitter, (English, Japanese) and Chinese Zhihu.
+technologies and innovations, please see visit our [website]((https://www.deepspeed.ai/)) and follow us
+on X, formerly Twitter, ([English](https://twitter.com/MSFTDeepSpeed), [Japanese](https://twitter.com/MSFTDeepSpeedJP)) and [Chinese Zhihu](https://www.zhihu.com/people/deepspeed).
 
 We are open to collaborations with universities, research labs, and
 companies. For such requests (and other requests unsuitable for GitHub),
