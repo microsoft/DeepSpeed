@@ -824,7 +824,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             config_dict_or_path = config
             logger.warning(
                 f'zero.Init: the `config` argument is deprecated. Please use `config_dict_or_path` instead.')
-        print(f"config_dict_or_path: {config_dict_or_path}")
         _ds_config = deepspeed.runtime.config.DeepSpeedConfig(config_dict_or_path,
                                                               mpu) if config_dict_or_path is not None else None
         if _ds_config is not None:
