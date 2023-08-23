@@ -296,21 +296,6 @@ class AutoTP():
         if getattr(child, "replaced", False) == True:
             return
         weight_shape = child.weight.shape
-        if name == 'attn.Wqkv' and self.module._get_name() == 'MPTBlock':
-            # MPT block qkv weight's allocation is different from other models, it's [3,num_head,head_dim,hidden_size]
-            # instead of [num_head,3,head_dim,hidden_size]
-            new_weight = torch.empty((
-                weight_shape[0] // self.mp_size,
-                weight_shape[1],
-            ),
-                                     device=child.weight.device,
-                                     dtype=child.weight.dtype)
-            reversed_dim = True
-            mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group, out_dim=0)
-            # todo: can we remove new tensor allocation if we use strided copy?
-            mp_replace.strided_copy(new_weight, child.weight.data, num_splits=3, int8=reversed_dim)
-            setattr(child, "replaced", True)
-            return LinearLayer(weight=new_weight.to(get_accelerator().current_device_name()), bias=None)
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
         if name in self.all_reduce_linears:
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
@@ -323,7 +308,7 @@ class AutoTP():
             data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
 
             setattr(child, "replaced", True)
-            return LinearAllreduce(data, child.bias if child.bias is None else \
+            return LinearAllreduce(torch.nn.parameter.Parameter(data, requires_grad=False), child.bias if child.bias is None else \
                         torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), self.mp_group)
         else:
 
@@ -350,11 +335,13 @@ class AutoTP():
                     bias_data = child.bias.data.split(
                         (weight_shape[1] if self.conv_linear_layer else weight_shape[0]) // self.mp_size, dim=0)
                     bias_data = bias_data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+                    bias_data = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
                 else:
                     bias_data = None
 
             setattr(child, "replaced", True)
-            return LinearLayer(weight=data.to(get_accelerator().current_device_name()), bias=bias_data)
+            return LinearLayer(weight=torch.nn.parameter.Parameter(data.to(get_accelerator().current_device_name()), requires_grad=False), \
+                        bias=bias_data)
 
     def _slice_embedding(self, child, name, conv_linear_layer):
         if getattr(child, "replaced", False) == True:
@@ -366,6 +353,7 @@ class AutoTP():
         else:
             data = child.weight.data.split(child.weight.shape[1] // self.mp_size, dim=1)
         data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+        data = torch.nn.parameter.Parameter(data, requires_grad=False)
 
         new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // self.mp_size)
         new_embedding.weight.data.copy_(data)
@@ -385,7 +373,7 @@ class AutoTP():
                 setattr(child, param, param_val // self.mp_size)
         setattr(child, "replaced", True)
 
-    def update_linear_polciies(self):
+    def update_linear_policies(self):
         self.conv_linear_layer = False
         if self.linear_layer_setting is not None:
             self.linear_policies = {self.linear_layer_setting[0]: self._replace}

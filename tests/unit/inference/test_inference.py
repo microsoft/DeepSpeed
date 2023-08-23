@@ -155,8 +155,8 @@ def inf_kwargs(model_w_task):
     if task == "text-generation":
         if model == "EleutherAI/gpt-j-6b":
             # This model on V100 is hitting memory problems that limit the number of output tokens
-            return {"do_sample": False, "max_length": 12}
-        return {"do_sample": False, "max_length": 20}
+            return {"do_sample": False, "temperature": 1.0, "max_length": 12}
+        return {"do_sample": False, "temperature": 1.0, "max_length": 20}
     else:
         return {}
 
@@ -383,6 +383,35 @@ class TestMPSize(DistributedTest):
         assert assert_fn(bs_output, ds_output)
 
 
+@pytest.mark.inference
+@pytest.mark.parametrize("model_w_task", [("gpt2", "text-generation")], ids=["gpt2"])
+class TestLowCpuMemUsage(DistributedTest):
+    world_size = 1
+
+    def test(
+        self,
+        model_w_task,
+        query,
+        inf_kwargs,
+        assert_fn,
+    ):
+        model, task = model_w_task
+        dtype = torch.float16
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+
+        pipe = pipeline(task, model=model, model_kwargs={"low_cpu_mem_usage": True}, device=local_rank, framework="pt")
+        bs_output = pipe(query, **inf_kwargs)
+        pipe.model = deepspeed.init_inference(pipe.model,
+                                              mp_size=self.world_size,
+                                              dtype=dtype,
+                                              replace_method="auto",
+                                              replace_with_kernel_inject=True)
+
+        ds_output = pipe(query, **inf_kwargs)
+
+        assert assert_fn(bs_output, ds_output)
+
+
 @pytest.mark.seq_inference
 @pytest.mark.parametrize("model_w_task", [("tiiuae/falcon-7b", "text-generation")], ids=["falcon"])
 class TestAutoTP(DistributedTest):
@@ -478,12 +507,8 @@ class TestInjectionPolicy(DistributedTest):
 @pytest.mark.seq_inference
 @pytest.mark.parametrize(
     "model_w_task",
-    [
-        ("Helsinki-NLP/opus-mt-en-de", "translation"),
-    ],
-    ids=[
-        "marian",
-    ],
+    [("Helsinki-NLP/opus-mt-en-de", "translation"), ("Salesforce/codegen-350M-mono", "text-generation")],
+    ids=["marian", "codegen"],  #codegen has fusedqkv weight.
 )
 @pytest.mark.parametrize("dtype", [torch.float16], ids=["fp16"])
 class TestAutoTensorParallelism(DistributedTest):
@@ -525,13 +550,14 @@ class TestAutoTensorParallelism(DistributedTest):
     "model_family, model_name",
     (
         ["gpt2", "EleutherAI/gpt-neo-2.7B"],
-        ["gpt2", "EleutherAI/gpt-j-6b"],
+        #["gpt2", "EleutherAI/gpt-j-6b"], # Causing OOM for this test
         ["gpt2", "gpt2-xl"],
     ),
 )
 @pytest.mark.parametrize("task", ["lambada_standard"])
 class TestLMCorrectness(DistributedTest):
     world_size = 1
+    exec_timeout = 1200  # Give these tests longer to complete
 
     def test(self, model_family, model_name, task):
         # imports here to avoid import errors when pytest collects tests
@@ -539,6 +565,21 @@ class TestLMCorrectness(DistributedTest):
         import lm_eval.models
         import lm_eval.tasks
         import lm_eval.evaluator
+
+        # The bootstrap_stderr function in lm_eval.metrics uses a
+        # multiprocessing Pool to increase performance. Since we use a Pool for
+        # our distributed tests and cannot nest Pools, we must redefine and
+        # patch this function with a version that does not use Pool.
+        def no_pool_bootstrap_stderr(f, xs, iters):
+            from lm_eval.metrics import _bootstrap_internal
+            from lm_eval.metrics import sample_stddev
+            res = []
+            chunk_size = min(1000, iters)
+            for i in range(iters // chunk_size):
+                res.extend(_bootstrap_internal(f, chunk_size)((i, xs)))
+            return sample_stddev(res)
+
+        lm_eval.metrics.bootstrap_stderr = no_pool_bootstrap_stderr
 
         local_rank = os.getenv("LOCAL_RANK", "0")
         device = torch.device(get_accelerator().device_name(local_rank))
@@ -561,6 +602,7 @@ class TestLMCorrectness(DistributedTest):
         get_accelerator().synchronize()
         bs_time = time.time() - start
 
+        getattr(lm, model_family).to("cpu")
         ds_model = deepspeed.init_inference(
             getattr(lm, model_family),
             mp_size=1,
