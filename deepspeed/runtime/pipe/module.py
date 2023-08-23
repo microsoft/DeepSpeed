@@ -621,6 +621,9 @@ class PipelineModule(nn.Module):
 
         checkpoint_engine.makedirs(save_dir, exist_ok=True)
         for idx, layer in enumerate(layer_list):
+            if isinstance(layer, ModuleWrapper):
+                #unwrap the layer for save.
+                layer = layer.module
             model_ckpt_path = self.ckpt_layer_path(save_dir, start + idx)
             if not hasattr(layer, 'state_dict'):
                 continue
