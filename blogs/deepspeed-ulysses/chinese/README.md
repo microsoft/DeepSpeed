@@ -5,8 +5,8 @@
 </div>
 
 <div align="center">
-<img src="./media/hero1.png" width="780px" />
-<img src="./media/hero2.png" width="820px" />
+<img src="../media/hero1.png" width="780px" />
+<img src="../media/hero2.png" width="820px" />
 
 </div>
 
@@ -43,7 +43,7 @@ DeepSpeed-Ulysses及其与此博客一起发布的实现的关键特性如下：
 ## DeepSpeed-Ulysses的核心设计
 
 <div align="center">
-<img src="./media/image3.png" style="width:6.3479in;height:2.89442in"
+<img src="../media/image3.png" style="width:6.3479in;height:2.89442in"
 alt="" />
 
 *图1：DeepSpeed序列并行（DeepSpeed-Ulysses）设计*
@@ -89,7 +89,7 @@ DeepSpeed-Ulysses的通用性来自其核心设计的模块化性质：一个以
 第一组实验是在12亿参数的GPT模型上将序列长度强化扩展到100万token。这个评估的结果如图2所示。DeepSpeed序列并行允许随着GPU数量的增加线性增加序列长度，并且序列长度与GPU数量保持线性比例关系，适当的GPU数量下保持相似的计算吞吐量。
 
 <div align="center">
-<img src="./media/fig2Ulysses.png" style="width:5in;height:4in" />
+<img src="../media/fig2Ulysses.png" style="width:5in;height:4in" />
 
 *图2：DeepSpeed序列并行强化可扩展性评估，使用不同的序列长度和GPU数量。*
 </div>
@@ -103,7 +103,7 @@ DeepSpeed-Ulysses的通用性来自其核心设计的模块化性质：一个以
 图3显示，DeepSpeed序列并行在相同序列长度下始终优于Megatron-LM。此外，DeepSpeed序列并行可以运行比Megatron-LM更长的序列。DeepSpeed序列并行的性能优势在于两个方面：（1）DeepSpeed序列并行结合ZeRO-3的内存优化，可以容纳更多的样本，从而提高吞吐量；（2）DeepSpeed序列并行相对于Megatron-LM序列并行中应用的*all-gather*通信，从有效的全对全通信中获益。
 
 <div align="center">
-<img src="./media/fig3Ulysses.png" style="width:5in;height:4in" />
+<img src="../media/fig3Ulysses.png" style="width:5in;height:4in" />
 
 *图3：DeepSpeed和Megatron LM序列并行在300亿参数模型上的密集注意力评估。*
 </div>
@@ -115,7 +115,7 @@ DeepSpeed-Ulysses的通用性来自其核心设计的模块化性质：一个以
 DeepSpeed序列并行在相同序列长度下始终优于Megatron-LM。事实上，当前的DeepSpeed吞吐量受到本地稀疏注意力实现的瓶颈，因此DeepSpeed吞吐量随着序列长度的增加而降低。我们预计，随着未来局部稀疏注意力实现性能的改善，DeepSpeed与Megatron之间的性能差距将在更大的序列长度下进一步增加。
 
 <div align="center">
-<img src="./media/fig4Ulysses.png" style="width:5in;height:4in" />
+<img src="../media/fig4Ulysses.png" style="width:5in;height:4in" />
 
 *图4：DeepSpeed和Megatron LM序列并行在300亿参数模型上的稀疏注意力评估。*
 </div>
@@ -125,7 +125,7 @@ DeepSpeed序列并行在相同序列长度下始终优于Megatron-LM。事实上
 最后，图5显示了1.3亿参数GPT模型在32K序列长度下，使用序列并行度设置为4的情况下，在8个A100 GPU上的收敛性。对于DeepSpeed序列并行，我们通过不同的ZeRO阶段进行了收敛性评估。DeepSpeed序列并行是一种纯系统优化技术，用于实现长序列Transformer模型的训练，因此在训练模型质量上没有（负面）影响，这一断言通过实验得到了验证，如图5所示。
 
 <div align="center">
-<img src="./media/convg.png" width="500px" />
+<img src="../media/convg.png" width="500px" />
 
 *图5：使用不同ZeRO内存优化阶段的DeepSpeed序列并行的收敛性评估。*
 </div>
