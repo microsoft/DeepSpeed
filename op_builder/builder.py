@@ -229,14 +229,6 @@ class OpBuilder(ABC):
     def extra_ldflags(self):
         return []
 
-    def libraries_installed(self, libraries):
-        valid = False
-        check_cmd = 'dpkg -l'
-        for lib in libraries:
-            result = subprocess.Popen(f'dpkg -l {lib}', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-            valid = valid or result.wait() == 0
-        return valid
-
     def has_function(self, funcname, libraries, verbose=False):
         '''
         Test for existence of a function within a tuple of libraries.
@@ -459,7 +451,7 @@ class OpBuilder(ABC):
                 f"Unable to JIT load the {self.name} op due to it not being compatible due to hardware/software issue. {self.error_log}"
             )
         try:
-            import ninja  # noqa: F401
+            import ninja  # noqa: F401 # type: ignore
         except ImportError:
             raise RuntimeError(f"Unable to JIT load the {self.name} op due to ninja not being installed.")
 
@@ -601,7 +593,8 @@ class CUDAOpBuilder(OpBuilder):
 
     def builder(self):
         try:
-            assert_no_cuda_mismatch(self.name)
+            if not self.is_rocm_pytorch():
+                assert_no_cuda_mismatch(self.name)
             self.build_for_cpu = False
         except BaseException:
             self.build_for_cpu = True
@@ -622,7 +615,8 @@ class CUDAOpBuilder(OpBuilder):
                                     sources=self.strip_empty_entries(self.sources()),
                                     include_dirs=self.strip_empty_entries(self.include_paths()),
                                     libraries=self.strip_empty_entries(self.libraries_args()),
-                                    extra_compile_args=compile_args)
+                                    extra_compile_args=compile_args,
+                                    extra_link_args=self.strip_empty_entries(self.extra_ldflags()))
 
         if self.is_rocm_pytorch():
             # hip converts paths to absolute, this converts back to relative
