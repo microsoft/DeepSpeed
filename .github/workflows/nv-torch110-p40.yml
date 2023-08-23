@@ -1,4 +1,4 @@
-name: nv-torch19-v100
+name: nv-torch110-p40
 
 on:
   schedule:
@@ -8,9 +8,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+    contents: read
+    issues: write
+
 jobs:
   unit-tests:
-    runs-on: [self-hosted, nvidia, cu111, v100]
+    runs-on: [self-hosted, nvidia, cu111, p40]
 
     steps:
       - uses: actions/checkout@v3
@@ -20,7 +24,7 @@ jobs:
 
       - name: Install pytorch
         run: |
-          pip install --no-cache-dir torch==1.9.0+cu111 torchvision==0.10.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
+          pip install -U --cache-dir $TORCH_CACHE torch==1.10.0+cu111 torchvision==0.11.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -45,7 +49,14 @@ jobs:
       - name: Unit tests
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
-          if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --forked -n 4  unit/ --torch_ver="1.9" --cuda_ver="11"
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --forked -m 'sequential' unit/ --torch_ver="1.9" --cuda_ver="11"
+          pytest $PYTEST_OPTS --forked -n 4 unit/ --torch_ver="1.10" --cuda_ver="11.1"
+
+      - name: Open GitHub issue if nightly CI fails
+        if: failure()
+        uses: JasonEtco/create-an-issue@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          filename: .github/ISSUE_TEMPLATE/ci_failure_report.md
+          update_existing: true

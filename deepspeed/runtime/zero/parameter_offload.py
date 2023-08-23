@@ -200,20 +200,23 @@ class PostBackwardFunction(torch.autograd.Function):
 
 class DeepSpeedZeRoOffload(object):
 
-    def __init__(self,
-                 module,
-                 timers,
-                 ds_config,
-                 overlap_comm=True,
-                 prefetch_bucket_size=50000000,
-                 max_reuse_distance=1000000000,
-                 max_live_parameters=1000000000,
-                 param_persistence_threshold=100000,
-                 model_persistence_threshold=sys.maxsize,
-                 offload_param_config=None,
-                 mpu=None,
-                 zero_param_parallel_group=None,
-                 zero_quantized_weights=False):
+    def __init__(
+        self,
+        module,
+        timers,
+        ds_config,
+        overlap_comm=True,
+        prefetch_bucket_size=50000000,
+        max_reuse_distance=1000000000,
+        max_live_parameters=1000000000,
+        param_persistence_threshold=100000,
+        model_persistence_threshold=sys.maxsize,
+        offload_param_config=None,
+        mpu=None,
+        zero_param_parallel_group=None,
+        zero_quantized_weights=False,
+        zero_quantized_nontrainable_weights=False,
+    ):
 
         see_memory_usage("DeepSpeedZeRoOffload initialize [begin]", force=True)
 
@@ -226,6 +229,7 @@ class DeepSpeedZeRoOffload(object):
         self.offload_param_pin_memory = False
         self.zero_param_parallel_group = zero_param_parallel_group
         self.zero_quantized_weights = zero_quantized_weights
+        self.zero_quantized_nontrainable_weights = zero_quantized_nontrainable_weights
 
         if offload_param_config is not None and offload_param_config.device != OffloadDeviceEnum.none:
             self.offload_device = offload_param_config.device
@@ -247,10 +251,14 @@ class DeepSpeedZeRoOffload(object):
         self._prefetch_bucket_sz = int(prefetch_bucket_size)
         self._max_reuse_distance_in_numel = int(max_reuse_distance)
         self._max_available_parameters_in_numel = int(max_live_parameters)
-        self.__allgather_stream = get_accelerator().Stream() if overlap_comm else get_accelerator().default_stream()
+        self.__allgather_stream = None if get_accelerator().is_synchronized_device() else get_accelerator().Stream(
+        ) if overlap_comm else get_accelerator().default_stream()
 
         if not hasattr(module, "ds_inflight_param_registry"):
-            module.ds_inflight_param_registry = InflightParamRegistry()
+            module.ds_inflight_param_registry = dict()
+            # we need two registries, one for training and one for eval. They will be used when creating PartitionedParameterCoordinator
+            module.ds_inflight_param_registry[True] = InflightParamRegistry()
+            module.ds_inflight_param_registry[False] = InflightParamRegistry()
         self.__inflight_param_registry = module.ds_inflight_param_registry
 
         self.forward_hooks = []
@@ -279,9 +287,11 @@ class DeepSpeedZeRoOffload(object):
                 max_reuse_distance_in_numel=self._max_reuse_distance_in_numel,
                 max_available_parameters_in_numel=self._max_available_parameters_in_numel,
                 allgather_stream=self.__allgather_stream,
-                inflight_param_registry=self.__inflight_param_registry,
+                inflight_param_registry=self.__inflight_param_registry[training],
                 prefetch_nvme=self.offload_device == OffloadDeviceEnum.nvme,
                 timers=self.timers,
+                zero_quantized_weights=self.zero_quantized_weights,
+                zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights,
             )
 
         return self.param_coordinators[training]
@@ -308,7 +318,8 @@ class DeepSpeedZeRoOffload(object):
                      pin_memory=self.offload_param_pin_memory,
                      mpu=mpu,
                      zero_param_parallel_group=self.zero_param_parallel_group,
-                     zero_quantized_weights=self.zero_quantized_weights)
+                     zero_quantized_weights=self.zero_quantized_weights,
+                     zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights)
 
     def destroy(self):
         self._remove_module_hooks()
