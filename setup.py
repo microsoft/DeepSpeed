@@ -32,7 +32,10 @@ except ImportError:
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
 
 from op_builder import ALL_OPS, get_default_compute_capatabilities, OpBuilder
-is_rocm_pytorch = OpBuilder.is_rocm_pytorch
+
+# fetch rocm state
+is_rocm_pytorch = OpBuilder.is_rocm_pytorch()
+rocm_version = OpBuilder.installed_rocm_version()
 
 RED_START = '\033[31m'
 RED_END = '\033[0m'
@@ -50,23 +53,22 @@ def fetch_requirements(path):
 
 
 install_requires = fetch_requirements('requirements/requirements.txt')
-if is_rocm_pytorch:
-    print("NOTE: Please manually install torch and torchvision packages for ROCm")
-    install_requires = fetch_requirements('requirements/requirements-rocm.txt')
 extras_require = {
-    '1bit_adam': fetch_requirements('requirements/requirements-1bit-adam.txt'),
+    '1bit': [], # add cupy based on cuda/rocm version
+    '1bit-mpi': fetch_requirements('requirements/requirements-1bit-mpi.txt'),
     'readthedocs': fetch_requirements('requirements/requirements-readthedocs.txt'),
     'dev': fetch_requirements('requirements/requirements-dev.txt'),
 }
 
-# If MPI is available add 1bit-adam requirements
+# Add specific cupy version to 1bit extras
 if torch_available and torch.cuda.is_available():
-    if shutil.which('ompi_info') or shutil.which('mpiname'):
-        if is_rocm_pytorch:
-            cupy = "cupy"
-        else:
-            cupy = f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}"
-        extras_require['1bit_adam'].append(cupy)
+    if is_rocm_pytorch:
+        rocm_major, rocm_minor = rocm_version
+        cupy = f"cupy-rocm-{rocm_major}-{rocm_minor}"
+    else:
+        cupy = f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}"
+    extras_require['1bit'].append(cupy)
+    extras_require['1bit-mpi'].append(cupy)
 
 # Make an [all] extra that installs all needed dependencies
 all_extras = set()

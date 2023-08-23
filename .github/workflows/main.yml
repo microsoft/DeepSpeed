@@ -30,7 +30,7 @@ jobs:
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
       - name: Install deepspeed
         run: |
-          pip install .[dev]
+          pip install .[dev,1bit]
           ds_report
       - name: Unit tests
         run: |
@@ -86,7 +86,7 @@ jobs:
       # Runs a set of commands using the runners shell
       - name: Install deepspeed
         run: |
-          sudo DS_BUILD_AIO=1 DS_BUILD_FUSED_ADAM=1 DS_BUILD_FUSED_LAMB=1 DS_BUILD_CPU_ADAM=1 DS_BUILD_TRANSFORMER=1 DS_BUILD_STOCHASTIC_TRANSFORMER=1 DS_BUILD_UTILS=1 pip install .[dev]
+          sudo DS_BUILD_AIO=1 DS_BUILD_FUSED_ADAM=1 DS_BUILD_FUSED_LAMB=1 DS_BUILD_CPU_ADAM=1 DS_BUILD_TRANSFORMER=1 DS_BUILD_STOCHASTIC_TRANSFORMER=1 DS_BUILD_UTILS=1 pip install .[dev,1bit]
           #sudo pip install .[dev]
           ds_report
 
