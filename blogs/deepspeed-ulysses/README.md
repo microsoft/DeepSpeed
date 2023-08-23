@@ -126,7 +126,7 @@ an all-to-all for aggregate message of size *M* over *P* GPUs is *M/P*.
 For a transformer model with hidden size h, sequence length of N, and
 parallelism degree of P, DeepSpeed sequence parallelism performs all-to-all for the QKV
 projections with an aggregate message size of *3Nh* before the attention
-computation, and another all-2-all for output context projection with a
+computation, and another all-to-all for output context projection with a
 size *Nh* for each transformer layer. Therefore, DeepSpeed sequence
 parallelism incurs an aggregate communication volume per link of
 ***4Nh/P (or with the complexity of O(N/P).*** Note that this
@@ -165,7 +165,7 @@ per head but just with fewer heads, thus attention computation can be
 replaced with any type of attention mechanisms, e.g., dense attention
 and various forms of sparse attention.
 
-2)  Training Bigger Models with Longer Sequences through ZeRO3
+2)  Training Bigger Models with Longer Sequences through ZeRO-3
     Integration
 
 While DeepSpeed sequence parallelism reduces the activation memory when
@@ -194,8 +194,8 @@ scaling not just to large sequence lengths but also to large models.
 
 ## Evaluation
 
-We evaluate DeepSpeed-Ulysses on GPT and BERT,
-foundation models for many NLP tasks on up to 64 A100 GPUs. Our
+We evaluate DeepSpeed-Ulysses on GPT,
+a foundation model for many NLP tasks on up to 64 A100 GPUs with 40GB memory. Our
 evaluations are four-fold: i) sequence length scalability, ii)
 throughput for dense attention and comparison with existing system, and
 iii) throughput with sparse attention and comparison with existing
@@ -207,7 +207,7 @@ and present evaluations from each of these categories next.
 The first set of experiments is strong scaling of sequence length up to
 1 million tokens on 1.2 billion parameter GPT model. Results of this
 evaluation are shown in Figures 2. DeepSpeed sequence parallelism
-(DeepSpeed Sequence) allows increasing sequence length linearly with the
+allows increasing sequence length linearly with the
 number of GPUs and sequence length scales linearly relative to and
 maintains similar computation throughput across different sequence
 length at appropriate GPU count.
@@ -228,7 +228,7 @@ in Figures 3.
 
 We compare DeepSpeed sequence parallelism with Megatron-LM for a 30B
 model running various sequence lengths. For our evaluation we chose the
-sequence parallelism degree and micro-batch size that produced the best
+sequence parallelism degree and global batch size that produced the best
 performance (measured as throughput or TFLOPs) for both DeepSpeed
 sequence parallelism and Megatron-LM, this we call optimal (batch
 size-sequence length) configurations. For DeepSpeed sequence
