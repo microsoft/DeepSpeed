@@ -403,7 +403,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                     max_live_parameters=max_live_parameters,
                                     param_persistence_threshold=param_persistence_threshold,
                                     model_persistence_threshold=model_persistence_threshold,
-                                    dp_progress_group=dp_process_group,
+                                    dp_process_group=dp_process_group,
                                     offload_param_config=offload_param_config,
                                     mpu=mpu,
                                     zero_param_parallel_group=zero_param_parallel_group,
