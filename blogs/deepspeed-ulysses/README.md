@@ -21,8 +21,8 @@ that process speech, images and waveforms concurrently require long
 context reasoning over high dimensional inputs with extremely large
 sequences. Similarly, chapter and book level summarization (estimated at
 tens and hundreds of thousands of words) are of great importance in
-conversational AI and abstractive summarization tasks.  
-  
+conversational AI and abstractive summarization tasks.
+
 Long sequence length is equally critical for AI for science opening
 doors for better understanding of structure biology, health care,
 climate and weather forecasting and large molecular simulation. For
@@ -59,11 +59,11 @@ full sequence but only for a non-overlapping subset of the attention
 heads. This allows the participating GPUs to compute attention for
 different attention heads in parallel. Finally, DeepSpeed-Ulysses
 employs another all-to-all to gather the results along the attention
-heads while re-partitioning along the sequence dimension.  
-  
+heads while re-partitioning along the sequence dimension.
+
 The key properties of DeepSpeed-Ulysses and its implementation released
-with this blog are as follows:  
-  
+with this blog are as follows:
+
 *  ***4x larger sequence lengths*** than existing systems, while
 enabling training with sequences with ***over a million tokens***.
 
@@ -131,8 +131,8 @@ size *Nh* for each transformer layer. Therefore, DeepSpeed sequence
 parallelism incurs an aggregate communication volume per link of
 ***4Nh/P (or with the complexity of O(N/P).*** Note that this
 communication volume is constant when both N and P are increased
-proportionally.  
-  
+proportionally.
+
 In contrast, the existing approaches like Megatron-LM incur
 communication volume that increases linearly with N regardless of P,
 resulting in the ***communication complexity of O(N).*** For instance,
@@ -145,8 +145,8 @@ which is P times larger than that for DeepSpeed sequence parallelism.
 This allows DeepSpeed sequence parallelism to enable training with
 extremely long sequences while achieving significantly higher training
 efficiency compared to the existing approaches. Our evaluation results
-match this analysis.  
-  
+match this analysis.
+
 ### Additional Highlights of DeepSpeed-Ulysses
 
 1)  An Attention Agnostic Solution
@@ -232,8 +232,8 @@ sequence parallelism degree and global batch size that produced the best
 performance (measured as throughput or TFLOPs) for both DeepSpeed
 sequence parallelism and Megatron-LM, this we call optimal (batch
 size-sequence length) configurations. For DeepSpeed sequence
-parallelism, we always use a ZeRO parallelism degree of 64.  
-  
+parallelism, we always use a ZeRO parallelism degree of 64.
+
 Figure 3 shows that DeepSpeed sequence parallelism consistently
 outperforms Megatron-LM for the sequence length that can be run with
 both. In addition, DeepSpeed sequence parallelism can run longer
