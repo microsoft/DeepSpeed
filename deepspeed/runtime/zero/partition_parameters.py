@@ -713,23 +713,21 @@ class Init(InsertPostInitMethodToModuleSubClasses):
     apply_param_persistence = False
     override_module_apply = get_config_default(DeepSpeedZeroConfig, "override_module_apply")
 
-    def __init__(
-        self,
-        module=None,
-        data_parallel_group=None,
-        mem_efficient_linear=True,
-        remote_device=None,
-        pin_memory=False,
-        config_dict_or_path=None,
-        config=None,
-        enabled=True,
-        dtype=None,
-        mpu=None,
-        zero_param_parallel_group=None,
-        zero_quantized_weights=False,
-        zero_quantized_nontrainable_weights=False,
-        sequence_data_parallel_group=None
-    ):
+    def __init__(self,
+                 module=None,
+                 data_parallel_group=None,
+                 mem_efficient_linear=True,
+                 remote_device=None,
+                 pin_memory=False,
+                 config_dict_or_path=None,
+                 config=None,
+                 enabled=True,
+                 dtype=None,
+                 mpu=None,
+                 zero_param_parallel_group=None,
+                 zero_quantized_weights=False,
+                 zero_quantized_nontrainable_weights=False,
+                 sequence_data_parallel_group=None):
         """A context to enable massive model construction for training with
         ZeRO-3. Models are automatically partitioned (or, sharded) across the
         system and converted to half precision.
