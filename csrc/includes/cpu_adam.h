@@ -1,20 +1,36 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #pragma once
 
-#include <cuda_fp16.h>
-#include <cuda_runtime_api.h>
+#define NOMINMAX  // Windows idiosyncrasy
+                  // https://stackoverflow.com/questions/4913922/possible-problems-with-nominmax-on-visual-c
+
 #include <stdio.h>
+#include <torch/extension.h>
 #include <cassert>
-#include "cuda.h"
-#include "custom_cuda_layers.h"
 #include "simd.h"
 
-#define STEP(SPAN)                                \
-    void Step_##SPAN(float* _params,              \
-                     float* grads,                \
-                     float* _exp_avg,             \
-                     float* _exp_avg_sq,          \
-                     size_t _param_size,          \
-                     __half* dev_param = nullptr, \
+#if defined(__ENABLE_CUDA__)
+#include <cuda_fp16.h>
+#include <cuda_runtime_api.h>
+#include "cuda.h"
+#include "custom_cuda_layers.h"
+typedef __half ds_half_precision_t;
+#else
+#include <cmath>
+typedef unsigned short ds_half_precision_t;
+#endif
+
+#define STEP(SPAN)                                             \
+    void Step_##SPAN(float* _params,                           \
+                     float* grads,                             \
+                     float* _exp_avg,                          \
+                     float* _exp_avg_sq,                       \
+                     size_t _param_size,                       \
+                     ds_half_precision_t* dev_param = nullptr, \
                      bool half_precision = false);
 
 class Adam_Optimizer {
@@ -33,20 +49,25 @@ public:
           _betta1_t(1.0),
           _betta2_t(1.0),
           _step(0),
-          _buf_index(false),
           _adamw_mode(adamw_mode)
     {
+#if defined(__ENABLE_CUDA__)
         cudaMallocHost((void**)_doubled_buffer, TILE * sizeof(float));
         cudaMallocHost((void**)(_doubled_buffer + 1), TILE * sizeof(float));
 
-        _streams[0] = Context::Instance().GetCurrentStream();
-        _streams[1] = Context::Instance().GetNewStream();
+        _streams[0] = TrainingContext::Instance().GetCurrentStream();
+        _streams[1] = TrainingContext::Instance().GetNewStream();
+        _buf_index = false;
+#endif
     }
     ~Adam_Optimizer()
     {
+#if defined(__ENABLE_CUDA__)
         cudaFreeHost(_doubled_buffer[0]);
         cudaFreeHost(_doubled_buffer[1]);
+#endif
     }
+
 #if defined(__AVX512__) or defined(__AVX256__)
     template <int span>
     void Step_AVX(size_t* rounded_size,
@@ -55,16 +76,18 @@ public:
                   float* _exp_avg,
                   float* _exp_avg_sq,
                   size_t param_size,
-                  __half* dev_param = nullptr,
+                  ds_half_precision_t* dev_param = nullptr,
                   bool half_precision = false);
 #endif
     STEP(1)
     STEP(4)
     STEP(8)
+#if defined(__ENABLE_CUDA__)
     inline void SynchronizeStreams()
     {
         for (int i = 0; i < 2; i++) cudaStreamSynchronize(_streams[i]);
     }
+#endif
     inline void IncrementStep(size_t step, float beta1, float beta2)
     {
         if (beta1 != _betta1 || beta2 != _betta2) {
@@ -113,11 +136,13 @@ private:
     float _bias_correction1;
     float _bias_correction2;
 
-    float* _doubled_buffer[2];
-    bool _buf_index;
     bool _adamw_mode;
 
+#if defined(__ENABLE_CUDA__)
+    float* _doubled_buffer[2];
     cudaStream_t _streams[2];
+    bool _buf_index;
+#endif
 };
 
 #if defined(__AVX512__) or defined(__AVX256__)
@@ -128,10 +153,11 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
                               float* _exp_avg,
                               float* _exp_avg_sq,
                               size_t _param_size,
-                              __half* dev_params,
+                              ds_half_precision_t* dev_params,
                               bool half_precision)
 {
     size_t new_rounded_size = 0;
+    int rshft = half_precision ? 1 : 0;
 
     AVX_Data betta1_4;
     betta1_4.data = SIMD_SET(_betta1);
@@ -164,11 +190,13 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
         size_t copy_size = TILE;
         if ((t + TILE) > new_rounded_size) copy_size = new_rounded_size - t;
         size_t offset = copy_size + t;
+#if defined(__ENABLE_CUDA__)
         if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]); }
+#endif
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += SIMD_WIDTH * span) {
             AVX_Data grad_4[span];
-            simd_load<span>(grad_4, grads + i, half_precision);
+            simd_load<span>(grad_4, grads + (i >> rshft), half_precision);
 
             AVX_Data momentum_4[span];
             simd_load<span>(momentum_4, _exp_avg + i, false);
@@ -177,7 +205,7 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
             simd_load<span>(variance_4, _exp_avg_sq + i, false);
 
             AVX_Data param_4[span];
-            simd_load<span>(param_4, _params + i, half_precision);
+            simd_load<span>(param_4, _params + (i >> rshft), half_precision);
 
             if (_weight_decay > 0 && !_adamw_mode) {
                 simd_fma<span>(grad_4, param_4, weight_decay4, grad_4);
@@ -198,14 +226,16 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
 
             simd_fma<span>(param_4, grad_4, step_size_4, param_4);
 
-            simd_store<span>(_params + i, param_4, half_precision);
+            simd_store<span>(_params + (i >> rshft), param_4, half_precision);
+#if defined(__ENABLE_CUDA__)
             if (dev_params) {
                 simd_store<span>(_doubled_buffer[_buf_index] + (i - t), param_4, half_precision);
             }
+#endif
             simd_store<span>(_exp_avg + i, momentum_4, false);
             simd_store<span>(_exp_avg_sq + i, variance_4, false);
         }
-
+#if defined(__ENABLE_CUDA__)
         if (dev_params) {
             if (half_precision)
                 launch_param_update_half(
@@ -216,7 +246,46 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
 
             _buf_index = !_buf_index;
         }
+#endif
     }
     *rounded_size = new_rounded_size;
 }
 #endif
+
+int create_adam_optimizer(int optimizer_id,
+                          float alpha = 1e-3,
+                          float betta1 = 0.9,
+                          float betta2 = 0.999,
+                          float eps = 1e-8,
+                          float weight_decay = 0,
+                          bool adamw_mode = true,
+                          bool should_log = false);
+
+int ds_adam_step(int optimizer_id,
+                 size_t step,
+                 float lr,
+                 float beta1,
+                 float beta2,
+                 float epsilon,
+                 float weight_decay,
+                 bool bias_correction,
+                 torch::Tensor& params,
+                 torch::Tensor& grads,
+                 torch::Tensor& exp_avg,
+                 torch::Tensor& exp_avg_sq);
+
+int ds_adam_step_plus_copy(int optimizer_id,
+                           size_t step,
+                           float lr,
+                           float beta1,
+                           float beta2,
+                           float epsilon,
+                           float weight_decay,
+                           bool bias_correction,
+                           torch::Tensor& params,
+                           torch::Tensor& grads,
+                           torch::Tensor& exp_avg,
+                           torch::Tensor& exp_avg_sq,
+                           torch::Tensor& gpu_params);
+
+int destroy_adam_optimizer(int optimizer_id);

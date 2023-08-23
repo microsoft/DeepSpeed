@@ -1,5 +1,6 @@
 ---
-title: "DeepSpeed  Sparse Attention"
+title: "DeepSpeed Sparse Attention"
+tags: training
 ---
 
 In this tutorial we describe how to use DeepSpeed Sparse Attention (SA) and its building-block kernels. The easiest way to use SA is through DeepSpeed launcher. We will describe this through an example in [How to use sparse attention with DeepSpeed launcher](#how-to-use-sparse-attention-with-deepspeed-launcher) section. But before that, we introduce modules provided by DeepSpeed SA in the [next](#sparse-attention-modules) section.
@@ -8,7 +9,7 @@ In this tutorial we describe how to use DeepSpeed Sparse Attention (SA) and its 
 {: .notice--warning}
 
 ## Sparse attention modules
-* **MatMul**: This module handles block-sparse matrix-matrix multiplication. Currently it supports SDD, DSD, and DDS as described in [DeepSpeed Sparse Attention](https://www.deepspeed.ai/news/2020/09/08/sparse-attention.html) section.
+* **MatMul**: This module handles block-sparse matrix-matrix multiplication. Currently it supports SDD, DSD, and DDS as described in [DeepSpeed Sparse Attention](https://www.deepspeed.ai/2020/09/08/sparse-attention.html) section.
 * **Softmax**: This module applies block sparse softmax. It handles both forward and backward pass.
 * **SparseSelfAttention**: This module uses MatMul and Softmax kernels and generates Context Layer output given Query, Keys and Values. It is a simplified version of common operations in any self-attention layer. It can also apply:
   * `Relative position embedding`
@@ -103,7 +104,7 @@ if self.sparse_attention_config is not None:
       position_ids=None,
       inputs_embeds=None,
       pad_token_id=self.pad_token_id,
-      model_mbeddings=self.embeddings)
+      model_embeddings=self.embeddings)
 .
 .
 .
@@ -184,7 +185,7 @@ This structure also combines the idea of local, global and random attention. Fur
 	* `global_block_end_indices`: a list of integers determining end indices of global window blocks. By default this is not used. But if it is set, it must have the same size as `global_block_indices` parameter, and combining this two parameters, for each index `i`, blocks from `global_block_indices[i]` to `global_block_end_indices[i]` (exclusive) are considered as global attention block.
 	* `attention`: a string determining attention type. Attention can be `unidirectional`, such as autoregressive models, in which tokens attend only to tokens appear before them in the context. Considering that, the upper triangular of attention matrix is empty as above figure. Or it can be `bidirectional`, such as BERT, in which tokens can attend to any other tokens before or after them. Then, the upper triangular part of the attention matrix is mirror of the lower triangular in the above figure.
 	* `horizontal_global_attention`: a boolean determining if blocks that are global representative of a local window, also attend to all other blocks. This is valid only if attention type is `bidirectional`. Looking at the attention matrix, that means global attention not only includes the vertical blocks, but also horizontal blocks
-Figure bellow illustrates an example of `variable` sparsity, in which blue, orange and green blocks illustrate local, global, and random attention blocks respectively.
+Figure below illustrates an example of `variable` sparsity, in which blue, orange and green blocks illustrate local, global, and random attention blocks respectively.
 
 ![Variable sparsity structure](/assets/images/sa_variable_sparsity_structure.png)
 

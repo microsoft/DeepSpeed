@@ -1,4 +1,8 @@
-/* Copyright 2019 The Microsoft DeepSpeed Team */
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <stdio.h>
@@ -7,14 +11,17 @@
 #include "ATen/TensorUtils.h"
 #include "ATen/cuda/CUDAContext.h"
 #include "ATen/cuda/detail/IndexUtils.cuh"
-//#include "ATen/Type.h"
-#include <THC/THCGeneral.h>
+// #include "ATen/Type.h"
 #include "ATen/AccumulateType.h"
 
 #include <iostream>
 
-//#include <helper_functions.h>
+// #include <helper_functions.h>
+#if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305
+#include <hip/hip_cooperative_groups.h>
+#else
 #include <cooperative_groups.h>
+#endif
 #include <cuda_runtime_api.h>
 #include <stdio.h>
 
@@ -102,7 +109,7 @@ __device__ void reduce_block_in_shared_memory(T* s_a, T* s_b, T* g_a, T* g_b)
 
     cg::sync(cta);
 
-#if (__CUDA_ARCH__ >= 300)
+#if (__CUDA_ARCH__ >= 300) || (defined(__HIP_PLATFORM_HCC__) && HIP_VERSION >= 502)
     if (tid < 32) {
         cg::coalesced_group active = cg::coalesced_threads();
 
@@ -464,7 +471,7 @@ void fused_lamb_cuda(at::Tensor& p,
                         lamb_coeff.data<scalar_t>());
             }));
     }
-    THCudaCheck(cudaGetLastError());
+    C10_CUDA_CHECK(cudaGetLastError());
 }
 
 // template __device__ void reduce_two_vectors_in_register<float,512>(float a, float b, float* g_a,

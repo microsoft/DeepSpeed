@@ -1,7 +1,12 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import numpy as np
 import itertools
 from ..utils import *
-import collections
+import collections.abc
 
 
 def index_to_feature(p, dims):
@@ -42,9 +47,7 @@ def gen_combinations(d: dict):
     for v in values:
         if not isinstance(v, list):
             v = [v]
-    values_choices = (gen_combinations(v) if isinstance(v,
-                                                        dict) else get_list(v)
-                      for v in values)
+    values_choices = (gen_combinations(v) if isinstance(v, dict) else get_list(v) for v in values)
     for comb in itertools.product(*values_choices):
         yield dict(zip(keys, comb))
 
@@ -53,7 +56,7 @@ def flatten(d, parent_key='', sep='_'):
     items = []
     for k, v in d.items():
         new_key = parent_key + sep + k if parent_key else k
-        if isinstance(v, collections.MutableMapping):
+        if isinstance(v, collections.abc.MutableMapping):
             items.extend(flatten(v, new_key, sep=sep).items())
         else:
             items.append((new_key, v))

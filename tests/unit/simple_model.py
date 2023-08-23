@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import os
 import json
 import argparse
@@ -5,14 +10,16 @@ import torch
 
 from deepspeed.pipe import PipelineModule, LayerSpec
 from deepspeed.moe.layer import MoE
+from deepspeed.accelerator import get_accelerator
+
+import deepspeed.comm as dist
 
 
 class SimpleModel(torch.nn.Module):
+
     def __init__(self, hidden_dim, empty_grad=False, nlayers=1):
         super(SimpleModel, self).__init__()
-        self.linears = torch.nn.ModuleList(
-            [torch.nn.Linear(hidden_dim,
-                             hidden_dim) for i in range(nlayers)])
+        self.linears = torch.nn.ModuleList([torch.nn.Linear(hidden_dim, hidden_dim) for i in range(nlayers)])
         if empty_grad:
             self.linear2 = torch.nn.Linear(hidden_dim, hidden_dim)
         self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
@@ -27,7 +34,30 @@ class SimpleModel(torch.nn.Module):
         return self.cross_entropy_loss(x, y)
 
 
+class SimpleFrozenModel(torch.nn.Module):
+
+    def __init__(self, hidden_dim, empty_grad=False):
+        super(SimpleFrozenModel, self).__init__()
+        self.linears = torch.nn.ModuleList([torch.nn.Linear(hidden_dim, hidden_dim) for i in range(2)])
+        if empty_grad:
+            self.linear2 = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
+        self.empty_grad = empty_grad
+        # Freeze first layer
+        self.linears[0].weight.requires_grad = False
+        self.linears[0].bias.requires_grad = False
+
+    def forward(self, x, y):
+        if len(self.linears) == 1:
+            x = self.linears[0](x)
+        else:
+            for i, l in enumerate(self.linears):
+                x = self.linears[i // 2](x) + l(x)
+        return self.cross_entropy_loss(x, y)
+
+
 class Curriculum_SimpleModel(SimpleModel):
+
     def __init__(self, hidden_dim, empty_grad=False):
         super(Curriculum_SimpleModel, self).__init__(hidden_dim, empty_grad)
 
@@ -38,13 +68,59 @@ class Curriculum_SimpleModel(SimpleModel):
 
 
 class SimpleMoEModel(torch.nn.Module):
-    def __init__(self, hidden_dim, num_experts=4):
+
+    def __init__(self, hidden_dim, num_experts=4, ep_size=1, use_residual=False):
         super(SimpleMoEModel, self).__init__()
+        self.linear1 = torch.nn.Linear(hidden_dim, hidden_dim)
+        expert = torch.nn.Sequential(torch.nn.Linear(hidden_dim, hidden_dim), torch.nn.Linear(hidden_dim, hidden_dim))
+        # using two MoE layers to check implications of sharing a single storage
+        self.moe_1 = MoE(hidden_size=hidden_dim,
+                         expert=expert,
+                         ep_size=ep_size,
+                         use_residual=use_residual,
+                         num_experts=num_experts,
+                         k=1)
+        # interleaving MoE modules with dense to create an opportunity
+        # for gradients to be merged in ZeRO stage 2 average_tensor reduce bucket
+        self.linear2 = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.moe_2 = MoE(hidden_size=hidden_dim,
+                         expert=expert,
+                         ep_size=ep_size,
+                         use_residual=use_residual,
+                         num_experts=num_experts,
+                         k=1)
+        self.linear3 = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
+
+    def forward(self, x, y):
+        hidden_dim = self.linear1(x)
+        output, _, _ = self.moe_1(hidden_dim)
+        output = self.linear2(output)
+        output, _, _ = self.moe_2(output)
+        output = self.linear3(output)
+        hidden_dim = hidden_dim + output
+        sentence_embed = hidden_dim.mean(1)
+        return self.cross_entropy_loss(sentence_embed, y)
+
+
+class SimplePRMoEModel(torch.nn.Module):
+
+    def __init__(self, hidden_dim, num_experts=2, ep_size=1, use_residual=False):
+        super(SimplePRMoEModel, self).__init__()
         self.linear = torch.nn.Linear(hidden_dim, hidden_dim)
         linear2 = torch.nn.Linear(hidden_dim, hidden_dim)
         self.linear2 = MoE(hidden_size=hidden_dim,
                            expert=linear2,
+                           ep_size=ep_size,
+                           use_residual=use_residual,
                            num_experts=num_experts,
+                           k=1)
+        linear3 = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.linear3 = MoE(hidden_size=hidden_dim,
+                           expert=linear3,
+                           ep_size=ep_size,
+                           use_residual=use_residual,
+                           num_experts=int(2 * num_experts),
                            k=1)
         self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
 
@@ -52,12 +128,14 @@ class SimpleMoEModel(torch.nn.Module):
         hidden_dim = x
         hidden_dim = self.linear(hidden_dim)
         output, _, _ = self.linear2(hidden_dim)
+        output, _, _ = self.linear3(output)
         hidden_dim = hidden_dim + output
         sentence_embed = hidden_dim.mean(1)
         return self.cross_entropy_loss(sentence_embed, y)
 
 
 class UnusedParametersModel(SimpleModel):
+
     def __init__(self, hidden_dim, empty_grad=False):
         super().__init__(hidden_dim, empty_grad)
 
@@ -65,21 +143,19 @@ class UnusedParametersModel(SimpleModel):
 
 
 class LinearStack(torch.nn.Module):
+
     def __init__(self, input_dim=128, hidden_dim=128, output_dim=128, num_layers=4):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.hidden_dim = hidden_dim
 
-        self.input_layer = torch.nn.Linear(in_features=self.input_dim,
-                                           out_features=self.hidden_dim)
+        self.input_layer = torch.nn.Linear(in_features=self.input_dim, out_features=self.hidden_dim)
         self.layers = torch.nn.ModuleList([
-            torch.nn.Linear(in_features=self.hidden_dim,
-                            out_features=self.hidden_dim,
-                            bias=False) for x in range(num_layers)
+            torch.nn.Linear(in_features=self.hidden_dim, out_features=self.hidden_dim, bias=False)
+            for x in range(num_layers)
         ])
-        self.output_layer = torch.nn.Linear(in_features=self.hidden_dim,
-                                            out_features=self.output_dim)
+        self.output_layer = torch.nn.Linear(in_features=self.hidden_dim, out_features=self.output_dim)
 
         self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
 
@@ -92,12 +168,8 @@ class LinearStack(torch.nn.Module):
 
 
 class LinearStackPipe(PipelineModule):
-    def __init__(self,
-                 input_dim=128,
-                 hidden_dim=128,
-                 output_dim=128,
-                 num_layers=4,
-                 **kwargs):
+
+    def __init__(self, input_dim=128, hidden_dim=128, output_dim=128, num_layers=4, **kwargs):
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.hidden_dim = hidden_dim
@@ -106,11 +178,7 @@ class LinearStackPipe(PipelineModule):
         layers = []
         layers.append(LayerSpec(torch.nn.Linear, self.input_dim, self.hidden_dim))
         for x in range(self.num_layers):
-            layers.append(
-                LayerSpec(torch.nn.Linear,
-                          self.hidden_dim,
-                          self.hidden_dim,
-                          bias=False))
+            layers.append(LayerSpec(torch.nn.Linear, self.hidden_dim, self.hidden_dim, bias=False))
             layers.append(lambda x: x)
         layers.append(LayerSpec(torch.nn.Linear, self.hidden_dim, self.output_dim))
 
@@ -118,6 +186,7 @@ class LinearStackPipe(PipelineModule):
 
 
 class SimpleOptimizer(torch.optim.Optimizer):
+
     def __init__(self, params, lr=0.11072018):
         defaults = dict(lr=lr)
         super(SimpleOptimizer, self).__init__(params, defaults)
@@ -141,6 +210,7 @@ class SimpleOptimizer(torch.optim.Optimizer):
 
 
 class HybridStateOptimizer(torch.optim.Optimizer):
+
     def __init__(self, params, lr=0.11072018):
         defaults = dict(lr=lr)
         super(HybridStateOptimizer, self).__init__(params, defaults)
@@ -161,7 +231,7 @@ class HybridStateOptimizer(torch.optim.Optimizer):
                 state = self.state[p]
                 if len(state) == 0:
                     state['integer_step'] = 0
-                    state['tensor_step'] = torch.zeros(1)
+                    state['tensor_step'] = torch.zeros(1, device=p.device)
 
                 d_p = p.grad.data
                 p.data.add_(-group['lr'], d_p)
@@ -172,6 +242,7 @@ class HybridStateOptimizer(torch.optim.Optimizer):
 
 
 class PLD_SimpleModel(SimpleModel):
+
     def __init__(self, hidden_dim, empty_grad=False):
         super(PLD_SimpleModel, self).__init__(hidden_dim, empty_grad)
 
@@ -184,9 +255,7 @@ class PLD_SimpleModel(SimpleModel):
 
 def random_dataset(total_samples, hidden_dim, device, dtype=torch.half):
     train_data = torch.randn(total_samples, hidden_dim, device=device, dtype=dtype)
-    train_label = torch.empty(total_samples,
-                              dtype=torch.long,
-                              device=device).random_(hidden_dim)
+    train_label = torch.empty(total_samples, dtype=torch.long, device=device).random_(hidden_dim)
     train_dataset = torch.utils.data.TensorDataset(train_data, train_label)
     return train_dataset
 
@@ -198,21 +267,10 @@ def random_dataloader(model, total_samples, hidden_dim, device, dtype=torch.half
     return train_loader
 
 
-def sequence_dataloader(model,
-                        total_samples,
-                        hidden_dim,
-                        device,
-                        seq_len: int = 32,
-                        dtype=torch.half):
+def sequence_dataloader(model, total_samples, hidden_dim, device, seq_len: int = 32, dtype=torch.half):
     batch_size = model.train_micro_batch_size_per_gpu()
-    train_data = torch.randn(total_samples,
-                             seq_len,
-                             hidden_dim,
-                             device=device,
-                             dtype=dtype)
-    train_label = torch.empty(total_samples,
-                              dtype=torch.long,
-                              device=device).random_(hidden_dim)
+    train_data = torch.randn(total_samples, seq_len, hidden_dim, device=device, dtype=dtype)
+    train_label = torch.empty(total_samples, dtype=torch.long, device=device).random_(hidden_dim)
     train_dataset = torch.utils.data.TensorDataset(train_data, train_label)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
     return train_loader
@@ -229,10 +287,10 @@ def create_deepspeed_args():
     parser = argparse.ArgumentParser()
     args = parser.parse_args(args='')
     args.deepspeed = True
-    if torch.distributed.is_initialized():
+    if dist.is_initialized():
         # We assume up to one full node executing unit tests
-        assert torch.distributed.get_world_size() <= torch.cuda.device_count()
-        args.local_rank = torch.distributed.get_rank()
+        assert dist.get_world_size() <= get_accelerator().device_count()
+        args.local_rank = dist.get_rank()
     return args
 
 

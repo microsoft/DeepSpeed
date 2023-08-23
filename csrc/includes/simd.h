@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #pragma once
 
 #if (__x86_64__ || __i386__)
@@ -22,7 +27,7 @@
 #define SIMD_WIDTH 16
 
 #define SIMD_LOAD2(x, h) \
-    ((h) ? _mm512_cvtph_ps(_mm256_loadu_si256((const __m256i*)x)) : _mm512_loadu_ps(x))
+    ((h) ? _mm512_cvtph_ps(_mm256_castps_si256(_mm256_loadu_ps(x))) : _mm512_loadu_ps(x))
 #define SIMD_STORE2(x, d, h)                                                                      \
     ((h) ? _mm256_store_ps(x, _mm256_castsi256_ps(_mm512_cvtps_ph(d, _MM_FROUND_TO_NEAREST_INT))) \
          : _mm512_storeu_ps(x, d))
@@ -60,18 +65,16 @@ union AVX_Data {
 template <int span>
 inline void simd_store(float* dst, AVX_Data* src, bool half_precision)
 {
+    size_t width = (half_precision ? SIMD_WIDTH / 2 : SIMD_WIDTH);
 #pragma unroll
-    for (size_t i = 0; i < span; ++i) {
-        SIMD_STORE2(dst + SIMD_WIDTH * i, src[i].data, half_precision);
-    }
+    for (size_t i = 0; i < span; ++i) { SIMD_STORE2(dst + width * i, src[i].data, half_precision); }
 }
 template <int span>
 inline void simd_load(AVX_Data* dst, float* src, bool half_precision)
 {
+    size_t width = (half_precision ? 1 : SIMD_WIDTH);
 #pragma unroll
-    for (size_t i = 0; i < span; ++i) {
-        dst[i].data = SIMD_LOAD2(src + SIMD_WIDTH * i, half_precision);
-    }
+    for (size_t i = 0; i < span; ++i) { dst[i].data = SIMD_LOAD2(src + width * i, half_precision); }
 }
 template <int span>
 inline void simd_fma(AVX_Data* dst, AVX_Data* src_m_l, AVX_Data src_m_r, AVX_Data* src_a)

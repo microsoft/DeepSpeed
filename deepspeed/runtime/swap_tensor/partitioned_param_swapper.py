@@ -1,24 +1,24 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team.
-Licensed under the MIT license.
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
+# DeepSpeed Team
+"""
 Functionality of swapping tensors to/from (NVMe) storage devices.
 """
 
 import os
+import shutil
 from enum import Enum
 import torch
-import torch.distributed as dist
-
-from deepspeed.utils.logging import logger
-from deepspeed.ops.aio import AsyncIOBuilder
+from deepspeed import comm as dist
+from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder import AsyncIOBuilder
 from .constants import *
 from .utils import swap_in_tensors, swap_out_tensors, MIN_AIO_BYTES, AIO_ALIGNED_BYTES, print_object, SwapBufferPool
-from ..zero.offload_constants import *
 
 
 def print_rank_0(message, debug=False, force=False):
-    if torch.distributed.get_rank() == 0 and (debug or force):
+    if dist.get_rank() == 0 and (debug or force):
         print(message)
 
 
@@ -34,10 +34,12 @@ class PartitionedParamStatus(Enum):
 
 
 class AsyncPartitionedParameterSwapper(object):
-    def __init__(self, ds_config):
+
+    def __init__(self, ds_config, model_dtype):
 
         aio_op = AsyncIOBuilder().load(verbose=False)
         self.aio_handle = aio_op.aio_handle
+        self.dtype = model_dtype
 
         #set swap buffers, create aio handles
         self._configure_aio(ds_config)
@@ -74,22 +76,20 @@ class AsyncPartitionedParameterSwapper(object):
 
         if dist.get_rank() == 0:
             exclude_list = ['aio_read_handle', 'aio_write_handle', 'buffers']
-            print_object(obj=self,
-                         name='AsyncPartitionedParameterSwapper',
-                         exclude_list=exclude_list)
+            print_object(obj=self, name='AsyncPartitionedParameterSwapper', exclude_list=exclude_list)
 
     def available_swap_in_buffers(self):
         return len(self.available_buffer_ids)
 
     def _configure_aio(self, ds_config):
         self.swap_config = ds_config.zero_config.offload_param
-        self.swap_folder = os.path.join(self.swap_config[OFFLOAD_PARAM_NVME_PATH],
-                                        'zero_stage_3',
-                                        'fp16params',
+        torch_dtype_string = str(self.dtype).split(".")[1]
+        self.swap_folder = os.path.join(self.swap_config.nvme_path, 'zero_stage_3', f'{torch_dtype_string}params',
                                         f'rank{dist.get_rank()}')
+        shutil.rmtree(self.swap_folder, ignore_errors=True)
         os.makedirs(self.swap_folder, exist_ok=True)
 
-        self.swap_element_size = torch.tensor([], dtype=torch.half).element_size()
+        self.swap_element_size = torch.tensor([], dtype=self.dtype).element_size()
 
         self.aio_config = ds_config.aio_config
 
@@ -98,30 +98,24 @@ class AsyncPartitionedParameterSwapper(object):
         self.aligned_bytes = AIO_ALIGNED_BYTES * self.aio_config[AIO_THREAD_COUNT]
         self.numel_alignment = self.aligned_bytes // self.swap_element_size
 
-        self.elements_per_buffer = self.swap_config[OFFLOAD_PARAM_BUFFER_SIZE]
-        self.aligned_elements_per_buffer = self._io_aligned_numel(
-            self.elements_per_buffer)
-        self.param_buffer_count = self.swap_config[OFFLOAD_PARAM_BUFFER_COUNT]
+        self.elements_per_buffer = self.swap_config.buffer_size
+        self.aligned_elements_per_buffer = self._io_aligned_numel(self.elements_per_buffer)
+        self.param_buffer_count = self.swap_config.buffer_count
 
         self.available_buffer_ids = [i for i in range(self.param_buffer_count)]
         self.reserved_buffer_ids = []
-        self.buffers = torch.empty(int(self.aligned_elements_per_buffer *
-                                       self.param_buffer_count),
-                                   dtype=torch.half,
-                                   pin_memory=True,
-                                   requires_grad=False)
+        self.buffers = get_accelerator().pin_memory(
+            torch.empty(int(self.aligned_elements_per_buffer * self.param_buffer_count),
+                        dtype=self.dtype,
+                        requires_grad=False))
 
-        self.aio_read_handle = self.aio_handle(self.aio_config[AIO_BLOCK_SIZE],
-                                               self.aio_config[AIO_QUEUE_DEPTH],
-                                               self.aio_config[AIO_SINGLE_SUBMIT],
-                                               self.aio_config[AIO_OVERLAP_EVENTS],
+        self.aio_read_handle = self.aio_handle(self.aio_config[AIO_BLOCK_SIZE], self.aio_config[AIO_QUEUE_DEPTH],
+                                               self.aio_config[AIO_SINGLE_SUBMIT], self.aio_config[AIO_OVERLAP_EVENTS],
                                                self.aio_config[AIO_THREAD_COUNT])
 
-        self.aio_write_handle = self.aio_handle(self.aio_config[AIO_BLOCK_SIZE],
-                                                self.aio_config[AIO_QUEUE_DEPTH],
+        self.aio_write_handle = self.aio_handle(self.aio_config[AIO_BLOCK_SIZE], self.aio_config[AIO_QUEUE_DEPTH],
                                                 self.aio_config[AIO_SINGLE_SUBMIT],
-                                                self.aio_config[AIO_OVERLAP_EVENTS],
-                                                self.aio_config[AIO_THREAD_COUNT])
+                                                self.aio_config[AIO_OVERLAP_EVENTS], self.aio_config[AIO_THREAD_COUNT])
 
         self.swap_out_params = []
 
@@ -146,8 +140,7 @@ class AsyncPartitionedParameterSwapper(object):
                 param_path = self.id_to_path[param_id]
             else:
                 assert not must_exist, f"Path for param id {param_id} does not exist"
-                param_path = os.path.join(self.swap_folder,
-                                          f'{param_id}_param.tensor.swp')
+                param_path = os.path.join(self.swap_folder, f'{param_id}_param.tensor.swp')
 
                 self.id_to_path[param_id] = param_path
             paths.append(param_path)
@@ -176,18 +169,16 @@ class AsyncPartitionedParameterSwapper(object):
         for param in params:
             param_id = param.ds_id
             assert param_id in self.param_id_to_numel.keys(), f" Number of elements in param {param_id} is unknown"
-            assert param_id not in self.param_id_to_buffer_id.keys(), f"param {param_id} already assigned swap buffer id {self.param_id_to_buffer_id[param_id]}"
-            assert param_id not in self.param_id_to_swap_buffer.keys(), f"param {param_id} has already been assigned a swap buffer"
+            assert param_id not in self.param_id_to_buffer_id.keys(
+            ), f"param {param_id} already assigned swap buffer id {self.param_id_to_buffer_id[param_id]}"
+            assert param_id not in self.param_id_to_swap_buffer.keys(
+            ), f"param {param_id} has already been assigned a swap buffer"
 
             buffer_id = self.available_buffer_ids.pop()
-            print_rank_0(
-                f"param {param.ds_id} is assigned swap in buffer id {buffer_id}  ")
+            print_rank_0(f"param {param.ds_id} is assigned swap in buffer id {buffer_id}  ")
             self.param_id_to_buffer_id[param_id] = buffer_id
             aligned_swap_numel = self._io_aligned_numel(self.param_id_to_numel[param_id])
-            swap_buffer = self.buffers.narrow(
-                0,
-                int(buffer_id * self.aligned_elements_per_buffer),
-                aligned_swap_numel)
+            swap_buffer = self.buffers.narrow(0, int(buffer_id * self.aligned_elements_per_buffer), aligned_swap_numel)
 
             self.param_id_to_swap_buffer[param_id] = swap_buffer
             compute_buffer = swap_buffer.narrow(0, 0, self.param_id_to_numel[param_id])
@@ -216,9 +207,7 @@ class AsyncPartitionedParameterSwapper(object):
 
         for param, swap_in_buffer in zip(self.inflight_params, self.inflight_swap_in_buffers):
             param_id = param.ds_id
-            compute_buffer = swap_in_buffer.narrow(0,
-                                                   0,
-                                                   self.param_id_to_numel[param_id])
+            compute_buffer = swap_in_buffer.narrow(0, 0, self.param_id_to_numel[param_id])
             param.ds_tensor.data = compute_buffer.data
             param.ds_tensor.status = PartitionedParamStatus.AVAILABLE
 
@@ -288,22 +277,26 @@ class AsyncPartitionedParameterSwapper(object):
     #assigns an in memory buffer and swaps in from nvme
     def swap_in(self, params, async_op=True, swap_in_buffers=None):
 
-        assert all([param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE for param in params]), "Some params are already available or in flight"
+        assert all([param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE
+                    for param in params]), "Some params are already available or in flight"
         swap_in_paths = self._get_swap_paths(params)
 
         if swap_in_buffers is None:
             if len(self.available_buffer_ids) < len(swap_in_paths):
+                ids = [p.ds_id for p in params]
                 print_rank_0(
-                    f'Not enough swap in buffers {len(self.available_buffer_ids)} for params {len(swap_in_paths)}',
+                    f'Not enough swap in buffers {len(self.available_buffer_ids)} for {len(swap_in_paths)} params, ids = {ids}',
                     force=True)
                 print_rank_0(
                     f'Num inflight: params {len(self.inflight_params)}, buffers {len(self.inflight_swap_in_buffers)}, numel = {self.inflight_numel}',
                     force=True)
                 print_rank_0(
-                    f'Num available: param {len(self.available_params)}, numel = {self.available_numel}',
+                    f'Num available params: count = {len(self.available_params)}, ids = {self.available_params}, numel = {self.available_numel}',
                     force=True)
 
-            assert len(swap_in_paths) <= len(self.available_buffer_ids), f"Not enough buffers {len(self.available_buffer_ids)} for swapping {len(swap_in_paths)}"
+            assert len(swap_in_paths) <= len(
+                self.available_buffer_ids
+            ), f"Not enough buffers {len(self.available_buffer_ids)} for swapping {len(swap_in_paths)}"
             compute_buffers, swap_in_buffers = self._allocate_and_return_buffers_for_swap_in(params)
             inflight_numel = sum([t.numel() for t in compute_buffers])
         else:
@@ -320,8 +313,7 @@ class AsyncPartitionedParameterSwapper(object):
     def swap_into_buffer(self, param, dest_buffer):
         assert param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE, f"param {param.ds_id} is already available or inflight"
 
-        require_swap_buffer = not (dest_buffer.is_pinned()
-                                   and self._is_io_aligned(dest_buffer.numel()))
+        require_swap_buffer = not (dest_buffer.is_pinned() and self._is_io_aligned(dest_buffer.numel()))
 
         if require_swap_buffer:
             assert len(self.available_buffer_ids) > 0, f"No buffer available to swap param {param.ds_id}."
@@ -346,17 +338,15 @@ class AsyncPartitionedParameterSwapper(object):
     def get_buffer(self, param, numel):
         param_id = param.ds_id
 
-        assert self.available_swap_in_buffers() > 0, f"No swap buffers to allocate for fp16 param {param_id} of numel = {numel}"
+        assert self.available_swap_in_buffers(
+        ) > 0, f"No swap buffers to allocate for fp16 param {param_id} of numel = {numel}"
         assert numel < self.elements_per_buffer, f"More elements {numel} than buffer size {self.elements_per_buffer}"
 
         self.param_id_to_numel[param_id] = numel
         buffer_id = self.available_buffer_ids.pop()
         self.param_id_to_buffer_id[param_id] = buffer_id
         aligned_swap_numel = self._io_aligned_numel(self.param_id_to_numel[param_id])
-        swap_buffer = self.buffers.narrow(
-            0,
-            int(buffer_id * self.aligned_elements_per_buffer),
-            aligned_swap_numel)
+        swap_buffer = self.buffers.narrow(0, int(buffer_id * self.aligned_elements_per_buffer), aligned_swap_numel)
 
         self.param_id_to_swap_buffer[param_id] = swap_buffer
         compute_buffer = swap_buffer.narrow(0, 0, self.param_id_to_numel[param_id])
@@ -367,8 +357,7 @@ class AsyncPartitionedParameterSwapper(object):
         buffers = []
         for id in self.available_buffer_ids:
             buffers.append(
-                self.buffers.narrow(0,
-                                    int(id * self.aligned_elements_per_buffer),
+                self.buffers.narrow(0, int(id * self.aligned_elements_per_buffer),
                                     int(self.aligned_elements_per_buffer)))
             self.reserved_buffer_ids.append(id)
 
@@ -388,11 +377,9 @@ class AsyncPartitionedParameterSwapper(object):
         return (numel % self.numel_alignment) == 0
 
     def reserve_partitioned_swap_space(self, partition_num_elems):
-        aligned_numel = sum(
-            [self._io_aligned_numel(numel) for numel in partition_num_elems])
-        self.partitioned_swap_buffer = torch.zeros(aligned_numel,
-                                                   device='cpu',
-                                                   dtype=torch.half).pin_memory()
+        aligned_numel = sum([self._io_aligned_numel(numel) for numel in partition_num_elems])
+        self.partitioned_swap_buffer = get_accelerator().pin_memory(
+            torch.zeros(aligned_numel, device='cpu', dtype=self.dtype))
         self.partitioned_swap_pool = SwapBufferPool([self.partitioned_swap_buffer])
 
     def swap_out_partitioned_params(self, dst_fp16_params, src_fp32_params):
@@ -405,11 +392,8 @@ class AsyncPartitionedParameterSwapper(object):
         self.synchronize_writes()
         self.partitioned_swap_pool.reset()
         for i, fp32_tensor in enumerate(src_fp32_params):
-            swap_tensor, _ = self.partitioned_swap_pool.insert_tensor(
-                fp32_tensor,
-                fp16_swap_paths[i],
-                self._io_aligned_numel(fp32_tensor.numel())
-            )
+            swap_tensor, _ = self.partitioned_swap_pool.insert_tensor(fp32_tensor, fp16_swap_paths[i],
+                                                                      self._io_aligned_numel(fp32_tensor.numel()))
             assert swap_tensor is not None
             dst_fp16_params[i].ds_tensor.status = PartitionedParamStatus.AVAILABLE
 

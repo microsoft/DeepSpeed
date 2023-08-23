@@ -1,14 +1,17 @@
-import atexit
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import sys
 
 from deepspeed.autotuning.constants import *
 from deepspeed.autotuning.utils import write_experiments
 from deepspeed.utils import logger
 
-import json
-
 
 class BaseTuner:
+
     def __init__(self, exps, resource_manager, metric):
         self.all_exps = exps
         self.rm = resource_manager
@@ -36,15 +39,16 @@ class BaseTuner:
         i = 0
         try:
             while i < n_trials and self.has_next():
-                # Select the next batch of configuratiosn for evaluation
+                # Select the next batch of configuration for evaluation
                 sampled_exps = self.next_batch(sample_size)
                 # Generate experiments for measurement of performance
                 exp_paths = write_experiments(sampled_exps, self.rm.exps_dir)
                 self.rm.schedule_experiments(exp_paths)
                 self.rm.run()
                 exp, metric_val = self.rm.parse_results(self.metric)
-                if self.best_exp == None or self.best_metric_val == None or (
-                        metric_val and metric_val > self.best_metric_val):
+
+                if self.best_exp is None or self.best_metric_val is None or (metric_val
+                                                                             and metric_val > self.best_metric_val):
                     # logger.info(f"tuner finds better = {exp}")
                     self.best_exp = exp
                     self.best_metric_val = metric_val
@@ -65,5 +69,5 @@ class BaseTuner:
                     break
             return i
         except:
-            logger.info("Tunner Error:", sys.exc_info()[0])
+            logger.info("Tuner Error:", sys.exc_info()[0])
             return i

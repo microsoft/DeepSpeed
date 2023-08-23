@@ -2,16 +2,15 @@
 title: 'Getting Started'
 permalink: /getting-started/
 excerpt: 'First steps with DeepSpeed'
-date: 2020-05-15
+tags: getting-started
 ---
 
 ## Installation
 
 * Installing is as simple as `pip install deepspeed`, [see more details](/tutorials/advanced-install/).
-* Please see our [Azure tutorial](/tutorials/azure/) to get started with DeepSpeed on Azure!
 * To get started with DeepSpeed on AzureML, please see the [AzureML Examples GitHub](https://github.com/Azure/azureml-examples/tree/main/python-sdk/workflows/train/deepspeed)
-* If you're not on Azure, we recommend using our docker image via `docker pull deepspeed/deepspeed:latest` which contains a pre-installed version of DeepSpeed and all the necessary dependencies.
-* DeepSpeed has direct integrations with [HuggingFace Transformers](https://github.com/huggingface/transformers) and [PyTorch Lightning](https://github.com/PyTorchLightning/pytorch-lightning). HuggingFace Transformers users can now easily accelerate their models with DeepSpeed through a simple ``--deepspeed`` flag + config file [See more details](https://huggingface.co/transformers/main_classes/trainer.html#deepspeed). PyTorch Lightning provides easy access to DeepSpeed through the Lightning Trainer [See more details](https://pytorch-lightning.readthedocs.io/en/stable/advanced/multi_gpu.html?highlight=deepspeed#deepspeed).
+* DeepSpeed has direct integrations with [HuggingFace Transformers](https://github.com/huggingface/transformers) and [PyTorch Lightning](https://github.com/PyTorchLightning/pytorch-lightning). HuggingFace Transformers users can now easily accelerate their models with DeepSpeed through a simple ``--deepspeed`` flag + config file [See more details](https://huggingface.co/docs/transformers/main_classes/deepspeed). PyTorch Lightning provides easy access to DeepSpeed through the Lightning Trainer [See more details](https://pytorch-lightning.readthedocs.io/en/stable/advanced/multi_gpu.html?highlight=deepspeed#deepspeed).
+* DeepSpeed on AMD can be used via our [ROCm images](https://hub.docker.com/r/deepspeed/rocm501/tags), e.g., `docker pull deepspeed/rocm501:ds060_pytorch110`.
 
 
 
@@ -83,7 +82,7 @@ pre-defined learning rate scheduler:
   engine automatically handles scaling the loss to avoid precision loss in the
   gradients.
 
-- **Learning Rate Scheduler**: when using a DeepSpeed's learning rate scheduler (specified in the `ds_config.json` file), DeepSpeed calls the `step()` method of the scheduler at every training step (when `model_engine.step()` is executed). When not using a DeepSpeed's learning rate scheduler:
+- **Learning Rate Scheduler**: when using a DeepSpeed's learning rate scheduler (specified in the `ds_config.json` file), DeepSpeed calls the `step()` method of the scheduler at every training step (when `model_engine.step()` is executed). When not using DeepSpeed's learning rate scheduler:
   - if the schedule is supposed to execute at every training step, then the user can pass the scheduler to `deepspeed.initialize` when initializing the DeepSpeed engine and let DeepSpeed manage it for update or save/restore.
   - if the schedule is supposed to execute at any other interval (e.g., training epochs), then the user should NOT pass the scheduler to DeepSpeed during initialization and must manage it explicitly.
 
@@ -125,15 +124,16 @@ for step, batch in enumerate(data_loader):
 
 DeepSpeed can automatically save and restore the model, optimizer, and the
 learning rate scheduler states while hiding away these details from the user.
-However, the user may want to save other data in addition to these that are
+However, the user may want to save additional data that are
 unique to a given model training. To support these items, `save_checkpoint`
 accepts a client state dictionary `client_sd` for saving. These items can be
 retrieved from `load_checkpoint` as a return argument. In the example above,
 the `step` value is stored as part of the `client_sd`.
 
-Important: all processes must call this method and not just the process with rank 0. It is because
+**Important**: all processes must call this method and not just the process with rank 0. It is because
 each process needs to save its master weights and scheduler+optimizer states. This method will hang
 waiting to synchronize with other processes if it's called just for the process with rank 0.
+{: .notice--info}
 
 ## DeepSpeed Configuration
 
@@ -235,7 +235,11 @@ propagate all NCCL and PYTHON related environment variables that are set. If
 you would like to propagate additional variables you can specify them in a
 dot-file named `.deepspeed_env` that contains a new-line separated list of
 `VAR=VAL` entries. The DeepSpeed launcher will look in the local path you are
-executing from and also in your home directory (`~/`).
+executing from and also in your home directory (`~/`). If you would like to
+override the default name of this file or path and name with your own, you
+can specify this with the environment variable, `DS_ENV_FILE`.  This is
+mostly useful if you are launching multiple jobs that all require different
+variables.
 
 As a concrete example, some clusters require special NCCL variables to set
 prior to training. The user can simply add these variables to a

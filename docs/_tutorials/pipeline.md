@@ -1,5 +1,6 @@
 ---
 title: "Pipeline Parallelism"
+tags: training large-model
 ---
 
 DeepSpeed v0.3 includes new support for pipeline parallelism! Pipeline
@@ -244,7 +245,7 @@ end is reached:
 train_loader = deepspeed.utils.RepeatingLoader(train_loader)
 train_iter = iter(train_loader)
 for step in range(args.steps):
-    loss = engine.train_batch(data_iter=trainiter)
+    loss = engine.train_batch(data_iter=train_iter)
 ```
 
 

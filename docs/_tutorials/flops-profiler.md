@@ -1,6 +1,7 @@
 ---
 title: "Flops Profiler"
 excerpt: "Measure the parameters, latency, and floating-point operations of your model"
+tags: profiling performance-tuning
 ---
 
 In this tutorial, we introduce the DeepSpeed Flops Profiler and provide examples of its usage.
@@ -12,7 +13,7 @@ In this tutorial, we introduce the DeepSpeed Flops Profiler and provide examples
 
 ## Overview
 
-Effective use of hardware resources is critical to good performance, but performance inefficiency in existing implementations for large-scale model training and inference are often hard to spot and attributed to specific module components. DeepSpeed Flops Profiler helps users easily measure both the model training/inference speed (latency, throughput) and efficiency (floating-point operations per second, i.e., FLOPS) of a model and its submodules, with an eye towards eliminating inefficiencies in existing implementations.
+Effective use of hardware resources is critical to good performance, but performance inefficiency in existing implementations for large-scale model training and inference are often hard to spot and attribute to specific module components. DeepSpeed Flops Profiler helps users easily measure both the model training/inference speed (latency, throughput) and efficiency (floating-point operations per second, i.e., FLOPS) of a model and its submodules, with an eye towards eliminating inefficiencies in existing implementations.
 
 Below is an example output for BERT-Large(NVIDIA) on an A100 GPU with batch size `80`:
 
@@ -20,7 +21,7 @@ Below is an example output for BERT-Large(NVIDIA) on an A100 GPU with batch size
 -------------------------- DeepSpeed Flops Profiler --------------------------
 Profile Summary at step 10:
 Notations:
-data parallel size (dp_size), model paralel size(mp_size),
+data parallel size (dp_size), model parallel size(mp_size),
 number of parameters (params), number of multiply-accumulate operations(MACs),
 number of floating-point operations (flops), floating-point operations per second (FLOPS),
 fwd latency (forward propagation latency), bwd latency (backward propagation latency),
@@ -28,7 +29,7 @@ step (weights update latency), iter latency (sum of fwd, bwd and step latency)
 
 world size:                                                   1
 data parallel size:                                           1
-model paralel size:                                           1
+model parallel size:                                          1
 batch size per GPU:                                           80
 params per gpu:                                               336.23 M
 params of model = params per GPU * mp_size:                   336.23 M
@@ -133,26 +134,27 @@ BertForPreTrainingPreLN(
 
 In the summary profile, the DeepSpeed Flops Profiler outputs the number of parameters, floating-point operations (flops), FLOPS, latency, and throughput in samples/second of the model. This profile shows how much performance gap (compared to the peak hardware performance) the current model execution has and helps users tune the training or inference setup (e.g., hyperparameters, data parallelism, model parallelism, system configurations, etc.) for better performance.
 
-The DeepSpeed Flops Profiler also measures significant modules at different model depths (aggregated profile) and module-specific profile in the model architecture (detailed profile). Using these profiles DeepSpeed users can understand how each layer or submodule contributes to the overall model complexity/performance. Then users can adjust or refactor the model design to achieve better performance. For example, using the profiler, DeepSpeed users can quantitatively tell if stacking smaller layers is lighter or more performant than having bigger ones. The aggregated and detailed profiles also allow users to quickly identify bottleneck modules. In the BERT-Large example above, using the DeepSpeed Flops Profiler, we find that BertLayer is the most significant layer and contains quite a few dropout, softmax, and layer norm along with linear modules. These modules are not heavy in flops and would trigger many GPU kernel invocations and create excessive read/write requests to memory. The pattern shown in the detailed profile suggests this is a perfect match for kernel fusion, and we developed fused transformer-kernels to reduce data movement (See DeepSpeedBert). After applying our optimizations, we see a 25% improvement in FLOPS per GPU and overall training samples/second in the DeepSpeed Flops Profiler output.
+The DeepSpeed Flops Profiler also measures significant modules at different model depths (aggregated profile) and module-specific profile in the model architecture (detailed profile). Using these profiles, DeepSpeed users can understand how each layer or submodule contributes to the overall model complexity/performance. Then users can adjust or refactor the model design to improve performance. For example, using the profiler, DeepSpeed users can quantitatively tell if stacking smaller layers is lighter or more performant than having bigger ones. The aggregated and detailed profiles also allow users to quickly identify bottleneck modules. In the BERT-Large example above, using the DeepSpeed Flops Profiler, we find that BertLayer is the most significant layer and contains quite a few dropout, softmax, and layer norm along with linear modules. These modules are not heavy in flops and would trigger many GPU kernel invocations and create excessive read/write requests to memory. The pattern shown in the detailed profile suggests this is a perfect match for kernel fusion, and we developed fused transformer-kernels to reduce data movement (see [DeepSpeedBert](/tutorials/bert-pretraining)). After applying our optimizations, we see a 25% improvement in FLOPS per GPU and overall training samples/second in the DeepSpeed Flops Profiler output.
 
-The DeepSpeed Flops Profiler can be used with the DeepSpeed runtime without any user code change or be used independently from DeepSpeed as a standalone package. When using DeepSpeed for model training, the profiler can be enabled in the DeepSpeed configuration file. As a standalone package, the profiler API can be used in both training and inference code. The DeepSpeed profiler is still under active development and includes just initial features.  Stay connected for more exciting features to be added soon.
+The DeepSpeed Flops Profiler can be used with the DeepSpeed runtime without any user code change or be used independently from DeepSpeed as a standalone package. When using DeepSpeed for model training, the profiler can be enabled in the DeepSpeed [configuration file](/docs/config-json/#flops-profiler). As a standalone package, the profiler API can be used in both training and inference code. The DeepSpeed profiler is still under active development and includes just initial features.  Stay connected for more exciting features to be added soon.
 
 ## Flops Measurement
 
 Similar to existing flops calculation tools or methods, the DeepSpeed Flops Profiler measures the flops of the forward pass of a module and the flops of the backward pass is estimated as `2` times of that of the forward pass.
 Different from the PyTorch profiler which calculates the flops of PyTorch operators, the DeepSpeed Flops Profiler measures the flops within modules in a model and provides more insights to the users about the model execution.
 The flops estimation is partly inspired by [ptflops](https://github.com/sovrasov/flops-counter.pytorch) with the major difference being that the DeepSpeed Flops Profiler not only supports flops computation directly at module level, but can also capture ```torch.nn.functional``` invoked in a module to estimate the flops.
-Thus the DeepSpeed Flops Profiler allows for customized modules in the model, e.g., ```ParallelTransformerLayerworks, ParallelSelfAttention, RowParallelLinear, etc.``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM). This is in contrast to ptflops which requires users to write customized flops calculation functions for each customized module.
+Thus the DeepSpeed Flops Profiler allows for customized modules in the model, e.g., `ParallelTransformerLayerworks`, `ParallelSelfAttention`, `RowParallelLinear`, etc. in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM). This is in contrast to ptflops which requires users to write customized flops calculation functions for each customized module.
 
 ## Multi-GPU, Multi-node, Data Parallelism, and Model Parallelism
 
-The DeepSpeed Flops Profiler outputs the per GPU profile as well as the world size, data parallel size, and model parallel size.                                           1
-For models running on multi-GPU or multi-node, only change of the model parallelism (e.g. ```--model-parallel-size``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)) affects the number of flops and parameters profiled, i.e.,
+The DeepSpeed Flops Profiler outputs the per GPU profile as well as the world size, data parallel size, and model parallel size.
+
+For models running on multi-GPU or multi-node, only change of the model parallelism (e.g., `--model-parallel-size` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)) affects the number of flops and parameters profiled, i.e.,
 `model_parallel_size * flops = total_flops` and `model_parallel_size * parameters = total_parameters`. The data parallel size or world size (related to the number of GPUs or nodes) does not affect the per GPU profile.
 
 ## Usage
 
-The DeepSpeed Flops Profiler can be used with the DeepSpeed runtime or as a standalone package. When using DeepSpeed for model training, the profiler can be configured in the deepspeed configuration file without user code change. To use the flops profiler outside of the DeepSpeed runtime, one can simply install DeepSpeed and import the flops_profiler package to use the APIs directly. Examples of each usage are given below.
+The DeepSpeed Flops Profiler can be used with the DeepSpeed runtime or as a standalone package. When using DeepSpeed for model training, the profiler can be configured in the deepspeed [configuration file](/docs/config-json/#flops-profiler) without user code changes. To use the flops profiler outside the DeepSpeed runtime, install DeepSpeed and import the `flops_profiler` package to use the APIs directly. Examples of each usage are given below.
 
   - [Usage With the DeepSpeed Runtime](#usage-with-the-deepspeed-runtime)
     - [Example: Megatron-LM](#example-megatron-lm)
@@ -162,9 +164,10 @@ The DeepSpeed Flops Profiler can be used with the DeepSpeed runtime or as a stan
       - [Example: Bert](#example-bert)
     - [In Model Training Workflow](#in-model-training-workflow)
       - [Example Training Workflow](#example-training-workflow)
+
 ### Usage With the DeepSpeed Runtime
 
-When using DeepSpeed for model training, the profiler can be configured in the deepspeed configuration file. No explict API calls are needed to use the profiler. The profiler can be enabled by adding the following field to the `deepspeed_config` json file. Refer to [flops profiler](https://www.deepspeed.ai/docs/config-json/#flops-profiler) for details.
+When using DeepSpeed for model training, the profiler can be configured in the deepspeed [configuration file](/docs/config-json/#flops-profiler). No explicit API calls are needed to use the profiler. The profiler can be enabled by adding the following field to deepspeed's configuration json file. Refer to [flops profiler](/docs/config-json/#flops-profiler) for details.
 
 ```json
 {
@@ -181,7 +184,7 @@ When using DeepSpeed for model training, the profiler can be configured in the d
 
 #### Example: Megatron-LM
 
-For information on running Megatron-LM with DeepSpeed, please refer to our tutorial [Megatron-LM](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM).
+For information on running Megatron-LM with DeepSpeed, please refer to our tutorial [Megatron-LM](https://github.com/microsoft/DeepSpeedExamples/tree/master/megatron/Megatron-LM).
 
 An example output of 12-layer Megatron-LM model (`hidden_size = 8192, num_attention_heads = 32, batch_size = 1024, seq_length = 1024`) is shown below.
 
@@ -189,7 +192,7 @@ An example output of 12-layer Megatron-LM model (`hidden_size = 8192, num_attent
 -------------------------- DeepSpeed Flops Profiler --------------------------
 Profile Summary at step 10:
 Notations:
-data parallel size (dp_size), model paralel size(mp_size),
+data parallel size (dp_size), model parallel size(mp_size),
 number of parameters (params), number of multiply-accumulate operations(MACs),
 number of floating-point operations (flops), floating-point operations per second (FLOPS),
 fwd latency (forward propagation latency), bwd latency (backward propagation latency),
@@ -197,7 +200,7 @@ step (weights update latency), iter latency (sum of fwd, bwd and step latency)
 
 world size:                                                   1
 data parallel size:                                           1
-model paralel size:                                           1
+model parallel size:                                          1
 batch size per GPU:                                           1024
 params per gpu:                                               1.29 M
 params of model = params per GPU * mp_size:                   1.29 M
@@ -313,21 +316,23 @@ The following example shows how to profile AlexNet using the DeepSpeed flops pro
 import torchvision.models as models
 import torch
 from deepspeed.profiling.flops_profiler import get_model_profile
+from deepspeed.accelerator import get_accelerator
 
-with torch.cuda.device(0):
+with get_accelerator().device(0):
     model = models.alexnet()
     batch_size = 256
     flops, macs, params = get_model_profile(model=model, # model
-                                     input_res=(batch_size, 3, 224, 224), # input shape or input to the input_constructor
-                                     input_constructor=None, # if specified, a constructor taking input_res is used as input to the model
-                                     print_profile=True, # prints the model graph with the measured profile attached to each module
-                                     detailed=True, # print the detailed profile
-                                     module_depth=-1, # depth into the nested modules with -1 being the inner most modules
-                                     top_modules=3, # the number of top modules to print aggregated profile
-                                     warm_up=10, # the number of warm-ups before measuring the time of each module
-                                     as_string=True, # print raw numbers (e.g. 1000) or as human-readable strings (e.g. 1k)
-                                     output_file=None, # path to the output file. If None, the profiler prints to stdout.
-                                     ignore_modules=None) # the list of modules to ignore in the profiling
+                                    input_shape=(batch_size, 3, 224, 224), # input shape to the model. If specified, the model takes a tensor with this shape as the only positional argument.
+                                    args=None, # list of positional arguments to the model.
+                                    kwargs=None, # dictionary of keyword arguments to the model.
+                                    print_profile=True, # prints the model graph with the measured profile attached to each module
+                                    detailed=True, # print the detailed profile
+                                    module_depth=-1, # depth into the nested modules, with -1 being the inner most modules
+                                    top_modules=1, # the number of top modules to print aggregated profile
+                                    warm_up=10, # the number of warm-ups before measuring the time of each module
+                                    as_string=True, # print raw numbers (e.g. 1000) or as human-readable strings (e.g. 1k)
+                                    output_file=None, # path to the output file. If None, the profiler prints to stdout.
+                                    ignore_modules=None) # the list of modules to ignore in the profiling
 ```
 
 ##### Example: Bert
@@ -337,34 +342,33 @@ from functools import partial
 import torch
 from transformers import BertForSequenceClassification, BertTokenizer
 from deepspeed.profiling.flops_profiler import get_model_profile
+from deepspeed.accelerator import get_accelerator
 
 
-def bert_input_constructor(input_shape, tokenizer):
+def bert_input_constructor(batch_size, seq_len, tokenizer):
     fake_seq = ""
-    for _ in range(input_shape[1] - 2):  # ignore the two special tokens [CLS] and [SEP]
+    for _ in range(seq_len - 2):  # ignore the two special tokens [CLS] and [SEP]
       fake_seq += tokenizer.pad_token
-    inputs = tokenizer([fake_seq] * input_shape[0],
+    inputs = tokenizer([fake_seq] * batch_size,
                        padding=True,
                        truncation=True,
                        return_tensors="pt")
-    labels = torch.tensor([1] * input_shape[0])
+    labels = torch.tensor([1] * batch_size)
     inputs = dict(inputs)
     inputs.update({"labels": labels})
     return inputs
 
 
-with torch.cuda.device(0):
+with get_accelerator().device(0):
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     model = BertForSequenceClassification.from_pretrained('bert-base-uncased')
     batch_size = 4
     seq_len = 128
     enable_profile = True
     if enable_profile:
-      macs, params = get_model_profile(
+      flops, macs, params = get_model_profile(
           model,
-          (batch_size, seq_len),
-          input_constructor=partial(bert_input_constructor,
-                                    tokenizer=tokenizer),
+          kwargs=bert_input_constructor(batch_size, seq_len, tokenizer),
           print_profile=True,
           detailed=True,
       )

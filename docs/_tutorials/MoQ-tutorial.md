@@ -1,8 +1,9 @@
 ---
 title: "DeepSpeed Mixture-of-Quantization (MoQ)"
+tags: training quantization
 ---
 
-DeepSpeed introduces new support for model compression using quantization, called Mixture-of-Quantization (MoQ).  MoQ is designed on top of QAT (Quantization-Aware Training), with the difference that it schedules various data precisions across the training process. It starts with quantizing the model with a high precision, such as FP16 or 16-bit quantization, and reduce the precision through a pre-defined schedule until reaching the target quantization bits (like 8-bit). Moreover, we use second-order information of the model parameters to dynamically adjust the quantization schedule for each of layer of the network separately. We have seen that by adding such schedule and using various data precision in the training process, we can quantize the model with better quality and preserve accuracy. For a better understanding of MoQ methodology, please refer to MoQ deep-dive, [here](https://www.deepspeed.ai/posts/2021-05-05-MoQ/).
+DeepSpeed introduces new support for model compression using quantization, called Mixture-of-Quantization (MoQ).  MoQ is designed on top of QAT (Quantization-Aware Training), with the difference that it schedules various data precisions across the training process. It starts with quantizing the model with a high precision, such as FP16 or 16-bit quantization, and reduce the precision through a pre-defined schedule until reaching the target quantization bits (like 8-bit). Moreover, we use second-order information of the model parameters to dynamically adjust the quantization schedule for each layer of the network separately. We have seen that by adding such schedule and using various data precision in the training process, we can quantize the model with better quality and preserve accuracy. For a better understanding of MoQ methodology, please refer to MoQ deep-dive, [here](https://www.deepspeed.ai/2021/05/04/MoQ.html).
 
 Below, we use fine-tune for the GLUE tasks as an illustration of how to use MoQ.
 
@@ -27,20 +28,20 @@ MoQ quantization schedule is defined by a number of parameters which allow users
 
 `quantize_groups`: Quantization groups, which shows the number of scales used to quantize a model, default is 1.
 
-`quantize_bits`, The numer of bits to control the data-precision transition from a start-bit to the final target-bits (e.g. starting from 16-bit down to 8-bit).
+`quantize_bits`, The number of bits to control the data-precision transition from a start-bit to the final target-bits (e.g. starting from 16-bit down to 8-bit).
 
     `start_bits`: The start bits in quantization training. Default is set to 16.
     `target_bits`: The target bits in quantization training. Default is set to 16.
 
 `quantize_schedule`, This determines how to schedule the training steps at each precision level.
 
-    `quantize_period`: indicates the period by which we reduce down the precison (number of bits) for quantization. By default, we use a period of 100 training steps, that will be doubled every time the precision reduces by 1 bit.
+    `quantize_period`: indicates the period by which we reduce down the precision (number of bits) for quantization. By default, we use a period of 100 training steps, that will be doubled every time the precision reduces by 1 bit.
     `schedule_offset`: indicates when the quantization starts to happen (before this offset, we just use the normal training precision which can be either FP32/FP16). Default is set to 100 steps.
 
 `quantize_algo`, The algorithm used to quantize the model.
 
     `q_type`: we currently support symmetric and asymmetric quantization that result in signed and unsigned integer values, respectively. Default is set to symmetric
-    `rounding`: for the rounding of the quantized values, we can either round to the nearest value or use stocahstic rounding. Default is set to nearest.
+    `rounding`: for the rounding of the quantized values, we can either round to the nearest value or use stochastic rounding. Default is set to nearest.
 
 ### Eigenvalue Parameters
 
@@ -70,7 +71,7 @@ Before fine-tuning the GLUE tasks using DeepSpeed MoQ, you need:
 
 ### DeepSpeed Configuration File
 
-Prepare a config file `test.json` as below, please note following important parameters for quantization training:
+Prepare a config file `test.json` as below, please note the following important parameters for quantization training:
 
 ```
 {
@@ -133,7 +134,7 @@ python text-classification/run_glue.py \
   --deepspeed test.json
 ```
 
-Running this script will get `MPRC` accuracy and F1 metric results with MoQ quantization.
+Running this script will get `MRPC` accuracy and F1 metric results with MoQ quantization.
 
 
 ### Quantization with dynamic schedule using second-order information (Eigenvalue)

@@ -1,13 +1,13 @@
-'''
-Copyright 2020 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
-import math
+# DeepSpeed Team
+
 import torch
-import time
-from pathlib import Path
-from ..op_builder import CPUAdamBuilder
+from cpuinfo import get_cpu_info
+from deepspeed.utils import logger
 from deepspeed.utils.logging import should_log_le
+from deepspeed.ops.op_builder import CPUAdamBuilder
 
 
 class DeepSpeedCPUAdam(torch.optim.Optimizer):
@@ -17,8 +17,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                  model_params,
                  lr=1e-3,
                  bias_correction=True,
-                 betas=(0.9,
-                        0.999),
+                 betas=(0.9, 0.999),
                  eps=1e-8,
                  weight_decay=0,
                  amsgrad=False,
@@ -64,7 +63,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                 algorithm from the paper `On the Convergence of Adam and Beyond`_
                 (default: False) NOT SUPPORTED in DeepSpeed CPUAdam!
             adamw_mode: select between Adam and AdamW implementations (default: AdamW)
-            full_precision_optimizer_states: creates momementum and variance in full precision regardless of
+            full_precision_optimizer_states: creates momentum and variance in full precision regardless of
                         the precision of the parameters (default: True)
         """
 
@@ -76,19 +75,25 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                             amsgrad=amsgrad)
         super(DeepSpeedCPUAdam, self).__init__(model_params, default_args)
 
+        cpu_info = get_cpu_info()
+        self.cpu_vendor = cpu_info["vendor_id_raw"].lower() if "vendor_id_raw" in cpu_info else "unknown"
+        if "amd" in self.cpu_vendor:
+            for group_id, group in enumerate(self.param_groups):
+                for param_id, p in enumerate(group['params']):
+                    if p.dtype == torch.half:
+                        logger.warning("FP16 params for CPUAdam may not work on AMD CPUs")
+                        break
+                else:
+                    continue
+                break
+
         self.opt_id = DeepSpeedCPUAdam.optimizer_id
         DeepSpeedCPUAdam.optimizer_id = DeepSpeedCPUAdam.optimizer_id + 1
         self.adam_w_mode = adamw_mode
         self.fp32_optimizer_states = fp32_optimizer_states
         self.ds_opt_adam = CPUAdamBuilder().load()
 
-        self.ds_opt_adam.create_adam(self.opt_id,
-                                     lr,
-                                     betas[0],
-                                     betas[1],
-                                     eps,
-                                     weight_decay,
-                                     adamw_mode,
+        self.ds_opt_adam.create_adam(self.opt_id, lr, betas[0], betas[1], eps, weight_decay, adamw_mode,
                                      should_log_le("info"))
 
     def __del__(self):
@@ -126,6 +131,9 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
             with torch.enable_grad():
                 loss = closure()
 
+        # intended device for step
+        device = torch.device('cpu')
+
         # converting the fp16 params to a group of parameter
         if type(fp16_param_groups) is list:
             if type(fp16_param_groups[0]) is not list:
@@ -139,6 +147,9 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                 if p.grad is None:
                     continue
 
+                assert p.device == device, f"CPUAdam param is on {p.device} and must be 'cpu', make " \
+                        "sure you enabled 'offload_optimizer': 'cpu' in your ZeRO config."
+
                 state = self.state[p]
                 # State initialization
                 if len(state) == 0:
@@ -149,45 +160,22 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                     state_dtype = torch.float if self.fp32_optimizer_states else p.dtype
 
                     # gradient momentums
-                    state['exp_avg'] = torch.zeros_like(p.data,
-                                                        dtype=state_dtype,
-                                                        device='cpu')
+                    state['exp_avg'] = torch.zeros_like(p.data, dtype=state_dtype, device=device)
                     #memory_format=torch.preserve_format)
                     # gradient variances
-                    state['exp_avg_sq'] = torch.zeros_like(p.data,
-                                                           dtype=state_dtype,
-                                                           device='cpu')
+                    state['exp_avg_sq'] = torch.zeros_like(p.data, dtype=state_dtype, device=device)
                     #memory_format=torch.preserve_format)
 
                 state['step'] += 1
                 beta1, beta2 = group['betas']
 
                 if fp16_param_groups is not None:
-                    self.ds_opt_adam.adam_update_copy(
-                        self.opt_id,
-                        state['step'],
-                        group['lr'],
-                        beta1,
-                        beta2,
-                        group['eps'],
-                        group['weight_decay'],
-                        group['bias_correction'],
-                        p.data,
-                        p.grad.data,
-                        state['exp_avg'],
-                        state['exp_avg_sq'],
-                        fp16_param_groups[group_id][param_id].data)
+                    self.ds_opt_adam.adam_update_copy(self.opt_id, state['step'], group['lr'], beta1, beta2,
+                                                      group['eps'], group['weight_decay'], group['bias_correction'],
+                                                      p.data, p.grad.data, state['exp_avg'], state['exp_avg_sq'],
+                                                      fp16_param_groups[group_id][param_id].data)
                 else:
-                    self.ds_opt_adam.adam_update(self.opt_id,
-                                                 state['step'],
-                                                 group['lr'],
-                                                 beta1,
-                                                 beta2,
-                                                 group['eps'],
-                                                 group['weight_decay'],
-                                                 group['bias_correction'],
-                                                 p.data,
-                                                 p.grad.data,
-                                                 state['exp_avg'],
-                                                 state['exp_avg_sq'])
+                    self.ds_opt_adam.adam_update(self.opt_id, state['step'], group['lr'], beta1, beta2, group['eps'],
+                                                 group['weight_decay'], group['bias_correction'], p.data, p.grad.data,
+                                                 state['exp_avg'], state['exp_avg_sq'])
         return loss

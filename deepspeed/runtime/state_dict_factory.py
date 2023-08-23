@@ -1,6 +1,7 @@
-'''
-Copyright 2020 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 import os
@@ -8,36 +9,50 @@ import copy
 import collections
 import json
 from abc import ABC, abstractmethod
+
 from deepspeed.utils import logger
+from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
+
 from .weight_quantizer import WeightQuantization
 
 AUTO_MODULE_KEY = 'auto'
 
 
 class SDLoaderFactory:
-    @staticmethod
-    def get_sd_loader_json(json_file):
-        with open(json_file) as f:
-            data = json.load(f)
-            sd_type = data['type']
-            ckpt_list = data['checkpoints']
-            version = data['version']
-            return SDLoaderFactory.get_sd_loader(ckpt_list, sd_type, version)
 
     @staticmethod
-    def get_sd_loader(ckpt_list, sd_type='Megatron', version=None):
+    def get_sd_loader_json(json_file, checkpoint_engine):
+        if isinstance(json_file, str):
+            with open(json_file) as f:
+                data = json.load(f)
+        else:
+            assert isinstance(json_file, dict)
+            data = json_file
+        sd_type = data['type']
+        ckpt_list = data['checkpoints']
+        version = data['version']
+        ckpt_type = data.get('parallelization', 'pp')
+        mp_size = data.get('mp_size', 0)
+        if sd_type.lower() in ['bloom', 'ds_model']:
+            return data
+        return SDLoaderFactory.get_sd_loader(ckpt_list, checkpoint_engine, sd_type, version)
+
+    @staticmethod
+    def get_sd_loader(ckpt_list, checkpoint_engine, sd_type='Megatron', version=None):
         if sd_type == 'Megatron':
-            return MegatronSDLoader(ckpt_list, version)
+            return MegatronSDLoader(ckpt_list, version, checkpoint_engine)
         else:
             assert False, '{} checkpoint type is not supported'.format(sd_type)
 
 
 class SDLoaderBase(ABC):
-    def __init__(self, ckpt_list, version):
+
+    def __init__(self, ckpt_list, version, checkpoint_engine):
         self.module_key = None
         self.ckpt_list = ckpt_list
-        self.check_ckpt_list()
         self.version = version
+        self.checkpoint_engine = TorchCheckpointEngine() if checkpoint_engine is None else checkpoint_engine
+        self.check_ckpt_list()
 
     def load(self,
              mp_world_size,
@@ -79,12 +94,13 @@ class SDLoaderBase(ABC):
         if num_ckpt == mp_world_size:
             assert os.path.exists(load_path)
             #logger.info(f'rank: {mp_rank} loading checkpoint: {load_path}')
-            sd = torch.load(load_path, map_location=lambda storage, loc: storage)
+            sd = self.checkpoint_engine.load(load_path, map_location=lambda storage, \
+                loc: storage)
 
             if quantize:
-                quantizer = WeightQuantization(mlp_extra_grouping=mlp_extra_grouping,
-                                               mp_size=mp_world_size)
-                sd_module, all_scales = quantizer.sd_quantize_megatron(self.get_module(sd), quantize_bits, quantize_groups)
+                quantizer = WeightQuantization(mlp_extra_grouping=mlp_extra_grouping, mp_size=mp_world_size)
+                sd_module, all_scales = quantizer.sd_quantize_megatron(self.get_module(sd), quantize_bits,
+                                                                       quantize_groups)
                 self.set_module(sd, sd_module)
             else:
                 all_scales = None
@@ -101,17 +117,10 @@ class SDLoaderBase(ABC):
         assert num_ckpt % mp_world_size == 0, 'Invalid checkpoints and world size for sd merge'
 
         num_to_merge = num_ckpt // mp_world_size
-        ckpt_list = [
-            self.ckpt_list[i] for i in range(num_to_merge * mp_rank,
-                                             num_to_merge * (mp_rank + 1))
-        ]
+        ckpt_list = [self.ckpt_list[i] for i in range(num_to_merge * mp_rank, num_to_merge * (mp_rank + 1))]
 
         logger.info(f"mp_rank: {mp_rank}, ckpt_list: {ckpt_list}")
-        sd_list = [
-            torch.load(ckpt,
-                       map_location=lambda storage,
-                       loc: storage) for ckpt in ckpt_list
-        ]
+        sd_list = [self.checkpoint_engine.load(ckpt, map_location=lambda storage, loc: storage) for ckpt in ckpt_list]
         return sd_list
 
     def get_split_state_dict(self, mp_world_size, mp_rank):
@@ -122,18 +131,15 @@ class SDLoaderBase(ABC):
         ckpt_index = mp_rank // num_to_split
         ckpt_offset = mp_rank % num_to_split
 
-        logger.info(
-            f"mp_rank: {mp_rank}, ckpt_list: {self.ckpt_list[ckpt_index]}, offset: {ckpt_offset}"
-        )
+        logger.info(f"mp_rank: {mp_rank}, ckpt_list: {self.ckpt_list[ckpt_index]}, offset: {ckpt_offset}")
 
-        sd = torch.load(self.ckpt_list[ckpt_index],
-                        map_location=lambda storage,
-                        loc: storage)
+        sd = self.checkpoint_engine.load(self.ckpt_list[ckpt_index], map_location=lambda storage, loc: storage)
 
         return sd, num_to_split, ckpt_offset
 
     def _choose_module_key(self, sd):
-        assert not ('module' in sd and 'model' in sd), "checkpoint has both 'model' and 'module' keys, not sure how to proceed"
+        assert not ('module' in sd
+                    and 'model' in sd), "checkpoint has both 'model' and 'module' keys, not sure how to proceed"
         assert 'module' in sd or 'model' in sd, "checkpoint contains neither 'model' or 'module' keys, not sure how to proceed"
         if 'module' in sd:
             return 'module'
@@ -161,30 +167,19 @@ class SDLoaderBase(ABC):
         #logger.info(f'checkpoint file list: {self.ckpt_list}')
         assert len(self.ckpt_list) > 0
 
-        sd = torch.load(self.ckpt_list[0], map_location=lambda storage, loc: storage)
+        sd = self.checkpoint_engine.load(self.ckpt_list[0], map_location=lambda storage, loc: storage)
 
         # check checkpoint count is same with saved mp_world_size
         if 'mp_world_size' in sd.keys():
-            assert len(self.ckpt_list) == sd['mp_world_size'], f"checkpoint count {len(self.ckpt_list)} is different from saved mp_world_size {sd['mp_world_size']}"
+            assert len(self.ckpt_list) == sd[
+                'mp_world_size'], f"checkpoint count {len(self.ckpt_list)} is different from saved mp_world_size {sd['mp_world_size']}"
 
     @abstractmethod
-    def merge_state_dict(self,
-                         mp_world_size,
-                         mp_rank,
-                         quantize,
-                         quantize_bits,
-                         groups,
-                         mlp_extra_grouping):
+    def merge_state_dict(self, mp_world_size, mp_rank, quantize, quantize_bits, groups, mlp_extra_grouping):
         pass
 
     @abstractmethod
-    def split_state_dict(self,
-                         mp_world_size,
-                         mp_rank,
-                         quantize,
-                         quantize_bits,
-                         groups,
-                         mlp_extra_grouping):
+    def split_state_dict(self, mp_world_size, mp_rank, quantize, quantize_bits, groups, mlp_extra_grouping):
         pass
 
     @abstractmethod
@@ -193,8 +188,9 @@ class SDLoaderBase(ABC):
 
 
 class MegatronSDLoader(SDLoaderBase):
-    def __init__(self, ckpt_list, version):
-        super().__init__(ckpt_list, version)
+
+    def __init__(self, ckpt_list, version, checkpoint_engine):
+        super().__init__(ckpt_list, version, checkpoint_engine)
         """
         ## Q/K/V data need special processing
         key: transformer.layers.0.attention.query_key_value.weight, shape: torch.Size([3192, 4256])
@@ -321,40 +317,27 @@ class MegatronSDLoader(SDLoaderBase):
         ckpt_ver = self.get_checkpoint_version(ds_sd)
         logger.info(f"checkpoint version: {ckpt_ver}")
         if quantize:
-            quantizer = WeightQuantization(mlp_extra_grouping=mlp_extra_grouping,
-                                           mp_size=mp_world_size)
+            quantizer = WeightQuantization(mlp_extra_grouping=mlp_extra_grouping, mp_size=mp_world_size)
 
         for key in keys:
             value_list = [sd[key] for sd in client_sd_list]
 
             if "attention.dense.weight" in key or "mlp.dense_4h_to_h.weight" in key:
                 if quantize:
-                    value_list = quantizer.Quantize(value_list,
-                                                    quantize_bits,
-                                                    groups,
-                                                    key=key,
-                                                    merge_dim=1)
+                    value_list = quantizer.Quantize(value_list, quantize_bits, groups, key=key, merge_dim=1)
                 new_client_sd[key] = torch.cat(value_list, axis=1)
             elif "attention.query_key_value" in key:
                 if quantize and "attention.query_key_value.weight" in key:
-                    value_list = quantizer.Quantize(value_list,
-                                                    quantize_bits,
-                                                    groups,
-                                                    key=key)
+                    value_list = quantizer.Quantize(value_list, quantize_bits, groups, key=key)
                     new_client_sd[key] = torch.cat(value_list, axis=0)
                 else:
                     if quantize:
                         new_client_sd[key] = torch.cat(value_list, axis=0)
                     else:
-                        new_client_sd[key] = self.merge_query_key_value(
-                            value_list,
-                            ckpt_ver)
+                        new_client_sd[key] = self.merge_query_key_value(value_list, ckpt_ver)
             elif "mlp.dense_h_to_4h.weight" in key or "word_embeddings.weight" in key or "mlp.dense_h_to_4h.bias" in key:
                 if quantize and "mlp.dense_h_to_4h.weight" in key:
-                    value_list = quantizer.Quantize(value_list,
-                                                    quantize_bits,
-                                                    groups,
-                                                    key=key)
+                    value_list = quantizer.Quantize(value_list, quantize_bits, groups, key=key)
                 new_client_sd[key] = torch.cat(value_list, axis=0)
             else:
                 new_client_sd[key] = value_list[0]
@@ -371,7 +354,7 @@ class MegatronSDLoader(SDLoaderBase):
                          quantize_bits=8,
                          groups=64,
                          mlp_extra_grouping=True):
-        self.sanity_check(self.ckpt_list[0])
+        #self.sanity_check(self.ckpt_list[0])
 
         sd, num_to_split, ckpt_offset = self.get_split_state_dict(mp_world_size, mp_rank)
         ds_sd = copy.deepcopy(sd)
@@ -383,8 +366,7 @@ class MegatronSDLoader(SDLoaderBase):
         logger.info(f"checkpoint version: {ckpt_ver}")
 
         if quantize:
-            quantizer = WeightQuantization(mlp_extra_grouping=mlp_extra_grouping,
-                                           mp_size=mp_world_size)
+            quantizer = WeightQuantization(mlp_extra_grouping=mlp_extra_grouping, mp_size=mp_world_size)
 
         for key in client_sd.keys():
             value = client_sd[key]
@@ -400,12 +382,8 @@ class MegatronSDLoader(SDLoaderBase):
                 if quantize and "attention.query_key_value.weight" in key:
                     q_vals = quantizer.Quantize([value], quantize_bits, groups, key)
                     value = q_vals[0]
-                new_client_sd[key] = self.split_query_key_value(
-                    value,
-                    num_to_split,
-                    ckpt_offset,
-                    ckpt_ver)
-            elif "mlp.dense_h_to_4h.weight" in key or "word_embeddings.weight" in key or "mlp.dense_h_to_4h.bias" in key:
+                new_client_sd[key] = self.split_query_key_value(value, num_to_split, ckpt_offset, ckpt_ver)
+            elif "mlp.dense_h_to_4h.weight" in key or "word_embeddings.weight" in key or "mlp.dense_h_to_4h.bias" in key or "final_linear.weight" in key:
                 assert value.shape[0] % num_to_split == 0
                 split_size = value.shape[0] // num_to_split
                 if quantize and "mlp.dense_h_to_4h.weight" in key:
@@ -424,14 +402,11 @@ class MegatronSDLoader(SDLoaderBase):
 
     def sanity_check(self, ckpt_file_name):
         keys_to_check = [
-            "attention.dense.weight",
-            "mlp.dense_4h_to_h.weight",
-            "attention.query_key_value",
-            "mlp.dense_h_to_4h.weight",
-            "mlp.dense_h_to_4h.bias"
+            "attention.dense.weight", "mlp.dense_4h_to_h.weight", "attention.query_key_value",
+            "mlp.dense_h_to_4h.weight", "mlp.dense_h_to_4h.bias"
         ]
 
-        sd = torch.load(ckpt_file_name, map_location=lambda storage, loc: storage)
+        sd = self.checkpoint_engine.load(ckpt_file_name, map_location=lambda storage, loc: storage)
 
         # partial_key is a sub-string of one key in the sd
         def check_key_exist(partial_key, sd):
@@ -444,10 +419,9 @@ class MegatronSDLoader(SDLoaderBase):
             return found
 
         for key in keys_to_check:
-            assert check_key_exist(key, self.get_module(sd)), f'key: {key} is not found in the checkpoint {ckpt_file_name}'
+            assert check_key_exist(key,
+                                   self.get_module(sd)), f'key: {key} is not found in the checkpoint {ckpt_file_name}'
 
     def get_checkpoint_version(self, state_dict):
         # Use 0 if version info doesn't exist
-        return self.version if self.version is not None else state_dict.get(
-            'checkpoint_version',
-            0)
+        return self.version if self.version is not None else state_dict.get('checkpoint_version', 0)

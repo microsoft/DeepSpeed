@@ -1,5 +1,7 @@
 ---
 title: "DeepSpeed Configuration JSON"
+toc: true
+toc_label: "Contents"
 ---
 
 ### Batch Size Related Parameters
@@ -88,6 +90,34 @@ The 1-bit Adam optimizer supports the following three params keys/values in addi
 | cuda\_aware         | To indicate that the underlying MPI library supports CUDA-Aware communication      | false   |
 | comm\_backend\_name | To indicate which backend implementation to use                                    | "nccl"  |
 
+A variant ***optimizer*** for 1-bit Adam is 0/1 Adam, which further optimizes 1-bit Adam via adaptive variance freezing and 1-bit synchronization over optimizer states.
+```json
+"optimizer": {
+    "type": "ZeroOneAdam",
+    "params": {
+      "lr": 1e-3,
+      "weight_decay": 0.01,
+      "bias_correction": false,
+      "var_freeze_step": 1000,
+      "var_update_scaler": 16,
+      "local_step_scaler": 1000,
+      "local_step_clipper": 16,
+      "cuda_aware": false,
+      "comm_backend_name": "nccl"
+    }
+  }
+```
+0/1 Adam supports  the following params key/values in addition to standard Adam (learn more in our [tutorial](/tutorial/zero-one-adam/).)
+
+| "params" key        | Description                                                                        | Default |
+| ------------------- | ---------------------------------------------------------------------------------- | ------- |
+| var\_freeze\_step   | The latest step to update the variance                                             | 100000  |
+| var\_update\_scaler | The interval to update the variance                                                | 16  |
+| local\_step\_scaler | The interval to scale the local steps interval according to the learning rate policy   | 32678  |
+| local\_step\_clipper | The largest interval for local steps with learning rate policy                     | 16  |
+| cuda\_aware         | To indicate that the underlying MPI library supports CUDA-Aware communication      | false   |
+| comm\_backend\_name | To indicate which backend implementation to use                                    | "nccl"  |
+
 Another example of ***optimizer*** with 1-bit LAMB
 
 ```json
@@ -151,11 +181,11 @@ Example of <i>**scheduler**</i>
 
 ### Communication options
 
-<i>**communication_data_type**</i>: [boolean]
+<i>**communication_data_type**</i>: [string]
 
 | Description                                                                                                                   | Default |
 | ----------------------------------------------------------------------------------------------------------------------------- | ------- |
-| During gradient averaging perform communication with selected data type. Buy default it will be determined by selected regime |  None   |
+| During gradient averaging perform communication with selected data type. By default it will be determined by selected regime  |  None   |
 
 <i>**prescale_gradients**</i>: [boolean]
 
@@ -189,10 +219,12 @@ Example of <i>**scheduler**</i>
 ```json
 "fp16": {
     "enabled": true,
+    "auto_cast": false,
     "loss_scale": 0,
-    "initial_scale_power": 32,
+    "initial_scale_power": 16,
     "loss_scale_window": 1000,
     "hysteresis": 2,
+    "consecutive_hysteresis": false,
     "min_loss_scale": 1
 }
 ```
@@ -202,6 +234,12 @@ Example of <i>**scheduler**</i>
 | Description                                                                                 | Default |
 | ------------------------------------------------------------------------------------------- | ------- |
 | <i>**enabled**</i> is a **fp16** parameter indicating whether or not FP16 training enabled. | `false` |
+
+<i>**fp16:auto_cast**</i>: [boolean]
+
+| Description                                                  | Default |
+| -------------------------------------------------------------| ------- |
+| <i>**auto_cast**</i> automatically casts inputs to **fp16**  | `false` |
 
 <i>**fp16:loss_scale**</i>: [float]
 
@@ -213,7 +251,7 @@ Example of <i>**scheduler**</i>
 
 | Description                                                                                                                                                                                             | Default |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| <i>**initial_scale_power**</i> is a **fp16** parameter representing the power of the initial dynamic loss scale value. The actual loss scale is computed as 2<sup><i>**initial_scale_power**</i></sup>. | `32`    |
+| <i>**initial_scale_power**</i> is a **fp16** parameter representing the power of the initial dynamic loss scale value. The actual loss scale is computed as 2<sup><i>**initial_scale_power**</i></sup>. | `16`    |
 
 <i>**fp16:loss_scale_window**</i>: [integer]
 
@@ -227,13 +265,19 @@ Example of <i>**scheduler**</i>
 | --------------------------------------------------------------------------------------------------- | ------- |
 | <i>**hysteresis**</i> is a **fp16** parameter representing the delay shift in dynamic loss scaling. | `2`     |
 
+<i>**fp16:consecutive_hysteresis**</i>: [boolean]
+
+| Description                                                                                         | Default |
+| --------------------------------------------------------------------------------------------------- | ------- |
+| <i>**consecutive_hysteresis**</i> is a **fp16** parameter representing whether to refill the hysteresis if we reach an iteration that doesn't overflow | `false`     |
+
 <i>**fp16:min_loss_scale**</i>: [integer]
 
 | Description                                                                                           | Default |
 | ----------------------------------------------------------------------------------------------------- | ------- |
-| <i>**min_loss_scale**</i> is  a **fp16** parameter representing the minimum dynamic loss scale value. | `1000`  |
+| <i>**min_loss_scale**</i> is  a **fp16** parameter representing the minimum dynamic loss scale value. | `1`     |
 
-### BFLOAT16 options
+### BFLOAT16 training options
 
 **Note:** this mode cannot be combined with the `amp` mode described below.
 {: .notice--warning}
@@ -241,26 +285,23 @@ Example of <i>**scheduler**</i>
 **Note:** this mode cannot be combined with the `fp16` mode described above.
 {: .notice--warning}
 
-**Note:** this mode is only compatible with ZeRO stages 1 and 2.
-{: .notice--warning}
-
-<i>**bfloat16**</i>: [dictionary]
+<i>**bf16**</i>: [dictionary]
 
 | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Default |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Configuration for using [bfloat16](https://en.wikipedia.org/wiki/Bfloat16_floating-point_format) floating-point format as an alternative to FP16. BFLOAT16 requires hardware support (e.g., NVIDIA A100). An example, including the available dictionary keys is illustrated below. Training with bfloat16 does not require loss scaling. | None    |
 
 ```json
-"bfloat16": {
+"bf16": {
    "enabled": true
  }
 ```
 
-<i>**bfloat16:enabled**</i>: [boolean]
+<i>**bf16:enabled**</i>: [boolean]
 
-| Description                                                                                 | Default |
-| ------------------------------------------------------------------------------------------- | ------- |
-| <i>**enabled**</i> is a **bfloat16** parameter indicating whether or not BFLOAT16 training enabled. | `false` |
+| Description                                                        | Default |
+|--------------------------------------------------------------------| ------- |
+| <i>**enabled**</i> indicates whether BFLOAT16 training is enabled. | `false` |
 
 
 ### Automatic mixed precision (AMP) training options
@@ -329,9 +370,12 @@ Enabling and configuring ZeRO memory optimizations
     "stage3_param_persistence_threshold" : 1e6,
     "sub_group_size" : 1e12,
     "elastic_checkpoint" : [true|false],
-    "stage3_gather_fp16_weights_on_model_save": [true|false],
+    "stage3_gather_16bit_weights_on_model_save": [true|false],
     "ignore_unused_parameters": [true|false]
     "round_robin_gradients": [true|false]
+    "zero_hpz_partition_size": 1
+    "zero_quantized_weights": [true|false]
+    "zero_quantized_gradients": [true|false]
     }
 ```
 
@@ -339,7 +383,7 @@ Enabling and configuring ZeRO memory optimizations
 
 | Description                                                                                               | Default |
 | --------------------------------------------------------------------------------------------------------- | ------- |
-| Enable ZeRO memory optimization wrapper for FP16 Training. Currently compatible only with Adam optimizer. | `false` |
+| Enable ZeRO memory optimizations, compatible with FP16/BF16/FP32 and the Adam optimizer. | `false` |
 
 <i>**stage**</i>: [integer]
 
@@ -393,7 +437,7 @@ Enabling and configuring ZeRO memory optimizations
 
 | Description                                                                                                                                                                                                                                                                         | Default |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Stage 2 optimization for CPU offloading that parallelizes gradient copying to CPU memory among ranks by fine-grained gradient partitioning. Performance benefit grows with gradient accumulation steps (more copying between optimizer steps) or GPU count (increased parallelism). | `False` |
+| Stage 1 and 2 optimization for CPU offloading that parallelizes gradient copying to CPU memory among ranks by fine-grained gradient partitioning. Performance benefit grows with gradient accumulation steps (more copying between optimizer steps) or GPU count (increased parallelism). | `False` |
 
 ***offload_param***: [dictionary]
 
@@ -405,7 +449,7 @@ Enabling and configuring ZeRO memory optimizations
 
 | Description                                                                                                                                                                                                                          | Default |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| Enable offloading of optimizer state to CPU or NVMe, and optimizer computation to CPU. This frees up GPU memory for larger models or batch sizes. Valid only with stage 2 and 3. See [here](#optimizer-offloading) for more details. | `False` |
+| Enable offloading of optimizer state to CPU or NVMe, and optimizer computation to CPU. This frees up GPU memory for larger models or batch sizes. Valid for ZeRO stage 1, 2, 3. See [here](#optimizer-offloading) for more details. | `False` |
 
 ***stage3_max_live_parameters***: [integer]
 
@@ -433,12 +477,29 @@ Enabling and configuring ZeRO memory optimizations
 | Do not partition parameters smaller than this threshold. Smaller values use less memory, but can greatly increase communication (especially latency-bound messages). | `1e6`   |
 
 
-***stage3_gather_fp16_weights_on_model_save***: [boolean]
+***stage3_gather_16bit_weights_on_model_save***: [boolean]
 
-| Description                                                                                                                                                                                                                                                                   | Default |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Consolidate the weights before saving the model by `save_fp16_model()`. Since the weights are partitioned across GPUs, they aren't part of `state_dict`, so this function automatically gather the weights when this option is enabled and then saves the fp16 model weights. | `False` |
+| Description                                                                                                                                                                                                                                                                    | Default |
+|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| ------- |
+| Consolidate the weights before saving the model by `save_16bit_model()`. Since the weights are partitioned across GPUs, they aren't part of `state_dict`, so this function automatically gathers the weights when this option is enabled and then saves the fp16 model weights. | `False` |
 
+***zero_hpz_partition_size***: [integer]
+
+| Description                                                                                                                         | Default |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Number of ranks in hiearchical partitioning ZeRO (hpZ) secondary tensor group of ZeRO++, default is 1 meaning no hpZ, ideal is number of ranks (gpus) per node. | `1`   |
+
+***zero_quantized_weights***: [boolean]
+
+| Description                                                                                                                         | Default |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ------- |
+|Boolean indicating whether to enable communication efficient quantized weights of ZeRO++. | `False`   |
+
+***zero_quantized_gradients***: [boolean]
+
+| Description                                                                                                                         | Default |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ------- |
+|Boolean indicating whether to enable communication efficient quantized gradients of ZeRO++. | `False`   |
 
 ***cpu_offload***: [boolean]
 
@@ -447,7 +508,7 @@ Enabling and configuring ZeRO memory optimizations
 
 | Description                                                                                                                                       | Default |
 | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Enable offloading of optimizer memory and computation to CPU. This frees up GPU memory for larger models or batch sizes. Valid only with stage 2. | `False` |
+| Enable offloading of optimizer memory and computation to CPU. This frees up GPU memory for larger models or batch sizes. Valid with stage 1 and 2. | `False` |
 
 
 ### Parameter offloading
@@ -502,7 +563,7 @@ Note that if the value of "device" is not specified or not supported, an asserti
 | Number of parameter elements to maintain in CPU memory when offloading to NVMe is enabled. | 1e9     |
 
 ### Optimizer offloading
-Enabling and configuring ZeRO optimization of offloading optimizer computation to CPU and state to CPU/NVMe. CPU offloading is available with ZeRO stage 2 or 3. NVMe offloading is available only with ZeRO stage 3.
+Enabling and configuring ZeRO optimization of offloading optimizer computation to CPU and state to CPU/NVMe. CPU offloading is available with ZeRO stage 1, 2, 3. NVMe offloading is available only with ZeRO stage 3.
 Note that if the value of "device" is not specified or not supported, an assertion will be triggered.
 ```json
   "offload_optimizer": {
@@ -618,8 +679,8 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 {
   "autotuning": {
     "enabled": false,
-    "results_dir": null,
-    "exps_dir": null,
+    "results_dir": "autotuning_results",
+    "exps_dir": "autotuning_exps",
     "overwrite": false,
     "metric": "throughput",
     "start_profile_step": 3,
@@ -644,21 +705,21 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 <i>**results_dir**</i>: [string]
 
-| Description                                                                                                                      | Default |
-| -------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Path to the autotuning experiment results directory. If None, "autotuning_results" under the training script launching path is used. | `null`  |
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| Path to the autotuning experiment results directory.  The default appears in the working directory from which Deepspeed was launched. | "autotuning_results"  |
 
 <i>**exps_dir**</i>: [string]
 
-| Description                                                                                                                        | Default |
-| ---------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Path to the auotuning experiment descriptions directory. If None, "autotuning_exps" under the train script launching path is used. | `null`  |
+| Description                                                                                                                              | Default |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| Path to the auotuning experiment descriptions directory. The default appears in the working directory from which Deepspeed was launched. | "autotuning_exps"  |
 
 <i>**overwrite**</i>: [boolean]
 
-| Description                                                                               | Default |
-| ----------------------------------------------------------------------------------------- | ------- |
-| Whether to run autotuing experiments whose results alreay exsit. Setting it to true would overwrite the existing result. | `false` |
+| Description                                                                                                               | Default |
+|---------------------------------------------------------------------------------------------------------------------------| ------- |
+| Whether to run autotuning experiments whose results already exist. Setting it to true would overwrite the existing result. | `false` |
 
 
 <i>**metric**</i>: [string]
@@ -815,7 +876,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 | Description                                                   | Default |
 | ------------------------------------------------------------- | ------- |
-| Inserts torch.cuda.synchronize() at each checkpoint boundary. | `false` |
+| Inserts get_accelerator().synchronize() at each checkpoint boundary. | `false` |
 
 
 <i>**profile**</i>: [boolean]
@@ -864,7 +925,132 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
   }
 ```
 
+### Data Efficiency
+DeepSpeed Data Efficiency Library includes two techniques: curriculum learning and random layerwise token dropping (random-LTD). Read more about how to use the DeepSpeed Data Efficiency Library in our [tutorial](/tutorials/data-efficiency/).
+
+```json
+"data_efficiency": {
+  "enabled": true,
+  "seed": 1234,
+  "data_routing": {
+    "enabled": true,
+    "random_ltd":{
+      "enabled": true,
+      "total_layer_num": 24,
+      "random_ltd_layer_num": 22,
+      "random_ltd_layer_id": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22],
+      "model_mask_name": "attention_mask",
+      "model_type": "decoder",
+      "hidden_state_order": "seq_batch_dim",
+      "random_ltd_schedule": {
+        "min_value": 128,
+        "max_value": 2048,
+        "schedule_type":"fixed_linear",
+        "schedule_config": {
+          "require_steps": 200000,
+          "seq_per_step": 16
+        }
+      }
+    }
+  },
+  "data_sampling": {
+    "enabled": true,
+    "num_epochs": 1,
+    "num_workers": 0,
+    "curriculum_learning": {
+      "enabled": true,
+      "data_cluster_path": "/path/to/data_clusters",
+      "curriculum_metrics": {
+        "vocabularyrarity": {
+          "index_to_sample_path": "/path/to/index_to_sample",
+          "index_to_metric_path": "/path/to/index_to_metric",
+          "difficulty_type": "percentile",
+          "clustering_type": "schedule_based",
+          "min_difficulty": 1,
+          "max_difficulty": 100,
+          "schedule_type": "fixed_root",
+          "schedule_config": {
+            "total_curriculum_step": 110000,
+            "difficulty_step": 1,
+            "root_degree": 2
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+<i>**data_efficiency**</i>: [dictionary]
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**enabled**</i>: [boolean] | Enable data efficiency or not. | `false` |
+| <i>**seed**</i>: [integer] | Random seed for data sampling. | 1234 |
+| <i>**data_routing**</i>: [dictionary] | Configs for data routing techniques. | N/A |
+| <i>**data_sampling**</i>: [dictionary] | Configs for data sampling techniques. | N/A |
+
+<i>**data_routing**</i>: [dictionary]
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**enabled**</i>: [boolean] | Enable data routing techniques or not. | `false` |
+| <i>**random_ltd**</i>: [dictionary] | Configs for random-LTD technique. | N/A |
+
+<i>**data_sampling**</i>: [dictionary]
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**enabled**</i>: [boolean] | Enable data sampling techniques or not. | `false` |
+| <i>**num_epochs**</i>: [integer] | At most how many epoches of the original dataset will be iterated. | 1000 |
+| <i>**num_workers**</i>: [integer] | Data loader number of workers. | 0 |
+| <i>**curriculum_learning**</i>: [dictionary] | Configs for curriculum learing technique. | N/A |
+
+<i>**random_ltd**</i>: [dictionary]
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**enabled**</i>: [boolean] | Enable random-LTD technique or not. | `false` |
+| <i>**total_layer_num**</i>: [integer] | The number of layer (or the depth) for the pretraining/fine-tuning model. | N/A |
+| <i>**random_ltd_layer_num**</i>: [integer] | The number of layers that will be applied with random-LTD. | N/A |
+| <i>**random_ltd_layer_id**</i>: [list] | The exact layer_id that will be applied with random-LTD. The length of this list must be the same as `random_ltd_layer_num`. | N/A |
+| <i>**model_mask_name**</i>: [str] | The variable name of the attention_mask. Different libraries have different names, such as att_mask. For huggingface model, it’s named “attention_mask”. Users need to check the forward function in the original model files. If the attention mask input in the original model's forward function is not a keyword/named argument (e.g., attention_mask=None), user would need to change it to a keyword/named argument and provide that keyword as `model_mask_name`. | N/A |
+| <i>**model_type**</i>: [str] | Users need to identify whether the model is `decoder` or `encoder`. Currently we only support these two. | N/A |
+| <i>**hidden_state_order**</i>: [str] | Users need to know the input order of the hidden state tensor. Normally, it’s batch, sequence and then the hidden dimension, which is `batch_seq_dim`. Somethings, the order between batch and sequence will be switch like `seq_batch_dim`. Currently, we support these two.  | N/A |
+| <i>**random_ltd_schedule**</i>: [dictionary] | The schedule of the effective sequence length after token dropping. It's a linear function where random-LTD gradually drops less tokens and increases effective sequence length. | N/A |
+| <i>&emsp;&emsp;**min_value**</i>: [integer] | The initial effective sequence length (after token dropping) at step/iteration 0. | N/A |
+| <i>&emsp;&emsp;**max_value**</i>: [integer] | The max effective sequence length (usually the case without any token dropping). Usually this is set as baseline's seqlen. | N/A |
+| <i>&emsp;&emsp;**schedule_type**</i>: [str] | The sequence length follows a linear increasing function starting from `min_value` and reaching `max_value`. We currently only support this type. | N/A |
+| <i>&emsp;&emsp;**schedule_config**</i>: [dictionary] | Configs for the linear increasing function. | N/A |
+| <i>&emsp;&emsp;&emsp;&emsp;**require_steps**</i>: [integer] | How many iterations will be needed to reach max_value from min_value. | N/A |
+| <i>&emsp;&emsp;&emsp;&emsp;**seq_per_step**</i>: [integer] | At any time, the effective sequence length be multiple of this `seq_per_step`. Set this to multiple of 8 (for FP16 data) or 16 (for INT8 data) to enable NVIDIA Tensor Core acceleration. | N/A |
+
+<i>**curriculum_learning**</i>: [dictionary]
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**enabled**</i>: [boolean] | Enable curriculum learing technique or not. | `false` |
+| <i>**data_cluster_path**</i>: [str] | Path to directory where curriculum learning will store the indexes of data samples within the same difficulty ranges. | N/A |
+| <i>**curriculum_metrics**</i>: [dictionary] | This dictionary includes all desired curriculum metrics and their configs. Each metric will be a separate sub-dictionary, where the key is the metric name and the values are configs below. | N/A |
+| <i>&emsp;&emsp;**index_to_sample_path**</i>: [str] | Path to the index_to_sample file generated during offline data analysis. Note that data analysis will generate two kinds of index_to_sample files: The metric_name_index_to_sample_percentile_merged file is a concatenated index for perf improvement, but it only works when you set difficulty_type=`percentile`. If you use difficulty_type=`value`, you need to change this to use the metric_name_index_to_sample file. | N/A |
+| <i>&emsp;&emsp;**index_to_metric_path**</i>: [str] | Path to the index_to_metric_path file generated during offline data analysis. | N/A |
+| <i>&emsp;&emsp;**difficulty_type**</i>: [str] | During training, how to increase the max accepted difficulty. Currently support `value` (increase by absolute value) and `percentile` (increase by difficulty percentile). | N/A |
+| <i>&emsp;&emsp;**clustering_type**</i>: [str] | Currently support `schedule_based` (cluster data based on the difficulty schedule (pacing function) below) and `single_cluster` (no clustering required and probably CL is achieved by data postprocessing, such as sequence length truncation). | N/A |
+| <i>&emsp;&emsp;**min_difficulty**</i>: [integer] | Starting difficulty at first step. When difficulty_type=`value` the `min_difficulty` is an absolute difficulty value. When difficulty_type=`percentile` the `min_difficulty` is a difficulty percentile value. | N/A |
+| <i>&emsp;&emsp;**max_difficulty**</i>: [integer] | Final max difficulty. When difficulty_type=`value` the `max_difficulty` is an absolute difficulty value. When difficulty_type=`percentile` the `max_difficulty` is a difficulty percentile value. | N/A |
+| <i>&emsp;&emsp;**schedule_type**</i>: [str] | The difficulty schedule (pacing function) that defines how the max accepted difficulty increases from `min_difficulty` to `max_difficulty` during training. Currently support `fixed_linear`, `fixed_root`, `fixed_discrete`, and `custom`. | N/A |
+| <i>&emsp;&emsp;**schedule_config**</i>: [dictionary] | Configs for the pacing function. When schedule_type=`custom` this dictionary is not necessary. Instead user needs to provide a callback function (via the `set_custom_curriculum_learning_schedule` API in deepspeed/runtime/engine.py) which will update the max accepted difficulty during training. Configs below are all belongs to `schedule_config`. | N/A |
+| <i>&emsp;&emsp;&emsp;&emsp;**total_curriculum_step**</i>: [integer] | How many steps the curriculum learning takes to go from min difficulty to max difficulty. Used by `fixed_linear` and `fixed_root` schedule. | N/A |
+| <i>&emsp;&emsp;&emsp;&emsp;**difficulty_step**</i>: [integer] | The max accepted difficulty level determined every step must be a multiple of this `difficulty_step`. This is used to ensure the use of NVIDIA Tensor Core acceleration (requires multiple of 8 (FP16) or 16 (INT8)). Used by `fixed_linear` and `fixed_root` schedule. | N/A |
+| <i>&emsp;&emsp;&emsp;&emsp;**root_degree**</i>: [integer] | The degree of the root function. Degree of 2 means square root and degree of 3 means cube root. Degree of 1 is equivalent to linear. Used by `fixed_root` schedule. | N/A |
+| <i>&emsp;&emsp;&emsp;&emsp;**difficulty**</i>: [list] | List of max accepted difficulty levels to be used during schedule. Used by `fixed_discrete` schedule. | N/A |
+| <i>&emsp;&emsp;&emsp;&emsp;**max_step**</i>: [list] | List of which step to change max accepted difficulty level. Used by `fixed_discrete` schedule. | N/A |
+
+
 ### Curriculum Learning
+
+**Note:** On 12/12/2022, we released [DeepSpeed Data Efficiency Library](/tutorials/data-efficiency/) which provides a more general curriculum learning support. This legacy curriculum learning feature below is still supported but we recommend to use the Data Efficiency Library.
+
 ```json
   "curriculum_learning": {
     "enabled": true,
@@ -940,13 +1126,15 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 | ---------------------------------------------------------------------------------------------------------------------------- | ------- |
 | List of which step to change difficulty level. One of the `schedule_config` when the `fixed_discrete` schedule_type is used. | N/A     |
 
-### Logging to Tensorboard
+### Monitoring Module (TensorBoard, WandB, CSV)
 
 **Note:** Deepspeed logs to TensorBoard through PyTorch. Logging to TensorBoard requires that the `tensorboard` package is installed (read more in the [PyTorch documentation](https://pytorch.org/docs/1.8.0/tensorboard.html)).
 {: .notice--warning}
+**Note:** Logging to WandB requires that the `wandb` package is installed (read more in the [WandB documentation](https://docs.wandb.ai/quickstart)).
+{: .notice--warning}
 
 
-Deepspeed can log training details into a [Tensorboard](https://www.tensorflow.org/tensorboard)-compatible file. Below is an overview of what deepspeed will log.
+Deepspeed's Monitor module can log training details into a [Tensorboard](https://www.tensorflow.org/tensorboard)-compatible file, to [WandB](https://wandb.ai/site), or to simple CSV files. Below is an overview of what DeepSpeed will log automatically.
 
 | Field | Description                                                                                                                                                                                                                                                                                               |Conditions |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- |
@@ -956,7 +1144,7 @@ Deepspeed can log training details into a [Tensorboard](https://www.tensorflow.o
 | `Train/Eigenvalues/ModelBlockParam_{i}`   | Eigen values per param block. | `eigenvalue` must be enabled. |
 | `Train/Samples/elapsed_time_ms_forward`   | The global duration of the forward pass. | `flops_profiler.enabled` or `wall_clock_breakdown`. |
 | `Train/Samples/elapsed_time_ms_backward`   | The global duration of the forward pass. | `flops_profiler.enabled` or `wall_clock_breakdown`.  |
-| `Train/Samples/elapsed_time_ms_backward_inner`   | The backward time that does not include the the gradient reduction time. Only in cases where the gradient reduction is not overlapped, if it is overlapped then the inner time should be about the same as the entire backward time. | `flops_profiler.enabled` or `wall_clock_breakdown`.  |
+| `Train/Samples/elapsed_time_ms_backward_inner`   | The backward time that does not include the gradient reduction time. Only in cases where the gradient reduction is not overlapped, if it is overlapped then the inner time should be about the same as the entire backward time. | `flops_profiler.enabled` or `wall_clock_breakdown`.  |
 | `Train/Samples/elapsed_time_ms_backward_allreduce`   | The global duration of the allreduce operation. | `flops_profiler.enabled` or `wall_clock_breakdown`.  |
 | `Train/Samples/elapsed_time_ms_step`   | The optimizer step time | `flops_profiler.enabled` or `wall_clock_breakdown`.  |
 
@@ -965,11 +1153,11 @@ Deepspeed can log training details into a [Tensorboard](https://www.tensorflow.o
 | Fields | Value                                                                                                                                                                                                                                                                                                        |Default |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- |
 | enabled   | Whether logging to [Tensorboard](https://www.tensorflow.org/tensorboard) is enabled. | `false` |
-| job_name  | Name for the current job. This will become a new directory inside `output_path` | `"DeepSpeedJobName"` |
-| output_path | Path to where the Tensorboard logs will be written.                           | `~/tensorboard/` |
+| output_path | Path to where the Tensorboard logs will be written. If None, the output path is set under the training script's launching path.     | `null` |
+| job_name  | Name for the current job. This will become a new directory inside `output_path`. | `"DeepSpeedJobName"` |
 
 
-Example of <i>** tensorboard**</i> configuration:
+Example of <i>**tensorboard**</i> configuration:
 
 ```json
 "tensorboard": {
@@ -978,3 +1166,542 @@ Example of <i>** tensorboard**</i> configuration:
     "job_name": "train_bert"
 }
 ```
+
+<i>**wandb**</i>: [dictionary]
+
+| Fields | Value                                                                                                                                                                                                                                                                                                        |Default |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- |
+| enabled   | Whether logging to [WandB](https://wandb.ai/site) is enabled. | `false` |
+| group  | Name for the WandB group. This can be used to group together runs. | `None` |
+| team | Name for the WandB team.       | `None` |
+| project | Name for the WandB project.       | `deepspeed` |
+
+
+Example of <i>**wandb**</i> configuration:
+
+```json
+"wandb": {
+    "enabled": true,
+    "group": "my_group",
+    "team": "my_team",
+    "project": "my_project"
+}
+```
+
+<i>**csv_monitor**</i>: [dictionary]
+
+| Fields | Value                                                                                                                                                                                                                                                                                                        |Default |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- |
+| enabled   | Whether logging to local CSV files is enabled. | `false` |
+| output_path | Path to where the csv files will be written. If None, the output path is set under the training script's launching path.      | `null` |
+| job_name  | Name for the current job. This will become a new directory inside `output_path` | `"DeepSpeedJobName"` |
+
+
+Example of <i>**csv_monitor**</i> configuration:
+
+```json
+"csv_monitor": {
+    "enabled": true,
+    "output_path": "output/ds_logs/",
+    "job_name": "train_bert"
+}
+```
+
+### Elastic Training Config (V0.1 and V0.2)
+
+```json
+  "elasticity": {
+    "enabled": true,
+    "max_train_batch_size": "seqlen",
+    "micro_batch_sizes": 8,
+    "min_gpus": 1024,
+    "max_gpus": "fixed_linear",
+    "min_time": "seqlen",
+    "version": 8,
+    "ignore_non_elastic_batch_info": 1024,
+    "num_gpus_per_node": "fixed_linear",
+    "model_parallel_size": MODEL_PARALLEL_SIZE
+  }
+```
+
+| Field | Description                                                                                                                                                                                                                                                                                                   |Default|
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- |
+| `enabled`   | Enables computation of global batch size in elastic training. | false |
+| `max_train_batch_size` | Max acceptable batch size can be used in training. | 2000 |
+| `micro_batch_sizes` | Acceptable micro batch sizes, same as train_micro_batch_size_per_gpu | [2,4,6] |
+| `min_gpus` | Min number of GPUs to search over when computing highly composite batch size in v0.1 and v0.2. | 1 |
+| `max_gpus` | Max number of GPUs to search over when computing highly composite batch size in v0.1 and v0.2. | 10000 |
+| `min_time` |Minimum running time (minutes) before the scheduler will scale again (only used in v0.1). 0 implies it's unknown | 0 |
+| `prefer_large_batch` | When finding a suitable batch size, attempt to find one that is closest to the max train batch size given. | true |
+| `version` | Version of elastic logic to use. | 0.2 |
+| `ignore_non_elastic_batch_info` | Ignore all batch info provided outside the elastic config. To reduce confusion, we require all batch related info to be given in elastic config only. | false |
+| `num_gpus_per_node` | Number of GPUs per node. This information is used by v0.2 to support model-parallel training (only used by v0.2) | 1 |
+| `model_parallel_size` | Tensor or model parallel size (only used by v0.2) | 1 |
+
+
+### Communication Logging
+
+
+DeepSpeed provides a flexible communication logging tool which can automatically detect and record communication operations launched via `deepspeed.comm`. NOTE: All logging communication calls are synchronized in order to provide accurate timing information. This may hamper performance if your model heavily uses asynchronous communication operations.
+
+Once the logs are populated, they can be summarized with `deepspeed.comm.log_summary()`. For more detail and example usage, see the [tutorial](/tutorials/comms-logging/)
+
+
+
+
+<i>**comms_logger**</i>: [dictionary]
+
+| Fields | Value                                                                                                                                                                                                                                                                                                        |Default |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- |
+| enabled   | Whether communication logging is enabled. | `false` |
+| verbose | Whether to immediately print every communication operation  | `false` |
+| prof_all  | Whether to profile all operations. | `true` |
+| debug  | Appends the caller function to each communication operation's `log_name`. | `false` |
+| prof_ops  | A list of communication operations to log (only the specified ops will be profiled). | `[]` |
+
+
+Example of recommended <i>**comms_logger**</i> configuration:
+
+```json
+"comms_logger": {
+  "enabled": true,
+  "verbose": false,
+  "prof_all": true,
+  "debug": false
+}
+```
+
+Example of <i>**comms_logger**</i> configuration for logging specific operations only:
+
+```json
+"comms_logger": {
+  "enabled": true,
+  "verbose": false,
+  "prof_all": false,
+  "debug": false,
+  "prof_ops": ["all_reduce", "all_gather"]
+}
+```
+### Compression
+**Note:** <i>**Compression**</i> has seven different components, including layer reduction, weight quantization, activation quantization, sparse pruning, row pruning, head pruning, and channel pruning. We explain them one by one with simple json examples. Read more about how to use the DeepSpeed Compression library in our [tutorial](/tutorials/model-compression/).
+
+#### Layer Reduction
+**Note:** Layer reduction works much better when using knowledage distillation (learn more in our [tutorial](/tutorials/model-compression/)):
+
+```json
+"compression_training": {
+    "layer_reduction": {
+      "enabled": true,
+      "keep_number_layer": 5,
+      "module_name_prefix": "bert.encoder.layer",
+      "teacher_layer": [
+        2,
+        4,
+        6,
+        8,
+        10
+      ],
+      "other_module_name": [
+        "bert.pooler",
+        "bert.embeddings",
+        "classifier"
+      ]
+    }
+  }
+```
+
+<i>**layer_reduction**</i>: [dictionary]
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**enabled**</i>: [boolean] | Enable layer reduction or not. | `false` |
+| <i>**keep_number_layer**</i>: [list] | The number of layer in the model to be kept. | N/A |
+| <i>**module_name_prefix**</i>: [str] | The (uniform) name prefix of the model's modules of which the associated weight parameters are to be reinitialized. | N/A |
+| <i>**teacher_layer**</i>: [list] | The layer of the weight parameters are to be reinitialized. The length of the list equals to 'keep_number_layer'. | N/A |
+| <i>**other_module_name**</i>: [list] | The name of modules of which the associated weight parameters are to be reinitialized. It is an complemenatory or alternative of module_name_prefix. For instance,  "other_module_name": ["bert.encoder.layer.2","bert.encoder.layer.4"] equals to "module_name_prefix":"bert.encoder.layer" and  "teacher_layer": [2,4]. | N/A |
+
+#### Weight Quantization
+```json
+  "compression_training": {
+  "weight_quantization": {
+    "shared_parameters":{
+      "enabled": true,
+      "quantizer_kernel": false,
+      "schedule_offset": 0,
+      "quantize_groups": 1,
+      "quantize_verbose": false,
+      "quantization_type": "symmetric",
+      "rounding": "nearest",
+      "quantize_weight_in_forward": false,
+      "fp16_mixed_quantize":{
+        "enabled": false,
+        "quantize_change_ratio": 0.001
+      }
+    },
+    "different_groups":{
+      "wq1": {
+        "params": {
+            "start_bits": 8,
+            "target_bits": 8,
+            "quantization_period": 50
+        },
+        "modules": [
+          "attention.self",
+          "intermediate"
+        ]
+      },
+      "wq2": {
+        "params": {
+            "start_bits": 4,
+            "target_bits": 4,
+            "quantization_period": 50
+        },
+        "modules": [
+          "attention.output"
+        ]
+      }
+    }
+  }
+  }
+```
+
+<i>**shared_parameters**</i>: [dictionary]
+
+Shared parameters for all weight quantization groups.
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**enabled**</i>: [boolean] | Enable weight quantization or not. | `false` |
+| <i>**quantizer_kernel**</i>: [boolean] | Use DeepSpeed quantization kernel for >=4 bit quantization. This can only be enabled when using DeepSpeed FP16 optimizer. | `false` |
+| <i>**schedule_offset**</i>: [integer] | Enable weight quantization after scheduled steps (can be treated as warmup steps). | `0` |
+| <i>**quantize_groups**</i>: [integer] | Split the weight matrix into different number of groups, and each of them has its own scaling factor. | `1` |
+| <i>**quantize_verbose**</i>: [boolean] | Print the quantization related logs. | `false` |
+| <i>**quantization_type**</i>: [string] | Choose the quantization algorithm, symmetric or asymmetric. | `"symmetric"` |
+| <i>**rounding**</i>: [string] | Rounding algorithm associated with quantization, nearest or stochastic. | `"nearest"` |
+| <i>**quantize_weight_in_forward**</i>: [boolean] | Quantize weight in optimizer or forward step, must set to be true for FP32 optimizer training. | `false` |
+| <i>**fp16_mixed_quantize**</i>: [dictionary] | Using the value mixed by FP16 value and the quantized value. | N/A |
+| <i>&emsp;&emsp;**enabled**</i>: [boolean] | Whether fp16 mixed quantization is enabled. | `false` |
+| <i>&emsp;&emsp;**quantize_change_ratio**</i>: [float] | Initial quantize value ratio, will gradually increase to 1. | `0.001` |
+
+<i>**different_groups**</i>: [dictionary]
+
+Different quantization sets, this is used for different quantization parameters. In this example, we give two different sets. In practice, you can choose the number of sets based on your requirements.
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**params**</i>: [dictionary] | | |
+| <i>&emsp;&emsp;**start_bits**</i>: [integer] | Quantization starting bits, will gradaully reduce to target bits. | `8` |
+| <i>&emsp;&emsp;**target_bits**</i>: [integer] | Quantization target bits, need to be <= start_bits. | `8` |
+| <i>&emsp;&emsp;**quantization_period**</i>: [integer] | For every n steps, the quantization bits will be reduce by 1. | `1` |
+| <i>**modules**</i>: [list] | Scope of weight parameters associated to the params setting. | `"All Linear and CONV2D layers"` |
+
+#### Activation Quantization
+```json
+"compression_training": {
+  "activation_quantization": {
+    "shared_parameters":{
+      "enabled": true,
+      "quantization_type": "asymmetric",
+      "range_calibration": "dynamic",
+      "schedule_offset": 50
+    },
+    "different_groups":{
+      "aq1": {
+        "params": {
+            "bits": 8
+        },
+        "modules": [
+          "attention.output"
+        ]
+      }
+    }
+  }
+```
+
+<i>**shared_parameters**</i>: [dictionary]
+
+Shared parameters for all activation quantization groups.
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**enabled**</i>: [boolean] | Enable activation quantization or not. | `false` |
+| <i>**quantization_type**</i>: [string] | Choose the quantization algorithm, symmetric or asymmetric. | `"symmetric"` |
+| <i>**range_calibration**</i>: [string] | Using dynamic (per token or per image) or static (fixed min/max using momentum) for inference. | `"static"` |
+| <i>**schedule_offset**</i>: [integer] | Enable activation quantization after scheduled steps (can be treated as warmup steps). | `0` |
+
+<i>**different_groups**</i>: [dictionary]
+
+Different quantization sets, this is used for different quantization parameters. In this example, we give one set. In practice, you can choose the number of sets based on your requirements.
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**params**</i>: [dictionary] | | |
+| <i>&emsp;&emsp;**bits**</i>: [integer] | Number of bits used for activation target bits, need to be >= 4. | `8` |
+| <i>**modules**</i>: [list] | Scope of weight parameters associated to the params setting. | `"All Linear and CONV2D layers"` |
+
+#### Sparse Pruning
+```json
+"compression_training": {
+  "sparse_pruning":{
+    "shared_parameters":{
+      "enabled": true,
+      "schedule_offset": 30,
+      "method": "l1"
+    },
+    "different_groups":{
+      "sp1": {
+        "params": {
+            "dense_ratio": 0.5
+        },
+        "modules": [
+          "attention.self"
+        ]
+      }
+    }
+  }
+}
+```
+
+```json
+"compression_training": {
+  "sparse_pruning":{
+    "shared_parameters":{
+      "enabled": true,
+      "schedule_offset": 30,
+      "schedule_offset_end": 90,
+      "schedule_offset_stride": 15,
+      "method": "snip_momentum",
+      "block_pattern": "4x1",
+      "dense_ratio": 0.4,
+      "excluded_modules": ['classifier', 'pooler']
+    },
+    "different_groups":{
+    }
+  }
+}
+```
+
+<i>**shared_parameters**</i>: [dictionary]
+
+Shared parameters for all sparse pruning groups.
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**enabled**</i>: [boolean] | Enable sparse pruning or not. | `false` |
+| <i>**schedule_offset**</i>: [integer] | Enable sparse pruning after scheduled steps (can be treated as warmup steps). | `0` |
+| <i>**schedule_offset_end**</i>: [integer] | Disable sparse pruning after scheduled steps, mandotory for `snip_momentum`. | `0` |
+| <i>**schedule_offset_stride**</i>: [integer] | The stride of pruning on training steps, mandotory for `snip_momentum`. | `"1"` |
+| <i>**method**</i>: [string] | Choose different pruning methods, l1 (static, magnitude based), topk (dynamic, learnable) or snip_momentum (structured pruning). | `"l1"` |
+| <i>**block_pattern**</i>: [string] | Choose different structured pruning block patterns, NxM or N:M (N and M are integers). For instance, "4x1" or "2:4" are common block patterns, mandotory for `snip_momentum`. | `"4x1"` |
+| <i>**dense_ratio**</i>: [float] | Used to get the targeted global sparsity ratio, mandotory for `snip_momentum`. | `"0.1"` |
+| <i>**excluded_modules**</i>: [list] | Excluded pruning scope on some special modules like output layer. | `[]` |
+
+<i>**different_groups**</i>: [dictionary]
+
+Different pruning sets, this is used for different pruning parameters. In this example, we give one set. In practice, you can choose the number of sets based on your requirements.
+Note for `snip_momentum` method, you can leave it as empty.
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**params**</i>: [dictionary] | | |
+| <i>&emsp;&emsp;**dense_ratio**</i>: [float] | The percentage of weights to keep after pruning. | `0.5` |
+| <i>**modules**</i>: [list] | Scope of weight parameters associated to the params setting. | `"All Linear and CONV2D layers"` |
+
+#### Row Pruning
+**Note:** <i>**Row Pruning**</i> is a feature designed for two back-to-back linear layers (e.g., Feed Forward Network in Transformers). As such, we suggested use row pruning for the first linear layer (i.e., the `intermediate.dense` layer for BERT). Reducing the row dimension of this matrix can help reducing the column of the follow-up matrix (i.e., `layer.\\w+.output.dense` layer for BERT). It should also work for other linear layers as well.
+```json
+"compression_training": {
+  "row_pruning":{
+    "shared_parameters":{
+      "enabled": true,
+      "schedule_offset": 20,
+      "method": "topk"
+    },
+    "different_groups":{
+      "rp1": {
+        "params": {
+            "dense_ratio": 0.5
+        },
+        "modules": [
+          "intermediate.dense"
+        ],
+        "related_modules":[
+          ["layer.\\w+.output.dense"]
+        ]
+      }
+    }
+  }
+}
+```
+
+<i>**shared_parameters**</i>: [dictionary]
+
+Shared parameters for all row pruning groups.
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**enabled**</i>: [boolean] | Enable row pruning or not. | `false` |
+| <i>**schedule_offset**</i>: [integer] | Enable row pruning after scheduled steps (can be treated as warmup steps). | `0` |
+| <i>**method**</i>: [string] | Choose different pruning methods, l1 (static, magnitude based) or topk (dynamic, learnable). | `"l1"` |
+
+<i>**different_groups**</i>: [dictionary]
+
+Different pruning sets, this is used for different pruning parameters. In this example, we give one set. In practice, you can choose the number of sets based on your requirements.
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**params**</i>: [dictionary] | | |
+| <i>&emsp;&emsp;**dense_ratio**</i>: [float] | The percentage of weights to keep after pruning. | `0.5` |
+| <i>**modules**</i>: [list] | Scope of weight parameters associated to the params setting. | `"All Linear and CONV2D layers"` |
+| <i>**related_modules**</i>: [list[list]] | Related module to the row pruned module, which can be performed column pruning. | `None` |
+
+#### Head Pruning
+**Note:** <i>**Head Pruning**</i> is a feature designed for two attention layers (e.g., Multi Head Attention in Transformers). For now, it can only be applied to output matrix of the Transformer (i.e., `attention.output.dense` in BERT). Pruning the output matrix can lead to the pruning of Query/Key/Value matrix as well.
+```json
+"compression_training": {
+  "head_pruning":{
+    "shared_parameters":{
+      "enabled": true,
+      "schedule_offset": 10,
+      "method": "topk",
+      "num_heads": 12
+    },
+    "different_groups":{
+      "rp1": {
+        "params": {
+            "dense_ratio": 0.5
+        },
+        "modules": [
+          "attention.output.dense"
+        ],
+        "related_modules":[
+          ["self.query", "self.key", "self.value"]
+        ]
+      }
+    }
+  }
+}
+
+```
+
+<i>**shared_parameters**</i>: [dictionary]
+
+Shared parameters for all head pruning groups.
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**enabled**</i>: [boolean] | Enable head pruning or not. | `false` |
+| <i>**schedule_offset**</i>: [integer] | Enable head pruning after scheduled steps (can be treated as warmup steps). | `0` |
+| <i>**method**</i>: [string] | Choose different pruning methods. For now, we only support topk (dynamic, learnable). | `"topk"` |
+| <i>**num_heads**</i>: [int] | Number of heads (must be provided by user). | N/A |
+
+<i>**different_groups**</i>: [dictionary]
+
+Different pruning sets, this is used for different pruning parameters. In this example, we give one set. In practice, you can choose the number of sets based on your requirements.
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**params**</i>: [dictionary] | | |
+| <i>&emsp;&emsp;**dense_ratio**</i>: [float] | The percentage of weights to keep after pruning. | `0.5` |
+| <i>**modules**</i>: [list] | Scope of weight parameters associated to the params setting. | `"All Linear and CONV2D layers"` |
+| <i>**related_modules**</i>: [list[list]] | Related module (Usually Q/K/V) to the head pruned module (i.e., the output matrix). For now, this feature only works for BERT. | `None` |
+
+#### Channel Pruning
+**Note:** <i>**Channel Pruning**</i> is a feature designed for two back-to-back CONV2d layers (e.g., residual connection in ResNet). As such, we suggested use channel pruning for the first CONV2d layer. Reducing the number of output channels of this layer can help reducing the number of input channels the follow-up layer. It should also work for other CONV2d layers as well.
+```json
+"compression_training": {
+"channel_pruning":{
+      "shared_parameters":{
+        "enabled": true,
+        "schedule_offset": 0,
+        "method": "topk"
+      },
+      "different_groups":{
+        "cp1": {
+          "params": {
+              "dense_ratio": 0.5
+          },
+          "modules": [
+            "layer....conv1"
+          ],
+          "related_modules": [
+            ["layer....conv2", "layer....bn1"]
+          ]
+        }
+      }
+    }
+}
+```
+
+<i>**shared_parameters**</i>: [dictionary]
+
+Shared parameters for all channel pruning groups.
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**enabled**</i>: [boolean] | Enable channel pruning or not. | `false` |
+| <i>**schedule_offset**</i>: [integer] | Enable channel pruning after scheduled steps (can be treated as warmup steps). | `0` |
+| <i>**method**</i>: [string] | Choose different pruning methods, l1 (static, magnitude based) or topk (dynamic, learnable). | `"l1"` |
+
+<i>**different_groups**</i>: [dictionary]
+
+Different pruning sets, this is used for different pruning parameters. In this example, we give one set. In practice, you can choose the number of sets based on your requirements.
+
+| Fields | Value | Default |
+| ----- | ----- | ----- |
+| <i>**params**</i>: [dictionary] | | |
+| <i>&emsp;&emsp;**dense_ratio**</i>: [float] | The percentage of weights to keep after pruning. | `0.5` |
+| <i>**modules**</i>: [list] | Scope of weight parameters associated to the params setting. | `"All CONV2D layers"` |
+| <i>**related_modules**</i>: [list[list]] | Related module to the channel pruned module. | `None` |
+
+### Checkpoint options
+
+```json
+"checkpoint": {
+    "tag_validation"="Warn",
+    "load_universal"=false,
+    "use_node_local_storage"=false,
+    "parallel_write":{
+        "pipeline_stage": false
+    }
+}
+```
+
+<i>**tag_validation**</i>: ["Ignore"|"Warn"|"Fail"]
+
+| Description                                                                                                                            | Default |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Enables level of checking to ensure checkpoint tags are consistent across all ranks. Useful when restoring with different world sizes. |  "Warn" |
+
+<i>**load_universal**</i>: [boolean]
+
+| Description                            | Default |
+| -------------------------------------- | ------- |
+| Load the latest checkpoint for all.    | `false` |
+
+<i>**use_node_local_storage**</i>: [boolean]
+
+| Description                                                                                                                                                               | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| If `true` DeepSpeed will store model parameter states and checkpoint states based on local rank allowing checkpoints to be loaded without access to a shared filesystem.  | `false` |
+
+<i>**pipeline_stage**</i>: [boolean]
+
+| Description                                                   | Default |
+| ------------------------------------------------------------- | ------- |
+| Use pipeline stages to parallelize the writing of checkpoints.| `false` |
+
+### Data Type options
+
+```json
+"data_types": {
+    "grad_accum_dtype"=["fp32"|"fp16"|"bf16"]
+    }
+}
+```
+
+<i>**grad_accum_dtype**</i>: ["fp32"|"fp16"|"bf16"]
+
+| Description                                                                                                   | Default |
+| --------------------------------------------------------------------------------------------------------------| ------- |
+| Specifies the data type in which to do gradient accumulation. If None the default is to match the model type. |  None   |

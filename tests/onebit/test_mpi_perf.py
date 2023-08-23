@@ -1,14 +1,17 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from mpi4py import MPI
-import time
 import torch
-import torch.distributed as dist
-import numpy as np
 import deepspeed
 
 from deepspeed.runtime.comm.mpi import MpiBackend
 
 # Configure wall clock timer
 from deepspeed.utils.timer import SynchronizedWallClockTimer
+from deepspeed.accelerator import get_accelerator
 
 from statistics import mean
 
@@ -18,11 +21,12 @@ comm = MPI.COMM_WORLD
 size = comm.Get_size()
 rank = comm.Get_rank()
 
-deepspeed.init_distributed(dist_backend='nccl')
+deepspeed.init_distributed(dist_backend=get_accelerator().communication_backend_name())
 # Change cuda_aware to True to test out CUDA-Aware MPI communication
 backend = MpiBackend(cuda_aware=False)
 
-device = torch.device('cuda', rank % torch.cuda.device_count())
+local_rank = rank % get_accelerator().device_count()
+device = torch.device(get_accelerator().device_name(), local_rank)
 
 tensor_size = 300 * 2**20
 server_size = int(tensor_size / size)
@@ -41,8 +45,6 @@ server_error = torch.zeros(right_server_size, device=device)
 
 warmup = 10
 iters = 10
-
-local_rank = rank % torch.cuda.device_count()
 
 # Warmup
 for i in range(warmup):

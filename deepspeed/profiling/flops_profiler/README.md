@@ -16,7 +16,7 @@ Below is an example output for BERT-Large(NVIDIA) on an A100 GPU with batch size
 -------------------------- DeepSpeed Flops Profiler --------------------------
 Profile Summary at step 10:
 Notations:
-data parallel size (dp_size), model paralel size(mp_size),
+data parallel size (dp_size), model parallel size(mp_size),
 number of parameters (params), number of multiply-accumulate operations(MACs),
 number of floating-point operations (flops), floating-point operations per second (FLOPS),
 fwd latency (forward propagation latency), bwd latency (backward propagation latency),
@@ -24,7 +24,7 @@ step (weights update latency), iter latency (sum of fwd, bwd and step latency)
 
 world size:                                                   1
 data parallel size:                                           1
-model paralel size:                                           1
+model parallel size:                                          1
 batch size per GPU:                                           80
 params per gpu:                                               336.23 M
 params of model = params per GPU * mp_size:                   336.23 M
@@ -160,12 +160,13 @@ The DeepSpeed Flops Profiler can be used with the DeepSpeed runtime or as a stan
       - [Example Training Workflow](#example-training-workflow)
 ### Usage With the DeepSpeed Runtime
 
-When using DeepSpeed for model training, the profiler can be configured in the deepspeed configuration file. No explict API calls are needed to use the profiler. The profiler can be enabled by adding the following field to the `deepspeed_config` json file. Refer to [flops profiler](https://www.deepspeed.ai/docs/config-json/#flops-profiler) for details.
+When using DeepSpeed for model training, the profiler can be configured in the deepspeed configuration file. No explicit API calls are needed to use the profiler. The profiler can be enabled by adding the following field to the `deepspeed_config` json file. Refer to [flops profiler](https://www.deepspeed.ai/docs/config-json/#flops-profiler) for details.
 
 ```json
 {
   "flops_profiler": {
     "enabled": true,
+    "recompute_fwd_factor": 0.0,
     "profile_step": 1,
     "module_depth": -1,
     "top_modules": 1,
@@ -185,7 +186,7 @@ An example output of 12-layer Megatron-LM model (`hidden_size = 8192, num_attent
 -------------------------- DeepSpeed Flops Profiler --------------------------
 Profile Summary at step 10:
 Notations:
-data parallel size (dp_size), model paralel size(mp_size),
+data parallel size (dp_size), model parallel size(mp_size),
 number of parameters (params), number of multiply-accumulate operations(MACs),
 number of floating-point operations (flops), floating-point operations per second (FLOPS),
 fwd latency (forward propagation latency), bwd latency (backward propagation latency),
@@ -193,7 +194,7 @@ step (weights update latency), iter latency (sum of fwd, bwd and step latency)
 
 world size:                                                   1
 data parallel size:                                           1
-model paralel size:                                           1
+model parallel size:                                          1
 batch size per GPU:                                           1024
 params per gpu:                                               1.29 M
 params of model = params per GPU * mp_size:                   1.29 M
@@ -309,21 +310,23 @@ The following example shows how to profile AlexNet using the DeepSpeed flops pro
 import torchvision.models as models
 import torch
 from deepspeed.profiling.flops_profiler import get_model_profile
+from deepspeed.accelerator import get_accelerator
 
-with torch.cuda.device(0):
+with get_accelerator().device(0):
     model = models.alexnet()
     batch_size = 256
     flops, macs, params = get_model_profile(model=model, # model
-                                     input_res=(batch_size, 3, 224, 224), # input shape or input to the input_constructor
-                                     input_constructor=None, # if specified, a constructor taking input_res is used as input to the model
-                                     print_profile=True, # prints the model graph with the measured profile attached to each module
-                                     detailed=True, # print the detailed profile
-                                     module_depth=-1, # depth into the nested modules, with -1 being the inner most modules
-                                     top_modules=1, # the number of top modules to print aggregated profile
-                                     warm_up=10, # the number of warm-ups before measuring the time of each module
-                                     as_string=True, # print raw numbers (e.g. 1000) or as human-readable strings (e.g. 1k)
-                                     output_file=None, # path to the output file. If None, the profiler prints to stdout.
-                                     ignore_modules=None) # the list of modules to ignore in the profiling
+                                    input_shape=(batch_size, 3, 224, 224), # input shape to the model. If specified, the model takes a tensor with this shape as the only positional argument.
+                                    args=None, # list of positional arguments to the model.
+                                    kwargs=None, # dictionary of keyword arguments to the model.
+                                    print_profile=True, # prints the model graph with the measured profile attached to each module
+                                    detailed=True, # print the detailed profile
+                                    module_depth=-1, # depth into the nested modules, with -1 being the inner most modules
+                                    top_modules=1, # the number of top modules to print aggregated profile
+                                    warm_up=10, # the number of warm-ups before measuring the time of each module
+                                    as_string=True, # print raw numbers (e.g. 1000) or as human-readable strings (e.g. 1k)
+                                    output_file=None, # path to the output file. If None, the profiler prints to stdout.
+                                    ignore_modules=None) # the list of modules to ignore in the profiling
 ```
 
 ##### Example: Bert
@@ -333,23 +336,24 @@ from functools import partial
 import torch
 from transformers import BertForSequenceClassification, BertTokenizer
 from deepspeed.profiling.flops_profiler import get_model_profile
+from deepspeed.accelerator import get_accelerator
 
 
-def bert_input_constructor(input_shape, tokenizer):
+def bert_input_constructor(batch_size, seq_len, tokenizer):
     fake_seq = ""
-    for _ in range(input_shape[1] - 2):  # ignore the two special tokens [CLS] and [SEP]
+    for _ in range(seq_len - 2):  # ignore the two special tokens [CLS] and [SEP]
       fake_seq += tokenizer.pad_token
-    inputs = tokenizer([fake_seq] * input_shape[0],
+    inputs = tokenizer([fake_seq] * batch_size,
                        padding=True,
                        truncation=True,
                        return_tensors="pt")
-    labels = torch.tensor([1] * input_shape[0])
+    labels = torch.tensor([1] * batch_size)
     inputs = dict(inputs)
     inputs.update({"labels": labels})
     return inputs
 
 
-with torch.cuda.device(0):
+with get_accelerator().device(0):
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     model = BertForSequenceClassification.from_pretrained('bert-base-uncased')
     batch_size = 4
@@ -358,9 +362,7 @@ with torch.cuda.device(0):
     if enable_profile:
       flops, macs, params = get_model_profile(
           model,
-          (batch_size, seq_len),
-          input_constructor=partial(bert_input_constructor,
-                                    tokenizer=tokenizer),
+          kwargs=bert_input_constructor(batch_size, seq_len, tokenizer),
           print_profile=True,
           detailed=True,
       )

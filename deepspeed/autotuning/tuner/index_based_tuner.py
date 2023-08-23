@@ -1,12 +1,16 @@
-import random
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
-from deepspeed.utils import logger
+# DeepSpeed Team
+
+import random
 
 from .base_tuner import BaseTuner
 
 
 class RandomTuner(BaseTuner):
     """Explore the search space in random order"""
+
     def __init__(self, exps: list, resource_manager, metric):
         super().__init__(exps, resource_manager, metric)
 
@@ -22,6 +26,7 @@ class RandomTuner(BaseTuner):
 
 class GridSearchTuner(BaseTuner):
     """Explore the search space in sequential order"""
+
     def __init__(self, exps: list, resource_manager, metric):
         super().__init__(exps, resource_manager, metric)
 

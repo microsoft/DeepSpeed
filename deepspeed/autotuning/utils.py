@@ -1,10 +1,13 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import re
 import collections.abc
 import os
 import json
 from deepspeed.runtime.constants import GRADIENT_ACCUMULATION_STEPS, TRAIN_MICRO_BATCH_SIZE_PER_GPU
-import hjson
-import sys
 import itertools
 import copy
 
@@ -35,23 +38,11 @@ def was_interruptted(filename):
     return False
 
 
-def was_interruptted(filename):
-    if not os.path.exists(filename):
-        return "stderr.log does not exist"
-    with open(filename) as f:
-        for line in f:
-            s = "KeyboardInterrupt"
-            idx = line.find(s)
-            if idx != -1:
-                return True
-    return False
-
-
 def find_replace_str(value, replace_dict):
     if not isinstance(value, str):
         return str(value)
 
-    matches = re.findall("\$[A-Za-z0-9_]+", value)
+    matches = re.findall(r"\$[A-Za-z0-9_]+", value)
     for var in matches:
         var_key = var.replace("$", "").lower()
         if var_key == "nvme_path":
@@ -102,6 +93,12 @@ def combine_dict(d, u):
 
 
 def del_if_exists(t, d):
+    """Deletes a key from a dictionary if it exists.
+
+    Args:
+        t (string): target key to delete
+        d (dict): dictionary to delete from
+    """
     if t in d:
         del d[t]
         return
@@ -182,6 +179,7 @@ def fetch_hostfile(hostfile_path):
 
 
 def validate_ds_config(config: dict):
+
     def is_False(config: dict, key):
         if config is None:
             return False
@@ -195,9 +193,7 @@ def validate_ds_config(config: dict):
     if stage == 1:
         return True
     elif stage == 2:
-        if is_False(config_zero,
-                    "cpu_offload") and is_False(config_zero,
-                                                "cpu_offload_params"):
+        if is_False(config_zero, "cpu_offload") and is_False(config_zero, "cpu_offload_params"):
             return False
     elif stage == 3:
         offload_devices = ["cpu", "nvme"]
@@ -272,7 +268,7 @@ def prune_configs(configs, ignored_keys=[]):
 
 
 def get_tuning_keys(tuning_space: dict):
-    """Outputs the list of tunnable parameters in the tuning space dict.
+    """Outputs the list of tunable parameters in the tuning space dict.
 
     Args:
         tuning_space (dict): a configuration dictionary containing tunable parameters as lists of values.
@@ -289,25 +285,29 @@ def get_tuning_keys(tuning_space: dict):
     return tuning_keys
 
 
-def get_all_configs(tuning_space: dict):
+def get_all_configs(tuning_space: dict, ignore_keys=None):
     """ Splits the tuning space dictionary to result in all combinations of values.
 
     Args:
         tuning_space (dict): the tuning space where tunable parameters are lists of values.
     """
+
     def gen_combinations(d: dict):
         keys, values = d.keys(), d.values()
         for v in values:
             if not isinstance(v, list):
                 v = [v]
-        values_choices = (gen_combinations(v) if isinstance(v,
-                                                            dict) else get_list(v)
-                          for v in values)
+        values_choices = (gen_combinations(v) if isinstance(v, dict) else get_list(v) for v in values)
         for comb in itertools.product(*values_choices):
             yield dict(zip(keys, comb))
 
     all_configs = []
+    ignored_key_vals = {}
+    for ik in ignore_keys:
+        ignored_key_vals[ik] = tuning_space.get(ik, {})
+        del_if_exists(ik, tuning_space)
     for c in gen_combinations(tuning_space):
+        replace_dict(c, ignored_key_vals)
         all_configs.append(c)
     return all_configs
 
@@ -317,7 +317,7 @@ def canonical_name(config: dict, tuning_keys=None, prefix="", omit_val=False):
     Args:
         config (dict): the config dict used to generate the name
         tuning_keys (list, optional):  the tuning keys used to generate the name. Defaults to None.
-        prefix (str, optional): a string added to the begining of the name. Defaults to None.
+        prefix (str, optional): a string added to the beginning of the name. Defaults to None.
     """
     if TRAIN_MICRO_BATCH_SIZE_PER_GPU not in tuning_keys:
         tuning_keys.append(TRAIN_MICRO_BATCH_SIZE_PER_GPU)
@@ -391,7 +391,10 @@ def get_first_config(config: dict):
 
     for key, val in cfg.items():
         if isinstance(val, dict):
-            cfg[key] = get_first_config(val)
+            if key == "optimizer":  # use user defined optimizer which might have lists of values as params
+                cfg[key] = val
+            else:
+                cfg[key] = get_first_config(val)
         if isinstance(val, list) and len(val) > 0:
             cfg[key] = val[0]
     return cfg

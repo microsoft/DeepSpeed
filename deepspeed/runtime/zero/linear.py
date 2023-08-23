@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 #Linear Module to use with ZeRO Stage 3 to allow for parameter memory release
 #after the module execution during forward
 #Instead of saving variables using save_for_backward, we save variable ids
@@ -18,18 +23,18 @@ from torch.nn.parameter import Parameter
 from torch.nn import init
 from torch.nn.modules.module import Module
 from deepspeed.runtime.utils import noop_decorator
-
-tensor_map = {}
+from deepspeed import comm as dist
+from deepspeed.accelerator import get_accelerator
 
 
 def print_rank_0(message, debug=False, force=False):
-    if torch.distributed.get_rank() == 0 and (debug or force):
+    if dist.get_rank() == 0 and (debug or force):
         print(message)
 
 
 try:
-    autocast_custom_fwd = torch.cuda.amp.custom_fwd
-    autocast_custom_bwd = torch.cuda.amp.custom_bwd
+    autocast_custom_fwd = get_accelerator().amp().custom_fwd
+    autocast_custom_bwd = get_accelerator().amp().custom_bwd
 except (ImportError, AttributeError) as exp:
     autocast_custom_fwd = noop_decorator
     autocast_custom_bwd = noop_decorator
@@ -42,16 +47,8 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
     @autocast_custom_fwd
     # bias is an optional argument
     def forward(ctx, input, weight, bias=None):
-        #print("In ZeRO Linear Function")
 
-        weight_id = id(weight)
-        bias_id = id(bias)
-
-        #ctx.save_for_backward(input, weight, bias)
-        ctx.save_for_backward(input, torch.tensor(weight_id), torch.tensor(bias_id))
-
-        tensor_map[weight_id] = weight
-        tensor_map[bias_id] = bias
+        ctx.save_for_backward(input, weight, bias)
 
         if input.dim() == 2 and bias is not None:
             # fused op is marginally faster
@@ -73,11 +70,7 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
         # None. Thanks to the fact that additional trailing Nones are
         # ignored, the return statement is simple even when the function has
         # optional inputs.
-        #input, weight, bias = ctx.saved_tensors
-
-        input, weight_id, bias_id = ctx.saved_tensors
-        weight = tensor_map[weight_id.item()]
-        bias = tensor_map[bias_id.item()]
+        input, weight, bias = ctx.saved_tensors
 
         grad_input = grad_weight = grad_bias = None
 
@@ -95,9 +88,7 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
             dim = grad_output.dim()
             if dim > 2:
                 grad_weight = grad_output.reshape(-1,
-                                                  grad_output.shape[-1]).t().matmul(
-                                                      input.reshape(-1,
-                                                                    input.shape[-1]))
+                                                  grad_output.shape[-1]).t().matmul(input.reshape(-1, input.shape[-1]))
             else:
                 grad_weight = grad_output.t().matmul(input)
             #print(f"Computed grad weight grad_weight {grad_weight.shape}")
@@ -108,6 +99,13 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
             #print("needs bias")
         #print(f"backward shaped grad_input {grad_input.shape}, grad_weight {grad_weight.shape}, grad_bias {grad_bias.shape if grad_bias is not None else None}")
         return grad_input, grad_weight, grad_bias
+
+
+def zero3_linear_wrap(input, weight, bias=None):
+    if bias is None:
+        return LinearFunctionForZeroStage3.apply(input, weight)
+    else:
+        return LinearFunctionForZeroStage3.apply(input, weight, bias)
 
 
 class LinearModuleForZeroStage3(Module):
@@ -173,7 +171,5 @@ class LinearModuleForZeroStage3(Module):
         return LinearFunctionForZeroStage3.apply(input, self.weight, self.bias)
 
     def extra_repr(self) -> str:
-        return 'in_features={}, out_features={}, bias={}'.format(
-            self.in_features,
-            self.out_features,
-            self.bias is not None)
+        return 'in_features={}, out_features={}, bias={}'.format(self.in_features, self.out_features, self.bias
+                                                                 is not None)

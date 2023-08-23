@@ -1,4 +1,8 @@
-/* Copyright 2019 The Microsoft DeepSpeed Team */
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #include <torch/extension.h>
 
 // CUDA forward declaration
@@ -22,7 +26,7 @@ void fused_lamb_cuda(at::Tensor& p,
                      at::Tensor& u_l2_i,
                      at::Tensor& lamb_coeff_val);
 
-#define CHECK_CUDA(x) AT_ASSERTM(x.type().is_cuda(), #x " must be a CUDA tensor")
+#define CHECK_CUDA(x) AT_ASSERTM(x.is_cuda(), #x " must be a CUDA tensor")
 #define CHECK_CONTIGUOUS(x) AT_ASSERTM(x.is_contiguous(), #x " must be contiguous")
 #define CHECK_INPUT(x) \
     CHECK_CUDA(x);     \
@@ -61,7 +65,7 @@ at::Tensor lamb(at::Tensor& p,
 
     // intermediate for weight L2 reduction
     // make sure that the threads per block is at least 512 during the kernel launch otherwise the
-    // behavious is unexpected
+    // behaviour is unexpected
     at::Tensor w_l2_i = at::empty(
         {512},
         p.options().dtype(p.type().scalarType() == at::ScalarType::Half ? at::ScalarType::Float
@@ -69,7 +73,7 @@ at::Tensor lamb(at::Tensor& p,
 
     // intermediate for update L2 reduction
     // make sure that the threads per block is at least 512 during the kernel launch otherwise the
-    // behavious is unexpected
+    // behaviour is unexpected
     at::Tensor u_l2_i = at::empty(
         {512},
         p.options().dtype(p.type().scalarType() == at::ScalarType::Half ? at::ScalarType::Float

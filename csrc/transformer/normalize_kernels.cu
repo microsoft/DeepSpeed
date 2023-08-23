@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #include "custom_cuda_layers.h"
 
 namespace cg = cooperative_groups;
@@ -125,7 +130,7 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
                                                __half* means,
                                                int row_stride)
 {
-#if __CUDA_ARCH__ >= 700
+#ifdef HALF_PRECISION_AVAILABLE
     int iteration_stride = blockDim.x;
     int iterations = row_stride / iteration_stride;
 
@@ -416,7 +421,7 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
                                                __half* vars,
                                                int row_stride)
 {
-#if __CUDA_ARCH__ >= 700
+#ifdef HALF_PRECISION_AVAILABLE
 
     int iteration_stride = blockDim.x;
     int iterations = row_stride / iteration_stride;
@@ -862,6 +867,7 @@ __global__ void LayerNormBackward2(const __half* out_grad,
                                    bool invertible,
                                    int row_stride)
 {
+#ifdef HALF_PRECISION_AVAILABLE
     int iteration_stride = blockDim.x;
     int iterations = row_stride / iteration_stride;
 
@@ -985,6 +991,7 @@ __global__ void LayerNormBackward2(const __half* out_grad,
 
         inp_grad_h[high_index] = temp;
     }
+#endif
 }
 
 template <>
@@ -1172,6 +1179,7 @@ __global__ void LayerNormBackward2(const __half* out_grad,
                                    __half* inp_grad,
                                    int row_stride)
 {
+#ifdef HALF_PRECISION_AVAILABLE
     int iteration_stride = blockDim.x;
     int iterations = row_stride / iteration_stride;
 
@@ -1290,6 +1298,7 @@ __global__ void LayerNormBackward2(const __half* out_grad,
         __half2 temp = __float22half2_rn(vals_arr_f[iterations]);
         inp_grad_h[high_index] = temp;
     }
+#endif
 }
 
 template <>
@@ -1601,6 +1610,7 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
                                              bool invertible,
                                              int row_stride)
 {
+#ifdef HALF_PRECISION_AVAILABLE
     int iteration_stride = blockDim.x;
     int iterations = row_stride / iteration_stride;
 
@@ -1727,6 +1737,7 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
 
         inp_grad_h[high_index] = temp + out_grad_h2[high_index];
     }
+#endif
 }
 
 template <>
@@ -1922,6 +1933,7 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
                                              __half* inp_grad,
                                              int row_stride)
 {
+#ifdef HALF_PRECISION_AVAILABLE
     int iteration_stride = blockDim.x;
     int iterations = row_stride / iteration_stride;
 
@@ -2044,6 +2056,7 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
         __half2 temp = __float22half2_rn(vals_arr_f[iterations]);
         inp_grad_h[high_index] = temp + out_grad_h2[high_index];
     }
+#endif
 }
 
 template <>
