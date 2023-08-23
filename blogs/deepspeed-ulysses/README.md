@@ -5,9 +5,8 @@
 </div>
 
 <div align="center">
-<img src="./media/image1.png" style="width:6.25in;height:3.0in" />
-
-<img src="./media/image2.png" style="width:6.53617in;height:2.56in" />
+<img src="./media/image1.png" width="800px" />
+<img src="./media/image2.png" width="800px" />
 
 </div>
 
@@ -291,10 +290,9 @@ there is no (negative) on quality of trained models, this assertion is
 validated through experiments and is shown in Figure 5.
 
 <div align="center">
-<img src="./media/image7.png" style="width:5.0in;height:3.2in"
-alt="A graph showing a loss of a stock market Description automatically generated with medium confidence" />
+<img src="./media/image7.png" width="500px" />
 
-*Figure 5: Convergence evaluation of DeepSpeed Sequence with different
+*Figure 5: Convergence evaluation of DeepSpeed sequence parallelism with different
 ZeRO memory optimization stages.*
 </div>
 
