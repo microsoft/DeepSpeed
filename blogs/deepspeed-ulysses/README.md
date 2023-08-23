@@ -327,8 +327,8 @@ sequence length.
 ## Release: Try DeepSpeed-Ulysses Today
 
 We are excited to release DeepSpeed-Ulysses, accessible through
-DeepSpeed GitHub. Detailed tutorial on usage is available on DeepSpeed
-tutorial page.
+DeepSpeed GitHub. Detailed tutorial on usage is available on [DeepSpeed
+tutorial page](/tutorials/ds-sequence).
 
 We welcome contributions and collaboration as we together push forward
 on what is possible when long context window is no longer a limitation.
