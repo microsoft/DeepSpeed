@@ -194,7 +194,7 @@ scaling not just to large sequence lengths but also to large models.
 
 ## Evaluation
 
-We evaluate DeepSpeed-Ulysses (DeepSpeed Sequence) on GPT and BERT,
+We evaluate DeepSpeed-Ulysses on GPT and BERT,
 foundation models for many NLP tasks on up to 64 A100 GPUs. Our
 evaluations are four-fold: i) sequence length scalability, ii)
 throughput for dense attention and comparison with existing system, and
