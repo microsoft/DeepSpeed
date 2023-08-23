@@ -5,8 +5,8 @@
 </div>
 
 <div align="center">
-<img src="./media/image1.png" width="800px" />
-<img src="./media/image2.png" width="800px" />
+<img src="./media/hero1.png" width="780px" />
+<img src="./media/hero2.png" width="820px" />
 
 </div>
 
@@ -213,7 +213,7 @@ maintains similar computation throughput across different sequence
 length at appropriate GPU count.
 
 <div align="center">
-<img src="./media/image4.png" style="width:5in;height:4in" />
+<img src="./media/fig2Ulysses.png" style="width:5in;height:4in" />
 
 *Figure 2: DeepSpeed sequence parallelism strong scalability evaluation
 at different sequence length and GPU count.*
@@ -246,7 +246,7 @@ parallelism benefits from efficient all-to-all communication relative to
 parallelism.
 
 <div align="center">
-<img src="./media/image5.png" style="width:5in;height:4in" />
+<img src="./media/fig3Ulysses.png" style="width:5in;height:4in" />
 
 *Figure 3: Evaluation of DeepSpeed and Megatron LM sequence parallelism on 30B
 parameter model with dense attention.*
@@ -272,7 +272,7 @@ Megatron to increase further for larger sequence lengths as we improve
 the performance of the local sparse attention implementation in future.
 
 <div align="center">
-<img src="./media/image6.png" style="width:5in;height:4in" />
+<img src="./media/fig4Ulysses.png" style="width:5in;height:4in" />
 
 *Figure 4: Evaluation of DeepSpeed and Megatron LM sequence parallelism on 30B
 parameter model with block sparse attention.*
@@ -290,7 +290,7 @@ there is no (negative) on quality of trained models, this assertion is
 validated through experiments and is shown in Figure 5.
 
 <div align="center">
-<img src="./media/image7.png" width="500px" />
+<img src="./media/convg.png" width="500px" />
 
 *Figure 5: Convergence evaluation of DeepSpeed sequence parallelism with different
 ZeRO memory optimization stages.*
@@ -313,12 +313,7 @@ dist_attn = DistributedAttention(attn, get_sequence_parallel_group())
 
 Compared to other libraries that support sequence parallelism, such as
 Megatron-LM, DeepSpeed-Ulysses does not require model refactoring.
-Additionally, it does not impose any limitations on the degree of
-sequence parallelism, unlike Megatron-LM which requires the sequence
-parallelism degree to be smaller than or equal to the number of
-attention heads.
-
-DeepSpeed-Ulysses has also been fully integrated and tested with the
+DeepSpeed-Ulysses has been fully integrated and tested with the
 Megatron-DeepSpeed code repository. This means that if you are already
 using this repository for training large language models, you can
 seamlessly benefit from DeepSpeed-Ulysses to train models with massive
