@@ -558,8 +558,6 @@ class TestAutoTensorParallelism(DistributedTest):
             pytest.skip(invalid_test_msg)
 
         model, task = model_w_task
-        if model == "Salesforce/codegen-350M-mono":
-            pytest.skip("fusedqkv does not supported by odd world_size")
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         world_size = int(os.getenv("WORLD_SIZE", "3"))
 
