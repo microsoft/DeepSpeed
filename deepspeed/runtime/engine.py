@@ -827,6 +827,9 @@ class DeepSpeedEngine(Module):
     def zero_quantized_weights(self):
         return self._config.zero_config.zero_quantized_weights
 
+    def zero_quantized_nontrainable_weights(self):
+        return self._config.zero_config.zero_quantized_nontrainable_weights
+
     def zero_quantized_gradients(self):
         return self._config.zero_config.zero_quantized_gradients
 
@@ -1452,7 +1455,7 @@ class DeepSpeedEngine(Module):
                 expert_data_parallel_group=self.expert_data_parallel_group if self.has_moe_layers else None,
                 reduce_scatter=self.zero_reduce_scatter(),
                 overlap_comm=overlap_comm,
-                cpu_offload=self.zero_cpu_offload(),
+                offload_optimizer_config=self.zero_offload_optimizer(),
                 mpu=self.mpu,
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor(),
@@ -1470,23 +1473,26 @@ class DeepSpeedEngine(Module):
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
             if isinstance(optimizer, DummyOptim):
                 log_dist("Creating ZeRO Offload", ranks=[0])
-                zpg = groups._get_zero_param_intra_parallel_group()
-                if self.zero_hpz_partition_size() > 1 and zpg is None:
+                zero_param_parallel_group = groups._get_zero_param_intra_parallel_group()
+                if self.zero_hpz_partition_size() > 1 and zero_param_parallel_group is None:
                     self._set_zero_group_parallelism()
-                    zpg = groups._get_zero_param_intra_parallel_group()
-                optimizer = DeepSpeedZeRoOffload(self.module,
-                                                 timers=timers,
-                                                 ds_config=self.config,
-                                                 overlap_comm=self.zero_overlap_comm(),
-                                                 prefetch_bucket_size=self.zero_prefetch_bucket_size(),
-                                                 max_reuse_distance=self.zero_max_reuse_distance(),
-                                                 max_live_parameters=self.zero_max_live_parameters(),
-                                                 param_persistence_threshold=self.zero_param_persistence_threshold(),
-                                                 model_persistence_threshold=self.zero_model_persistence_threshold(),
-                                                 offload_param_config=self.zero_offload_param(),
-                                                 mpu=self.mpu,
-                                                 zero_param_parallel_group=zpg,
-                                                 zero_quantized_weights=self.zero_quantized_weights())
+                    zero_param_parallel_group = groups._get_zero_param_intra_parallel_group()
+                optimizer = DeepSpeedZeRoOffload(
+                    self.module,
+                    timers=timers,
+                    ds_config=self.config,
+                    overlap_comm=self.zero_overlap_comm(),
+                    prefetch_bucket_size=self.zero_prefetch_bucket_size(),
+                    max_reuse_distance=self.zero_max_reuse_distance(),
+                    max_live_parameters=self.zero_max_live_parameters(),
+                    param_persistence_threshold=self.zero_param_persistence_threshold(),
+                    model_persistence_threshold=self.zero_model_persistence_threshold(),
+                    offload_param_config=self.zero_offload_param(),
+                    mpu=self.mpu,
+                    zero_param_parallel_group=zero_param_parallel_group,
+                    zero_quantized_weights=self.zero_quantized_weights(),
+                    zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights(),
+                )
             else:
                 log_dist(
                     f'Creating fp16 ZeRO stage {zero_stage} optimizer,'
@@ -1529,7 +1535,9 @@ class DeepSpeedEngine(Module):
                     gradient_accumulation_dtype=gradient_accumulation_dtype,
                     communication_data_type=self.communication_data_type,
                     zero_hpz_partition_size=self.zero_hpz_partition_size(),
-                    zero_quantized_weights=self.zero_quantized_weights())
+                    zero_quantized_weights=self.zero_quantized_weights(),
+                    zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights(),
+                )
 
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
@@ -2034,7 +2042,7 @@ class DeepSpeedEngine(Module):
                     # XXX Hack to work with Megatron 2.0 and DeepSpeed pipelines.
                     # We don't currently have a way to specify lr_kwargs from
                     # pipe_engine.train_batch()
-                    self.lr_scheduler.step(increment=self.train_batch_size())
+                    self.lr_scheduler.step(self.train_batch_size())
 
         if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
             self._report_progress(self.global_steps + 1)
@@ -3299,8 +3307,17 @@ class DeepSpeedEngine(Module):
         dst = os.path.join(save_path, script)
         #logger.info(f"creating recovery script {dst}")
         copyfile(src, dst)
-        # make executable
-        os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
+        self._change_recovery_script_permissions(dst)
+
+    def _change_recovery_script_permissions(self, dst):
+        # make executable (safeguard for file shares - Azure as example)
+        try:
+            os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
+        except (FileNotFoundError, PermissionError) as e:
+            #this message is used in unit test TestZeRONonDistributed
+            logger.info(
+                f'Warning: Could not change permissions for {dst} due to error: {e}. Continuing without changing permissions.'
+            )
 
     def _save_zero_checkpoint(self, save_path, tag):
         zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
