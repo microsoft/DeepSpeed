@@ -5,8 +5,8 @@
 </div>
 
 <div align="center">
-<img src="../media/image1.png" width="800px" />
-<img src="../media/image2.png" width="800px" />
+<img src="../media/hero1.png" width="780px" />
+<img src="../media/hero2.png" width="820px" />
 
 </div>
 
@@ -91,7 +91,7 @@ DeepSpeed-Ulyssesによるシーケンスの分割と並列化は、長いシー
 最初の評価実験は、12億パラメータのGPTモデルでの、最大100万トークンまでのシーケンス長の強スケーリング（strong scaling）です。この評価の結果を、図2に示します。GPUの数に比例してシーケンス長を増加させた際に、それぞれのGPU数・シーケンス長で、ほぼ同等の計算スループットを維持しています。
 
 <div align="center">
-<img src="../media/image4.png" style="width:5in;height:4in" />
+<img src="../media/fig2Ulysses.png" style="width:5in;height:4in" />
 
 *図2: 異なるシーケンス長・GPU数での強スケーリング（strong scaling）*
 </div>
@@ -106,7 +106,7 @@ DeepSpeed-Ulyssesによるシーケンスの分割と並列化は、長いシー
 
 
 <div align="center">
-<img src="../media/image5.png" style="width:5in;height:4in" />
+<img src="../media/fig3Ulysses.png" style="width:5in;height:4in" />
 
 *図3: 300億パラメータ・DenseなアテンションでのMegatron-LMとの比較*
 </div>
@@ -118,7 +118,7 @@ DeepSpeed-Ulyssesによるシーケンスの分割と並列化は、長いシー
 DeepSpeed-Ulyssesは、DeepSpeed-UlyssesとMegatron-LMの両方で実行できるシーケンス長において、Megatron-LMを上回っています。実際、現在のDeepSpeed-Ulyssesのスループットは、各GPU上でローカルに計算されるSparseなアテンションがボトルネックとなっており、その結果、シーケンス長が増加するにつれてスループットが減少します。将来、ローカルのSparseなアテンションの実装のパフォーマンスを向上させることで、DeepSpeed-UlyssesとMegatronの間の性能のギャップが、より大きなシーケンス長に対してさらに広がると予想しています。
 
 <div align="center">
-<img src="../media/image6.png" style="width:5in;height:4in" />
+<img src="../media/fig4Ulysses.png" style="width:5in;height:4in" />
 
 *図4: 300億パラメータ・SparseなアテンションでのMegatron-LMとの比較*
 </div>
@@ -128,7 +128,7 @@ DeepSpeed-Ulyssesは、DeepSpeed-UlyssesとMegatron-LMの両方で実行でき�
 図5では、8台のA100 GPU上で32Kのシーケンス長を持つ13億パラメータのGPTモデルの収束を示しています。ここでは、DeepSpeed-UlyssesとMegatron-LMのシーケンス並列の両方で、シーケンス並列の並列度を4に設定しています。DeepSpeed-Ulyssesは、ZeROと併用可能なため、それぞれのZeROステージでの収束を評価しました。DeepSpeed-Ulyssesは、長いシーケンスのTransformerモデルの訓練を可能にするための、システム面での最適化技術であり、したがって訓練されたモデルの品質に対する（ネガティブな）影響はありません。このことは、図5の結果から確認できます。
 
 <div align="center">
-<img src="../media/image7.png" width="500px" />
+<img src="../media/convg.png" width="500px" />
 
 *図5: 異なるZeROのステージでの収束*
 </div>
