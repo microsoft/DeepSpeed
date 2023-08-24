@@ -17,13 +17,9 @@ from mup.shape import set_base_shapes
 @pytest.mark.parametrize("zero_offload", [True, False]) # yapf: disable
 class TestMuPOptimizers(DistributedTest):
     world_size = 1
-    hidden_dim = 10
     reuse_dist_env = True
 
-    def test(self,
-             optimizer,
-             expected_opt_class,
-             zero_offload):
+    def test(self, optimizer, expected_opt_class, zero_offload):
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -43,11 +39,10 @@ class TestMuPOptimizers(DistributedTest):
                 "cpu_offload": zero_offload
             }
         }
+        hidden_dim = 10
         model = SimpleModel(hidden_dim)
         set_base_shapes(model, None)
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
         data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
