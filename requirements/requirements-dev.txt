@@ -1,4 +1,6 @@
+accelerate
 clang-format==16.0.2
+coverage
 docutils<0.18
 future
 importlib-metadata>=4
@@ -13,5 +15,4 @@ sphinx-rtd-theme
 tensorboard
 torchvision
 transformers
-triton
 wandb

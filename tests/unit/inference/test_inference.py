@@ -20,6 +20,10 @@ from huggingface_hub import HfApi
 from deepspeed.model_implementations import DeepSpeedTransformerInference
 from torch import nn
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder import InferenceBuilder
+
+if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
+    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
@@ -90,37 +94,6 @@ def verify_models():
         pytest.fail(f"Model(s) do not have an assigned task: {_missing_task_models}")
 
 
-# Fixture to add skips for certain configurations
-@pytest.fixture()
-def invalid_test(model_w_task, dtype, enable_cuda_graph, enable_triton):
-    model, task = model_w_task
-    msg = ""
-    if enable_cuda_graph and (torch_info["cuda_version"] == "0.0"):
-        msg = "CUDA not detected, cannot use CUDA Graph"
-    elif enable_cuda_graph and pkg_version.parse(torch.__version__) < pkg_version.parse("1.10"):
-        msg = "CUDA Graph is only available in torch versions >= 1.10"
-    elif "gpt-j-6b" in model:
-        if dtype != torch.half:
-            msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
-        elif enable_cuda_graph:
-            msg = f"Not enough GPU memory to run {model} with CUDA Graph enabled"
-    elif "gpt-neox-20b" in model:  # TODO: remove this when neox issues resolved
-        msg = "Skipping gpt-neox-20b for now"
-    elif ("gpt-neox-20b" in model) and (dtype != torch.half):
-        msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
-    elif ("bloom" in model) and (dtype != torch.half):
-        msg = f"Bloom models only support half precision, cannot use dtype {dtype}"
-    elif ("bert" not in model.lower()) and enable_cuda_graph:
-        msg = "Non bert/roberta models do no support CUDA Graph"
-    elif enable_triton and not (dtype in [torch.half]):
-        msg = "Triton is for fp16"
-    elif enable_triton and not deepspeed.HAS_TRITON:
-        msg = "triton needs to be installed for the test"
-    elif ("bert" not in model.lower()) and enable_triton:
-        msg = "Triton kernels do not support Non bert/roberta models yet"
-    return msg
-
-
 """ Fixtures for inference config """
 
 
@@ -182,8 +155,8 @@ def inf_kwargs(model_w_task):
     if task == "text-generation":
         if model == "EleutherAI/gpt-j-6b":
             # This model on V100 is hitting memory problems that limit the number of output tokens
-            return {"do_sample": False, "max_length": 12}
-        return {"do_sample": False, "max_length": 20}
+            return {"do_sample": False, "temperature": 1.0, "max_length": 12}
+        return {"do_sample": False, "temperature": 1.0, "max_length": 20}
     else:
         return {}
 
@@ -257,6 +230,36 @@ def check_injection(model):
     verify_injection(model)
 
 
+# Verify that test is valid
+def validate_test(model_w_task, dtype, enable_cuda_graph, enable_triton):
+    model, task = model_w_task
+    msg = ""
+    if enable_cuda_graph and (torch_info["cuda_version"] == "0.0"):
+        msg = "CUDA not detected, cannot use CUDA Graph"
+    elif enable_cuda_graph and pkg_version.parse(torch.__version__) < pkg_version.parse("1.10"):
+        msg = "CUDA Graph is only available in torch versions >= 1.10"
+    elif "gpt-j-6b" in model:
+        if dtype != torch.half:
+            msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
+        elif enable_cuda_graph:
+            msg = f"Not enough GPU memory to run {model} with CUDA Graph enabled"
+    elif "gpt-neox-20b" in model:  # TODO: remove this when neox issues resolved
+        msg = "Skipping gpt-neox-20b for now"
+    elif ("gpt-neox-20b" in model) and (dtype != torch.half):
+        msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
+    elif ("bloom" in model) and (dtype != torch.half):
+        msg = f"Bloom models only support half precision, cannot use dtype {dtype}"
+    elif ("bert" not in model.lower()) and enable_cuda_graph:
+        msg = "Non bert/roberta models do no support CUDA Graph"
+    elif enable_triton and not (dtype in [torch.half]):
+        msg = "Triton is for fp16"
+    elif enable_triton and not deepspeed.HAS_TRITON:
+        msg = "triton needs to be installed for the test"
+    elif ("bert" not in model.lower()) and enable_triton:
+        msg = "Triton kernels do not support Non bert/roberta models yet"
+    return msg
+
+
 @pytest.mark.inference
 class TestModelTask(DistributedTest):
     world_size = 1
@@ -270,11 +273,11 @@ class TestModelTask(DistributedTest):
         query,
         inf_kwargs,
         assert_fn,
-        invalid_test,
         perf_meas=True,
     ):
-        if invalid_test:
-            pytest.skip(invalid_test)
+        invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph, enable_triton)
+        if invalid_test_msg:
+            pytest.skip(invalid_test_msg)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -353,10 +356,10 @@ class TestMPSize(DistributedTest):
         query,
         inf_kwargs,
         assert_fn,
-        invalid_test,
     ):
-        if invalid_test:
-            pytest.skip(invalid_test)
+        invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
+        if invalid_test_msg:
+            pytest.skip(invalid_test_msg)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -377,6 +380,35 @@ class TestMPSize(DistributedTest):
 
         print(local_rank, "baseline", bs_output)
         print(local_rank, "deepspeed", ds_output)
+        assert assert_fn(bs_output, ds_output)
+
+
+@pytest.mark.inference
+@pytest.mark.parametrize("model_w_task", [("gpt2", "text-generation")], ids=["gpt2"])
+class TestLowCpuMemUsage(DistributedTest):
+    world_size = 1
+
+    def test(
+        self,
+        model_w_task,
+        query,
+        inf_kwargs,
+        assert_fn,
+    ):
+        model, task = model_w_task
+        dtype = torch.float16
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+
+        pipe = pipeline(task, model=model, model_kwargs={"low_cpu_mem_usage": True}, device=local_rank, framework="pt")
+        bs_output = pipe(query, **inf_kwargs)
+        pipe.model = deepspeed.init_inference(pipe.model,
+                                              mp_size=self.world_size,
+                                              dtype=dtype,
+                                              replace_method="auto",
+                                              replace_with_kernel_inject=True)
+
+        ds_output = pipe(query, **inf_kwargs)
+
         assert assert_fn(bs_output, ds_output)
 
 
@@ -434,7 +466,6 @@ class TestAutoTP(DistributedTest):
     ids=["t5", "roberta"],
 )
 @pytest.mark.parametrize("dtype", [torch.float], ids=["fp32"])
-@pytest.mark.parametrize("enable_cuda_graph", [False], ids=["noCG"])
 class TestInjectionPolicy(DistributedTest):
     world_size = [1, 2]
 
@@ -445,12 +476,11 @@ class TestInjectionPolicy(DistributedTest):
         query,
         inf_kwargs,
         assert_fn,
-        invalid_test,
         dtype,
-        enable_cuda_graph,
     ):
-        if invalid_test:
-            pytest.skip(invalid_test)
+        invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
+        if invalid_test_msg:
+            pytest.skip(invalid_test_msg)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -477,15 +507,10 @@ class TestInjectionPolicy(DistributedTest):
 @pytest.mark.seq_inference
 @pytest.mark.parametrize(
     "model_w_task",
-    [
-        ("Helsinki-NLP/opus-mt-en-de", "translation"),
-    ],
-    ids=[
-        "marian",
-    ],
+    [("Helsinki-NLP/opus-mt-en-de", "translation"), ("Salesforce/codegen-350M-mono", "text-generation")],
+    ids=["marian", "codegen"],  #codegen has fusedqkv weight.
 )
 @pytest.mark.parametrize("dtype", [torch.float16], ids=["fp16"])
-@pytest.mark.parametrize("enable_cuda_graph", [False], ids=["noCG"])
 class TestAutoTensorParallelism(DistributedTest):
     world_size = [2]
 
@@ -495,16 +520,48 @@ class TestAutoTensorParallelism(DistributedTest):
         query,
         inf_kwargs,
         assert_fn,
-        invalid_test,
         dtype,
-        enable_cuda_graph,
     ):
-        if invalid_test:
-            pytest.skip(invalid_test)
+        invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
+        if invalid_test_msg:
+            pytest.skip(invalid_test_msg)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         world_size = int(os.getenv("WORLD_SIZE", "2"))
+
+        # We have to load these large models on CPU with pipeline because not
+        # enough GPU memory
+        pipe = pipeline(task, model=model, device=torch.device("cpu"), framework="pt")
+        bs_output = pipe(query, **inf_kwargs)
+
+        pipe.model = deepspeed.init_inference(pipe.model, mp_size=world_size, dtype=dtype)
+        # Switch device to GPU so that input tensors are not on CPU
+        pipe.device = torch.device(get_accelerator().device_name(local_rank))
+        ds_output = pipe(query, **inf_kwargs)
+
+        print(local_rank, "baseline", bs_output)
+        print(local_rank, "deepspeed", ds_output)
+        assert assert_fn(bs_output, ds_output)
+
+    @pytest.mark.world_size(3)
+    def test_odd_world_size(
+        self,
+        model_w_task,
+        query,
+        inf_kwargs,
+        assert_fn,
+        dtype,
+    ):
+        invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
+        if invalid_test_msg:
+            pytest.skip(invalid_test_msg)
+
+        model, task = model_w_task
+        if model == "Salesforce/codegen-350M-mono":
+            pytest.skip("fusedqkv does not supported by odd world_size")
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+        world_size = int(os.getenv("WORLD_SIZE", "3"))
 
         # We have to load these large models on CPU with pipeline because not
         # enough GPU memory
@@ -526,13 +583,14 @@ class TestAutoTensorParallelism(DistributedTest):
     "model_family, model_name",
     (
         ["gpt2", "EleutherAI/gpt-neo-2.7B"],
-        ["gpt2", "EleutherAI/gpt-j-6b"],
+        #["gpt2", "EleutherAI/gpt-j-6b"], # Causing OOM for this test
         ["gpt2", "gpt2-xl"],
     ),
 )
 @pytest.mark.parametrize("task", ["lambada_standard"])
 class TestLMCorrectness(DistributedTest):
     world_size = 1
+    exec_timeout = 1200  # Give these tests longer to complete
 
     def test(self, model_family, model_name, task):
         # imports here to avoid import errors when pytest collects tests
@@ -540,6 +598,21 @@ class TestLMCorrectness(DistributedTest):
         import lm_eval.models
         import lm_eval.tasks
         import lm_eval.evaluator
+
+        # The bootstrap_stderr function in lm_eval.metrics uses a
+        # multiprocessing Pool to increase performance. Since we use a Pool for
+        # our distributed tests and cannot nest Pools, we must redefine and
+        # patch this function with a version that does not use Pool.
+        def no_pool_bootstrap_stderr(f, xs, iters):
+            from lm_eval.metrics import _bootstrap_internal
+            from lm_eval.metrics import sample_stddev
+            res = []
+            chunk_size = min(1000, iters)
+            for i in range(iters // chunk_size):
+                res.extend(_bootstrap_internal(f, chunk_size)((i, xs)))
+            return sample_stddev(res)
+
+        lm_eval.metrics.bootstrap_stderr = no_pool_bootstrap_stderr
 
         local_rank = os.getenv("LOCAL_RANK", "0")
         device = torch.device(get_accelerator().device_name(local_rank))
@@ -562,6 +635,7 @@ class TestLMCorrectness(DistributedTest):
         get_accelerator().synchronize()
         bs_time = time.time() - start
 
+        getattr(lm, model_family).to("cpu")
         ds_model = deepspeed.init_inference(
             getattr(lm, model_family),
             mp_size=1,

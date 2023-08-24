@@ -18,6 +18,8 @@ from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id
 from deepspeed.accelerator import get_accelerator
 import logging
 
+ENABLE_PROFILER = False
+
 
 def debug_rank0(message: str) -> None:
     if dist.get_rank() == 0:
@@ -78,6 +80,8 @@ class PartitionedParameterCoordinator:
         inflight_param_registry: InflightParamRegistry,
         prefetch_nvme: bool = False,
         timers=None,
+        zero_quantized_weights=False,
+        zero_quantized_nontrainable_weights=False,
     ) -> None:
         # mapping of param -> handle for each param that is currently in flight
         self.__inflight_param_registry = inflight_param_registry
@@ -101,6 +105,8 @@ class PartitionedParameterCoordinator:
         self.__prefetch_bucket_sz: int = prefetch_bucket_sz
         self.__prefetch_nvme: bool = prefetch_nvme
         self.hierarchy: int = 0
+        self.zero_quantized_weights = zero_quantized_weights
+        self.zero_quantized_nontrainable_weights = zero_quantized_nontrainable_weights
 
         # stream that will be used for allgather operations
         self.__allgather_stream: get_accelerator().Stream = allgather_stream
@@ -117,7 +123,7 @@ class PartitionedParameterCoordinator:
         self.__ongoing_fetch_events: Deque[get_accelerator().Event] = collections.deque()
         # TODO. make this configurable via JSON
         self.__max_ongoing_fetch_events: int = 2
-        self.__profiler = PartitionedParameterProfiler(timers)
+        self.__profiler = PartitionedParameterProfiler(timers if ENABLE_PROFILER else None)
 
     """Tracing and Tracking
     TODO. consider performing trace before initializing PartitionedParameterCoordinator
@@ -296,12 +302,14 @@ class PartitionedParameterCoordinator:
 
                     self.__inflight_param_registry.pop(param).wait()
 
-                    event = get_accelerator().Event()
-                    event.record()
-                    self.__ongoing_fetch_events.append(event)
+                    if not get_accelerator().is_synchronized_device():
+                        event = get_accelerator().Event()
+                        event.record()
+                        self.__ongoing_fetch_events.append(event)
 
             assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
-        get_accelerator().current_stream().wait_stream(self.__allgather_stream)
+        if not get_accelerator().is_synchronized_device():
+            get_accelerator().current_stream().wait_stream(self.__allgather_stream)
         self.__profiler.stop_event(wait_event_name, wait_numel)
 
         # kick off parameter prefetches for upcoming modules
@@ -407,6 +415,19 @@ class PartitionedParameterCoordinator:
 
     @instrument_w_nvtx
     def __all_gather_params(self, params: Set[Parameter], forward: bool) -> None:
+        quantized_params = []
+        nonquantized_params = []
+        for param in params:
+            if hasattr(param.ds_tensor, 'ds_quant_scale'):
+                quantized_params.append(param)
+            else:
+                nonquantized_params.append(param)
+        if quantized_params:
+            self.__all_gather_params_(quantized_params, forward, quantize=True)
+        if nonquantized_params:
+            self.__all_gather_params_(nonquantized_params, forward, quantize=self.zero_quantized_weights)
+
+    def __all_gather_params_(self, params: Set[Parameter], forward: bool, quantize: bool = False) -> None:
         """for each partitioned parameter, kick off an async allgather and store
         the work handle for the in flight parameters."""
         partitioned_params = []
@@ -417,11 +438,14 @@ class PartitionedParameterCoordinator:
                 all_gather_numel += param.ds_numel
 
         if partitioned_params:
+            partitioned_params
             self.__n_available_params += all_gather_numel
             with get_accelerator().stream(self.__allgather_stream):
                 event_name = __class__.FORWARD_ALL_GATHER if forward else __class__.BACKWARD_ALL_GATHER
                 self.__profiler.start_event(event_name)
-                handle = partitioned_params[0].all_gather_coalesced(partitioned_params, forward)
+                handle = partitioned_params[0].all_gather_coalesced(partitioned_params,
+                                                                    forward=forward,
+                                                                    quantize=quantize)
                 self.__profiler.stop_event(event_name, all_gather_numel)
 
             for param in partitioned_params:

@@ -14,7 +14,7 @@ from .torch import TorchBackend
 
 def build_ccl_op():
     builder = get_accelerator().create_op_builder("CCLCommBuilder")
-    if builder == None:
+    if builder is None:
         return None
     ccl_cpp_module = builder.load()
     print(f'DeepSpeed {builder.absolute_name()} built successfully')
@@ -25,11 +25,11 @@ class CCLBackend(TorchBackend):
 
     def __init__(self, name='ccl', rank=-1, world_size=-1, mpu=None, timeout=None, init_method=None):
         self.ccl_comm_op = build_ccl_op()
-        if self.ccl_comm_op == None:
+        if self.ccl_comm_op is None:
             # set CCLBackend to uninitialized state if CCLCommBuilder cannot be loaded
             self.initialized = False
             return
-        super(CCLBackend, self).__init__(backend='gloo',
+        super(CCLBackend, self).__init__(backend='ccl',
                                          name='torch',
                                          rank=rank,
                                          world_size=world_size,
@@ -58,8 +58,8 @@ class CCLBackend(TorchBackend):
         else:
             self.ccl_comm_op.all_reduce(tensor, op, group, async_op)
 
-    def all_reduce_low_latency(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
-        self.ccl_comm_op.all_reduce_low_latency(tensor, op, group, async_op)
+    def inference_all_reduce(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
+        self.ccl_comm_op.inference_all_reduce(tensor, op, group, async_op)
 
     def barrier(self, group=None, async_op=False):
         self.ccl_comm_op.barrier(group, async_op)

@@ -4,13 +4,14 @@
 # DeepSpeed Team
 
 import deepspeed
+from types import SimpleNamespace
 from deepspeed.ops.op_builder import CPUAdamBuilder
-from deepspeed.checkpoint.utils import clone_tensors_for_torch_save
+from deepspeed.checkpoint.utils import clone_tensors_for_torch_save, get_model_ckpt_name_for_rank
 from deepspeed.accelerator import get_accelerator
+from deepspeed.runtime.utils import required_torch_version
 
 from unit.common import DistributedTest, DistributedFixture
 from unit.simple_model import *
-from unit.util import required_minimum_torch_version
 
 from unit.checkpoint.common import *
 
@@ -19,6 +20,29 @@ import pytest
 
 class TestZeROCheckpoint(DistributedTest):
     world_size = 2
+
+    @pytest.mark.parametrize('zero_stage', [3])
+    def test_pipeline_checkpoint_loading(self, tmpdir, zero_stage):
+        config_dict = {
+            "train_batch_size": 2,
+            "optimizer": {
+                "type": 'Adam'
+            },
+            "fp16": {
+                "enabled": True,
+                "initial_scale_power": 8
+            },
+            "zero_optimization": {
+                "stage": zero_stage,
+                "pipeline_loading_checkpoint": True,
+            }
+        }
+        hidden_dim = 10
+
+        with deepspeed.zero.Init():
+            models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
+
+        checkpoint_correctness_verification(config_dict, models, hidden_dim, tmpdir, load_module_only=True)
 
     @pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer', [(1, False, 'Adam'), (2, False, 'Adam'),
                                                                              (2, True, 'deepspeed_adam'),
@@ -211,7 +235,7 @@ class TestZeROElasticCheckpoint(DistributedTest):
         # torch 1.2.* stores raw tensor id numbers in checkpoint state which leads to
         # false positive mismatches in checkpoint state comparisons.
         # Newer torch versions store tensor ids as 0, 1, 2, ...
-        expected_mismatch_keys = [] if required_minimum_torch_version(1, 4) else ['params']
+        expected_mismatch_keys = [] if required_torch_version(min_version=1.4) else ['params']
         models = [SimpleModel(hidden_dim) for _ in range(2)]
         model, _, _, _ = deepspeed.initialize(config=ds_config,
                                               model=models[0],
@@ -472,6 +496,54 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
 
         checkpoint_correctness_verification(config_dict, models, hidden_dim, tmpdir, load_module_only=True)
 
+    @pytest.mark.parametrize('zero_stage', [1, 2])
+    def test_save_exclude_frozen_weights(self, tmpdir, zero_stage):
+        world_size = 1
+        config_dict = {
+            "train_micro_batch_size_per_gpu": 1,
+            "optimizer": {
+                "type": 'Adam'
+            },
+            "fp16": {
+                "enabled": True,
+                "initial_scale_power": 8
+            },
+            "zero_optimization": {
+                "stage": zero_stage,
+            }
+        }
+        hidden_dim = 10
+
+        model = SimpleFrozenModel(hidden_dim, empty_grad=False)
+
+        ds_engine, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
+
+        # Validate backwards-compatibility of including frozen parameters in checkpoint
+        all_ckpt_folder = os.path.join(tmpdir, 'all_params')
+        ds_engine.save_checkpoint(all_ckpt_folder)
+        all_params_ckpt_file = get_model_ckpt_name_for_rank(os.path.join(all_ckpt_folder, 'global_step0'), '00')
+        loaded_all_param_model = torch.load(all_params_ckpt_file)['module']
+        all_param_names = set([n for n, p in model.named_parameters()])
+        assert set(loaded_all_param_model.keys()) == all_param_names
+
+        # Validate exclusion of frozen parameters
+        trainable_ckpt_folder = os.path.join(tmpdir, 'no_frozen_params')
+        ds_engine.save_checkpoint(trainable_ckpt_folder, exclude_frozen_parameters=True)
+
+        trainable_ckpt_file = get_model_ckpt_name_for_rank(os.path.join(trainable_ckpt_folder, 'global_step0'), '00')
+
+        # Excluding frozen parameters should reduce checkpoint size
+        assert os.path.getsize(all_params_ckpt_file) > os.path.getsize(trainable_ckpt_file)
+
+        loaded_trainable_param_model = torch.load(trainable_ckpt_file)['module']
+        frozen_param_names = set([n for n, p in model.named_parameters() if not p.requires_grad])
+        loaded_trainable_param_names = set(loaded_trainable_param_model.keys())
+        overlap_names = set.intersection(loaded_trainable_param_names, frozen_param_names)
+        assert len(overlap_names) == 0
+
+        trainable_param_names = set([n for n, p in model.named_parameters() if p.requires_grad])
+        assert loaded_trainable_param_names == trainable_param_names
+
 
 class TestSaveTensorClone(DistributedTest):
     world_size = 1
@@ -505,3 +577,43 @@ class TestSaveTensorClone(DistributedTest):
         torch.save(clone_state_dict, clone_ckpt_file)
 
         compare_state_dicts(torch.load(ref_ckpt_file), torch.load(clone_ckpt_file))
+
+
+class TestZeRONonDistributed(DistributedTest):
+    world_size = 1
+    init_distributed = False
+
+    @pytest.mark.parametrize('zero_stage', [1, 2, 3])
+    def test_chmod_exception_handling(self, monkeypatch, zero_stage):
+
+        config_dict = {
+            "optimizer": {
+                "type": "AdamW"
+            },
+            "train_batch_size": 1,
+            "zero_optimization": {
+                "stage": zero_stage
+            }
+        }
+        args = SimpleNamespace(local_rank=0)
+        net = SimpleModel(hidden_dim=4)
+        engine, _, _, _ = deepspeed.initialize(args=args,
+                                               config=config_dict,
+                                               model=net,
+                                               model_parameters=net.parameters())
+
+        log_called = False
+
+        def mock_logger_info(message, *args, **kwargs):
+            nonlocal log_called
+            log_called = True
+
+        monkeypatch.setattr("deepspeed.utils.logger.info", mock_logger_info)
+        """
+            This is presented for use-cases like Azure Storage File Share (where permissions are not allowed)
+            We use a fake file for this test (file not existing would present a similar issue as not being able to chmod)
+        """
+        fake_recovery_script_dst = os.path.join("tmp", "zero_to_fp32.py")
+        engine._change_recovery_script_permissions(fake_recovery_script_dst)
+
+        assert log_called, "Expected deepspeed.utils.logger.info to be called."

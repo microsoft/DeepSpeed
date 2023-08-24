@@ -46,12 +46,13 @@ class LmHeadLinearAllreduce(nn.Module):
         self.world_size = world_size
 
     def forward(self, input):
-        assert input.shape[-1] % self.world_size == 0, 'Please ensure that self.world_size is divisible by input.shape[-1]'
+        assert input.shape[
+            -1] % self.world_size == 0, 'Please ensure that self.world_size is divisible by input.shape[-1]'
         input_shard = input.shape[-1] // self.world_size
         output = torch.matmul(input[:, :, self.rank * input_shard:(self.rank + 1) * input_shard],
                               self.weight.transpose(-1, -2))
         if self.mp_group is not None:
-            dist.all_reduce(output, group=self.mp_group)
+            dist.inference_all_reduce(output, group=self.mp_group)
         if self.bias is not None:
             output += self.bias
         return output
@@ -154,7 +155,6 @@ class RMSNormalize(nn.Module):
     def forward(self, hidden_states):
         variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
-        print(self.weight)
         if self.weight.dtype in [torch.float16, torch.bfloat16]:
             hidden_states = hidden_states.to(self.weight.dtype)
 

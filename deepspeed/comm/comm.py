@@ -50,6 +50,7 @@ comms_logger = CommsLogger()
 nccl_backend = None
 mpi_backend = None
 ccl_backend = None
+hccl_backend = None
 
 # This should be set here so all rank/size information from the launcher can be propagated
 from deepspeed.comm.utils import *
@@ -144,21 +145,24 @@ def init_deepspeed_backend(ds_backend, timeout, init_method):
     global nccl_backend
     global mpi_backend
     global ccl_backend
+    global hccl_backend
 
     rank = int(os.getenv('RANK', '-1'))
     size = int(os.getenv('WORLD_SIZE', '-1'))
 
     if ds_backend == NCCL_BACKEND:
-        utils.logger.warn("NCCL backend in DeepSpeed not yet implemented")
+        utils.logger.debug("NCCL backend in DeepSpeed not yet implemented")
     elif ds_backend == MPI_BACKEND:
-        utils.logger.warn("MPI backend in DeepSpeed not yet implemented")
+        utils.logger.debug("MPI backend in DeepSpeed not yet implemented")
     elif ds_backend == GLOO_BACKEND:
-        utils.logger.warn("Gloo backend in DeepSpeed not yet implemented")
+        utils.logger.debug("Gloo backend in DeepSpeed not yet implemented")
     elif ds_backend == CCL_BACKEND:
         ccl_backend = CCLBackend(rank=rank, world_size=size, timeout=timeout, init_method=init_method)
         utils.logger.info(f"Initialize {ds_backend} backend")
+    elif ds_backend == HCCL_BACKEND:
+        utils.logger.warn("HCCL backend in DeepSpeed not yet implemented")
     else:
-        utils.logger.warn(f"DeepSpeed does not support {ds_backend} backend")
+        utils.logger.debug(f"DeepSpeed does not support {ds_backend} backend")
 
 
 def is_initialized():
@@ -196,6 +200,7 @@ def set_backend():
     global nccl_backend
     global mpi_backend
     global ccl_backend
+    global hccl_backend
 
     backend_name = get_accelerator().communication_backend_name()
 
@@ -208,6 +213,9 @@ def set_backend():
     elif backend_name == CCL_BACKEND:
         if ccl_backend is not None and ccl_backend.is_initialized():
             cdb = ccl_backend
+    elif backend_name == HCCL_BACKEND:
+        if hccl_backend is not None and hccl_backend.is_initialized():
+            cdb = hccl_backend
 
 
 @timed_op
@@ -473,20 +481,25 @@ def all_reduce(tensor,
                prof=False,
                log_name='all_reduce',
                debug=get_caller_func()):
+    #if profile_comm:
+    # context of the timers?
+    # timers.start()
+    # TensorBoard logging for comm calls.?
     global cdb
+    #print(f'op = {op}, cdb= {cdb.name}')
     return cdb.all_reduce(tensor, op, group, async_op)
 
 
 @timed_op
-def all_reduce_low_latency(tensor,
-                           op=ReduceOp.SUM,
-                           group=None,
-                           async_op=False,
-                           prof=False,
-                           log_name='all_reduce',
-                           debug=get_caller_func()):
+def inference_all_reduce(tensor,
+                         op=ReduceOp.SUM,
+                         group=None,
+                         async_op=False,
+                         prof=False,
+                         log_name='all_reduce',
+                         debug=get_caller_func()):
     global cdb
-    return cdb.all_reduce_low_latency(tensor, op, group, async_op)
+    return cdb.inference_all_reduce(tensor, op, group, async_op)
 
 
 @timed_op
@@ -497,7 +510,7 @@ def all_reduce_coalesced(tensors,
                          prof=False,
                          log_name='all_reduce',
                          debug=get_caller_func()):
-    global cbd
+    global cdb
     return cdb.all_reduce_coalesced(tensors, op, group, async_op)
 
 
@@ -643,7 +656,7 @@ def init_distributed(dist_backend=None,
                 utils.logger.info('Distributed backend already initialized')
         else:
             assert isinstance(timeout, timedelta)
-            if dist_backend == None:
+            if dist_backend is None:
                 dist_backend = get_accelerator().communication_backend_name()
             if int(os.getenv('RANK', '0')) == 0:
                 utils.logger.info('Initializing TorchBackend in DeepSpeed with backend {}'.format(dist_backend))
