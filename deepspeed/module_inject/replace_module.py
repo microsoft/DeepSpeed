@@ -275,12 +275,12 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         # 3. Try to get num_key_heads from model_config.num_key_value_heads
         num_kv_heads = None
-        if hasattr(model_config, 'num_key_value_heads'):
-            num_kv_heads = model_config.num_key_value_heads
-
-        # 4. Fallback to model_config.num_attention_heads when necessary
-        if num_kv_heads == None and hasattr(model_config, 'num_attention_heads'):
-            num_kv_heads = model_config.num_attention_heads
+        kv_head_names = ['num_key_value_heads', 'num_attention_heads', 'n_heads']
+        for name in kv_head_names:
+            if hasattr(model_config, name):
+                num_kv_heads = getattr(model_config, name)
+                if num_kv_heads != None:
+                    break
 
         # 5. When we have num_kv_heads defined, uneven division is possible, otherwise enforce even division
         set_num_kv_heads(num_kv_heads)
