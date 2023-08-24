@@ -7,9 +7,8 @@ import deepspeed
 import torch
 import pytest
 
+from unit.simple_model import SimpleModel, args_from_dict, random_dataloader
 from mup.shape import set_base_shapes
-
-from .simple_model import SimpleModel, args_from_dict, random_dataloader
 
 
 @pytest.mark.parametrize("optimizer, expected_opt_class", [("MuAdam", torch.optim.Adam),
