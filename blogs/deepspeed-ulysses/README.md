@@ -285,7 +285,7 @@ for both DeepSpeed and Megatron-LM sequence parallelism. For DeepSpeed
 sequence parallelism, we evaluate convergence with different ZeRO
 stages. DeepSpeed sequence parallelism is a purely system optimization
 technique that enables training of long sequence Transformer model, thus
-there is no (negative) on quality of trained models, this assertion is
+there is no (negative) impact on quality of trained models, this assertion is
 validated through experiments and is shown in Figure 5.
 
 <div align="center">
@@ -327,7 +327,7 @@ We welcome contributions and collaboration as we together push forward
 on what is possible when long context window is no longer a limitation.
 DeepSpeed-Ulysses is part of the bigger DeepSpeed ecosystem of
 large-scale AI training and inference. For more details on all DeepSpeed
-technologies and innovations, please see visit our [website]((https://www.deepspeed.ai/)) and follow us
+technologies and innovations, please visit our [website]((https://www.deepspeed.ai/)) and follow us
 on X, formerly Twitter, ([English](https://twitter.com/MSFTDeepSpeed), [Japanese](https://twitter.com/MSFTDeepSpeedJP)) and [Chinese Zhihu](https://www.zhihu.com/people/deepspeed).
 
 We are open to collaborations with universities, research labs, and
