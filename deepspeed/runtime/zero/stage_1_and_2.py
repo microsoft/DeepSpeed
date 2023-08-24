@@ -1124,8 +1124,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 dest_buffer.narrow(0, source_offset,
                                    num_elements).copy_(self.accumulated_grads_in_cpu[param_id].view(-1),
                                                        non_blocking=True)
-                grad_accum.data.view(-1).narrow(0, source_offset, num_elements).add_(
-                    dest_buffer.narrow(0, source_offset, num_elements))
+                grad_accum.data.view(-1).narrow(0, source_offset,
+                                                num_elements).add_(dest_buffer.narrow(0, source_offset, num_elements))
 
         #move accumulated gradients back to CPU
         def copy_gradients_to_cpu():
