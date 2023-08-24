@@ -22,7 +22,7 @@ class TestMuPOptimizers(DistributedTest):
 
     def test(self,
              optimizer,
-             expected_opt_class
+             expected_opt_class,
              zero_offload):
         config_dict = {
             "train_batch_size": 2,
