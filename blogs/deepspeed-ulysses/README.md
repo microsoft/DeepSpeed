@@ -187,7 +187,7 @@ and sequence parallel ranks. In other words, in DeepSpeed sequence
 parallelism, ZeRO partitions model states across both sequence and data
 parallel group and collects per rank partitions (allgather) when they
 are needed. Similarly, gradients are reduced across both data and
-sequence parallel ranks for parameter update. ZeRO allows support allows
+sequence parallel ranks for parameter update. ZeRO allows 
 for huge memory savings in both sequence and data dimensions and enables
 scaling not just to large sequence lengths but also to large models.
 
@@ -198,7 +198,7 @@ a foundation model for many NLP tasks on up to 64 A100 GPUs with 40GB memory. Ou
 evaluations are four-fold: i) sequence length scalability, ii)
 throughput for dense attention and comparison with existing system, and
 iii) throughput with sparse attention and comparison with existing
-system, iv) convergence study of Deep sequence parallelism. We discuss
+system, iv) convergence study of DeepSpeed sequence parallelism. We discuss
 and present evaluations from each of these categories next.
 
 ### Sequence Length Scalability
@@ -207,7 +207,7 @@ The first set of experiments is strong scaling of sequence length up to
 1 million tokens on 1.2 billion parameter GPT model. Results of this
 evaluation are shown in Figures 2. DeepSpeed sequence parallelism
 allows increasing sequence length linearly with the
-number of GPUs and sequence length scales linearly relative to and
+number of GPUs and
 maintains similar computation throughput across different sequence
 length at appropriate GPU count.
 
