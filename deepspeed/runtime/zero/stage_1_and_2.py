@@ -1236,6 +1236,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.cpu_offload:
 
             if self.gradient_accumulation_steps > 1:
+                if param.grad_accum is None:
+                    param.grad_accum = param.grad
                 self.async_accumulate_grad_in_cpu_via_gpu(param)
 
             if self.is_gradient_accumulation_boundary:
