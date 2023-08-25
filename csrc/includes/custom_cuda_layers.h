@@ -1,15 +1,29 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #pragma once
+
+#include "ds_kernel_utils.h"
 
 #include <cuda.h>
 #include <cuda_fp16.h>
+#include <curand_kernel.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <cooperative_groups.h>
-#include <curand_kernel.h>
-
 #include "context.h"
 #include "cublas_wrappers.h"
+
+#define CUDA_CHECK(callstr)                                                                    \
+    {                                                                                          \
+        cudaError_t error_code = callstr;                                                      \
+        if (error_code != cudaSuccess) {                                                       \
+            std::cerr << "CUDA error " << error_code << " at " << __FILE__ << ":" << __LINE__; \
+            assert(0);                                                                         \
+        }                                                                                      \
+    }
 
 #define MAX_THREADS 1024
 #define THREADS 256
@@ -23,6 +37,10 @@
 #define MAX_WARP_NUM 32
 
 #define MAX_REGISTERS 256
+
+#define MAX_REG 256
+
+#define WARP_SIZE_BITS 5
 
 // Fused bias add with gelu activation
 template <typename T>
@@ -255,3 +273,55 @@ void launch_fuse_transpose_bias_kernel(const T* inp,
                                        cudaStream_t stream);
 
 void launch_param_update(const float* input, __half* output, int size, cudaStream_t stream);
+void launch_param_update_half(const float* input, __half* output, int size, cudaStream_t stream);
+
+void launch_token_sort(int32_t* indices,
+                       int layers,
+                       int batch_size,
+                       int reserved_size,
+                       int original_tokens,
+                       cudaStream_t stream);
+
+template <typename T>
+void launch_gather_tokens(T* retained_tokens,
+                          T* activations,
+                          int32_t* gather_indices,
+                          int32_t batch_size,
+                          int32_t sampled_tokens,
+                          int32_t channels,
+                          int32_t read_batch_stride,
+                          int32_t read_seq_stride,
+                          int32_t write_batch_stride,
+                          int32_t write_seq_stride,
+                          cudaStream_t stream);
+
+template <typename T>
+void launch_scatter_tokens(T* all_activations,
+                           T* layer_activations,
+                           int32_t* gather_indices,
+                           int32_t batch_size,
+                           int32_t sampled_tokens,
+                           int32_t channels,
+                           int32_t read_batch_stride,
+                           int32_t read_seq_stride,
+                           int32_t write_batch_stride,
+                           int32_t write_seq_stride,
+                           cudaStream_t stream);
+
+template <typename T>
+void launch_slice_gpt_mask(T* output_mask,
+                           const T* input_mask,
+                           int batch_size,
+                           int truncated_seq_len,
+                           int orig_seq_len,
+                           cudaStream_t stream);
+
+template <typename T>
+void launch_slice_bert_mask(T* output_mask,
+                            const T* input_mask,
+                            const int32_t* retained_indices,
+                            int32_t layers,
+                            int32_t batch_size,
+                            int32_t truncated_seq_len,
+                            int32_t orig_seq_len,
+                            cudaStream_t stream);

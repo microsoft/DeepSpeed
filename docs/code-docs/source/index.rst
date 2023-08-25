@@ -8,6 +8,7 @@ Model Setup
    :maxdepth: 2
 
    initialize
+   inference-init
 
 Training API
 ------------
@@ -17,6 +18,13 @@ Training API
 
    training
 
+Inference API
+-------------
+
+.. toctree::
+   :maxdepth: 2
+
+   inference-engine
 
 Checkpointing API
 -----------------
@@ -26,6 +34,20 @@ Checkpointing API
    model-checkpointing
    activation-checkpointing
 
+
+ZeRO API
+--------
+.. toctree::
+   :maxdepth: 2
+
+   zero3
+
+Mixture of Experts (MoE)
+------------------------
+.. toctree::
+   :maxdepth: 2
+
+   moe
 
 Transformer Kernel API
 ----------------------
@@ -41,6 +63,47 @@ Pipeline Parallelism
 
    pipeline
 
+Optimizers
+----------
+.. toctree::
+   :maxdepth: 2
+
+   optimizers
+
+Learning Rate Schedulers
+--------------------
+.. toctree::
+   :maxdepth: 2
+
+   schedulers
+
+Flops Profiler
+--------------------
+.. toctree::
+   :maxdepth: 2
+
+   flops-profiler
+
+Autotuning
+--------------------
+.. toctree::
+   :maxdepth: 2
+
+   autotuning
+
+Memory Usage
+------------------
+.. toctree::
+   :maxdepth: 2
+
+   memory
+
+Monitoring
+----------
+.. toctree::
+   :maxdepth: 2
+
+   monitor
 
 Indices and tables
 ------------------

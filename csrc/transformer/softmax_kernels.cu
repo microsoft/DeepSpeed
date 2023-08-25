@@ -1,8 +1,27 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #include <math.h>
 #include "custom_cuda_layers.h"
 #include "general_kernels.h"
 
 namespace cg = cooperative_groups;
+
+dim3 get_attn_softmax_grid(int batch_size, int heads, int sequence_length, int threads)
+{
+    int seq_length4 = sequence_length / 4;
+    int block_compute_size =
+        (seq_length4 < threads ? (int)pow(2.0, floor(log2((float)(threads / seq_length4)))) : 1);
+    // Note that the Y and Z dimensions are limited to 65535, while X is basically unlimited:
+    // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#features-and-technical-specifications
+    // The batch size is typically relatively small, while the sequence length could potentially be
+    // arbitrarily large. We therefore place the batch size second to avoid hitting the Y limit.
+    unsigned x = heads * sequence_length / block_compute_size;
+    unsigned y = batch_size;
+    return {x, y};
+}
 
 // Fused attention + softmax
 template <int tbSize, int blockStride, int tbSeq>
@@ -14,7 +33,7 @@ __global__ void attn_softmax(float* vals,
 {
     __shared__ float partialSum[MAX_WARP_NUM];
 
-    int warp_num = blockDim.x >> 5;
+    int warp_num = blockDim.x >> WARP_SIZE_BITS;
 
     int iteration_stride = blockDim.x;
     int block_width = blockStride * seq_length;
@@ -22,16 +41,16 @@ __global__ void attn_softmax(float* vals,
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<tbSize> g = cg::tiled_partition<tbSize>(b);
 
-    int batch = blockIdx.x;
-    int row = blockIdx.y;
+    int batch = blockIdx.y;
+    int row = blockIdx.x;
     int max_threads_in_sequence = std::max(seq_length, tbSeq);
     int seq_lane = threadIdx.x % max_threads_in_sequence;
 
-    int data_offset = batch * (gridDim.y * block_width) + row * block_width +
+    int data_offset = batch * (gridDim.x * block_width) + row * block_width +
                       (threadIdx.x / max_threads_in_sequence) * seq_length;
     int mask_offset = batch * seq_length;
 
-    int wid = threadIdx.x >> 5;
+    int wid = threadIdx.x >> WARP_SIZE_BITS;
     int lane = threadIdx.x & 0x1f;
 
     float4* val_cast = reinterpret_cast<float4*>(vals);
@@ -80,7 +99,8 @@ __global__ void attn_softmax(float* vals,
 #endif
 
         int iters = warp_num;
-        if (seq_length < iteration_stride) iters = warp_num / (iteration_stride / seq_length);
+        if (seq_length < iteration_stride)
+            iters = warp_num / (iteration_stride / max_threads_in_sequence);
 
         for (int i = 1; i < iters; i *= 2) {
             auto temp = g.shfl_xor(max_val, i);
@@ -113,7 +133,8 @@ __global__ void attn_softmax(float* vals,
 #endif
 
         int iters = warp_num;
-        if (seq_length < iteration_stride) iters = warp_num / (iteration_stride / seq_length);
+        if (seq_length < iteration_stride)
+            iters = warp_num / (iteration_stride / max_threads_in_sequence);
 
         for (int i = 1; i < iters; i *= 2) { sum += g.shfl_xor(sum, i); }
 
@@ -140,10 +161,10 @@ __global__ void attn_softmax(__half* vals,
                              int seq_length,
                              int iterations)
 {
-#if __CUDA_ARCH__ >= 700
+#ifdef HALF_PRECISION_AVAILABLE
     __shared__ float partialSum[MAX_WARP_NUM];
 
-    int warp_num = blockDim.x >> 5;
+    int warp_num = blockDim.x >> WARP_SIZE_BITS;
 
     int iteration_stride = blockDim.x;
     int block_width = blockStride * seq_length;
@@ -151,16 +172,16 @@ __global__ void attn_softmax(__half* vals,
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<tbSize> g = cg::tiled_partition<tbSize>(b);
 
-    int batch = blockIdx.x;
-    int row = blockIdx.y;
+    int batch = blockIdx.y;
+    int row = blockIdx.x;
     int max_threads_in_sequence = std::max(seq_length, tbSeq);
     int seq_lane = threadIdx.x % max_threads_in_sequence;
 
-    int data_offset = batch * (gridDim.y * block_width) + row * block_width +
+    int data_offset = batch * (gridDim.x * block_width) + row * block_width +
                       (threadIdx.x / max_threads_in_sequence) * seq_length;
     int mask_offset = batch * seq_length;
 
-    int wid = threadIdx.x >> 5;
+    int wid = threadIdx.x >> WARP_SIZE_BITS;
     int lane = threadIdx.x & 0x1f;
 
     float2* val_cast = reinterpret_cast<float2*>(vals);
@@ -216,7 +237,8 @@ __global__ void attn_softmax(__half* vals,
 #endif
 
         int iters = warp_num;
-        if (seq_length < iteration_stride) iters = warp_num / (iteration_stride / seq_length);
+        if (seq_length < iteration_stride)
+            iters = warp_num / (iteration_stride / max_threads_in_sequence);
 
         for (int i = 1; i < iters; i *= 2) {
             auto temp = g.shfl_xor(max_val, i);
@@ -252,7 +274,8 @@ __global__ void attn_softmax(__half* vals,
 #endif
 
         int iters = warp_num;
-        if (seq_length < iteration_stride) iters = warp_num / (iteration_stride / seq_length);
+        if (seq_length < iteration_stride)
+            iters = warp_num / (iteration_stride / max_threads_in_sequence);
 
         for (int i = 1; i < iters; i *= 2) { sum += g.shfl_xor(sum, i); }
 
@@ -296,9 +319,7 @@ void launch_attn_softmax<float>(float* vals,
     const int threads = 128;
     int seq_length4 = sequence_length / 4;
 
-    int block_compute_size =
-        (seq_length4 < threads ? (int)pow(2.0, floor(log2((float)(threads / seq_length4)))) : 1);
-    dim3 grid_dim(batch_size, heads * sequence_length / block_compute_size);
+    dim3 grid_dim = get_attn_softmax_grid(batch_size, heads, sequence_length, threads);
 
     int subblock_max_workload = MAX_THREAD_ITERATIONS * 4 * threads;
 
@@ -329,17 +350,16 @@ void launch_attn_softmax<float>(float* vals,
             <<<grid_dim, block_dim, 0, stream>>>(vals, attn_mask, heads, seq_length4, iterations);
     else {
         const int threads = 256;
-        block_compute_size =
-            (seq_length4 < threads ? (int)pow(2.0, floor(log2((float)(threads / seq_length4))))
-                                   : 1);
-        dim3 grid_dim(batch_size, heads * sequence_length / block_compute_size);
+        dim3 grid_dim = get_attn_softmax_grid(batch_size, heads, sequence_length, threads);
 
         int subblock_max_workload = MAX_THREAD_ITERATIONS * 4 * threads;
 
         dim3 block_dim(seq_length4 > threads ? ((sequence_length + subblock_max_workload - 1) /
                                                 subblock_max_workload * threads)
                                              : threads);
-
+        iterations =
+            (sequence_length < subblock_max_workload ? (seq_length4 + threads - 1) / threads
+                                                     : MAX_THREAD_ITERATIONS);
         if (sequence_length <= 512)
             attn_softmax<32, (threads / 128), 128><<<grid_dim, block_dim, 0, stream>>>(
                 vals, attn_mask, heads, seq_length4, iterations);
@@ -364,9 +384,7 @@ void launch_attn_softmax<__half>(__half* vals,
     const int threads = 128;
     int seq_length4 = sequence_length / 4;
 
-    int block_compute_size =
-        (seq_length4 < threads ? (int)pow(2.0, floor(log2((float)(threads / seq_length4)))) : 1);
-    dim3 grid_dim(batch_size, heads * sequence_length / block_compute_size);
+    dim3 grid_dim = get_attn_softmax_grid(batch_size, heads, sequence_length, threads);
 
     int subblock_max_workload = MAX_THREAD_ITERATIONS * 4 * threads;
 
@@ -398,17 +416,16 @@ void launch_attn_softmax<__half>(__half* vals,
             <<<grid_dim, block_dim, 0, stream>>>(vals, attn_mask, heads, seq_length4, iterations);
     else {
         const int threads = 256;
-        block_compute_size =
-            (seq_length4 < threads ? (int)pow(2.0, floor(log2((float)(threads / seq_length4))))
-                                   : 1);
-        dim3 grid_dim(batch_size, heads * sequence_length / block_compute_size);
+        dim3 grid_dim = get_attn_softmax_grid(batch_size, heads, sequence_length, threads);
 
         int subblock_max_workload = MAX_THREAD_ITERATIONS * 4 * threads;
 
         dim3 block_dim(seq_length4 > threads ? ((sequence_length + subblock_max_workload - 1) /
                                                 subblock_max_workload * threads)
                                              : threads);
-
+        iterations =
+            (sequence_length < subblock_max_workload ? (seq_length4 + threads - 1) / threads
+                                                     : MAX_THREAD_ITERATIONS);
         if (sequence_length <= 512)
             attn_softmax<32, (threads / 128), 128><<<grid_dim, block_dim, 0, stream>>>(
                 vals, attn_mask, heads, seq_length4, iterations);
@@ -427,7 +444,7 @@ __global__ void softmax_backward_kernel(T* out_grad, const T* soft_inp, int seq_
 {
     __shared__ float partialSum[MAX_WARP_NUM];
 
-    int warp_num = blockDim.x >> 5;  // warp-count = num_threads / WARP_SIZE (32)
+    int warp_num = blockDim.x >> WARP_SIZE_BITS;  // warp-count = num_threads / WARP_SIZE (32)
 
     int iteration_stride = blockDim.x;
     int block_width = blockStride * seq_length;
@@ -442,7 +459,7 @@ __global__ void softmax_backward_kernel(T* out_grad, const T* soft_inp, int seq_
     int row = blockIdx.x;
     int id = threadIdx.x;
 
-    int wid = id >> 5;
+    int wid = id >> WARP_SIZE_BITS;
     int lane = id & 0x1f;
 
     T val_reg[MAX_THREAD_ITERATIONS];
@@ -524,6 +541,102 @@ __global__ void softmax_backward_kernel_v2(T* grad /* input & output*/,
     }
 }
 
+__global__ void softmax_backward_kernel_arbitrary_length(__half* grad /* input & output*/,
+                                                         const __half* output,
+                                                         int softmax_length)
+{
+    int batch_idx = blockIdx.x * blockDim.y + threadIdx.y;
+    int offset = batch_idx * softmax_length + threadIdx.x;
+
+    const float4* output_cast = reinterpret_cast<const float4*>(output);
+    float4* grad_cast = reinterpret_cast<float4*>(grad);
+
+    grad_cast += offset;
+    output_cast += offset;
+
+    float sum = 0.0;
+    int curr_idx = threadIdx.x;
+    while (curr_idx < softmax_length) {
+        float4 out_reg = output_cast[curr_idx];
+        float4 grad_reg = grad_cast[curr_idx];
+        __half2* out_h = reinterpret_cast<__half2*>(&out_reg);
+        __half2* grad_h = reinterpret_cast<__half2*>(&grad_reg);
+#pragma unroll
+        for (int m = 0; m < 4; m++) grad_h[m] *= out_h[m];
+        sum += ((float)grad_h[0].x + (float)grad_h[0].y + (float)grad_h[1].x + (float)grad_h[1].y) +
+               ((float)grad_h[2].x + (float)grad_h[2].y + (float)grad_h[3].x + (float)grad_h[3].y);
+        curr_idx += WARP_SIZE;
+    }
+
+    cg::thread_block b = cg::this_thread_block();
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+
+#pragma unroll
+    for (int i = 1; i < WARP_SIZE; i <<= 1) sum += g.shfl_xor(sum, i);
+
+    curr_idx = threadIdx.x;
+    while (curr_idx < softmax_length) {
+        float4 out_reg = output_cast[curr_idx];
+        float4 grad_reg = grad_cast[curr_idx];
+        __half* grad_h = reinterpret_cast<__half*>(&grad_reg);
+        __half* out_h = reinterpret_cast<__half*>(&out_reg);
+
+#pragma unroll
+        for (int m = 0; m < 8; m++) grad_h[m] = (float)out_h[m] * ((float)grad_h[m] - sum);
+
+        grad_cast[curr_idx] = grad_reg;
+        curr_idx += WARP_SIZE;
+    }
+}
+
+__global__ void softmax_backward_kernel_arbitrary_length(float* grad /* input & output*/,
+                                                         const float* output,
+                                                         int softmax_length)
+{
+    int batch_idx = blockIdx.x * blockDim.y + threadIdx.y;
+    int offset = batch_idx * softmax_length + threadIdx.x;
+
+    const float4* output_cast = reinterpret_cast<const float4*>(output);
+    float4* grad_cast = reinterpret_cast<float4*>(grad);
+
+    grad_cast += offset;
+    output_cast += offset;
+
+    float sum = 0.0;
+    int curr_idx = threadIdx.x;
+    while (curr_idx < softmax_length) {
+        float4 out_reg = output_cast[curr_idx];
+        float4 grad_reg = grad_cast[curr_idx];
+
+        grad_reg.x *= out_reg.x;
+        grad_reg.y *= out_reg.y;
+        grad_reg.z *= out_reg.z;
+        grad_reg.w *= out_reg.w;
+        sum += (grad_reg.x + grad_reg.y + grad_reg.z + grad_reg.w);
+
+        curr_idx += WARP_SIZE;
+    }
+
+    cg::thread_block b = cg::this_thread_block();
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+
+#pragma unroll
+    for (int i = 1; i < WARP_SIZE; i <<= 1) sum += g.shfl_xor(sum, i);
+
+    curr_idx = threadIdx.x;
+    while (curr_idx < softmax_length) {
+        float4 out_reg = output_cast[curr_idx];
+        float4 grad_reg = grad_cast[curr_idx];
+        grad_reg.x = out_reg.x * (grad_reg.x - sum);
+        grad_reg.y = out_reg.y * (grad_reg.y - sum);
+        grad_reg.z = out_reg.z * (grad_reg.z - sum);
+        grad_reg.w = out_reg.w * (grad_reg.w - sum);
+
+        grad_cast[curr_idx] = grad_reg;
+        curr_idx += WARP_SIZE;
+    }
+}
+
 template <typename T>
 void launch_attn_softmax_backward_v2(T* out_grad,
                                      const T* soft_inp,
@@ -563,10 +676,15 @@ void launch_attn_softmax_backward_v2(T* out_grad,
     else if (seq_length <= 2048)
         softmax_backward_kernel_v2<T, 64>
             <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
+    else if (seq_length <= 4096)
+        softmax_backward_kernel_v2<T, 128>
+            <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
+    else if (seq_length <= 8192)
+        softmax_backward_kernel_v2<T, 256>
+            <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
     else
-        throw std::runtime_error(
-            std::string("Special sequence length found in softmax backward, seq_length: ") +
-            std::to_string(seq_length));
+        softmax_backward_kernel_arbitrary_length<<<grid_dim, block_dim, 0, stream>>>(
+            out_grad, soft_inp, seq_length / (4 << ((sizeof(T) & 2) >> 1)));
 }
 
 template void launch_attn_softmax_backward_v2<__half>(__half* out_grad,

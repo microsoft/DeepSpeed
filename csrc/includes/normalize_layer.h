@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #pragma once
 
 #include <cuda.h>
@@ -18,11 +23,16 @@ public:
         float epsilon;
         bool training;
         bool useMean;
-        Config(uint32_t batch, uint32_t seq, uint32_t h, bool training, bool useMean = true)
+        Config(uint32_t batch,
+               uint32_t seq,
+               uint32_t h,
+               float epsilon = 1e-12,
+               bool training = true,
+               bool useMean = true)
             : batchSize(batch),
               seqLength(seq),
               hiddenDim(h),
-              epsilon(1e-12),
+              epsilon(epsilon),
               training(training),
               useMean(useMean)
         {

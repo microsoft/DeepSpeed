@@ -5,6 +5,7 @@ description: >-
   training easy, efficient, and effective.
 
 locale : "en-US"
+logo: /assets/images/deepspeed-logo-uppercase-bold-white-1.15.svg
 
 repository: microsoft/DeepSpeed
 baseurl: "/" # the subpath of your site, e.g. /blog
@@ -13,6 +14,7 @@ url: "https://www.deepspeed.ai" # the base hostname & protocol for your site, e.
 # Build settings
 remote_theme: "mmistakes/minimal-mistakes@4.19.0"
 minimal_mistakes_skin : "air"
+search: true
 
 plugins:
   - jekyll-feed
@@ -33,13 +35,33 @@ collections:
       - advanced-install.md
       - getting-started.md
       - azure.md
-      - cifar-10.md
-      - bert-pretraining.md
+      - automatic-tensor-parallelism.md
       - bert-finetuning.md
-      - transformer_kernel.md
-      - megatron.md
-      - 1Cycle.md
+      - bert-pretraining.md
+      - cifar-10.md
+      - curriculum-learning.md
+      - data-efficiency.md
+      - flops-profiler.md
+      - pytorch-profiler.md
+      - autotuning.md
+      - gan.md
       - lrrt.md
+      - megatron.md
+      - mixture-of-experts.md
+      - mixture-of-experts-nlg.md
+      - mixture-of-experts-inference.md
+      - model-compression.md
+      - monitor.md
+      - comms-logging.md
+      - one-cycle.md
+      - onebit-adam.md
+      - zero-one-adam.md
+      - onebit-lamb.md
+      - pipeline.md
+      - progressive_layer_dropping.md
+      - sparse-attention.md
+      - transformer_kernel.md
+      - zero-offload.md
       - zero.md
 
 defaults:
@@ -61,12 +83,29 @@ defaults:
       path: "_pages"
     values:
       permalink: /docs/:basename/
+      toc: true
+      toc_label: "Contents"
   - scope:
       path: ""
       type: posts
     values:
-      layout: single
+      layout: single-full
+      author_profile: false
+      read_time: false
+      comments: false
       share: true
+      related: false
+      toc: true
+      toc_label: "Contents"
+      toc_sticky: true
+      show_date: true
+  - scope:
+      path: ""
+      type: tutorials
+    values:
+      layout: single
+      toc_sticky: true
+
 
 analytics:
   provider: "google-gtag"
@@ -77,3 +116,5 @@ timezone: America/Los_Angeles
 breadcrumbs: true
 
 press_release_v3: https://www.microsoft.com/en-us/research/blog/deepspeed-extreme-scale-model-training-for-everyone/
+press_release_v5: https://www.microsoft.com/en-us/research/blog/deepspeed-powers-8x-larger-moe-model-training-with-high-performance/
+press_release_v6: https://www.microsoft.com/en-us/research/blog/deepspeed-advancing-moe-inference-and-training-to-power-next-generation-ai-scale/

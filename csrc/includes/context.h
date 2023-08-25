@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #pragma once
 
 #include <ATen/cuda/CUDAContext.h>
@@ -39,42 +44,39 @@ inline int DS_GET_BLOCKS(const int N)
         1);
 }
 
-class Context {
+class TrainingContext {
 public:
-    Context() : _workspace(nullptr), _seed(42), _curr_offset(0)
+    TrainingContext() : _workspace(nullptr), _seed(42), _curr_offset(0)
     {
         curandCreateGenerator(&_gen, CURAND_RNG_PSEUDO_DEFAULT);
         curandSetPseudoRandomGeneratorSeed(_gen, 123);
-        if (cublasCreate(&_cublasHandle) != CUBLAS_STATUS_SUCCESS) {
-            auto message = std::string("Fail to create cublas handle.");
+        cublasStatus_t stat = cublasCreate(&_cublasHandle);
+        if (stat != CUBLAS_STATUS_SUCCESS) {
+            // It would be nice to use cublasGetStatusName and
+            // cublasGetStatusString, but they were only added in CUDA 11.4.2.
+            auto message = std::string("Failed to create cublas handle: cublasStatus_t was ") +
+                           std::to_string(stat);
             std::cerr << message << std::endl;
             throw std::runtime_error(message);
         }
     }
 
-    virtual ~Context()
+    virtual ~TrainingContext()
     {
         cublasDestroy(_cublasHandle);
         cudaFree(_workspace);
     }
 
-    static Context& Instance()
+    static TrainingContext& Instance()
     {
-        static Context _ctx;
+        static TrainingContext _ctx;
         return _ctx;
     }
 
-    void GenWorkSpace(size_t size)
+    void SetWorkSpace(void* workspace)
     {
-        if (!_workspace) {
-            assert(_workspace == nullptr);
-            cudaMalloc(&_workspace, size);
-        } else if (_workSpaceSize < size) {
-            cudaFree(_workspace);
-            cudaMalloc(&_workspace, size);
-        }
-
-        _workSpaceSize = size;
+        if (!workspace) { throw std::runtime_error("Workspace is null."); }
+        _workspace = workspace;
     }
 
     void* GetWorkSpace() { return _workspace; }
@@ -87,6 +89,8 @@ public:
         cudaStream_t stream = at::cuda::getCurrentCUDAStream();
         return stream;
     }
+
+    cudaStream_t GetNewStream() { return at::cuda::getStreamFromPool(); }
 
     cublasHandle_t GetCublasHandle() { return _cublasHandle; }
 
@@ -172,6 +176,5 @@ private:
     void* _workspace;
     uint64_t _seed;
     uint64_t _curr_offset;
-    size_t _workSpaceSize;
     std::vector<std::array<int, 3>> _gemm_algos;
 };

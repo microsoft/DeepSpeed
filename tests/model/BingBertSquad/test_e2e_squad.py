@@ -1,11 +1,14 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import subprocess as sp
-import datetime
 import os
 from math import isclose
 import sys
 import pytest
 import json
-import argparse
 
 sys.path.append("../../../DeepSpeedExamples/BingBertSquad")
 import evaluate as eval
@@ -63,16 +66,7 @@ def test_e2e_squad_deepspeed_base(tmpdir):
     output_dir = os.path.join(tmpdir, "output")
     pred_file = os.path.join(output_dir, pred_file_name)
 
-    proc = sp.Popen([
-        "bash",
-        script_file_name,
-        num_gpus,
-        model_file,
-        squad_dir,
-        output_dir,
-        config_file
-    ],
-                    cwd=base_dir)
+    proc = sp.Popen(["bash", script_file_name, num_gpus, model_file, squad_dir, output_dir, config_file], cwd=base_dir)
 
     try:
         proc.communicate(timeout=timeout_sec)
@@ -82,9 +76,7 @@ def test_e2e_squad_deepspeed_base(tmpdir):
 
             print("evaluation result: ", json.dumps(eval_result))
 
-            assert isclose(eval_result["exact_match"],
-                           expected_exact_match,
-                           abs_tol=1e-2)
+            assert isclose(eval_result["exact_match"], expected_exact_match, abs_tol=1e-2)
             assert isclose(eval_result["f1"], expected_f1, abs_tol=1e-2)
 
         else:
@@ -110,16 +102,7 @@ def test_e2e_squad_deepspeed_zero(tmpdir):
     output_dir = os.path.join(tmpdir, "output")
     pred_file = os.path.join(output_dir, pred_file_name)
 
-    proc = sp.Popen([
-        "bash",
-        script_file_name,
-        num_gpus,
-        model_file,
-        squad_dir,
-        output_dir,
-        config_file
-    ],
-                    cwd=base_dir)
+    proc = sp.Popen(["bash", script_file_name, num_gpus, model_file, squad_dir, output_dir, config_file], cwd=base_dir)
 
     try:
         proc.communicate(timeout=timeout_sec)
@@ -129,9 +112,7 @@ def test_e2e_squad_deepspeed_zero(tmpdir):
 
             print("evaluation result: ", json.dumps(eval_result))
 
-            assert isclose(eval_result["exact_match"],
-                           expected_exact_match,
-                           abs_tol=1e-2)
+            assert isclose(eval_result["exact_match"], expected_exact_match, abs_tol=1e-2)
             assert isclose(eval_result["f1"], expected_f1, abs_tol=1e-2)
 
         else:

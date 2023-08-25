@@ -1,5 +1,6 @@
 ---
-title: "DeepSpeed  Transformer Kernel"
+title: "DeepSpeed Transformer Kernel"
+tags: training
 ---
 
 This tutorial shows how to enable the DeepSpeed transformer kernel and set its different configuration parameters.
@@ -13,7 +14,7 @@ To this end, we have developed a new kernel for transformer networks which inclu
 optimizations specific to these layers, which boost the training throughput on single GPU and scales
 well as we increase the number of GPUs. For more information on the details
 of transformer kernel, please visit our recent blog post on the [fastest BERT
-training](https://www.deepspeed.ai/news/2020/05/27/fastest-bert-training.html).
+training](https://www.deepspeed.ai/2020/05/27/fastest-bert-training.html).
 
 ## Prerequisites
 
@@ -43,8 +44,8 @@ config = DeepSpeedTransformerConfig(batch_size = 64,
                                     normalize_invertible=False,
                                     gelu_checkpoint=False)
 self.layer = nn.ModuleList([
-    copy.deepcopy(DeepSpeedTransformerLayer(i, cuda_config))
-    for i in range(config.num_hidden_layers)
+    copy.deepcopy(DeepSpeedTransformerLayer(cuda_config))
+    for _ in range(config.num_hidden_layers)
 ])
 ```
 ### Transformer kernel Parameters
@@ -95,7 +96,7 @@ By setting the `normalize_invertible` flag, we force the kernel to drop the inpu
 
 The `attn_dropout_checkpoint` and `gelu_checkpoint` flags refer to the checkpointing approach, in which we drop the inputs to some parts of the transformer layer, attention dropout and Gelu, in order to save an important part of the activation memory. Based on our performance profiling, the performance cost of rematerializing these two are negligible and finally the performance benefit that we gain from running larger batch size compensate for that.
 
-The following table shows which memory optimization flags need to be turned on when running BERT-Large on NVIDIA V100 GPU with 32GB of memory, considering different micro-batch sizes and sequence lengths. For the two sequence lengths, 128 and 512, used in our experiments, we have seen that larger batch size improves the overall training performance for both. Please see our [blog post](https://www.deepspeed.ai/news/2020/05/27/fastest-bert-training.html) for more information regarding the performance evaluation of these configurations.
+The following table shows which memory optimization flags need to be turned on when running BERT-Large on NVIDIA V100 GPU with 32GB of memory, considering different micro-batch sizes and sequence lengths. For the two sequence lengths, 128 and 512, used in our experiments, we have seen that larger batch size improves the overall training performance for both. Please see our [blog post](https://www.deepspeed.ai/2020/05/27/fastest-bert-training.html) for more information regarding the performance evaluation of these configurations.
 
 | Micro-batch size |    128 sequence-length    |           512 sequence-length            |
 | :--------------: | :-----------------------: | :--------------------------------------: |

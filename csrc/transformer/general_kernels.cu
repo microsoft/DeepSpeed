@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #include "general_kernels.h"
 
 namespace cg = cooperative_groups;
@@ -43,7 +48,7 @@ __global__ void column_sum_reduce(const T* __restrict__ inp,
 
     if (threadIdx.x == 0) {
         int pos = blockIdx.x * TILE_DIM + threadIdx.y;
-        if (pos < (rows * width)) out[pos] = sum;
+        if (pos < width) out[pos] = sum;
     }
 }
 
