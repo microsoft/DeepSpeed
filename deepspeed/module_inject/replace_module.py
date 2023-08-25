@@ -289,6 +289,8 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         _autotp.update_linear_policies()
 
         # 7. Replace modules
+        if hasattr(module, "lm_head") or hasattr(module, 'embed_out'):
+            return _autotp._replace_last_linear_module(module)
         return _autotp._replace_module(module)
 
     def replace_fn(child, _policy, layer_id=0, prefix="", state_dict=None):
@@ -553,8 +555,6 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
     policy = {}
     if orig_class is not None:
         policy.update({orig_class: (replace_fn, _replace_policy)})
-        origin_layer = torch.nn.modules.linear.Linear
-        policy.update({origin_layer: (replace_fn, (list(model.named_modules())[-1][0]))})
     else:
         for plcy in replace_policies:
             # instantiate a throw-away policy in order to populate the _orig_layer_class
@@ -577,12 +577,14 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
         if embedding_weight is not None and hasattr(replaced_module, "lm_head") and hasattr(
                 replaced_module.lm_head, "weight") and replaced_module.lm_head.weight.is_meta:
             replaced_module.lm_head.weight = embedding_weight
-    #if sd is not None:
-    #    if 'lm_head.weight' in sd.keys() and hasattr(replaced_module, 'lm_head'):
-    #        replaced_module.lm_head.weight = torch.nn.parameter.Parameter(
-    #            data=torch.empty_like(sd['lm_head.weight'].data, device="cpu"),
-    #            requires_grad=sd['lm_head.weight'].data.requires_grad)
-    #        replaced_module.lm_head.weight.data.copy_(sd['lm_head.weight'])
+
+    # enable tensor parallel for the last linear
+    if hasattr(replaced_module, "lm_head") and hasattr(replaced_module.lm_head,
+                                                       "weight") and not replaced_module.lm_head.weight.is_meta:
+        replaced_module = replace_fn(replaced_module, ("lm_head", ), 0, "lm_head")
+    elif hasattr(replaced_module, "embed_out") and hasattr(replaced_module.embed_out,
+                                                           "weight") and not replaced_module.embed_out.weight.is_meta:
+        replaced_module = replace_fn(replaced_module, ("embed_out", ), 0, "embed_out")
     return replaced_module
 
 
@@ -621,21 +623,9 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
         OPTLearnedPositionalEmbedding = transformers.models.opt.modeling_opt.OPTLearnedPositionalEmbedding
     except:
         OPTLearnedPositionalEmbedding = None
-    try:
-        import transformers
-        LlamaRMSNorm = transformers.models.llama.modeling_llama.LlamaRMSNorm
-    except:
-        LlamaRMSNorm = None
-    load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm, OPTLearnedPositionalEmbedding, LlamaRMSNorm]
+    load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm, OPTLearnedPositionalEmbedding]
     for name, child in model.named_children():
-        if name == "lm_head" or name == "embed_out":
-            if child.__class__ in policies:
-                replaced_module = policies[child.__class__][0](model,
-                                                               policies[child.__class__][-1],
-                                                               layer_id,
-                                                               prefix=prefix + name,
-                                                               state_dict=state_dict)
-        elif child.__class__ in policies:
+        if child.__class__ in policies:
             replaced_module = policies[child.__class__][0](child,
                                                            policies[child.__class__][-1],
                                                            layer_id,
