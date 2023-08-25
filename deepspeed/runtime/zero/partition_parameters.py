@@ -251,10 +251,9 @@ def zero_wrapper_for_fp_tensor_constructor(fn: Callable, target_fp_dtype: torch.
 def get_new_tensor_fn_for_dtype(dtype: torch.dtype) -> Callable:
 
     def new_tensor(cls, *args, **kwargs) -> Tensor:
-        import pdb; pdb.set_trace()
         device = torch.device(get_accelerator().device_name(os.environ["LOCAL_RANK"]))
         if not args:
-            args = (0,)
+            args = (0, )
         tensor = _orig_torch_empty(0, device=device).new_empty(*args, **kwargs)
         if tensor.is_floating_point():
             tensor = tensor.to(dtype)
