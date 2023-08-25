@@ -187,11 +187,13 @@ class PipelineEngine(DeepSpeedEngine):
         if self._config.pipeline['activation_checkpoint_interval'] > 0:
             self.module.activation_checkpoint_interval = self._config.pipeline['activation_checkpoint_interval']
             # set use_reentrant default to True.
-            if self._config.pipeline['use_reentrant'] == None:
+            if self._config.pipeline.get('use_reentrant') is None:
                 self._config.pipeline['use_reentrant'] = True
             if self._config.pipeline['use_reentrant'] is False:
                 # set activation_checkpoint_func to non_reentrant_checkpoint func.
                 self.module.activation_checkpoint_func = ds_checkpointing.non_reentrant_checkpoint
+                if self.grid.get_global_rank() == 0:
+                    logger.info(f'CONFIG: activation_checkpoint_func=non_reentrant_checkpoint')
 
         self.module.checkpoint_parallel_write_pipeline = self._config.checkpoint_parallel_write_pipeline
 

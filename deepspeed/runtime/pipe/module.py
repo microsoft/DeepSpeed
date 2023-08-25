@@ -622,7 +622,9 @@ class PipelineModule(nn.Module):
     def _is_checkpointable(self, funcs):
 
         if self.activation_checkpoint_func is not checkpointing.non_reentrant_checkpoint:
-            # This hook excludes the embedding layer because only non_reentrant_checkpoint can accept inputs with requires_grad=False; otherwise, the backward of the embedding layer won't receive gradients."
+            # This hook excludes the embedding layer
+            # because only non_reentrant_checkpoint can accept inputs with requires_grad=False
+            # otherwise, the backward of the embedding layer won't receive gradients.
             if self.__class__.__name__ in ('GPTModelPipe', 'GPT2ModelPipe'):
                 return all('ParallelTransformerLayerPipe' in f.__class__.__name__ for f in funcs)
         if self.checkpointable_layers is not None:

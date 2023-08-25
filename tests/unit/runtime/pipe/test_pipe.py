@@ -16,6 +16,31 @@ from unit.util import skip_on_arch
 
 PipeTopo = PipeDataParallelTopology
 
+config_dict = {
+    "train_batch_size": 4,
+    "grandient_accumulation_steps": 1,
+    "steps_per_print": 20,
+    "optimizer": {
+        "type": "Adam",
+        "params": {
+            "lr": 0.001,
+            "betas": [0.9, 0.999],
+            "eps": 1e-8,
+            "weight_decay": 3e-7
+        }
+    },
+    "zero_optimization": {
+        "stage": 0
+    },
+    "fp16": {
+        "enabled": False
+    },
+    "pipeline": {
+        "seed_layers": True,
+        "activation_checkpoint_interval": 1
+    }
+}
+
 
 def rel_diff(A, B):
     return abs(A - B) / abs(A)
@@ -38,34 +63,8 @@ def rel_diff(A, B):
 class TestPipeCifar10(DistributedTest):
     world_size = 4
 
-    def test(self, topo_config):
+    def test_pipe_base(self, topo_config):
         skip_on_arch(min_arch=7)
-
-        config_dict = {
-            "train_batch_size": 4,
-            "grandient_accumulation_steps": 1,
-            "steps_per_print": 20,
-            "optimizer": {
-                "type": "Adam",
-                "params": {
-                    "lr": 0.001,
-                    "betas": [0.9, 0.999],
-                    "eps": 1e-8,
-                    "weight_decay": 3e-7
-                }
-            },
-            "zero_optimization": {
-                "stage": 0
-            },
-            "fp16": {
-                "enabled": False
-            },
-            "pipeline": {
-                "seed_layers": True,
-                "activation_checkpoint_interval": 1
-            }
-        }
-
         topo = PipeTopo(**topo_config)
         steps = 100  # must be >=100
 
@@ -103,3 +102,34 @@ class TestPipeCifar10(DistributedTest):
         test = test_losses[-lastX:]
         test_avg = sum(test) / len(test)
         assert rel_diff(base_avg, test_avg) < 0.05  # Originally 0.03, but seeing instability with AMD results
+
+    def _check_model_params_equal(self, model1, model2):
+        for p1, p2 in zip(model1.parameters(), model2.parameters()):
+            if p1.data.ne(p2.data).sum() > 0:
+                assert False
+
+    def test_pipe_use_reentrant(self, topo_config):
+        skip_on_arch(min_arch=7)
+
+        topo = PipeTopo(**topo_config)
+        steps = 100  # must be >=100
+
+        # Allocate model for consistent initial weights.
+        init_net = AlexNetPipe()
+
+        # Train with not set use_reentrant, default: True
+        base_net = copy.deepcopy(init_net)
+        base_model = PipelineModule(layers=base_net.to_layers(), topology=topo, loss_fn=nn.CrossEntropyLoss())
+        train_cifar(base_model, config=config_dict, num_steps=steps, fp16=config_dict['fp16']['enabled'])
+
+        # Train with set use_reentrant=False, this will use ``non_reentrant_checkpoint``
+        test_config_dict = copy.deepcopy(config_dict)
+        test_config_dict['pipeline']['use_reentrant'] = False
+        test_net = copy.deepcopy(init_net)
+        test_model = PipelineModule(layers=test_net.to_layers(), topology=topo, loss_fn=nn.CrossEntropyLoss())
+        train_cifar(test_model, config=test_config_dict, num_steps=steps, fp16=config_dict['fp16']['enabled'])
+
+        # Ensure that all ranks have updated parameters
+        dist.barrier()
+        # Check if models have same weights after training
+        self._check_model_params_equal(base_model, test_model)
