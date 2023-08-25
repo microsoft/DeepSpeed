@@ -22,7 +22,7 @@ class LinearAllreduce(nn.Module):
 
     def forward(self, input):
         output = torch.matmul(input, self.weight.transpose(-1, -2))
-        dist.all_reduce_low_latency(output, group=self.mp_group)
+        dist.inference_all_reduce(output, group=self.mp_group)
         if self.bias is not None:
             output += self.bias
         return output
