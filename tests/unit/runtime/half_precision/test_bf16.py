@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 import deepspeed
@@ -24,6 +27,7 @@ class TestAdamBF16ZeroOneCycleCompatibility(DistributedTest):
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
+            "train_micro_batch_size_per_gpu": 1,
             "steps_per_print": 1,
             "optimizer": {
                 "type": "Adam",
@@ -84,7 +88,7 @@ class TestZeroAllowUntestedOptimizer(DistributedTest):
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
-            "train_batch_size": 4,
+            "train_micro_batch_size_per_gpu": 4,
             "steps_per_print": 1,
             "fp16": {
                 "enabled": False,
@@ -177,7 +181,7 @@ class TestZeroSupportedClientOptimizer(DistributedTest):
             )
 
         config_dict = {
-            "train_batch_size": 2,
+            "train_micro_batch_size_per_gpu": 2,
             "steps_per_print": 1,
             "fp16": {
                 "enabled": False
@@ -206,7 +210,7 @@ class TestZero2ReduceScatterOff(DistributedTest):
             )
 
         config_dict = {
-            "train_batch_size": 2,
+            "train_micro_batch_size_per_gpu": 2,
             "steps_per_print": 1,
             "optimizer": {
                 "type": "Adam",
@@ -255,7 +259,7 @@ class TestZeroEmptyGrad(DistributedTest):
             )
 
         config_dict = {
-            "train_batch_size": 1,
+            "train_micro_batch_size_per_gpu": 1,
             "steps_per_print": 1,
             "fp16": {
                 "enabled": False
@@ -284,7 +288,7 @@ class TestZeroEmptyGrad(DistributedTest):
 
 
 @pytest.mark.parametrize("comp_type", [torch.float16, torch.bfloat16, torch.float], ids=["fp16", "bfp16", "fp32"])
-@pytest.mark.parametrize("comm_type", [torch.float16, torch.bfloat16], ids=["fp16", "bfp16"])
+@pytest.mark.parametrize("comm_type", [torch.float16, torch.bfloat16, None], ids=["fp16", "bfp16", "default"])
 class TestZeroDtypeCocktail(DistributedTest):
     world_size = 2
 
@@ -298,7 +302,7 @@ class TestZeroDtypeCocktail(DistributedTest):
         type_str = {torch.float16: "fp16", torch.bfloat16: "bfp16"}
 
         config_dict = {
-            "train_batch_size": 2,
+            "train_micro_batch_size_per_gpu": 2,
             "steps_per_print": 1,
             "fp16": {
                 "enabled": comp_type == torch.float16
@@ -309,8 +313,11 @@ class TestZeroDtypeCocktail(DistributedTest):
             "zero_optimization": {
                 "stage": 2
             },
-            "communication_data_type": type_str[comm_type]
         }
+        if comm_type is not None:
+            config_dict["communication_data_type"] = type_str[comm_type]
+        else:
+            comm_type = comp_type
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)

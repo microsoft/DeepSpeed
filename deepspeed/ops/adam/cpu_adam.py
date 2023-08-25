@@ -1,6 +1,7 @@
-'''
-Copyright 2020 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 from cpuinfo import get_cpu_info
@@ -62,7 +63,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                 algorithm from the paper `On the Convergence of Adam and Beyond`_
                 (default: False) NOT SUPPORTED in DeepSpeed CPUAdam!
             adamw_mode: select between Adam and AdamW implementations (default: AdamW)
-            full_precision_optimizer_states: creates momementum and variance in full precision regardless of
+            full_precision_optimizer_states: creates momentum and variance in full precision regardless of
                         the precision of the parameters (default: True)
         """
 

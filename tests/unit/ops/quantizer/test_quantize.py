@@ -1,11 +1,16 @@
-"""
-Copyright 2022 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import pytest
 import torch
-from deepspeed.ops import op_builder
+import deepspeed
+from deepspeed.ops.op_builder import QuantizerBuilder
 from deepspeed.accelerator import get_accelerator
+
+if not deepspeed.ops.__compatible_ops__[QuantizerBuilder.NAME]:
+    pytest.skip("Inference ops are not available on this system", allow_module_level=True)
 
 inference_module = None
 
@@ -13,10 +18,23 @@ inference_module = None
 def run_quantize_ds(activations, num_groups, q_bits, is_symmetric_quant):
     global inference_module
     if inference_module is None:
-        inference_module = op_builder.QuantizerBuilder().load()
+        inference_module = QuantizerBuilder().load()
 
     return inference_module.quantize(activations, num_groups, q_bits,
                                      inference_module.Symmetric if is_symmetric_quant else inference_module.Asymmetric)
+
+
+def run_dequantize_ds(activations, params, num_groups, q_bits, is_symmetric_quant):
+    global inference_module
+    if inference_module is None:
+        inference_module = QuantizerBuilder().load()
+    return inference_module.dequantize(
+        activations,
+        params,
+        num_groups,
+        q_bits,
+        inference_module.Symmetric if is_symmetric_quant else inference_module.Asymmetric,
+    )
 
 
 def get_q_props(q_bits):
@@ -86,6 +104,22 @@ def run_float_quantize(q_bits, is_symmetric_quant, activations_ref, num_groups):
     return data_i8, params
 
 
+def run_float_dequantize(q_bits, is_symmetric_quant, data_i8, params, num_groups):
+    data_f = data_i8.reshape(num_groups, -1).to(dtype=torch.float32)
+
+    scales = params[:, 0].reshape(-1, 1)
+    offsets = params[:, 1].reshape(-1, 1)
+
+    if not is_symmetric_quant:
+        data_f = data_f - offsets
+    else:
+        assert offsets.allclose(torch.zeros_like(offsets))
+
+    data_f = data_f * scales
+
+    return data_f
+
+
 @pytest.mark.inference_ops
 @pytest.mark.parametrize("num_groups", [1, 13, 512])
 @pytest.mark.parametrize("num_elems", [8, 16, 32, 64, 128, 256, 4096, 8192, 12288, 16384])
@@ -93,6 +127,8 @@ def run_float_quantize(q_bits, is_symmetric_quant, activations_ref, num_groups):
 @pytest.mark.parametrize("q_bits", [4, 8])
 @pytest.mark.parametrize("directed_case", ["all_zeros", None])
 def test_float_quantize(num_elems, num_groups, is_symmetric_quant, q_bits, directed_case):
+    # fix seed
+    torch.manual_seed(num_elems)
 
     if directed_case == "all_zeros":
         activations_ds = torch.zeros((num_groups, num_elems),
@@ -105,16 +141,14 @@ def test_float_quantize(num_elems, num_groups, is_symmetric_quant, q_bits, direc
     activations_ref = activations_ds.clone().detach()
 
     ref_out_tensor, ref_params = run_float_quantize(q_bits, is_symmetric_quant, activations_ref, num_groups)
+    ref_dequantized_tensor = run_float_dequantize(q_bits, is_symmetric_quant, ref_out_tensor, ref_params, num_groups)
+    # we need to convert the tensor to float64 to avoid overflow
+    ref_quantization_error = torch.sum(torch.abs((activations_ref - ref_dequantized_tensor).to(torch.float64)))
 
     ds_out_tensor, ds_out_params = run_quantize_ds(activations_ds, num_groups, q_bits, is_symmetric_quant)
+    ds_dequantized_tensor = run_dequantize_ds(ds_out_tensor, ds_out_params, num_groups, q_bits, is_symmetric_quant)
+    assert torch.all(torch.isfinite(ds_dequantized_tensor))
 
-    if (q_bits == 4):
-        ds_out_tensor = int4x2to2xint4(ds_out_tensor)
+    ds_quantization_error = torch.sum(torch.abs((activations_ds - ds_dequantized_tensor).to(torch.float64)))
 
-    # Allow a max difference of 1 to account for differences in rounding in pytorch implementation
-    assert (torch.all(torch.lt(torch.abs(ds_out_tensor.flatten() - ref_out_tensor.flatten()), 2)))
-    if is_symmetric_quant:
-        assert (torch.allclose(ds_out_params.flatten(), ref_params[:, 0].flatten()))
-    else:
-        assert (torch.allclose(ds_out_params[:, 0].flatten(), ref_params[:, 0].flatten()))
-        assert (torch.allclose(ds_out_params[:, 1].flatten(), ref_params[:, 1].flatten(), atol=5e-5, rtol=5e-5))
+    assert (ds_quantization_error <= ref_quantization_error * 1.05)

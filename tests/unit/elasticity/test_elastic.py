@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import pytest
 import deepspeed
@@ -6,6 +9,10 @@ from unit.common import DistributedTest
 from deepspeed.git_version_info import version as ds_version
 import os
 from unit.simple_model import SimpleModel
+from deepspeed.ops.op_builder import FusedAdamBuilder
+
+if not deepspeed.ops.__compatible_ops__[FusedAdamBuilder.NAME]:
+    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 
 
 @pytest.fixture

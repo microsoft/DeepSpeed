@@ -1,8 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
-"""
-Copyright (c) Microsoft Corporation
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 #############################################
 # Routes
@@ -141,6 +140,7 @@ FP16 parameters should be of the format:
   "initial_scale_power": 16,
   "loss_scale_window": 1000,
   "hysteresis": 2,
+  "consecutive_hysteresis": false,
   "min_loss_scale": 1
 }
 '''
@@ -167,6 +167,10 @@ FP16_LOSS_SCALE_WINDOW_DEFAULT = 1000
 # FP16 hysteresis
 FP16_HYSTERESIS = "hysteresis"
 FP16_HYSTERESIS_DEFAULT = 2
+
+# FP16 consecutive hysteresis
+FP16_CONSECUTIVE_HYSTERESIS = "consecutive_hysteresis"
+FP16_CONSECUTIVE_HYSTERESIS_DEFAULT = False
 
 # FP16 min loss scale
 FP16_MIN_LOSS_SCALE = "min_loss_scale"

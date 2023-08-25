@@ -1,11 +1,14 @@
-'''
-Copyright 2021 The Microsoft DeepSpeed Team
-'''
-# The file has been adapted from two fairscale files:
-# (1) https://github.com/facebookresearch/fairscale/blob/master/fairscale/nn/moe/moe_layer.py
-# (2) https://github.com/facebookresearch/fairscale/blob/master/fairscale/nn/moe/top2gate.py
-# Git commit hash: 34df606902a240567a0d898037ece55c2f1336cf
-# We retain the following license from the original files:
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+"""
+The file has been adapted from two fairscale files:
+ (1) https://github.com/facebookresearch/fairscale/blob/master/fairscale/nn/moe/moe_layer.py
+ (2) https://github.com/facebookresearch/fairscale/blob/master/fairscale/nn/moe/top2gate.py
+ Git commit hash: 34df606902a240567a0d898037ece55c2f1336cf
+ We retain the following license from the original files:
+"""
 
 # Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
 #
@@ -27,6 +30,11 @@ if TYPE_CHECKING:
     Base = Module[Tensor]
 else:
     Base = Module
+
+TOPK_GATE_TIMER = 'topk_gate'
+MOE_TIMER = 'moe'
+FIRST_ALLTOALL_TIMER = '1st_a2a'
+SECOND_ALLTOALL_TIMER = '2nd_a2a'
 
 uniform_map: Dict[torch.device, Callable] = {}
 gumbel_map: Dict[torch.device, Callable] = {}
@@ -388,7 +396,7 @@ class TopKGate(Module):
                 use_tutel: bool = False) -> Tuple[Tensor, Tensor, Tensor]:  # type: ignore
 
         if self.wall_clock_breakdown:
-            self.timers('TopKGate').start()
+            self.timers(TOPK_GATE_TIMER).start()
 
         if self.wg.weight.dtype != torch.float32:
             self.wg = self.wg.float()
@@ -408,8 +416,8 @@ class TopKGate(Module):
                                      self.min_capacity)
 
         if self.wall_clock_breakdown:
-            self.timers('TopKGate').stop()
-            self.gate_time = self.timers('TopKGate').elapsed(reset=False)
+            self.timers(TOPK_GATE_TIMER).stop()
+            self.gate_time = self.timers(TOPK_GATE_TIMER).elapsed(reset=False)
 
         return gate_output
 
@@ -469,7 +477,7 @@ class MOELayer(Base):
     def forward(self, *input: Tensor, **kwargs: Any) -> Tensor:
 
         if self.wall_clock_breakdown:
-            self.timers('moe').start()
+            self.timers(MOE_TIMER).start()
 
         # Implement Algorithm 2 from GShard paper.
         d_model = input[0].shape[-1]
@@ -492,7 +500,7 @@ class MOELayer(Base):
             dispatched_input = einsum("sec,sm->ecm", dispatch_mask.type_as(input[0]), reshaped_input)
 
         if self.wall_clock_breakdown:
-            self.timers('falltoall').start()
+            self.timers(FIRST_ALLTOALL_TIMER).start()
 
         if groups._get_expert_model_parallel_world_size() == 1:
             # If the non-expert is tensor-parallel, it will create
@@ -506,8 +514,8 @@ class MOELayer(Base):
         dispatched_input = _AllToAll.apply(self.ep_group, dispatched_input)
 
         if self.wall_clock_breakdown:
-            self.timers('falltoall').stop()
-            self.time_falltoall = self.timers('falltoall').elapsed(reset=False)
+            self.timers(FIRST_ALLTOALL_TIMER).stop()
+            self.time_falltoall = self.timers(FIRST_ALLTOALL_TIMER).elapsed(reset=False)
 
         # Re-shape after all-to-all: ecm -> gecm
         dispatched_input = dispatched_input.reshape(self.ep_size, self.num_local_experts, -1, d_model)
@@ -515,13 +523,13 @@ class MOELayer(Base):
         expert_output = self.experts(dispatched_input)
 
         if self.wall_clock_breakdown:
-            self.timers('salltoall').start()
+            self.timers(SECOND_ALLTOALL_TIMER).start()
 
         expert_output = _AllToAll.apply(self.ep_group, expert_output)
 
         if self.wall_clock_breakdown:
-            self.timers('salltoall').stop()
-            self.time_salltoall = self.timers('salltoall').elapsed(reset=False)
+            self.timers(SECOND_ALLTOALL_TIMER).stop()
+            self.time_salltoall = self.timers(SECOND_ALLTOALL_TIMER).elapsed(reset=False)
 
         # Re-shape back: gecm -> ecm
         expert_output = expert_output.reshape(self.ep_size * self.num_local_experts, -1, d_model)
@@ -540,7 +548,7 @@ class MOELayer(Base):
         a = combined_output.reshape(input[0].shape)
 
         if self.wall_clock_breakdown:
-            self.timers('moe').stop()
-            self.time_moe = self.timers('moe').elapsed(reset=False)
+            self.timers(MOE_TIMER).stop()
+            self.time_moe = self.timers(MOE_TIMER).elapsed(reset=False)
 
         return a

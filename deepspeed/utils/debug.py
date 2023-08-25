@@ -1,5 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
-""" debug utils """
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 # For lazy import with printflock()
 fcntl = None
@@ -81,7 +83,7 @@ def printflock(*msgs):
 
     """
     global fcntl
-    if fcntl == None:
+    if fcntl is None:
         import fcntl
 
     with open(__file__, "r") as fh:

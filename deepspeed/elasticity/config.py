@@ -1,6 +1,7 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import json
 from .constants import *
@@ -83,7 +84,7 @@ class ElasticityConfig:
             raise ElasticityConfigError("Elasticity min_gpus cannot be greater than max_gpus, "
                                         f"given min_gpus: {self.min_gpus}, max_gpus: {self.max_gpus}")
 
-        self.model_parallel_size = param_dict.get(MODEL_PARLLEL_SIZE, MODEL_PARLLEL_SIZE_DEFAULT)
+        self.model_parallel_size = param_dict.get(MODEL_PARALLEL_SIZE, MODEL_PARALLEL_SIZE_DEFAULT)
         if self.model_parallel_size < 1:
             raise ElasticityConfigError("Model-Parallel size cannot be less than 1, "
                                         f"given model-parallel size: {self.model_parallel_size}")

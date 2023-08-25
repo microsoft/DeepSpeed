@@ -1,8 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
-"""
-Copyright (c) Microsoft Corporation
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from pydantic import root_validator
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
@@ -75,7 +74,6 @@ class DeepSpeedMonitorConfig(DeepSpeedConfigModel):
 
     @root_validator
     def check_enabled(cls, values):
-        values["enabled"] = False
-        if (values.get("tensorboard").enabled or values.get("wandb").enabled or values.get("csv_monitor").enabled):
-            values["enabled"] = True
+        values["enabled"] = values.get("tensorboard").enabled or values.get("wandb").enabled or values.get(
+            "csv_monitor").enabled
         return values

@@ -57,7 +57,7 @@ ZeRO Configurations
 All the settings for DeepSpeed ZeRO are set with the `DeepSpeedZeroConfig`_.
 The dictionary provided under the ``zero_optimization`` entry of the main
 DeepSpeed configuration dict will be parsed and validated with this class.
-Sub-configurations for parameter offload and optimzer offload settings are
+Sub-configurations for parameter offload and optimizer offload settings are
 parsed by `DeepSpeedZeroOffloadParamConfig`_ and
 `DeepSpeedZeroOffloadOptimizerConfig`_.
 
@@ -155,7 +155,39 @@ Example ZeRO-3 Configurations
             ...
         }
 
+MiCS Configurations
+===================
 
+All MiCS configurations are set with `DeepSpeedZeroConfig`. MiCS assumes ZeRO
+stage 3 optimization is enabled. For now, there are two configuration fields of
+MiCS `mics_shard_size` and `mics_hierarchical_params_gather`. `mics_shard_size`
+controls how many devices are used for partitioning the model states.
+`mics_hierarchical_params_gather` controls whether we use a two-stage
+hierarchical way to gather parameters in the forward computation.
+`mics_hierarchical_params_gather` is useful when model states are partitioned
+across multiple nodes and the cross-node bandwidth is slow. By default this is
+turned off.
+
+
+Example MiCS Configurations
+===========================
+
+#. Use MiCS to partition the model states (including optimizer states,
+   gradients, and parameters). The following config example partitions the model
+   states to eight devices, and assumes the eight devices are located within a
+   single node (`mics_hierarchical_params_gather` is `False`).
+
+    .. code-block:: python
+        :emphasize-lines: 3
+
+        {
+            "zero_optimization": {
+                "stage": 3,
+                "mics_shard_size": 8,
+                "mics_hierarchical_params_gather": False,
+            },
+            ...
+        }
 
 Assumptions
 ===========
@@ -275,6 +307,17 @@ DeepSpeed can automatically detect the following external parameter scenarios:
 .. autofunction:: deepspeed.zero.register_external_parameter
 
 .. autofunction:: deepspeed.zero.unregister_external_parameter
+
+
+.. `Module.apply <https://pytorch.org/docs/stable/generated/torch.nn.Module.html?highlight=module+apply#torch.nn.Module.apply>`_
+Overriding Module.apply
+===============================
+A convenient mechanism for customizing model initialization is `Module.apply <https://pytorch.org/docs/stable/generated/torch.nn.Module.html?highlight=module+apply#torch.nn.Module.apply>`_.
+With ZeRO stage 3, ``Module.apply`` implementations must account for parameter partitioning by ``zero.Init`` during model initialization. The default behavior of ZeRO stage 3 is to automatically
+handle this issue by overriding ``Module.apply`` to ensure that parameters are gathered before access by ``Module.apply``. The benefit of this approach is development convenience, since
+users are saved the burden of manual parameter coordination in ``Module.apply``. However, the downside is slow model initialization, since all the model parameters (e.g., billions) are gathered
+even though the common usage of ``Module.apply`` is to customize a few parameters. Developers can disable this default behavior by setting the ``override_module_apply`` configuration knob to ``False``,
+for faster model initialization at the cost of manually handling partitioned parameters in their ``Module.apply`` implementations.
 
 
 Memory-Centric Tiling

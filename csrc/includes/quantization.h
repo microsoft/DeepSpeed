@@ -1,6 +1,7 @@
-/*
-Copyright The Microsoft DeepSpeed Team
-*/
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
 
 #pragma once
 
@@ -38,6 +39,32 @@ void launch_dequantize_kernel(T* dequant_data,
                               int elems_per_group,
                               int total_elems,
                               cudaStream_t stream);
+
+void launch_swizzled_quant(int8_t* q_data,
+                           float* q_scales,
+                           const __half* input_data,
+                           int num_bits,
+                           quantize::Type q_type,
+                           int groups,
+                           int elems_per_group,
+                           int pipelining,
+                           int nodes,
+                           int devices_per_node,
+                           cudaStream_t stream);
+
+void launch_dequant_reduce(int8_t* reduced_data,
+                           float* reduced_scales,
+                           const int8_t* input_data,
+                           const float* input_scales,
+                           int num_gpus,
+                           int num_bits,
+                           quantize::Type quant_type,
+                           int out_groups,
+                           int elems_per_out_group,
+                           int elems_per_in_tensor,
+                           int groups_per_in_tensor,
+                           int elems_per_in_group,
+                           cudaStream_t stream);
 
 template <typename T>
 void launch_fake_quantize_kernel(T* vals,

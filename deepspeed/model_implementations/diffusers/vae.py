@@ -1,6 +1,8 @@
-'''
-Copyright 2022 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 from ..features.cuda_graph import CUDAGraph
 
@@ -10,6 +12,7 @@ class DSVAE(CUDAGraph, torch.nn.Module):
     def __init__(self, vae, enable_cuda_graph=True):
         super().__init__(enable_cuda_graph=enable_cuda_graph)
         self.vae = vae
+        self.config = vae.config
         self.device = self.vae.device
         self.dtype = self.vae.dtype
         self.vae.requires_grad_(requires_grad=False)

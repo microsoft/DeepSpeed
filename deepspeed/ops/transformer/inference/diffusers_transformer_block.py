@@ -1,6 +1,7 @@
-'''
-Copyright 2022 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 import torch.nn as nn
@@ -10,6 +11,7 @@ from .diffusers_attention import DeepSpeedDiffusersAttention
 from .bias_add import nhwc_bias_add
 from .diffusers_2d_transformer import Diffusers2DTransformerConfig
 from deepspeed.ops.op_builder import InferenceBuilder, SpatialInferenceBuilder
+from deepspeed.utils.types import ActivationFuncType
 
 # Ops will be loaded on demand
 transformer_cuda_module = None
@@ -83,7 +85,7 @@ class DeepSpeedDiffusersTransformerBlock(nn.Module):
 
         # In v0.11.0 of diffusers, the kwarg was changed from 'context' to 'encoder_hidden_states'
         # This is so we can support older and newer versions of diffusers
-        if "encoder_hidden_states" in kwargs and kwargs["encoder_hidden_states"] != None:
+        if "encoder_hidden_states" in kwargs and kwargs["encoder_hidden_states"] is not None:
             context = kwargs["encoder_hidden_states"]
 
         out_norm_1 = self.transformer_cuda_module.layer_norm(hidden_states, self.norm1_g, self.norm1_b, self.norm1_eps)
@@ -96,7 +98,7 @@ class DeepSpeedDiffusersTransformerBlock(nn.Module):
             out_attn_2, self.attn_2_bias, out_attn_1, self.norm3_g, self.norm3_b, self.norm3_eps)
 
         out_ff1 = nn.functional.linear(out_norm_3, self.ff1_w)
-        out_geglu = self.transformer_cuda_module.bias_geglu(out_ff1, self.ff1_b)
+        out_geglu = self.transformer_cuda_module.gated_activation(out_ff1, self.ff1_b, ActivationFuncType.GATED_GELU)
 
         out_ff2 = nn.functional.linear(out_geglu, self.ff2_w)
         return nhwc_bias_add(out_ff2, self.ff2_b, other=out_attn_2)

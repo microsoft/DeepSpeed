@@ -1,7 +1,7 @@
-"""
-"Copyright 2022 The Microsoft DeepSpeed Team.
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import sys
 import torch
@@ -10,7 +10,7 @@ from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.partition_parameters import _init_external_params
 from deepspeed.runtime.zero.partition_parameters import *
-from deepspeed.runtime.zero.partitioned_param_coordinator import PartitionedParameterCoordinator, iter_params
+from deepspeed.runtime.zero.partitioned_param_coordinator import PartitionedParameterCoordinator, InflightParamRegistry, iter_params
 from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
 
@@ -22,17 +22,48 @@ def is_builtin_type(obj):
     return obj.__class__.__module__ == '__builtin__' or obj.__class__.__module__ == "builtins"
 
 
+def isinstance_namedtuple(obj: object) -> bool:
+    """
+    Is this an instance of namedtuple/NamedTuple?
+    From: https://stackoverflow.com/a/62692640
+
+    Args:
+        obj (object): An object.
+
+    Returns:
+        bool: True if namedtuple/NamedTuple else False.
+    """
+    return isinstance(obj, tuple) and hasattr(obj, '_asdict') and hasattr(obj, '_fields')
+
+
 # ensure we only warn once, otherwise every iteration will trigger a warning
 warned = False
 
 
-#apply torch.autograd.Function that calls a backward_function to tensors in output
 def _apply_to_tensors_only(module, functional, backward_function, outputs):
+    """
+    Apply a torch.autograd.Function that calls a `backward_function` to every Tensor in `outputs`.
+
+    Args:
+        module (torch.nn.Module):  A torch module
+        functional (Type[torch.autograd.Function]): The function class to apply.
+        backward_function (Callable[[torch.nn.Module], None]): A backward_function to pass to
+            `functional.apply`.
+        outputs (Any): The output of `module`.
+
+    Returns:
+        Any: The output of `module`.
+    """
     if isinstance(outputs, (tuple, list)):
         touched_outputs = []
         for output in outputs:
             touched_output = _apply_to_tensors_only(module, functional, backward_function, output)
             touched_outputs.append(touched_output)
+
+        if isinstance_namedtuple(outputs):
+            # namedtuples require a slightly different syntax.
+            return outputs.__class__(*touched_outputs)
+
         return outputs.__class__(touched_outputs)
     elif isinstance(outputs, dict):
         # apply inplace to avoid recreating dict inherited objects
@@ -169,27 +200,38 @@ class PostBackwardFunction(torch.autograd.Function):
 
 class DeepSpeedZeRoOffload(object):
 
-    def __init__(self,
-                 module,
-                 timers,
-                 ds_config,
-                 overlap_comm=True,
-                 prefetch_bucket_size=50000000,
-                 max_reuse_distance=1000000000,
-                 max_live_parameters=1000000000,
-                 param_persistence_threshold=100000,
-                 model_persistence_threshold=sys.maxsize,
-                 offload_param_config=None,
-                 mpu=None):
+    def __init__(
+        self,
+        module,
+        timers,
+        ds_config,
+        overlap_comm=True,
+        prefetch_bucket_size=50000000,
+        max_reuse_distance=1000000000,
+        max_live_parameters=1000000000,
+        param_persistence_threshold=100000,
+        model_persistence_threshold=sys.maxsize,
+        dp_process_group=None,
+        offload_param_config=None,
+        mpu=None,
+        zero_param_parallel_group=None,
+        zero_quantized_weights=False,
+        zero_quantized_nontrainable_weights=False,
+    ):
 
         see_memory_usage("DeepSpeedZeRoOffload initialize [begin]", force=True)
 
         print_rank_0(f"initialized {__class__.__name__} with args: {locals()}", force=False)
 
         self.module = module
+        self.timers = timers
         self.dtype = list(module.parameters())[0].dtype
+        self.dp_process_group = dp_process_group
         self.offload_device = None
         self.offload_param_pin_memory = False
+        self.zero_param_parallel_group = zero_param_parallel_group
+        self.zero_quantized_weights = zero_quantized_weights
+        self.zero_quantized_nontrainable_weights = zero_quantized_nontrainable_weights
 
         if offload_param_config is not None and offload_param_config.device != OffloadDeviceEnum.none:
             self.offload_device = offload_param_config.device
@@ -211,7 +253,15 @@ class DeepSpeedZeRoOffload(object):
         self._prefetch_bucket_sz = int(prefetch_bucket_size)
         self._max_reuse_distance_in_numel = int(max_reuse_distance)
         self._max_available_parameters_in_numel = int(max_live_parameters)
-        self.__allgather_stream = get_accelerator().Stream() if overlap_comm else get_accelerator().default_stream()
+        self.__allgather_stream = None if get_accelerator().is_synchronized_device() else get_accelerator().Stream(
+        ) if overlap_comm else get_accelerator().default_stream()
+
+        if not hasattr(module, "ds_inflight_param_registry"):
+            module.ds_inflight_param_registry = dict()
+            # we need two registries, one for training and one for eval. They will be used when creating PartitionedParameterCoordinator
+            module.ds_inflight_param_registry[True] = InflightParamRegistry()
+            module.ds_inflight_param_registry[False] = InflightParamRegistry()
+        self.__inflight_param_registry = module.ds_inflight_param_registry
 
         self.forward_hooks = []
         self.backward_hooks = []
@@ -239,7 +289,11 @@ class DeepSpeedZeRoOffload(object):
                 max_reuse_distance_in_numel=self._max_reuse_distance_in_numel,
                 max_available_parameters_in_numel=self._max_available_parameters_in_numel,
                 allgather_stream=self.__allgather_stream,
+                inflight_param_registry=self.__inflight_param_registry[training],
                 prefetch_nvme=self.offload_device == OffloadDeviceEnum.nvme,
+                timers=self.timers,
+                zero_quantized_weights=self.zero_quantized_weights,
+                zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights,
             )
 
         return self.param_coordinators[training]
@@ -264,7 +318,10 @@ class DeepSpeedZeRoOffload(object):
                      config_dict_or_path=ds_config,
                      remote_device=self.offload_device,
                      pin_memory=self.offload_param_pin_memory,
-                     mpu=mpu)
+                     mpu=mpu,
+                     zero_param_parallel_group=self.zero_param_parallel_group,
+                     zero_quantized_weights=self.zero_quantized_weights,
+                     zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights)
 
     def destroy(self):
         self._remove_module_hooks()
@@ -304,7 +361,7 @@ class DeepSpeedZeRoOffload(object):
         persistent_params = []
         total_persistent_parameters = 0
         params_count = 0
-        for _, param in self.module.named_parameters(recurse=True):
+        for name, param in self.module.named_parameters(recurse=True):
             if param.ds_numel + total_persistent_parameters > model_threshold:
                 continue
 
@@ -444,7 +501,7 @@ class DeepSpeedZeRoOffload(object):
         param_coordinator.trace_prologue(sub_module)
         if param_coordinator.is_record_trace():
             param_coordinator.record_module(sub_module)
-        param_coordinator.fetch_sub_module(sub_module)
+        param_coordinator.fetch_sub_module(sub_module, forward=True)
 
         see_memory_usage(f"Before sub module function {sub_module.__class__.__name__} after fetch", force=False)
 
@@ -454,26 +511,28 @@ class DeepSpeedZeRoOffload(object):
                          force=False)
 
         param_coordinator = self.get_param_coordinator(training=sub_module.training)
-        param_coordinator.release_sub_module(sub_module)
+        param_coordinator.release_sub_module(sub_module, backward=False)
 
         see_memory_usage(f"After sub module function {sub_module.__class__.__name__}  {sub_module.id} after release",
                          force=False)
 
     @torch.no_grad()
     def pre_sub_module_backward_function(self, sub_module):
-        param_coordinator = self.get_param_coordinator(training=sub_module.training)
+        assert sub_module.training, "backward pass is invalid for module in evaluation mode"
+        param_coordinator = self.get_param_coordinator(training=True)
         param_coordinator.trace_prologue(sub_module)
         if param_coordinator.is_record_trace():
             param_coordinator.record_module(sub_module)
-        param_coordinator.fetch_sub_module(sub_module)
+        param_coordinator.fetch_sub_module(sub_module, forward=False)
 
     @torch.no_grad()
     def post_sub_module_backward_function(self, sub_module):
+        assert sub_module.training, "backward pass is invalid for module in evaluation mode"
         see_memory_usage(
             f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} before release",
             force=False)
 
-        self.get_param_coordinator(training=sub_module.training).release_sub_module(sub_module)
+        self.get_param_coordinator(training=True).release_sub_module(sub_module, backward=True)
 
         see_memory_usage(
             f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} after release",

@@ -1,10 +1,11 @@
-'''
-Copyright 2021 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 import time
 import os
-
 from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
 
@@ -25,6 +26,7 @@ from ..module_inject.policy import TransformerPolicy
 from ..module_inject.auto_tp import AutoTP
 
 from ..module_inject.replace_policy import generic_policies
+from ..module_inject.auto_tp_model_utils import build_bloom_alibi_tensor, build_mpt_atten_bias_tensor, build_mpt_alibi_tensor
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -84,15 +86,24 @@ class InferenceEngine(Module):
         self.model_profile_enabled = False
         self._model_times = []
 
-        # This is a hack to remove the prepare_mask function on HF side for BLOOM architecture
-        self.remove_mask_prepare_for_bloom()
+        if not self.injection_dict and config.replace_with_kernel_inject:
+            # This is a hack to remove the prepare_mask function on HF side for BLOOM architecture
+            self.remove_mask_prepare_for_bloom()
+
+        if self.injection_dict or not config.replace_with_kernel_inject:
+            # This is a hack to redefine the alibi func due to TP
+            if config.tensor_parallel.tp_size > 1:
+                self.build_alibi_tensor()
+                self.build_attn_bias()
 
         if get_accelerator().device_name() == 'cuda' and config.enable_cuda_graph:
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
                 "If you want to use cuda graph, please upgrade torch to at least v1.10"
 
-        if config.checkpoint and not config.replace_with_kernel_inject:
-            self._load_checkpoint(config.checkpoint)
+        # Check if model passed to engine is loaded w/ meta tensors, in which case
+        # kernel injection must be enabled.
+        # NOTE: This check assumes a Hugging Face hierarchy for the device type i.e. module.device.type
+        self.model_meta_device = self.module.device.type == 'meta' if hasattr(self.module, "device") else False
 
         # convert model to intended dtype
         if config.dtype:
@@ -113,11 +124,7 @@ class InferenceEngine(Module):
         if moe and dist.get_world_size() > 1:
             self._create_ep_parallel_group(config.moe.moe_experts)
 
-        # retain this from the old conditional argument being passed to apply_injection_policy()
-        if not config.replace_with_kernel_inject:
-            config.checkpoint = None
-
-        # We only support three modes: 1) user specified policy for tensor-parallelism, 2) kernel injection (replace_with_kernel_inject), and 3) automatic tensor parallelism.
+        # We only support three modes: 1) user specified policy for tensor-parallelism, 2) kernel injection (replace_with_kernel_inject), and 3) automatic tensor parallelism if tp_size > 1.
         if self.injection_dict:
             # 1. User specified Tensor Parallelism
             assert not config.replace_with_kernel_inject, "Cannot use both user specified injection policy and kernel injection"
@@ -132,7 +139,7 @@ class InferenceEngine(Module):
             if config.replace_with_kernel_inject:
                 # 2. DeepSpeed Kernel Injection
                 self._apply_injection_policy(config)
-            else:
+            elif config.tensor_parallel.tp_size > 1:
                 # 3. Automatic Tensor Parallelism
                 parser_dict = AutoTP.tp_parser(model)
                 print("AutoTP: ", parser_dict)
@@ -176,6 +183,20 @@ class InferenceEngine(Module):
             if hasattr(self.module.transformer, '_prepare_attn_mask'):
                 self.module.transformer._prepare_attn_mask = lambda attention_mask, *args, **kwargs: attention_mask
 
+    def build_alibi_tensor(self):
+        if hasattr(self.module, 'transformer'):
+            if hasattr(self.module.transformer, 'build_alibi_tensor'):
+                self.module.transformer.build_alibi_tensor = build_bloom_alibi_tensor
+            if hasattr(self.module.transformer, 'build_mpt_alibi_tensor'):
+                self.module.transformer.build_mpt_alibi_tensor_orig = self.module.transformer.build_mpt_alibi_tensor
+                self.module.transformer.__class__.build_mpt_alibi_tensor = build_mpt_alibi_tensor
+
+    def build_attn_bias(self):
+        if hasattr(self.module, 'transformer'):
+            if hasattr(self.module.transformer, '_attn_bias'):
+                self.module.transformer._attn_bias_orig = self.module.transformer._attn_bias
+                self.module.transformer.__class__._attn_bias = build_mpt_atten_bias_tensor
+
     def _pre_forward_hook(self, module, *inputs, **kwargs):
         if self.use_cuda_events:
             self.timers(INFERENCE_MODEL_TIMER).start()
@@ -190,7 +211,7 @@ class InferenceEngine(Module):
         else:
             get_accelerator().synchronize()
             self._end = time.time()
-            elapsed_time = self._end - self._start
+            elapsed_time = (self._end - self._start) * 1e3  # convert seconds to ms
         self._model_times.append(elapsed_time)
 
     def _create_model_parallel_group(self, config):
@@ -278,16 +299,38 @@ class InferenceEngine(Module):
         def load(module, state_dict, prefix):
             args = (state_dict, prefix, {}, True, [], [], error_msgs)
             if hasattr(module, 'weight'):
+                if module.weight.data.is_meta:
+                    # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                    module.weight = torch.nn.parameter.Parameter(data=torch.empty_like(module.weight.data,
+                                                                                       device="cpu"),
+                                                                 requires_grad=module.weight.data.requires_grad)
                 if 'query_key_value' in prefix:
-                    module.weight = self.mp_replace.qkv_copy(module.weight.data, state_dict[prefix + 'weight'])
+                    module.weight = self.mp_replace.strided_copy(module.weight.data,
+                                                                 state_dict[prefix + 'weight'],
+                                                                 num_splits=3)
                 else:
                     module.weight = self.mp_replace.copy(module.weight.data, state_dict[prefix + 'weight'])
             else:
+                if module.norm.weight.data.is_meta:
+                    # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                    module.norm.weight = torch.nn.parameter.Parameter(
+                        data=torch.empty_like(module.norm.weight.data, device="cpu"),
+                        requires_grad=module.norm.weight.data.requires_grad)
                 module.norm.weight = self.mp_replace.copy(module.norm.weight.data, state_dict[prefix + 'weight'])
             if prefix + 'bias' in self.key_list:
                 if hasattr(module, 'norm'):
+                    if module.norm.bias.data.is_meta:
+                        # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                        module.norm.bias = torch.nn.parameter.Parameter(
+                            data=torch.empty_like(module.norm.bias.data, device="cpu"),
+                            requires_grad=module.norm.bias.data.requires_grad)
                     module.norm.bias = self.mp_replace.copy(module.norm.bias, state_dict[prefix + 'bias'])
                 else:
+                    if module.bias.data.is_meta:
+                        # meta tensor cannot be casted or copied to, so we need to replace it with a normal tensor here
+                        module.bias = torch.nn.parameter.Parameter(data=torch.empty_like(module.bias.data,
+                                                                                         device="cpu"),
+                                                                   requires_grad=module.bias.data.requires_grad)
                     data = state_dict[prefix + 'bias']
                     data = data.to(get_accelerator().current_device_name())
                     module.bias = self.mp_replace.copy(module.bias, data)
@@ -316,15 +359,22 @@ class InferenceEngine(Module):
 
         load_module_recursive(r_module)
 
+        embedding_weight = None
+
+        for n, p in r_module.named_parameters():
+            if "word_embeddings." in n or "embed_tokens." in n or "wte." in n:
+                embedding_weight = p
+        if embedding_weight is not None and hasattr(r_module, "lm_head") and hasattr(
+                r_module.lm_head, "weight") and r_module.lm_head.weight.is_meta:
+            r_module.lm_head.weight = embedding_weight
+
     def _apply_injection_policy(self, config, client_module=None):
         # client_module is only passed when using the injection_dict method.
         checkpoint_dir = config.checkpoint
         checkpoint = SDLoaderFactory.get_sd_loader_json(checkpoint_dir,
                                                         self.checkpoint_engine) if checkpoint_dir is not None else None
 
-        generic_injection(self.module,
-                          fp16=(config.dtype == torch.half) or (config.dtype == torch.int8),
-                          enable_cuda_graph=config.enable_cuda_graph)
+        generic_injection(self.module, dtype=config.dtype, enable_cuda_graph=config.enable_cuda_graph)
 
         if isinstance(self.module, torch.nn.Module):
             # config is our DeepSpeedInferenceConfig and self.config is the HF model config
@@ -367,16 +417,18 @@ class InferenceEngine(Module):
         else:
             sd_loader = SDLoaderFactory.get_sd_loader_json(load_dir, self.checkpoint_engine)
 
-        if type(sd_loader) is list:
-            self.sd = torch.load(sd_loader[0], map_location='cpu')
+        checkpoint = sd_loader['checkpoints']
+
+        if type(checkpoint) is list:
+            self.sd = torch.load(checkpoint[0], map_location='cpu')
             self.key_list = list(self.sd.keys())
 
             self.load_model_with_checkpoint(self.module)
 
-            for i in range(1, len(sd_loader)):
+            for i in range(1, len(checkpoint)):
                 if not dist.is_initialized() or dist.get_rank() == 0:
                     print(f"loading checkpoint ({i})")
-                self.sd = torch.load(sd_loader[i], map_location=get_accelerator().device_name())
+                self.sd = torch.load(checkpoint[i], map_location=get_accelerator().device_name())
                 self.key_list = list(self.sd.keys())
                 self.load_model_with_checkpoint(self.module)
         else:
@@ -510,12 +562,13 @@ class InferenceEngine(Module):
             else:
                 self._create_cuda_graph(*inputs, **kwargs)
                 outputs = self._graph_replay(*inputs, **kwargs)
+
         else:
             outputs = self.module(*inputs, **kwargs)
 
         if self.model_profile_enabled and self._config.enable_cuda_graph:
             get_accelerator().synchronize()
-            duration = time.time() - start
+            duration = (time.time() - start) * 1e3  # convert seconds to ms
             self._model_times.append(duration)
 
         return outputs

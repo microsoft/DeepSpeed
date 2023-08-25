@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 #Linear Module to use with ZeRO Stage 3 to allow for parameter memory release
 #after the module execution during forward
@@ -23,8 +26,6 @@ from deepspeed.runtime.utils import noop_decorator
 from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
 
-tensor_map = {}
-
 
 def print_rank_0(message, debug=False, force=False):
     if dist.get_rank() == 0 and (debug or force):
@@ -46,16 +47,8 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
     @autocast_custom_fwd
     # bias is an optional argument
     def forward(ctx, input, weight, bias=None):
-        #print("In ZeRO Linear Function")
 
-        weight_id = id(weight)
-        bias_id = id(bias)
-
-        #ctx.save_for_backward(input, weight, bias)
-        ctx.save_for_backward(input, torch.tensor(weight_id), torch.tensor(bias_id))
-
-        tensor_map[weight_id] = weight
-        tensor_map[bias_id] = bias
+        ctx.save_for_backward(input, weight, bias)
 
         if input.dim() == 2 and bias is not None:
             # fused op is marginally faster
@@ -77,11 +70,7 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
         # None. Thanks to the fact that additional trailing Nones are
         # ignored, the return statement is simple even when the function has
         # optional inputs.
-        #input, weight, bias = ctx.saved_tensors
-
-        input, weight_id, bias_id = ctx.saved_tensors
-        weight = tensor_map[weight_id.item()]
-        bias = tensor_map[bias_id.item()]
+        input, weight, bias = ctx.saved_tensors
 
         grad_input = grad_weight = grad_bias = None
 

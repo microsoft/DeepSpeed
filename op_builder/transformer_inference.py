@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from .builder import CUDAOpBuilder, installed_cuda_version
 
@@ -53,10 +56,12 @@ class InferenceBuilder(CUDAOpBuilder):
             'csrc/transformer/inference/csrc/gelu.cu',
             'csrc/transformer/inference/csrc/relu.cu',
             'csrc/transformer/inference/csrc/layer_norm.cu',
+            'csrc/transformer/inference/csrc/rms_norm.cu',
             'csrc/transformer/inference/csrc/softmax.cu',
             'csrc/transformer/inference/csrc/dequantize.cu',
             'csrc/transformer/inference/csrc/apply_rotary_pos_emb.cu',
             'csrc/transformer/inference/csrc/transform.cu',
+            'csrc/transformer/inference/csrc/pointwise_ops.cu',
         ]
 
     def extra_ldflags(self):

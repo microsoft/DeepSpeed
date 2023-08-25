@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from .compress import get_module_name
 from .constants import *
@@ -97,7 +100,8 @@ class compression_scheduler():
             return
         else:
             shared_parameters = sp[SHARED_PARAMETERS]
-            if self.training_steps >= shared_parameters[TECHNIQUE_SCHEDULE_OFFSET]:
+            if shared_parameters[TECHNIQUE_SCHEDULE_OFFSET] <= self.training_steps <= shared_parameters[
+                    TECHNIQUE_SCHEDULE_OFFSET_END]:
                 for group_name, module_name_list, method_parameters in sp[DIFFERENT_GROUPS]:
                     for module_name in module_name_list:
                         module = recursive_getattr(self.model, module_name)

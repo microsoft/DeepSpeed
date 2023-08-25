@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 import math
@@ -13,7 +16,7 @@ g_mpu = None
 
 class QuantAct(nn.Module):
     """
-    Class to quantize given activations. Note that when using this function, the input acttivation quantization range will be fixed for all
+    Class to quantize given activations. Note that when using this function, the input activation quantization range will be fixed for all
     tokens/images for inference. This generally will affect some accuracy but achieve better latency performance.
     Parameters:
     ----------
@@ -167,7 +170,7 @@ class LinearLayer_Compress(nn.Linear):
 
         if method == 'l1':
             # compute the l1 norm of each column
-            weight_norm = torch.norm(self.weight.data, p=1, dim=1)
+            weight_norm = torch.linalg.norm(self.weight.data, ord=1, dim=1)
             mask = TopKBinarizer.apply(weight_norm, self.row_pruning_ratio, False)
             mask = mask.view(-1, 1)
             mask = mask.to(self.weight.device)
@@ -462,7 +465,7 @@ class Conv2dLayer_Compress(nn.Conv2d):
 
         if method == 'l1':
             # compute the l1 norm of each conv2d kernel (the last three dimension)
-            weight_norm = torch.norm(self.weight.data, p=1, dim=[1, 2, 3])
+            weight_norm = torch.linalg.norm(self.weight.data, ord=1, dim=[1, 2, 3])
             mask = TopKBinarizer.apply(weight_norm, self.channel_pruning_ratio, False)
             mask = mask.view(-1, 1, 1, 1)
             mask = mask.to(self.weight.device)
@@ -615,7 +618,7 @@ class BNLayer_Compress(nn.BatchNorm2d):
 
 
 def _reduce(input_):
-    """All-reduce the the input tensor across model parallel group."""
+    """All-reduce the input tensor across model parallel group."""
     group = g_mpu.get_model_parallel_group()
 
     # Bypass the function if we are using only 1 GPU.
@@ -670,7 +673,7 @@ def _split(input_):
 
 
 def _gather(input_):
-    """Gather tensors and concatinate along the last dimension."""
+    """Gather tensors and concatenate along the last dimension."""
     group = g_mpu.get_model_parallel_group()
 
     # Bypass the function if we are using only 1 GPU.
@@ -705,7 +708,7 @@ class _CopyToModelParallelRegion(torch.autograd.Function):
 
 
 class _ReduceFromModelParallelRegion(torch.autograd.Function):
-    """All-redcue the input from the model parallel region."""
+    """All-reduce the input from the model parallel region."""
 
     @staticmethod
     def forward(ctx, input_):
@@ -729,7 +732,7 @@ class _ScatterToModelParallelRegion(torch.autograd.Function):
 
 
 class _GatherFromModelParallelRegion(torch.autograd.Function):
-    """Gather the input from model parallel region and concatinate."""
+    """Gather the input from model parallel region and concatenate."""
 
     @staticmethod
     def forward(ctx, input_):

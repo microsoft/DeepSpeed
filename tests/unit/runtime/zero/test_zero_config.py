@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig, DeepSpeedZeroOffloadParamConfig, DeepSpeedZeroOffloadOptimizerConfig
 
@@ -26,6 +29,12 @@ def test_zero_config_aliasfields():
 
     config = DeepSpeedZeroConfig(**{"stage3_gather_16bit_weights_on_model_save": True})
     assert config.gather_16bit_weights_on_model_save == True
+
+
+def test_zero_config_pipeline_loading_checkpoint():
+    for stage in [0, 1, 2]:
+        config = DeepSpeedZeroConfig(**{"stage": stage})
+        assert config.pipeline_loading_checkpoint == False
 
 
 def test_zero_config_overlapcomm():

@@ -1,10 +1,12 @@
-"""
-Copyright 2022 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 from dataclasses import dataclass
 from deepspeed import comm as dist
+from typing import Dict
 
 
 @dataclass
@@ -19,9 +21,9 @@ class tensor_fragment:
     lp_fragment_address: fragment_address
     hp_fragment: torch.Tensor
     hp_fragment_address: fragment_address
-    optim_fragment: {}
-    gradient_dict: {}
-    offload_gradient_dict: {}
+    optim_fragment: Dict
+    gradient_dict: Dict
+    offload_gradient_dict: Dict
     use_offload: bool
     param_group_index: int
 

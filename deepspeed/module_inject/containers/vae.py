@@ -1,6 +1,8 @@
-'''
-Copyright 2022 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from ..policy import DSPolicy
 from ...model_implementations.diffusers.vae import DSVAE
 
@@ -30,5 +32,5 @@ class VAEPolicy(DSPolicy):
         return DSVAE(module, enable_cuda_graph=enable_cuda_graph)
 
     # NOTE (lekurile): Should we have a diffusers policy class?
-    def attention(self):
+    def attention(self, client_module):
         pass

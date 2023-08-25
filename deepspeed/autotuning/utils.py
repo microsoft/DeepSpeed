@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import re
 import collections.abc
@@ -265,7 +268,7 @@ def prune_configs(configs, ignored_keys=[]):
 
 
 def get_tuning_keys(tuning_space: dict):
-    """Outputs the list of tunnable parameters in the tuning space dict.
+    """Outputs the list of tunable parameters in the tuning space dict.
 
     Args:
         tuning_space (dict): a configuration dictionary containing tunable parameters as lists of values.

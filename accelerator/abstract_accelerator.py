@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import abc
 from abc import ABC
@@ -9,6 +12,10 @@ class DeepSpeedAccelerator(ABC):
     def __init__(self):
         self._name = None
         self._communication_backend_name = None
+
+    @abc.abstractmethod
+    def is_synchronized_device(self):
+        ...
 
     # Device APIs
     @abc.abstractmethod
@@ -147,6 +154,10 @@ class DeepSpeedAccelerator(ABC):
 
     @abc.abstractmethod
     def is_fp16_supported(self):
+        ...
+
+    @abc.abstractmethod
+    def supported_dtypes(self):
         ...
 
     # Misc
