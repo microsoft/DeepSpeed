@@ -121,6 +121,7 @@ def split_half_float_double_sparse(tensors):
     device_type = get_accelerator().device_name()
     supported_types = get_accelerator().supported_dtypes()
 
+    tensors = [eval(t) for t in tensors if isinstance(t,str)]
     for t in tensors:
         assert t.dtype in supported_types, f"attempting to reduce an unsupported grad type: {t.dtype}"
 
