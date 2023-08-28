@@ -348,7 +348,7 @@ class OptimizerSwapper(object):
         swap_paths = [info.swap_paths[0] for info in swap_info_list]
         return swap_paths
 
-    def _swap_out_unpinned_tensors(self, aio_handle, unpinned_tensors, dest_paths, pinned_buffers):
+    def _swap_out_unpinned_tensors(self, aio_handle, unpinned_tensors, dest_paths, pinned_buffers, aligned_numel=None):
 
         swap_buffer_count = len(pinned_buffers)
         unpinned_tensor_count = len(unpinned_tensors)
@@ -363,7 +363,10 @@ class OptimizerSwapper(object):
             for dst, src in zip(compute_buffers, src_tensors):
                 dst.data.copy_(src.data)
 
-            swap_lengths = [self._io_aligned_numel(unpinned_tensors[-1].numel())] * len(src_tensors)
+            if aligned_numel is not None:
+                swap_lengths = [aligned_numel] * len(src_tensors)
+            else:
+                swap_lengths = [self._io_aligned_numel(t.numel()) for t in src_tensors]
             swap_buffers = get_sized_buffers(pinned_buffers, swap_lengths)
 
             swap_paths = dest_paths[i:(i + swap_tensor_count)]

@@ -25,41 +25,28 @@ io_op_desc_t::io_op_desc_t(const bool read_op,
       _validate(validate),
       _use_aligned_buffer(false)
 {
-    const char *ds_acc_env_var = "DS_ACCELERATOR";
-    if (_buffer.is_cuda())
+    _cpu_buffer = (_buffer.is_cuda() | _buffer.is_xpu()) ? _buffer.to(torch::kCPU).pin_memory() : _buffer;
+    _contiguous_buffer = _cpu_buffer.contiguous();
+    if (at::detail::getXPUHooks().hasXPU())
     {
-        _cpu_buffer = _buffer.to(torch::kCPU).pin_memory();
-        _contiguous_buffer = _cpu_buffer.contiguous();
-    }
-    else if (std::getenv(ds_acc_env_var) == "xpu")
-    {
-        _cpu_buffer = _buffer.to(torch::kCPU);
-        _contiguous_buffer = _cpu_buffer.contiguous();
         posix_memalign((void**)&_aligned_buffer, (size_t)sysconf(_SC_PAGESIZE), _num_bytes);
         memcpy(_aligned_buffer, _contiguous_buffer.data_ptr(), _num_bytes);
         _use_aligned_buffer = true;
     }
-    else
-    {
-        _cpu_buffer =  _buffer;
-        _contiguous_buffer = _cpu_buffer.contiguous();
-    }
 }
 
-char* io_op_desc_t::data_ptr() const { 
+char* io_op_desc_t::data_ptr() const 
+{ 
     if (_use_aligned_buffer)
         return _aligned_buffer;
-    else (char*)_contiguous_buffer.data_ptr(); 
+    else return (char*)_contiguous_buffer.data_ptr(); 
 }
 
 void io_op_desc_t::fini()
 {
     if (_read_op && _buffer.is_cuda()) { _buffer.copy_(_cpu_buffer.to(torch::kCUDA)); }
-    if (_read_op && _use_aligned_buffer)
-    {
-        memcpy(_contiguous_buffer.data_ptr(), _aligned_buffer, _num_bytes);
-        _buffer.copy_(_contiguous_buffer.to(torch::kXPU));
-    }
+    if (_read_op && _use_aligned_buffer) { memcpy(_contiguous_buffer.data_ptr(), _aligned_buffer, _num_bytes); }
+    if (_read_op && _buffer.is_xpu()){ _buffer.copy_(_cpu_buffer.to(torch::kXPU)); }
 }
 
 deepspeed_aio_thread_t::deepspeed_aio_thread_t(const int tid, deepspeed_aio_config_t& aio_config)
