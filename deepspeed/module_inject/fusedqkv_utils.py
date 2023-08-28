@@ -4,7 +4,8 @@
 # DeepSpeed Team
 import torch
 from deepspeed.utils.logging import warning_once
-from deepspeed.utils.tp_shard import get_shard_size
+from deepspeed.utils.tp_shard import get_shard_size, get_shard_size_list
+import deepspeed.utils.tp_shard as tp_shard
 import re
 
 
@@ -40,7 +41,8 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
 
     def _codegen_type_transpose(input, mp_size, codegen_mp_num=4):
         # codegen_mp_num defined in https://github.com/huggingface/transformers/blob/main/src/transformers/models/codegen/modeling_codegen.py
-        #TODO: assert num_heads % (mp_size*codegen_mp_num) == 0
+        assert tp_shard.num_kv_heads % (
+            mp_size * codegen_mp_num) == 0, "codgen autoTP requires num_kv_heads % (mp_size*codegen_mp_num) == 0"
         #input : [3*hidden_dim, hidden_dim](weight) or [3*hidden_dim](bias)
 
         shape = input.shape
@@ -60,16 +62,16 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
         #input : [3*hidden_dim, hidden_dim](weight) or [3*hidden_dim](bias)
 
         shape = input.shape
-        dst_shape = get_shard_size(shape[0], mp_size)
         src_split = torch.split(input, shape[0] // 3, dim=0)
 
-        split_fusedqkv = split_by_qkvlist_and_refuse(src_split, get_shard_size(shape[0] // 3, mp_size))
-        tp_fuseqkv_weight = torch.cat(split_fusedqkv, dim=0)
-
-        return tp_fuseqkv_weight[gpu_index * dst_shape:(gpu_index + 1) * dst_shape]
+        split_fusedqkv = split_by_qkvlist_and_refuse(src_split, get_shard_size_list(shape[0] // 3, mp_size))
+        return split_fusedqkv[gpu_index]
 
     def _bloom_type_transpose(input, mp_size):
-        return input
+        shape = input.shape
+
+        split_fusedqkv = input.split(get_shard_size_list(shape[0], mp_size), dim=0)
+        return split_fusedqkv[gpu_index]
 
     def _transpose_fused_qkvw(src, mp_size, fused_qkv_type=None):
 
@@ -92,4 +94,4 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
             return _transpose_fused_qkvw(src, mp_size, fused_type)
     warning_once(f"Unrecognized fusedkqv weight type, default to using bloom type,"
                  f"please check in prepare_tp_fused_qkvw() to avoid potential calculation errors")
-    return src
+    return _bloom_type_transpose(src, mp_size)
