@@ -736,6 +736,18 @@ class PartitionedTensor:
         return self.orig_size
 
 
+def dummy_partitioned_tensor_meta(tensor, group):
+    num_parts = dist.get_world_size(group=group)
+    rank = dist.get_rank(group=group)
+
+    meta = []
+    meta.append(len(list(tensor.size())))
+    meta += list(tensor.size())
+    meta.append(num_parts)
+    meta.append(rank)
+    return torch.LongTensor(data=meta).to(tensor.device)
+
+
 mem_alloced = 0
 mem_cached = 0
 

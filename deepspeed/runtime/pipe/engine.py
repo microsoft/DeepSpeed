@@ -18,7 +18,7 @@ from deepspeed.utils.timer import FORWARD_MICRO_TIMER, FORWARD_GLOBAL_TIMER, BAC
     BACKWARD_REDUCE_MICRO_TIMER, BACKWARD_REDUCE_GLOBAL_TIMER, \
     STEP_MICRO_TIMER, STEP_GLOBAL_TIMER
 
-from ..utils import PartitionedTensor
+from ..utils import PartitionedTensor, dummy_partitioned_tensor_meta
 from ..dataloader import RepeatingLoader
 from ..zero.config import ZeroStageEnum
 from ..activation_checkpointing import checkpointing as ds_checkpointing
@@ -75,6 +75,7 @@ class PipelineEngine(DeepSpeedEngine):
         self.has_bool_tensors = has_bool_tensors
         self.eval_return_logits = False
         self.outputs = None
+        self.disable_partitioned_tensor = self._config.disable_partitioned_tensor
 
         # used to disable the pipeline all-reduce when used with 1-bit Adam/1-bit LAMB
         self.pipeline_enable_backward_allreduce = True
@@ -624,15 +625,21 @@ class PipelineEngine(DeepSpeedEngine):
 
         # collect the partitioned input from the previous stage
         if self.is_pipe_partitioned and not self.is_first_stage():
-            part_input = PartitionedTensor.from_meta(meta=inputs[0],
-                                                     local_part=inputs[1],
-                                                     group=self.grid.get_slice_parallel_group())
+            if not self.disable_partitioned_tensor:
+                part_input = PartitionedTensor.from_meta(meta=inputs[0],
+                                                         local_part=inputs[1],
+                                                         group=self.grid.get_slice_parallel_group())
 
-            inputs = (part_input.full(), *inputs[2:])
-            inputs[0].requires_grad = True
-            # skip mask
-            #inputs[1].requires_grad = True
-            part_input = None
+                inputs = (part_input.full(), *inputs[2:])
+                inputs[0].requires_grad = True
+                # skip mask
+                #inputs[1].requires_grad = True
+                part_input = None
+            else:
+                # When using sequence parallel, disable_partitioned_tensor is set to True.
+                # At this time, the tensor is passed directly without partition tensor.
+                inputs = (inputs[1].clone().detach(), *inputs[2:])
+                inputs[0].requires_grad = True
             inputs = inputs[0] if len(inputs) == 1 else inputs
             self.pipe_buffers['inputs'][buffer_id] = inputs
 
@@ -659,13 +666,20 @@ class PipelineEngine(DeepSpeedEngine):
                 outputs_tail = []
             else:
                 raise ValueError("expecting a tensor or a tuple of tensors")
-            part = PartitionedTensor(tensor=first_output, group=self.grid.get_slice_parallel_group())
-            # Clear the large output data, but save the computation graph
-            first_output.data = torch.zeros(1)
-            self.pipe_buffers['output_tensors'][buffer_id] = first_output
-            # Inject the partitioned tensor into the output before sending
-            outputs = (part.to_meta(), part.data(), *outputs_tail)
-            part = None
+            if not self.disable_partitioned_tensor:
+                part = PartitionedTensor(tensor=first_output, group=self.grid.get_slice_parallel_group())
+                # Clear the large output data, but save the computation graph
+                first_output.data = torch.zeros(1)
+                self.pipe_buffers['output_tensors'][buffer_id] = first_output
+                # Inject the partitioned tensor into the output before sending
+                outputs = (part.to_meta(), part.data(), *outputs_tail)
+                part = None
+            else:
+                first_output_ = first_output.clone()
+                first_output.data = torch.zeros(1)
+                self.pipe_buffers['output_tensors'][buffer_id] = first_output
+                outputs = (dummy_partitioned_tensor_meta(first_output_, group=self.grid.get_slice_parallel_group()),
+                           first_output_, *outputs_tail)
 
         self.pipe_buffers['outputs'][buffer_id] = outputs
 
@@ -718,11 +732,17 @@ class PipelineEngine(DeepSpeedEngine):
         # careful to also restore the computational graph of the tensors we partitioned.
         if self.is_pipe_partitioned:
             if self.is_grad_partitioned:
-                part_output = PartitionedTensor.from_meta(meta=outputs[0],
-                                                          local_part=outputs[1],
-                                                          group=self.grid.get_slice_parallel_group())
-                self.pipe_buffers['output_tensors'][buffer_id].data = part_output.full()
-                outputs = (self.pipe_buffers['output_tensors'][buffer_id], *outputs[2:])
+                if not self.disable_partitioned_tensor:
+                    part_output = PartitionedTensor.from_meta(meta=outputs[0],
+                                                              local_part=outputs[1],
+                                                              group=self.grid.get_slice_parallel_group())
+                    self.pipe_buffers['output_tensors'][buffer_id].data = part_output.full()
+                    outputs = (self.pipe_buffers['output_tensors'][buffer_id], *outputs[2:])
+                else:
+                    # When using sequence parallel, disable_partitioned_tensor is set to True.
+                    # At this time, the tensor is passed directly without partition tensor.
+                    self.pipe_buffers['output_tensors'][buffer_id].data = outputs[1]
+                    outputs = (self.pipe_buffers['output_tensors'][buffer_id], *outputs[2:])
             else:
                 # Already restored from partition
                 self.pipe_buffers['output_tensors'][buffer_id].data = outputs[0]
@@ -730,13 +750,17 @@ class PipelineEngine(DeepSpeedEngine):
 
         grad_tensors = self.grad_layer
         if self.is_grad_partitioned:
-            #print(f'RANK={self.global_rank} BEFORE-BWD restoring grad={self.grad_layer[0].size()} {self.grad_layer[1].size()}')
-            part_grad = PartitionedTensor.from_meta(meta=self.grad_layer[0],
-                                                    local_part=self.grad_layer[1],
-                                                    group=self.grid.get_slice_parallel_group())
-            grad_tensors = (part_grad.full(), *grad_tensors[2:])
-            part_grad = None
-            #print(f'RANK={self.global_rank} BEFORE-BWD restored grad={self.grad_layer[0].size()} {self.grad_layer[1].size()}')
+            if not self.disable_partitioned_tensor:
+                #print(f'RANK={self.global_rank} BEFORE-BWD restoring grad={self.grad_layer[0].size()} {self.grad_layer[1].size()}')
+                part_grad = PartitionedTensor.from_meta(meta=self.grad_layer[0],
+                                                        local_part=self.grad_layer[1],
+                                                        group=self.grid.get_slice_parallel_group())
+                grad_tensors = (part_grad.full(), *grad_tensors[2:])
+                part_grad = None
+                #print(f'RANK={self.global_rank} BEFORE-BWD restored grad={self.grad_layer[0].size()} {self.grad_layer[1].size()}')
+            else:
+                grad_tensors = (self.grad_layer[1], *grad_tensors[2:])
+                part_grad = None
 
         if self.bfloat16_enabled() and not self.is_last_stage():
             # manually call because we don't call optimizer.backward()
@@ -981,10 +1005,14 @@ class PipelineEngine(DeepSpeedEngine):
             else:
                 raise ValueError("expecting a tensor or a tuple of tensors")
             assert torch.is_tensor(first_input)
-            part = PartitionedTensor(tensor=first_input.grad, group=self.grid.get_slice_parallel_group())
-
-            inputs = (part.to_meta(), part.data(), *inputs_grad_tail)
-
+            if not self.disable_partitioned_tensor:
+                part = PartitionedTensor(tensor=first_input.grad, group=self.grid.get_slice_parallel_group())
+                inputs = (part.to_meta(), part.data(), *inputs_grad_tail)
+            else:
+                # When using sequence parallel, disable_partitioned_tensor is set to True.
+                # At this time, the gradient is passed directly without partition tensor.
+                meta = dummy_partitioned_tensor_meta(first_input.grad, group=self.grid.get_slice_parallel_group())
+                inputs = (meta, first_input.grad, *inputs_grad_tail)
         # XXX Terrible hack
         # Drop the attention mask from the input buffer here. It does not have
         # a grad that needs to be communicated. We free the buffer immediately
