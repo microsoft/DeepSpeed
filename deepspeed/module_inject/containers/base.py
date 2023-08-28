@@ -8,6 +8,7 @@ from abc import ABC
 
 import torch
 
+import deepspeed
 from deepspeed.ops.transformer.inference.config import DeepSpeedInferenceConfig
 from deepspeed.accelerator import get_accelerator
 
@@ -79,6 +80,10 @@ class BaseTransformerContainer(ABC):
         self.input_nb = None
 
         self.mp_group = None
+        self.use_triton = False
+
+        # Triton
+        self.use_triton = config.use_triton and deepspeed.HAS_TRITON
 
     def create_ds_model_config(self):
         self.set_hidden_heads(*self.policy.get_hidden_heads())
@@ -110,7 +115,14 @@ class BaseTransformerContainer(ABC):
             use_mup=self.use_mup,
             return_single_tuple=self.return_single_tuple,
             set_empty_params=self.config.set_empty_params,
-            transposed_mode=self.config.transposed_mode)
+            transposed_mode=self.config.transposed_mode,
+            use_triton=self.use_triton,
+            triton_autotune=self.config.triton_autotune)
+
+        if self.use_triton and deepspeed.HAS_TRITON:
+            if not self.config.triton_autotune:
+                from deepspeed.ops.transformer.inference.triton.matmul_ext import fp16_matmul
+                fp16_matmul.skip_autotune()
 
         return self.ds_model_config
 
@@ -249,17 +261,21 @@ class BaseTransformerContainer(ABC):
                                                    allocate_tensor=reversed_dim)
 
     def copy_data_to_new_module(self):
-        params = {
-            self.module.mlp.attn_nw: self.attn_nw,
-            self.module.mlp.attn_nb: self.attn_nb,
-            self.module.norm_w: self.input_nw,
-            self.module.norm_b: self.input_nb
-        }
-        for dst, src in params.items():
-            if src is None:
-                dst = src
+        params = {'attn_nw': self.attn_nw, 'attn_nb': self.attn_nb}
+        for key in params:
+            if params[key] is None:
+                setattr(self.module.mlp, key, None)
             else:
-                dst.data.copy_(src.to(get_accelerator().current_device_name()))
+                setattr(self.module.mlp, key,
+                        torch.nn.parameter.Parameter(params[key].to(get_accelerator().current_device_name())))
+
+        params = {'norm_w': self.input_nw, 'norm_b': self.input_nb}
+        for key in params:
+            if params[key] is None:
+                setattr(self.module, key, None)
+            else:
+                setattr(self.module, key,
+                        torch.nn.parameter.Parameter(params[key].to(get_accelerator().current_device_name())))
 
     def transpose(self):
         self.transpose_attention()

@@ -12,6 +12,7 @@ per rank for training.
 import os
 import re
 import sys
+import shlex
 import json
 import base64
 import argparse
@@ -33,9 +34,13 @@ from deepspeed.accelerator import get_accelerator
 DLTS_HOSTFILE = "/job/hostfile"
 EXPORT_ENVS = ['MLFLOW', 'NCCL', 'PYTHON', 'MV2', 'UCX']
 EXPORT_ENVS += NEBULA_EXPORT_ENVS
-DEEPSPEED_ENVIRONMENT_NAME = ".deepspeed_env"
+DEEPSPEED_ENVIRONMENT_NAME = os.getenv("DS_ENV_FILE", ".deepspeed_env")
 DEEPSPEED_ENVIRONMENT_PATHS = [os.path.expanduser("~"), '.']
 PDSH_MAX_FAN_OUT = 1024
+
+# On AISC compute, each node sets environment variables independently, want to prevent
+# exporting rank-0 env variables in case of heterogeneous compute.
+EXCLUDE_ENVS = {'AISC_JOB_NAME': ['NCCL_IB_HCA', 'UCX_NET_DEVICES']}
 
 
 def parse_args(args=None):
@@ -174,16 +179,20 @@ def parse_args(args=None):
 
     parser.add_argument("user_script", type=str, help="User script to launch, followed by any required "
                         "arguments.")
+
     parser.add_argument('user_args', nargs=argparse.REMAINDER)
+
     parser.add_argument("--bind_cores_to_rank",
                         action="store_true",
                         help="Bind each rank to different cores of the host")
+
     parser.add_argument("--bind_core_list",
                         type=str,
                         default=None,
                         help="List of cores to bind to with comma separated list of "
                         "numbers and range. i.e. 1,3-5,7 => [1,3,4,5,7].  When not "
                         "specified, all cores on system would be used rank binding")
+
     return parser.parse_args(args=args)
 
 
@@ -223,7 +232,7 @@ def _parse_hostfile(hostfile_lines):
             resource_pool[host] = num_slots
         else:
             logger.error(f"Bad hostfile text: {hostfile_lines}")
-            raise ValueError("Hostfile contains a bad entry: {line}, unable to proceed with launching")
+            raise ValueError(f"Hostfile contains a bad entry: {line}, unable to proceed with launching")
 
     if len(resource_pool) == 0:
         logger.error(f"Bad hostfile text: {hostfile_lines}")
@@ -378,6 +387,9 @@ def parse_num_nodes(str_num_nodes: str, elastic_training: bool):
 def main(args=None):
     args = parse_args(args)
 
+    # For when argparse interprets remaining args as a single string
+    args.user_args = shlex.split(" ".join(args.user_args))
+
     if args.elastic_training:
         assert args.master_addr != "", "Master Addr is required when elastic training is enabled"
 
@@ -494,7 +506,7 @@ def main(args=None):
             deepspeed_launch.append(f"--min_elastic_nodes={args.min_elastic_nodes}")
         if args.bind_cores_to_rank:
             deepspeed_launch.append("--bind_cores_to_rank")
-        if args.bind_core_list != None:
+        if args.bind_core_list is not None:
             deepspeed_launch.append(f"--bind_core_list={args.bind_core_list}")
         cmd = deepspeed_launch + [args.user_script] + args.user_args
     else:
@@ -523,14 +535,25 @@ def main(args=None):
         else:
             env['PYTHONPATH'] = curr_path
 
+        excluded_vars = []
+        for exclude_key, var_list in EXCLUDE_ENVS.items():
+            if exclude_key in env.keys():
+                # key exists in launcher env -> var list should be used
+                excluded_vars += var_list
+
         exports = ""
         for var in env.keys():
             if any([var.startswith(name) for name in EXPORT_ENVS]):
-                runner.add_export(var, env[var])
+                if not any([var == name for name in excluded_vars]):
+                    runner.add_export(var, env[var])
 
         for environ_path in DEEPSPEED_ENVIRONMENT_PATHS:
-            environ_file = os.path.join(environ_path, DEEPSPEED_ENVIRONMENT_NAME)
+            environ_file = DEEPSPEED_ENVIRONMENT_NAME
+            # handle if users to enter path for `DS_ENV_FILE`
+            if not os.path.isfile(environ_file):
+                environ_file = os.path.join(environ_path, DEEPSPEED_ENVIRONMENT_NAME)
             if os.path.isfile(environ_file):
+                logger.info(f"deepspeed_env file = {environ_file}")
                 with open(environ_file, 'r') as fd:
                     for var in fd.readlines():
                         key, val = var.split('=', maxsplit=1)
@@ -553,8 +576,9 @@ def main(args=None):
         time.sleep(1)
         sys.exit(1)
 
-    if args.launcher == PDSH_LAUNCHER:
+    if args.launcher == PDSH_LAUNCHER and multi_node_exec:
         signal.signal(signal.SIGINT, sigkill_handler)
+        signal.signal(signal.SIGTERM, sigkill_handler)
 
     result.wait()
 
