@@ -1031,6 +1031,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                  safe_mode: bool = False,
                                  quantize: bool = False) -> AllGatherCoalescedHandle:
 
+            # check if currently in torch.no_grad context
+            if not torch.is_grad_enabled():
+                forward = False
+
             # fetches from nvme if the partition is not available and in nvme
             self._ensure_availability_of_partitioned_params(params)
 
