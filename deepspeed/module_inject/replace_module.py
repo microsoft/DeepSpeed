@@ -17,7 +17,6 @@ from .auto_tp import AutoTP, ReplaceWithTensorSlicing, Loading
 
 from deepspeed import comm as dist
 from deepspeed.utils.tp_shard import set_num_kv_heads
-from torch import nn
 
 from .load_checkpoint import load_model_with_checkpoint
 import time
@@ -641,12 +640,6 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
     Returns:
         Modified ``model``.
     """
-    try:
-        import transformers
-        OPTLearnedPositionalEmbedding = transformers.models.opt.modeling_opt.OPTLearnedPositionalEmbedding
-    except:
-        OPTLearnedPositionalEmbedding = None
-    load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm, OPTLearnedPositionalEmbedding]
     for name, child in model.named_children():
         if child.__class__ in policies:
             replaced_module = policies[child.__class__][0](child,
@@ -662,8 +655,7 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
             layer_id += 1
         else:
             checking_key = prefix + name + '.'
-            if (child.__class__ in load_layers
-                    or child._get_name() in ["LPLayerNorm", "SharedEmbedding"]) and state_dict is not None:
+            if Loading.is_load_module(child) and state_dict is not None:
                 if any(checking_key in item for item in state_dict):
                     Loading.load(
                         child,
