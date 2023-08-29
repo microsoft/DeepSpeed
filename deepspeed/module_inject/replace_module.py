@@ -324,6 +324,21 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                              checkpoint=checkpoint[i])
             pbar.update(1)
             gc.collect()
+        embedding_weight = None
+        for n, p in replaced_module.named_parameters():
+            if "word_embeddings." in n or "embed_tokens." in n or "wte." in n:
+                embedding_weight = p
+        if embedding_weight is not None and hasattr(replaced_module, "lm_head") and hasattr(
+                replaced_module.lm_head, "weight") and replaced_module.lm_head.weight.is_meta:
+            replaced_module.lm_head.weight = embedding_weight
+
+        # enable tensor parallel for the last linear
+        if hasattr(replaced_module, "lm_head") and hasattr(replaced_module.lm_head,
+                                                          "weight") and not replaced_module.lm_head.weight.is_meta:
+            replaced_module = replace_fn(replaced_module, ("lm_head", ), 0, "lm_head")
+        elif hasattr(replaced_module, "embed_out") and hasattr(replaced_module.embed_out,
+                                                              "weight") and not replaced_module.embed_out.weight.is_meta:
+            replaced_module = replace_fn(replaced_module, ("embed_out", ), 0, "embed_out")
     else:
         replaced_module = replace_module(model=model,
                                          orig_class=orig_layer_impl,
@@ -401,6 +416,22 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                                container=container_g)
                     sds = [None for _ in sds]
                     gc.collect()
+        embedding_weight = None
+        for n, p in replaced_module.named_parameters():
+            if "word_embeddings." in n or "embed_tokens." in n or "wte." in n:
+                embedding_weight = p
+        if embedding_weight is not None and hasattr(replaced_module, "lm_head") and hasattr(
+                replaced_module.lm_head, "weight") and replaced_module.lm_head.weight.is_meta:
+            replaced_module.lm_head.weight = embedding_weight
+
+        # enable tensor parallel for the last linear
+        if hasattr(replaced_module, "lm_head") and hasattr(replaced_module.lm_head,
+                                                          "weight") and not replaced_module.lm_head.weight.is_meta:
+            replaced_module = replace_fn(replaced_module, ("lm_head", ), 0, "lm_head")
+        elif hasattr(replaced_module, "embed_out") and hasattr(replaced_module.embed_out,
+                                                              "weight") and not replaced_module.embed_out.weight.is_meta:
+            replaced_module = replace_fn(replaced_module, ("embed_out", ), 0, "embed_out")
+
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
 
     if config.save_mp_checkpoint_path is not None:
@@ -569,14 +600,6 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
         "You can find some samples here: https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/module_inject/replace_policy.py"
 
     replaced_module, _ = _replace_module(model, policy, state_dict=sd)
-    if checkpoint is not None:
-        embedding_weight = None
-        for n, p in replaced_module.named_parameters():
-            if "word_embeddings." in n or "embed_tokens." in n or "wte." in n:
-                embedding_weight = p
-        if embedding_weight is not None and hasattr(replaced_module, "lm_head") and hasattr(
-                replaced_module.lm_head, "weight") and replaced_module.lm_head.weight.is_meta:
-            replaced_module.lm_head.weight = embedding_weight
 
     # enable tensor parallel for the last linear
     if hasattr(replaced_module, "lm_head") and hasattr(replaced_module.lm_head,
