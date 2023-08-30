@@ -11,7 +11,7 @@ from deepspeed.model_implementations.transformers.ds_megatron_gpt import DeepSpe
 from deepspeed.model_implementations.transformers.ds_opt import DeepSpeedOPTInference
 
 import deepspeed.ops.transformer as transformer_inference
-from .layers import LinearLayer, Normalize, EmbeddingLayer, OPTEmbedding
+from .layers import LinearLayer, Normalize, EmbeddingLayer, OPTEmbedding, RMSNormalize
 import torch
 import gc
 from deepspeed.accelerator import get_accelerator
@@ -29,9 +29,13 @@ def load_model_with_checkpoint(r_module,
     error_msgs = []
 
     def prefix_check():
-        # if keys start with 'model.', don't skip level 0 prefix
+        # if keys start with 'model.' or 'transformer.', don't skip level 0 prefix
         for key in sd[0].keys():
+            # OPT models
             if re.match("^model[.]", key):
+                return False
+            # BLOOM models
+            if re.match("^transformer[.]", key):
                 return False
         return True
 
@@ -175,6 +179,10 @@ def load_model_with_checkpoint(r_module,
     try:
         import transformers
         OPTLearnedPositionalEmbedding = transformers.models.opt.modeling_opt.OPTLearnedPositionalEmbedding
+        if hasattr(transformers.models, "llama"):
+            LlamaRMSNorm = transformers.models.llama.modeling_llama.LlamaRMSNorm
+        else:
+            LlamaRMSNorm = None
     except:
         OPTLearnedPositionalEmbedding = None
     layer_policies = {
@@ -191,7 +199,9 @@ def load_model_with_checkpoint(r_module,
         DeepSpeedMegatronGPTInference: load_transformer_layer,
         DeepSpeedOPTInference: load_transformer_layer,
         OPTLearnedPositionalEmbedding: load,
-        OPTEmbedding: load
+        OPTEmbedding: load,
+        LlamaRMSNorm: load,
+        RMSNormalize: load
     }
 
     all_ds_ids = {}
@@ -223,6 +233,9 @@ def load_model_with_checkpoint(r_module,
                         setattr(module, name, child)
                     elif child.__class__ is OPTLearnedPositionalEmbedding:
                         child = OPTEmbedding(weight_shape=ds_shape)
+                        setattr(module, name, child)
+                    elif child.__class__ is LlamaRMSNorm:
+                        child = RMSNormalize(dim=ds_shape[-1], dtype=child.weight.dtype, eps=child.variance_epsilon)
                         setattr(module, name, child)
                     else:
                         ds_id = None

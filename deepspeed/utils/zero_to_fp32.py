@@ -5,7 +5,7 @@
 
 # DeepSpeed Team
 
-# This script extracts fp32 consolidated weights from a zero 2 and 3 DeepSpeed checkpoints. It gets
+# This script extracts fp32 consolidated weights from a zero 1, 2 and 3 DeepSpeed checkpoints. It gets
 # copied into the top level checkpoint dir, so the user can easily do the conversion at any point in
 # the future. Once extracted, the weights don't require DeepSpeed and can be used in any
 # application.
@@ -63,7 +63,7 @@ def get_model_state_file(checkpoint_dir, zero_stage):
         raise FileNotFoundError(f"Directory '{checkpoint_dir}' doesn't exist")
 
     # there should be only one file
-    if zero_stage == 2:
+    if zero_stage <= 2:
         file = os.path.join(checkpoint_dir, "mp_rank_00_model_states.pt")
     elif zero_stage == 3:
         file = os.path.join(checkpoint_dir, "zero_pp_rank_0_mp_rank_00_model_states.pt")
@@ -120,16 +120,8 @@ def parse_model_states(files):
                 print(f"Found frozen_param_shapes: {frozen_param_shapes}")
             param_names += list(frozen_param_shapes.keys())
 
-        # record shared parameters so that they can be recovered based on partners
-        # this is because such parameters holding reference only are not saved by optimizer
-        shared_params = []
-        for param in state_dict["module"]:
-            if param not in [*param_names, *buffer_names]:
-                for share_param in [*param_names, *buffer_names]:
-                    if (state_dict["module"][share_param].data_ptr() == state_dict["module"][param].data_ptr()
-                            and share_param != param):
-                        shared_params.append([param, share_param])
-                        break
+        # handle shared params
+        shared_params = [[k, v] for k, v in state_dict["shared_params"].items()]
 
         ds_version = state_dict.get(DS_VERSION, None)
 
@@ -151,7 +143,11 @@ def parse_optim_states(files, ds_checkpoint_dir):
     total_files = len(files)
     state_dicts = []
     for f in files:
-        state_dicts.append(torch.load(f, map_location=device))
+        state_dict = torch.load(f, map_location=device)
+        # immediately discard the potentially huge 2 optimizer states as we only care for fp32 master weights
+        # and also handle the case where it was already removed by another helper script
+        state_dict["optimizer_state_dict"].pop("optimizer_state_dict", None)
+        state_dicts.append(state_dict)
 
     if not ZERO_STAGE in state_dicts[0][OPTIMIZER_STATE_DICT]:
         raise ValueError(f"{files[0]} is not a zero checkpoint")
@@ -172,14 +168,14 @@ def parse_optim_states(files, ds_checkpoint_dir):
         )
 
     # the groups are named differently in each stage
-    if zero_stage == 2:
+    if zero_stage <= 2:
         fp32_groups_key = SINGLE_PARTITION_OF_FP32_GROUPS
     elif zero_stage == 3:
         fp32_groups_key = FP32_FLAT_GROUPS
     else:
         raise ValueError(f"unknown zero stage {zero_stage}")
 
-    if zero_stage == 2:
+    if zero_stage <= 2:
         fp32_flat_groups = [state_dicts[i][OPTIMIZER_STATE_DICT][fp32_groups_key] for i in range(len(state_dicts))]
     elif zero_stage == 3:
         # if there is more than one param group, there will be multiple flattened tensors - one
@@ -214,7 +210,7 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
     zero_model_states = parse_model_states(model_files)
     print(f'Parsing checkpoint created by deepspeed=={zero_model_states[0].ds_version}')
 
-    if zero_stage == 2:
+    if zero_stage <= 2:
         return _get_fp32_state_dict_from_zero2_checkpoint(world_size, fp32_flat_groups, zero_model_states)
     elif zero_stage == 3:
         return _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zero_model_states)
@@ -578,9 +574,14 @@ if __name__ == "__main__":
         "output_file",
         type=str,
         help="path to the pytorch fp32 state_dict output file (e.g. path/checkpoint-12/pytorch_model.bin)")
+    parser.add_argument("-t",
+                        "--tag",
+                        type=str,
+                        default=None,
+                        help="checkpoint tag used as a unique identifier for checkpoint. e.g., global_step1")
     parser.add_argument("-d", "--debug", action='store_true', help="enable debug")
     args = parser.parse_args()
 
     debug = args.debug
 
-    convert_zero_checkpoint_to_fp32_state_dict(args.checkpoint_dir, args.output_file)
+    convert_zero_checkpoint_to_fp32_state_dict(args.checkpoint_dir, args.output_file, tag=args.tag)
