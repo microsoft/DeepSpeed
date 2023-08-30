@@ -34,6 +34,14 @@ class DS_GPTNEOXContainer(MetaTensorContainer, HybridMegatronContainer, BaseTran
 
         return self.module
 
+    def get_lora_matched_pair(self):
+        """
+        Necessary to implement for `HybridEngineContainer`
+        """
+        fc1_lora, fc2_lora, qkv_lora, out_lora = self.get_lora_params()
+        ret = [(fc1_lora, self._h4h_w), (fc2_lora, self._4hh_w), (qkv_lora, self.qkvw), (out_lora, self.dense_w)]
+        return ret
+
     def set_lora_params(self):
         """
         Necessary to implement for `HybridEngineContainer`
@@ -136,19 +144,3 @@ class GPTNEOXLayerPolicy(TransformerPolicy):
                self.client_module.post_attention_layernorm.bias, \
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
-
-    def get_lora_params(self):
-        if GPTNEOXLayerPolicy.version == 0:
-            attention = self.client_module.attention
-        else:
-            attention = self.client_module.self_attention
-
-        all_lora_params = []
-        for p in [
-            self.client_module.mlp.dense_h_to_4h, \
-            self.client_module.mlp.dense_4h_to_h, \
-            attention.query_key_value, \
-            attention.dense
-            ]:
-            all_lora_params.append(maybe_get_lora(p))
-        return all_lora_params

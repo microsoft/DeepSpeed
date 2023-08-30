@@ -18,6 +18,7 @@ from .fp16.loss_scaler import (
     INITIAL_LOSS_SCALE,
     SCALE_WINDOW,
     DELAYED_SHIFT,
+    CONSECUTIVE_HYSTERESIS,
     MIN_LOSS_SCALE,
 )
 from .config_utils import (
@@ -72,9 +73,12 @@ LAMB_OPTIMIZER = 'lamb'
 ONEBIT_ADAM_OPTIMIZER = 'onebitadam'
 ZERO_ONE_ADAM_OPTIMIZER = 'zerooneadam'
 ONEBIT_LAMB_OPTIMIZER = 'onebitlamb'
+MUADAM_OPTIMIZER = 'muadam'
+MUADAMW_OPTIMIZER = 'muadamw'
+MUSGD_OPTIMIZER = 'musgd'
 DEEPSPEED_OPTIMIZERS = [
     ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER,
-    ZERO_ONE_ADAM_OPTIMIZER
+    ZERO_ONE_ADAM_OPTIMIZER, MUADAM_OPTIMIZER, MUADAMW_OPTIMIZER, MUSGD_OPTIMIZER
 ]
 
 # extra optimizer parameters for adam/adamw
@@ -204,16 +208,20 @@ def get_dynamic_loss_scale_args(param_dict):
             FP16_LOSS_SCALE_WINDOW,
             FP16_MIN_LOSS_SCALE,
             FP16_HYSTERESIS,
+            FP16_CONSECUTIVE_HYSTERESIS,
         ]
         if any(arg in list(fp16_dict.keys()) for arg in dynamic_loss_args):
             init_scale = get_scalar_param(fp16_dict, FP16_INITIAL_SCALE_POWER, FP16_INITIAL_SCALE_POWER_DEFAULT)
             scale_window = get_scalar_param(fp16_dict, FP16_LOSS_SCALE_WINDOW, FP16_LOSS_SCALE_WINDOW_DEFAULT)
             delayed_shift = get_scalar_param(fp16_dict, FP16_HYSTERESIS, FP16_HYSTERESIS_DEFAULT)
+            consecutive_hysteresis = get_scalar_param(fp16_dict, FP16_CONSECUTIVE_HYSTERESIS,
+                                                      FP16_CONSECUTIVE_HYSTERESIS_DEFAULT)
             min_loss_scale = get_scalar_param(fp16_dict, FP16_MIN_LOSS_SCALE, FP16_MIN_LOSS_SCALE_DEFAULT)
             loss_scale_args = {
                 INITIAL_LOSS_SCALE: 2**init_scale,
                 SCALE_WINDOW: scale_window,
                 DELAYED_SHIFT: delayed_shift,
+                CONSECUTIVE_HYSTERESIS: consecutive_hysteresis,
                 MIN_LOSS_SCALE: min_loss_scale,
             }
 

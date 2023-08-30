@@ -1,12 +1,11 @@
 name: Formatting
 
 on:
-  push:
-    branches:
-      - 'staging**'
   pull_request:
     branches:
       '**'
+  merge_group:
+    branches: [ master ]
   schedule:
     - cron: "0 0 * * *"
 
@@ -21,7 +20,7 @@ jobs:
     runs-on: ubuntu-20.04
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: environment
         run: |
@@ -30,7 +29,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          pip install .[dev,autotuning]
+          pip install .[dev,autotuning,triton]
           ds_report
 
       - name: Formatting checks

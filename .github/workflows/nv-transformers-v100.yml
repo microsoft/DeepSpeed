@@ -1,16 +1,12 @@
 name: nv-transformers-v100
 
 on:
-  push:
-    branches:
-      - 'staging**'
-    paths-ignore:
-      - 'docs/**'
-      - 'blogs/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
       - 'blogs/**'
+  merge_group:
+    branches: [ master ]
   schedule:
     - cron: "0 0 * * *"
 
@@ -23,7 +19,7 @@ jobs:
     runs-on: [self-hosted, nvidia, cu111, v100]
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
@@ -31,9 +27,18 @@ jobs:
       - name: Install pytorch
         run: |
           # use the same pytorch version as transformers CI
-          pip install --no-cache-dir torch torchvision torchaudio -f https://download.pytorch.org/whl/torch_stable.html
+            pip install -U --cache-dir $TORCH_CACHE torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+
+      - name: Install transformers
+        run: |
+          git clone https://github.com/huggingface/transformers
+          cd transformers
+          # if needed switch to the last known good SHA until transformers@master is fixed
+          git checkout e7e9261a2
+          git rev-parse --short HEAD
+          pip install .
 
       - name: Install deepspeed
         run: |
@@ -46,19 +51,12 @@ jobs:
 
       - name: HF transformers tests
         run: |
-          if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
-          git clone https://github.com/huggingface/transformers
+          unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd transformers
-          # if needed switch to the last known good SHA until transformers@master is fixed
-          #git checkout 6268694e2
-          git rev-parse --short HEAD
-          # scipy/sklearn required for tests, using the 'dev' extra forces torch re-install
           pip install .[testing]
           # find reqs used in ds integration tests
           find examples/pytorch -regextype posix-egrep -regex '.*(language-modeling|question-answering|summarization|image-classification|text-classification|translation).*/requirements.txt' -exec grep -v 'torch' {} \; | xargs -I {} pip install --upgrade {}
-          # force datasets version due to issues
-          pip install datasets==2.2.2
           # force protobuf version due to issues
           pip install "protobuf<4.21.0"
           pip list
-          HF_DATASETS_CACHE=/blob/datasets_cache/ TRANSFORMERS_CACHE=/blob/transformers_cache/ WANDB_DISABLED=true TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --color=yes --durations=0 --verbose tests/deepspeed
+          WANDB_DISABLED=true RUN_SLOW=1 pytest $PYTEST_OPTS tests/deepspeed
