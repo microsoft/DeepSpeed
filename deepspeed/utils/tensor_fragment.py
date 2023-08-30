@@ -184,6 +184,9 @@ def safe_get_full_grad(param):
 
     return None
 
+# TODO: Implement API for setting ZeRO partitioned gradients 
+
+
 
 def get_hp_fragment_mapping(lp_param, lp_start, flat_hp_partition, gradient_dict, offload_gradient_dict, use_offload,
                             param_group_index, partition_start, partition_size, optimizer_state_dict):
