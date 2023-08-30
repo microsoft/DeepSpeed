@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .compress import get_module_name
 from .constants import *
 from .helper import recursive_getattr
@@ -8,6 +13,7 @@ class compression_scheduler():
     '''
     Used to schedule different compression methods
     '''
+
     def __init__(self, model, compression_config):
         self.model = model
         self.compression_config = compression_config
@@ -36,22 +42,22 @@ class compression_scheduler():
             }
             exist_module_name = set()
             shared_parameters = method_content[SHARED_PARAMETERS]
-            self.different_compression_methods[method][
-                TECHNIQUE_ENABLED] = shared_parameters[TECHNIQUE_ENABLED]
-            self.different_compression_methods[method][
-                SHARED_PARAMETERS] = shared_parameters
+            self.different_compression_methods[method][TECHNIQUE_ENABLED] = shared_parameters[TECHNIQUE_ENABLED]
+            self.different_compression_methods[method][SHARED_PARAMETERS] = shared_parameters
 
             for group_name, method_parameters in method_content[DIFFERENT_GROUPS].items():
                 module_name_list = []
                 for key_word in method_parameters[DIFFERENT_GROUPS_MODULE_SCOPE]:
-                    module_name, exist_module_name = get_module_name(group_name, self.model, key_word, exist_module_name, verbose=False)
+                    module_name, exist_module_name = get_module_name(group_name,
+                                                                     self.model,
+                                                                     key_word,
+                                                                     exist_module_name,
+                                                                     verbose=False)
                     module_name_list.extend(module_name)
                 if module_name_list:
-                    self.different_compression_methods[method][DIFFERENT_GROUPS].append([
-                        group_name,
-                        module_name_list,
-                        method_parameters.copy().pop('params')
-                    ])
+                    self.different_compression_methods[method][DIFFERENT_GROUPS].append(
+                        [group_name, module_name_list,
+                         method_parameters.copy().pop('params')])
 
     def check_weight_quantization(self):
         # check weight quantization
@@ -67,8 +73,7 @@ class compression_scheduler():
                         module.weight_quantization_enabled = True
 
                 if not self.verbose[WEIGHT_QUANTIZATION]:
-                    logger.info(
-                        f'Weight quantization is enabled at step {self.training_steps}')
+                    logger.info(f'Weight quantization is enabled at step {self.training_steps}')
                     self.weight_quantization_enabled = True
                     self.verbose[WEIGHT_QUANTIZATION] = True
 
@@ -85,9 +90,7 @@ class compression_scheduler():
                         module = recursive_getattr(self.model, module_name)
                         module.activation_quantization_enabled = True
                 if not self.verbose[ACTIVATION_QUANTIZATION]:
-                    logger.info(
-                        f'Activation quantization is enabled at step {self.training_steps}'
-                    )
+                    logger.info(f'Activation quantization is enabled at step {self.training_steps}')
                     self.verbose[ACTIVATION_QUANTIZATION] = True
 
     def check_sparse_pruning(self):
@@ -97,14 +100,14 @@ class compression_scheduler():
             return
         else:
             shared_parameters = sp[SHARED_PARAMETERS]
-            if self.training_steps >= shared_parameters[TECHNIQUE_SCHEDULE_OFFSET]:
+            if shared_parameters[TECHNIQUE_SCHEDULE_OFFSET] <= self.training_steps <= shared_parameters[
+                    TECHNIQUE_SCHEDULE_OFFSET_END]:
                 for group_name, module_name_list, method_parameters in sp[DIFFERENT_GROUPS]:
                     for module_name in module_name_list:
                         module = recursive_getattr(self.model, module_name)
                         module.sparse_pruning_enabled = True
                 if not self.verbose[SPARSE_PRUNING]:
-                    logger.info(
-                        f'Sparse pruning is enabled at step {self.training_steps}')
+                    logger.info(f'Sparse pruning is enabled at step {self.training_steps}')
                     self.verbose[SPARSE_PRUNING] = True
 
     def check_head_pruning(self):
@@ -152,8 +155,7 @@ class compression_scheduler():
                         module = recursive_getattr(self.model, module_name)
                         module.channel_pruning_enabled = True
                 if not self.verbose[CHANNEL_PRUNING]:
-                    logger.info(
-                        f'Channel pruning is enabled at step {self.training_steps}')
+                    logger.info(f'Channel pruning is enabled at step {self.training_steps}')
                     self.verbose[CHANNEL_PRUNING] = True
 
     def check_all_modules(self):

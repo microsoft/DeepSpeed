@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #include "custom_cuda_layers.h"
 
 __global__ void param_update_kernel(const float* input, __half* output, int size)

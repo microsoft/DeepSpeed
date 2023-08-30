@@ -1,10 +1,16 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
+import os
 import torch
 import deepspeed
 import subprocess
 import argparse
-from .ops.op_builder import ALL_OPS
+from .ops.op_builder.all_ops import ALL_OPS
 from .git_version_info import installed_ops, torch_info
-from .ops import __compatible_ops__ as compatible_ops
+from deepspeed.accelerator import get_accelerator
 
 GREEN = '\033[92m'
 RED = '\033[91m'
@@ -45,16 +51,15 @@ def op_report(verbose=True):
     for op_name, builder in ALL_OPS.items():
         dots = "." * (max_dots - len(op_name))
         is_compatible = OKAY if builder.is_compatible(verbose) else no
-        is_installed = installed if installed_ops[op_name] else no
-        dots2 = '.' * ((len(h[1]) + (max_dots2 - len(h[1]))) -
-                       (len(is_installed) - color_len))
+        is_installed = installed if installed_ops.get(op_name, False) else no
+        dots2 = '.' * ((len(h[1]) + (max_dots2 - len(h[1]))) - (len(is_installed) - color_len))
         print(op_name, dots, is_installed, dots2, is_compatible)
     print("-" * (max_dots + max_dots2 + len(h[0]) + len(h[1])))
 
 
 def ninja_installed():
     try:
-        import ninja
+        import ninja  # noqa: F401 # type: ignore
     except ImportError:
         return False
     return True
@@ -66,9 +71,7 @@ def nvcc_version():
     if cuda_home is None:
         return f"{RED} [FAIL] cannot find CUDA_HOME via torch.utils.cpp_extension.CUDA_HOME={torch.utils.cpp_extension.CUDA_HOME} {END}"
     try:
-        output = subprocess.check_output([cuda_home + "/bin/nvcc",
-                                          "-V"],
-                                         universal_newlines=True)
+        output = subprocess.check_output([cuda_home + "/bin/nvcc", "-V"], universal_newlines=True)
     except FileNotFoundError:
         return f"{RED} [FAIL] nvcc missing {END}"
     output_split = output.split()
@@ -77,50 +80,70 @@ def nvcc_version():
     return ".".join(release)
 
 
+def get_shm_size():
+    try:
+        shm_stats = os.statvfs('/dev/shm')
+    except (OSError, FileNotFoundError, ValueError):
+        return "UNKNOWN", None
+
+    shm_size = shm_stats.f_frsize * shm_stats.f_blocks
+    shm_hbytes = human_readable_size(shm_size)
+    warn = []
+    if shm_size < 512 * 1024**2:
+        warn.append(
+            f" {YELLOW} [WARNING] /dev/shm size might be too small, if running in docker increase to at least --shm-size='1gb' {END}"
+        )
+        if get_accelerator().communication_backend_name() == "nccl":
+            warn.append(
+                f" {YELLOW} [WARNING] see more details about NCCL requirements: https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting.html#sharing-data {END}"
+            )
+    return shm_hbytes, warn
+
+
+def human_readable_size(size):
+    units = ['B', 'KB', 'MB', 'GB', 'TB']
+    i = 0
+    while size >= 1024 and i < len(units) - 1:
+        size /= 1024
+        i += 1
+    return f'{size:.2f} {units[i]}'
+
+
 def debug_report():
     max_dots = 33
 
-    hip_version = None
-    if hasattr(torch.version, 'hip'):
-        hip_version = torch.version.hip
+    report = [("torch install path", torch.__path__), ("torch version", torch.__version__),
+              ("deepspeed install path", deepspeed.__path__),
+              ("deepspeed info", f"{deepspeed.__version__}, {deepspeed.__git_hash__}, {deepspeed.__git_branch__}")]
+    if get_accelerator().device_name() == 'cuda':
+        hip_version = getattr(torch.version, "hip", None)
+        report.extend([("torch cuda version", torch.version.cuda), ("torch hip version", hip_version),
+                       ("nvcc version", (None if hip_version else nvcc_version())),
+                       ("deepspeed wheel compiled w.", f"torch {torch_info['version']}, " +
+                        (f"hip {torch_info['hip_version']}" if hip_version else f"cuda {torch_info['cuda_version']}"))
+                       ])
+    else:
+        report.extend([("deepspeed wheel compiled w.", f"torch {torch_info['version']} ")])
 
-    report = [
-        ("torch install path",
-         torch.__path__),
-        ("torch version",
-         torch.__version__),
-        ("torch cuda version",
-         torch.version.cuda),
-        ("torch hip version",
-         hip_version),
-        ("nvcc version",
-         (None if hip_version else nvcc_version())),
-        ("deepspeed install path",
-         deepspeed.__path__),
-        ("deepspeed info",
-         f"{deepspeed.__version__}, {deepspeed.__git_hash__}, {deepspeed.__git_branch__}"
-         ),
-        ("deepspeed wheel compiled w.",
-         f"torch {torch_info['version']}, " +
-         (f"hip {torch_info['hip_version']}"
-          if hip_version else f"cuda {torch_info['cuda_version']}")),
-    ]
+    report.append(("shared memory (/dev/shm) size", get_shm_size()))
+
     print("DeepSpeed general environment info:")
     for name, value in report:
+        warns = []
+        if isinstance(value, tuple):
+            value, warns = value
         print(name, "." * (max_dots - len(name)), value)
+        if warns:
+            for warn in warns:
+                print(warn)
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--hide_operator_status',
-        action='store_true',
-        help=
-        'Suppress display of installation and compatibility statuses of DeepSpeed operators. '
-    )
-    parser.add_argument('--hide_errors_and_warnings',
+    parser.add_argument('--hide_operator_status',
                         action='store_true',
-                        help='Suppress warning and error messages.')
+                        help='Suppress display of installation and compatibility statuses of DeepSpeed operators. ')
+    parser.add_argument('--hide_errors_and_warnings', action='store_true', help='Suppress warning and error messages.')
     args = parser.parse_args()
     return args
 
@@ -133,8 +156,7 @@ def main(hide_operator_status=False, hide_errors_and_warnings=False):
 
 def cli_main():
     args = parse_arguments()
-    main(hide_operator_status=args.hide_operator_status,
-         hide_errors_and_warnings=args.hide_errors_and_warnings)
+    main(hide_operator_status=args.hide_operator_status, hide_errors_and_warnings=args.hide_errors_and_warnings)
 
 
 if __name__ == "__main__":

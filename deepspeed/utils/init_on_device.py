@@ -1,6 +1,8 @@
-'''
-Copyright 2020 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 from typing import Callable
 from torch import Tensor
@@ -35,13 +37,10 @@ class OnDevice(object):
 
         if device == "meta":
             if pkg_version.parse('1.10') > pkg_version.parse(torch.__version__):
-                raise NotImplementedError(
-                    "Meta tensor support is not available, please upgrade to torch 1.10+"
-                )
+                raise NotImplementedError("Meta tensor support is not available, please upgrade to torch 1.10+")
 
-    def fp_tensor_constructor(self,
-                              fn: Callable,
-                              target_fp_dtype: torch.dtype) -> Callable:
+    def fp_tensor_constructor(self, fn: Callable, target_fp_dtype: torch.dtype) -> Callable:
+
         def wrapped_fn(*args, **kwargs) -> Tensor:
             if kwargs.get("device", None) is None:
                 kwargs['device'] = self.device
@@ -53,6 +52,7 @@ class OnDevice(object):
         return wrapped_fn
 
     def get_new_tensor_fn_for_dtype(self, dtype: torch.dtype) -> Callable:
+
         def new_tensor(cls, *args) -> Tensor:
             tensor = OnDevice._orig_torch_empty(0, device=self.device).new_empty(*args)
             if tensor.is_floating_point():

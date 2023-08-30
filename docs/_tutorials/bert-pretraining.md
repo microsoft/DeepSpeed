@@ -4,6 +4,10 @@ excerpt: ""
 tags: training pre-training
 ---
 
+**Note:**
+On 08/15/2022 we have added another BERT pre-training/fine-tuning example at [github.com/microsoft/Megatron-DeepSpeed/tree/main/examples_deepspeed/bert_with_pile](https://github.com/microsoft/Megatron-DeepSpeed/tree/main/examples_deepspeed/bert_with_pile), which includes a README.md that describes how to use it. Compared to the example described below, the new example in Megatron-DeepSpeed adds supports of ZeRO and tensor-slicing model parallelism (thus support larger model scale), uses a public and richer [Pile dataset](https://github.com/EleutherAI/the-pile) (user can also use their own data), together with some changes to the model architecture and training hyperparameters as described in [this paper](https://arxiv.org/abs/1909.08053). As a result, the BERT models trained by the new example is able to provide better MNLI results than original BERT, but with a slightly different model architecture and larger computation requirements. If you want to train a larger-scale or better quality BERT-style model, we recommend to follow the new example in Megatron-DeepSpeed. If your goal is to strictly reproduce the original BERT model, we recommend to follow the example under DeepSpeedExamples/bing_bert as described below. On the other hand, the tutorial below helps explaining how to integrate DeepSpeed into a pre-training codebase, regardless of which BERT example you use.
+{: .notice--info}
+
 In this tutorial we will apply DeepSpeed to pre-train the BERT
 (**B**idirectional **E**ncoder **R**epresentations from **T**ransformers),
 which is widely used for many Natural Language Processing (NLP) tasks. The
@@ -126,7 +130,7 @@ The `model` returned by `deepspeed.initialize` is the DeepSpeed _model
 engine_ that we will use to train the model using the forward, backward and
 step API. Since the model engine exposes the same forward pass API as
 `nn.Module` objects, there is no change in the forward pass.
-Thus, we only modify the the backward pass and optimizer/scheduler steps.
+Thus, we only modify the backward pass and optimizer/scheduler steps.
 
 Backward propagation is performed by calling `backward(loss)` directly with
 the model engine.
@@ -304,7 +308,7 @@ Note:
 
 For more details about the transformer kernel, please see [DeepSpeed
 Transformer Kernel](/tutorials/transformer_kernel/) and [DeepSpeed Fast-Bert
-Training](https://www.deepspeed.ai/news/2020/05/27/fastest-bert-training.html).
+Training](https://www.deepspeed.ai/2020/05/27/fastest-bert-training.html).
 
 
 ### Start Training
@@ -387,4 +391,4 @@ for more details in
 
 Compared to SOTA, DeepSpeed significantly improves single GPU performance for transformer-based model like BERT. Figure above shows the single GPU throughput of training BertBERT-Large optimized through DeepSpeed, compared with two well-known Pytorch implementations, NVIDIA BERT and HuggingFace BERT. DeepSpeed reaches as high as 64 and 53 teraflops throughputs (corresponding to 272 and 52 samples/second) for sequence lengths of 128 and 512, respectively, exhibiting up to 28% throughput improvements over NVIDIA BERT and up to 62% over HuggingFace BERT.  We also support up to 1.8x larger batch size without running out of memory.
 
-For more details on how we achieve the record breaking BERT training time please check out deep dive into DeepSpeed BERT [Fastest BERT Training](https://www.deepspeed.ai/news/2020/05/18/bert-record.html)
+For more details on how we achieve the record breaking BERT training time please check out deep dive into DeepSpeed BERT [Fastest BERT Training](https://www.deepspeed.ai/2020/05/18/bert-record.html)

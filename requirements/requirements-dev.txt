@@ -1,8 +1,11 @@
-clang-format
+accelerate
+clang-format==16.0.2
+coverage
 docutils<0.18
+future
 importlib-metadata>=4
-megatron-lm==1.1.5
-pre-commit
+mup
+pre-commit>=2.20.0
 pytest
 pytest-forked
 pytest-randomly
@@ -10,5 +13,7 @@ pytest-xdist
 recommonmark
 sphinx
 sphinx-rtd-theme
+tensorboard
 torchvision
 transformers
+wandb

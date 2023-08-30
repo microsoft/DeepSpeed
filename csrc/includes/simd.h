@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #pragma once
 
 #if (__x86_64__ || __i386__)
@@ -21,7 +26,8 @@
 #define SIMD_DIV(x, y) _mm512_div_ps(x, y)
 #define SIMD_WIDTH 16
 
-#define SIMD_LOAD2(x, h) ((h) ? _mm512_cvtph_ps(_mm256_loadu_ps(x)) : _mm512_loadu_ps(x))
+#define SIMD_LOAD2(x, h) \
+    ((h) ? _mm512_cvtph_ps(_mm256_castps_si256(_mm256_loadu_ps(x))) : _mm512_loadu_ps(x))
 #define SIMD_STORE2(x, d, h)                                                                      \
     ((h) ? _mm256_store_ps(x, _mm256_castsi256_ps(_mm512_cvtps_ph(d, _MM_FROUND_TO_NEAREST_INT))) \
          : _mm512_storeu_ps(x, d))
