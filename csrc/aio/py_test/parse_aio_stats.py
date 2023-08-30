@@ -1,13 +1,13 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-Licensed under the MIT license.
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
+# DeepSpeed Team
+"""
 Functionality of swapping optimizer tensors to/from (NVMe) storage devices.
 """
 
 import os
 import argparse
-import re
 
 READ_SPEED = 'read_speed'
 WRITE_SPEED = 'write_speed'
@@ -20,10 +20,7 @@ METRIC_SEARCH = {READ_SPEED: 'E2E Read Speed', WRITE_SPEED: 'E2E Write Speed'}
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--logdir',
-                        type=str,
-                        required=True,
-                        help='Folder of statistics logs')
+    parser.add_argument('--log_dir', type=str, required=True, help='Folder of statistics logs')
 
     parser.add_argument('--metric',
                         type=str,
@@ -68,7 +65,7 @@ def get_file_key(file):
 
 
 def get_thread_count(file):
-    f, _ = os.path.splitext(file)
+    f, _ = os.path.splitext(os.path.basename(file))
     fields = f.split('_')
     for key in fields:
         if key[0] == 't':
@@ -108,8 +105,8 @@ def validate_args(args):
         print(f'{args.metric} is not a valid performance metrics')
         return False
 
-    if not os.path.isdir(args.logdir):
-        print(f'{args.logdir} folder is not existent')
+    if not os.path.isdir(args.log_dir):
+        print(f'{args.log_dir} folder is not existent')
         return False
 
     return True
@@ -125,6 +122,16 @@ def get_results(log_files, metric):
     return results
 
 
+def get_sorted_results(log_dir, metric):
+    log_files = [f for f in os.listdir(log_dir) if os.path.isfile(os.path.join(log_dir, f))]
+
+    log_files_path = [os.path.join(log_dir, f) for f in log_files]
+    results = get_results(log_files_path, metric)
+    result_keys = list(results.keys())
+    sorted_keys = sorted(result_keys)
+    return sorted_keys, results
+
+
 def main():
     print("Parsing aio statistics")
     args = parse_arguments()
@@ -132,16 +139,7 @@ def main():
     if not validate_args(args):
         quit()
 
-    log_files = [
-        f for f in os.listdir(args.logdir)
-        if os.path.isfile(os.path.join(args.logdir,
-                                       f))
-    ]
-
-    log_files_path = [os.path.join(args.logdir, f) for f in log_files]
-    results = get_results(log_files_path, args.metric)
-    result_keys = list(results.keys())
-    sorted_keys = sorted(result_keys)
+    sorted_keys, results = get_sorted_results(args.log_dir, args.metric)
     for k in sorted_keys:
         print(f'{k} = {results[k]}')
 

@@ -1,12 +1,14 @@
-# coding=utf-8
-# Copyright (c) 2019, The Microsoft DeepSpeed Team. All rights reserved.
-#
-# Note: please copy webtext data to "Megatron-LM" folder, before running this script.
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+"""
+Note: please copy webtext data to "Megatron-LM" folder, before running this script.
+"""
 
 import unittest
 import subprocess
 import os
-import time
 import re
 from .test_common import BaseTestCase
 
@@ -27,7 +29,7 @@ def grep_loss_from_file(file_name):
     with open(file_name, 'r') as f:
         lines = f.readlines()
         line_filter = "validation loss at the end of training for test data | LM loss:"
-        match_number = re.compile('LM loss: ([-+]?[0-9]+\.?[0-9]*(?:[Ee][-+]?[0-9]+)?)')
+        match_number = re.compile(r'LM loss: ([-+]?[0-9]+\.?[0-9]*(?:[Ee][-+]?[0-9]+)?)')
 
         for line in lines:
             if line_filter in line:
@@ -41,6 +43,7 @@ def grep_loss_from_file(file_name):
 
 
 class GPT2CheckpointTestCase(BaseTestCase):
+
     def __init__(self, methodName="DeepSpeed function test on GPT2 model"):
         super(GPT2CheckpointTestCase, self).__init__(methodName)
 
@@ -482,8 +485,7 @@ class GPT2CheckpointTestCase(BaseTestCase):
         #-----------------Loading Checkpoint-----------------#
 
         # building checkpoint arguments
-        test_config[
-            "other_args"] = f"\"--load {checkpoint_folder} {cpu_optimizer_flag} \""
+        test_config["other_args"] = f"\"--load {checkpoint_folder} {cpu_optimizer_flag} \""
 
         # set checkpoint load iteration
         try:
@@ -545,24 +547,20 @@ def checkpoint_suite():
     # Shrink DP
     suite.addTest(GPT2CheckpointTestCase('test_mp1_gpu2_load_gpu1_node1_with_zero1'))
     suite.addTest(GPT2CheckpointTestCase('test_mp1_gpu2_load_gpu1_node1_with_zero2'))
-    suite.addTest(
-        GPT2CheckpointTestCase('test_mp1_gpu2_load_gpu1_node1_with_zero2_offload'))
+    suite.addTest(GPT2CheckpointTestCase('test_mp1_gpu2_load_gpu1_node1_with_zero2_offload'))
 
     suite.addTest(GPT2CheckpointTestCase('test_mp2_gpu4_load_gpu2_node1_with_zero1'))
     suite.addTest(GPT2CheckpointTestCase('test_mp2_gpu4_load_gpu2_node1_with_zero2'))
-    suite.addTest(
-        GPT2CheckpointTestCase('test_mp2_gpu4_load_gpu2_node1_with_zero2_offload'))
+    suite.addTest(GPT2CheckpointTestCase('test_mp2_gpu4_load_gpu2_node1_with_zero2_offload'))
 
     # Expand DP
     suite.addTest(GPT2CheckpointTestCase('test_mp1_gpu2_load_gpu4_node1_with_zero1'))
     suite.addTest(GPT2CheckpointTestCase('test_mp1_gpu2_load_gpu4_node1_with_zero2'))
-    suite.addTest(
-        GPT2CheckpointTestCase('test_mp1_gpu2_load_gpu4_node1_with_zero2_offload'))
+    suite.addTest(GPT2CheckpointTestCase('test_mp1_gpu2_load_gpu4_node1_with_zero2_offload'))
 
     suite.addTest(GPT2CheckpointTestCase('test_mp2_gpu2_load_gpu4_node1_with_zero1'))
     suite.addTest(GPT2CheckpointTestCase('test_mp2_gpu2_load_gpu4_node1_with_zero2'))
-    suite.addTest(
-        GPT2CheckpointTestCase('test_mp2_gpu2_load_gpu4_node1_with_zero2_offload'))
+    suite.addTest(GPT2CheckpointTestCase('test_mp2_gpu2_load_gpu4_node1_with_zero2_offload'))
 
     suite.addTest(GPT2CheckpointTestCase('test_mp2_gpu4_node1_without_zero'))
 

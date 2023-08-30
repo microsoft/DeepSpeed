@@ -1,11 +1,10 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-Licensed under the MIT license.
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
+# DeepSpeed Team
+"""
 Functionality of swapping optimizer tensors to/from (NVMe) storage devices.
 """
-
-import os
 
 BYTES_PER_GB = 1024**3
 LOG_TIDS = [0]
@@ -40,3 +39,20 @@ def report_results(args, read_op, pool_results):
     e2e_speed_GB = total_bytes / e2e_latency_sec / BYTES_PER_GB
     print(f'E2E {io_string} Latency = {e2e_latency_sec} sec')
     print(f'E2E {io_string} Speed = {e2e_speed_GB} GB/sec')
+
+
+def refine_integer_value(value):
+    unit_dict = {'K': 1024, 'M': 1024**2, 'G': 1024**3}
+
+    if value[-1] in list(unit_dict.keys()):
+        int_value = int(value[:-1]) * unit_dict[value[-1]]
+        return int_value
+    return int(value)
+
+
+def refine_args(args):
+    if args.write_size and type(args.write_size) == str:
+        args.write_size = refine_integer_value(args.write_size)
+
+    if args.block_size and type(args.block_size) == str:
+        args.block_size = refine_integer_value(args.block_size)

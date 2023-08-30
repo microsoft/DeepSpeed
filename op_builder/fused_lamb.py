@@ -1,8 +1,11 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-"""
-import torch
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .builder import CUDAOpBuilder
+
+import sys
 
 
 class FusedLambBuilder(CUDAOpBuilder):
@@ -22,10 +25,16 @@ class FusedLambBuilder(CUDAOpBuilder):
         return ['csrc/includes']
 
     def cxx_args(self):
-        return ['-O3'] + self.version_dependent_macros()
+        args = super().cxx_args()
+        return args + self.version_dependent_macros()
 
     def nvcc_args(self):
-        return ['-lineinfo',
-                '-O3',
-                '--use_fast_math'
-                ] + self.version_dependent_macros() + self.compute_capability_args()
+        nvcc_flags = ['-O3'] + self.version_dependent_macros()
+        if self.is_rocm_pytorch():
+            ROCM_MAJOR, ROCM_MINOR = self.installed_rocm_version()
+            nvcc_flags += ['-DROCM_VERSION_MAJOR=%s' % ROCM_MAJOR, '-DROCM_VERSION_MINOR=%s' % ROCM_MINOR]
+        else:
+            nvcc_flags.extend(
+                ['-allow-unsupported-compiler' if sys.platform == "win32" else '', '-lineinfo', '--use_fast_math'] +
+                self.compute_capability_args())
+        return nvcc_flags

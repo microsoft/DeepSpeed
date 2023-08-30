@@ -1,25 +1,79 @@
-
 repos:
--   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v1.2.3
+-   repo: meta
     hooks:
-    -   id: trailing-whitespace
-        exclude: "examples/"
+    -   id: check-hooks-apply
+    -   id: check-useless-excludes
+
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.0.1
+    hooks:
+    -   id: check-case-conflict
+    -   id: check-json
+    -   id: check-symlinks
     -   id: check-yaml
-        exclude: "examples/"
+    -   id: destroyed-symlinks
     -   id: end-of-file-fixer
-        exclude: "examples/"
-        exclude: "docs/CNAME"
+        exclude: docs/CNAME
+    -   id: fix-byte-order-marker
+    -   id: fix-encoding-pragma
+        args: [--remove]
+    -   id: mixed-line-ending
+        args: [--fix=lf]
+    -   id: requirements-txt-fixer
+    -   id: trailing-whitespace
 
-
--   repo: https://github.com/pre-commit/mirrors-yapf
-    rev: v0.29.0
+-   repo: https://github.com/google/yapf
+    rev: v0.32.0
     hooks:
     -   id: yapf
-        exclude: "examples/"
 
--   repo: https://gitlab.com/daverona/pre-commit-cpp
-    rev: 0.6.0
+-   repo: https://gitlab.com/daverona/pre-commit/cpp
+    rev: 0.8.0
     hooks:
     -   id: clang-format  # formatter of C/C++ code based on a style guide: LLVM, Google, Chromium, Mozilla, and WebKit available
         args: []
+
+-   repo: local
+    hooks:
+    -   id: check-torchdist
+        name: check-torchdist
+        entry: ./scripts/check-torchdist.py
+        language: python
+        exclude: ^(deepspeed/comm/|docs/|benchmarks/|scripts/check-torchdist.py|deepspeed/moe/sharded_moe.py|deepspeed/runtime/comm/coalesced_collectives.py|deepspeed/elasticity/elastic_agent.py|deepspeed/launcher/launch.py|tests/unit/comm/test_dist.py)
+        # Specific deepspeed/ files are excluded for now until we wrap ProcessGroup in deepspeed.comm
+
+-   repo: local
+    hooks:
+    -   id: check-license
+        name: check-license
+        entry: ./scripts/check-license.py
+        language: python
+        files: \.(py|c|cpp|cu|cc|h|hpp|cuh|hip|tr)$
+
+-   repo: https://github.com/codespell-project/codespell
+    rev: v2.1.0
+    hooks:
+    -   id: codespell
+        args: [
+            # Do not check files that are automatically generated
+            '--skip=docs/Gemfile.lock,tests/unit/gpt2-merges.txt,tests/unit/gpt2-vocab.json',
+            '--ignore-regex=\\n',  # Do not count the 'n' in an escaped newline as part of a word
+            '--ignore-words-list=youn,unsupport',  # Word used in error messages that need rewording
+            --check-filenames,
+            --check-hidden
+        ]
+
+-   repo: https://github.com/pycqa/flake8
+    rev: 4.0.1
+    hooks:
+    -   id: flake8
+        args: ['--config=.flake8']
+
+-   repo: local
+    hooks:
+    -   id: check-torchcuda
+        name: check-torchcuda
+        entry: ./scripts/check-torchcuda.py
+        language: python
+        exclude: ^(.github/workflows/|scripts/check-torchcuda.py|docs/_tutorials/accelerator-abstraction-interface.md|accelerator/cuda_accelerator.py|deepspeed/inference/engine.py|deepspeed/model_implementations/transformers/clip_encoder.py|deepspeed/model_implementations/diffusers/vae.py|deepspeed/model_implementations/diffusers/unet.py|op_builder/spatial_inference.py|op_builder/transformer_inference.py|op_builder/builder.py|setup.py|tests/unit/ops/sparse_attention/test_sparse_attention.py)
+        # Specific deepspeed/ files are excluded for now until we wrap ProcessGroup in deepspeed.comm

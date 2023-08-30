@@ -1,7 +1,8 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-"""
-import torch
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .transformer import TransformerBuilder
 
 

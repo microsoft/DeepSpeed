@@ -1,7 +1,8 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-Licensed under the MIT license.
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
+# DeepSpeed Team
+"""
 Functionality of swapping optimizer tensors to/from (NVMe) storage devices.
 """
 
@@ -9,8 +10,9 @@ import torch
 import os
 import time
 from multiprocessing import Pool, Barrier
-from deepspeed.ops.aio import AsyncIOBuilder
 from test_ds_aio_utils import report_results, task_log, task_barrier
+from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder import AsyncIOBuilder
 
 
 def pre_handle(args, tid, read_op):
@@ -18,23 +20,20 @@ def pre_handle(args, tid, read_op):
     num_bytes = os.path.getsize(args.read_file) if read_op else args.write_size
     file = args.read_file if read_op else f'{args.write_file}.{tid}'
 
-    task_log(tid, f'Allocate tensor of size {num_bytes} bytes')
-    if args.gpu:
-        buffer = torch.empty(num_bytes, dtype=torch.uint8, device='cuda')
-    else:
-        buffer = torch.empty(num_bytes, dtype=torch.uint8, device='cpu').pin_memory()
-    task_log(
-        tid,
-        f'{io_string} file {file} of size {num_bytes} bytes from buffer on device {buffer.device}'
-    )
-
     io_parallel = args.io_parallel if args.io_parallel else 1
-    handle = AsyncIOBuilder().load().aio_handle(args.block_size,
-                                                args.queue_depth,
-                                                args.single_submit,
-                                                args.overlap_events,
-                                                io_parallel)
-    task_log(tid, f'created deepspeed aio handle')
+    handle = AsyncIOBuilder().load().aio_handle(args.block_size, args.queue_depth, args.single_submit,
+                                                args.overlap_events, io_parallel)
+    task_log(tid, f'Created deepspeed aio handle')
+
+    if args.gpu:
+        buffer = torch.empty(num_bytes, dtype=torch.uint8, device=get_accelerator().device_name())
+    else:
+        if args.use_accelerator_pin_memory:
+            buffer = get_accelerator().pin_memory(torch.empty(num_bytes, dtype=torch.uint8, device='cpu'))
+        else:
+            buffer = handle.new_cpu_locked_tensor(num_bytes, torch.empty(0, dtype=torch.uint8))
+
+    task_log(tid, f'Allocate tensor of size {num_bytes} bytes')
 
     ctxt = {}
     ctxt['file'] = file
@@ -42,6 +41,8 @@ def pre_handle(args, tid, read_op):
     ctxt['handle'] = handle
     ctxt['buffer'] = buffer
     ctxt['elapsed_sec'] = 0
+
+    task_log(tid, f'{io_string} file {file} of size {num_bytes} bytes from buffer on device {buffer.device}')
 
     return ctxt
 
@@ -162,7 +163,7 @@ def _aio_handle_tasklet(pool_params):
     return ctxt["main_task_sec"], ctxt["elapsed_sec"], ctxt["num_bytes"] * args.loops
 
 
-def _init_takslet(b):
+def _init_tasklet(b):
     global aio_barrier
     aio_barrier = b
 
@@ -170,7 +171,7 @@ def _init_takslet(b):
 def aio_handle_multiprocessing(args, read_op):
     b = Barrier(args.threads)
     pool_params = [(args, p, read_op) for p in range(args.threads)]
-    with Pool(processes=args.threads, initializer=_init_takslet, initargs=(b, )) as p:
+    with Pool(processes=args.threads, initializer=_init_tasklet, initargs=(b, )) as p:
         pool_results = p.map(_aio_handle_tasklet, pool_params)
 
     report_results(args, read_op, pool_results)

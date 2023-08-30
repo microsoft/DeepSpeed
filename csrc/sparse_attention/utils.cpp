@@ -1,5 +1,12 @@
-// DeepSpeed note, code taken & adapted from commit 9aa94789f13ada713af36cfd8cca2fc9a7f6b79a
-// https://github.com/ptillet/torch-blocksparse/blob/master/csrc/utils.cpp
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
+/*
+DeepSpeed note, code taken & adapted from commit 9aa94789f13ada713af36cfd8cca2fc9a7f6b79a
+ https:github.com/ptillet/torch-blocksparse/blob/master/csrc/utils.cpp
+*/
 
 #include <torch/extension.h>
 #include <string>
@@ -94,14 +101,14 @@ ret_t sdd_segment(torch::Tensor layout, int start_width)
     // block index
     torch::Tensor idx = torch::zeros_like(layout);
     int current = 0;
-    size_t H = layout.size(0);
-    size_t M = layout.size(1);
-    size_t N = layout.size(2);
+    int64_t H = layout.size(0);
+    int64_t M = layout.size(1);
+    int64_t N = layout.size(2);
     auto _layout = layout.accessor<int, 3>();
     auto _idx = idx.accessor<int, 3>();
-    for (size_t h = 0; h < H; h++)
-        for (size_t m = 0; m < M; m++)
-            for (size_t n = 0; n < N; n++) {
+    for (int64_t h = 0; h < H; h++)
+        for (int64_t m = 0; m < M; m++)
+            for (int64_t n = 0; n < N; n++) {
                 if (_layout[h][m][n] == 0) continue;
                 _idx[h][m][n] = current++;
             }

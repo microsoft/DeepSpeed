@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 import deepspeed
 from deepspeed.runtime.utils import partition_uniform as partition
@@ -14,6 +19,7 @@ def split_tensor_along_last_dim(tensor, partitions, contiguous_split_chunks=Fals
     """
     # Get the size and dimension.
     last_dim = tensor.dim() - 1
+
     # Split.
     tensor_list = torch.split(tensor, partitions, dim=last_dim)
     # Note: torch.split does not create contiguous tensors by default.
@@ -24,6 +30,7 @@ def split_tensor_along_last_dim(tensor, partitions, contiguous_split_chunks=Fals
 
 
 class TiledLinear(torch.nn.Module):
+
     def __init__(self,
                  in_features,
                  out_features,
@@ -111,10 +118,7 @@ class TiledLinear(torch.nn.Module):
                 local_bias = bias if in_id == (in_splits - 1) else False
 
                 local_in_dim = self.in_parts[in_id + 1] - self.in_parts[in_id]
-                local = linear_cls(local_in_dim,
-                                   local_out_dim,
-                                   bias=local_bias,
-                                   **kwargs)
+                local = linear_cls(local_in_dim, local_out_dim, bias=local_bias, **kwargs)
                 self.linears[out_id].append(local)
 
         # Optionally initialize with a known tensor
@@ -123,13 +127,13 @@ class TiledLinear(torch.nn.Module):
 
     def forward(self, input_):
         if self.in_splits > 1 and not self.input_is_already_split:
-            split_sizes = [
-                self.in_parts[p + 1] - self.in_parts[p] for p in range(self.in_splits)
-            ]
+            input_parts = partition(input_.shape[-1], self.in_splits)
+            split_sizes = [input_parts[p + 1] - input_parts[p] for p in range(self.in_splits)]
             inputs = self._split_global_input(input_, split_sizes)
         elif self.in_splits > 1:
             inputs = input_
-            assert len(inputs) == self.in_splits, f"Col splits {self.in_splits} does not match input splits {len(inputs)}"
+            assert len(
+                inputs) == self.in_splits, f"Col splits {self.in_splits} does not match input splits {len(inputs)}"
         else:
             # no splits
             inputs = [input_]
@@ -256,6 +260,7 @@ class TiledLinearReturnBias(TiledLinear):
     """Wrapper for a Linear class that returns its own bias parameter, such as
     used by Megatron-LM.
     """
+
     def _reduce_local_output(self, in_id, out_id, current_out, new_out):
         """Reduces output tensors, but not the returned bias. """
         if current_out is not None:
@@ -269,10 +274,7 @@ class TiledLinearReturnBias(TiledLinear):
         tensor, bias = new_out
         assert tensor is not None
 
-        tensor = super()._reduce_local_output(in_id=in_id,
-                                              out_id=out_id,
-                                              current_out=old_tensor,
-                                              new_out=tensor)
+        tensor = super()._reduce_local_output(in_id=in_id, out_id=out_id, current_out=old_tensor, new_out=tensor)
 
         if bias is None:
             bias = old_bias

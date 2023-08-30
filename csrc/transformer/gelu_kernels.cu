@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #include "custom_cuda_layers.h"
 
 inline __device__ float gelu(const float x)
@@ -60,7 +65,7 @@ __global__ void gelu_kernel(const float* input, float* vals, int row_stride, int
 
 __global__ void gelu_kernel(const __half* input, __half* vals, int row_stride, int iterations)
 {
-#if __CUDA_ARCH__ >= 700
+#ifdef HALF_PRECISION_AVAILABLE
     int row = blockIdx.x;
     int id = threadIdx.x;
     int loop_stride = blockDim.x;
@@ -131,7 +136,7 @@ __global__ void fused_bias_gelu(const __half* input,
                                 int row_stride,
                                 int iterations)
 {
-#if __CUDA_ARCH__ >= 700
+#ifdef HALF_PRECISION_AVAILABLE
     int row = blockIdx.x;
     int id = threadIdx.x;
     int loop_stride = blockDim.x;
@@ -214,7 +219,7 @@ __global__ void d_gelu_func(__half* d_output,
                             int row_stride,
                             int iterations)
 {
-#if __CUDA_ARCH__ >= 700
+#ifdef HALF_PRECISION_AVAILABLE
     int row = blockIdx.x;
     int id = threadIdx.x;
     int loop_stride = blockDim.x;
