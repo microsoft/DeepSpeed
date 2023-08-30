@@ -700,14 +700,25 @@ class TorchCPUOpBuilder(CUDAOpBuilder):
         import torch
         args = []
         if not self.build_for_cpu:
+            args += super().cxx_args()
+            
             if not self.is_rocm_pytorch():
                 CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
+                CUDA_LIB = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib")
             else:
                 CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")
+                CUDA_LIB = None
 
-            args += super().cxx_args()
             args += [
                 f'-L{CUDA_LIB64}',
+            ]
+            
+            if CUDA_LIB is not None:
+                args += [
+                    f'-L{CUDA_LIB}',
+                ]
+                
+            args += [
                 '-lcudart',
                 '-lcublas',
                 '-g',
