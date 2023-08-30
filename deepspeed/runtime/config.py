@@ -201,9 +201,7 @@ def get_initial_dynamic_scale(param_dict):
 
 def get_fp16_fused_mode(param_dict):
     if get_fp16_enabled(param_dict):
-        return get_scalar_param(param_dict[FP16],
-                                FP16_FUSED_MODE,
-                                FP16_FUSED_MODE_DEFAULT)
+        return get_scalar_param(param_dict[FP16], FP16_FUSED_MODE, FP16_FUSED_MODE_DEFAULT)
     return FP16_FUSED_MODE_DEFAULT
 
 
