@@ -19,7 +19,7 @@ def get_shard_size(total_size, mp_size, rank=None):
         if (rank == None):
             rank = dist.get_rank()
         my_slices = (num_kv_heads // mp_size) + (1 if rank < (num_kv_heads % mp_size) else 0)
-        return (total_size // num_kv_heads) * my_slices
+        return total_size * my_slices // num_kv_heads
     else:
         if total_size % mp_size == 0:
             return total_size // mp_size
