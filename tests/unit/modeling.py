@@ -299,8 +299,7 @@ class BertConfig(object):
         if isinstance(vocab_size_or_config_json_file, str):
             with open(vocab_size_or_config_json_file, "r", encoding='utf-8') as reader:
                 json_config = json.loads(reader.read())
-            for key, value in json_config.items():
-                self.__dict__[key] = value
+            self.__dict__.update(json_config)
         elif isinstance(vocab_size_or_config_json_file, int):
             self.vocab_size = vocab_size_or_config_json_file
             self.hidden_size = hidden_size
