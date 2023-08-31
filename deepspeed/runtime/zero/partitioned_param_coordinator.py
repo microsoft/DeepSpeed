@@ -107,6 +107,7 @@ class PartitionedParameterCoordinator:
         self.hierarchy: int = 0
         self.zero_quantized_weights = zero_quantized_weights
         self.zero_quantized_nontrainable_weights = zero_quantized_nontrainable_weights
+        self.failure = True
 
         # stream that will be used for allgather operations
         self.__allgather_stream: get_accelerator().Stream = allgather_stream
