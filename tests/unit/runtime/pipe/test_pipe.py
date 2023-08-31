@@ -129,7 +129,5 @@ class TestPipeCifar10(DistributedTest):
         test_model = PipelineModule(layers=test_net.to_layers(), topology=topo, loss_fn=nn.CrossEntropyLoss())
         train_cifar(test_model, config=test_config_dict, num_steps=steps, fp16=config_dict['fp16']['enabled'])
 
-        # Ensure that all ranks have updated parameters
-        dist.barrier()
         # Check if models have same weights after training
         self._check_model_params_equal(base_model, test_model)
