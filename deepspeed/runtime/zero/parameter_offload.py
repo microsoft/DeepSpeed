@@ -492,7 +492,8 @@ class DeepSpeedZeRoOffload(object):
 
     def pre_sub_module_forward_function(self, sub_module):
         see_memory_usage(f"Before sub module function {sub_module.__class__.__name__}", force=False)
-        prev_grad_state = torch.is_grad_enabled() # we don't want to enable grad for sub modules fetching, yet the subfunction need to know if grad is enabled
+        prev_grad_state = torch.is_grad_enabled(
+        )  # we don't want to enable grad for sub modules fetching, yet the subfunction need to know if grad is enabled
         torch.set_grad_enabled(False)
         global FWD_MODULE_STACK
         FWD_MODULE_STACK.append(sub_module)
