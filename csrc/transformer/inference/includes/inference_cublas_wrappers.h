@@ -8,6 +8,9 @@
 #include <assert.h>
 #include <cublas_v2.h>
 #include <cuda.h>
+#ifdef BF16_AVAILABLE
+#include <cuda_bf16.h>
+#endif
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #ifndef __HIP_PLATFORM_HCC__
@@ -27,7 +30,8 @@ int cublas_gemm_ex(rocblas_handle handle,
                    const float* A,
                    const float* B,
                    float* C,
-                   rocblas_gemm_algo algo)
+                   rocblas_gemm_algo algo,
+                   int b_stride = -1)
 #else
 int cublas_gemm_ex(cublasHandle_t handle,
                    cublasOperation_t transa,
@@ -40,9 +44,11 @@ int cublas_gemm_ex(cublasHandle_t handle,
                    const float* A,
                    const float* B,
                    float* C,
-                   cublasGemmAlgo_t algo)
+                   cublasGemmAlgo_t algo,
+                   int b_stride = -1)
 #endif
 {
+    const int ldb = (b_stride == -1) ? ((transb == CUBLAS_OP_N) ? k : n) : b_stride;
 #ifdef __HIP_PLATFORM_HCC__
     rocblas_status status = rocblas_gemm_ex(handle,
                                             transa,
@@ -56,7 +62,7 @@ int cublas_gemm_ex(cublasHandle_t handle,
                                             (transa == rocblas_operation_none) ? m : k,
                                             (const void*)B,
                                             rocblas_datatype_f32_r,
-                                            (transb == rocblas_operation_none) ? k : n,
+                                            ldb,
                                             (const void*)beta,
                                             C,
                                             rocblas_datatype_f32_r,
@@ -81,7 +87,7 @@ int cublas_gemm_ex(cublasHandle_t handle,
                                          (transa == CUBLAS_OP_N) ? m : k,
                                          (const void*)B,
                                          CUDA_R_32F,
-                                         (transb == CUBLAS_OP_N) ? k : n,
+                                         ldb,
                                          (const void*)beta,
                                          C,
                                          CUDA_R_32F,
@@ -106,6 +112,7 @@ int cublas_gemm_ex(cublasHandle_t handle,
     return 0;
 }
 
+template <typename T>
 #ifdef __HIP_PLATFORM_HCC__
 int cublas_gemm_ex(rocblas_handle handle,
                    rocblas_operation transa,
@@ -115,10 +122,11 @@ int cublas_gemm_ex(rocblas_handle handle,
                    int k,
                    const float* alpha,
                    const float* beta,
-                   const __half* A,
-                   const __half* B,
-                   __half* C,
-                   rocblas_gemm_algo algo)
+                   const T* A,
+                   const T* B,
+                   T* C,
+                   rocblas_gemm_algo algo,
+                   int b_stride = -1)
 #else
 int cublas_gemm_ex(cublasHandle_t handle,
                    cublasOperation_t transa,
@@ -128,13 +136,17 @@ int cublas_gemm_ex(cublasHandle_t handle,
                    int k,
                    const float* alpha,
                    const float* beta,
-                   const __half* A,
-                   const __half* B,
-                   __half* C,
-                   cublasGemmAlgo_t algo)
+                   const T* A,
+                   const T* B,
+                   T* C,
+                   cublasGemmAlgo_t algo,
+                   int b_stride = -1)
 #endif
 {
+    const int ldb = (b_stride == -1) ? ((transb == CUBLAS_OP_N) ? k : n) : b_stride;
 #ifdef __HIP_PLATFORM_HCC__
+    constexpr auto rocblas_dtype_16 = std::is_same<T, __half>::value ? rocblas_datatype_f16_r
+                                                                     : rocblas_datatype_bf16_r;
     rocblas_status status = rocblas_gemm_ex(handle,
                                             transa,
                                             transb,
@@ -143,23 +155,24 @@ int cublas_gemm_ex(cublasHandle_t handle,
                                             k,
                                             (const void*)alpha,
                                             (const void*)A,
-                                            rocblas_datatype_f16_r,
+                                            rocblas_dtype_16,
                                             (transa == rocblas_operation_none) ? m : k,
                                             (const void*)B,
-                                            rocblas_datatype_f16_r,
-                                            (transb == rocblas_operation_none) ? k : n,
+                                            rocblas_dtype_16,
+                                            ldb,
                                             (const void*)beta,
                                             (void*)C,
-                                            rocblas_datatype_f16_r,
+                                            rocblas_dtype_16,
                                             m,
                                             (void*)C,
-                                            rocblas_datatype_f16_r,
+                                            rocblas_dtype_16,
                                             m,
                                             rocblas_datatype_f32_r,
                                             algo,
                                             0,
                                             0);
 #else
+    constexpr auto cublas_dtype_16 = std::is_same<T, __half>::value ? CUDA_R_16F : CUDA_R_16BF;
     cublasStatus_t status = cublasGemmEx(handle,
                                          transa,
                                          transb,
@@ -168,14 +181,14 @@ int cublas_gemm_ex(cublasHandle_t handle,
                                          k,
                                          (const void*)alpha,
                                          (const void*)A,
-                                         CUDA_R_16F,
+                                         cublas_dtype_16,
                                          (transa == CUBLAS_OP_N) ? m : k,
                                          (const void*)B,
-                                         CUDA_R_16F,
-                                         (transb == CUBLAS_OP_N) ? k : n,
+                                         cublas_dtype_16,
+                                         ldb,
                                          (const void*)beta,
                                          (void*)C,
-                                         CUDA_R_16F,
+                                         cublas_dtype_16,
                                          m,
                                          CUDA_R_32F,
                                          algo);
@@ -307,6 +320,7 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
     return 0;
 }
 
+template <typename T>
 #ifdef __HIP_PLATFORM_HCC__
 int cublas_strided_batched_gemm(rocblas_handle handle,
                                 int m,
@@ -314,9 +328,9 @@ int cublas_strided_batched_gemm(rocblas_handle handle,
                                 int k,
                                 const float* alpha,
                                 const float* beta,
-                                const __half* A,
-                                const __half* B,
-                                __half* C,
+                                const T* A,
+                                const T* B,
+                                T* C,
                                 rocblas_operation op_A,
                                 rocblas_operation op_B,
                                 int stride_A,
@@ -331,9 +345,9 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
                                 int k,
                                 const float* alpha,
                                 const float* beta,
-                                const __half* A,
-                                const __half* B,
-                                __half* C,
+                                const T* A,
+                                const T* B,
+                                T* C,
                                 cublasOperation_t op_A,
                                 cublasOperation_t op_B,
                                 int stride_A,
@@ -344,6 +358,8 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
 #endif
 {
 #ifdef __HIP_PLATFORM_HCC__
+    constexpr auto rocblas_dtype_16 = std::is_same<T, __half>::value ? rocblas_datatype_f16_r
+                                                                     : rocblas_datatype_bf16_r;
     rocblas_status status =
         rocblas_gemm_strided_batched_ex(handle,
                                         op_A,
@@ -353,20 +369,20 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
                                         k,
                                         alpha,
                                         A,
-                                        rocblas_datatype_f16_r,
+                                        rocblas_dtype_16,
                                         (op_A == rocblas_operation_none) ? m : k,
                                         stride_A,
                                         B,
-                                        rocblas_datatype_f16_r,
+                                        rocblas_dtype_16,
                                         (op_B == rocblas_operation_none) ? k : n,
                                         stride_B,
                                         beta,
                                         C,
-                                        rocblas_datatype_f16_r,
+                                        rocblas_dtype_16,
                                         m,
                                         stride_C,
                                         C,
-                                        rocblas_datatype_f16_r,
+                                        rocblas_dtype_16,
                                         m,
                                         stride_C,
                                         batch,
@@ -375,6 +391,7 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
                                         0,
                                         0);
 #else
+    constexpr auto cublas_dtype_16 = std::is_same<T, __half>::value ? CUDA_R_16F : CUDA_R_16BF;
     cublasStatus_t status = cublasGemmStridedBatchedEx(handle,
                                                        op_A,
                                                        op_B,
@@ -383,16 +400,16 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
                                                        k,
                                                        alpha,
                                                        A,
-                                                       CUDA_R_16F,
+                                                       cublas_dtype_16,
                                                        (op_A == CUBLAS_OP_N) ? m : k,
                                                        stride_A,
                                                        B,
-                                                       CUDA_R_16F,
+                                                       cublas_dtype_16,
                                                        (op_B == CUBLAS_OP_N) ? k : n,
                                                        stride_B,
                                                        beta,
                                                        C,
-                                                       CUDA_R_16F,
+                                                       cublas_dtype_16,
                                                        m,
                                                        stride_C,
                                                        batch,

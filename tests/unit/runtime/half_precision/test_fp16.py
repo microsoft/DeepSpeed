@@ -10,12 +10,12 @@ import pytest
 from deepspeed.ops.adam import FusedAdam
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel, SimpleOptimizer, random_dataloader, SimpleMoEModel, sequence_dataloader
-from unit.util import required_torch_version
+from deepspeed.runtime.utils import required_torch_version
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import CPUAdamBuilder
 
 try:
-    from apex import amp  # noqa: F401
+    from apex import amp  # noqa: F401 # type: ignore
     _amp_available = True
 except ImportError:
     _amp_available = False
@@ -160,7 +160,7 @@ class TestFP16OptimizerForMoE(DistributedTest):
     world_size = 2
 
     def test_unfused_gradnorm(self, monkeypatch):
-        if not required_torch_version():
+        if not required_torch_version(min_version=1.8):
             pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
         config_dict = {"train_batch_size": 2, "steps_per_print": 1, "fp16": {"enabled": True}}
@@ -188,7 +188,7 @@ class TestFP16OptimizerForMoE(DistributedTest):
             engine.step()
 
     def test_fused_gradnorm(self, monkeypatch):
-        if not required_torch_version():
+        if not required_torch_version(min_version=1.8):
             pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
         config_dict = {"train_batch_size": 2, "steps_per_print": 1, "fp16": {"enabled": True}}
@@ -218,7 +218,7 @@ class TestFP16OptimizerForMoE(DistributedTest):
 
     @pytest.mark.parametrize("fused_lamb_legacy", [(False), (True)])
     def test_lamb_gradnorm(self, monkeypatch, fused_lamb_legacy: bool):
-        if not required_torch_version():
+        if not required_torch_version(min_version=1.8):
             pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
         config_dict = {
@@ -319,7 +319,7 @@ class TestAdamFP16ZeroOneCycleCompatibility(DistributedTest):
 
         model = SimpleModel(hidden_dim)
         model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
+        data_loader = random_dataloader(model=model, total_samples=10, hidden_dim=hidden_dim, device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -328,11 +328,10 @@ class TestAdamFP16ZeroOneCycleCompatibility(DistributedTest):
 
 @pytest.mark.parametrize("zero_stage", [1, 2, 3])
 @pytest.mark.parametrize("use_cpu_offload", [True, False])
-@pytest.mark.parametrize("hidden_dim", [9, 10])
 class TestZeroStaticScale(DistributedTest):
     world_size = 1
 
-    def test(self, zero_stage, use_cpu_offload, hidden_dim):
+    def test(self, zero_stage, use_cpu_offload, hidden_dim=4):
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
 

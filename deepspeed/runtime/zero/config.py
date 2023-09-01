@@ -34,7 +34,13 @@ ZeRO optimization should be enabled as:
     "offload_param": {...},
     "offload_optimizer": {...},
     "ignore_unused_parameters": [true|false],
-    "round_robin_gradients": [true|false]
+    "round_robin_gradients": [true|false],
+    "zero_hpz_partition_size": 1,
+    "zero_quantized_weights": [true|false],
+    "zero_quantized_nontrainable_weights": [true|false],
+    "zero_quantized_gradients": [true|false],
+    "memory_efficient_linear": [true|false],
+    "override_module_apply": [true|false],
     }
 }
 """
@@ -246,6 +252,45 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     copying to CPU memory among ranks by fine-grained gradient partitioning.
     Performance benefit grows with gradient accumulation steps (more copying
     between optimizer steps) or GPU count (increased parallelism).
+    """
+    zero_hpz_partition_size: int = Field(1, ge=0)
+    """
+    Number of ranks in zero parameters partitioning secondary group
+    """
+    zero_quantized_weights: bool = False
+    """
+    Boolean indicating whether to quantize zero parameters (weights)
+    for efficient all_gather comm
+    """
+    zero_quantized_nontrainable_weights: bool = False
+    """
+    Boolean indicating whether to quantize non-trainable zero parameters (weights)
+    for efficient memory usage and communication. Different from zero_quantized_weights
+    that stores the weights in original precision and only perform quantization during communication,
+    this flag will store the weights in quantized precision. This is useful for LoRA training.
+    """
+    zero_quantized_gradients: bool = False
+    """
+    Boolean indicating whether to use quantized zero gradients
+    for efficient all_2_all_reduce comm
+    """
+
+    mics_shard_size: int = Field(-1, new_param="mics_shard_size")
+
+    mics_hierarchical_params_gather: bool = False
+
+    memory_efficient_linear: bool = True
+    """
+    Use memory efficient linear implementation, for Stage 3.
+    """
+    """
+    Whether force load checkpoint in pipeline mode, current only for Stage 3.
+    """
+    pipeline_loading_checkpoint: bool = False
+
+    override_module_apply: bool = True
+    """
+    Override nn.Module apply function, for Stage 3.
     """
 
     # Validators
