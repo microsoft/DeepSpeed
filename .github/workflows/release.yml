@@ -8,6 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-20.04
+    environment: release-env
 
     steps:
     - uses: actions/checkout@v3
