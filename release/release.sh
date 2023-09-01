@@ -31,7 +31,7 @@ if [ $? != 0 ]; then
     exit 1
 fi
 
-DS_BUILD_STRING="" python setup.py sdist
+DS_BUILD_STRING=" " python setup.py sdist
 
 if [ ! -f dist/deepspeed-${version}.tar.gz ]; then
     echo "prepared version does not match version given ($version), bump version first?"
@@ -39,7 +39,7 @@ if [ ! -f dist/deepspeed-${version}.tar.gz ]; then
     exit 1
 fi
 
-python -m twine upload dist/deepspeed-${version}.tar.gz --repository deepspeed
+python -m twine upload dist/deepspeed-${version}.tar.gz --repository testpypi
 
 git tag v${version}
 git push origin v${version}

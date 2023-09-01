@@ -293,7 +293,7 @@ with open(os.path.join(thisdir, 'README.md'), encoding='utf-8') as fin:
 
 start_time = time.time()
 
-setup(name='deepspeed',
+setup(name='ds_test',
       version=version_str,
       description='DeepSpeed library',
       long_description=readme_text,
