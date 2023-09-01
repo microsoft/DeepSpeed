@@ -24,6 +24,7 @@ import subprocess
 from setuptools import setup, find_packages
 from setuptools.command import egg_info
 import time
+import typing
 
 torch_available = True
 try:
@@ -56,6 +57,22 @@ def fetch_requirements(path):
         return [r.strip() for r in fd.readlines()]
 
 
+def is_env_set(key):
+    """
+    Checks if an environment variable is set and not "".
+    """
+    return bool(os.environ.get(key, None))
+
+
+def get_env_if_set(key, default: typing.Any = ""):
+    """
+    Returns an environment variable if it is set and not "",
+    otherwise returns a default value. In contrast, the fallback
+    parameter of os.environ.get() is skipped if the variable is set to "".
+    """
+    return os.environ.get(key, None) or default
+
+
 install_requires = fetch_requirements('requirements/requirements.txt')
 extras_require = {
     '1bit': [],  # add cupy based on cuda/rocm version
@@ -65,8 +82,10 @@ extras_require = {
     'autotuning': fetch_requirements('requirements/requirements-autotuning.txt'),
     'autotuning_ml': fetch_requirements('requirements/requirements-autotuning-ml.txt'),
     'sparse_attn': fetch_requirements('requirements/requirements-sparse_attn.txt'),
+    'sparse': fetch_requirements('requirements/requirements-sparse_pruning.txt'),
     'inf': fetch_requirements('requirements/requirements-inf.txt'),
-    'sd': fetch_requirements('requirements/requirements-sd.txt')
+    'sd': fetch_requirements('requirements/requirements-sd.txt'),
+    'triton': fetch_requirements('requirements/requirements-triton.txt'),
 }
 
 # Add specific cupy version to both onebit extension variants.
@@ -78,7 +97,12 @@ if torch_available and torch.cuda.is_available():
         if rocm_major <= 4:
             cupy = f"cupy-rocm-{rocm_major}-{rocm_minor}"
     else:
-        cupy = f"cupy-cuda{''.join(map(str,installed_cuda_version()))}"
+        cuda_major_ver, cuda_minor_ver = installed_cuda_version()
+        if (cuda_major_ver < 11) or ((cuda_major_ver == 11) and (cuda_minor_ver < 3)):
+            cupy = f"cupy-cuda{cuda_major_ver}{cuda_minor_ver}"
+        else:
+            cupy = f"cupy-cuda{cuda_major_ver}x"
+
     if cupy:
         extras_require['1bit'].append(cupy)
         extras_require['1bit_mpi'].append(cupy)
@@ -109,14 +133,14 @@ if torch_available and not torch.cuda.is_available():
     print("[WARNING] Torch did not find cuda available, if cross-compiling or running with cpu only "
           "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
           "(compute capabilities 6.0, 6.1, 6.2)")
-    if os.environ.get("TORCH_CUDA_ARCH_LIST", None) is None:
+    if not is_env_set("TORCH_CUDA_ARCH_LIST"):
         os.environ["TORCH_CUDA_ARCH_LIST"] = get_default_compute_capabilities()
 
 ext_modules = []
 
 # Default to pre-install kernels to false so we rely on JIT on Linux, opposite on Windows.
 BUILD_OP_PLATFORM = 1 if sys.platform == "win32" else 0
-BUILD_OP_DEFAULT = int(os.environ.get('DS_BUILD_OPS', BUILD_OP_PLATFORM))
+BUILD_OP_DEFAULT = int(get_env_if_set('DS_BUILD_OPS', BUILD_OP_PLATFORM))
 print(f"DS_BUILD_OPS={BUILD_OP_DEFAULT}")
 
 if BUILD_OP_DEFAULT:
@@ -140,7 +164,7 @@ def op_envvar(op_name):
 
 def op_enabled(op_name):
     env_var = op_envvar(op_name)
-    return int(os.environ.get(env_var, BUILD_OP_DEFAULT))
+    return int(get_env_if_set(env_var, BUILD_OP_DEFAULT))
 
 
 compatible_ops = dict.fromkeys(ALL_OPS.keys(), False)
@@ -148,11 +172,12 @@ install_ops = dict.fromkeys(ALL_OPS.keys(), False)
 for op_name, builder in ALL_OPS.items():
     op_compatible = builder.is_compatible()
     compatible_ops[op_name] = op_compatible
+    compatible_ops["deepspeed_not_implemented"] = False
 
     # If op is requested but not available, throw an error.
     if op_enabled(op_name) and not op_compatible:
         env_var = op_envvar(op_name)
-        if env_var not in os.environ:
+        if not is_env_set(env_var):
             builder.warning(f"One can disable {op_name} with {env_var}=0")
         abort(f"Unable to pre-compile {op_name}")
 
@@ -171,7 +196,7 @@ print(f'Install Ops={install_ops}')
 # Write out version/git info.
 git_hash_cmd = "git rev-parse --short HEAD"
 git_branch_cmd = "git rev-parse --abbrev-ref HEAD"
-if command_exists('git') and 'DS_BUILD_STRING' not in os.environ:
+if command_exists('git') and not is_env_set('DS_BUILD_STRING'):
     try:
         result = subprocess.check_output(git_hash_cmd, shell=True)
         git_hash = result.decode('utf-8').strip()
@@ -208,11 +233,11 @@ version_str = open('version.txt', 'r').read().strip()
 # Example: DS_BUILD_STRING=".dev20201022" python setup.py sdist bdist_wheel.
 
 # Building wheel for distribution, update version file.
-if 'DS_BUILD_STRING' in os.environ:
+if is_env_set('DS_BUILD_STRING'):
     # Build string env specified, probably building for distribution.
     with open('build.txt', 'w') as fd:
-        fd.write(os.environ.get('DS_BUILD_STRING'))
-    version_str += os.environ.get('DS_BUILD_STRING')
+        fd.write(os.environ['DS_BUILD_STRING'])
+    version_str += os.environ['DS_BUILD_STRING']
 elif os.path.isfile('build.txt'):
     # build.txt exists, probably installing from distribution.
     with open('build.txt', 'r') as fd:
@@ -293,7 +318,7 @@ setup(name='deepspeed',
           'Programming Language :: Python :: 3.8', 'Programming Language :: Python :: 3.9',
           'Programming Language :: Python :: 3.10'
       ],
-      license='MIT',
+      license='Apache Software License 2.0',
       ext_modules=ext_modules,
       cmdclass=cmdclass)
 

@@ -4,6 +4,7 @@
 # DeepSpeed Team
 
 import torch
+import deepspeed
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 from pydantic import Field
@@ -16,10 +17,8 @@ class DtypeEnum(Enum):
     # The torch dtype must always be the first value (so we return torch.dtype)
     fp16 = torch.float16, "torch.float16", "fp16", "float16", "half"
     fp32 = torch.float32, "torch.float32", "fp32", "float32", "float"
+    bf16 = torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16", "bfloat"
     int8 = torch.int8, "torch.int8", "int8"
-
-    # bf16 not supported
-    # bf16 = torch.bfloat16, "torch.bfloat16", "bf16", "bfloat16"
 
     # Copied from https://stackoverflow.com/a/43210118
     # Allows us to use multiple values for each Enum index and returns first
@@ -154,6 +153,18 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     can run faster using the graph replay method.
     """
 
+    use_triton: bool = False
+    """
+    Use this flag to use triton kernels for inference ops.
+    """
+
+    triton_autotune: bool = False
+    """
+    Use this flag to enable triton autotuning.
+    Turning it on is better for performance but increase the 1st runtime for
+    autotuning.
+    """
+
     zero: DeepSpeedZeroConfig = {}
     """
     ZeRO configuration to use with the Inference Engine. Expects a dictionary
@@ -186,15 +197,20 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     """
 
     #todo: refactor the following 3 into the new checkpoint_config
-    checkpoint: str = None
+    checkpoint: Union[str, Dict] = None
     """
     Path to deepspeed compatible checkpoint or path to JSON with load policy.
     """
 
-    base_dir: str = None
+    base_dir: str = ""
     """
     This shows the root directory under which all the checkpoint files exists.
     This can be passed through the json config too.
+    """
+
+    set_empty_params: bool = False
+    """
+    specifying whether the inference-module is created with empty or real Tensor
     """
 
     save_mp_checkpoint_path: str = None
@@ -247,6 +263,16 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     to the required token-length required for your use-case.
     """
 
+    min_out_tokens: int = Field(1, alias="min_tokens")
+    """
+    This argument communicates to the runtime the minimum number of tokens you
+    expect you will need to generate. This will cause the runtime to error
+    if it unable to provide this and provide context on the memory pressure
+    rather than seg-faulting or providing corrupted output.
+    """
+
+    transposed_mode: bool = Field(False, alias="transposed_mode")
+
     mp_size: int = Field(1, deprecated=True, new_param="tensor_parallel.tp_size")
     """
     Desired model parallel size, default is 1 meaning no model parallelism.
@@ -264,6 +290,12 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     def moe_backward_compat(cls, field_value, values):
         if isinstance(field_value, bool):
             return DeepSpeedMoEConfig(moe=field_value)
+        return field_value
+
+    @validator("use_triton")
+    def has_triton(cls, field_value, values):
+        if field_value and not deepspeed.HAS_TRITON:
+            raise ValueError('Triton needs to be installed to use deepspeed with triton kernels')
         return field_value
 
     class Config:

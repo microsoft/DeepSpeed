@@ -24,7 +24,7 @@ from typing import Dict
 from argparse import ArgumentParser, REMAINDER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..nebula.constants import DLTS_POD_ENV_PATH
-from ..utils import logger
+from ..utils import logger, get_numactl_cmd
 from ..elasticity import is_torch_elastic_compatible
 from .constants import ELASTIC_TRAINING_ID_DEFAULT
 
@@ -88,6 +88,18 @@ def parse_args():
                         default="None",
                         type=str,
                         help="redirect the stdout and stderr from each rank into different log files")
+
+    parser.add_argument("--bind_cores_to_rank",
+                        action="store_true",
+                        help="Bind each rank to different cores of the host. "
+                        "This improves host efficiency especially for CPU backend")
+
+    parser.add_argument("--bind_core_list",
+                        type=str,
+                        default=None,
+                        help="List of cores to bind to with comma separated list of "
+                        "numbers and range. i.e. 1,3-5,7 => [1,3,4,5,7].  When not "
+                        "specified, all cores on system would be used rank binding")
 
     # positional
     parser.add_argument("training_script",
@@ -203,16 +215,22 @@ def main():
                     raise ValueError(f"unable to create directory {args.enable_each_rank_log} for each rank log.")
             log_name_prefix = time.strftime("%Y%m%d%H%M%S", time.localtime())
 
-        for local_rank in range(0, num_local_procs):
+        for local_proc in range(0, num_local_procs):
             # each process's rank
-            dist_rank = global_rank_mapping[local_node][local_rank]
+            dist_rank = global_rank_mapping[local_node][local_proc]
+            local_rank = dist_rank % num_local_procs
             current_env["RANK"] = str(dist_rank)
             current_env["LOCAL_RANK"] = str(local_rank)
 
             # spawn the processes
             cmd = []
+            if args.bind_cores_to_rank:
+                cores_per_rank, numactl_cmd = get_numactl_cmd(args.bind_core_list, num_local_procs, local_rank)
+                current_env["OMP_NUM_THREADS"] = f"{cores_per_rank}"
+                cmd = cmd + numactl_cmd
             if not args.no_python:
-                cmd = [sys.executable, "-u"]
+                cmd.append(sys.executable)
+                cmd.append("-u")
                 if args.module:
                     cmd.append("-m")
             else:

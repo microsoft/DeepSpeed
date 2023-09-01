@@ -13,14 +13,13 @@ import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
 from unit.common import DistributedTest, DistributedFixture
 from unit.megatron_model import get_gpt2_model, get_megatron_version
-from unit.util import required_minimum_torch_version, required_maximum_torch_version
+from deepspeed.runtime.utils import required_torch_version
 
-pytestmark = pytest.mark.skipif(not required_minimum_torch_version(major_version=1, minor_version=5),
-                                reason='Megatron-LM package requires Pytorch version 1.5 or above')
-pytestmark = pytest.mark.skipif(not required_maximum_torch_version(major_version=1, minor_version=13),
-                                reason='Megatron-LM package requires Pytorch version 1.13 or below')
+pytestmark = pytest.mark.skipif(not required_torch_version(min_version=1.5, max_version=1.13),
+                                reason='Megatron-LM package requires Pytorch version >=1.5 and <=1.13')
 
 
+# TODO: integrated testing of TP and ZeRO 1/2/3
 def get_deepspeed_model(model):
     ds_config_dict = {
         "train_micro_batch_size_per_gpu": 1,
@@ -60,6 +59,7 @@ class ConfigurableMP(DistributedTest):
 class TestConfigurableMP(ConfigurableMP):
 
     @pytest.mark.world_size(1)
+    @pytest.mark.skip(reason="megatron-lm is currently broken so this test cannot be run.")
     def test_gpt2_basic(self, tmpdir, inputs):
         args_defaults = {
             'num_layers': 2,
@@ -87,6 +87,7 @@ class TestConfigurableMP(ConfigurableMP):
                               atol=1e-07), f"Baseline output {baseline} is not equal to save-then-load output {test}"
 
     @pytest.mark.world_size(2)
+    @pytest.mark.skip(reason="megatron-lm is currently broken so this test cannot be run.")
     def test_gpt2_mp2_no_resize(self, tmpdir, inputs):
         args_defaults = {
             'num_layers': 2,
@@ -148,6 +149,7 @@ class baseline_mp2(DistributedFixture):
 class TestConfigurableResizeMP(ConfigurableMP):
     world_size = [1, 4]
 
+    @pytest.mark.skip(reason="megatron-lm is currently broken so this test cannot be run.")
     def test(self, baseline_mp2, inputs, class_tmpdir):
         args_defaults = {
             'num_layers': 2,

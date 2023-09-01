@@ -1,12 +1,14 @@
 name: python
 
 on:
-  push:
-    branches:
-      - 'staging**'
   pull_request:
     branches:
       '**'
+    paths-ignore:
+      - 'docs/**'
+      - 'blogs/**'
+  merge_group:
+    branches: [ master ]
   schedule:
     - cron: "0 0 * * *"
 
@@ -26,7 +28,7 @@ jobs:
       image: deepspeed/gh-builder:py${{ matrix.pyVersion }}
 
     steps:
-        - uses: actions/checkout@v2
+        - uses: actions/checkout@v3
 
         - name: environment
           run: |
