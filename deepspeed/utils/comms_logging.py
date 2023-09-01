@@ -67,21 +67,16 @@ def calc_bw_log(comm_op, size, duration):
 class CommsLogger:
 
     def __init__(self):
-        from deepspeed.comm.constants import COMMS_LOGGER_VERBOSE_DEFAULT, COMMS_LOGGER_DEBUG_DEFAULT, COMMS_LOGGER_PROF_OPS_DEFAULT, COMMS_LOGGER_PROF_ALL_DEFAULT, COMMS_LOGGER_ENABLED_DEFAULT
+        self.enabled = False
         self.comms_dict = {}
-        self.verbose = COMMS_LOGGER_VERBOSE_DEFAULT
-        self.debug = COMMS_LOGGER_DEBUG_DEFAULT
-        self.prof_ops = COMMS_LOGGER_PROF_OPS_DEFAULT
-        self.prof_all = COMMS_LOGGER_PROF_ALL_DEFAULT
-        self.enabled = COMMS_LOGGER_ENABLED_DEFAULT
 
     def configure(self, comms_config):
-        self.enabled = comms_config.comms_logger_enabled
+        self.enabled = comms_config.enabled
         if self.enabled:
-            self.verbose = comms_config.comms_logger.verbose
-            self.debug = comms_config.comms_logger.debug
-            self.prof_ops = comms_config.comms_logger.prof_ops
-            self.prof_all = comms_config.comms_logger.prof_all
+            self.verbose = comms_config.verbose
+            self.debug = comms_config.debug
+            self.prof_ops = comms_config.prof_ops
+            self.prof_all = comms_config.prof_all
 
     # There are three settings for the op profiler:
     # - Global profiling (profile all comms)

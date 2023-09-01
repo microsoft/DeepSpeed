@@ -3,31 +3,25 @@
 
 # DeepSpeed Team
 
-from pydantic import BaseModel
-from .constants import *
+from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 
-class CommsConfig(BaseModel):
-
-    class Config:
-        validate_all = True
-        validate_assignment = True
-        use_enum_values = True
-        extra = 'forbid'
+def get_comms_config(param_dict):
+    return DeepSpeedCommsConfig(**param_dict.get("comms_logger", {}))
 
 
-class CommsLoggerConfig(CommsConfig):
-    enabled: bool = COMMS_LOGGER_ENABLED_DEFAULT
-    prof_all: bool = COMMS_LOGGER_PROF_ALL_DEFAULT
-    prof_ops: list = COMMS_LOGGER_PROF_OPS_DEFAULT
-    verbose: bool = COMMS_LOGGER_VERBOSE_DEFAULT
-    debug: bool = COMMS_LOGGER_DEBUG_DEFAULT
+class DeepSpeedCommsConfig(DeepSpeedConfigModel):
+    enabled: bool = False
+    """ Whether communication logging is enabled. """
 
+    prof_all: bool = True
+    """ Whether to profile all operations. """
 
-class DeepSpeedCommsConfig:
+    prof_ops: list = []
+    """ A list of communication operations to log (only the specified ops will be profiled). """
 
-    def __init__(self, ds_config):
-        self.comms_logger_enabled = 'comms_logger' in ds_config
+    verbose: bool = False
+    """ Whether to immediately print every communication operation. """
 
-        if self.comms_logger_enabled:
-            self.comms_logger = CommsLoggerConfig(**ds_config['comms_logger'])
+    debug: bool = False
+    """ Appends the caller function to each communication operation's `log_name`. """

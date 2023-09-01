@@ -98,6 +98,13 @@ Memory Usage
 
    memory
 
+Comms Logging
+-------------
+.. toctree::
+   :maxdepth: 2
+
+   comms-logging
+
 Monitoring
 ----------
 .. toctree::

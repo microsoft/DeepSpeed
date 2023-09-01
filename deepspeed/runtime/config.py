@@ -28,8 +28,8 @@ from .config_utils import (
 )
 from .zero.config import get_zero_config, ZeroStageEnum
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
-from ..comm.config import DeepSpeedCommsConfig
-from ..monitor.config import get_monitor_config
+from ..comm.config import get_comms_config
+from ..monitor.config import DeepSpeedMonitorConfig
 
 from deepspeed import comm as dist
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
@@ -794,8 +794,8 @@ class DeepSpeedConfig(object):
 
         self.activation_checkpointing_config = DeepSpeedActivationCheckpointingConfig(param_dict)
 
-        self.comms_config = DeepSpeedCommsConfig(param_dict)
-        self.monitor_config = get_monitor_config(param_dict)
+        self.comms_config = get_comms_config(param_dict)
+        self.monitor_config = DeepSpeedMonitorConfig(param_dict)
 
         self.gradient_clipping = get_gradient_clipping(param_dict)
         self.fp16_enabled = get_fp16_enabled(param_dict)
