@@ -25,7 +25,7 @@ jobs:
         pip install setuptools wheel twine
     - name: Build
       run: |
-        DS_BUILD_STRING="" python setup.py sdist
+        DS_BUILD_STRING=" " python setup.py sdist
     - name: Publish
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
