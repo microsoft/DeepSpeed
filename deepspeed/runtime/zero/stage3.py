@@ -81,40 +81,43 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     """
 
-    def __init__(self,
-                 module,
-                 init_optimizer,
-                 timers,
-                 ds_config,
-                 static_loss_scale=1.0,
-                 dynamic_loss_scale=False,
-                 dynamic_loss_args=None,
-                 verbose=True,
-                 contiguous_gradients=True,
-                 reduce_bucket_size=500000000,
-                 prefetch_bucket_size=50000000,
-                 max_reuse_distance=1000000000,
-                 max_live_parameters=1000000000,
-                 param_persistence_threshold=100000,
-                 model_persistence_threshold=sys.maxsize,
-                 dp_process_group=None,
-                 reduce_scatter=True,
-                 overlap_comm=False,
-                 offload_optimizer_config=None,
-                 offload_param_config=None,
-                 sub_group_size=1000000000000,
-                 mpu=None,
-                 clip_grad=0.0,
-                 gradient_accumulation_dtype=torch.float32,
-                 communication_data_type=torch.float16,
-                 postscale_gradients=True,
-                 gradient_predivide_factor=1.0,
-                 gradient_accumulation_steps=1,
-                 elastic_checkpoint=False,
-                 aio_config=None,
-                 all2all_process_group=None,
-                 zero_hpz_partition_size=1,
-                 zero_quantized_weights=False):
+    def __init__(
+        self,
+        module,
+        init_optimizer,
+        timers,
+        ds_config,
+        static_loss_scale=1.0,
+        dynamic_loss_scale=False,
+        dynamic_loss_args=None,
+        verbose=True,
+        contiguous_gradients=True,
+        reduce_bucket_size=500000000,
+        prefetch_bucket_size=50000000,
+        max_reuse_distance=1000000000,
+        max_live_parameters=1000000000,
+        param_persistence_threshold=100000,
+        model_persistence_threshold=sys.maxsize,
+        dp_process_group=None,
+        reduce_scatter=True,
+        overlap_comm=False,
+        offload_optimizer_config=None,
+        offload_param_config=None,
+        sub_group_size=1000000000000,
+        mpu=None,
+        clip_grad=0.0,
+        gradient_accumulation_dtype=torch.float32,
+        communication_data_type=torch.float16,
+        postscale_gradients=True,
+        gradient_predivide_factor=1.0,
+        gradient_accumulation_steps=1,
+        elastic_checkpoint=False,
+        aio_config=None,
+        all2all_process_group=None,
+        zero_hpz_partition_size=1,
+        zero_quantized_weights=False,
+        zero_quantized_nontrainable_weights=False,
+    ):
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
         print_rank_0(f"initialized {__class__.__name__} with args: {locals()}", force=False)
@@ -160,25 +163,30 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         #num of ranks in a ZeRO param partitioning group
         self.zero_hpz_partition_size = zero_hpz_partition_size
 
-        zpg = groups._get_zero_param_intra_parallel_group()
-        print_rank_0(f"ZeRO Stage 3 param partitioning group {self.zero_hpz_partition_size} {zpg}", force=False)
-        if self.zero_hpz_partition_size > 1 and zpg is None:
+        zero_param_parallel_group = groups._get_zero_param_intra_parallel_group()
+        print_rank_0(
+            f"ZeRO Stage 3 param partitioning group {self.zero_hpz_partition_size} {zero_param_parallel_group}",
+            force=False)
+        if self.zero_hpz_partition_size > 1 and zero_param_parallel_group is None:
             self._set_zero_group_parallelism()
-            zpg = groups._get_zero_param_intra_parallel_group()
+            zero_param_parallel_group = groups._get_zero_param_intra_parallel_group()
 
-        self.parameter_offload = self.initialize_ds_offload(module=module,
-                                                            timers=timers,
-                                                            ds_config=ds_config,
-                                                            overlap_comm=overlap_comm,
-                                                            prefetch_bucket_size=prefetch_bucket_size,
-                                                            max_reuse_distance=max_reuse_distance,
-                                                            max_live_parameters=max_live_parameters,
-                                                            param_persistence_threshold=param_persistence_threshold,
-                                                            model_persistence_threshold=model_persistence_threshold,
-                                                            offload_param_config=offload_param_config,
-                                                            mpu=mpu,
-                                                            zpg=zpg,
-                                                            zero_quantized_weights=zero_quantized_weights)
+        self.parameter_offload = self.initialize_ds_offload(
+            module=module,
+            timers=timers,
+            ds_config=ds_config,
+            overlap_comm=overlap_comm,
+            prefetch_bucket_size=prefetch_bucket_size,
+            max_reuse_distance=max_reuse_distance,
+            max_live_parameters=max_live_parameters,
+            param_persistence_threshold=param_persistence_threshold,
+            model_persistence_threshold=model_persistence_threshold,
+            dp_process_group=dp_process_group,
+            offload_param_config=offload_param_config,
+            mpu=mpu,
+            zero_param_parallel_group=zero_param_parallel_group,
+            zero_quantized_weights=zero_quantized_weights,
+            zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights)
 
         self.persistent_parameters = self.parameter_offload.persistent_parameters
         self._configure_offloading(offload_optimizer_config, offload_param_config)
@@ -210,9 +218,11 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self.reduce_scatter = reduce_scatter
 
-        self.dp_process_group = dp_process_group
+        self.dp_process_group = self.parameter_offload.dp_process_group
 
         self.all2all_process_group = all2all_process_group
+
+        self.zero_quantized_nontrainable_weights = zero_quantized_nontrainable_weights
 
         self.partition_count = dist.get_world_size(group=self.dp_process_group)
 
@@ -377,10 +387,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         max_live_parameters,
         param_persistence_threshold,
         model_persistence_threshold,
+        dp_process_group,
         offload_param_config,
         mpu,
-        zpg,
+        zero_param_parallel_group,
         zero_quantized_weights,
+        zero_quantized_nontrainable_weights,
     ):
         return DeepSpeedZeRoOffload(module=module,
                                     timers=timers,
@@ -391,10 +403,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                     max_live_parameters=max_live_parameters,
                                     param_persistence_threshold=param_persistence_threshold,
                                     model_persistence_threshold=model_persistence_threshold,
+                                    dp_process_group=dp_process_group,
                                     offload_param_config=offload_param_config,
                                     mpu=mpu,
-                                    zero_param_parallel_group=zpg,
-                                    zero_quantized_weights=zero_quantized_weights)
+                                    zero_param_parallel_group=zero_param_parallel_group,
+                                    zero_quantized_weights=zero_quantized_weights,
+                                    zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights)
 
     def _get_trainable_parameter_groups(self):
         param_groups = []
@@ -1348,6 +1362,40 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         for params_id in self.is_grad_computed[i][partition_id]:
             if are_all_related_partitions_reduced(params_id):
                 self.param_dict[params_id].grad = None
+
+    def quantize_nontrainable_params(self):
+        """ In ZeRO-3, when the zero_quantized_nontrainable_weights flag is set, we quantize the non-trainable weights and also store them in quantized format. However, this check for trainable/non-trainable is done when deepspeed initializes the partitioning. So, if the user changes the trainable/non-trainable status of a parameter after the partitioning is done (e.g. LoRA), the user needs to re-quantize the non-trainable weights by calling this function.
+        """
+        if not self.zero_quantized_nontrainable_weights:
+            print_rank_0(
+                f"Warning: quantize_nontrainable_params() called with zero_quantized_nontrainable_weights disabled, return without doing anything",
+                force=True)
+            return
+        quantizer_module = CUDAQuantizer()
+
+        def quantize_dstensor(tensor):
+            assert tensor.dtype == torch.float16, f"quantize_dstensor() expects tensor.dtype == torch.float16, got {tensor.dtype}"
+            partition_size = tensor.ds_numel
+            ds_status = tensor.status
+            final_location = tensor.final_location
+            tensor, tensor.ds_quant_scale = quantizer_module.quantize(tensor)
+            tensor.ds_numel = partition_size
+            tensor.status = ds_status
+            tensor.final_location = final_location
+            tensor.requires_grad = False
+            return tensor
+
+        for param in self.module.parameters():
+            if hasattr(param, "ds_tensor") and (param.ds_tensor.numel() <= 2048 or param.ds_numel <= 500000):
+                # skip small parameters
+                continue
+            if hasattr(param,
+                       "ds_tensor") and not param.requires_grad and not hasattr(param.ds_tensor, "ds_quant_scale"):
+                param.ds_tensor = quantize_dstensor(param.ds_tensor)
+            if hasattr(param, "ds_secondary_tensor") and not param.requires_grad and not hasattr(
+                    param.ds_secondary_tensor, "ds_quant_scale") and param.ds_secondary_tensor is not None:
+                param.ds_secondary_tensor = quantize_dstensor(param.ds_secondary_tensor)
+        get_accelerator().synchronize()
 
     def flatten_and_print(self, message, tensors, start=0, n=5):
         flatten_tensor = self.flatten(tensors)
@@ -2338,7 +2386,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                         state_dict_list,
                         load_optimizer_states=True,
                         load_from_fp32_weights=False,
-                        checkpoint_folder=None):
+                        checkpoint_folder=None,
+                        load_serial=None):
         r"""Loading a ZeRO checkpoint
         Arguments:
             state_dict_list: List of all saved ZeRO checkpoints, one for each saved partition.
@@ -2374,9 +2423,21 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self._rigid_load_state_dict(state_dict_list[dist.get_rank(group=self.dp_process_group)],
                                     load_optimizer_states=load_optimizer_states)
 
+        # when use loading checkpoint serial, after finish loading, we need to
+        # delete the temp state_dict_list variable to save memory, then trigger
+        # the next rank's loading
+        if load_serial != None:
+            load_serial += 1
+            rank = dist.get_rank(group=self.dp_process_group)
+            local_rank = dist.get_local_rank()
+            del state_dict_list[rank]
+            rank_end = dist.get_world_size() - 1
+            if local_rank != rank_end:
+                dist.send(tensor=load_serial, dst=rank + 1)
+
         if len(self.persistent_parameters) > 0:
             self.persistent_parameters[0].partition(self.persistent_parameters)
-            self.persistent_parameters[0].all_gather(self.persistent_parameters)
+            # self.persistent_parameters[0].all_gather(self.persistent_parameters) # this will be done in checkpoint_event_epilogue() so remove it to prevent double all_gather
 
     def checkpoint_event_prologue(self):
         self._partition_all_parameters()
