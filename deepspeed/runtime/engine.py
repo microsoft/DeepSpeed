@@ -2863,7 +2863,7 @@ class DeepSpeedEngine(Module):
                     "currently supported.")
             checkpoint_folder = None
             zero_sd_list = self._get_all_zero_checkpoints(load_dir, tag)
-            if zero_sd_list is None:
+            if not zero_sd_list:
                 return False
 
         self.optimizer.load_state_dict(state_dict_list=zero_sd_list,
