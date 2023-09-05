@@ -53,12 +53,13 @@ def get_accelerator():
     DS_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'npu', 'mps']
     if "DS_ACCELERATOR" in os.environ.keys():
         accelerator_name = os.environ["DS_ACCELERATOR"]
-        if accelerator_name == "xpu":
+        elif accelerator_name == "xpu":
             try:
-                from intel_extension_for_deepspeed import XPU_Accelerator  # noqa: F401 # type: ignore
+                import intel_extension_for_pytorch as ipex
+                assert(ipex.has_xpu(), "XPU_Accelerator requires an intel_extension_for_pytorch that supports XPU.")
             except ImportError as e:
                 raise ValueError(
-                    f"XPU_Accelerator requires intel_extension_for_deepspeed, which is not installed on this system.")
+                    f"XPU_Accelerator requires intel_extension_for_pytorch, which is not installed on this system.")
         elif accelerator_name == "cpu":
             try:
                 import intel_extension_for_pytorch  # noqa: F401 # type: ignore
@@ -101,17 +102,20 @@ def get_accelerator():
 
         try:
             from intel_extension_for_deepspeed import XPU_Accelerator  # noqa: F401,F811 # type: ignore
-
-            accelerator_name = "xpu"
+            accelerator_name = "xpu.external"
         except ImportError as e:
             pass
+
         if accelerator_name == None:
             try:
-                import intel_extension_for_pytorch  # noqa: F401,F811 # type: ignore
-
-                accelerator_name = "cpu"
+                import intel_extension_for_pytorch as ipex
+                if ipex.has_xpu():
+                    accelerator_name = "xpu"
+                else:
+                    accelerator_name = "cpu"
             except ImportError as e:
                 pass
+
         if accelerator_name == None:
             try:
                 import torch_npu  # noqa: F401,F811 # type: ignore
@@ -119,6 +123,7 @@ def get_accelerator():
                 accelerator_name = "npu"
             except ImportError as e:
                 pass
+
         if accelerator_name == None:
             try:
                 import torch.mps
@@ -128,6 +133,7 @@ def get_accelerator():
                 accelerator_name = "mps"
             except (RuntimeError, ImportError) as e:
                 pass
+
         if accelerator_name == None:
             accelerator_name = "cuda"
 
@@ -142,8 +148,12 @@ def get_accelerator():
         from .cpu_accelerator import CPU_Accelerator
 
         ds_accelerator = CPU_Accelerator()
-    elif accelerator_name == "xpu":
+    elif accelerator_name == "xpu.external":
         # XPU_Accelerator is already imported in detection stage
+        ds_accelerator = XPU_Accelerator()
+    elif accelerator_name == "xpu":
+        from .xpu_accelerator import XPU_Accelerator
+
         ds_accelerator = XPU_Accelerator()
     elif accelerator_name == "npu":
         from .npu_accelerator import NPU_Accelerator

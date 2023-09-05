@@ -187,7 +187,13 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return tensor.pin_memory(device=self.current_device_name())
 
     def op_builder_dir(self):
-        return "intel_extension_for_deepspeed.op_builder"
+        try:
+            # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
+            # if successful this also means we're doing a local install and not JIT compile path
+            from op_builder import __deepspeed__  # noqa: F401 # type: ignore
+            return "op_builder.xpu"
+        except ImportError:
+            return "deepspeed.ops.op_builder.xpu"
 
     def on_accelerator(self, tensor):
         device_str = str(tensor.device)
@@ -205,9 +211,17 @@ class XPU_Accelerator(DeepSpeedAccelerator):
 
     # return an op builder class, name specified by class_name
     def get_op_builder(self, class_name):
-        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder, InferenceBuilder, FlashAttentionBuilder
-        from deepspeed.ops.op_builder.async_io import AsyncIOBuilder
-        from deepspeed.ops.op_builder.sparse_attn import SparseAttnBuilder
+        try:
+            # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
+            # if successful this also means we're doing a local install and not JIT compile path
+            from op_builder import __deepspeed__  # noqa: F401 # type: ignore
+            from op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder, InferenceBuilder, FlashAttentionBuilder
+            from op_builder.async_io import AsyncIOBuilder
+            from op_builder.sparse_attn import SparseAttnBuilder
+        except ImportError:
+            from deepspeed.ops.op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder, InferenceBuilder, FlashAttentionBuilder
+            from deepspeed.ops.op_builder.async_io import AsyncIOBuilder
+            from deepspeed.ops.op_builder.sparse_attn import SparseAttnBuilder
 
         if class_name == "AsyncIOBuilder":
             return AsyncIOBuilder
