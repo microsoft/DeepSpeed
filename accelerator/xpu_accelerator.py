@@ -215,11 +215,11 @@ class XPU_Accelerator(DeepSpeedAccelerator):
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
             from op_builder import __deepspeed__  # noqa: F401 # type: ignore
-            from op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder, InferenceBuilder, FlashAttentionBuilder
+            from op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder, InferenceBuilder
             from op_builder.async_io import AsyncIOBuilder
             from op_builder.sparse_attn import SparseAttnBuilder
         except ImportError:
-            from deepspeed.ops.op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder, InferenceBuilder, FlashAttentionBuilder
+            from deepspeed.ops.op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder, InferenceBuilder
             from deepspeed.ops.op_builder.async_io import AsyncIOBuilder
             from deepspeed.ops.op_builder.sparse_attn import SparseAttnBuilder
 
@@ -241,8 +241,6 @@ class XPU_Accelerator(DeepSpeedAccelerator):
             return UtilsBuilder
         elif class_name == "InferenceBuilder":
             return InferenceBuilder
-        elif class_name == "FlashAttentionBuilder":
-            return FlashAttentionBuilder
         else:
             return None
 

@@ -6,4 +6,3 @@ from .transformer import TransformerBuilder
 from .transformer_inference import InferenceBuilder
 from .quantizer import QuantizerBuilder
 from .utils import UtilsBuilder
-from .flash_attn import FlashAttentionBuilder
