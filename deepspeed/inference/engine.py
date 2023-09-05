@@ -127,7 +127,8 @@ class InferenceEngine(Module):
         # We only support three modes: 1) user specified policy for tensor-parallelism, 2) kernel injection (replace_with_kernel_inject), and 3) automatic tensor parallelism if tp_size > 1.
         if self.injection_dict:
             # 1. User specified Tensor Parallelism
-            assert not config.replace_with_kernel_inject, "Cannot use both user specified injection policy and kernel injection"
+            # Let's relax this constraint a bit, as we can let the user to pass an injection dict, i.e. {layer: injection_policy} to inject kernels
+            # assert not config.replace_with_kernel_inject, "Cannot use both user specified injection policy and kernel injection"
             for client_module, injection_policy in self.injection_dict.items():
                 # construct the tuple and pass that instead of a string or dict.
                 if isinstance(injection_policy, str):
