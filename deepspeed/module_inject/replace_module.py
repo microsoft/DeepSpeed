@@ -305,7 +305,8 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                              orig_class=orig_layer_impl,
                                              replace_fn=replace_fn,
                                              _replace_policy=config.injection_policy_tuple,
-                                             checkpoint=checkpoint[i])
+                                             checkpoint=checkpoint[i],
+                                             is_last_cp=(i==(len(checkpoint) - 1)))
             pbar.update(1)
             gc.collect()
     else:
@@ -523,7 +524,7 @@ def revert_transformer_layer(orig_layer_impl, model, config, preln=False):
                           _replace_policy=None)
 
 
-def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=None):
+def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=None, is_last_cp=False):
     """ Scan the model for instances of ``orig_clas:`` to replace using ``replace_fn``.
     Arguments:
         model (torch.nn.Module): the model to augment
@@ -559,7 +560,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
             if "word_embeddings." in n or "embed_tokens." in n or "wte." in n:
                 embedding_weight = p
         if embedding_weight is not None and hasattr(replaced_module, "lm_head") and hasattr(
-                replaced_module.lm_head, "weight") and replaced_module.lm_head.weight.is_meta:
+                replaced_module.lm_head, "weight") and replaced_module.lm_head.weight.is_meta and is_last_cp:
             replaced_module.lm_head.weight = embedding_weight
     return replaced_module
 
