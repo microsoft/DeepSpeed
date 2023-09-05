@@ -1,7 +1,7 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
-from .builder import SYCLOpBuilder, sycl_kernel_path, sycl_kernel_include
+from .builder import SYCLOpBuilder
 
 
 class FusedAdamBuilder(SYCLOpBuilder):
@@ -16,14 +16,14 @@ class FusedAdamBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/adam/fused_adam_frontend.cpp'),
-            sycl_kernel_path('csrc/adam/multi_tensor_adam.dp.cpp'),
+            'csrc/xpu/adam/fused_adam_frontend.cpp',
+            'csrc/xpu/adam/multi_tensor_adam.dp.cpp',
         ]
 
     def include_paths(self):
         return [
-            sycl_kernel_include('csrc/includes'),
-            sycl_kernel_include('csrc/adam'), 'csrc/includes'
+            'csrc/xpu/includes',
+            'csrc/xpu/adam', 'csrc/includes'
         ]
 
     def cxx_args(self):

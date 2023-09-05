@@ -1,4 +1,4 @@
-from .builder import SYCLOpBuilder, sycl_kernel_path, sycl_kernel_include
+from .builder import SYCLOpBuilder
 
 
 class InferenceBuilder(SYCLOpBuilder):
@@ -17,16 +17,16 @@ class InferenceBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/transformer/inference/csrc/softmax.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/pt_binding.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/gelu.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/inference_onednn_wrappers.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/inference_onemkl_wrappers.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/layer_norm.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/pointwise_ops.cpp'),
+            'csrc/transformer/inference/csrc/softmax.cpp',
+            'csrc/transformer/inference/csrc/pt_binding.cpp',
+            'csrc/transformer/inference/csrc/gelu.cpp',
+            'csrc/transformer/inference/csrc/inference_onednn_wrappers.cpp',
+            'csrc/transformer/inference/csrc/inference_onemkl_wrappers.cpp',
+            'csrc/transformer/inference/csrc/layer_norm.cpp',
+            'csrc/transformer/inference/csrc/pointwise_ops.cpp'
         ]
 
     def include_paths(self):
-        includes = [sycl_kernel_include('csrc/transformer/inference/includes'), 'csrc/transformer/inference/includes']
+        includes = ['csrc/xpu/transformer/inference/includes', 'csrc/transformer/inference/includes']
         return includes
 

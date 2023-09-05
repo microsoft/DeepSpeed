@@ -4,7 +4,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import torch
 import torch.nn as nn
 from torch.autograd import Function
-from .builder import SYCLOpBuilder, sycl_kernel_path, sycl_kernel_include
+from .builder import SYCLOpBuilder
 
 
 flash_attn_module = None
@@ -96,19 +96,17 @@ class FlashAttentionBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/flash_attn/flash_attn.dp.cpp'),
-            sycl_kernel_path('csrc/flash_attn/flash_attn_fwd.cpp'),
-            sycl_kernel_path('csrc/flash_attn/flash_attn_bwd.cpp'),
+            'csrc/xpu/flash_attn/flash_attn.dp.cpp',
+            'csrc/xpu/flash_attn/flash_attn_fwd.cpp',
+            'csrc/xpu/flash_attn/flash_attn_bwd.cpp',
         ]
 
     def include_paths(self):
         return [
-            sycl_kernel_include('csrc/includes'),
-            sycl_kernel_include('csrc/includes/flash_attn'),
-            sycl_kernel_include('../../third_party/xetla/include'),
+            'csrc/xpu/includes',
+            'csrc/xpu/includes/flash_attn',
             'csrc/includes',
-            '../../third_party/xetla/include',
-            'csrc/includes/flash_attn',
+            'third_party/xetla/include',
         ]
 
     def extra_ldflags(self):

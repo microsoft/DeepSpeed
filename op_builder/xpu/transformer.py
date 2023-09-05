@@ -1,7 +1,7 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
-from .builder import SYCLOpBuilder, sycl_kernel_path, sycl_kernel_include
+from .builder import SYCLOpBuilder
 
 
 class TransformerBuilder(SYCLOpBuilder):
@@ -20,28 +20,24 @@ class TransformerBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/transformer/onednn_wrappers.dp.cpp'),
-            sycl_kernel_path(
-                'csrc/transformer/ds_transformer_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/onemkl_wrappers.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/transform_kernels.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/ds_gelu_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/gelu_kernels.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/ds_dropout_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/dropout_kernels.dp.cpp'),
-            sycl_kernel_path(
-                'csrc/transformer/ds_feedforward_sycl.dp.cpp'),
-            sycl_kernel_path(
-                'csrc/transformer/ds_layer_reorder_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/ds_normalize_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/normalize_kernels.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/ds_softmax_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/softmax_kernels.dp.cpp'),
-            sycl_kernel_path(
-                'csrc/transformer/ds_stridedbatchgemm_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/general_kernels.dp.cpp')
+            'csrc/xpu/transformer/onednn_wrappers.dp.cpp',
+            'csrc/xpu/transformer/ds_transformer_sycl.dp.cpp',
+            'csrc/xpu/transformer/onemkl_wrappers.dp.cpp',
+            'csrc/xpu/transformer/transform_kernels.dp.cpp',
+            'csrc/xpu/transformer/ds_gelu_sycl.dp.cpp',
+            'csrc/xpu/transformer/gelu_kernels.dp.cpp',
+            'csrc/xpu/transformer/ds_dropout_sycl.dp.cpp',
+            'csrc/xpu/transformer/dropout_kernels.dp.cpp',
+            'csrc/xpu/transformer/ds_feedforward_sycl.dp.cpp',
+            'csrc/xpu/transformer/ds_layer_reorder_sycl.dp.cpp',
+            'csrc/xpu/transformer/ds_normalize_sycl.dp.cpp',
+            'csrc/xpu/transformer/normalize_kernels.dp.cpp',
+            'csrc/xpu/transformer/ds_softmax_sycl.dp.cpp',
+            'csrc/xpu/transformer/softmax_kernels.dp.cpp',
+            'csrc/xpu/transformer/ds_stridedbatchgemm_sycl.dp.cpp',
+            'csrc/xpu/transformer/general_kernels.dp.cpp'
         ]
 
     def include_paths(self):
-        includes = [sycl_kernel_include('csrc/includes'), 'csrc/includes']
+        includes = ['csrc/xpu/includes', 'csrc/includes']
         return includes

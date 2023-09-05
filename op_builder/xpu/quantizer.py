@@ -1,4 +1,4 @@
-from .builder import SYCLOpBuilder, sycl_kernel_path, sycl_kernel_include
+from .builder import SYCLOpBuilder
 
 
 class QuantizerBuilder(SYCLOpBuilder):

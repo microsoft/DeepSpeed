@@ -1,7 +1,7 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
-from .builder import SYCLOpBuilder, sycl_kernel_path, sycl_kernel_include
+from .builder import SYCLOpBuilder
 
 
 class CPUAdagradBuilder(SYCLOpBuilder):
@@ -16,13 +16,13 @@ class CPUAdagradBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/adagrad/cpu_adagrad.dp.cpp'),
-            sycl_kernel_path('csrc/adam/custom_sycl_kernel.dp.cpp'),
+            'csrc/xpu/adagrad/cpu_adagrad.dp.cpp',
+            'csrc/xpu/adam/custom_sycl_kernel.dp.cpp'
         ]
 
     def include_paths(self):
         return [
-            sycl_kernel_include('csrc/includes'),
-            sycl_kernel_include('csrc/adagrad'),
+            'csrc/xpu/includes',
+            'csrc/xpu/adagrad',
             'csrc/includes'
         ]

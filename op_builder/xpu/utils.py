@@ -1,7 +1,7 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
-from .builder import SYCLOpBuilder, sycl_kernel_path, sycl_kernel_include  # noqa: F401
+from .builder import SYCLOpBuilder
 
 
 class UtilsBuilder(SYCLOpBuilder):

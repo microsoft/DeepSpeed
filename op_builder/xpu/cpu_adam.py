@@ -1,7 +1,7 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
-from .builder import SYCLOpBuilder, sycl_kernel_path, sycl_kernel_include
+from .builder import SYCLOpBuilder
 
 
 class CPUAdamBuilder(SYCLOpBuilder):
@@ -16,8 +16,8 @@ class CPUAdamBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/adam/cpu_adam.dp.cpp'),
-            sycl_kernel_path('csrc/adam/custom_sycl_kernel.dp.cpp'),
+            'csrc/xpu/adam/cpu_adam.dp.cpp',
+            'csrc/xpu/adam/custom_sycl_kernel.dp.cpp'
         ]
 
     def libraries_args(self):
@@ -26,6 +26,6 @@ class CPUAdamBuilder(SYCLOpBuilder):
 
     def include_paths(self):
         return [
-            sycl_kernel_include('csrc/includes'),
-            sycl_kernel_include('csrc/adam'), 'csrc/includes'
+            'csrc/xpu/includes',
+            'csrc/xpu/adam', 'csrc/includes'
         ]
