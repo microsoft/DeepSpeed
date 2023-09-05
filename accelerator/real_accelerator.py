@@ -50,16 +50,22 @@ def get_accelerator():
     accelerator_name = None
     ds_set_method = None
     # 1. Detect whether there is override of DeepSpeed accelerators from environment variable.
-    DS_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'npu', 'mps']
+    DS_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'xpu.external', 'npu', 'mps']
     if "DS_ACCELERATOR" in os.environ.keys():
         accelerator_name = os.environ["DS_ACCELERATOR"]
-        elif accelerator_name == "xpu":
+        if accelerator_name == "xpu":
             try:
                 import intel_extension_for_pytorch as ipex
                 assert(ipex.has_xpu(), "XPU_Accelerator requires an intel_extension_for_pytorch that supports XPU.")
             except ImportError as e:
                 raise ValueError(
                     f"XPU_Accelerator requires intel_extension_for_pytorch, which is not installed on this system.")
+        elif accelerator_name == "xpu.external":
+            try:
+                import intel_extension_for_deepspeed # noqa: F401 # type: ignore
+            except ImportError as e:
+                raise ValueError(
+                    f"XPU_Accelerator external requires intel_extension_for_deepspeed, which is not installed on this system.")
         elif accelerator_name == "cpu":
             try:
                 import intel_extension_for_pytorch  # noqa: F401 # type: ignore
