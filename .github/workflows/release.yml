@@ -30,7 +30,7 @@ jobs:
         repository-url: https://test.pypi.org/legacy/
     - name: Bump version
       run: |
-        python release/bump_patch_version.py
+        python release/bump_patch_version.py --current_version ${{ env.RELEASE_VERSION }}
     - name: Commit version.txt
       run: |
         git config --global user.name 'mrwyattii'
