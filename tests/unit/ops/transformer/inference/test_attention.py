@@ -8,6 +8,7 @@ import torch
 import deepspeed
 from .inference_test_utils import assert_almost_equal
 
+
 # reference timplementation
 def ref_torch_attention(q, k, v, mask, sm_scale):
     p = torch.matmul(q, k.transpose(2, 3)) * sm_scale
