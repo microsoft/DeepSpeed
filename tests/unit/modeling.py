@@ -39,6 +39,7 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from torch.utils import checkpoint
+from unit.util import safe_extract
 import deepspeed.comm as dist
 
 from torch.nn import Module
@@ -832,7 +833,7 @@ class BertPreTrainedModel(nn.Module):
                 resolved_archive_file,  # noqa: F821 # type: ignore
                 tempdir))
             with tarfile.open(resolved_archive_file, 'r:gz') as archive:  # noqa: F821 # type: ignore
-                archive.extractall(tempdir)
+                safe_extract(archive, tempdir)
             serialization_dir = tempdir
         # Load config
         config_file = os.path.join(serialization_dir, CONFIG_NAME)
