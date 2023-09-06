@@ -1,10 +1,11 @@
-'''
-Copyright 2019 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
-import torch
+# DeepSpeed Team
+
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
+from deepspeed.accelerator import get_accelerator
 
 from deepspeed.runtime.data_pipeline.data_sampling.data_sampler import DeepSpeedDataSampler
 from deepspeed.runtime.data_pipeline.constants import CURRICULUM_LEARNING, \
@@ -14,6 +15,7 @@ from deepspeed.runtime.constants import GRADIENT_ACCUMULATION_STEPS, \
 
 
 class RepeatingLoader:
+
     def __init__(self, loader):
         """Wraps an iterator to allow for infinite iteration. This is especially useful
         for DataLoader types that we wish to automatically restart upon completion.
@@ -37,6 +39,7 @@ class RepeatingLoader:
 
 
 class DeepSpeedDataLoader(object):
+
     def __init__(self,
                  dataset,
                  batch_size,
@@ -55,35 +58,31 @@ class DeepSpeedDataLoader(object):
         self.batch_size = batch_size
         self.curriculum_learning_enabled = False
         if CURRICULUM_LEARNING in deepspeed_dataloader_config:
-            self.curriculum_learning_enabled = deepspeed_dataloader_config[
-                CURRICULUM_LEARNING]
+            self.curriculum_learning_enabled = deepspeed_dataloader_config[CURRICULUM_LEARNING]
 
         if self.curriculum_learning_enabled:
-            data_sampler = DeepSpeedDataSampler(
-                self.deepspeed_dataloader_config[DATA_EFFICIENCY],
-                len(dataset),
-                self.batch_size,
-                data_parallel_rank,
-                data_parallel_world_size,
-                self.deepspeed_dataloader_config[DATA_PARALLEL_GROUP],
-                self.deepspeed_dataloader_config[GRADIENT_ACCUMULATION_STEPS],
-                self.deepspeed_dataloader_config[GLOBAL_RANK],
-                drop_last=dataloader_drop_last)
-            device_count = torch.cuda.device_count()
-            num_local_io_workers = self.deepspeed_dataloader_config[
-                DATA_SAMPLING_NUM_WORKERS]
+            data_sampler = DeepSpeedDataSampler(self.deepspeed_dataloader_config[DATA_EFFICIENCY],
+                                                len(dataset),
+                                                self.batch_size,
+                                                data_parallel_rank,
+                                                data_parallel_world_size,
+                                                self.deepspeed_dataloader_config[DATA_PARALLEL_GROUP],
+                                                self.deepspeed_dataloader_config[GRADIENT_ACCUMULATION_STEPS],
+                                                self.deepspeed_dataloader_config[GLOBAL_RANK],
+                                                drop_last=dataloader_drop_last)
+            device_count = get_accelerator().device_count()
+            num_local_io_workers = self.deepspeed_dataloader_config[DATA_SAMPLING_NUM_WORKERS]
         else:
             if local_rank >= 0:
                 if data_sampler is None:
-                    data_sampler = DistributedSampler(
-                        dataset=dataset,
-                        num_replicas=data_parallel_world_size,
-                        rank=data_parallel_rank)
+                    data_sampler = DistributedSampler(dataset=dataset,
+                                                      num_replicas=data_parallel_world_size,
+                                                      rank=data_parallel_rank)
                 device_count = 1
             else:
                 if data_sampler is None:
                     data_sampler = RandomSampler(dataset)
-                device_count = torch.cuda.device_count()
+                device_count = get_accelerator().device_count()
                 batch_size *= device_count
 
             if num_local_io_workers is None:
@@ -126,10 +125,17 @@ class DeepSpeedDataLoader(object):
 
     def _create_dataloader(self):
         if self.curriculum_learning_enabled:
-            self.dataloader = DataLoader(self.dataset,
-                                         pin_memory=self.pin_memory,
-                                         batch_sampler=self.data_sampler,
-                                         num_workers=self.num_local_io_workers)
+            if self.collate_fn is None:
+                self.dataloader = DataLoader(self.dataset,
+                                             pin_memory=self.pin_memory,
+                                             batch_sampler=self.data_sampler,
+                                             num_workers=self.num_local_io_workers)
+            else:
+                self.dataloader = DataLoader(self.dataset,
+                                             pin_memory=self.pin_memory,
+                                             batch_sampler=self.data_sampler,
+                                             collate_fn=self.collate_fn,
+                                             num_workers=self.num_local_io_workers)
             self.data_iterator = iter(self.dataloader)
             return self.dataloader
         else:

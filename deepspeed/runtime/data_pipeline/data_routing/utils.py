@@ -1,6 +1,7 @@
-'''
-Copyright 2022 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 
@@ -10,8 +11,7 @@ def bsh_decoder_gather(reserved_length, hidden_states, mask):
     rand_list = []
     part_hidden_states = []  #  batch, seq, hidden ## different from megatron
     for k in range(hidden_states.size(0)):
-        B_tmp = torch.randperm(hidden_states.size(1),
-                               device=hidden_states.device)[:reserved_length]
+        B_tmp = torch.randperm(hidden_states.size(1), device=hidden_states.device)[:reserved_length]
         B = B_tmp.sort()[0]
         rand_list.append(B)
         part_hidden_states.append(hidden_states[k:k + 1, B, :])

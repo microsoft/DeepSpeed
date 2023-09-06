@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 import deepspeed.comm as dist
 import numpy as np
@@ -6,16 +11,17 @@ import deepspeed
 import os
 
 from deepspeed.runtime.comm.nccl import NcclBackend
+from deepspeed.accelerator import get_accelerator
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--local_rank', type=int, default=-1)
 args = parser.parse_args()
 
-deepspeed.init_distributed(dist_backend='nccl')
+deepspeed.init_distributed(dist_backend=get_accelerator().communication_backend_name())
 args.local_rank = int(os.environ['LOCAL_RANK'])
 
-torch.cuda.set_device(args.local_rank)
-device = torch.device("cuda", args.local_rank)
+get_accelerator().set_device(args.local_rank)
+device = torch.device(get_accelerator().device_name(), args.local_rank)
 
 size = dist.get_world_size()
 rank = dist.get_rank()
@@ -37,11 +43,10 @@ def torch_sim(a):
     a_list = torch.chunk(a_compressed, chunks=dist.get_world_size())
     server_scale = [chunk_a.norm() / np.sqrt(chunk_a.numel()) for chunk_a in a_list]
     a_sign_list = torch.chunk(a_server_sign, dist.get_world_size())
-    a_server_compressed = torch.cat(
-        [server_scale[i] * a_sign_list[i] for i in range(dist.get_world_size())])
+    a_server_compressed = torch.cat([server_scale[i] * a_sign_list[i] for i in range(dist.get_world_size())])
     rank = dist.get_rank()
     server_error = a_list[rank] - server_scale[rank] * a_sign_list[rank]
-    torch.cuda.synchronize()
+    get_accelerator().synchronize()
     dist.barrier()
     return a_server_compressed, worker_error, server_error
 
@@ -62,7 +67,7 @@ worker_error = torch.zeros(right_tensor_size, device=device)
 server_error = torch.zeros(right_server_size, device=device)
 
 a_torch, worker_error_torch, server_error_torch = torch_sim(a)
-torch.cuda.empty_cache()
+get_accelerator().empty_cache()
 
 a_after = backend.compressed_allreduce(a, worker_error, server_error, local_rank)
 
@@ -83,7 +88,6 @@ if test_correctness:
     else:
         check_mag_mask = mpi_server[diff_server_mask] > magnitude_threshold
         if torch.sum(check_mag_mask) == 0:
-            print(
-                'Successfully passed the test for NCCL Backend at Rank {}'.format(rank))
+            print('Successfully passed the test for NCCL Backend at Rank {}'.format(rank))
         else:
             print('Fails at {} of positions'.format(torch.sum(check_mag_mask)))

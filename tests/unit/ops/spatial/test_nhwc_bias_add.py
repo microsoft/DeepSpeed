@@ -1,10 +1,17 @@
-'''
-Copyright 2022 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import pytest
 import torch
+import deepspeed
+from deepspeed.ops.op_builder import SpatialInferenceBuilder
 from deepspeed.ops.transformer.inference.bias_add import nhwc_bias_add
+from deepspeed.accelerator import get_accelerator
+
+if not deepspeed.ops.__compatible_ops__[SpatialInferenceBuilder.NAME]:
+    pytest.skip("Inference ops are not available on this system", allow_module_level=True)
 
 
 def allclose(x, y):
@@ -17,22 +24,7 @@ def ref_bias_add(activations, bias):
     return activations + bias.reshape(1, -1, 1, 1)
 
 
-channels_list = [
-    192,
-    384,
-    320,
-    576,
-    640,
-    768,
-    960,
-    1152,
-    1280,
-    1536,
-    1600,
-    1920,
-    2240,
-    2560
-]
+channels_list = [192, 384, 320, 576, 640, 768, 960, 1152, 1280, 1536, 1600, 1920, 2240, 2560]
 
 
 @pytest.mark.inference_ops
@@ -40,13 +32,10 @@ channels_list = [
 @pytest.mark.parametrize("image_size", [16, 32, 64])
 @pytest.mark.parametrize("channels", channels_list)
 def test_bias_add(batch, image_size, channels):
-    activations = torch.randn((batch,
-                               channels,
-                               image_size,
-                               image_size),
+    activations = torch.randn((batch, channels, image_size, image_size),
                               dtype=torch.float16,
-                              device="cuda").to(memory_format=torch.channels_last)
-    bias = torch.randn((channels), dtype=torch.float16, device="cuda")
+                              device=get_accelerator().device_name()).to(memory_format=torch.channels_last)
+    bias = torch.randn((channels), dtype=torch.float16, device=get_accelerator().device_name())
 
     ref_vals = ref_bias_add(activations.clone().detach(), bias)
     ds_vals = nhwc_bias_add(activations, bias)
@@ -63,19 +52,13 @@ def ref_bias_add_add(activations, bias, other):
 @pytest.mark.parametrize("image_size", [16, 32, 64])
 @pytest.mark.parametrize("channels", channels_list)
 def test_bias_add_add(batch, image_size, channels):
-    activations = torch.randn((batch,
-                               channels,
-                               image_size,
-                               image_size),
+    activations = torch.randn((batch, channels, image_size, image_size),
                               dtype=torch.float16,
-                              device="cuda").to(memory_format=torch.channels_last)
-    other = torch.randn((batch,
-                         channels,
-                         image_size,
-                         image_size),
+                              device=get_accelerator().device_name()).to(memory_format=torch.channels_last)
+    other = torch.randn((batch, channels, image_size, image_size),
                         dtype=torch.float16,
-                        device="cuda").to(memory_format=torch.channels_last)
-    bias = torch.randn((channels), dtype=torch.float16, device="cuda")
+                        device=get_accelerator().device_name()).to(memory_format=torch.channels_last)
+    bias = torch.randn((channels), dtype=torch.float16, device=get_accelerator().device_name())
 
     ref_vals = ref_bias_add_add(activations.clone().detach(), bias, other)
     ds_vals = nhwc_bias_add(activations, bias, other=other)
@@ -84,13 +67,7 @@ def test_bias_add_add(batch, image_size, channels):
 
 
 def ref_bias_add_bias_add(activations, bias, other, other_bias):
-    return (activations + bias.reshape(1,
-                                       -1,
-                                       1,
-                                       1)) + (other + other_bias.reshape(1,
-                                                                         -1,
-                                                                         1,
-                                                                         1))
+    return (activations + bias.reshape(1, -1, 1, 1)) + (other + other_bias.reshape(1, -1, 1, 1))
 
 
 @pytest.mark.inference_ops
@@ -98,25 +75,16 @@ def ref_bias_add_bias_add(activations, bias, other, other_bias):
 @pytest.mark.parametrize("image_size", [16, 32, 64])
 @pytest.mark.parametrize("channels", channels_list)
 def test_bias_add_bias_add(batch, image_size, channels):
-    activations = torch.randn((batch,
-                               channels,
-                               image_size,
-                               image_size),
+    activations = torch.randn((batch, channels, image_size, image_size),
                               dtype=torch.float16,
-                              device="cuda").to(memory_format=torch.channels_last)
-    other = torch.randn((batch,
-                         channels,
-                         image_size,
-                         image_size),
+                              device=get_accelerator().device_name()).to(memory_format=torch.channels_last)
+    other = torch.randn((batch, channels, image_size, image_size),
                         dtype=torch.float16,
-                        device="cuda").to(memory_format=torch.channels_last)
-    bias = torch.randn((channels), dtype=torch.float16, device="cuda")
-    other_bias = torch.randn((channels), dtype=torch.float16, device="cuda")
+                        device=get_accelerator().device_name()).to(memory_format=torch.channels_last)
+    bias = torch.randn((channels), dtype=torch.float16, device=get_accelerator().device_name())
+    other_bias = torch.randn((channels), dtype=torch.float16, device=get_accelerator().device_name())
 
-    ref_vals = ref_bias_add_bias_add(activations.clone().detach(),
-                                     bias,
-                                     other,
-                                     other_bias)
+    ref_vals = ref_bias_add_bias_add(activations.clone().detach(), bias, other, other_bias)
     ds_vals = nhwc_bias_add(activations, bias, other=other, other_bias=other_bias)
 
     assert allclose(ds_vals, ref_vals)

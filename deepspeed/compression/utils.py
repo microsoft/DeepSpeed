@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 from torch import autograd
 import math
@@ -11,6 +16,7 @@ class TopKBinarizer(autograd.Function):
     Implementation is inspired from:
         https://github.com/yaozhewei/MLPruning
     """
+
     @staticmethod
     def forward(ctx, inputs: torch.tensor, threshold: float, sigmoid: bool):
         """
@@ -57,6 +63,7 @@ class SymQuantizer(torch.autograd.Function):
     """
     Symmetric quantization
     """
+
     @staticmethod
     def forward(ctx, input, num_bits, min_value=None, max_value=None, num_groups=1):
         """
@@ -65,7 +72,7 @@ class SymQuantizer(torch.autograd.Function):
                 The input which needs to be quantized
             num_bits (int, >=4)
                 Number of bits to use for quantization
-            min_value/max_vlue (torch.FloatTensor)
+            min_value/max_value (torch.FloatTensor)
                 Used for static activation quantization
             num_groups (int)
                 How many groups to partition the quantization into
@@ -73,9 +80,8 @@ class SymQuantizer(torch.autograd.Function):
             quantized_input (`torch.FloatTensor`)
                 Quantized input
         """
-        assert (min_value is None
-                and max_value is None) or (min_value is not None
-                                           and max_value is not None and num_groups == 1)
+        assert (min_value is None and max_value is None) or (min_value is not None and max_value is not None
+                                                             and num_groups == 1)
         q_range = 2**num_bits
         input_shape = input.shape
         if min_value is None:
@@ -99,6 +105,7 @@ class AsymQuantizer(torch.autograd.Function):
     """
     Asymmetric quantization
     """
+
     @staticmethod
     def forward(ctx, input, num_bits, min_value=None, max_value=None, num_groups=1):
         """
@@ -107,7 +114,7 @@ class AsymQuantizer(torch.autograd.Function):
                 The input which needs to be quantized
             num_bits (int, >=4)
                 Number of bits to use for quantization
-            min_value/max_vlue (torch.FloatTensor)
+            min_value/max_value (torch.FloatTensor)
                 Used for static activation quantization
             num_groups (int)
                 How many groups to partition the quantization into
@@ -116,9 +123,8 @@ class AsymQuantizer(torch.autograd.Function):
                 Quantized input
         """
 
-        assert (min_value is None
-                and max_value is None) or (min_value is not None
-                                           and max_value is not None and num_groups == 1)
+        assert (min_value is None and max_value is None) or (min_value is not None and max_value is not None
+                                                             and num_groups == 1)
         q_range = 2**num_bits
         input_shape = input.shape
         if min_value is None:
@@ -129,9 +135,7 @@ class AsymQuantizer(torch.autograd.Function):
         scale = (max_value - min_value) / q_range
         zero_point = (min_value / scale).round() * scale
 
-        output = (
-            (input - zero_point) / scale).round().clamp(0,
-                                                        q_range - 1) * scale + zero_point
+        output = ((input - zero_point) / scale).round().clamp(0, q_range - 1) * scale + zero_point
         output = output.reshape(input_shape).contiguous()
         return output
 
@@ -145,6 +149,7 @@ class TernaryQuantizer(torch.autograd.Function):
     """
     Ternary quantization
     """
+
     @staticmethod
     def forward(ctx, input, num_bits, min_value=None, max_value=None, num_groups=1):
         """
@@ -153,7 +158,7 @@ class TernaryQuantizer(torch.autograd.Function):
                 The input which needs to be quantized
             num_bits (int)
                 Dummy variable
-            min_value/max_vlue (torch.FloatTensor)
+            min_value/max_value (torch.FloatTensor)
                 Used for static activation quantization; for now they are dummy variable
             num_groups (int)
                 How many groups to partition the quantization into
@@ -185,6 +190,7 @@ class BinaryQuantizer(torch.autograd.Function):
     """
     Binary quantization
     """
+
     @staticmethod
     def forward(ctx, input, num_bits, min_value=None, max_value=None, num_groups=1):
         """
@@ -193,7 +199,7 @@ class BinaryQuantizer(torch.autograd.Function):
                 The input which needs to be quantized
             num_bits (int)
                 Dummy variable
-            min_value/max_vlue (torch.FloatTensor)
+            min_value/max_value (torch.FloatTensor)
                 Used for static activation quantization; for now they are dummy variable
             num_groups (int)
                 How many groups to partition the quantization into

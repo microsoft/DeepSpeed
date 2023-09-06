@@ -1,7 +1,7 @@
-"""
-Copyright (c) Microsoft Corporation
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from pydantic import Field, validator
 from enum import Enum
@@ -87,6 +87,7 @@ class DeepSpeedZeroOffloadOptimizerConfig(DeepSpeedConfigModel):
 
     fast_init: bool = False
     """ Enable fast optimizer initialization when offloading to NVMe. """
+
     @validator("pipeline_read", "pipeline_write", always=True)
     def set_pipeline(cls, field_value, values):
         values["pipeline"] = field_value or values.get("pipeline", False)

@@ -1,11 +1,14 @@
-/*
-Copyright 2020 The Microsoft DeepSpeed Team
-Licensed under the MIT license.
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
 
+// DeepSpeed Team
+
+/*
 Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 */
 
 #include <cmath>
+#include <iostream>
 
 #include "deepspeed_aio_utils.h"
 
@@ -113,8 +116,8 @@ void* ds_page_aligned_alloc(const size_t size, const bool lock)
     auto mlock_ret = mlock(ptr, size);
     if (mlock_ret != 0) {
         auto mlock_error = errno;
-        printf("mlock failed with %d %s\n", mlock_error, strerror(mlock_error));
-
+        std::cerr << "mlock failed to allocate " << size << " bytes with error no " << mlock_error
+                  << " msg " << strerror(mlock_error) << std::endl;
         free(ptr);
         return nullptr;
     }

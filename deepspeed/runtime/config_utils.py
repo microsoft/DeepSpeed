@@ -1,7 +1,7 @@
-"""
-Copyright (c) Microsoft Corporation
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 """
 Collection of DeepSpeed configuration utilities
 """
@@ -24,6 +24,8 @@ class DeepSpeedConfigModel(BaseModel):
     Deprecated Field kwargs:
     - deprecated: [True|False], default False
         Enables / Disables deprecated fields
+    - deprecated_msg: str, default ""
+        Message to include with deprecation warning
     - new_param: str, default ""
         Name of the field replacing the deprecated field
     - set_new_param: [True|False], default True
@@ -47,11 +49,10 @@ class DeepSpeedConfigModel(BaseModel):
                                       new_param='my_new_field',
                                       new_param_fn=(lambda x: int(x)))
     """
+
     def __init__(self, strict=False, **data):
-        if (
-                not strict
-        ):  # This is temporary until we refactor all DS configs, allows HF to load models
-            data = {k: v for k, v in data.items() if v != "auto"}
+        if (not strict):  # This is temporary until we refactor all DS configs, allows HF to load models
+            data = {k: v for k, v in data.items() if (v != "auto" or k == "replace_method")}
         super().__init__(**data)
         self._deprecated_fields_check(self)
 
@@ -63,9 +64,10 @@ class DeepSpeedConfigModel(BaseModel):
         new_param_fn = kwargs.get("new_param_fn", lambda x: x)
         param_value = new_param_fn(getattr(pydantic_config, dep_param))
         new_param = kwargs.get("new_param", "")
+        dep_msg = kwargs.get("deprecated_msg", "")
         if dep_param in fields_set:
             logger.warning(f"Config parameter {dep_param} is deprecated" +
-                           (f" use {new_param} instead" if new_param else ""))
+                           (f" use {new_param} instead" if new_param else "") + (f". {dep_msg}" if dep_msg else ""))
             # Check if there is a new param and if it should be set with a value
             if new_param and kwargs.get("set_new_param", True):
                 # Remove the deprecate field if there is a replacing field
@@ -80,9 +82,7 @@ class DeepSpeedConfigModel(BaseModel):
                 if len(new_param_nested) > 1:
                     # If the new param exists in a subconfig, we need to get
                     # the fields set for that subconfig
-                    pydantic_config = reduce(getattr,
-                                             new_param_nested[:-1],
-                                             pydantic_config)
+                    pydantic_config = reduce(getattr, new_param_nested[:-1], pydantic_config)
                     fields_set = pydantic_config.__fields_set__
                 new_param_name = new_param_nested[-1]
                 assert (
@@ -92,9 +92,7 @@ class DeepSpeedConfigModel(BaseModel):
                 try:
                     setattr(pydantic_config, new_param_name, param_value)
                 except Exception as e:
-                    logger.error(
-                        f"Tried setting value for '{new_param}' with value from deprecated '{dep_param}'"
-                    )
+                    logger.error(f"Tried setting value for '{new_param}' with value from deprecated '{dep_param}'")
                     raise e
 
     def _deprecated_fields_check(self, pydantic_config):
@@ -109,6 +107,14 @@ class DeepSpeedConfigModel(BaseModel):
         use_enum_values = True
         allow_population_by_field_name = True
         extra = "forbid"
+        arbitrary_types_allowed = True
+
+
+def get_config_default(config, field_name):
+    assert field_name in config.__fields__, f"'{field_name}' is not a field in {config}"
+    assert not config.__fields__.get(
+        field_name).required, f"'{field_name}' is a required field and does not have a default value"
+    return config.__fields__.get(field_name).default
 
 
 class pp_int(int):
@@ -117,6 +123,7 @@ class pp_int(int):
     string of the integer. For example, print(pp_int(1e5)) will return
     "10,000". This is useful mainly for auto-generated documentation purposes.
     """
+
     def __new__(cls, val, custom_print_str=None):
         inst = super().__new__(cls, val)
         inst.custom_print_str = custom_print_str
@@ -138,6 +145,7 @@ class ScientificNotationEncoder(json.JSONEncoder):
     Just pass ``cls=ScientificNotationEncoder`` to ``json.dumps`` to activate it
 
     """
+
     def iterencode(self, o, _one_shot=False, level=0):
         indent = self.indent if self.indent is not None else 4
         prefix_close = " " * level * indent
@@ -151,10 +159,7 @@ class ScientificNotationEncoder(json.JSONEncoder):
             else:
                 return f"{o}"
         elif isinstance(o, collections.abc.Mapping):
-            x = [
-                f'\n{prefix}"{k}": {self.iterencode(v, level=level)}' for k,
-                v in o.items()
-            ]
+            x = [f'\n{prefix}"{k}": {self.iterencode(v, level=level)}' for k, v in o.items()]
             return "{" + ", ".join(x) + f"\n{prefix_close}" + "}"
         elif isinstance(o, collections.abc.Sequence) and not isinstance(o, str):
             return f"[{ f', '.join(map(self.iterencode, o)) }]"
@@ -165,6 +170,7 @@ class DeepSpeedConfigObject(object):
     """
     For json serialization
     """
+
     def repr(self):
         return self.__dict__
 

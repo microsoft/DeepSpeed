@@ -8,24 +8,23 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+    contents: read
+    issues: write
+
 jobs:
   unit-tests:
     runs-on: [self-hosted, nvidia, cu116, v100]
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - name: environment
+      - id: setup-venv
+        uses: ./.github/workflows/setup-venv
+
+      - name: Install pytorch
         run: |
-          echo "JobID: $AISC_NODE_INSTANCE_ID"
-          nvidia-smi
-          which python
-          python --version
-          which nvcc
-          nvcc --version
-          pip install --upgrade pip
-          pip uninstall --yes torch torchvision triton
-          pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu116
+          pip install -U --cache-dir $TORCH_CACHE torch==1.13.1 torchvision --extra-index-url https://download.pytorch.org/whl/cu116
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -36,21 +35,12 @@ jobs:
           # if needed switch to the last known good SHA until transformers@master is fixed
           # git checkout 1cc453d33
           git rev-parse --short HEAD
-          pip uninstall --yes transformers
           pip install .
 
       - name: Install deepspeed
         run: |
-          pip uninstall --yes deepspeed
           pip install .[dev,1bit,autotuning,inf]
           ds_report
-
-      - name: Install lm-eval
-        run: |
-          pip uninstall --yes lm-eval
-          pip install git+https://github.com/EleutherAI/lm-evaluation-harness
-          # This is required until lm-eval makes a new release. v0.2.0 is
-          # broken for latest version of transformers
 
       - name: Python environment
         run: |
@@ -59,6 +49,14 @@ jobs:
       - name: Unit tests
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
-          if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
-          TRANSFORMERS_CACHE=/blob/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --forked --verbose -m 'nightly' unit/ --torch_ver="1.13" --cuda_ver="11.6"
+          pytest $PYTEST_OPTS --forked -m 'nightly' unit/ --torch_ver="1.13" --cuda_ver="11.6"
+
+      - name: Open GitHub issue if nightly CI fails
+        if: ${{ failure() && (github.event_name == 'schedule') }}
+        uses: JasonEtco/create-an-issue@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          filename: .github/ISSUE_TEMPLATE/ci_failure_report.md
+          update_existing: true
