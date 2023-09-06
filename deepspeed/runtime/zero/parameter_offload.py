@@ -211,6 +211,7 @@ class DeepSpeedZeRoOffload(object):
         max_live_parameters=1000000000,
         param_persistence_threshold=100000,
         model_persistence_threshold=sys.maxsize,
+        dp_process_group=None,
         offload_param_config=None,
         mpu=None,
         zero_param_parallel_group=None,
@@ -225,6 +226,7 @@ class DeepSpeedZeRoOffload(object):
         self.module = module
         self.timers = timers
         self.dtype = list(module.parameters())[0].dtype
+        self.dp_process_group = dp_process_group
         self.offload_device = None
         self.offload_param_pin_memory = False
         self.zero_param_parallel_group = zero_param_parallel_group
@@ -488,10 +490,11 @@ class DeepSpeedZeRoOffload(object):
         # post backward hook
         self.backward_hooks.append(module.register_forward_pre_hook(_post_backward_module_hook))
 
-    @torch.no_grad()
     def pre_sub_module_forward_function(self, sub_module):
         see_memory_usage(f"Before sub module function {sub_module.__class__.__name__}", force=False)
-
+        prev_grad_state = torch.is_grad_enabled(
+        )  # we don't want to enable grad for sub modules fetching, yet the subfunction need to know if grad is enabled
+        torch.set_grad_enabled(False)
         global FWD_MODULE_STACK
         FWD_MODULE_STACK.append(sub_module)
 
@@ -499,8 +502,8 @@ class DeepSpeedZeRoOffload(object):
         param_coordinator.trace_prologue(sub_module)
         if param_coordinator.is_record_trace():
             param_coordinator.record_module(sub_module)
-        param_coordinator.fetch_sub_module(sub_module, forward=True)
-
+        param_coordinator.fetch_sub_module(sub_module, forward=prev_grad_state)
+        torch.set_grad_enabled(prev_grad_state)
         see_memory_usage(f"Before sub module function {sub_module.__class__.__name__} after fetch", force=False)
 
     @torch.no_grad()
