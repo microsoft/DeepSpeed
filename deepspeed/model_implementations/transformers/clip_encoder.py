@@ -1,12 +1,17 @@
-'''
-Copyright 2022 The Microsoft DeepSpeed Team
-'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
+from deepspeed.accelerator import get_accelerator
+from ..features.cuda_graph import CUDAGraph
 
 
-class DSClipEncoder(torch.nn.Module):
+class DSClipEncoder(CUDAGraph, torch.nn.Module):
+
     def __init__(self, enc, enable_cuda_graph=False):
-        super().__init__()
+        super().__init__(enable_cuda_graph=enable_cuda_graph)
         enc.text_model._build_causal_attention_mask = self._build_causal_attention_mask
         self.enc = enc
         self.device = self.enc.device
@@ -17,15 +22,10 @@ class DSClipEncoder(torch.nn.Module):
         self.static_output = [None, None]
         self._cuda_graphs = [None, None]
         self.iter = 0
-        self.enable_cuda_graph = enable_cuda_graph
         self.config = self.enc.config
 
     def _build_causal_attention_mask(self, bsz, seq_len, dtype):
-        mask = torch.empty(bsz,
-                           seq_len,
-                           seq_len,
-                           dtype=dtype,
-                           device=torch.cuda.current_device())
+        mask = torch.empty(bsz, seq_len, seq_len, dtype=dtype, device=get_accelerator().current_device_name())
         mask.fill_(torch.tensor(torch.finfo(dtype).min))
         mask.triu_(1)
         mask = mask.unsqueeze(1)
@@ -68,9 +68,8 @@ class DSClipEncoder(torch.nn.Module):
         self.static_kwargs[self.iter] = kwargs
 
         with torch.cuda.graph(self._cuda_graphs[self.iter]):
-            self.static_output[self.iter] = self._forward(
-                *self.static_inputs[self.iter],
-                **self.static_kwargs[self.iter])
+            self.static_output[self.iter] = self._forward(*self.static_inputs[self.iter],
+                                                          **self.static_kwargs[self.iter])
 
         self.cuda_graph_created[self.iter] = True
 
