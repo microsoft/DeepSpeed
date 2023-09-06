@@ -6,7 +6,7 @@
 import pytest
 import torch
 import deepspeed
-
+from .inference_test_utils import assert_almost_equal
 
 # reference timplementation
 def ref_torch_attention(q, k, v, mask, sm_scale):
@@ -69,5 +69,4 @@ def test_attention(Z, H, N_CTX, D_HEAD, causal, dtype=torch.float16):
                                 use_triton_flash=False,
                                 use_ds_attention=False)
     tri_out = tri_out.reshape((Z, N_CTX, H, D_HEAD)).permute(0, 2, 1, 3)
-    triton.testing.allclose(ref_out, tri_out)
-    triton.testing.assert_almost_equal(ref_out, tri_out)
+    assert_almost_equal(ref_out, tri_out)
