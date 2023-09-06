@@ -31,7 +31,6 @@ def test_attention(Z, H, N_CTX, D_HEAD, causal, dtype=torch.float16):
     from deepspeed.ops.transformer.inference.triton.matmul_ext import fp16_matmul
     fp16_matmul.skip_autotune()
 
-    import triton
     from deepspeed.ops.transformer.inference.triton.attention import compute_attention
     torch.manual_seed(20)
     q = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0, std=.5)
