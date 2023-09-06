@@ -14,7 +14,7 @@ from deepspeed import comm as dist
 from .layers import LinearAllreduce, LinearLayer
 from deepspeed.accelerator import get_accelerator
 from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw
-from deepspeed.utils.tp_shard import get_shard_size, get_shard_size_list
+from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 
 
 class ReplaceWithTensorSlicing:

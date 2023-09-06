@@ -16,7 +16,7 @@ from .replace_policy import replace_policies, generic_policies
 from .auto_tp import AutoTP, ReplaceWithTensorSlicing, Loading
 
 from deepspeed import comm as dist
-from deepspeed.utils.tp_shard import set_num_kv_heads
+from deepspeed.module_inject.tp_shard import set_num_kv_heads
 
 from .load_checkpoint import load_model_with_checkpoint
 import time
