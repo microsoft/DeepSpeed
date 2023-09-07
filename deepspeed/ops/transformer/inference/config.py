@@ -79,6 +79,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  set_empty_params=False,
                  transposed_mode=False,
                  multi_query=False,
+                 global_kv_sharing=False,
                  num_kv=-1):
         super(DeepSpeedInferenceConfig,
               self).__init__(hidden_size, (intermediate_size if intermediate_size > 0 else 4 * hidden_size), heads,
@@ -112,6 +113,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.set_empty_params = set_empty_params
         self.transposed_mode = transposed_mode
         self.multi_query = multi_query
+        self.global_kv_sharing = global_kv_sharing
         self.num_kv = num_kv
 
     @classmethod

@@ -736,6 +736,7 @@ __global__ void transform_multi_query(T* query,
                                       int all_tokens,
                                       int heads,
                                       int num_kv,
+                                      int blks,
                                       int query_heads,
                                       int fused_dim,
                                       int qkv_dim,
@@ -750,8 +751,9 @@ __global__ void transform_multi_query(T* query,
 
     int d0 = blockIdx.x;   // Batch
     int d1 = blockIdx.y;   // Sequence ID (0-127)
-    int cnt = blockIdx.z;  // kv count
-    int d2 = threadIdx.y;
+    int cnt = blockIdx.z / blks;  // kv count
+    int blk_count = blockIdx.z % blks;
+    int d2 = threadIdx.y + blk_count * blockDim.y;
     int d3 = threadIdx.x;  // Values (groups of 4)
 
     int d2_out_stride = d2_stride * seq_length;
@@ -847,8 +849,13 @@ void launch_transform_multi_query(T* query,
                                   int max_out_tokens)
 {
     hidden_dim >>= 3;
-    dim3 block_dim(hidden_dim / heads, heads / num_kv * 3);
-    dim3 grid_dim(batch_size, all_tokens, num_kv);
+    int max_thread_blk = 1024 / (hidden_dim / heads);
+    int threadblks = (heads / num_kv) * 3;
+    int launch_blks = threadblks;
+    if (launch_blks > max_thread_blk) launch_blks = max_thread_blk;
+    int num_blks = ((threadblks - 1) / launch_blks + 1);
+    dim3 block_dim(hidden_dim / heads, launch_blks);
+    dim3 grid_dim(batch_size, all_tokens, num_kv * num_blks);
 
     transform_multi_query<<<grid_dim, block_dim, 0, stream>>>(
         query,
@@ -861,6 +868,7 @@ void launch_transform_multi_query(T* query,
         all_tokens,
         heads,
         num_kv,
+        num_blks,
         heads / num_kv,
         hidden_dim + num_kv * 2 * (hidden_dim / heads),
         (heads / num_kv + 2) * (hidden_dim / heads),

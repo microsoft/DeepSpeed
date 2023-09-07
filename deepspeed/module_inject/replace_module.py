@@ -40,7 +40,7 @@ class ReplaceWithTensorSlicing:
         self.mp_size = mp_size
 
     def merge_assert(self, dim1, dim2):
-        assert dim1 > dim2, \
+        assert dim1 >= dim2, \
             'Merging tensors is not allowed here! Please use deepspeed load_checkpoint\
             for merging your checkpoints before replacing the transformer layer with\
             inference-kernels'

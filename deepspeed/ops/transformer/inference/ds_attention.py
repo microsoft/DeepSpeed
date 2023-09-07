@@ -38,8 +38,11 @@ class DeepSpeedSelfAttention(nn.Module):
             self.attn_ob = None
         else:
             if self.config.multi_query:
-                qkv_size_per_partition = (self.config.hidden_size // self.config.heads) * (
-                    self.config.num_kv * 2 + self.config.heads) // self.config.mp_size
+                if self.config.global_kv_sharing:
+                    qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) + 2 * (self.config.hidden_size // self.config.heads)
+                else:
+                    qkv_size_per_partition = (self.config.hidden_size // self.config.heads) * (
+                        self.config.num_kv * 2 + self.config.heads) // self.config.mp_size
             else:
                 qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
             self.attn_qkvw = nn.Parameter(torch.empty(self.config.hidden_size,
@@ -158,11 +161,13 @@ class DeepSpeedSelfAttention(nn.Module):
                                     bias=self._attn_qkvb,
                                     gamma=norm_w,
                                     beta=norm_b)
-
+        
         context_layer, key_layer, value_layer = self.compute_attention(qkv_out=qkv_out,
                                                                        input_mask=input_mask,
                                                                        layer_past=layer_past,
                                                                        alibi=alibi)
+        #print(context_layer)
+        #exit()
         output = self.vector_matmul_func(input=context_layer, weight=self.attn_ow)
         inp_norm = qkv_out[-1]
 
