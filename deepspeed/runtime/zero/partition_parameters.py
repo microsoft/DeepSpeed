@@ -1503,8 +1503,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             secondary_partition_size = int(tensor_size // self.num_ranks_in_param_group)
             final_location = None
             secondary_partitioned_tensor = torch.empty(secondary_partition_size,
-                                                        dtype=param.dtype,
-                                                        device=self.remote_device)
+                                                       dtype=param.dtype,
+                                                       device=self.remote_device)
 
             if self.pin_memory:
                 secondary_partitioned_tensor = secondary_partitioned_tensor.pin_memory()
