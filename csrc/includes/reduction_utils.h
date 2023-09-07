@@ -273,22 +273,22 @@ DS_D_INLINE __half init<ROpType::Max>()
 template <>
 DS_D_INLINE __half2 init<ROpType::Add>()
 {
-    constexpr __half2_raw zero = {0x0000, 0x0000};
-    return __half2(zero);
+    const __half2 zero = __float2half2_rn(0x0000);
+    return zero;
 }
 
 template <>
 DS_D_INLINE __half2 init<ROpType::Min>()
 {
-    constexpr __half2_raw inf = {0x7C00, 0x7C00};
-    return __half2(inf);
+    const __half2 inf = __float2half2_rn(0x7C00);
+    return inf;
 }
 
 template <>
 DS_D_INLINE __half2 init<ROpType::Max>()
 {
-    constexpr __half2_raw neg_inf = {0xFC00, 0xFC00};
-    return __half2(neg_inf);
+    const __half2 neg_inf = __float2half2_rn(0xFC00);
+    return neg_inf;
 }
 
 template <ROpType Op, typename T>
@@ -406,21 +406,25 @@ DS_D_INLINE void _block(cg::thread_block& tb,
     // Always perform warp-scope reduction
     _warp<Ops...>(warp_arg, data);
 
+
+    unsigned meta_group_rank = (threadIdx.x + (threadIdx.y + threadIdx.z * blockDim.y) * blockDim.x) % hw_warp_size;
+    unsigned meta_group_size = (blockDim.x * blockDim.y * blockDim.z) / hw_warp_size;
+
     // If max_warps == 1 let's skip the runtime check
-    if (warp_arg.meta_group_size() > 1 && total_warps != 1) {
+    if (meta_group_size > 1 && total_warps != 1) {
         if (warp_arg.thread_rank() == 0) {
 #pragma unroll
             for (int i = 0; i < elems; i++) {
                 mem_access::store_shared<bytes>(
-                    reduce_buffer + elems * warp_arg.meta_group_rank() + i, data + i);
+                    reduce_buffer + elems * meta_group_rank + i, data + i);
             }
         }
 
         // Synchronization inside block-uniform conditional is safe
         tb.sync();
 
-        if (warp_arg.meta_group_rank() == 0) {
-            if (warp_arg.thread_rank() < warp_arg.meta_group_size()) {
+        if (meta_group_rank == 0) {
+            if (warp_arg.thread_rank() < meta_group_size) {
 #pragma unroll
                 for (int i = 0; i < elems; i++) {
                     mem_access::load_shared<bytes>(
@@ -445,7 +449,7 @@ DS_D_INLINE void _block(cg::thread_block& tb,
 #pragma unroll
         for (int i = 0; i < elems; i++) {
             mem_access::load_shared<bytes>(data + i,
-                                           reduce_buffer + warp_arg.meta_group_rank() * elems + i);
+                                           reduce_buffer + meta_group_rank * elems + i);
         }
     }
 }
@@ -518,7 +522,9 @@ DS_D_INLINE void partitioned_block(cg::thread_block& tb,
         _warp<Op, num_threads>(warp, &val);
     } else {
         constexpr int num_warps = num_threads / hw_warp_size;
-        const int warp_offset = warp.meta_group_rank() & ~(num_warps - 1);
+
+        unsigned meta_group_rank = (threadIdx.x + (threadIdx.y + threadIdx.z * blockDim.y) * blockDim.x) % hw_warp_size;
+	const int warp_offset = meta_group_rank & ~(num_warps - 1);
         _block<num_warps, Op>(tb, warp, &val, warp_offset);
     }
 }
@@ -535,7 +541,8 @@ DS_D_INLINE void partitioned_block(cg::thread_block& tb,
         _warp<Op1, Op2, num_threads>(warp, data);
     } else {
         constexpr int num_warps = num_threads / hw_warp_size;
-        const int warp_offset = warp.meta_group_rank() & ~(num_warps - 1);
+        unsigned meta_group_rank = (threadIdx.x + (threadIdx.y + threadIdx.z * blockDim.y) * blockDim.x) % hw_warp_size;
+        const int warp_offset = meta_group_rank & ~(num_warps - 1);
         _block<num_warps, Op1, Op2>(tb, warp, data, warp_offset);
     }
 
@@ -556,7 +563,8 @@ DS_D_INLINE void partitioned_block(cg::thread_block& tb,
         _warp<Op1, Op2, Op3, num_threads>(warp, data);
     } else {
         constexpr int num_warps = num_threads / hw_warp_size;
-        const int warp_offset = warp.meta_group_rank() & ~(num_warps - 1);
+        unsigned meta_group_rank = (threadIdx.x + (threadIdx.y + threadIdx.z * blockDim.y) * blockDim.x) % hw_warp_size;
+        const int warp_offset = meta_group_rank & ~(num_warps - 1);
         _block<num_warps, Op1, Op2, Op3>(tb, warp, data, warp_offset);
     }
 
@@ -579,7 +587,8 @@ DS_D_INLINE void partitioned_block(cg::thread_block& tb,
         _warp<Op1, Op2, Op3, Op4, num_threads>(warp, data);
     } else {
         constexpr int num_warps = num_threads / hw_warp_size;
-        const int warp_offset = warp.meta_group_rank() & ~(num_warps - 1);
+        unsigned meta_group_rank = (threadIdx.x + (threadIdx.y + threadIdx.z * blockDim.y) * blockDim.x) % hw_warp_size;
+        const int warp_offset = meta_group_rank & ~(num_warps - 1);
         _block<num_warps, Op1, Op2, Op3, Op4>(tb, warp, data, warp_offset);
     }
 
