@@ -7,6 +7,7 @@ from types import MethodType
 
 import torch
 from deepspeed import comm as dist
+
 from deepspeed.utils import logger
 from deepspeed.utils.timer import ThroughputTimer
 from deepspeed.accelerator import get_accelerator
