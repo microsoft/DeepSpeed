@@ -15,7 +15,7 @@ from packaging import version as pkg_version
 
 from deepspeed.git_version_info import version
 from deepspeed.runtime.utils import (get_global_norm_of_tensors, clip_tensors_by_global_norm, DummyOptim,
-                                     align_dense_tensors, all_gather_dp_groups, bwc_tensor_model_parallel_rank,
+                                     align_dense_tensors, all_gather_base_dp_groups, bwc_tensor_model_parallel_rank,
                                      is_model_parallel_parameter, see_memory_usage)
 
 from deepspeed.utils import link_hp_params, fragment_address
@@ -322,10 +322,9 @@ class BF16_Optimizer(ZeROOptimizer):
             # if i == 0:
             #     print_rank_0(f'{fp32_partition[:10]=}', force=True)
 
-        all_gather_dp_groups(partitioned_param_groups=self.bf16_partitioned_groups,
-                             dp_process_group=self.real_dp_process_group,
-                             start_alignment_factor=self.nccl_start_alignment_factor,
-                             allgather_bucket_size=self.allgather_bucket_size)
+        all_gather_base_dp_groups(partitioned_param_groups=self.bf16_partitioned_groups,
+                                  dp_process_group=self.real_dp_process_group,
+                                  groups_flat=self.bf16_groups_flat)
 
     def clear_hp_grads(self):
         for flat_gradients in self.fp32_groups_gradients_flat:

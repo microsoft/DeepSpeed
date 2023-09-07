@@ -643,10 +643,10 @@ class PartitionedTensor:
         self.group = group
         self.num_parts = dist.get_world_size(group=self.group)
         self.rank = dist.get_rank(group=self.group)
-
         self.orig_size = list(tensor.size())
         self.orig_device = tensor.device
         self.local_data, self.partition = self._partition_tensor(tensor)
+        self.even_split = tensor.numel() % self.num_parts == 0
 
     @classmethod
     def from_meta(cls, meta, local_part, group, device=get_accelerator().device_name()):
@@ -689,24 +689,17 @@ class PartitionedTensor:
         # Allocate the full tensor as a flat buffer.
         full_numel = prod(self.full_size())
         flat_tensor = torch.zeros([full_numel], dtype=self.local_data.dtype, device=device)
-
-        # Prepare all-gather buffer
-        partition_tensors = []
-        for part_id in range(self.num_parts):
-            part_size = self.partition[part_id + 1] - self.partition[part_id]
-            buf = flat_tensor.narrow(0, start=self.partition[part_id], length=part_size)
-            if part_id == self.rank:
-                buf.copy_(self.local_data)
-            partition_tensors.append(buf)
-
-        # Collect the full tensor
-        dist.all_gather(partition_tensors, partition_tensors[self.rank], group=self.group)
-
-        for i in range(len(partition_tensors)):
-            partition_tensors[i].data = torch.zeros(1)
-            partition_tensors[i] = None
-
-        return flat_tensor.view(self.full_size()).clone().detach()
+        if self.even_split:
+            # Collect the full tensor
+            dist.all_gather_into_tensor(flat_tensor, self.local_data, group=self.group)
+        else:
+            for part_id in range(self.num_parts):
+                part_size = self.partition[part_id + 1] - self.partition[part_id]
+                buf = flat_tensor.narrow(0, start=self.partition[part_id], length=part_size)
+                if part_id == self.rank:
+                    buf.copy_(self.local_data)
+                dist.broadcast(buf, part_id, self.group)
+        return flat_tensor.view(self.full_size()).detach_()
 
     def to_meta(self):
         """Returns a torch.LongTensor that encodes partitioning information.
@@ -937,9 +930,8 @@ def align_dense_tensors(tensor_list, alignment):
     return padded_tensor_list
 
 
-def all_gather_dp_groups(partitioned_param_groups, dp_process_group, start_alignment_factor, allgather_bucket_size):
-    for group_id, partitioned_params in enumerate(partitioned_param_groups):
-        # Sequential AllGather Best of both worlds
+def all_gather_base_dp_groups(partitioned_param_groups, dp_process_group, groups_flat):
+    for group_id, (group_flat, partitioned_params) in enumerate(zip(groups_flat, partitioned_param_groups)):
         partition_id = dist.get_rank(group=dp_process_group[group_id])
         dp_world_size = dist.get_world_size(group=dp_process_group[group_id])
 
@@ -947,28 +939,8 @@ def all_gather_dp_groups(partitioned_param_groups, dp_process_group, start_align
             # no groups share optimizer states
             # pipeline parallel with bf16 will default call this even if dp size = 1.
             continue
-        num_shards = max(1, partitioned_params[partition_id].numel() * dp_world_size // allgather_bucket_size)
 
-        shard_size = partitioned_params[partition_id].numel() // num_shards
-
-        # Enforce nccl/rccl alignment of start location of each shard
-        shard_size = shard_size - (shard_size % start_alignment_factor)
-
-        num_elements = shard_size
-
-        assert shard_size * num_shards <= partitioned_params[partition_id].numel()
-
-        for shard_id in range(num_shards):
-
-            if shard_id == (num_shards - 1):
-                num_elements = partitioned_params[partition_id].numel() - shard_id * shard_size
-
-            shard_list = []
-            for dp_id in range(dp_world_size):
-                curr_shard = partitioned_params[dp_id].narrow(0, shard_id * shard_size, num_elements).detach()
-                shard_list.append(curr_shard)
-
-            dist.all_gather(shard_list, shard_list[partition_id], dp_process_group[group_id])
+        dist.all_gather_into_tensor(group_flat, partitioned_params[partition_id], dp_process_group[group_id])
 
 
 class TLinear(torch.nn.Linear):
