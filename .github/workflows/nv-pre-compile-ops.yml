@@ -1,12 +1,14 @@
 name: nv-pre-compile-ops
 
 on:
-  push:
-    branches:
-      - 'staging**'
   pull_request:
     branches:
       '**'
+    paths-ignore:
+      - 'docs/**'
+      - 'blogs/**'
+  merge_group:
+    branches: [ master ]
   schedule:
     - cron: "0 0 * * *"
 

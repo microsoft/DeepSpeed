@@ -299,8 +299,7 @@ class BertConfig(object):
         if isinstance(vocab_size_or_config_json_file, str):
             with open(vocab_size_or_config_json_file, "r", encoding='utf-8') as reader:
                 json_config = json.loads(reader.read())
-            for key, value in json_config.items():
-                self.__dict__[key] = value
+            self.__dict__.update(json_config)
         elif isinstance(vocab_size_or_config_json_file, int):
             self.vocab_size = vocab_size_or_config_json_file
             self.hidden_size = hidden_size
@@ -323,8 +322,7 @@ class BertConfig(object):
     def from_dict(cls, json_object):
         """Constructs a `BertConfig` from a Python dictionary of parameters."""
         config = BertConfig(vocab_size_or_config_json_file=-1)
-        for key, value in json_object.items():
-            config.__dict__[key] = value
+        config.__dict__.update(json_object)
         return config
 
     @classmethod
@@ -819,21 +817,21 @@ class BertPreTrainedModel(nn.Module):
             archive_file = PRETRAINED_MODEL_ARCHIVE_MAP[pretrained_model_name_or_path]
         else:
             archive_file = pretrained_model_name_or_path
-        if resolved_archive_file == archive_file:  # noqa: F821
+        if resolved_archive_file == archive_file:  # noqa: F821 # type: ignore
             logger.info("loading archive file {}".format(archive_file))
         else:
-            logger.info("loading archive file {} from cache at {}".format(archive_file,
-                                                                          resolved_archive_file))  # noqa: F821
+            logger.info("loading archive file {} from cache at {}".format(
+                archive_file, resolved_archive_file))  # noqa: F821 # type: ignore
         tempdir = None
-        if os.path.isdir(resolved_archive_file) or from_tf:  # noqa: F821
-            serialization_dir = resolved_archive_file  # noqa: F821
+        if os.path.isdir(resolved_archive_file) or from_tf:  # noqa: F821 # type: ignore
+            serialization_dir = resolved_archive_file  # noqa: F821 # type: ignore
         else:
             # Extract archive to temp dir
             tempdir = tempfile.mkdtemp()
             logger.info("extracting archive file {} to temp dir {}".format(
-                resolved_archive_file,  # noqa: F821
+                resolved_archive_file,  # noqa: F821 # type: ignore
                 tempdir))
-            with tarfile.open(resolved_archive_file, 'r:gz') as archive:  # noqa: F821
+            with tarfile.open(resolved_archive_file, 'r:gz') as archive:  # noqa: F821 # type: ignore
                 archive.extractall(tempdir)
             serialization_dir = tempdir
         # Load config

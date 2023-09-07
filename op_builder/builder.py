@@ -107,6 +107,7 @@ class OpBuilder(ABC):
         self.name = name
         self.jit_mode = False
         self.build_for_cpu = False
+        self.enable_bf16 = False
         self.error_log = None
 
     @abstractmethod
@@ -227,14 +228,6 @@ class OpBuilder(ABC):
 
     def extra_ldflags(self):
         return []
-
-    def libraries_installed(self, libraries):
-        valid = False
-        check_cmd = 'dpkg -l'
-        for lib in libraries:
-            result = subprocess.Popen(f'dpkg -l {lib}', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-            valid = valid or result.wait() == 0
-        return valid
 
     def has_function(self, funcname, libraries, verbose=False):
         '''
@@ -458,7 +451,7 @@ class OpBuilder(ABC):
                 f"Unable to JIT load the {self.name} op due to it not being compatible due to hardware/software issue. {self.error_log}"
             )
         try:
-            import ninja  # noqa: F401
+            import ninja  # noqa: F401 # type: ignore
         except ImportError:
             raise RuntimeError(f"Unable to JIT load the {self.name} op due to ninja not being installed.")
 
@@ -600,7 +593,8 @@ class CUDAOpBuilder(OpBuilder):
 
     def builder(self):
         try:
-            assert_no_cuda_mismatch(self.name)
+            if not self.is_rocm_pytorch():
+                assert_no_cuda_mismatch(self.name)
             self.build_for_cpu = False
         except BaseException:
             self.build_for_cpu = True
@@ -621,7 +615,8 @@ class CUDAOpBuilder(OpBuilder):
                                     sources=self.strip_empty_entries(self.sources()),
                                     include_dirs=self.strip_empty_entries(self.include_paths()),
                                     libraries=self.strip_empty_entries(self.libraries_args()),
-                                    extra_compile_args=compile_args)
+                                    extra_compile_args=compile_args,
+                                    extra_link_args=self.strip_empty_entries(self.extra_ldflags()))
 
         if self.is_rocm_pytorch():
             # hip converts paths to absolute, this converts back to relative
@@ -654,7 +649,7 @@ class CUDAOpBuilder(OpBuilder):
         if sys.platform == "win32":
             return ['-O2']
         else:
-            return ['-O3', '-std=c++14', '-g', '-Wno-reorder']
+            return ['-O3', '-std=c++17', '-g', '-Wno-reorder']
 
     def nvcc_args(self):
         if self.build_for_cpu:
@@ -663,7 +658,7 @@ class CUDAOpBuilder(OpBuilder):
         if self.is_rocm_pytorch():
             ROCM_MAJOR, ROCM_MINOR = self.installed_rocm_version()
             args += [
-                '-std=c++14', '-U__HIP_NO_HALF_OPERATORS__', '-U__HIP_NO_HALF_CONVERSIONS__',
+                '-std=c++17', '-U__HIP_NO_HALF_OPERATORS__', '-U__HIP_NO_HALF_CONVERSIONS__',
                 '-U__HIP_NO_HALF2_OPERATORS__',
                 '-DROCM_VERSION_MAJOR=%s' % ROCM_MAJOR,
                 '-DROCM_VERSION_MINOR=%s' % ROCM_MINOR
@@ -672,8 +667,8 @@ class CUDAOpBuilder(OpBuilder):
             cuda_major, _ = installed_cuda_version()
             args += [
                 '-allow-unsupported-compiler' if sys.platform == "win32" else '', '--use_fast_math',
-                '-std=c++17' if sys.platform == "win32" and cuda_major > 10 else '-std=c++14',
-                '-U__CUDA_NO_HALF_OPERATORS__', '-U__CUDA_NO_HALF_CONVERSIONS__', '-U__CUDA_NO_HALF2_OPERATORS__'
+                '-std=c++17' if cuda_major > 10 else '-std=c++14', '-U__CUDA_NO_HALF_OPERATORS__',
+                '-U__CUDA_NO_HALF_CONVERSIONS__', '-U__CUDA_NO_HALF2_OPERATORS__'
             ]
             if os.environ.get('DS_DEBUG_CUDA_BUILD', '0') == '1':
                 args.append('--ptxas-options=-v')
@@ -707,6 +702,8 @@ class TorchCPUOpBuilder(CUDAOpBuilder):
         if not self.build_for_cpu:
             if not self.is_rocm_pytorch():
                 CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
+                if not os.path.exists(CUDA_LIB64):
+                    CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib")
             else:
                 CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")
 
