@@ -51,6 +51,24 @@ for a complete list of options for configuration and performance tuning.
         our `optimizer config <https://www.deepspeed.ai/docs/config-json/#optimizer-parameters>`_
         to instruct :meth:`deepspeed.initialize` to build the optimizer for you.
 
+ZeRO Configurations
+===================
+
+All the settings for DeepSpeed ZeRO are set with the `DeepSpeedZeroConfig`_.
+The dictionary provided under the ``zero_optimization`` entry of the main
+DeepSpeed configuration dict will be parsed and validated with this class.
+Sub-configurations for parameter offload and optimizer offload settings are
+parsed by `DeepSpeedZeroOffloadParamConfig`_ and
+`DeepSpeedZeroOffloadOptimizerConfig`_.
+
+.. _DeepSpeedZeroConfig:
+.. autopydantic_model:: deepspeed.runtime.zero.config.DeepSpeedZeroConfig
+
+.. _DeepSpeedZeroOffloadParamConfig:
+.. autopydantic_model:: deepspeed.runtime.zero.config.DeepSpeedZeroOffloadParamConfig
+
+.. _DeepSpeedZeroOffloadOptimizerConfig:
+.. autopydantic_model:: deepspeed.runtime.zero.config.DeepSpeedZeroOffloadOptimizerConfig
 
 
 Example ZeRO-3 Configurations
@@ -137,7 +155,39 @@ Example ZeRO-3 Configurations
             ...
         }
 
+MiCS Configurations
+===================
 
+All MiCS configurations are set with `DeepSpeedZeroConfig`. MiCS assumes ZeRO
+stage 3 optimization is enabled. For now, there are two configuration fields of
+MiCS `mics_shard_size` and `mics_hierarchical_params_gather`. `mics_shard_size`
+controls how many devices are used for partitioning the model states.
+`mics_hierarchical_params_gather` controls whether we use a two-stage
+hierarchical way to gather parameters in the forward computation.
+`mics_hierarchical_params_gather` is useful when model states are partitioned
+across multiple nodes and the cross-node bandwidth is slow. By default this is
+turned off.
+
+
+Example MiCS Configurations
+===========================
+
+#. Use MiCS to partition the model states (including optimizer states,
+   gradients, and parameters). The following config example partitions the model
+   states to eight devices, and assumes the eight devices are located within a
+   single node (`mics_hierarchical_params_gather` is `False`).
+
+    .. code-block:: python
+        :emphasize-lines: 3
+
+        {
+            "zero_optimization": {
+                "stage": 3,
+                "mics_shard_size": 8,
+                "mics_hierarchical_params_gather": False,
+            },
+            ...
+        }
 
 Assumptions
 ===========
@@ -259,6 +309,17 @@ DeepSpeed can automatically detect the following external parameter scenarios:
 .. autofunction:: deepspeed.zero.unregister_external_parameter
 
 
+.. `Module.apply <https://pytorch.org/docs/stable/generated/torch.nn.Module.html?highlight=module+apply#torch.nn.Module.apply>`_
+Overriding Module.apply
+===============================
+A convenient mechanism for customizing model initialization is `Module.apply <https://pytorch.org/docs/stable/generated/torch.nn.Module.html?highlight=module+apply#torch.nn.Module.apply>`_.
+With ZeRO stage 3, ``Module.apply`` implementations must account for parameter partitioning by ``zero.Init`` during model initialization. The default behavior of ZeRO stage 3 is to automatically
+handle this issue by overriding ``Module.apply`` to ensure that parameters are gathered before access by ``Module.apply``. The benefit of this approach is development convenience, since
+users are saved the burden of manual parameter coordination in ``Module.apply``. However, the downside is slow model initialization, since all the model parameters (e.g., billions) are gathered
+even though the common usage of ``Module.apply`` is to customize a few parameters. Developers can disable this default behavior by setting the ``override_module_apply`` configuration knob to ``False``,
+for faster model initialization at the cost of manually handling partitioned parameters in their ``Module.apply`` implementations.
+
+
 Memory-Centric Tiling
 ---------------------
 
@@ -275,3 +336,96 @@ parallelism to fit them in limited GPU memory.
 
 .. autoclass:: deepspeed.zero.TiledLinear
     :members:
+
+
+Debugging
+---------
+
+Debugging ZeRO training is complicated by the partitioning of parameters, gradients, and optimizer states. None of these 3 groups of tensors (model states) can be normally accessed because of that. To overcome that DeepSpeed provides the following routines for accessing individual model states in their unpartitioned form.
+
+Important: Please note that these utilities must be called by all processes participating in the training, even if you decide to do something with the result only in the main process. If all processes don't participate these utilities will hang waiting for all processes to send their contribution.
+
+Additionally, you must be aware that these routines return correct data only in specific phases of the training. So for examples the gradients are valid after ``backward`` and before ``step``. The optimizer states are updated after ``step``. Same goes for fp32 master weights.
+
+.. autofunction:: deepspeed.utils.safe_get_full_fp32_param
+
+.. autofunction:: deepspeed.utils.safe_get_full_grad
+
+.. autofunction:: deepspeed.utils.safe_get_full_optimizer_state
+
+
+These routines can be used in a training loop as shown in the following snippet.
+
+.. code-block:: python
+
+    backward(loss)
+    [...]
+    from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_grad, safe_get_full_optimizer_state
+    for n, lp in model.named_parameters():
+        # 1. gradient lookup
+        # For zero1 and zero2, gradient lookup must be called after `backward` and before `step`
+        # For zero3, gradient lookup must be called after `backward`
+        hp_grad = safe_get_full_grad(lp)
+
+        # 2. fp32 and optim states can probably be called anywhere in the training loop, but will be updated after `step`
+        hp = safe_get_full_fp32_param(lp)
+        exp_avg = safe_get_full_optimizer_state(lp, "exp_avg")
+        exp_avg_sq = safe_get_full_optimizer_state(lp, "exp_avg_sq")
+
+    [...]
+    optimizer.step()
+
+
+
+Modifying Partitioned States
+----------------------------
+
+Sometimes, a user may want to modify parameters or optimizer states outside of the regular training loop. This is currently difficult in ZeRO training because of partitioning. To overcome that, DeepSpeed provides the following two routines for modifying the fp32 master parameters and the fp32 optimizer states.
+
+.. autofunction:: deepspeed.utils.safe_set_full_fp32_param
+
+.. autofunction:: deepspeed.utils.safe_set_full_optimizer_state
+
+
+These routines can be used at any point after initialization of the DeepSpeed engine (i.e., ``deepspeed.initialize()``) as shown in the following snippet.
+
+.. code-block:: python
+
+    [...]
+    from deepspeed.utils import safe_set_full_fp32_param, safe_set_full_optimizer_state
+    # Here is an example to zero all the fp32 parameters and optimizer states.
+    for n, lp in model.named_parameters():
+        # Assume zero stage 1 or 2, since stage 3 requires a gather to assemble lp
+        zero_tensor = torch.zeros_like(lp)
+
+        hp = safe_set_full_fp32_param(lp, zero_tensor)
+        exp_avg = safe_get_full_optimizer_state(lp, zero_tensor, "exp_avg")
+        exp_avg_sq = safe_get_full_optimizer_state(lp, zero_tensor, "exp_avg_sq")
+
+    [...]
+
+
+GPU Memory Management
+---------------------
+
+By default at the end of training with ZeRO stage 3 some parameters could remain unpartitioned and use up some gpu memory.
+This is done on purpose as an optimization should you resume training again. If you'd like to clear out the cached
+parameters that use up gpu memory, you can call ``empty_partition_cache`` method of a DeepSpeed engine.
+
+.. autofunction::deepspeed.DeepSpeedEngine.empty_partition_cache
+
+The following code snippet illustrates this functionality.
+
+.. code-block:: python
+
+    with zero.Init():
+        model = MyLargeModel()
+
+    ds_engine, _, _, _ = deepspeed.initialize(model, ...)
+    for batch in ...:
+        loss = ds_engine(batch)
+        ds_engine.backward(batch)
+        ds_engine.step()
+
+    # Free GPU memory consumed by model parameters
+    ds_engine.empty_partition_cache()

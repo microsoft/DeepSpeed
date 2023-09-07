@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 import deepspeed
 import pytest
@@ -27,21 +32,14 @@ def _verify_staircase_increase(values, step_size):
         assert all([values[i] == v for v in values[i:j]])
 
 
-@pytest.mark.parametrize("scheduler_type,params",
-                         [(WARMUP_LR,
-                           {}),
-                          (WARMUP_DECAY_LR,
-                           {
-                               WARMUP_NUM_STEPS: 10,
-                               TOTAL_NUM_STEPS: 20
-                           }),
-                          (ONE_CYCLE,
-                           {
-                               CYCLE_MIN_LR: 0,
-                               CYCLE_MAX_LR: 0.1
-                           }),
-                          (LR_RANGE_TEST,
-                           {})])
+@pytest.mark.parametrize("scheduler_type,params", [(WARMUP_LR, {}),
+                                                   (WARMUP_DECAY_LR, {
+                                                       WARMUP_NUM_STEPS: 10,
+                                                       TOTAL_NUM_STEPS: 20
+                                                   }), (ONE_CYCLE, {
+                                                       CYCLE_MIN_LR: 0,
+                                                       CYCLE_MAX_LR: 0.1
+                                                   }), (LR_RANGE_TEST, {})])
 class TestGetLrBeforeTrain(DistributedTest):
     world_size = 1
 
@@ -196,26 +194,21 @@ class TestLrSchedule(DistributedTest):
             previous_lr = lr
 
 
-@pytest.mark.parametrize("scheduler_type,params",
-                         [(WARMUP_LR,
-                           {}),
-                          (WARMUP_DECAY_LR,
-                           {
-                               WARMUP_NUM_STEPS: 5,
-                               TOTAL_NUM_STEPS: 10
-                           }),
-                          (ONE_CYCLE,
-                           {
-                               CYCLE_MIN_LR: 0,
-                               CYCLE_MAX_LR: 0.1,
-                               CYCLE_FIRST_STEP_SIZE: 5,
-                               DECAY_STEP_SIZE: 5
-                           }),
-                          (LR_RANGE_TEST,
-                           {
-                               LR_RANGE_TEST_MIN_LR: 1e-4,
-                               LR_RANGE_TEST_STEP_SIZE: 1
-                           })])
+@pytest.mark.parametrize("scheduler_type,params", [(WARMUP_LR, {}),
+                                                   (WARMUP_DECAY_LR, {
+                                                       WARMUP_NUM_STEPS: 5,
+                                                       TOTAL_NUM_STEPS: 10
+                                                   }),
+                                                   (ONE_CYCLE, {
+                                                       CYCLE_MIN_LR: 0,
+                                                       CYCLE_MAX_LR: 0.1,
+                                                       CYCLE_FIRST_STEP_SIZE: 5,
+                                                       DECAY_STEP_SIZE: 5
+                                                   }),
+                                                   (LR_RANGE_TEST, {
+                                                       LR_RANGE_TEST_MIN_LR: 1e-4,
+                                                       LR_RANGE_TEST_STEP_SIZE: 1
+                                                   })])
 class TestSchedulerOptimizerParity(DistributedTest):
     world_size = 1
 
@@ -292,8 +285,7 @@ class TestLrRange(DistributedTest):
                                                          model=model,
                                                          model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
-                                        total_samples=max(50,
-                                                          step_size * 2),
+                                        total_samples=max(50, step_size * 2),
                                         hidden_dim=hidden_dim,
                                         device=model.device,
                                         dtype=torch.float)
@@ -356,8 +348,7 @@ class TestOneCycle(DistributedTest):
                                                          model=model,
                                                          model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
-                                        total_samples=max(50,
-                                                          cycle_step_size * 3),
+                                        total_samples=max(50, cycle_step_size * 3),
                                         hidden_dim=hidden_dim,
                                         device=model.device,
                                         dtype=torch.float)
@@ -423,8 +414,7 @@ class TestOneCycle(DistributedTest):
                                                          model=model,
                                                          model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
-                                        total_samples=max(50,
-                                                          step_size * 3),
+                                        total_samples=max(50, step_size * 3),
                                         hidden_dim=hidden_dim,
                                         device=model.device,
                                         dtype=torch.float)

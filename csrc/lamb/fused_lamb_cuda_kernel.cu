@@ -1,4 +1,8 @@
-/* Copyright 2019 The Microsoft DeepSpeed Team */
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <stdio.h>
@@ -7,12 +11,12 @@
 #include "ATen/TensorUtils.h"
 #include "ATen/cuda/CUDAContext.h"
 #include "ATen/cuda/detail/IndexUtils.cuh"
-//#include "ATen/Type.h"
+// #include "ATen/Type.h"
 #include "ATen/AccumulateType.h"
 
 #include <iostream>
 
-//#include <helper_functions.h>
+// #include <helper_functions.h>
 #if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305
 #include <hip/hip_cooperative_groups.h>
 #else

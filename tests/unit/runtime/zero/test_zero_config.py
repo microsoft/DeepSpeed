@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig, DeepSpeedZeroOffloadParamConfig, DeepSpeedZeroOffloadOptimizerConfig
 
 
@@ -24,6 +29,12 @@ def test_zero_config_aliasfields():
 
     config = DeepSpeedZeroConfig(**{"stage3_gather_16bit_weights_on_model_save": True})
     assert config.gather_16bit_weights_on_model_save == True
+
+
+def test_zero_config_pipeline_loading_checkpoint():
+    for stage in [0, 1, 2]:
+        config = DeepSpeedZeroConfig(**{"stage": stage})
+        assert config.pipeline_loading_checkpoint == False
 
 
 def test_zero_config_overlapcomm():
@@ -53,20 +64,11 @@ def test_zero_offload_optimizer_config_pipeline():
     config = DeepSpeedZeroOffloadOptimizerConfig()
     assert config.pipeline == False
 
-    config = DeepSpeedZeroOffloadOptimizerConfig(**{
-        "pipeline_read": True,
-        "pipeline_write": False
-    })
+    config = DeepSpeedZeroOffloadOptimizerConfig(**{"pipeline_read": True, "pipeline_write": False})
     assert config.pipeline == True
 
-    config = DeepSpeedZeroOffloadOptimizerConfig(**{
-        "pipeline_read": False,
-        "pipeline_write": True
-    })
+    config = DeepSpeedZeroOffloadOptimizerConfig(**{"pipeline_read": False, "pipeline_write": True})
     assert config.pipeline == True
 
-    config = DeepSpeedZeroOffloadOptimizerConfig(**{
-        "pipeline_read": True,
-        "pipeline_write": True
-    })
+    config = DeepSpeedZeroOffloadOptimizerConfig(**{"pipeline_read": True, "pipeline_write": True})
     assert config.pipeline == True
