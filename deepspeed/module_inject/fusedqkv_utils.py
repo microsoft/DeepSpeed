@@ -4,7 +4,7 @@
 # DeepSpeed Team
 import torch
 from deepspeed.utils.logging import warning_once
-from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list, num_kv_heads
+from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list, get_num_kv_heads
 import re
 
 
@@ -40,7 +40,7 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
 
     def _codegen_type_transpose(input, mp_size, codegen_mp_num=4):
         # codegen_mp_num defined in https://github.com/huggingface/transformers/blob/main/src/transformers/models/codegen/modeling_codegen.py
-        assert num_kv_heads % (
+        assert get_num_kv_heads() % (
             mp_size * codegen_mp_num) == 0, "codgen autoTP requires num_kv_heads % (mp_size*codegen_mp_num) == 0"
         #input : [3*hidden_dim, hidden_dim](weight) or [3*hidden_dim](bias)
 

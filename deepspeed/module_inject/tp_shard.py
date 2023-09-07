@@ -12,6 +12,11 @@ def set_num_kv_heads(num):
     num_kv_heads = num
 
 
+def get_num_kv_heads():
+    global num_kv_heads
+    return num_kv_heads
+
+
 def get_shard_size(total_size, mp_size, rank=None):
     global num_kv_heads
     # When we have num_kv_heads defined, uneven division is possible, otherwise enforce even division
