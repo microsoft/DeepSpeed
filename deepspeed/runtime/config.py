@@ -523,6 +523,10 @@ def get_memory_breakdown(param_dict):
     return get_scalar_param(param_dict, MEMORY_BREAKDOWN, MEMORY_BREAKDOWN_DEFAULT)
 
 
+def get_disable_partitioned_tensor(param_dict):
+    return get_scalar_param(param_dict, DISABLE_PARTITIONED_TENSOR, DISABLE_PARTITIONED_TENSOR_DEFAULT)
+
+
 class HybridEngineConfig(DeepSpeedConfigModel):
     enabled: bool = False
     max_out_tokens: int = 512
@@ -877,6 +881,8 @@ class DeepSpeedConfig(object):
         self.dataloader_drop_last = get_dataloader_drop_last(param_dict)
 
         self.nebula_config = DeepSpeedNebulaConfig(param_dict)
+
+        self.disable_partitioned_tensor = get_disable_partitioned_tensor(param_dict)
 
     def _batch_assertion(self):
 

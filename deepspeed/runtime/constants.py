@@ -420,3 +420,24 @@ PIPE_REPLICATED = 'ds_pipe_replicated'
 #########################################
 DATA_PARALLEL_GROUP = "data_parallel_group"
 GLOBAL_RANK = "global_rank"
+
+#########################################
+# SUPPORT SEQUENCE PARALLELISM
+# Disable partitioned tensor. To support sequence parallelism,
+# it is necessary to avoid using PartitionedTensor for splitting
+# the tensor, as it would cause the value of tensor to be messed
+# up when the activations and gradients have already been split
+# along the sequence dimension during sequence parallel processing.
+# Moreover, sequence parallelism also splits based on the tp_size,
+# so the communication overhead for activations and gradients will
+# not increase. Additionally, this approach reduces the time required
+# for an all_gather operation for partitioned activations and gradients.
+#########################################
+# By default, this feature is not enabled.
+# Users can configure in ds_config.json as below example:
+DISABLE_PARTITIONED_TENSOR_FORMAT = '''
+Disable partitioned tensor should be enabled as:
+"disable_partitioned_tensor": true
+'''
+DISABLE_PARTITIONED_TENSOR = 'disable_partitioned_tensor'
+DISABLE_PARTITIONED_TENSOR_DEFAULT = False
