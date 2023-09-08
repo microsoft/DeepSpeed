@@ -9,10 +9,13 @@ import deepspeed
 from deepspeed.profiling.flops_profiler import get_model_profile
 from unit.simple_model import SimpleModel, random_dataloader
 from unit.common import DistributedTest
+from deepspeed.runtime.utils import required_torch_version
+from deepspeed.accelerator import get_accelerator
 
-TORCH_MAJOR = int(torch.__version__.split('.')[0])
-TORCH_MINOR = int(torch.__version__.split('.')[1])
-pytestmark = pytest.mark.skipif(TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 3),
+if torch.half not in get_accelerator().supported_dtypes():
+    pytest.skip(f"fp16 not supported, valid dtype: {get_accelerator().supported_dtypes()}", allow_module_level=True)
+
+pytestmark = pytest.mark.skipif(not required_torch_version(min_version=1.3),
                                 reason='requires Pytorch version 1.3 or above')
 
 

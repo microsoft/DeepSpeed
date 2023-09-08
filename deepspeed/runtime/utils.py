@@ -14,8 +14,8 @@ import os
 import psutil
 import gc
 from math import sqrt
-from math import floor
 from bisect import bisect_left
+from packaging import version as pkg_version
 
 import torch
 from deepspeed import comm as dist
@@ -29,6 +29,9 @@ from deepspeed.utils import groups, logger
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from numpy import prod
 from deepspeed.accelerator import get_accelerator
+
+from deepspeed.module_inject.policy import transpose
+from torch.nn import functional as F
 
 torch_memory_reserved = get_accelerator().memory_reserved
 torch_max_memory_reserved = get_accelerator().max_memory_reserved
@@ -47,6 +50,18 @@ class DummyOptim():
 
 def noop_decorator(func):
     return func
+
+
+class noop_context(object):
+
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
 
 
 def ensure_directory_exists(filename):
@@ -237,7 +252,7 @@ class CheckOverflow(object):
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
         overflow_gpu = get_accelerator().ByteTensor([overflow])
-        # deepspeeed.comm.all_reduce(overflow_gpu,
+        # deepspeed.comm.all_reduce(overflow_gpu,
         #                             op=deepspeed.comm.ReduceOp.MAX,
         #                             group=mpu.get_model_parallel_group())
         if has_moe_params:
@@ -300,6 +315,7 @@ def get_global_norm(norm_list):
     total_norm = 0.0
     for norm in norm_list:
         total_norm += norm**2.0
+    # logger.info(f'norm_list = {norm_list} global = {sqrt(total_norm)}')
     return sqrt(total_norm)
 
 
@@ -535,6 +551,7 @@ def prefix_sum_inc(weights):
 
 
 def partition_uniform(num_items, num_parts):
+    import numpy
     parts = [0] * (num_parts + 1)
     # First check for the trivial edge case
     if num_items <= num_parts:
@@ -542,10 +559,15 @@ def partition_uniform(num_items, num_parts):
             parts[p] = min(p, num_items)
         return parts
 
-    chunksize = floor(num_items / num_parts)
-    for p in range(num_parts):
-        parts[p] = min(chunksize * p, num_items)
-    parts[num_parts] = num_items
+    chunksize = num_items // num_parts
+    residual = num_items - (chunksize * num_parts)
+
+    parts = numpy.arange(0, (num_parts + 1) * chunksize, chunksize)
+
+    for i in range(residual):
+        parts[i + 1:] += 1
+    parts = parts.tolist()
+
     return parts
 
 
@@ -765,6 +787,7 @@ def get_ma_status():
 
 def empty_cache():
     get_accelerator().empty_cache()
+    get_accelerator().reset_peak_memory_stats()
 
 
 def see_memory_usage(message, force=False):
@@ -921,6 +944,10 @@ def all_gather_dp_groups(partitioned_param_groups, dp_process_group, start_align
         partition_id = dist.get_rank(group=dp_process_group[group_id])
         dp_world_size = dist.get_world_size(group=dp_process_group[group_id])
 
+        if dp_world_size == 1:
+            # no groups share optimizer states
+            # pipeline parallel with bf16 will default call this even if dp size = 1.
+            continue
         num_shards = max(1, partitioned_params[partition_id].numel() * dp_world_size // allgather_bucket_size)
 
         shard_size = partitioned_params[partition_id].numel() // num_shards
@@ -943,3 +970,42 @@ def all_gather_dp_groups(partitioned_param_groups, dp_process_group, start_align
                 shard_list.append(curr_shard)
 
             dist.all_gather(shard_list, shard_list[partition_id], dp_process_group[group_id])
+
+
+class TLinear(torch.nn.Linear):
+
+    def __init__(self, orig_layer, name=""):
+        self.name = name
+        super().__init__(orig_layer.weight.shape[1], orig_layer.weight.shape[0], bias=(orig_layer.bias is not None))
+        self.weight.data = transpose(orig_layer.weight.data)
+        self.bias = orig_layer.bias
+        self._fwd_func = self._fwd_bias_add if self.bias is not None else self._fwd
+
+    def _fwd(self, input):
+        return F.linear(input, self.weight)
+
+    def _fwd_bias_add(self, input):
+        return F.linear(input, self.weight, bias=self.bias)
+
+    def forward(self, input):
+        return self._fwd_func(input)
+
+
+def get_inactive_params(param_list):
+    from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+    return [param for param in param_list if (hasattr(param, 'ds_id') and \
+                            param.ds_status == ZeroParamStatus.NOT_AVAILABLE)]
+
+
+def required_torch_version(min_version=None, max_version=None):
+    assert min_version or max_version, "Must provide a min_version or max_version argument"
+
+    torch_version = pkg_version.parse(torch.__version__)
+
+    if min_version and pkg_version.parse(str(min_version)) > torch_version:
+        return False
+
+    if max_version and pkg_version.parse(str(max_version)) < torch_version:
+        return False
+
+    return True
