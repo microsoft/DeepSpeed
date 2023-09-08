@@ -54,7 +54,7 @@ class DS_FALCONContainer(MetaTensorContainer, BaseTransformerContainer, HybridEn
         ]
 
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
-        ln_2 = ('ln_mlp' if hasattr(self.policy.client_module, 'ln_mlp') else 'post_attention_layernorm') if not self.policy.config.parallel_attn else None
+        ln_2 = 'ln_mlp' if hasattr(self.policy.client_module, 'ln_mlp') else ('post_attention_layernorm' if hasattr(self.policy.client_module, 'post_attention_layernorm') else None)
         ln_1 = 'ln_attn' if hasattr(self.policy.client_module, 'ln_attn') else 'input_layernorm'
         param_names = (
             'self_attention.query_key_value.weight', \
@@ -88,7 +88,7 @@ class DS_FALCONContainer(MetaTensorContainer, BaseTransformerContainer, HybridEn
                        prefix + param_names[5])
         for i in range(6, 8):
             maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[i + 4], prefix + param_names[i])
-
+        del sd
 
     def attention_qkv_mp(self, mp_replace, reversed_dim=False):
         self.module.attention.attn_qkvw = mp_replace.copy(self.module.attention.attn_qkvw,
@@ -107,14 +107,12 @@ class FALCONLayerPolicy(TransformerPolicy):
         FALCONLayerPolicy.name = 'falcon'
         FALCONLayerPolicy._orig_layer_class = None
         if client_module is not None:
-            self.num_kv = self.client_module.self_attention.num_kv
+            self.num_kv = self.client_module.self_attention.num_kv if hasattr(self.client_module.self_attention, 'num_kv') else \
+                        self.client_module.self_attention.num_kv_heads
             self.config = self.client_module.config
 
     def get_hidden_heads(self):
         heads = self.client_module.self_attention.num_heads
-        #if heads % 2 == 1:
-        #    heads = heads + 1
-        #    attention.query_key_value.weight.data = torch.cat(attention.query_key_value.weight)
         return self.client_module.self_attention.query_key_value.weight.shape[1], \
                 heads, \
                 self.client_module.ln_mlp.eps if hasattr(self.client_module, 'ln_mlp') else self.client_module.input_layernorm.eps, \
@@ -135,7 +133,7 @@ class FALCONLayerPolicy(TransformerPolicy):
                    None
 
     def layernorm(self):
-        ln_2 = (self.client_module.ln_mlp if hasattr(self.client_module, 'ln_mlp') else self.client_module.post_attention_layernorm) if not self.config.parallel_attn else None
+        ln_2 = self.client_module.ln_mlp if hasattr(self.client_module, 'ln_mlp') else (self.client_module.post_attention_layernorm  if hasattr(self.client_module, 'post_attention_layernorm') else None)
         ln_1 = self.client_module.ln_attn if hasattr(self.client_module, 'ln_attn') else self.client_module.input_layernorm
         #import pdb;pdb.set_trace()
         return ln_2.weight if ln_2 is not None else None, \

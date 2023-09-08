@@ -570,7 +570,11 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
             pbar = tqdm.tqdm(total=len(checkpoint), desc=f"Loading {len(checkpoint)} checkpoint shards")
 
             for i in range(len(checkpoint)):
-                sd = [torch.load(os.path.join(base_dir1, checkpoint[i]), map_location='cpu')]
+                if checkpoint[i].endswith(".safetensors"):
+                    from safetensors.torch import load_file
+                    sd = [load_file(os.path.join(base_dir1, checkpoint[i]), device=f'cuda:{torch.distributed.get_rank()}')]
+                else:
+                    sd = [torch.load(os.path.join(base_dir1, checkpoint[i]), map_location='cpu')]
                 load_model_with_checkpoint(replaced_module,
                                            sd,
                                            mp_replace,
@@ -578,6 +582,13 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                            ckpt_mp_size,
                                            quantizer,
                                            container=container_g)
+                for sd_ in sd:
+                    lens = len(sd_.keys())
+                    for _ in range(lens):
+                        data = sd_.popitem()
+                        del data
+                    del sd_
+                sd = None
                 pbar.update(1)
         else:
             num_checkpoints = len(ckpt_list) // ckpt_mp_size

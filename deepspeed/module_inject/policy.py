@@ -168,6 +168,7 @@ def maybe_copy(module,
                         tmp = transpose(tmp)
                 dst = mp_replace.copy(dst, weight_quantizer.quantize(tmp if weight_quantizer.q_int8 else \
                                                 transpose(tmp)), int8=weight_quantizer.q_int8)
+        del tmp, sd
         setattr(module, dst_name, dst)
 
 
@@ -191,6 +192,7 @@ def maybe_copy_qkv(module, sd, weight_quantizer, mp_replace, dst_name, src_names
             else:
                 dst = mp_replace.copy(dst, weight_quantizer.quantize(qkv_data.to(get_accelerator().device_name()) if weight_quantizer.q_int8 else \
                                                 transpose(qkv_data)), int8=weight_quantizer.q_int8)
+        del q, k, v, sd
         setattr(module, dst_name, dst)
 
 

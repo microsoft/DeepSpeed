@@ -853,7 +853,7 @@ void launch_transform_multi_query(T* query,
     int threadblks = (heads / num_kv) * 3;
     int launch_blks = threadblks;
     if (launch_blks > max_thread_blk) launch_blks = max_thread_blk;
-    int num_blks = ((threadblks - 1) / launch_blks + 1);
+    int num_blks = (threadblks - 1) / launch_blks + 1;
     dim3 block_dim(hidden_dim / heads, launch_blks);
     dim3 grid_dim(batch_size, all_tokens, num_kv * num_blks);
 
