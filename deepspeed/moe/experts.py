@@ -11,10 +11,10 @@ class Experts(torch.nn.Module):
 
     def __init__(self, expert, num_local_experts=1, expert_group_name=None):
         super(Experts, self).__init__()
-
-        self.deepspeed_experts = torch.nn.ModuleList([copy.deepcopy(expert) for i in range(num_local_experts)])
-        self.num_local_experts = num_local_experts
-
+        if len(expert) == 1:
+            self.deepspeed_experts = torch.nn.ModuleList([copy.deepcopy(expert) for i in range(num_local_experts)])
+        else:
+            self.deepspeed_experts = torch.nn.ModuleList([copy.deepcopy(e) for e in expert])
         # TODO: revisit allreduce for moe.gate...
         for expert in self.deepspeed_experts:
             # TODO: Create param groups to handle expert + data case (e.g. param.group = moe_group)

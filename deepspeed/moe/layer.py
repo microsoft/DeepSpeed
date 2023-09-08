@@ -50,6 +50,8 @@ class MoE(torch.nn.Module):
                  enable_expert_tensor_parallelism: bool = False):
 
         super(MoE, self).__init__()
+        if len(expert) > 1:
+            num_experts = len(expert)
 
         self.use_residual = use_residual
         self.enable_expert_tensor_parallelism = enable_expert_tensor_parallelism
