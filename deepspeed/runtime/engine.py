@@ -2156,6 +2156,7 @@ class DeepSpeedEngine(Module):
         if flops_profiler_active:
             if self.autotuning_enabled():
                 self.flops = self.flops_profiler.get_total_flops() * 3
+                self.fwd_duration = self.flops_profiler.get_total_duration()
             else:
                 self.flops_profiler.print_model_profile(
                     profile_step=self.global_steps,
@@ -2210,7 +2211,7 @@ class DeepSpeedEngine(Module):
             titer += msg[FORWARD_GLOBAL_TIMER] if FORWARD_GLOBAL_TIMER in msg else 0
             titer += msg[BACKWARD_GLOBAL_TIMER] if BACKWARD_GLOBAL_TIMER in msg else 0
             titer += msg[STEP_GLOBAL_TIMER] if STEP_GLOBAL_TIMER in msg else 0
-
+            titer *= self.gradient_accumulation_steps()
             msg["latency"] = titer
             msg["FLOPS_per_gpu"] = self.flops * 1_000_000 * self.gradient_accumulation_steps() / titer
             msg["throughput"] = self.train_batch_size() * 1_000_000 / \
@@ -2766,26 +2767,29 @@ class DeepSpeedEngine(Module):
 
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
 
+        optim_checkpoint = None
         if load_module_only:
             deepspeed_states = ['module']
             if self.optimizer is not None and self.fp16_enabled():
                 self.optimizer.refresh_fp32_params()
         else:
-            if self.has_moe_layers:
-                largest_group_name = groups._get_max_expert_size_name()
-                expp_rank = groups._get_expert_parallel_rank(largest_group_name)
-                optim_load_path = self._get_optimizer_ckpt_name(load_dir, tag, expp_rank)
-                optim_checkpoint = self.checkpoint_engine.load(optim_load_path, map_location=torch.device('cpu'))
-            else:
-                optim_checkpoint = checkpoint
-
             has_zero_optimizer_state = self.zero_optimization() or self.bfloat16_enabled()
             if load_optimizer_states and self.optimizer is not None and not has_zero_optimizer_state:
-                if self.fp16_enabled():
+                if self.has_moe_layers:
+                    largest_group_name = groups._get_max_expert_size_name()
+                    expp_rank = groups._get_expert_parallel_rank(largest_group_name)
+                    optim_load_path = self._get_optimizer_ckpt_name(load_dir, tag, expp_rank)
+                    optim_checkpoint = self.checkpoint_engine.load(optim_load_path, map_location=torch.device('cpu'))
+                else:
+                    optim_checkpoint = checkpoint
+
+                if self.fp16_enabled() or self.bfloat16_enabled():
                     self.optimizer.load_state_dict(optim_checkpoint['optimizer'],
                                                    load_optimizer_states=load_optimizer_states)
                 else:
-                    self.optimizer.load_state_dict(optim_checkpoint['optimizer'])
+                    optim_checkpoint = checkpoint
+
+                self.optimizer.load_state_dict(optim_checkpoint['optimizer'])
 
             if load_lr_scheduler_states and self.lr_scheduler is not None:
                 self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
@@ -2842,7 +2846,7 @@ class DeepSpeedEngine(Module):
 
         client_state = {key: value for key, value in checkpoint.items() if not key in deepspeed_states}
 
-        if not load_optimizer_states and not load_module_only:
+        if optim_checkpoint is not None:
             client_state['optimizer'] = optim_checkpoint['optimizer']
 
         return load_path, client_state
