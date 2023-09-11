@@ -6,6 +6,8 @@
 import math
 import torch
 import torch.nn as nn
+import triton
+import triton.language as tl
 from deepspeed.accelerator import get_accelerator
 from deepspeed import comm as dist
 from deepspeed.ops.transformer.inference.op_binding import LinearOp, VectorMatMulOp, SoftmaxContextOp, QKVGemmOp
@@ -203,7 +205,6 @@ class TritonSelfAttention(nn.Module):
 
 global inference_module
 
-
 def compute_attention(qkv,
                       input_mask,
                       layer_past,
@@ -227,3 +228,532 @@ def compute_attention(qkv,
     output = context_4d_matmul(output, qkv, head_size)
 
     return output
+
+
+@triton.jit
+def _flash_unpacked_kernel(
+    Q, K, V,
+        mask,
+        ADD_MASK: tl.constexpr,
+        IS_CAUSAL: tl.constexpr,
+    sm_scale,
+    Out,
+    stride_qz, stride_qh, stride_qm, stride_qk,
+        stride_mh,
+    stride_kz, stride_kh, stride_kn, stride_kk,
+    stride_vz, stride_vh, stride_vk, stride_vn,
+    stride_oz, stride_oh, stride_om, stride_on,
+    Z, H, N_CTX,
+    P_SEQ,
+        hidden_size,
+    BLOCK_M: tl.constexpr, BLOCK_DMODEL: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    start_m = tl.program_id(0)
+    off_hz = tl.program_id(1)
+    batch = off_hz // H
+    head = off_hz % H
+
+    q_offset = off_hz * stride_qh
+    kv_offset = off_hz * stride_kh
+    Q_block_ptr = tl.make_block_ptr(
+        base=Q + q_offset,
+        shape=(N_CTX, BLOCK_DMODEL),
+        strides=(stride_qm, stride_qk),
+        offsets=(start_m * BLOCK_M, 0),
+        block_shape=(BLOCK_M, BLOCK_DMODEL),
+        order=(1, 0)
+    )
+    K_block_ptr = tl.make_block_ptr(
+        base=K + kv_offset,
+        shape=(BLOCK_DMODEL, N_CTX + P_SEQ),
+        strides=(stride_kk, stride_kn),
+        offsets=(0, 0),
+        block_shape=(BLOCK_DMODEL, BLOCK_N),
+        order=(0, 1)
+    )
+    V_block_ptr = tl.make_block_ptr(
+        base=V + kv_offset,
+        shape=(N_CTX + P_SEQ, BLOCK_DMODEL),
+        strides=(stride_vk, stride_vn),
+        offsets=(0, 0),
+        block_shape=(BLOCK_N, BLOCK_DMODEL),
+        order=(1, 0)
+    )
+    # initialize offsets
+    offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = tl.arange(0, BLOCK_N)
+
+    # mask
+    if ADD_MASK:
+        off_mask = batch * stride_mh + offs_n[None, :]
+        mask_ptrs = mask + off_mask
+
+    # initialize pointer to m and l
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+    l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
+    acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
+    # scale sm_scale by log_2(e) and use
+    # 2^x instead of exp in the loop because CSE and LICM
+    # don't work as expected with `exp` in the loop
+    qk_scale = sm_scale * 1.44269504
+    # load q: it will stay in SRAM throughout
+    q = tl.load(Q_block_ptr)
+    q = (q * qk_scale).to(tl.float16)
+    # loop over k, v and update accumulator
+    lo = 0
+    hi = P_SEQ + (start_m + 1) * BLOCK_M if IS_CAUSAL else N_CTX + P_SEQ
+    for start_n in range(lo, hi, BLOCK_N):
+        # -- load k, v --
+        k = tl.load(K_block_ptr)
+        v = tl.load(V_block_ptr)
+        # -- compute qk ---
+        qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float16)
+
+        if ADD_MASK:
+            mask_val = tl.load(mask_ptrs)
+            mask_ptrs += BLOCK_N
+            qk = qk + mask_val.to(tl.float32)
+
+        if IS_CAUSAL:
+            qk = tl.where(P_SEQ + offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
+
+        qk += tl.dot(q, k, out_dtype=tl.float16)
+        # -- compute scaling constant ---
+        m_i_new = tl.maximum(m_i, tl.max(qk, 1))
+        alpha = tl.math.exp2(m_i - m_i_new)
+        p = tl.math.exp2(qk - m_i_new[:, None])
+        # -- scale and update acc --
+        acc_scale = l_i * 0 + alpha  # workaround some compiler bug
+        acc *= acc_scale[:, None]
+        acc += tl.dot(p.to(tl.float16), v)
+        # -- update m_i and l_i --
+        l_i = l_i * alpha + tl.sum(p, 1)
+        m_i = m_i_new
+        # update pointers
+        K_block_ptr = tl.advance(K_block_ptr, (0, BLOCK_N))
+        V_block_ptr = tl.advance(V_block_ptr, (BLOCK_N, 0))
+    # write back l and m
+    acc = acc / l_i[:, None]
+    # l_ptrs = L + off_hz * N_CTX + offs_m
+    # tl.store(l_ptrs, m_i + tl.math.log2(l_i))
+    # write back O
+    O_block_ptr = tl.make_block_ptr(
+        base=Out + q_offset,
+        shape=(N_CTX, BLOCK_DMODEL),
+        strides=(stride_om, stride_on),
+        offsets=(start_m * BLOCK_M, 0),
+        block_shape=(BLOCK_M, BLOCK_DMODEL),
+        order=(1, 0)
+    )
+    tl.store(O_block_ptr, acc.to(tl.float16))
+
+
+def _triton_unpacked_forward(
+            q, k, v,
+            heads,
+            mask,
+            sm_scale,
+            causal=False, add_mask=True):
+    BLOCK = 64
+    head_size = q.shape[3]
+
+    BLOCK_M = 128
+    BLOCK_N = 64 if head_size <= 64 else 32
+
+    # o = torch.empty((qkv.shape[0],
+    #                  qkv.shape[1],
+    #                  heads * head_size),
+    #                 device=qkv.device,
+    #                 dtype=torch.int8 if self.int8_output else torch.half)
+    o = torch.empty_like(q)
+
+    # grid = (triton.cdiv(qkv.shape[1], BLOCK), qkv.shape[0] * heads, 1)
+    grid = (triton.cdiv(q.shape[2], BLOCK_M), q.shape[0] * q.shape[1], 1)
+    # tmp = torch.empty((qkv.shape[0] * heads,
+    #                    qkv.shape[1]),
+    #                   device=qkv.device,
+    #                   dtype=torch.float32)
+    tmp = torch.empty(0)
+    # num_warps = 4 if head_size <= 64 else 8
+    num_stages = 4 if head_size <= 64 else 3
+    num_warps = 4
+    P_SEQ = 0 if q.shape[-2] == k.shape[-2] else k.shape[-2] - q.shape[-2]
+
+    _flash_unpacked_kernel[grid](q,k,v,
+                    mask,
+                    add_mask,
+                    causal,
+                    sm_scale,
+                    o,
+                    q.stride(0), q.stride(1), q.stride(2), q.stride(3),
+                    0 if mask is None else mask.stride(1),
+                    k.stride(0), k.stride(1), k.stride(2), k.stride(3),
+                    v.stride(0), v.stride(1), v.stride(2), v.stride(3),
+                    o.stride(0), o.stride(1), o.stride(2), o.stride(3),
+
+                    q.shape[0], q.shape[1], q.shape[2],
+                    P_SEQ,
+
+                    q.shape[1] * q.shape[3],
+
+                    BLOCK_M=BLOCK_M,
+                    BLOCK_N=BLOCK_N,
+                    BLOCK_DMODEL=head_size,
+                    num_warps=num_warps,
+                    num_stages=num_stages)
+
+    return o
+
+
+def _triton_packed_forward(
+            qkv,
+            heads,
+            mask,
+            sm_scale,
+            causal=False, add_mask=True):
+    head_size = qkv.shape[-1] // 3 // heads
+    hidden_size = qkv.shape[-1] // 3
+
+    BLOCK_M = 128
+    BLOCK_N = 64 if head_size <= 64 else 32
+
+    # o = torch.empty((qkv.shape[0], heads, qkv.shape[1], head_size),
+    #                 device=qkv.device,
+    #                 dtype=torch.int8 if self.int8_output else torch.half)
+
+    o = torch.empty((qkv.shape[0], qkv.shape[1], hidden_size),
+                    device=qkv.device,
+                    dtype=torch.half)
+                    # dtype=torch.half)
+    if mask is None:
+        mask = torch.empty(0)
+        add_mask = False
+
+    # grid = (triton.cdiv(qkv.shape[1], BLOCK), qkv.shape[0] * heads, 1)
+    grid = (triton.cdiv(qkv.shape[1], BLOCK_M), qkv.shape[0] * heads, 1)
+    # tmp = torch.empty((qkv.shape[0] * heads,
+    #                    qkv.shape[1]),
+    #                   device=qkv.device,
+    #                   dtype=torch.float32)
+    tmp = torch.empty(0)
+    # num_warps = 4 if head_size <= 64 else 8
+    num_stages = 4 if head_size <= 64 else 3
+    num_warps = 4
+    P_SEQ = 0
+
+    _flash_packed_kernel[grid](qkv,
+                    mask,
+                    add_mask,
+                    causal,
+                    sm_scale,
+                    o,
+                    qkv.stride(0), qkv.stride(1), qkv.stride(2),
+                    mask.stride(1) if add_mask else 0,
+                    qkv.stride(0), qkv.stride(1), qkv.stride(2),
+                    qkv.stride(0), qkv.stride(1), qkv.stride(2),
+                    o.stride(0), o.stride(1), o.stride(2),
+
+                    qkv.shape[0], heads, qkv.shape[1], P_SEQ,
+                    hidden_size,
+
+                    BLOCK_M=BLOCK_M,
+                    BLOCK_N=BLOCK_N,
+                    BLOCK_DMODEL=head_size,
+                    num_warps=num_warps,
+                    num_stages=num_stages)
+
+    return o
+
+
+@triton.jit
+def _flash_packed_kernel(
+    QKV,
+        mask,
+        ADD_MASK: tl.constexpr,
+        IS_CAUSAL: tl.constexpr,
+    sm_scale,
+    # L,
+    Out,
+    stride_qz, stride_qh, stride_qm,
+        stride_mh,
+    stride_kz, stride_kh, stride_kn,
+    stride_vz, stride_vh, stride_vk,
+    stride_oz, stride_oh, stride_om,
+    Z, H, N_CTX, P_SEQ,
+        hidden_size,
+    BLOCK_M: tl.constexpr, BLOCK_DMODEL: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    start_m = tl.program_id(0)
+    off_hz = tl.program_id(1)
+    batch = off_hz // H
+    head = off_hz % H
+
+    q_offset = batch * stride_qz + head * BLOCK_DMODEL
+    k_offset = q_offset + hidden_size
+    v_offset = k_offset + hidden_size
+    Q_block_ptr = tl.make_block_ptr(
+        base=QKV + q_offset,
+        shape=(N_CTX, BLOCK_DMODEL),
+        strides=(stride_qh, 1),
+        offsets=(start_m * BLOCK_M, 0),
+        block_shape=(BLOCK_M, BLOCK_DMODEL),
+        order=(1, 0)
+    )
+    K_block_ptr = tl.make_block_ptr(
+        base=QKV + k_offset,
+        shape=(BLOCK_DMODEL, N_CTX + P_SEQ),
+        strides=(1, stride_qh),
+        offsets=(0, 0),
+        block_shape=(BLOCK_DMODEL, BLOCK_N),
+        order=(0, 1)
+    )
+    V_block_ptr = tl.make_block_ptr(
+        base=QKV + v_offset,
+        shape=(N_CTX + P_SEQ, BLOCK_DMODEL),
+        strides=(stride_qh, 1),
+        offsets=(0, 0),
+        block_shape=(BLOCK_N, BLOCK_DMODEL),
+        order=(1, 0)
+    )
+    # initialize offsets
+    offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = tl.arange(0, BLOCK_N)
+
+    # mask
+    off_mask = batch * stride_mh + offs_n[None, :]
+    mask_ptrs = mask + off_mask
+
+    # initialize pointer to m and l
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+    l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
+    acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
+    # scale sm_scale by log_2(e) and use
+    # 2^x instead of exp in the loop because CSE and LICM
+    # don't work as expected with `exp` in the loop
+    qk_scale = sm_scale * 1.44269504
+    # load q: it will stay in SRAM throughout
+    # q = tl.load(Q_block_ptr)
+    # q = (q * qk_scale).to(tl.float16)
+    q = tl.load(Q_block_ptr)
+    # loop over k, v and update accumulator
+    lo = 0
+    hi = P_SEQ + (start_m + 1) * BLOCK_M if IS_CAUSAL else N_CTX + P_SEQ
+    for start_n in range(lo, hi, BLOCK_N):
+        # -- load k, v --
+        k = tl.load(K_block_ptr)
+        v = tl.load(V_block_ptr)
+        # -- compute qk ---
+        qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float16)
+
+        if ADD_MASK:
+            mask_val = tl.load(mask_ptrs)
+            mask_ptrs += BLOCK_N
+            qk = qk + mask_val.to(tl.float32)
+
+        if IS_CAUSAL:
+            qk = tl.where(P_SEQ + offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
+
+        qk += tl.dot(q, k, out_dtype=tl.float16) * qk_scale
+        # -- compute scaling constant ---
+        m_i_new = tl.maximum(m_i, tl.max(qk, 1))
+        alpha = tl.math.exp2(m_i - m_i_new)
+        p = tl.math.exp2(qk - m_i_new[:, None])
+        # -- scale and update acc --
+        acc_scale = l_i * 0 + alpha  # workaround some compiler bug
+        acc *= acc_scale[:, None]
+        acc += tl.dot(p.to(tl.float16), v.to(tl.float16)) # loading q,k and v in int8 gives incorrect results, looks like triton bug
+        # -- update m_i and l_i --
+        l_i = l_i * alpha + tl.sum(p, 1)
+        m_i = m_i_new
+        # update pointers
+        K_block_ptr = tl.advance(K_block_ptr, (0, BLOCK_N))
+        V_block_ptr = tl.advance(V_block_ptr, (BLOCK_N, 0))
+    # write back l and m
+    acc = acc / l_i[:, None]
+    # acc = attn_scale * acc
+    # l_ptrs = L + off_hz * N_CTX + offs_m
+    # tl.store(l_ptrs, m_i + tl.math.log2(l_i))
+    # write back O
+    # o_offset = off_hz * stride_oh
+    o_offset = batch * stride_oz + head * BLOCK_DMODEL
+    O_block_ptr = tl.make_block_ptr(
+        base=Out + o_offset,
+        shape=(N_CTX, BLOCK_DMODEL),
+        strides=(stride_oh, 1),
+        offsets=(start_m * BLOCK_M, 0),
+        block_shape=(BLOCK_M, BLOCK_DMODEL),
+        order=(1, 0)
+    )
+    tl.store(O_block_ptr, acc.to(tl.float16))
+
+
+
+def assert_almost_equal(x, y, decimal=2, err_msg=''):
+    import numpy.testing as npt
+    if isinstance(x, torch.Tensor):
+        if x.dtype == torch.bfloat16:
+            x = x.float()
+        x = x.cpu().detach().numpy()
+    if isinstance(y, torch.Tensor):
+        if y.dtype == torch.bfloat16:
+            y = y.float()
+        y = y.cpu().detach().numpy()
+    npt.assert_array_almost_equal(x, y, err_msg=err_msg, decimal=decimal)
+
+
+def max_diff(a, b):
+    a = a.to(torch.float32).flatten()
+    b = b.to(torch.float32).flatten()
+    diff = torch.abs(a - b)
+    max_diff_indices = torch.argsort(diff)[-1]
+    print("Max difference indices:", max_diff_indices)
+    print("Max difference values:", diff[max_diff_indices])
+    print(f"{a[max_diff_indices]} vs {b[max_diff_indices]}")
+    return max_diff_indices
+
+# reference implementation
+def ref_torch_attention(q, k, v, mask, sm_scale, verbose=True):
+    if verbose:
+        print(f"ref_torch_attention:q.shape={q.shape}, k.shape={k.shape}, v.shape={v.shape}, mask.shape={mask.shape if mask is not None else 0}")
+    p = torch.matmul(q, k.transpose(2, 3)) * sm_scale
+
+    if verbose:
+        print(f"ref_torch_attention:qk ={q.shape} x {k.transpose(2, 3).shape}")
+    p = p.float()
+    if mask is not None:
+        p = p.float() + mask
+    p = torch.softmax(p, dim=-1).type(q.dtype)
+
+    ref_out = torch.matmul(p, v)
+    if verbose:
+        print(f"ref_torch_attention:context = {ref_out.shape} = {p.shape} x {v.shape}")
+    return ref_out
+
+
+# test attention operator
+def test_attention(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
+    print(f"Z={Z}, H={H}, N_CTX={N_CTX}, D_HEAD={D_HEAD}")
+    # skip autotune in testing
+    from deepspeed.ops.transformer.inference.triton.matmul_ext import fp16_matmul
+    fp16_matmul.skip_autotune()
+
+    torch.manual_seed(20)
+    q = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0, std=.5)
+    k = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0, std=.5)
+    v = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0, std=.5)
+    sm_scale = 0.3
+
+    # reference implementation
+    p = torch.matmul(q, k.transpose(2, 3)) * sm_scale
+    score = p
+    mask = torch.zeros((Z, H, N_CTX, N_CTX), dtype=dtype, device="cuda")
+    M = torch.tril(torch.ones((N_CTX, N_CTX), device="cuda"))
+    for z in range(Z):
+        for h in range(H):
+            mask[:, :, M == 0] = float("-inf")
+    p = torch.softmax(p.float() + mask, dim=-1).half()
+    softmax_out = p
+    ref_out = torch.matmul(p, v)
+    context = ref_out
+
+    # adjust it to expected tensor format and run test
+    qkv = torch.randn((Z, N_CTX, 3 * H * D_HEAD), dtype=dtype, device='cuda', requires_grad=False)
+    qkv[:, :, :H * D_HEAD] = q.permute(0, 2, 1, 3).contiguous().reshape((Z, N_CTX, H * D_HEAD))
+    qkv[:, :, 1 * H * D_HEAD:2 * H * D_HEAD] = k.permute(0, 2, 1, 3).contiguous().reshape((Z, N_CTX, H * D_HEAD))
+    qkv[:, :, 2 * H * D_HEAD:] = v.permute(0, 2, 1, 3).contiguous().reshape((Z, N_CTX, H * D_HEAD))
+    tri_out = compute_attention(qkv,
+                                input_mask=mask,
+                                layer_past=None,
+                                alibi=None,
+                                scale=sm_scale,
+                                head_size=D_HEAD,
+                                triangular=False,
+                                use_cuda_flash=False,
+                                use_triton_flash=False,
+                                use_ds_attention=False)
+    tri_out = tri_out.reshape((Z, N_CTX, H, D_HEAD)).permute(0, 2, 1, 3)
+    assert_almost_equal(ref_out, tri_out)
+
+
+    if True:
+        ##############
+        # triton 2.0 flash attn check in float16, ref attention from torch
+        BATCH = Z
+        q = torch.empty((BATCH, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0, std=.5)
+        k = torch.empty((BATCH, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0, std=.5)
+        v = torch.empty((BATCH, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0, std=.5)
+        sm_scale = 1 / math.sqrt(D_HEAD)
+
+        qkv = torch.randn((BATCH, N_CTX, 3 * H * D_HEAD), dtype=torch.float16, device='cuda', requires_grad=False)
+        qkv[:,:,:H * D_HEAD] = q.permute(0,2,1,3).contiguous().reshape((BATCH,N_CTX,H*D_HEAD))
+        qkv[:,:,1 * H * D_HEAD: 2 * H * D_HEAD] = k.permute(0,2,1,3).contiguous().reshape((BATCH,N_CTX,H*D_HEAD))
+        qkv[:,:,2 * H * D_HEAD:] = v.permute(0,2,1,3).contiguous().reshape((BATCH,N_CTX,H*D_HEAD))
+
+        batch_size = BATCH
+        nheads = H
+        seqlen = N_CTX
+        d = D_HEAD
+        lengths = torch.randint(seqlen - 8, seqlen, (batch_size, 1), device='cuda')
+        triton_mask = torch.zeros((BATCH, 1, 1, N_CTX), dtype=dtype, device="cuda")
+        for i, l in enumerate(lengths):
+            triton_mask[i,...,l:] = minus_inf
+        mask = torch.zeros((BATCH, H, N_CTX, N_CTX), dtype=dtype, device="cuda")
+        for b in range(batch_size):
+            mask[b,:,:,lengths[b]:] = minus_inf
+
+        causal_mask = torch.zeros((BATCH, H, N_CTX, N_CTX), dtype=dtype, device="cuda")
+        M = torch.tril(torch.ones((N_CTX, N_CTX), device="cuda"))
+        for z in range(BATCH):
+            for h in range(H):
+                causal_mask[:, :, M == 0] = float("-inf")
+
+        # ref_out = ref_torch_attention(q, k, v, causal_mask, sm_scale, verbose=False).reshape(BATCH, H, N_CTX, D_HEAD)
+        # from triton.ops.flash_attention import attention
+        # tri_out = attention(q, k, v, True, sm_scale) # always causal
+        # print(f"ref_out={ref_out}")
+        # print(f"tri_out={tri_out}")
+        # assert torch.allclose(ref_out, tri_out, atol=1e-2, rtol=0)
+        # print(f"PASSED: triton2.0-flash, fp16, causal")
+
+        # print(f"triton_mask={triton_mask.shape}, {triton_mask.stride()}, {triton_mask}")
+        # ref_out = ref_torch_attention(q, k, v, causal_mask, sm_scale, verbose=False).permute(0,2,1,3).reshape(BATCH, N_CTX, H * D_HEAD)
+        # ref_out = ref_torch_attention(q, k, v, mask, sm_scale, verbose=False).permute(0,2,1,3).reshape(BATCH, N_CTX, H * D_HEAD)
+        # tri_out = _triton_flash_fwd(qkv, H, mask=None, sm_scale=sm_scale, causal=True, add_mask=False)
+
+        ref_out = ref_torch_attention(q, k, v, causal_mask, sm_scale, verbose=False).reshape(BATCH, H, N_CTX, D_HEAD)
+        tri_out = _triton_unpacked_forward(q, k, v, H, mask=None, sm_scale=sm_scale, causal=True, add_mask=False)
+
+        # print(f"triton_mask={triton_mask}, mask={mask}, {mask[:,:,:,-6:]}")
+        # print(f"ref_out={ref_out[0,0,:4,:4]}, tri_out={tri_out[0,0,:4,:4]}")
+        # print(f"triton_mask={triton_mask}, mask={mask}, {mask[:,:,:,-6:]}")
+        # print(f"ref_out={ref_out.shape}, tri_out={tri_out.shape}, mask={mask.shape}")
+        assert torch.allclose(ref_out, tri_out, atol=1e-2, rtol=0)
+        print(f"PASSED: triton2.0-flash, unpacked, causal")
+
+        ref_out = ref_torch_attention(q, k, v, causal_mask, sm_scale, verbose=False).permute(0,2,1,3).reshape(BATCH, N_CTX, H * D_HEAD)
+        tri_out = _triton_packed_forward(qkv, H, mask=None, sm_scale=sm_scale, causal=True, add_mask=False)
+        assert torch.allclose(ref_out, tri_out, atol=1e-2, rtol=0)
+        print(f"PASSED: triton2.0-flash, packed, causal")
+
+        ref_out = ref_torch_attention(q, k, v, mask, sm_scale, verbose=False).permute(0,2,1,3).reshape(BATCH, N_CTX, H * D_HEAD)
+        tri_out = _triton_packed_forward(qkv, H, mask=triton_mask, sm_scale=sm_scale, causal=False, add_mask=True)
+        # print(f"triton_mask={triton_mask}, mask={mask}, lengths={lengths}")
+        max_diff(ref_out, tri_out)
+        # print(f"ref_out={ref_out}")
+        # print(f"tri_out={tri_out}")
+        assert torch.allclose(ref_out, tri_out, atol=1e-2, rtol=0)
+        print(f"PASSED: triton2.0-flash, packed, masked")
+
+
+    # flash_tri_out = _triton_flash_fwd(qkv, H, mask, sm_scale, causal=False, add_mask=(not mask is None))
+    # print(f"ref_out={ref_out}")
+    # print(f"flash_tri_out={flash_tri_out}")
+    # assert_almost_equal(ref_out, flash_tri_out)
+
+test_attention(Z=1, H=2, N_CTX=128, D_HEAD=128, dtype=torch.float16)
+test_attention(Z=4, H=12, N_CTX=128, D_HEAD=64, dtype=torch.float16)
+seqlen = [32, 55, 71, 128]
+for s in seqlen:
+    test_attention(Z=4, H=12, N_CTX=128, D_HEAD=64, dtype=torch.float16)
