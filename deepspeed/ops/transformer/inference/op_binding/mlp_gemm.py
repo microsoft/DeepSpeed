@@ -67,23 +67,29 @@ class MLPGemmOp(BaseOp):
                 gamma: Optional[torch.Tensor] = None,
                 beta: Optional[torch.Tensor] = None):
         if self.config.norm_type == NormType.LayerNorm:
-            output, residual_add = self.mlp_gemm_func(
-                input,
-                residual,
-                input_bias if input_bias is not None else dummy_tensor,
-                weight_interm,
-                weight_out,
-                bias if bias is not None else dummy_tensor,
-                gamma,
-                beta,
-                self.config.epsilon,
-                self.config.pre_layer_norm,
-                self.config.mlp_after_attn,
-                weight_interm.scale if hasattr(weight_interm, 'scale') else torch.empty(1),  # type: ignore
-                weight_out.scale if hasattr(weight_out, 'scale') else torch.empty(1),  # type: ignore
-                self.config.dtype == torch.int8,
-                self.config.mlp_act_func_type,
-                self.config.transposed_mode)
+            from torch.nn import functional as F
+            norm_out = F.layer_norm(residual, gamma.shape, gamma, beta, self.config.epsilon)
+            intm = torch.matmul(norm_out, weight_interm)
+            intm = torch.nn.GELU()(intm)
+            output = torch.matmul(intm, weight_out)
+            residual_add = output
+            #output, residual_add = self.mlp_gemm_func(
+            #    input,
+            #    residual,
+            #    input_bias if input_bias is not None else dummy_tensor,
+            #    weight_interm,
+            #    weight_out,
+            #    bias if bias is not None else dummy_tensor,
+            #    gamma,
+            #    beta,
+            #    self.config.epsilon,
+            #    self.config.pre_layer_norm,
+            #    self.config.mlp_after_attn,
+            #    weight_interm.scale if hasattr(weight_interm, 'scale') else torch.empty(1),  # type: ignore
+            #    weight_out.scale if hasattr(weight_out, 'scale') else torch.empty(1),  # type: ignore
+            #    self.config.dtype == torch.int8,
+            #    self.config.mlp_act_func_type,
+            #    self.config.transposed_mode)
         else:
             output, residual_add = self.mlp_gemm_func(
                 input,

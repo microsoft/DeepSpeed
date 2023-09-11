@@ -162,6 +162,7 @@ void launch_gptj_residual_add(T* input,
 template <typename T>
 void launch_apply_rotary_pos_emb(T* mixed_query,
                                  T* key_layer,
+                                 T* cache,
                                  unsigned head_size,
                                  unsigned seq_len,
                                  unsigned rotary_dim,

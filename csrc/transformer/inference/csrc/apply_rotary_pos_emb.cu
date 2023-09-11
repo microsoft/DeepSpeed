@@ -26,6 +26,7 @@ constexpr int threads = 256;
 template <typename T, int threadsPerHead, int granularity>
 __global__ void apply_rotary_pos_half(T* mixed_query,
                                       T* key_layer,
+                                      T* cache,
                                       unsigned rotary_dim,
                                       unsigned seq_len,
                                       unsigned seq_offset,
@@ -40,14 +41,19 @@ __global__ void apply_rotary_pos_half(T* mixed_query,
 
     cg::thread_block tb = cg::this_thread_block();
     cg::thread_block_tile<threadsPerHead> head_group = cg::tiled_partition<threadsPerHead>(tb);
-
+    const int q_mul = 29;
     const int head_idx = blockIdx.x * heads_per_block + threadIdx.x / threadsPerHead;
     const int cur_seq_idx = head_idx % seq_len;
-    const int offset = head_idx * head_size;
+    int q_seq_id = head_idx / seq_len;
+    const int offset = (seq_offset == 0 ? head_idx : q_seq_id) * head_size;
     const int k_offset =
-        multi_query ? offset : (cur_seq_idx + (head_idx / seq_len) * max_out_tokens) * head_size;
+        multi_query ? head_idx * head_size : ((cur_seq_idx + (head_idx / seq_len) * max_out_tokens) * head_size);
+    const int k_cache_rd_offset =
+        ((cur_seq_idx + (seq_offset > 0 ? q_seq_id : (q_seq_id / q_mul)) * max_out_tokens) * head_size);
+    const int k_cache_wr_offset =
+        ((cur_seq_idx + (q_seq_id) * max_out_tokens) * head_size);
+    const int seq_idx = cur_seq_idx; // + seq_offset;    
 
-    const int seq_idx = cur_seq_idx + seq_offset;
     const int half_dim = rotary_dim >> 1;
     const int half_dim_threads = half_dim / T_per_thread;
 
@@ -55,42 +61,49 @@ __global__ void apply_rotary_pos_half(T* mixed_query,
         const int base_neuron_idx = head_group.thread_rank() * T_per_thread;
 
         T q[T_per_thread], k[T_per_thread];
-        mem_access::load_global<granularity>(q, mixed_query + offset + base_neuron_idx);
-        mem_access::load_global<granularity>(k, key_layer + k_offset + base_neuron_idx);
-
+        if (seq_offset > 0 && cur_seq_idx < (seq_len - 1)) {
+            mem_access::load_global<granularity>(k, cache + k_cache_rd_offset + base_neuron_idx);
+            mem_access::store_global<granularity>(key_layer + k_offset + base_neuron_idx, k);
+        } 
+        else
+        {
+            mem_access::load_global<granularity>(q, mixed_query + offset + base_neuron_idx);
+            mem_access::load_global<granularity>(k, key_layer + k_offset + base_neuron_idx);
 #pragma unroll
-        for (int i = 0; i < T_per_thread; i++) {
-            const int neuron_idx = base_neuron_idx + i;
-            if (neuron_idx < rotary_dim) {
-                float inv_freq = (float)((neuron_idx % half_dim) * 2) / (float)rotary_dim;
-                inv_freq = 1.0 / powf(10000.0, inv_freq) * (float)seq_idx;
+            for (int i = 0; i < T_per_thread; i++) {
+                const int neuron_idx = base_neuron_idx + i;
+                if (neuron_idx < rotary_dim) {
+                    float inv_freq = (float)((neuron_idx % half_dim) * 2) / (float)rotary_dim;
+                    inv_freq = 1.0 / powf(10000.0, inv_freq) * (float)seq_idx;
 
-                float rotary_sign = (neuron_idx > (half_dim - 1) ? -1.0 : 1.0);
-                float q_rot = conversion::to<float>(q[i]) * rotary_sign;
-                float k_rot = conversion::to<float>(k[i]) * rotary_sign;
+                    float rotary_sign = (neuron_idx > (half_dim - 1) ? -1.0 : 1.0);
+                    float q_rot = conversion::to<float>(q[i]) * rotary_sign;
+                    float k_rot = conversion::to<float>(k[i]) * rotary_sign;
 
-                const int target_lane = (neuron_idx < half_dim)
-                                            ? head_group.thread_rank() + half_dim_threads
-                                            : head_group.thread_rank() - half_dim_threads;
+                    const int target_lane = (neuron_idx < half_dim)
+                                                ? head_group.thread_rank() + half_dim_threads
+                                                : head_group.thread_rank() - half_dim_threads;
 
-                const float q_rot_temp = head_group.shfl(q_rot, target_lane);
-                const float k_rot_temp = head_group.shfl(k_rot, target_lane);
+                    const float q_rot_temp = head_group.shfl(q_rot, target_lane);
+                    const float k_rot_temp = head_group.shfl(k_rot, target_lane);
 
-                q[i] = conversion::to<T>(conversion::to<float>(q[i]) * cosf(inv_freq) +
-                                         q_rot_temp * sinf(inv_freq));
-                k[i] = conversion::to<T>(conversion::to<float>(k[i]) * cosf(inv_freq) +
-                                         k_rot_temp * sinf(inv_freq));
+                    q[i] = conversion::to<T>(conversion::to<float>(q[i]) *cosf(inv_freq) +
+                                             q_rot_temp * sinf(inv_freq));
+                    k[i] = conversion::to<T>(conversion::to<float>(k[i]) *cosf(inv_freq) +
+                                             k_rot_temp * sinf(inv_freq));
+                }
             }
+            mem_access::store_global<granularity>(mixed_query + offset + base_neuron_idx, q);
+            mem_access::store_global<granularity>(cache + k_cache_wr_offset + base_neuron_idx, k);
+            mem_access::store_global<granularity>(key_layer + k_offset + base_neuron_idx, k);
         }
-
-        mem_access::store_global<granularity>(mixed_query + offset + base_neuron_idx, q);
-        mem_access::store_global<granularity>(key_layer + k_offset + base_neuron_idx, k);
     }
 }
 
 #define LAUNCH_ROT_POS_EMB_HALF(HEAD_THREADS, ALIGNMENT)                                          \
     apply_rotary_pos_half<T, HEAD_THREADS, ALIGNMENT><<<grid, block, 0, stream>>>(mixed_query,    \
                                                                                   key_layer,      \
+                                                                                  cache,          \
                                                                                   rotary_dim,     \
                                                                                   seq_len,        \
                                                                                   offset,         \
@@ -133,6 +146,7 @@ __global__ void apply_rotary_pos_half(T* mixed_query,
 template <typename T>
 void launch_apply_rotary_pos_emb(T* mixed_query,
                                  T* key_layer,
+                                 T* cache,
                                  unsigned head_size,
                                  unsigned seq_len,
                                  unsigned rotary_dim,
@@ -182,6 +196,7 @@ void launch_apply_rotary_pos_emb(T* mixed_query,
 
 #define INSTANTIATE_LAUNCH_ROTARY_POS_EMB(T)                   \
     template void launch_apply_rotary_pos_emb<T>(T*,           \
+                                                 T*,           \
                                                  T*,           \
                                                  unsigned,     \
                                                  unsigned,     \
