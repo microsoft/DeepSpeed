@@ -330,10 +330,13 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 count = count + 1
 
         #Largest partitioned param
-        largest_partitioned_param_numel = max([
-            max([max(tensor.numel(), tensor.ds_numel) for tensor in fp16_partitioned_group])
-            for fp16_partitioned_group in self.fp16_partitioned_groups
-        ])
+        largest_partitioned_param_numel = 0
+        for fp16_partitioned_group in self.fp16_partitioned_groups:
+            if len(fp16_partitioned_group) > 0:
+                largest_partitioned_param_numel = max(
+                    largest_partitioned_param_numel,
+                    max([max(tensor.numel(), tensor.ds_numel) for tensor in fp16_partitioned_group]))
+
         print_rank_0(f'Largest partitioned param numel = {largest_partitioned_param_numel}', force=False)
 
         self._setup_for_real_optimizer()
@@ -1852,7 +1855,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if self.swap_optimizer:
             self.optimizer_swapper.log_timers()
 
-        self.invalidate_secondary_tensor()
+        # self.invalidate_secondary_tensor() # given that we want hpz in forward pass when no_grad is set, we need to keep the secondary tensor
 
         self.timers.log(timer_names)
 
