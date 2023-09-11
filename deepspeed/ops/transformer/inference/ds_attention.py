@@ -39,7 +39,8 @@ class DeepSpeedSelfAttention(nn.Module):
         else:
             if self.config.multi_query:
                 if self.config.global_kv_sharing:
-                    qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) + 2 * (self.config.hidden_size // self.config.heads)
+                    qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) + \
+                        2 * (self.config.hidden_size // self.config.heads)
                 else:
                     qkv_size_per_partition = (self.config.hidden_size // self.config.heads) * (
                         self.config.num_kv * 2 + self.config.heads) // self.config.mp_size
@@ -112,7 +113,8 @@ class DeepSpeedSelfAttention(nn.Module):
             no_masking=no_masking,
             layer_id=self.config.layer_id,
             num_layers=DeepSpeedSelfAttention.num_layers,
-            alibi=alibi)
+            alibi=alibi,
+            layer_past=layer_past)
 
         context_layer, key_layer, value_layer = attn_key_value
         return context_layer, key_layer, value_layer

@@ -110,7 +110,7 @@ class FALCONLayerPolicy(TransformerPolicy):
             self.num_kv = self.client_module.self_attention.num_kv if hasattr(self.client_module.self_attention, 'num_kv') else \
                         self.client_module.self_attention.num_kv_heads
             self.config = self.client_module.config
-
+        
     def get_hidden_heads(self):
         heads = self.client_module.self_attention.num_heads
         return self.client_module.self_attention.query_key_value.weight.shape[1], \

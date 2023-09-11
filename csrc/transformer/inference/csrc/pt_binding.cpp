@@ -462,6 +462,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
     unsigned soft_len = InferenceContext::Instance().current_tokens();
 
     int k = hidden_dim / heads;
+
     auto options = at::TensorOptions()
                        .dtype(query_key_value.options().dtype())
                        .layout(at::kStrided)
@@ -470,9 +471,9 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
 
     T* workspace = (T*)InferenceContext::Instance().GetWorkSpace();
     size_t buf_size = bsz * seq_len * hidden_dim;
+    auto query_cont = workspace + 5 * buf_size;
     auto output = torch::from_blob(workspace + 4 * buf_size, {bsz, seq_len, hidden_dim}, options);
 
-    auto query_cont = workspace + 5 * buf_size;
     auto key_cont = workspace + 6 * buf_size;
     auto value_cont =
         key_cont + bsz * InferenceContext::Instance().GetMaxTokenLength() * hidden_dim;
@@ -482,11 +483,11 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
     unsigned all_tokens = soft_len;
     auto kv_cache = workspace + offset + (hidden_dim / heads) * (is_prompt ? 0 : soft_len - 1);
     size_t value_offset = bsz * InferenceContext::Instance().GetMaxTokenLength() *
-                          (multi_query ? (num_kv * k) : hidden_dim);
+                          hidden_dim;//(multi_query ? (num_kv * k) : hidden_dim);
     int kv_seq_stride =
         (multi_query ? all_tokens : InferenceContext::Instance().GetMaxTokenLength());
 
-    T* temp_buf = (T*)output.data_ptr() + at::numel(output);
+    T* temp_buf = workspace + 4 * buf_size + at::numel(output);
     if (multi_query) {
         launch_transform_multi_query((T*)query_cont,
                                      (T*)key_cont,
@@ -523,15 +524,16 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
     }
     if (rotary_dim > 0 && rotate_half)
         launch_apply_rotary_pos_emb(query_cont,
-                                    (multi_query ? key_cont : kv_cache),
+                                    key_cont,
+                                    workspace + offset,
                                     k,
-                                    seq_len,
+                                    all_tokens,
                                     rotary_dim,
                                     (is_prompt ? 0 : soft_len - 1),
                                     heads,
                                     bsz,
                                     InferenceContext::Instance().GetCurrentStream(),
-                                    kv_seq_stride,
+                                    InferenceContext::Instance().GetMaxTokenLength(),
                                     multi_query);
 
     attention_unfused<T>((multi_query ? key_cont : workspace + offset),
@@ -563,21 +565,21 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
 
     if (layer_id == num_layers - 1) InferenceContext::Instance().advance_tokens();
     auto prev_key = torch::from_blob(
-        workspace + offset,
-        {bsz, (multi_query ? num_kv : heads), all_tokens, k},
-        {(multi_query ? num_kv * k : hidden_dim) * InferenceContext::Instance().GetMaxTokenLength(),
-         k * InferenceContext::Instance().GetMaxTokenLength(),
-         k,
-         1},
+        key_cont, //workspace + offset,
+        {bsz, heads, all_tokens, k}, //{bsz, (multi_query ? num_kv : heads), all_tokens, k},
+        //{(multi_query ? num_kv * k : hidden_dim) * InferenceContext::Instance().GetMaxTokenLength(),
+        // k * InferenceContext::Instance().GetMaxTokenLength(),
+        // k,
+        // 1},
         options);
 
     auto prev_value = torch::from_blob(
-        workspace + offset + value_offset,
-        {bsz, (multi_query ? num_kv : heads), all_tokens, k},
-        {(multi_query ? num_kv * k : hidden_dim) * InferenceContext::Instance().GetMaxTokenLength(),
-         k * InferenceContext::Instance().GetMaxTokenLength(),
-         k,
-         1},
+        value_cont, //workspace + offset + value_offset,
+        {bsz, heads, all_tokens, k}, //{bsz, (multi_query ? num_kv : heads), all_tokens, k},
+        //{(multi_query ? num_kv * k : hidden_dim) * InferenceContext::Instance().GetMaxTokenLength(),
+        // k * InferenceContext::Instance().GetMaxTokenLength(),
+        // k,
+        // 1},
         options);
 
     return {output, prev_key, prev_value};
@@ -1887,6 +1889,7 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
     if (mixed_query.scalar_type() == at::kFloat)
         launch_apply_rotary_pos_emb<float>((float*)query_cont.data_ptr(),
                                            (float*)key_cont.data_ptr(),
+                                           (float*)key_cont.data_ptr(),
                                            head_size,
                                            seq_len,
                                            rotary_dim,
@@ -1898,6 +1901,7 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                            false);
     else
         launch_apply_rotary_pos_emb<__half>((__half*)query_cont.data_ptr(),
+                                            (__half*)key_cont.data_ptr(),
                                             (__half*)key_cont.data_ptr(),
                                             head_size,
                                             seq_len,

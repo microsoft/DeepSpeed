@@ -751,8 +751,8 @@ __global__ void transform_multi_query(T* query,
 
     int d0 = blockIdx.x;   // Batch
     int d1 = blockIdx.y;   // Sequence ID (0-127)
-    int cnt = blockIdx.z / blks;  // kv count
-    int blk_count = blockIdx.z % blks;
+    int cnt = 0;//blockIdx.z / blks;  // kv count
+    int blk_count = blockIdx.z ;//% blks;
     int d2 = threadIdx.y + blk_count * blockDim.y;
     int d3 = threadIdx.x;  // Values (groups of 4)
 
@@ -767,7 +767,6 @@ __global__ void transform_multi_query(T* query,
 
     T2* vals_half = reinterpret_cast<T2*>(&vals_arr);
     T2* output_half = reinterpret_cast<T2*>(&output_arr);
-
     const float4* vals_vec = reinterpret_cast<const float4*>(vals);
     float4* cache = reinterpret_cast<float4*>(d2 < (query_heads << 1) ? k_cache : v_cache);
     float4* output_vec = reinterpret_cast<float4*>(
@@ -788,7 +787,7 @@ __global__ void transform_multi_query(T* query,
 
     output_vec += (d1 * d2_stride);
     output_vec += (d0 * (d2 < query_heads ? d0_out_stride : d0_out_stride_kv));
-    output_vec += (((d2 % query_heads) + cnt * query_heads) *
+    output_vec += (((d2 % query_heads)) *
                    (d2 < query_heads ? d2_out_stride : d2_out_stride_kv));
 
     if (d1 < seq_length || d2 >= query_heads) {
@@ -798,18 +797,21 @@ __global__ void transform_multi_query(T* query,
             if (d1 < seq_length) {
                 output_vec += (all_tokens - seq_length) * d2_stride;
                 output_vec[d3] = vals_vec[d3];
-            } else {
-                cache += (d2_stride * max_out_tokens * num_kv) * d0 + d2_stride * d1 +
-                         cnt * (d2_stride * max_out_tokens);
-                float4 inp = cache[d3];
+            } 
+            else {
+                output_vec -= d2_stride;
+                cache += (d2_stride * max_out_tokens * (d2 < (query_heads << 1) ? heads : num_kv)) * d0 + 
+                         d2_stride * (d1 - (seq_length == 1 ? 1 : 0)) +
+                         (d2 < (query_heads << 1) ? (d2 % query_heads) : cnt) * (d2_stride * max_out_tokens);
                 output_vec[d3] = cache[d3];
             }
         }
     }
 
-    if (d1 < seq_length && (d2 == query_heads || d2 == (query_heads << 1))) {
-        cache += (d2_stride * max_out_tokens * num_kv) * d0 +
-                 d2_stride * (all_tokens - seq_length + d1) + cnt * (d2_stride * max_out_tokens);
+    if (((d1 < seq_length && seq_length > 1) || d1 == 0) && (d2 >= query_heads && d2 <= (query_heads << 1))) {
+        cache += (d2_stride * max_out_tokens * ((d2 < (query_heads << 1)) ? heads : num_kv)) * d0 +
+                 d2_stride * (all_tokens - seq_length + d1) + 
+                 (d2 < (query_heads << 1) ? (d2 % query_heads) : cnt) * (d2_stride * max_out_tokens);
         cache[d3] = vals_vec[d3];
     }
 }
@@ -854,9 +856,8 @@ void launch_transform_multi_query(T* query,
     int launch_blks = threadblks;
     if (launch_blks > max_thread_blk) launch_blks = max_thread_blk;
     int num_blks = (threadblks - 1) / launch_blks + 1;
-    dim3 block_dim(hidden_dim / heads, launch_blks);
-    dim3 grid_dim(batch_size, all_tokens, num_kv * num_blks);
-
+    dim3 block_dim(hidden_dim / heads, (heads / num_kv) * 3);
+    dim3 grid_dim(batch_size, all_tokens, 1);
     transform_multi_query<<<grid_dim, block_dim, 0, stream>>>(
         query,
         key,
