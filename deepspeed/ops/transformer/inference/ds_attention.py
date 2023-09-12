@@ -6,6 +6,7 @@
 import math
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
 from .op_binding import LinearOp, VectorMatMulOp, SoftmaxContextOp, QKVGemmOp, SoftmaxOp
@@ -173,6 +174,8 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
     def __init__(self, *args, **kwargs):
         super(BloomSelfAttention, self).__init__(*args, **kwargs)
         self.softmax_func = SoftmaxOp(self.config)
+        self.inv_norm_factor = 1.0 / math.sqrt(self.hidden_size_per_attention_head)
+        self.beta = 1.0
 
     ########### This part is taken/modified form the HF modeling_bloom.py ################
     # Reference: https://github.com/huggingface/transformers/blob/main/src/transformers/models/bloom/modeling_bloom.py
@@ -240,30 +243,33 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
             value_layer = torch.cat((past_value.type_as(value_layer), value_layer), dim=-2)
 
         presents = (key_layer, value_layer)
-        # Raw attention scores. [batch_size * num_heads, q_length, k_length]
-        matmul_result = torch.matmul(query_layer, key_layer)
+
+        if self.config.mp_size > 1:
+            rank = dist.get_rank(group=self.mp_group) if dist.is_initialized() else 0
+            alibi = alibi.reshape(output_size[0], -1, alibi.size(1), alibi.size(2))
+            alibi = alibi[:, rank * self.num_attention_heads_per_partition:(rank + 1) * self.num_attention_heads_per_partition]
+            alibi = alibi.reshape(alibi.size(0)*alibi.size(1), alibi.size(2), alibi.size(3))
+        
+        matmul_result = alibi.baddbmm(
+            batch1=query_layer,
+            batch2=key_layer,
+            beta=self.beta,
+            alpha=self.inv_norm_factor,
+        )
         # change view to [batch_size, num_heads, q_length, k_length]
         attention_scores = matmul_result.view(output_size[0], output_size[1], output_size[2], -1)
 
-        offset = dist.get_rank() * self.num_attention_heads_per_partition if dist.is_initialized() else 0
         target_dtype = torch.float16 if self.config.dtype == torch.int8 else self.config.dtype
-        attention_probs = self.softmax_func(attn_scores=attention_scores,
-                                            attn_mask=((1 - input_mask).to(target_dtype) * minus_inf),
-                                            alibi=alibi,
-                                            triangular=(self.config.triangular_masking
-                                                        and (attention_scores.shape[-2] > 1)),
-                                            recompute=False,
-                                            local_attention=False,
-                                            window_size=1,
-                                            async_op=False,
-                                            layer_scale=1 / (self.norm_factor * self.norm_factor),
-                                            head_offset=offset)
+        attention_scores = attention_scores.to(target_dtype)
+
+        attn_weights = torch.masked_fill(attention_scores, input_mask, torch.finfo(attention_scores.dtype).min)
+        attention_probs = F.softmax(attn_weights, dim=-1, dtype=torch.float32).to(target_dtype)
 
         # change view [batch_size x num_heads, q_length, k_length]
         attention_probs_reshaped = attention_probs.view(*matmul_result.shape)
 
         # matmul: [batch_size * num_heads, q_length, head_dim]
-        context_layer = torch.bmm(attention_probs_reshaped, value_layer)
+        context_layer = torch.bmm(attention_probs_reshaped, value_layer, out=query_layer)
 
         # change view [batch_size, num_heads, q_length, head_dim]
         context_layer = context_layer.view(
