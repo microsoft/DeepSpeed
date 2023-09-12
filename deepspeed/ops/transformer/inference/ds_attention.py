@@ -166,9 +166,6 @@ class DeepSpeedSelfAttention(nn.Module):
         if self.config.mlp_after_attn and self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
             dist.all_reduce(output, group=self.mp_group)
 
-        if self.attn_ob is not None:
-            output += self.attn_ob
-
         return (output, key_layer, value_layer, context_layer, inp_norm)
 
 

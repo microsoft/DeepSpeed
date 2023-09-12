@@ -11,6 +11,8 @@ from deepspeed.utils.types import ActivationFuncType, NormType
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
 import torch
 from torch.nn.parameter import Parameter
+from transformers.utils import TRANSFORMERS_DYNAMIC_MODULE_NAME
+import importlib
 
 from ..policy import (
     TransformerPolicy,
@@ -120,7 +122,7 @@ class DS_InternLMContainer(HybridGatedMLPContainer, HybridSplitQKVContainer, Bas
 
 
 class InternLMLayerPolicy(TransformerPolicy):
-    _orig_layer_class = None
+    _orig_layer_class = []
 
     def __init__(self, client_module, inference=True):
         super().__init__(
@@ -129,6 +131,14 @@ class InternLMLayerPolicy(TransformerPolicy):
             norm_type=NormType.RMSNorm,
         )
         self.client_module = client_module
+
+        for sub_pkg in ['', '.internlm-7b', '.internlm-chat-7b']:
+            try:
+                module = importlib.import_module(f"{TRANSFORMERS_DYNAMIC_MODULE_NAME}{sub_pkg}.modeling_internlm")
+                InternLMLayerPolicy._orig_layer_class.append(module.InternLMDecoderLayer)
+                print(f"InternLMLayerPolicy._orig_layer_class = {InternLMLayerPolicy._orig_layer_class}")
+            except ImportError:
+                continue
 
     def get_hidden_heads(self):
         return self.client_module.self_attn.q_proj.weight.shape[1], \
