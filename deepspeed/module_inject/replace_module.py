@@ -16,7 +16,6 @@ from .replace_policy import replace_policies, generic_policies
 from .auto_tp import AutoTP, ReplaceWithTensorSlicing, Loading
 
 from deepspeed import comm as dist
-from torch import nn
 
 from .load_checkpoint import load_model_with_checkpoint
 import time
@@ -183,7 +182,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
-            e.g., transformers.modeling_bert.BertLayer.
+            e.g., transformers.models.bert.modeling_bert.BertLayer or transformers.BertLayer
         model (torch.nn.Module): user's nn.module representing their model
         checkpoint_dict: Dictionary for checkpoint passed from the Inference Engine
         config: top-level DS Inference config defined in inference/config.py
@@ -459,7 +458,7 @@ def revert_transformer_layer(orig_layer_impl, model, config, preln=False):
     """ Revert DeepSpeed's transformer layer back to original bert-style transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation that was replaced,
-            e.g., transformers.modeling_bert.BertLayer.
+            e.g., transformers.models.bert.modeling_bert.BertLayer or transformers.BertLayer
         model (torch.nn.Module): user's nn.module representing their model
         config (dict): model config containing hidden size, attention heads, etc.
     Returns:
@@ -595,12 +594,6 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
     Returns:
         Modified ``model``.
     """
-    try:
-        import transformers
-        OPTLearnedPositionalEmbedding = transformers.models.opt.modeling_opt.OPTLearnedPositionalEmbedding
-    except:
-        OPTLearnedPositionalEmbedding = None
-    load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm, OPTLearnedPositionalEmbedding]
     for name, child in model.named_children():
         if child.__class__ in policies:
             replaced_module = policies[child.__class__][0](child,
@@ -616,8 +609,7 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
             layer_id += 1
         else:
             checking_key = prefix + name + '.'
-            if (child.__class__ in load_layers
-                    or child._get_name() in ["LPLayerNorm", "SharedEmbedding"]) and state_dict is not None:
+            if Loading.is_load_module(child) and state_dict is not None:
                 if any(checking_key in item for item in state_dict):
                     Loading.load(
                         child,
