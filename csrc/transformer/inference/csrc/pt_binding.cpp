@@ -492,17 +492,17 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                       InferenceContext::Instance().GetCurrentStream(),
                                       3,
                                       InferenceContext::Instance().GetMaxTokenLength());
-    //if (rotary_dim > 0 && rotate_half)
-    //    launch_apply_rotary_pos_emb(query_cont,
-    //                                kv_cache,
-    //                                k,
-    //                                seq_len,
-    //                                rotary_dim,
-    //                                (is_prompt ? 0 : soft_len - 1),
-    //                                heads,
-    //                                bsz,
-    //                                InferenceContext::Instance().GetCurrentStream(),
-    //                                InferenceContext::Instance().GetMaxTokenLength());
+    if (rotary_dim > 0 && rotate_half)
+        launch_apply_rotary_pos_emb(query_cont,
+                                    kv_cache,
+                                    k,
+                                    seq_len,
+                                    rotary_dim,
+                                    (is_prompt ? 0 : soft_len - 1),
+                                    heads,
+                                    bsz,
+                                    InferenceContext::Instance().GetCurrentStream(),
+                                    InferenceContext::Instance().GetMaxTokenLength());
 
     attention_unfused<T>(workspace + offset,
                          (T*)query_cont,
