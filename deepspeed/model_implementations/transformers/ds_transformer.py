@@ -134,7 +134,7 @@ class DeepSpeedTransformerInference(nn.Module):
         if "hidden_states" in kwargs:
             input = kwargs["hidden_states"]
 
-        input_mask = None #(input_mask if attn_mask is None else attn_mask) if attention_mask is None else attention_mask
+        input_mask = (input_mask if attn_mask is None else attn_mask) if attention_mask is None else attention_mask
 
         # Allocate memory only on first layer forward
         if self.config.layer_id == 0 and self._alloc_workspace:
@@ -146,8 +146,8 @@ class DeepSpeedTransformerInference(nn.Module):
                                     self.config.min_out_tokens)
             self._alloc_workspace = False
 
-        get_present = True #(get_present or get_key_value or use_cache)
-        input_mask = None #input_mask if attention_mask is None else attention_mask
+        get_present = (get_present or get_key_value or use_cache)
+        input_mask = input_mask if attention_mask is None else attention_mask
 
         # We set the prev key/value to None when there is a prompt
         if input.shape[1] > 1:
@@ -167,8 +167,6 @@ class DeepSpeedTransformerInference(nn.Module):
             input = input.to(target_dtype)
 
         with torch.no_grad():
-            #if layer_past is not None:
-            #    import pdb;pdb.set_trace()
             attention_output, key, value, context_outputtn_ctx, inp_norm = \
                                      self.attention(input,
                                               input_mask,
@@ -181,6 +179,7 @@ class DeepSpeedTransformerInference(nn.Module):
                                               self.norm_w,
                                               self.norm_b,
                                               alibi)
+
             presents = (key, value)
             self.layer_past = presents if layer_past is None else None
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
@@ -189,7 +188,7 @@ class DeepSpeedTransformerInference(nn.Module):
                 output = inference_module.layer_norm(output, self.norm_w, self.norm_b, self.config.epsilon)
 
             output = output.to(input_type)
-        if get_present and self.config.return_tuple:
+        if get_present:
             output = (output, presents)
 
         if self.config.return_single_tuple:
