@@ -16,7 +16,6 @@ from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.bert.modeling_bert import BertEncoder
 from unit.common import DistributedTest, is_rocm_pytorch
 
-
 BertLayerNorm = torch.nn.LayerNorm
 
 #if not deepspeed.ops.__installed_ops__['transformer']:

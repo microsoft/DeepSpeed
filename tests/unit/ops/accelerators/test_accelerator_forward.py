@@ -15,7 +15,6 @@ from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from deepspeed.accelerator import get_accelerator
 from unit.common import DistributedTest
 
-
 BertLayerNorm = torch.nn.LayerNorm
 
 if torch.half not in get_accelerator().supported_dtypes():
