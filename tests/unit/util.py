@@ -4,7 +4,6 @@
 # DeepSpeed Team
 
 import pytest
-import os
 import torch
 import deepspeed
 from deepspeed.git_version_info import torch_info
@@ -71,21 +70,3 @@ def required_amp_check():
         return False
     else:
         return True
-
-
-def is_within_directory(directory, target):
-    abs_directory = os.path.abspath(directory)
-    abs_target = os.path.abspath(target)
-
-    prefix = os.path.commonprefix([abs_directory, abs_target])
-
-    return prefix == abs_directory
-
-
-def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
-    for member in tar.getmembers():
-        member_path = os.path.join(path, member.name)
-        if not is_within_directory(path, member_path):
-            raise Exception("Attempted Path Traversal in tar file")
-
-    tar.extractall(path, members, numeric_owner=numeric_owner)

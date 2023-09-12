@@ -9,11 +9,14 @@ import pytest
 import random
 import copy
 from torch import nn
-from unit.modelingpreln import BertEncoder as BertEncoderPreln
-from unit.modeling import BertLayerNorm, BertConfig, BertEncoder as BertEncoderPostln
+from transformers.models.bert.configuration_bert import BertConfig
+from transformers.models.bert.modeling_bert import BertEncoder as BertEncoder
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from deepspeed.accelerator import get_accelerator
 from unit.common import DistributedTest
+
+
+BertLayerNorm = torch.nn.LayerNorm
 
 if torch.half not in get_accelerator().supported_dtypes():
     pytest.skip(f"fp16 not supported, valid dtype: {get_accelerator().supported_dtypes()}", allow_module_level=True)
@@ -139,9 +142,9 @@ def create_models(ds_config):
     biases[7].data.zero_()
 
     if (ds_config.pre_layer_norm):
-        bert_encoder = BertEncoderPreln(bert_config, weights, biases)
+        bert_encoder = BertEncoder(bert_config, weights, biases)
     else:
-        bert_encoder = BertEncoderPostln(bert_config, weights, biases)
+        bert_encoder = BertEncoder(bert_config, weights, biases)
     ds_encoder = DSEncoder(ds_config, weights, biases)
 
     if ds_config.fp16:

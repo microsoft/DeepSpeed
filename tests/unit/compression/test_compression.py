@@ -9,8 +9,8 @@ import random
 import numpy as np
 from unit.megatron_model import get_gpt2_model
 from deepspeed.compression.compress import init_compression
-from unit.modeling import BertConfig
-from unit.modelingpreln import BertEncoder as BertEncoderPreln
+from transformers.models.bert.configuration_bert import BertConfig
+from transformers.models.bert.modeling_bert import BertEncoder as BertEncoderPreln
 from deepspeed.compression.basic_layer import LinearLayer_Compress, ColumnParallelLinear_Compress, RowParallelLinear_Compress
 from deepspeed.compression.helper import convert_conv1d_to_linear
 from deepspeed.accelerator import get_accelerator
