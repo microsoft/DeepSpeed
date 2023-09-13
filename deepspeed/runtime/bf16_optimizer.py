@@ -16,7 +16,7 @@ from packaging import version as pkg_version
 from deepspeed.git_version_info import version
 from deepspeed.runtime.utils import (get_global_norm_of_tensors, clip_tensors_by_global_norm, DummyOptim,
                                      align_dense_tensors, all_gather_dp_groups, bwc_tensor_model_parallel_rank,
-                                     is_model_parallel_parameter, see_memory_usage, graph_warp)
+                                     is_model_parallel_parameter, see_memory_usage, graph_process)
 
 from deepspeed.utils import link_hp_params, fragment_address
 from deepspeed.checkpoint import enable_universal_checkpoint
@@ -292,7 +292,7 @@ class BF16_Optimizer(ZeROOptimizer):
                         lp.grad._zero()
 
         if self.use_graph_for_utils:
-            graph_warp(False, _update_hp_grads_func, clear_lp_grads)
+            graph_process(False, _update_hp_grads_func, clear_lp_grads)
         else:
             _update_hp_grads_func(clear_lp_grads)
         #cpu op

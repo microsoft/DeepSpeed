@@ -49,7 +49,7 @@ class DummyOptim():
         self.param_groups.append({'params': params})
 
 graph_cache = {}
-def graph_warp(replay_first_step, func, *args, **kwargs):
+def graph_process(replay_first_step, func, *args, **kwargs):
     # `func` should only contain operations on the GPU
     # Please ensure that the memory address of the data required by 'func' remains constant
     if func.__name__ not in graph_cache:
@@ -920,7 +920,7 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, use_graph=F
                     if i != 0:
                         _compute_buffer[0].data.add_(_compute_buffer[i].data)
 
-            graph_warp(False, _norm_tensors, input_tensors, compute_buffer, norm_type)
+            graph_process(False, _norm_tensors, input_tensors, compute_buffer, norm_type)
 
             total_norm = compute_buffer[0]
         else:
@@ -963,7 +963,7 @@ def clip_tensors_by_global_norm(input_tensors, max_norm=1.0, global_norm=None, m
                                                                dtype=torch.float32).to(get_accelerator().device_name())
             clip_coef_tensor = graph_cache['clip_coef_tensor']
             clip_coef_tensor.copy_(torch.tensor(clip_coef, dtype=torch.float32))
-            graph_warp(False, clip_tensors, input_tensors, clip_coef_tensor)
+            graph_process(False, clip_tensors, input_tensors, clip_coef_tensor)
 
         else:
             for t in input_tensors:
