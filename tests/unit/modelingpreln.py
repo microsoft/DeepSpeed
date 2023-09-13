@@ -151,6 +151,7 @@ class LinearActivation(Module):
         return 'in_features={}, out_features={}, bias={}'.format(self.in_features, self.out_features, self.bias
                                                                  is not None)
 
+
 class BertSelfAttention(nn.Module):
 
     def __init__(self, i, config, weights, biases):
