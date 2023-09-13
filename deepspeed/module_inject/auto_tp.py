@@ -312,16 +312,21 @@ class AutoTP():
             data = child.weight.data.split(get_shard_size_list(
                 weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size),
                                            dim=1)
-            data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+            data_dc = data[mp_replace.gpu_index].to(get_accelerator().current_device_name()).clone().detach()
+            del data
 
             setattr(child, "replaced", True)
             if name == "lm_head" or name == 'embed_out':
-                return LmHeadLinearAllreduce(
-                    torch.nn.parameter.Parameter(data, requires_grad=False), dist.get_rank(), dist.get_world_size(),
-                    child.bias if child.bias is None else torch.nn.parameter.Parameter(
-                        child.bias.to(get_accelerator().current_device_name())), self.mp_group)
-            return LinearAllreduce(torch.nn.parameter.Parameter(data, requires_grad=False), child.bias if child.bias is None else \
-                        torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), self.mp_group)
+                return LmHeadLinearAllreduce(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False),
+                                             rank=dist.get_rank(),
+                                             world_size=dist.get_world_size(),
+                                             bias=child.bias if child.bias is None else torch.nn.parameter.Parameter(
+                                                 child.bias.to(get_accelerator().current_device_name())),
+                                             mp_group=self.mp_group)
+            return LinearAllreduce(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False),
+                                   bias=child.bias if child.bias is None else \
+                                        torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())),
+                                   mp_group=self.mp_group)
         else:
 
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
@@ -333,15 +338,16 @@ class AutoTP():
                 #for detecting fused type
                 module_str = str(self.module).strip()
                 #The copy is a regular copy, The shape of dst and src is the same
-                data = prepare_tp_fused_qkvw(module_str, child.weight.data, self.mp_size, mp_replace.gpu_index)
+                data_dc = prepare_tp_fused_qkvw(module_str, child.weight.data, self.mp_size, mp_replace.gpu_index)
 
-                bias_data = None if child.bias is None else prepare_tp_fused_qkvw(
+                bias_data_dc = None if child.bias is None else prepare_tp_fused_qkvw(
                     module_str, child.bias.data, self.mp_size, mp_replace.gpu_index).to(
                         get_accelerator().current_device_name())
             else:
                 data = child.weight.data.split(get_shard_size_list(weight_shape[0], self.mp_size),
                                                dim=1 if self.conv_linear_layer else 0)
-                data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+                data_dc = data[mp_replace.gpu_index].clone().detach()
+                del data
 
                 if child.bias is not None:
                     bias_data = child.bias.data.split(get_shard_size_list(
@@ -349,12 +355,14 @@ class AutoTP():
                                                       dim=0)
                     bias_data = bias_data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
                     bias_data = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
+                    bias_data_dc = bias_data.clone().detach()
+                    del bias_data
                 else:
-                    bias_data = None
+                    bias_data_dc = None
 
             setattr(child, "replaced", True)
-            return LinearLayer(weight=torch.nn.parameter.Parameter(data.to(get_accelerator().current_device_name()), requires_grad=False), \
-                        bias=bias_data)
+            return LinearLayer(weight=torch.nn.parameter.Parameter(data_dc.to(get_accelerator().current_device_name()), requires_grad=False), \
+                        bias=bias_data_dc)
 
     def _slice_embedding(self, child, name, conv_linear_layer):
         if getattr(child, "replaced", False) == True:

@@ -333,10 +333,10 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         # enable tensor parallel for the last linear
         if hasattr(replaced_module, "lm_head") and hasattr(replaced_module.lm_head,
-                                                          "weight") and not replaced_module.lm_head.weight.is_meta:
+                                                           "weight") and not replaced_module.lm_head.weight.is_meta:
             replaced_module = replace_fn(replaced_module, ("lm_head", ), 0, "lm_head")
-        elif hasattr(replaced_module, "embed_out") and hasattr(replaced_module.embed_out,
-                                                              "weight") and not replaced_module.embed_out.weight.is_meta:
+        elif hasattr(replaced_module, "embed_out") and hasattr(
+                replaced_module.embed_out, "weight") and not replaced_module.embed_out.weight.is_meta:
             replaced_module = replace_fn(replaced_module, ("embed_out", ), 0, "embed_out")
     else:
         replaced_module = replace_module(model=model,
@@ -425,10 +425,10 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         # enable tensor parallel for the last linear
         if hasattr(replaced_module, "lm_head") and hasattr(replaced_module.lm_head,
-                                                          "weight") and not replaced_module.lm_head.weight.is_meta:
+                                                           "weight") and not replaced_module.lm_head.weight.is_meta:
             replaced_module = replace_fn(replaced_module, ("lm_head", ), 0, "lm_head")
-        elif hasattr(replaced_module, "embed_out") and hasattr(replaced_module.embed_out,
-                                                              "weight") and not replaced_module.embed_out.weight.is_meta:
+        elif hasattr(replaced_module, "embed_out") and hasattr(
+                replaced_module.embed_out, "weight") and not replaced_module.embed_out.weight.is_meta:
             replaced_module = replace_fn(replaced_module, ("embed_out", ), 0, "embed_out")
 
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
