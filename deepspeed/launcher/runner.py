@@ -162,7 +162,7 @@ def parse_args(args=None):
                         "Useful when launching deepspeed processes programmatically.")
 
     parser.add_argument("--enable_each_rank_log",
-                        default="None",
+                        default=None,
                         type=str,
                         help="redirect the stdout and stderr from each rank into different log files")
 
