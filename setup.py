@@ -22,7 +22,6 @@ import os
 import sys
 import subprocess
 from setuptools import setup, find_packages
-from setuptools.command import egg_info
 import time
 import typing
 
