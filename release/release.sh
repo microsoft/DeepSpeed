@@ -25,13 +25,16 @@ if [ "${version}" != `cat version.txt` ]; then
     exit 1
 fi
 
+echo "checking that the version is valid"
+python release/check_release_version.py --new_version ${version}
+
 python -c "import twine"
 if [ $? != 0 ]; then
     echo 'please install twine via pip'
     exit 1
 fi
 
-DS_BUILD_STRING=" " python setup.py sdist
+DS_BUILD_STRING="" python setup.py sdist
 
 if [ ! -f dist/deepspeed-${version}.tar.gz ]; then
     echo "prepared version does not match version given ($version), bump version first?"
@@ -39,11 +42,10 @@ if [ ! -f dist/deepspeed-${version}.tar.gz ]; then
     exit 1
 fi
 
-python -m twine upload dist/deepspeed-${version}.tar.gz --repository testpypi
+python -m twine upload dist/deepspeed-${version}.tar.gz --repository deepspeed
 
 git tag v${version}
 git push origin v${version}
 
 echo "bumping up patch version"
-cd -
-python bump_patch_version.py
+python release/bump_patch_version.py --current_version ${version}

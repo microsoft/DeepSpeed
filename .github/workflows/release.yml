@@ -17,6 +17,9 @@ jobs:
     - name: Get release version from tag
       run: |
         echo "RELEASE_VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
+    - name: Check release version
+      run: |
+        python release/check_release_version.py --new_version ${{ env.RELEASE_VERSION }}
     - name: Set release version in file
       run: |
         echo ${{ env.RELEASE_VERSION }} > version.txt

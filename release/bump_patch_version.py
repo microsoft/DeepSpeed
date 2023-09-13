@@ -16,7 +16,7 @@ args = parser.parse_args()
 
 current_version = pkg_version.parse(args.current_version)
 
-with open('version.txt', 'w') as fd:
+with open('./version.txt', 'w') as fd:
     fd.write(f'{current_version.major}.{current_version.minor}.{current_version.micro + 1}\n')
 
 print(f'{current_version} -> {current_version.major}.{current_version.minor}.{current_version.micro + 1}')
