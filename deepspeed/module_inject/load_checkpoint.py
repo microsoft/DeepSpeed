@@ -278,7 +278,6 @@ def load_model_with_checkpoint(r_module,
                     level + 1)
 
     load_module_recursive(r_module)
-    #import pdb;pdb.set_trace()
     embedding_weight = None
 
     for n, p in r_module.named_parameters():
