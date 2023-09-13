@@ -1548,19 +1548,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             secondary_end = secondary_start + secondary_partition_size
 
             one_dim_param = param.contiguous().view(-1)
-            # start = partition_size * self.rank
-            # end = start + partition_size
-            # if start < param.ds_numel and end <= param.ds_numel:
-            #     if secondary_start < param.ds_numel and secondary_end <= param.ds_numel:
-            #         sec_src_tensor = one_dim_param.narrow(0, secondary_start, secondary_partition_size)
-            #         param.ds_secondary_tensor.copy_(sec_src_tensor)
-
-            # else:
-            #     if start < param.ds_numel:
-            #         elements_to_copy = param.ds_numel - start
-            #         elements_to_copy_sec = elements_to_copy * param.ds_secondary_tensor_num_of_groups
-            #         param.ds_secondary_tensor.narrow(0, 0, elements_to_copy_sec).copy_(
-            #             one_dim_param.narrow(0, secondary_start, elements_to_copy_sec))
             if secondary_start < param.ds_numel and secondary_end <= param.ds_numel:
                 sec_src_tensor = one_dim_param.narrow(0, secondary_start, secondary_partition_size)
                 param.ds_secondary_tensor.copy_(sec_src_tensor)
