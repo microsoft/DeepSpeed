@@ -33,9 +33,22 @@ except ImportError:
     print('[WARNING] Unable to import torch, pre-compiling ops will be disabled. ' \
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
 
-from deepspeed.ops.op_builder import get_default_compute_capabilities, OpBuilder
-from deepspeed.ops.op_builder.all_ops import ALL_OPS
-from deepspeed.ops.op_builder.builder import installed_cuda_version
+# We must avoid importing from deepspeed.* because that will execute the
+# __init__.py files. We insert the path here so we can still import from
+# op_builder and accelerator for precompiling.
+op_builder_path = os.path.join(os.path.dirname(__file__), "deepspeed/ops/")
+accelerator_path = os.path.join(os.path.dirname(__file__), "deepspeed/")
+sys.path.insert(0, op_builder_path)
+sys.path.insert(0, accelerator_path)
+
+from accelerator import get_accelerator
+from op_builder import get_default_compute_capabilities, OpBuilder
+from op_builder.all_ops import ALL_OPS
+from op_builder.builder import installed_cuda_version
+
+# Remove the added paths after importing
+sys.path.remove(op_builder_path)
+sys.path.remove(accelerator_path)
 
 # Fetch rocm state.
 is_rocm_pytorch = OpBuilder.is_rocm_pytorch()
@@ -117,7 +130,6 @@ cmdclass = {}
 
 # For any pre-installed ops force disable ninja.
 if torch_available:
-    from deepspeed.accelerator import get_accelerator
     cmdclass['build_ext'] = get_accelerator().build_extension().with_options(use_ninja=False)
 
 if torch_available:
