@@ -152,7 +152,10 @@ void launch_swizzled_quant_impl(int8_t* q_data,
         } else if (total_unroll == 8) {
             LAUNCH_SWIZZLE_QUANT(8, 512);
         } else if (total_unroll == 10) {
+            // 40k limit
             LAUNCH_SWIZZLE_QUANT(10, 512);
+        } else {
+            assert(false);
         }
     }
 }

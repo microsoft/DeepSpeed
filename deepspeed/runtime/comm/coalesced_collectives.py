@@ -39,16 +39,46 @@ def all_to_all_quant_reduce(tensors: List[Tensor], groups: {}) -> List[Tensor]:
     intra_idx = int(this_rank / local_world_size)
     inter_idx = this_rank % local_world_size
     output_lst: List[Tensor] = [None] * len(tensors)
+    intra_group_cache = dict()
+    max_elems_per_intra_group = 40960 # 40k limit
     for idx, tensor in enumerate(tensors):
         if tensor.dim() == 1:
-            intra_quant_group = global_world_size
             output_lst[idx] = reduce_scatter_coalesced([tensor])[0]
             continue
         else:
-            intra_quant_group = max(tensor.shape[0], tensor.shape[1], global_world_size)
-
+            # max_elems_per_intra_in_group = 40960(40k limit) = (input_numel / intra_quant_group)
+            # max_elems_per_inter_out_group = 49152(48k limit) = (input_numel / num_nodes / intra_quant_group)
+            # (input_numel / intra_quant_group) <= 40k
+            # (input_numel / intra_quant_group) / num_nodes <= 48k
+            # final constraint: (input_numel / intra_quant_group) <= 40k
+            padding_size = (global_world_size - tensor.numel() % global_world_size) if tensor.numel() % global_world_size != 0 else 0
+            aligned_size = tensor.numel() + padding_size
+            flat_tensor = torch.empty(aligned_size, dtype=tensor.dtype, device=tensor.device)
+            flat_tensor.narrow(0, 0, tensor.numel()).copy_(tensor.view(-1).data)
+            if aligned_size in intra_group_cache.keys():
+                intra_quant_group = intra_group_cache[aligned_size]
+            else:
+                intra_quant_group = global_world_size
+                while intra_quant_group < aligned_size:
+                    if aligned_size % intra_quant_group == 0 \
+                        and aligned_size / intra_quant_group <= max_elems_per_intra_group:
+                        break
+                    intra_quant_group += global_world_size
+                while True:
+                    if aligned_size % (intra_quant_group * 2) == 0 and aligned_size / intra_quant_group > max_elems_per_intra_group:
+                        intra_quant_group *= 2
+                    else:
+                        break
+                assert (
+                    intra_quant_group % global_world_size == 0
+                ), f"  Quantized grad requires intra_quant_group be a multiple of global_world_size. Yet group size {intra_quant_group} cannot be divided by {global_world_size}"
+                assert (aligned_size / intra_quant_group <= max_elems_per_intra_group), \
+                    f"  Elems_per_group {aligned_size} / {intra_quant_group} is larger than 40k."
+                assert tensor.numel(
+                ) > intra_quant_group, f"  Adaptive grouping algorithm cannot find a group size for grad tensor of size {tensor.numel()}"
+                intra_group_cache[aligned_size] = intra_quant_group
             inter_quant_group = intra_quant_group // local_world_size
-            intra_quant_int4, intra_q_scales = quantizer_module.swizzle_quant(tensor, intra_quant_group, 4,
+            intra_quant_int4, intra_q_scales = quantizer_module.swizzle_quant(flat_tensor, intra_quant_group, 4,
                                                                               quantizer_module.Symmetric, 1, num_nodes,
                                                                               local_world_size)
             local_output = torch.empty_like(intra_quant_int4)
@@ -64,7 +94,17 @@ def all_to_all_quant_reduce(tensors: List[Tensor], groups: {}) -> List[Tensor]:
             all_to_all_single(global_scale_output, global_scales, group=groups[f'global_{inter_idx}'])
             final_output = quantizer_module.dequantize(global_output, global_scale_output, global_scale_output.numel(),
                                                        4, quantizer_module.Symmetric)
-            output_lst[idx] = (sum(list(final_output.chunk(num_nodes))) / num_nodes).view(-1)
+            partition_size = aligned_size // global_world_size
+            start = partition_size * this_rank
+            end = start + partition_size
+            if start < tensor.numel() and end <= tensor.numel():
+                output_lst[idx] = (sum(list(final_output.chunk(num_nodes))) / num_nodes).view(-1)
+                assert output_lst[idx].numel() == partition_size
+            else:
+                if start < tensor.numel():
+                    elements_to_copy = tensor.numel() - start
+                    output_lst[idx] = (sum(list(final_output.chunk(num_nodes))) / num_nodes).view(-1).narrow(0, 0, elements_to_copy)
+                    assert this_rank == global_world_size - 1
     return output_lst
 
 
