@@ -554,7 +554,7 @@ class PipelineEngine(DeepSpeedEngine):
             # Get loss from last stage
             src_rank = self.grid.stage_to_global(self.num_stages - 1)
             assert src_rank in self.grid.pp_group
-            losses = torch.Tensor([0., 0.]).to(self.device)
+            losses = torch.stack([self.dp_group_loss, agg_loss])
             dist.broadcast(tensor=losses, src=src_rank, group=self.grid.get_pipe_parallel_group())
             self.dp_group_loss = losses[0].clone().detach()
             agg_loss = losses[1].clone().detach()
