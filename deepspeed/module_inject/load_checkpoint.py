@@ -263,8 +263,6 @@ def load_model_with_checkpoint(r_module,
                         ds_id = None
                         if hasattr(child.weight, 'ds_id'):
                             ds_id = child.weight.ds_id
-                        #import pdb;pdb.set_trace()
-
                         child = EmbeddingLayer(weight_shape=ds_shape, dtype=child.weight.dtype)
                         if ds_id is not None:
                             all_ds_ids[ds_id] = child.weight
