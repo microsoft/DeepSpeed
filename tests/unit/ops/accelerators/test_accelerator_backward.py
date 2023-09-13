@@ -12,7 +12,7 @@ import os
 from torch import nn
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from deepspeed.accelerator import get_accelerator
-#from transformers.models.bert.configuration_bert import BertConfig
+from transformers.models.bert.configuration_bert import BertConfig
 #from transformers.models.bert.modeling_bert import BertEncoder
 from unit.modeling import BertEncoder as BertEncoderPostln
 from unit.modelingpreln import BertEncoder as BertEncoderPreln

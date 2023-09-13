@@ -9,7 +9,7 @@ import pytest
 import random
 import copy
 from torch import nn
-#from transformers.models.bert.configuration_bert import BertConfig
+from transformers.models.bert.configuration_bert import BertConfig
 #from transformers.models.bert.modeling_bert import BertEncoder as BertEncoder
 from unit.modelingpreln import BertEncoder as BertEncoderPreln
 from unit.modeling import BertEncoder as BertEncoderPostln
