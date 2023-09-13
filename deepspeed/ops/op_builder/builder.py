@@ -114,8 +114,8 @@ class OpBuilder(ABC):
         # Add the prepend path to the sources and includes relative paths
         self._sources = self.sources
         self._include_paths = self.include_paths
-        self.sources = lambda : [os.path.join(self.prepend_path, src) for src in self._sources()]
-        self.include_paths = lambda : [os.path.join(self.prepend_path, incl) for incl in self._include_paths()]
+        self.sources = lambda: [os.path.join(self.prepend_path, src) for src in self._sources()]
+        self.include_paths = lambda: [os.path.join(self.prepend_path, incl) for incl in self._include_paths()]
 
     @abstractmethod
     def absolute_name(self):
