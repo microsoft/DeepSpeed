@@ -5,23 +5,18 @@
 
 # Copyright (c) wangruohui
 
-from .base import *
-from .features import HybridSplitQKVContainer, HybridGatedMLPContainer
-from deepspeed.utils.types import ActivationFuncType, NormType
-from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
-import torch
-from torch.nn.parameter import Parameter
-from transformers.utils import TRANSFORMERS_DYNAMIC_MODULE_NAME
 import importlib
 
-from ..policy import (
-    TransformerPolicy,
-    transformer_param_names,
-    maybe_copy,
-    maybe_copy_qkv,
-    maybe_copy_geglu,
-    maybe_get_lora,
-)
+import torch
+from torch.nn.parameter import Parameter
+
+from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
+from deepspeed.utils.types import ActivationFuncType, NormType
+
+from ..policy import (TransformerPolicy, maybe_copy, maybe_copy_geglu, maybe_copy_qkv, maybe_get_lora,
+                      transformer_param_names)
+from .base import *
+from .features import HybridGatedMLPContainer, HybridSplitQKVContainer
 
 
 class DS_InternLMContainer(HybridGatedMLPContainer, HybridSplitQKVContainer, BaseTransformerContainer):
@@ -134,6 +129,7 @@ class InternLMLayerPolicy(TransformerPolicy):
 
         for sub_pkg in ['', '.internlm-7b', '.internlm-chat-7b']:
             try:
+                from transformers.utils import TRANSFORMERS_DYNAMIC_MODULE_NAME
                 module = importlib.import_module(f"{TRANSFORMERS_DYNAMIC_MODULE_NAME}{sub_pkg}.modeling_internlm")
                 InternLMLayerPolicy._orig_layer_class.append(module.InternLMDecoderLayer)
                 print(f"InternLMLayerPolicy._orig_layer_class = {InternLMLayerPolicy._orig_layer_class}")
