@@ -38,19 +38,8 @@ import torch.nn.init as init
 from deepspeed.accelerator import get_accelerator
 
 logger = logging.getLogger(__name__)
-"""
-@torch.jit.script
-def f_gelu(x):
-    return x * 0.5 * (1.0 + torch.erf(x / 1.41421))
-@torch.jit.script
-def bias_gelu(bias, y):
-    x = bias + y
-    return x * 0.5 * (1.0 + torch.erf(x / 1.41421))
-@torch.jit.script
-def bias_tanh(bias, y):
-    x = bias + y
-    return torch.tanh(x)
- """
+
+BertLayerNorm = torch.nn.LayerNorm
 
 
 def f_gelu(x):
@@ -161,40 +150,6 @@ class LinearActivation(Module):
     def extra_repr(self):
         return 'in_features={}, out_features={}, bias={}'.format(self.in_features, self.out_features, self.bias
                                                                  is not None)
-
-
-try:
-    import apex
-    #apex.amp.register_half_function(apex.normalization.fused_layer_norm, 'FusedLayerNorm')
-    import apex.normalization
-    #apex.amp.register_float_function(apex.normalization.FusedLayerNorm, 'forward')
-    BertLayerNorm = apex.normalization.FusedLayerNorm
-except ImportError:
-    print("Better speed can be achieved with apex installed from https://www.github.com/nvidia/apex.")
-
-    class BertLayerNorm(nn.Module):
-
-        def __init__(self, hidden_size, eps=1e-12):
-            """Construct a layernorm module in the TF style (epsilon inside the square root).
-            """
-            super(BertLayerNorm, self).__init__()
-            self.weight = nn.Parameter(torch.ones(hidden_size))
-            self.bias = nn.Parameter(torch.zeros(hidden_size))
-            self.variance_epsilon = eps
-
-        def forward(self, x):
-            pdtype = x.dtype
-            x = x.float()
-            u = x.mean(-1, keepdim=True)
-            s = (x - u).pow(2).mean(-1, keepdim=True)
-            x = (x - u) / torch.sqrt(s + self.variance_epsilon)
-            return self.weight * x.to(pdtype) + self.bias
-
-        #def forward(self, x):
-        #    u = x.mean(-1, keepdim=True)
-        #    s = (x - u).pow(2).mean(-1, keepdim=True)
-        #    x = (x - u) / torch.sqrt(s + self.variance_epsilon)
-        #    return self.weight * x + self.bias
 
 
 class BertEmbeddings(nn.Module):

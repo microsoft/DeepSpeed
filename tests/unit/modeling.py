@@ -43,19 +43,8 @@ import torch.nn.init as init
 from deepspeed.accelerator import get_accelerator
 
 logger = logging.getLogger(__name__)
-"""
-@torch.jit.script
-def f_gelu(x):
-    return x * 0.5 * (1.0 + torch.erf(x / 1.41421))
-@torch.jit.script
-def bias_gelu(bias, y):
-    x = bias + y
-    return x * 0.5 * (1.0 + torch.erf(x / 1.41421))
-@torch.jit.script
-def bias_tanh(bias, y):
-    x = bias + y
-    return torch.tanh(x)
- """
+
+BertLayerNorm = torch.nn.LayerNorm
 
 
 def f_gelu(x):
@@ -168,32 +157,6 @@ class LinearActivation(Module):
                                                                  is not None)
 
 
-try:
-    import apex
-    #apex.amp.register_half_function(apex.normalization.fused_layer_norm, 'FusedLayerNorm')
-    import apex.normalization
-    #apex.amp.register_float_function(apex.normalization.FusedLayerNorm, 'forward')
-    BertLayerNorm = apex.normalization.FusedLayerNorm
-except ImportError:
-    print("Better speed can be achieved with apex installed from https://www.github.com/nvidia/apex.")
-
-    class BertLayerNorm(nn.Module):
-
-        def __init__(self, hidden_size, eps=1e-12):
-            """Construct a layernorm module in the TF style (epsilon inside the square root).
-            """
-            super(BertLayerNorm, self).__init__()
-            self.weight = nn.Parameter(torch.ones(hidden_size))
-            self.bias = nn.Parameter(torch.zeros(hidden_size))
-            self.variance_epsilon = eps
-
-        def forward(self, x):
-            u = x.mean(-1, keepdim=True)
-            s = (x - u).pow(2).mean(-1, keepdim=True)
-            x = (x - u) / torch.sqrt(s + self.variance_epsilon)
-            return self.weight * x + self.bias
-
-
 class BertSelfAttention(nn.Module):
 
     def __init__(self, i, config, weights, biases):
@@ -204,7 +167,6 @@ class BertSelfAttention(nn.Module):
         self.num_attention_heads = config.num_attention_heads
         self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
-
         self.query = nn.Linear(config.hidden_size, self.all_head_size)
         self.query.weight = weights[0]
         self.query.bias = biases[0]
@@ -214,7 +176,6 @@ class BertSelfAttention(nn.Module):
         self.value = nn.Linear(config.hidden_size, self.all_head_size)
         self.value.weight = weights[2]
         self.value.bias = biases[2]
-
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
         self.softmax = nn.Softmax(dim=-1)
         #self.softmax_config = DeepSpeedSoftmaxConfig()
@@ -226,7 +187,6 @@ class BertSelfAttention(nn.Module):
         #self.softmax_config.fp16 = config.fp16
         #self.softmax_config.prob_drop_out = 0.0
         #self.softmax = DeepSpeedSoftmax(i, self.softmax_config)
-
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(*new_x_shape)
@@ -238,33 +198,23 @@ class BertSelfAttention(nn.Module):
         return x.permute(0, 2, 3, 1)
 
     def forward(self, hidden_states, attention_mask, grads=None):
-
         mixed_query_layer = self.query(hidden_states)
-
         mixed_key_layer = self.key(hidden_states)
-
         mixed_value_layer = self.value(hidden_states)
-
         query_layer = self.transpose_for_scores(mixed_query_layer)
-
         key_layer = self.transpose_key_for_scores(mixed_key_layer)
-
         value_layer = self.transpose_for_scores(mixed_value_layer)
-
         attention_scores = torch.matmul(query_layer, key_layer)
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
         attention_scores = attention_scores + attention_mask
         attention_probs = self.softmax(attention_scores)
-
         # This is actually dropping out entire tokens to attend to, which might
         # seem a bit unusual, but is taken from the original Transformer paper.
         attention_probs = self.dropout(attention_probs)
-
         context_layer = torch.matmul(attention_probs, value_layer)
         context_layer1 = context_layer.permute(0, 2, 1, 3).contiguous()
         new_context_layer_shape = context_layer1.size()[:-2] + (self.all_head_size, )
         context_layer1 = context_layer1.view(*new_context_layer_shape)
-
         return context_layer1
 
 
