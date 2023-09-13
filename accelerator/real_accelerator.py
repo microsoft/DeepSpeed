@@ -56,7 +56,7 @@ def get_accelerator():
         if accelerator_name == "xpu":
             try:
                 import intel_extension_for_pytorch as ipex
-                assert(ipex.has_xpu(), "XPU_Accelerator requires an intel_extension_for_pytorch that supports XPU.")
+                assert(ipex._C._has_xpu(), "XPU_Accelerator requires an intel_extension_for_pytorch that supports XPU.")
             except ImportError as e:
                 raise ValueError(
                     f"XPU_Accelerator requires intel_extension_for_pytorch, which is not installed on this system.")
@@ -115,7 +115,7 @@ def get_accelerator():
         if accelerator_name == None:
             try:
                 import intel_extension_for_pytorch as ipex
-                if ipex.has_xpu():
+                if ipex._C._has_xpu():
                     accelerator_name = "xpu"
                 else:
                     accelerator_name = "cpu"
