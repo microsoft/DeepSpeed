@@ -29,17 +29,11 @@ import copy
 import json
 import logging
 import math
-import os
-import shutil
-import tarfile
-import tempfile
 from io import open
 
 import torch
 from torch import nn
-from torch.nn import CrossEntropyLoss
 from torch.utils import checkpoint
-import deepspeed.comm as dist
 
 from torch.nn import Module
 import torch.nn.functional as F
@@ -51,8 +45,6 @@ import torch.nn.init as init
 from deepspeed.accelerator import get_accelerator
 
 logger = logging.getLogger(__name__)
-
-
 """
 @torch.jit.script
 def f_gelu(x):
