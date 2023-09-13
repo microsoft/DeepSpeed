@@ -22,7 +22,6 @@ import os
 import sys
 import subprocess
 from setuptools import setup, find_packages
-from setuptools.command import egg_info
 import time
 import typing
 
@@ -34,9 +33,22 @@ except ImportError:
     print('[WARNING] Unable to import torch, pre-compiling ops will be disabled. ' \
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
 
+# We must avoid importing from deepspeed.* because that will execute the
+# __init__.py files. We insert the path here so we can still import from
+# op_builder and accelerator for precompiling.
+op_builder_path = os.path.join(os.path.dirname(__file__), "deepspeed/ops/")
+accelerator_path = os.path.join(os.path.dirname(__file__), "deepspeed/")
+sys.path.insert(0, op_builder_path)
+sys.path.insert(0, accelerator_path)
+
+from accelerator import get_accelerator
 from op_builder import get_default_compute_capabilities, OpBuilder
 from op_builder.all_ops import ALL_OPS
 from op_builder.builder import installed_cuda_version
+
+# Remove the added paths after importing
+sys.path.remove(op_builder_path)
+sys.path.remove(accelerator_path)
 
 # Fetch rocm state.
 is_rocm_pytorch = OpBuilder.is_rocm_pytorch()
@@ -118,7 +130,6 @@ cmdclass = {}
 
 # For any pre-installed ops force disable ninja.
 if torch_available:
-    from accelerator import get_accelerator
     cmdclass['build_ext'] = get_accelerator().build_extension().with_options(use_ninja=False)
 
 if torch_available:
@@ -208,23 +219,6 @@ if command_exists('git') and not is_env_set('DS_BUILD_STRING'):
 else:
     git_hash = "unknown"
     git_branch = "unknown"
-
-
-def create_dir_symlink(src, dest):
-    if not os.path.islink(dest):
-        if os.path.exists(dest):
-            os.remove(dest)
-        assert not os.path.exists(dest)
-        os.symlink(src, dest)
-
-
-if sys.platform == "win32":
-    # This creates a symbolic links on Windows.
-    # It needs Administrator privilege to create symlinks on Windows.
-    create_dir_symlink('..\\..\\csrc', '.\\deepspeed\\ops\\csrc')
-    create_dir_symlink('..\\..\\op_builder', '.\\deepspeed\\ops\\op_builder')
-    create_dir_symlink('..\\accelerator', '.\\deepspeed\\accelerator')
-    egg_info.manifest_maker.template = 'MANIFEST_win.in'
 
 # Parse the DeepSpeed version string from version.txt.
 version_str = open('version.txt', 'r').read().strip()
