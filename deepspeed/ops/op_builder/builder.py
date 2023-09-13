@@ -109,6 +109,13 @@ class OpBuilder(ABC):
         self.build_for_cpu = False
         self.enable_bf16 = False
         self.error_log = None
+        self.prepend_path = "deepspeed/ops/"
+
+        # Add the prepend path to the sources and includes relative paths
+        self._sources = self.sources
+        self._include_paths = self.include_paths
+        self.sources = lambda : [os.path.join(self.prepend_path, src) for src in self._sources()]
+        self.include_paths = lambda : [os.path.join(self.prepend_path, incl) for incl in self._include_paths()]
 
     @abstractmethod
     def absolute_name(self):
@@ -121,7 +128,9 @@ class OpBuilder(ABC):
     @abstractmethod
     def sources(self):
         '''
-        Returns list of source files for your op, relative to root of deepspeed package (i.e., DeepSpeed/deepspeed)
+        Returns list of source files for your op, relative to root of
+        self.prepend_path. The prepend path will be prepended to all paths in
+        the returned list.
         '''
         pass
 
@@ -204,7 +213,8 @@ class OpBuilder(ABC):
 
     def include_paths(self):
         '''
-        Returns list of include paths, relative to root of deepspeed package (i.e., DeepSpeed/deepspeed)
+        Returns list of include paths, relative to root of self.prepend_path.
+        The prepend path will be prepended to all paths in the returned list.
         '''
         return []
 
