@@ -432,7 +432,8 @@ class OpBuilder(ABC):
         if os.path.isabs(code_path):
             return code_path
         else:
-            return os.path.join(Path(__file__).parent.parent.absolute(), code_path)
+            import deepspeed
+            return os.path.join(Path(deepspeed.__file__).parent.parent.absolute(), code_path)
 
     def builder(self):
         from torch.utils.cpp_extension import CppExtension
