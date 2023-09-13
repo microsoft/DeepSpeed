@@ -6,7 +6,7 @@
 from deepspeed import comm as dist
 import torch
 from typing import Optional
-from deepspeed.utils.tp_shard import get_shard_size, get_shard_size_list
+from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 
 
 def build_bloom_alibi_tensor(attention_mask: torch.Tensor, num_heads: int, dtype: torch.dtype) -> torch.Tensor:
