@@ -163,40 +163,6 @@ class LinearActivation(Module):
                                                                  is not None)
 
 
-try:
-    import apex
-    #apex.amp.register_half_function(apex.normalization.fused_layer_norm, 'FusedLayerNorm')
-    import apex.normalization
-    #apex.amp.register_float_function(apex.normalization.FusedLayerNorm, 'forward')
-    BertLayerNorm = apex.normalization.FusedLayerNorm
-except ImportError:
-    print("Better speed can be achieved with apex installed from https://www.github.com/nvidia/apex.")
-
-    class BertLayerNorm(nn.Module):
-
-        def __init__(self, hidden_size, eps=1e-12):
-            """Construct a layernorm module in the TF style (epsilon inside the square root).
-            """
-            super(BertLayerNorm, self).__init__()
-            self.weight = nn.Parameter(torch.ones(hidden_size))
-            self.bias = nn.Parameter(torch.zeros(hidden_size))
-            self.variance_epsilon = eps
-
-        def forward(self, x):
-            pdtype = x.dtype
-            x = x.float()
-            u = x.mean(-1, keepdim=True)
-            s = (x - u).pow(2).mean(-1, keepdim=True)
-            x = (x - u) / torch.sqrt(s + self.variance_epsilon)
-            return self.weight * x.to(pdtype) + self.bias
-
-        #def forward(self, x):
-        #    u = x.mean(-1, keepdim=True)
-        #    s = (x - u).pow(2).mean(-1, keepdim=True)
-        #    x = (x - u) / torch.sqrt(s + self.variance_epsilon)
-        #    return self.weight * x + self.bias
-
-
 class BertEmbeddings(nn.Module):
     """Construct the embeddings from word, position and token_type embeddings.
     """
