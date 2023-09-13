@@ -32,15 +32,10 @@ from deepspeed.accelerator import get_accelerator
 
 from deepspeed.module_inject.policy import transpose
 from torch.nn import functional as F
-import time
 
 torch_memory_reserved = get_accelerator().memory_reserved
 torch_max_memory_reserved = get_accelerator().max_memory_reserved
 
-
-def print_rank0(msg):
-    if dist.get_rank() == 0:
-        print(msg)
 
 
 class DummyOptim():
@@ -903,7 +898,6 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, use_graph=F
     Returns:
         Total norm of the tensors (viewed as a single vector).
     """
-    start = time.time()
     assert isinstance(input_tensors, Iterable), f'expected Iterable type not {type(input_tensors)}'
     assert all([torch.is_tensor(t) for t in input_tensors]), f'expected list of only tensors'
 
@@ -932,9 +926,6 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, use_graph=F
         else:
             total_norm = sum([t.data.float().norm(norm_type).item()**norm_type for t in input_tensors])
 
-        end = time.time()
-        duration = end - start
-        print_rank0(f"norm in get_global_norm_of_tensors, use_graph:{use_graph}, duration:{duration}")
         total_norm_cuda = get_accelerator().FloatTensor([float(total_norm)]).detach()
         if mpu is not None:
             dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.SUM, group=mpu.get_model_parallel_group())
@@ -958,7 +949,6 @@ def clip_tensors_by_global_norm(input_tensors, max_norm=1.0, global_norm=None, m
     """
     if global_norm is None:
         global_norm = get_global_norm_of_tensors(input_tensors, mpu=mpu, use_graph=use_graph)
-    start = time.time()
     clip_coef = max_norm / (global_norm + eps)
     if clip_coef < 1:
         if use_graph:
@@ -978,9 +968,6 @@ def clip_tensors_by_global_norm(input_tensors, max_norm=1.0, global_norm=None, m
         else:
             for t in input_tensors:
                 t.detach().mul_(clip_coef)
-    end = time.time()
-    duration = end - start
-    print_rank0(f"mul_ in clip_tensors_by_global_norm_, use_graph:{use_graph}, duration:{duration}")
     return global_norm
 
 

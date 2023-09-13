@@ -23,7 +23,6 @@ from deepspeed.checkpoint import enable_universal_checkpoint
 from deepspeed.checkpoint.constants import (DS_VERSION, PARTITION_COUNT, BASE_OPTIMIZER_STATE,
                                             SINGLE_PARTITION_OF_FP32_GROUPS, CLIP_GRAD, GROUP_PADDINGS,
                                             PARAM_SLICE_MAPPINGS)
-import time
 
 setattr(sys.modules[__name__], 'fragment_address', fragment_address)
 
@@ -82,11 +81,9 @@ class BF16_Optimizer(ZeROOptimizer):
         self.use_graph_for_utils = use_graph_for_utils
         if self.using_real_optimizer:
             self._setup_for_real_optimizer()
+            
         see_memory_usage('end bf16_optimizer', force=True)
 
-    def print_rank0(self, msg):
-        if dist.get_rank() == 0:
-            print(msg)
 
     def _setup_for_real_optimizer(self):
         dp_world_size = dist.get_world_size(group=self.dp_process_group)
@@ -294,7 +291,6 @@ class BF16_Optimizer(ZeROOptimizer):
                     if clear_lp_grads:
                         lp.grad._zero()
 
-        start = time.time()
         if self.use_graph_for_utils:
             graph_warp(False, _update_hp_grads_func, clear_lp_grads)
         else:
@@ -305,9 +301,6 @@ class BF16_Optimizer(ZeROOptimizer):
                 if lp.grad is None:
                     continue
                 self.fp32_groups_has_gradients[i][j] = True
-        end = time.time()
-        duration = end - start
-        self.print_rank0(f"update_hp_grads, use_graph:{self.use_graph_for_utils}, duration:{duration}")
 
     @torch.no_grad()
     def get_grads_for_reduction(self):
