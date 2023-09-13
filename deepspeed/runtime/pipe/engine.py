@@ -348,14 +348,15 @@ class PipelineEngine(DeepSpeedEngine):
         self._compute_loss = True
 
         # Do the work
-        self.timers(TRAIN_BATCH_TIMER).start()
+        if self.global_rank == 0:
+            self.timers(TRAIN_BATCH_TIMER).start()
         sched = schedule.TrainSchedule(micro_batches=self.micro_batches,
                                        stages=self.num_stages,
                                        stage_id=self.stage_id)
         self._exec_schedule(sched)
         self.agg_train_loss = self._aggregate_total_loss()
-
-        self.timers(TRAIN_BATCH_TIMER).stop()
+        if self.global_rank == 0:
+            self.timers(TRAIN_BATCH_TIMER).stop()
 
         if self.global_steps % self.steps_per_print() == 0:
             if self.global_rank == 0:
