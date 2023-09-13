@@ -110,6 +110,7 @@ class OpBuilder(ABC):
         self.enable_bf16 = False
         self.error_log = None
         self.prepend_path = "deepspeed/ops/"
+        #NOTE: Changing the prepend_path may require modifying self.deepspeed_src_path()
 
         # Add the prepend path to the sources and includes relative paths
         self._sources = self.sources
