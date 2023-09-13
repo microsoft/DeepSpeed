@@ -437,6 +437,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                            bool rotate_half,
                                            bool rotate_every_two,
                                            int heads,
+                                           int num_kv,
                                            float norm_factor,
                                            bool triangular,
                                            bool local_attention,
@@ -448,14 +449,14 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
 {
     unsigned bsz = query_key_value.size(0);
     unsigned seq_len = query_key_value.size(1);
-    unsigned hidden_dim = query_key_value.size(2) / 3;
+    int k = query_key_value.size(2) / (heads + 2 * num_kv);
+    unsigned hidden_dim = heads * k;
 
     bool is_prompt = (seq_len > 1);
 
     if (is_prompt) InferenceContext::Instance().reset_tokens(seq_len);
     unsigned soft_len = InferenceContext::Instance().current_tokens();
 
-    int k = hidden_dim / heads;
     auto options = at::TensorOptions()
                        .dtype(query_key_value.options().dtype())
                        .layout(at::kStrided)
@@ -486,6 +487,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                       soft_len,
                                       hidden_dim,
                                       heads,
+                                      num_kv,
                                       rotary_dim,
                                       rotate_half,
                                       rotate_every_two,
@@ -1166,6 +1168,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                 input.size(1),
                 (num_heads * padded_head_size),
                 num_heads,
+                num_heads,
                 -1,
                 false,
                 false,
@@ -1190,6 +1193,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                 0,
                 input.size(1),
                 input_cont.size(2),
+                num_heads,
                 num_heads,
                 -1,
                 false,

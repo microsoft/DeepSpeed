@@ -4,7 +4,7 @@
 # DeepSpeed Team
 
 from .base import *
-from .features import HybridSplitQKVContainer, HybridGatedMLPContainer
+from .features import HybridSplitQKVContainer, HybridGatedMLPContainer, MetaTensorContainer
 from deepspeed.utils.types import ActivationFuncType, NormType
 from deepspeed.model_implementations.transformers.ds_llama2 import DeepSpeedLlama2Inference
 import torch
@@ -20,7 +20,7 @@ from ..policy import (
 )
 
 
-class DS_LLAMA2Container(HybridGatedMLPContainer, HybridSplitQKVContainer, BaseTransformerContainer):
+class DS_LLAMA2Container(MetaTensorContainer, HybridGatedMLPContainer, HybridSplitQKVContainer, BaseTransformerContainer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -33,6 +33,7 @@ class DS_LLAMA2Container(HybridGatedMLPContainer, HybridSplitQKVContainer, BaseT
         _config.rotate_half = False
         _config.rotate_every_two = True
         _config.rotary_dim = self.hidden_size // self.num_attention_heads
+        _config.num_kv = self.policy.client_module.attention.n_kv_heads
         self.module = DeepSpeedLlama2Inference(_config, mp_group=self.mp_group)
 
         return self.module
@@ -78,15 +79,15 @@ class DS_LLAMA2Container(HybridGatedMLPContainer, HybridSplitQKVContainer, BaseT
 
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
-            'attention.q_proj.weight', \
-            'attention.k_proj.weight', \
-            'attention.v_proj.weight', \
-            'attention.o_proj.weight', \
-            'feed_forward.up_proj.weight', \
-            'feed_forward.gate_proj.weight', \
-            'feed_forward.down_proj.weight', \
-            'attention_norm.weight', \
-            'ffn_norm.weight'
+            'attention.wq.weight', \
+            'attention.wk.weight', \
+            'attention.wv.weight', \
+            'attention.wo.weight', \
+            'feed_forward.w3.weight', \
+            'feed_forward.w1.weight', \
+            'feed_forward.w2.weight', \
+            'ffn_norm.weight', \
+            'attention_norm.weight'
         )
 
         maybe_copy_qkv(module.attention,
@@ -125,7 +126,8 @@ class LLAMA2LayerPolicy(TransformerPolicy):
         return self.client_module.attention.wq.weight.shape[1], \
                 self.client_module.n_heads, \
                 self.client_module.ffn_norm.eps, \
-                self.client_module.feed_forward.w1.weight.shape[0]
+                (self.client_module.feed_forward.w1.weight.shape[0] * \
+                    torch.distributed.get_world_size() if torch.distributed.is_initialized() else 1) # this is a hack to inject when model is already partitioned!
 
     def attention(self, enable_training=False):
         qw = self.client_module.attention.wq.weight
@@ -145,7 +147,7 @@ class LLAMA2LayerPolicy(TransformerPolicy):
         mlp2 = self.client_module.feed_forward.w2.weight
 
         mlp1 = Parameter(torch.cat((mlp1_up, mlp1_gate), dim=0), requires_grad=enable_training)
-
+        
         return mlp1, None, mlp2, None
 
     def layernorm(self):
