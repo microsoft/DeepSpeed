@@ -12,9 +12,11 @@ import os
 from torch import nn
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from deepspeed.accelerator import get_accelerator
-from unit.modeling import BertConfig, BertLayerNorm, BertEncoder as BertEncoderPostln
-from unit.modelingpreln import BertEncoder as BertEncoderPreln
+from transformers.models.bert.configuration_bert import BertConfig
+from transformers.models.bert.modeling_bert import BertEncoder
 from unit.common import DistributedTest, is_rocm_pytorch
+
+BertLayerNorm = torch.nn.LayerNorm
 
 #if not deepspeed.ops.__installed_ops__['transformer']:
 #pytest.skip(
@@ -194,9 +196,9 @@ def create_models(ds_config):
     biases[7].data.zero_()
 
     if (ds_config.pre_layer_norm):
-        bert_encoder = BertEncoderPreln(bert_config, weights, biases)
+        bert_encoder = BertEncoder(bert_config, weights, biases)
     else:
-        bert_encoder = BertEncoderPostln(bert_config, weights, biases)
+        bert_encoder = BertEncoder(bert_config, weights, biases)
     ds_encoder = DSEncoder(ds_config, weights, biases)
 
     if ds_config.fp16:
