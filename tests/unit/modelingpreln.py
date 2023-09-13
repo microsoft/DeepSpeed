@@ -151,39 +151,6 @@ class LinearActivation(Module):
         return 'in_features={}, out_features={}, bias={}'.format(self.in_features, self.out_features, self.bias
                                                                  is not None)
 
-
-class BertEmbeddings(nn.Module):
-    """Construct the embeddings from word, position and token_type embeddings.
-    """
-
-    def __init__(self, config):
-        super(BertEmbeddings, self).__init__()
-        self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size)
-        self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
-        self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
-
-        # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
-        # any TensorFlow checkpoint file
-        self.LayerNorm = BertLayerNorm(config.hidden_size, eps=1e-12)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
-
-    def forward(self, input_ids, token_type_ids=None):
-        seq_length = input_ids.size(1)
-        position_ids = torch.arange(seq_length, dtype=torch.long, device=input_ids.device)
-        position_ids = position_ids.unsqueeze(0).expand_as(input_ids)
-        if token_type_ids is None:
-            token_type_ids = torch.zeros_like(input_ids)
-
-        words_embeddings = self.word_embeddings(input_ids)
-        position_embeddings = self.position_embeddings(position_ids)
-        token_type_embeddings = self.token_type_embeddings(token_type_ids)
-
-        embeddings = words_embeddings + position_embeddings + token_type_embeddings
-        embeddings = self.LayerNorm(embeddings)
-        embeddings = self.dropout(embeddings)
-        return embeddings
-
-
 class BertSelfAttention(nn.Module):
 
     def __init__(self, i, config, weights, biases):
@@ -194,7 +161,6 @@ class BertSelfAttention(nn.Module):
         self.num_attention_heads = config.num_attention_heads
         self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
-
         self.query = nn.Linear(config.hidden_size, self.all_head_size)
         self.query.weight = weights[0]
         self.query.bias = biases[0]
@@ -204,7 +170,6 @@ class BertSelfAttention(nn.Module):
         self.value = nn.Linear(config.hidden_size, self.all_head_size)
         self.value.weight = weights[2]
         self.value.bias = biases[2]
-
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
         self.softmax = nn.Softmax(dim=-1)
         #self.softmax_config = DeepSpeedSoftmaxConfig()
@@ -216,7 +181,6 @@ class BertSelfAttention(nn.Module):
         #self.softmax_config.fp16 = config.fp16
         #self.softmax_config.prob_drop_out = 0.0
         #self.softmax = DeepSpeedSoftmax(i, self.softmax_config)
-
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(*new_x_shape)
@@ -228,85 +192,23 @@ class BertSelfAttention(nn.Module):
         return x.permute(0, 2, 3, 1)
 
     def forward(self, hidden_states, attention_mask, grads=None):
-        #timing = []
-        #t1 = GPUTimer()
-        #t1.record()
         mixed_query_layer = self.query(hidden_states)
-
-        #timing.append(t1.elapsed())
-        #print("Query elapsed: %s" % (time.clock() - start))
-        #t1.record()
         mixed_key_layer = self.key(hidden_states)
-
-        #timing.append(t1.elapsed())
-        #print("Key elapsed: %s" % (time.clock() - start))
-        #t1.record()
         mixed_value_layer = self.value(hidden_states)
-        #timing.append(t1.elapsed())
-        #print("Value elapsed: %s" % (time.clock() - start))
-
-        #t1.record()
         query_layer = self.transpose_for_scores(mixed_query_layer)
-        # print(query_layer)
-        #timing.append(t1.elapsed())
-        #print("Query-Transform elapsed: %s" % (time.clock() - start))
-        #t1.record()
         key_layer = self.transpose_key_for_scores(mixed_key_layer)
-        # print(key_layer)
-        #timing.append(t1.elapsed())
-        #print("Key-Transform elapsed: %s" % (time.clock() - start))
-        #t1.record()
         value_layer = self.transpose_for_scores(mixed_value_layer)
-        #print(value_layer)
-        #timing.append(t1.elapsed())
-        #print("Value-Transform elapsed: %s" % (time.clock() - start))
-
-        # Take the dot product between "query" and "key" to get the raw attention scores.
-        #t1.record()
-        #print(query_layer.shape)
-        #print(key_layer.shape)
         attention_scores = torch.matmul(query_layer, key_layer)
-        #print(attention_scores.shape)
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
-        #print("Pytorch: ", attention_scores)
-        #timing.append(t1.elapsed())
-        #print("Attention-Score elapsed: %s" % (time.clock() - start))
-        # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
-        #t1.record()
-
-        # context_layer = self.softmax(query_layer, key_layer, value_layer, attention_mask)
-        #print("context shape is :", context_layer.shape)
-        #print("Cuda-ext:, ", attention_scores1)
-        # Normalize the attention scores to probabilities.
-        ####attention_probs = self.softmax(attention_scores)
-        #timing.append(t1.elapsed())
-        #print("Softmax elapsed: %s" % (time.clock() - start))
-        #t1 = GPUTimer()
-        #t1.record()
         attention_scores = attention_scores + attention_mask
         attention_probs = self.softmax(attention_scores)
-        #attention_scores = self.softmax(attention_scores, attention_mask)
-        #print("Softmax elapse {0:8.2f} ms", t1.elapsed() * 1000)
-
         # This is actually dropping out entire tokens to attend to, which might
         # seem a bit unusual, but is taken from the original Transformer paper.
         attention_probs = self.dropout(attention_probs)
-
-        #t1.record()
         context_layer = torch.matmul(attention_probs, value_layer)
-        #timing.append(t1.elapsed())
-        #print("Context elapsed: %s" % (time.clock() - start))
-        #t1.record()
-        #context_layer1 = context_layer.permute(
-        #                0, 1, 3, 2, 4).contiguous()
-        #if grads is not None:
-        # context_layer.register_hook(lambda x, self = self : grads.append([x, "Context"]))
         context_layer1 = context_layer.permute(0, 2, 1, 3).contiguous()
         new_context_layer_shape = context_layer1.size()[:-2] + (self.all_head_size, )
         context_layer1 = context_layer1.view(*new_context_layer_shape)
-        #timing.append(t1.elapsed())
-        #print("Context-Transform elapsed: %s" % (time.clock() - start))
-
         if grads is not None:
             query_layer.register_hook(lambda x, self=self: grads.append([x, "Query"]))
             key_layer.register_hook(lambda x, self=self: grads.append([x, "Key"]))
@@ -326,17 +228,8 @@ class BertSelfOutput(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states, input_tensor):
-        #timing = []
-        #t1 = GPUTimer()
-        #t1.record()
         hidden_states = self.dense(hidden_states)
-        #timing.append(t1.elapsed())
-        #print("Attention Output elapsed: %s" % (time.clock() - start))
         hidden_states = self.dropout(hidden_states)
-        #t1.record()
-        #hidden_states = self.LayerNorm(hidden_states + input_tensor)
-        #timing.append(t1.elapsed())
-        #print("LayerNorm elapsed: %s" % (time.clock() - start))
         return hidden_states
 
     def get_w(self):
@@ -385,19 +278,8 @@ class BertOutput(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states, input_tensor):
-        #timing = []
-        #t1 = GPUTimer()
-        #t1.record()
-        #print (hidden_states)
-        #print (self.dense.weight)
         hidden_states = self.dense(hidden_states)
-        #timing.append(t1.elapsed())
-        #print("FF2 elapsed: %s" % (time.clock() - start))
         hidden_states = self.dropout(hidden_states)
-        #t1.record()
-        #hidden_states = self.LayerNorm(hidden_states + input_tensor)
-        #timing.append(t1.elapsed())
-        #print("LayerNorm elapsed: %s" % (time.clock() - start))
         return hidden_states
 
 
@@ -416,16 +298,11 @@ class BertLayer(nn.Module):
     def forward(self, hidden_states, attention_mask, grads, collect_all_grads=False):
         input_layer_norm = self.PreAttentionLayerNorm(hidden_states)
         attention_output = self.attention(input_layer_norm, attention_mask)
-        #print ("hidden shape is :", hidden_states.shape)
         intermediate_input = hidden_states + attention_output
 
         intermediate_layer_norm = self.PostAttentionLayerNorm(intermediate_input)
         intermediate_output = self.intermediate(intermediate_layer_norm)
         layer_output = self.output(intermediate_output, attention_output)
-
-        #attention_output = self.attention(hidden_states, attention_mask)
-        #intermediate_output = self.intermediate(attention_output)
-        #layer_output = self.output(intermediate_output, attention_output)
 
         if collect_all_grads:
             # self.weight[0].register_hook(lambda x, self=self: grads.append([x,"Q_W"]))

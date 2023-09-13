@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # DeepSpeed Team
-
 from __future__ import absolute_import, division, print_function, unicode_literals
 # Copyright The Microsoft DeepSpeed Team
 # DeepSpeed note, code taken from commit 3d59216cec89a363649b4fe3d15295ba936ced0f
@@ -36,10 +35,6 @@ from torch.utils import checkpoint
 from torch.nn import Module
 import torch.nn.functional as F
 import torch.nn.init as init
-
-#from numba import cuda
-
-#from deepspeed_cuda import DeepSpeedSoftmaxConfig, DeepSpeedSoftmax
 from deepspeed.accelerator import get_accelerator
 
 logger = logging.getLogger(__name__)
@@ -155,7 +150,6 @@ class LinearActivation(Module):
     def extra_repr(self):
         return 'in_features={}, out_features={}, bias={}'.format(self.in_features, self.out_features, self.bias
                                                                  is not None)
-
 
 class BertSelfAttention(nn.Module):
 
