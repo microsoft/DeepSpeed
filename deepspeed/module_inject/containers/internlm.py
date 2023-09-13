@@ -118,6 +118,7 @@ class DS_InternLMContainer(HybridGatedMLPContainer, HybridSplitQKVContainer, Bas
 
 class InternLMLayerPolicy(TransformerPolicy):
     _orig_layer_class = []
+    _orig_layer_class_inited = False
 
     def __init__(self, client_module, inference=True):
         super().__init__(
@@ -127,14 +128,22 @@ class InternLMLayerPolicy(TransformerPolicy):
         )
         self.client_module = client_module
 
+        self._init_orig_layer_class_once()
+
+    def _init_orig_layer_class_once(self):
+        if InternLMLayerPolicy._orig_layer_class_inited:
+            return
+
         for sub_pkg in ['', '.internlm-7b', '.internlm-chat-7b']:
             try:
                 from transformers.utils import TRANSFORMERS_DYNAMIC_MODULE_NAME
                 module = importlib.import_module(f"{TRANSFORMERS_DYNAMIC_MODULE_NAME}{sub_pkg}.modeling_internlm")
-                InternLMLayerPolicy._orig_layer_class.append(module.InternLMDecoderLayer)
-                print(f"InternLMLayerPolicy._orig_layer_class = {InternLMLayerPolicy._orig_layer_class}")
+                if module.InternLMDecoderLayer not in InternLMLayerPolicy._orig_layer_class:
+                    InternLMLayerPolicy._orig_layer_class.append(module.InternLMDecoderLayer)
             except ImportError:
                 continue
+
+        InternLMLayerPolicy._orig_layer_class_inited = True
 
     def get_hidden_heads(self):
         return self.client_module.self_attn.q_proj.weight.shape[1], \
