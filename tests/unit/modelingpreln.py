@@ -25,10 +25,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 """PyTorch BERT model."""
 
 import copy
-import json
 import logging
 import math
-from io import open
 
 import torch
 from torch import nn
