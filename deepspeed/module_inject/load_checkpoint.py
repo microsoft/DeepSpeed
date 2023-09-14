@@ -188,9 +188,9 @@ def load_model_with_checkpoint(r_module,
         OPTLearnedPositionalEmbedding = None
     try:
         from fairscale.nn.model_parallel.layers import (
-           ColumnParallelLinear,
-           ParallelEmbedding,
-           RowParallelLinear,
+            ColumnParallelLinear,
+            ParallelEmbedding,
+            RowParallelLinear,
         )
     except:
         ColumnParallelLinear = None
@@ -255,8 +255,8 @@ def load_model_with_checkpoint(r_module,
                         child = OPTEmbedding(weight_shape=ds_shape)
                         setattr(module, name, child)
                     elif child.__class__ in [LlamaRMSNorm, RMSNorm]:
-                        child = RMSNormalize(dim=ds_shape[-1], 
-                                             dtype=child.weight.dtype, 
+                        child = RMSNormalize(dim=ds_shape[-1],
+                                             dtype=child.weight.dtype,
                                              eps=child.eps if hasattr(child, 'eps') else child.variance_epsilon)
                         setattr(module, name, child)
                     else:

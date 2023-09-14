@@ -163,7 +163,7 @@ class DeepSpeedSelfAttention(nn.Module):
                                                                        alibi=alibi)
         output = self.vector_matmul_func(input=context_layer, weight=self.attn_ow)
         inp_norm = qkv_out[-1]
-    
+
         if self.config.mlp_after_attn and self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
             dist.all_reduce(output, group=self.mp_group)
         return (output, key_layer, value_layer, context_layer, inp_norm)
