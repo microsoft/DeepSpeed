@@ -13,8 +13,8 @@ SKIP_AUTOTUNE = False
 
 
 def _triton_ops_matmul_early_config_prune(configs, named_args):
-    device = torch.cuda.current_device()
-    capability = torch.cuda.get_device_capability()
+    device = torch.cuda.current_device()  #ignore-cuda
+    capability = torch.cuda.get_device_capability()  #ignore-cuda
     # BLOCK_M, BLOCK_N, BLOCK_K, SPLIT_K, num_warps, num_stages
     dtsize = named_args['A'].element_size()
     dtype = named_args['A'].dtype
