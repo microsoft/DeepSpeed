@@ -21,7 +21,7 @@ def ref_torch_attention(q, k, v, mask, sm_scale):
 @pytest.mark.inference_ops
 @pytest.mark.parametrize("BATCH", [1])  # batch
 @pytest.mark.parametrize("H", [12])  # heads
-@pytest.mark.parametrize("N_CTX", [4, 128])  # sequence length
+@pytest.mark.parametrize("N_CTX", [16, 128])  # sequence length
 @pytest.mark.parametrize("D_HEAD", [64, 128])
 @pytest.mark.parametrize("causal", [True, False])
 @pytest.mark.parametrize("use_flash", [True, False])
@@ -63,8 +63,6 @@ def test_attention(BATCH, H, N_CTX, D_HEAD, causal, use_flash, dtype=torch.float
     qkv[:, :, 2 * H * D_HEAD:] = v.permute(0, 2, 1, 3).contiguous().reshape((BATCH, N_CTX, H * D_HEAD))
 
     if use_flash:
-        if N_CTX % 128 != 0:
-            pytest.skip("triton flash is for sequence length in integer multiples of 128")
         triton_mask = torch.zeros((BATCH, 1, 1, N_CTX), dtype=dtype, device="cuda")
         if not causal:
             lengths = torch.randint(N_CTX - 8, N_CTX, (BATCH, 1), device='cuda')
@@ -73,15 +71,7 @@ def test_attention(BATCH, H, N_CTX, D_HEAD, causal, use_flash, dtype=torch.float
             mask = torch.zeros((BATCH, H, N_CTX, N_CTX), dtype=dtype, device="cuda")
             for b in range(BATCH):
                 mask[b,:,:,lengths[b]:] = minus_inf
-            # ref_out = ref_torch_attention(q, k, v, mask, sm_scale).permute(0,2,1,3).reshape(BATCH, N_CTX, H * D_HEAD)
             ref_out = ref_torch_attention(q, k, v, mask, sm_scale)
-        # else:
-        #     causal_mask = torch.zeros((BATCH, H, N_CTX, N_CTX), dtype=dtype, device="cuda")
-        #     M = torch.tril(torch.ones((N_CTX, N_CTX), device="cuda"))
-        #     for z in range(BATCH):
-        #         for h in range(H):
-        #             causal_mask[:, :, M == 0] = float("-inf")
-        #     ref_out = ref_torch_attention(q, k, v, causal_mask, sm_scale).permute(0,2,1,3).reshape(BATCH, N_CTX, H * D_HEAD)
         tri_out = _triton_packed_flash(qkv, D_HEAD, triton_mask, sm_scale, causal=causal, add_mask=(not causal))
     else:
         tri_out = _triton_attention(qkv,
