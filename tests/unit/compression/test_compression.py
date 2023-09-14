@@ -10,8 +10,7 @@ import numpy as np
 from unit.megatron_model import get_gpt2_model
 from deepspeed.compression.compress import init_compression
 from transformers.models.bert.configuration_bert import BertConfig
-#from transformers.models.bert.modeling_bert import BertEncoder as BertEncoderPreln
-from unit.modelingpreln import BertEncoder as BertEncoderPreln
+from transformers.models.bert.modeling_bert import BertEncoder
 from deepspeed.compression.basic_layer import LinearLayer_Compress, ColumnParallelLinear_Compress, RowParallelLinear_Compress
 from deepspeed.compression.helper import convert_conv1d_to_linear
 from deepspeed.accelerator import get_accelerator
@@ -64,7 +63,7 @@ def create_bert_model():
     biases.append(torch.nn.Parameter(torch.Tensor(hidden_size)))
     biases.append(torch.nn.Parameter(torch.Tensor(hidden_size)))
 
-    return BertEncoderPreln(bert_config, weights, biases)
+    return BertEncoder(bert_config)
 
 
 class Conv1D(torch.nn.Module):
