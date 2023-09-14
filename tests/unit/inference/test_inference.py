@@ -563,8 +563,6 @@ class TestAutoTensorParallelism(DistributedTest):
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         world_size = int(os.getenv("WORLD_SIZE", "3"))
 
-        # We have to load these large models on CPU with pipeline because not
-        # enough GPU memory
         pipe = pipeline(task,
                         model=model,
                         device=torch.device(get_accelerator().device_name(local_rank)),
