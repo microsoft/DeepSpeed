@@ -68,7 +68,7 @@ _test_tasks = [
 ]
 
 # Get a list of all models and mapping from task to supported models
-_hf_models = HfApi().list_models()
+_hf_models = list(HfApi().list_models())
 _hf_model_names = [m.modelId for m in _hf_models]
 _hf_task_to_models = {task: [m.modelId for m in _hf_models if m.pipeline_tag == task] for task in _test_tasks}
 
