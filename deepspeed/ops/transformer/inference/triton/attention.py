@@ -67,13 +67,12 @@ class TritonSelfAttention(nn.Module):
                                         requires_grad=False)
 
         self.num_attention_heads_per_partition = self.config.heads // self.config.mp_size
-
         self.hidden_size_per_partition = self.config.hidden_size // self.config.mp_size
         self.hidden_size_per_attention_head = self.config.hidden_size // self.config.heads
 
         self.mp_group = mp_group
         self.use_flash = False
-        # triton flash attention is for those gpus after the ampere architectures
+        # triton flash attention is enabled when the compute capability >= 8.0
         if get_accelerator().is_triton_supported():
             self.use_flash = True
 
@@ -257,7 +256,6 @@ def _flash_packed_kernel(
     ADD_MASK: tl.constexpr,
     IS_CAUSAL: tl.constexpr,
     sm_scale,
-    # L,
     Out,
     stride_qz,
     stride_qh,
@@ -341,8 +339,7 @@ def _flash_packed_kernel(
         # -- scale and update acc --
         acc_scale = l_i * 0 + alpha  # workaround some compiler bug
         acc *= acc_scale[:, None]
-        acc += tl.dot(p.to(tl.float16),
-                      v.to(tl.float16))
+        acc += tl.dot(p.to(tl.float16), v.to(tl.float16))
         # -- update m_i and l_i --
         l_i = l_i * alpha + tl.sum(p, 1)
         m_i = m_i_new
@@ -362,7 +359,6 @@ def _triton_packed_flash(qkv, head_size, mask, sm_scale, causal=False, add_mask=
     BLOCK_N = 64 if head_size <= 64 else 32
 
     o = torch.empty((qkv.shape[0], qkv.shape[1], hidden_size), device=qkv.device, dtype=torch.half)
-    # dtype=torch.half)
     if mask is None:
         mask = torch.empty(0)
         add_mask = False
