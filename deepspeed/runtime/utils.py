@@ -14,7 +14,6 @@ import os
 import psutil
 import gc
 from math import sqrt
-from bisect import bisect_left
 from packaging import version as pkg_version
 
 import torch
