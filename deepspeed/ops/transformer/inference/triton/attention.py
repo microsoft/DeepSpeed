@@ -342,11 +342,10 @@ def _flash_packed_kernel(
         acc_scale = l_i * 0 + alpha  # workaround some compiler bug
         acc *= acc_scale[:, None]
         acc += tl.dot(p.to(tl.float16),
-                      v.to(tl.float16))  # loading q,k and v in int8 gives incorrect results, looks like triton bug
+                      v.to(tl.float16))
         # -- update m_i and l_i --
         l_i = l_i * alpha + tl.sum(p, 1)
         m_i = m_i_new
-        # update pointers
 
     # write back l and m
     acc = acc / l_i[:, None]
