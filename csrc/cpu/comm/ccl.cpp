@@ -278,9 +278,19 @@ int world_size = -1;
 std::set<int> _comm_ids;
 std::set<int> _colors;
 ccl::vector_class<ccl::communicator> _ccl_comms;
+std::map<std::vector<int>, int> group_to_comm_id;
 
 ccl::communicator& _get_comm_from_group() { return _ccl_comms[0]; }
 ccl::communicator& _get_comm_from_group(py::object group) { return _ccl_comms[0]; }
+ccl::communicator& _get_comm_from_group(std::vector<int> ranks) 
+{ 
+    if (group_to_comm_id.find(ranks) != group_to_comm_id.end())
+    {
+        auto id = group_to_comm_id.find(ranks);
+        return _ccl_comms[id->second];
+    }
+    return _ccl_comms[0];
+}
 
 #define CCLCHECK(cmd) \
     do {              \
@@ -452,7 +462,7 @@ ccl::reduction get_ccl_reduce_op(py::object op, at::Tensor& input)
     return ccl_op;
 }
 
-void broadcast(torch::Tensor& data, int src, py::object group, bool async_op)
+void broadcast(torch::Tensor& data, int src, std::vector<int> group, bool async_op)
 {
     CCLCHECK(ccl::broadcast(data.data_ptr(),
                             data.numel(),
@@ -463,7 +473,7 @@ void broadcast(torch::Tensor& data, int src, py::object group, bool async_op)
 }
 
 // TODO: implement torch's async_op behavior, document it.
-void all_reduce(torch::Tensor& data, py::object op, py::object group, bool async_op)
+void all_reduce(torch::Tensor& data, py::object op, std::vector<int> group, bool async_op)
 {
     CCLCHECK(ccl::allreduce(data.data_ptr(),
                             data.data_ptr(),
@@ -477,7 +487,7 @@ void all_reduce(torch::Tensor& data, py::object op, py::object group, bool async
 void all_reduce_caching(torch::Tensor& data,
                         py::object op,
                         std::string match_id,
-                        py::object group,
+                        std::vector<int> group,
                         bool async_op)
 {
     ccl::allreduce_attr attr = ccl::default_allreduce_attr;
@@ -499,7 +509,7 @@ void all_reduce_caching(torch::Tensor& data,
                  .wait());
 }
 
-void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, bool async_op)
+void inference_all_reduce(torch::Tensor& data, py::object op, std::vector<int> group, bool async_op)
 {
     static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
     static auto ReduceOpSum = (int)py::int_(ReduceOp.attr("SUM").attr("value"));
@@ -569,7 +579,7 @@ void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, 
     }
 }
 
-void barrier(py::object group, bool async_op)
+void barrier(std::vector<int> group, bool async_op)
 {
     CCLCHECK(ccl::barrier(_get_comm_from_group(group)).wait());
 }
