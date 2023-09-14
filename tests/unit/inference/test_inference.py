@@ -261,6 +261,10 @@ def validate_test(model_w_task, dtype, enable_cuda_graph, enable_triton):
 
 
 @pytest.mark.inference
+@pytest.mark.parametrize("model_w_task", [("bert-base-cased", "fill-mask"),
+                                          ("roberta-large", "fill-mask"),
+                                         ],
+                         ids=["bert", "roberta"])
 class TestModelTask(DistributedTest):
     world_size = 1
 

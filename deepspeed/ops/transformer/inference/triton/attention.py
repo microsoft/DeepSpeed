@@ -220,7 +220,6 @@ def _triton_attention(qkv,
     if isinstance(qkv, list):
         qkv = qkv[0]
 
-    #assert layer_past is None, "layer_past not supported in triton yet"
     assert alibi is None, "layer_past not supported in alibi yet"
 
     if use_triton_flash:
@@ -235,6 +234,11 @@ def _triton_attention(qkv,
 
     return output
 
+'''
+flash attention 2
+modified the triton kernel in
+https://github.com/openai/triton/blob/08c16589573621fcb8cd5a9c3b8a0537077f876d/python/tutorials/06-fused-attention.py
+'''
 
 @triton.jit
 def _flash_packed_kernel(
@@ -286,17 +290,13 @@ def _flash_packed_kernel(
     # don't work as expected with `exp` in the loop
     qk_scale = sm_scale * 1.44269504
     # load q: it will stay in SRAM throughout
-    # q = tl.load(Q_block_ptr)
     q = tl.load(q_ptrs, mask=offs_m[:, None] < N_CTX, other=0.0)
     q = (q * qk_scale).to(tl.float16)
-    # q = tl.load(Q_block_ptr)
     # loop over k, v and update accumulator
     lo = 0
     hi = P_SEQ + (start_m + 1) * BLOCK_M if IS_CAUSAL else N_CTX + P_SEQ
     for start_n in range(lo, hi, BLOCK_N):
         # -- load k, v --
-        # k = tl.load(K_block_ptr)
-        # v = tl.load(V_block_ptr)
         k = tl.load(k_ptrs + start_n * stride_qh, mask=(start_n + offs_n)[:, None] < N_CTX, other=0.0)
         v = tl.load(v_ptrs + start_n * stride_qh, mask=(start_n + offs_n)[:, None] < N_CTX, other=0.0)
         # -- compute qk ---
@@ -324,26 +324,10 @@ def _flash_packed_kernel(
         l_i = l_i * alpha + tl.sum(p, 1)
         m_i = m_i_new
         # update pointers
-        # K_block_ptr = tl.advance(K_block_ptr, (0, BLOCK_N))
-        # V_block_ptr = tl.advance(V_block_ptr, (BLOCK_N, 0))
 
     # write back l and m
     acc = acc / l_i[:, None]
-    # acc = attn_scale * acc
-    # l_ptrs = L + off_hz * N_CTX + offs_m
-    # tl.store(l_ptrs, m_i + tl.math.log2(l_i))
-    # write back O
-    # o_offset = off_hz * stride_oh
     o_offset = batch * stride_oz + head * BLOCK_DMODEL
-    # O_block_ptr = tl.make_block_ptr(
-    #     base=Out + o_offset,
-    #     shape=(N_CTX, BLOCK_DMODEL),
-    #     strides=(stride_oh, 1),
-    #     offsets=(start_m * BLOCK_M, 0),
-    #     block_shape=(BLOCK_M, BLOCK_DMODEL),
-    #     order=(1, 0)
-    # )
-    # tl.store(O_block_ptr, acc.to(tl.float16))
     out_ptrs = Out + o_offset + (offs_m[:, None] * stride_oh + offs_d[None, :])
     tl.store(out_ptrs, acc.to(tl.float16), mask=offs_m[:, None] < N_CTX)
 
