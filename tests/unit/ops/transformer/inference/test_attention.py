@@ -35,7 +35,7 @@ def test_attention(BATCH, H, N_CTX, D_HEAD, causal, use_flash, dtype=torch.float
     from deepspeed.ops.transformer.inference.triton.matmul_ext import fp16_matmul
     fp16_matmul.skip_autotune()
 
-    from deepspeed.ops.transformer.inference.triton.attention import _triton_attention,_triton_packed_flash
+    from deepspeed.ops.transformer.inference.triton.attention import _triton_attention, _triton_packed_flash
     torch.manual_seed(20)
     q = torch.empty((BATCH, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0, std=.5)
     k = torch.empty((BATCH, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0, std=.5)
@@ -67,10 +67,10 @@ def test_attention(BATCH, H, N_CTX, D_HEAD, causal, use_flash, dtype=torch.float
         if not causal:
             lengths = torch.randint(N_CTX - 8, N_CTX, (BATCH, 1), device='cuda')
             for i, l in enumerate(lengths):
-                triton_mask[i,...,l:] = minus_inf
+                triton_mask[i, ..., l:] = minus_inf
             mask = torch.zeros((BATCH, H, N_CTX, N_CTX), dtype=dtype, device="cuda")
             for b in range(BATCH):
-                mask[b,:,:,lengths[b]:] = minus_inf
+                mask[b, :, :, lengths[b]:] = minus_inf
             ref_out = ref_torch_attention(q, k, v, mask, sm_scale)
         tri_out = _triton_packed_flash(qkv, D_HEAD, triton_mask, sm_scale, causal=causal, add_mask=(not causal))
     else:
@@ -86,4 +86,3 @@ def test_attention(BATCH, H, N_CTX, D_HEAD, causal, use_flash, dtype=torch.float
                                     use_ds_attention=False)
     tri_out = tri_out.reshape((BATCH, N_CTX, H, D_HEAD)).permute(0, 2, 1, 3)
     assert_almost_equal(ref_out, tri_out)
-
