@@ -51,16 +51,21 @@ class MegatronLayerPolicy(TransformerPolicy):
                 try:
                     from megatron.model.transformer import ParallelTransformerLayer
                     MegatronLayerPolicy._orig_layer_class = ParallelTransformerLayer
+                    MegatronLayerPolicy.version = 1
                 except ImportError:
                     MegatronLayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
-        return self.client_module.attention.query_key_value.weight.shape[1], \
-                self.client_module.attention.num_attention_heads, \
-                self.client_module.input_layernorm.eps
-
-    def get_q_k_v(self):
-        return None
+        if MegatronLayerPolicy.version == 0:
+            return self.client_module.attention.query_key_value.weight.shape[1], \
+                    self.client_module.attention.num_attention_heads, \
+                    self.client_module.input_layernorm.eps, \
+                    DEFAULT_INTERMEDIATE_SIZE
+        else:
+            return self.client_module.self_attention.query_key_value.weight.shape[1], \
+                    self.client_module.self_attention.num_attention_heads, \
+                    self.client_module.input_layernorm.eps, \
+                    DEFAULT_INTERMEDIATE_SIZE
 
     def attention(self, enable_training=False):
         if self.inference:
@@ -74,7 +79,7 @@ class MegatronLayerPolicy(TransformerPolicy):
                attention.dense.weight, \
                attention.dense.bias
 
-    def mlp(self, moe_type='standard'):
+    def mlp(self, moe_type='standard', enable_training=False):
         from deepspeed.moe.utils import has_moe_layers
         moe, _ = has_moe_layers(self.client_module)
 
@@ -110,6 +115,3 @@ class MegatronLayerPolicy(TransformerPolicy):
                self.client_module.post_attention_layernorm.bias, \
                self.client_module.input_layernorm.weight, \
                self.client_module.input_layernorm.bias
-
-    def get_lora_params(self):
-        return []
