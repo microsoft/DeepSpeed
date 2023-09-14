@@ -6,8 +6,8 @@
 import pytest
 import torch
 import deepspeed
+from deepspeed.accelerator import get_accelerator
 from .inference_test_utils import assert_almost_equal
-
 
 # reference timplementation
 def ref_torch_attention(q, k, v, mask, sm_scale):
@@ -63,6 +63,8 @@ def test_attention(BATCH, H, N_CTX, D_HEAD, causal, use_flash, dtype=torch.float
     qkv[:, :, 2 * H * D_HEAD:] = v.permute(0, 2, 1, 3).contiguous().reshape((BATCH, N_CTX, H * D_HEAD))
 
     if use_flash:
+        if not get_accelerator().is_triton_supported():
+            pytest.skip("triton flash attention is supported when the compute capability > 8.0")
         triton_mask = torch.zeros((BATCH, 1, 1, N_CTX), dtype=dtype, device="cuda")
         if not causal:
             lengths = torch.randint(N_CTX - 8, N_CTX, (BATCH, 1), device='cuda')
