@@ -228,10 +228,7 @@ def run_backward(ds_config, seq_len, atol=1e-2, verbose=False):
     Y = torch.randn(ds_config.batch_size, seq_len, ds_config.hidden_size, **kwargs)
 
     # run baseline
-    base_results = bert_encoder(hidden_states,
-                                input_mask,
-                                output_all_encoded_layers=False,
-                                checkpoint_activations=False)
+    base_results = bert_encoder(hidden_states, input_mask)
 
     loss = (Y - base_results[0]).pow(2).sum() / 64
     loss.backward()

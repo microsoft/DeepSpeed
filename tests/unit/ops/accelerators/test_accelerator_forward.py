@@ -174,11 +174,7 @@ def run_forward(ds_config, seq_len, atol=1e-2, verbose=False, test_bsz=None):
     input_mask = torch.randn(bsz, 1, 1, seq_len, **kwargs)
 
     # run baseline
-    base_results = bert_encoder(hidden_states,
-                                input_mask,
-                                output_all_encoded_layers=False,
-                                checkpoint_activations=False)
-
+    base_results = bert_encoder(hidden_states, input_mask)
     # run ds
     ds_results = ds_encoder(hidden_states, input_mask, output_all_encoded_layers=False, checkpoint_activations=False)
 
