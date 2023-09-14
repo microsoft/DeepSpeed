@@ -141,9 +141,9 @@ def create_models(ds_config):
     biases[7].data.zero_()
 
     if (ds_config.pre_layer_norm):
-        bert_encoder = BertEncoder(bert_config, weights, biases)
+        bert_encoder = BertEncoder(bert_config)
     else:
-        bert_encoder = BertEncoder(bert_config, weights, biases)
+        bert_encoder = BertEncoder(bert_config)
     ds_encoder = DSEncoder(ds_config, weights, biases)
 
     if ds_config.fp16:
