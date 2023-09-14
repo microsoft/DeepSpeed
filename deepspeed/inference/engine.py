@@ -26,7 +26,7 @@ from ..module_inject.policy import TransformerPolicy
 from ..module_inject.auto_tp import AutoTP
 
 from ..module_inject.replace_policy import generic_policies
-from ..module_inject.auto_tp_model_utils import build_bloom_alibi_tensor, build_mpt_atten_bias_tensor
+from ..module_inject.auto_tp_model_utils import build_bloom_alibi_tensor, build_mpt_atten_bias_tensor, build_mpt_alibi_tensor
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -129,11 +129,21 @@ class InferenceEngine(Module):
             # 1. User specified Tensor Parallelism
             assert not config.replace_with_kernel_inject, "Cannot use both user specified injection policy and kernel injection"
             for client_module, injection_policy in self.injection_dict.items():
+
+                assert issubclass(client_module,
+                                  torch.nn.Module), f"{client_module} is not a subclass of torch.nn.Module"
+
                 # construct the tuple and pass that instead of a string or dict.
                 if isinstance(injection_policy, str):
                     config.injection_policy_tuple = (injection_policy, )
                 else:
                     config.injection_policy_tuple = injection_policy
+
+                layer_names = [name for name, _ in self.module.named_modules()]
+                for policy in config.injection_policy_tuple:
+                    if not any(name.endswith(policy) for name in layer_names):
+                        raise ValueError(f"Injection policy layer'{policy}' not valid.")
+
                 self._apply_injection_policy(config, client_module)
         else:
             if config.replace_with_kernel_inject:
@@ -187,6 +197,9 @@ class InferenceEngine(Module):
         if hasattr(self.module, 'transformer'):
             if hasattr(self.module.transformer, 'build_alibi_tensor'):
                 self.module.transformer.build_alibi_tensor = build_bloom_alibi_tensor
+            if hasattr(self.module.transformer, 'build_mpt_alibi_tensor'):
+                self.module.transformer.build_mpt_alibi_tensor_orig = self.module.transformer.build_mpt_alibi_tensor
+                self.module.transformer.__class__.build_mpt_alibi_tensor = build_mpt_alibi_tensor
 
     def build_attn_bias(self):
         if hasattr(self.module, 'transformer'):
