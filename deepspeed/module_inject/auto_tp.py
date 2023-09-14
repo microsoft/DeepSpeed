@@ -377,7 +377,6 @@ class AutoTP():
         ]:
             if hasattr(child, param):
                 param_val = getattr(child, param)
-                #assert param_val % self.mp_size == 0, f"{param} ({param_val}) must be divisible by mp_size ({self.mp_size})"
                 setattr(child, param, get_shard_size(param_val, self.mp_size))
         setattr(child, "replaced", True)
 
@@ -432,3 +431,12 @@ class AutoTP():
                 self.update_mp_params(child)
                 self._replace_module(child, name, class_name)
         return r_module
+
+    def get_model_num_kv_heads(self, config):
+        num_kv_heads = None
+        kv_head_names = ['num_key_value_heads', 'num_attention_heads', 'n_heads']
+        for name in kv_head_names:
+            if hasattr(config, name):
+                num_kv_heads = getattr(config, name)
+                if num_kv_heads != None:
+                    break

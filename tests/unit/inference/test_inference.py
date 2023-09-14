@@ -565,12 +565,13 @@ class TestAutoTensorParallelism(DistributedTest):
 
         # We have to load these large models on CPU with pipeline because not
         # enough GPU memory
-        pipe = pipeline(task, model=model, device=torch.device("cpu"), framework="pt")
+        pipe = pipeline(task,
+                        model=model,
+                        device=torch.device(get_accelerator().device_name(local_rank)),
+                        framework="pt")
         bs_output = pipe(query, **inf_kwargs)
 
         pipe.model = deepspeed.init_inference(pipe.model, mp_size=world_size, dtype=dtype)
-        # Switch device to GPU so that input tensors are not on CPU
-        pipe.device = torch.device(get_accelerator().device_name(local_rank))
         ds_output = pipe(query, **inf_kwargs)
 
         print(local_rank, "baseline", bs_output)

@@ -273,21 +273,15 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         _autotp.set_tensor_parallel_config(config.tensor_parallel.tp_size, config.tensor_parallel.tp_group)
 
         # 3. Try to get num_key_heads from model_config.num_key_value_heads
-        num_kv_heads = None
-        kv_head_names = ['num_key_value_heads', 'num_attention_heads', 'n_heads']
-        for name in kv_head_names:
-            if hasattr(model_config, name):
-                num_kv_heads = getattr(model_config, name)
-                if num_kv_heads != None:
-                    break
+        num_kv_heads = _autotp.get_model_num_kv_heads(model_config)
 
-        # 5. When we have num_kv_heads defined, uneven division is possible, otherwise enforce even division
+        # 4. When we have num_kv_heads defined, uneven division is possible, otherwise enforce even division
         set_num_kv_heads(num_kv_heads)
 
-        # 6. Set linear policies
+        # 5. Set linear policies
         _autotp.update_linear_policies()
 
-        # 7. Replace modules
+        # 6. Replace modules
         return _autotp._replace_module(module)
 
     def replace_fn(child, _policy, layer_id=0, prefix="", state_dict=None):
