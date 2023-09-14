@@ -19,6 +19,7 @@ def check_partition(weights, num_parts, target_diff):
 
 
 def test_partition_balanced():
+    check_partition([1, 2, 1], 4, target_diff=2)
     check_partition([1, 1, 1, 1], 4, target_diff=0)
     check_partition([1, 1, 1, 1, 1], 4, target_diff=1)
     check_partition([1, 1, 1, 1, 0, 1], 4, target_diff=1)

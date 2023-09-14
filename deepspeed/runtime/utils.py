@@ -17,7 +17,6 @@ from math import sqrt
 from packaging import version as pkg_version
 
 import torch
-import numpy as np
 from deepspeed import comm as dist
 
 try:
@@ -576,8 +575,12 @@ def partition_balanced(weights, num_parts):
     use dynamic programming solve `The Linear Partition Problem`.
     see https://www8.cs.umu.se/kurser/TDBAfl/VT06/algorithms/BOOK/BOOK2/NODE45.HTM
     """
+    import numpy as np
     n = len(weights)
     m = num_parts
+
+    if n <= m:
+        return partition_uniform(n, m)
 
     dp_max = np.full((n + 1, m + 1), np.inf)
     dp_min = np.full((n + 1, m + 1), np.inf)
