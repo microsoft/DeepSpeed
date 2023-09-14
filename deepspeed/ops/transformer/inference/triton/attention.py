@@ -273,7 +273,9 @@ def _triton_packed_flash(
     num_warps = 4
     P_SEQ = 0
 
-    _flash_packed_kernel[grid](qkv,
+    # _flash_packed_kernel[grid](qkv,
+    print(f"debug:_triton_packed_flash:(Z, H, N_CTX, P_SEQ)={(qkv.shape[0], heads, qkv.shape[1], P_SEQ)}")
+    _flash_packed_kernel2[grid](qkv,
                     mask,
                     add_mask,
                     causal,
@@ -447,30 +449,6 @@ def _flash_packed_kernel2(
     q_offset = batch * stride_qz + head * BLOCK_DMODEL
     k_offset = q_offset + hidden_size
     v_offset = k_offset + hidden_size
-    Q_block_ptr = tl.make_block_ptr(
-        base=QKV + q_offset,
-        shape=(N_CTX, BLOCK_DMODEL),
-        strides=(stride_qh, 1),
-        offsets=(start_m * BLOCK_M, 0),
-        block_shape=(BLOCK_M, BLOCK_DMODEL),
-        order=(1, 0)
-    )
-    K_block_ptr = tl.make_block_ptr(
-        base=QKV + k_offset,
-        shape=(BLOCK_DMODEL, N_CTX + P_SEQ),
-        strides=(1, stride_qh),
-        offsets=(0, 0),
-        block_shape=(BLOCK_DMODEL, BLOCK_N),
-        order=(0, 1)
-    )
-    V_block_ptr = tl.make_block_ptr(
-        base=QKV + v_offset,
-        shape=(N_CTX + P_SEQ, BLOCK_DMODEL),
-        strides=(stride_qh, 1),
-        offsets=(0, 0),
-        block_shape=(BLOCK_N, BLOCK_DMODEL),
-        order=(1, 0)
-    )
 
     # initialize offsets
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -480,7 +458,6 @@ def _flash_packed_kernel2(
     q_ptrs = QKV + q_offset + offs_m[:, None] * stride_qh + offs_d[None, :]
     k_ptrs = QKV + hidden_size + q_offset + offs_n[:, None] * stride_qh + offs_d[None, :]
     v_ptrs = QKV + 2 * hidden_size + q_offset + offs_n[:, None] * stride_qh + offs_d[None, :]
-
 
     # mask
     off_mask = batch * stride_mh + offs_n[None, :]
@@ -496,8 +473,8 @@ def _flash_packed_kernel2(
     qk_scale = sm_scale * 1.44269504
     # load q: it will stay in SRAM throughout
     # q = tl.load(Q_block_ptr)
-    # q = (q * qk_scale).to(tl.float16)
     q = tl.load(q_ptrs, mask=offs_m[:, None] < N_CTX, other=0.0)
+    q = (q * qk_scale).to(tl.float16)
     # q = tl.load(Q_block_ptr)
     # loop over k, v and update accumulator
     lo = 0
@@ -519,7 +496,8 @@ def _flash_packed_kernel2(
         if IS_CAUSAL:
             qk = tl.where(P_SEQ + offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
 
-        qk += tl.dot(q, tl.trans(k), out_dtype=tl.float16) * qk_scale
+        qk += tl.dot(q, tl.trans(k), out_dtype=tl.float16)
+        qk += tl.where((start_n + offs_n)[None, :] < N_CTX, 0, minus_inf)
         # -- compute scaling constant ---
         m_i_new = tl.maximum(m_i, tl.max(qk, 1))
         alpha = tl.math.exp2(m_i - m_i_new)
@@ -552,7 +530,7 @@ def _flash_packed_kernel2(
     #     order=(1, 0)
     # )
     # tl.store(O_block_ptr, acc.to(tl.float16))
-    out_ptrs = Out + o_offset + (offs_m[:, None] * stride_om + offs_d[None, :])
+    out_ptrs = Out + o_offset + (offs_m[:, None] * stride_oh + offs_d[None, :])
     tl.store(out_ptrs, acc.to(tl.float16), mask=offs_m[:, None] < N_CTX)
 
 
@@ -691,10 +669,18 @@ def test_attention(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
         ref_out = ref_torch_attention(q, k, v, causal_mask, sm_scale, verbose=False).permute(0,2,1,3).reshape(BATCH, N_CTX, H * D_HEAD)
         tri_out = _triton_packed_flash(qkv, D_HEAD, mask=None, sm_scale=sm_scale, causal=True, add_mask=False)
         max_diff(ref_out, tri_out)
-        print(f"ref_out={ref_out}")
-        print(f"tri_out={tri_out}")
+        # print(f"ref_out={ref_out}")
+        # print(f"tri_out={tri_out}")
         assert torch.allclose(ref_out, tri_out, atol=1e-2, rtol=0)
         print(f"PASSED: triton-flash2, packed, causal")
+
+        ref_out = ref_torch_attention(q, k, v, None, sm_scale, verbose=False).permute(0,2,1,3).reshape(BATCH, N_CTX, H * D_HEAD)
+        tri_out = _triton_packed_flash(qkv, D_HEAD, mask=None, sm_scale=sm_scale, causal=False, add_mask=False)
+        max_diff(ref_out, tri_out)
+        # print(f"ref_out={ref_out}")
+        # print(f"tri_out={tri_out}")
+        assert torch.allclose(ref_out, tri_out, atol=1e-2, rtol=0)
+        print(f"PASSED: triton-flash2, packed, no-mask, non-causal")
 
         ref_out = ref_torch_attention(q, k, v, mask, sm_scale, verbose=False).permute(0,2,1,3).reshape(BATCH, N_CTX, H * D_HEAD)
         tri_out = _triton_packed_flash(qkv, D_HEAD, mask=triton_mask, sm_scale=sm_scale, causal=False, add_mask=True)
@@ -711,9 +697,9 @@ def test_attention(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
     # print(f"flash_tri_out={flash_tri_out}")
     # assert_almost_equal(ref_out, flash_tri_out)
 
-# test_attention(Z=1, H=2, N_CTX=128, D_HEAD=128, dtype=torch.float16)
-# # test_attention(Z=1, H=2, N_CTX=16, D_HEAD=64, dtype=torch.float16)
-# # seqlen = [129, 131, 192] #[32, 55, 71, 128]
+test_attention(Z=1, H=2, N_CTX=128, D_HEAD=128, dtype=torch.float16)
+test_attention(Z=1, H=2, N_CTX=16, D_HEAD=64, dtype=torch.float16)
+seqlen = [32, 55, 71, 128, 129, 131, 192]
 # seqlen = [128, 256] #[32, 55, 71, 128]
-# for s in seqlen:
-#     test_attention(Z=4, H=12, N_CTX=s, D_HEAD=64, dtype=torch.float16)
+for s in seqlen:
+    test_attention(Z=4, H=12, N_CTX=s, D_HEAD=64, dtype=torch.float16)
