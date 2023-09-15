@@ -1,0 +1,1 @@
+trident@git+https://github.com/kakaobrain/trident.git@main

@@ -4,6 +4,8 @@
 # DeepSpeed Team
 
 import torch
+
+import deepspeed
 from deepspeed import comm as dist
 from torch import nn
 from torch.nn import functional as F
@@ -124,9 +126,12 @@ class RMSNormalize(nn.Module):
         self.eps = eps
 
     def forward(self, hidden_states):
-        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
-        if self.weight.dtype in [torch.float16, torch.bfloat16]:
-            hidden_states = hidden_states.to(self.weight.dtype)
+        if deepspeed.HAS_TRIDENT and get_accelerator().current_device_name() == "cuda":
+            return trident.function.rms_norm(input, -1.0, weight, eps=self.eps)
+        else:
+            variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
+            hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+            if self.weight.dtype in [torch.float16, torch.bfloat16]:
+                hidden_states = hidden_states.to(self.weight.dtype)
 
-        return hidden_states * self.weight
+            return hidden_states * self.weight

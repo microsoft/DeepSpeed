@@ -86,6 +86,7 @@ extras_require = {
     'inf': fetch_requirements('requirements/requirements-inf.txt'),
     'sd': fetch_requirements('requirements/requirements-sd.txt'),
     'triton': fetch_requirements('requirements/requirements-triton.txt'),
+    'trident': fetch_requirements('requirements/requirements-trident.txt'),
 }
 
 # Add specific cupy version to both onebit extension variants.

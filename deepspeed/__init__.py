@@ -18,6 +18,12 @@ try:
 except ImportError:
     HAS_TRITON = False
 
+try:
+    import trident
+    HAS_TRIDENT = True
+except ImportError:
+    HAS_TRIDENT = False
+
 from . import ops
 from . import module_inject
 
