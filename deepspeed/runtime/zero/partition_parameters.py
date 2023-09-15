@@ -33,6 +33,7 @@ from deepspeed.utils.debug import (debug_param2name_id_shape, debug_param2name_i
                                    debug_param2name_id, debug_param2name_id_shape_status)
 from deepspeed.accelerator import get_accelerator
 from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwapper, PartitionedParamStatus
+from deepspeed.inference.quantization.utils import _quantize_param, WEIGHT_QUANTIZATION_LAYERS, wrap_quantized_functional, wrap_load_from_state_dict
 
 partitioned_param_data_shape = [0]
 zero_init_context = 0
@@ -250,9 +251,11 @@ def zero_wrapper_for_fp_tensor_constructor(fn: Callable, target_fp_dtype: torch.
 
 def get_new_tensor_fn_for_dtype(dtype: torch.dtype) -> Callable:
 
-    def new_tensor(cls, *args) -> Tensor:
+    def new_tensor(cls, *args, **kwargs) -> Tensor:
         device = torch.device(get_accelerator().device_name(os.environ["LOCAL_RANK"]))
-        tensor = _orig_torch_empty(0, device=device).new_empty(*args)
+        if not args:
+            args = (0, )
+        tensor = _orig_torch_empty(0, device=device).new_empty(*args, **kwargs)
         if tensor.is_floating_point():
             tensor = tensor.to(dtype)
 
@@ -308,6 +311,10 @@ class InsertPostInitMethodToModuleSubClasses(object):
             torch.half, torch.bfloat16, torch.float
         ], f"Invalid data type {self.dtype}, allowed values are [torch.half, torch.bfloat16, torch.float]"
         self.wrapped_cls = set()
+
+        self.quantized_initialization = None
+        if ds_config is not None and ds_config.weight_quantization_config and ds_config.weight_quantization_config.quantized_initialization:
+            self.quantized_initialization = ds_config.weight_quantization_config.quantized_initialization
 
     def __enter__(self):
         if not self.enabled:
@@ -491,6 +498,15 @@ class InsertPostInitMethodToModuleSubClasses(object):
                 force=False)
             self.linear_bk = torch.nn.functional.linear
             torch.nn.functional.linear = zero3_linear_wrap
+
+            if self.quantized_initialization:
+                print_rank_0("nn.functional.linear has been overridden with quantized linear version.", force=False)
+                torch.nn.functional.linear = wrap_quantized_functional(torch.nn.functional.linear)
+                torch.nn.functional.embedding = wrap_quantized_functional(torch.nn.functional.embedding)
+                for cls in WEIGHT_QUANTIZATION_LAYERS:
+                    cls._load_from_state_dict = wrap_load_from_state_dict(cls._load_from_state_dict)
+
+                logger.info("Enable Zero3 engine with INT4 quantization.")
 
         self.patched = True
 
@@ -713,21 +729,24 @@ class Init(InsertPostInitMethodToModuleSubClasses):
     apply_param_persistence = False
     override_module_apply = get_config_default(DeepSpeedZeroConfig, "override_module_apply")
 
-    def __init__(self,
-                 module=None,
-                 data_parallel_group=None,
-                 mem_efficient_linear=True,
-                 remote_device=None,
-                 pin_memory=False,
-                 config_dict_or_path=None,
-                 config=None,
-                 enabled=True,
-                 dtype=None,
-                 mpu=None,
-                 zero_param_parallel_group=None,
-                 zero_quantized_weights=False,
-                 zero_quantized_nontrainable_weights=False,
-                 sequence_data_parallel_group=None):
+    def __init__(
+        self,
+        module=None,
+        data_parallel_group=None,
+        mem_efficient_linear=True,
+        remote_device=None,
+        pin_memory=False,
+        config_dict_or_path=None,
+        config=None,
+        enabled=True,
+        dtype=None,
+        mpu=None,
+        zero_param_parallel_group=None,
+        zero_quantized_weights=False,
+        zero_quantized_nontrainable_weights=False,
+        sequence_data_parallel_group=None,
+        param_swapper=None,
+    ):
         """A context to enable massive model construction for training with
         ZeRO-3. Models are automatically partitioned (or, sharded) across the
         system and converted to half precision.
@@ -759,6 +778,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             zero_param_parallel_group(``object``, optional): Parallel (comm) group for dual partitioning of ZeRO params.
             zero_quantized_weights (bool, optional): If ``True``, turn on quantized weights in all gather weights. Default is ``False``
             zero_quantized_nontrainable_weights (bool, optional): If ``True``, nontrainable weights will be stored in quantized format. Default is ``False``
+            param_swapper (``deepspeed.runtime.swap_tensor.partitioned_param_swapper.AsyncPartitionedParameterSwapper``, optional): [Experimental] Use existing parameter swapper. Defaults to ``None``.
+                This argument will be removed in the near future.
 
         This context accelerates model initialization and enables models that
         are too large to allocate in their entirety in CPU memory. It has the
@@ -900,7 +921,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         # Enable fp16 param swapping to NVMe
         if self.remote_device == OffloadDeviceEnum.nvme:
-            self.param_swapper = AsyncPartitionedParameterSwapper(_ds_config, self.dtype)
+            self.param_swapper = param_swapper or AsyncPartitionedParameterSwapper(_ds_config, self.dtype)
         else:
             self.param_swapper = None
 
@@ -961,6 +982,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             if not is_zero_param(param):
                 if not get_accelerator().on_accelerator(param):
                     param.data = param.data.to(self.local_device)
+
+                if name == 'weight' and self.quantized_initialization and type(module) in WEIGHT_QUANTIZATION_LAYERS:
+                    _quantize_param(param, self.quantized_initialization)
+
                 self._zero_init_param(param)
                 print_rank_0(
                     f"Partitioning param {debug_param2name_id_shape(param)} module={debug_module2name(module)}")
@@ -1499,23 +1524,22 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             partition_size = tensor_size // self.dp_world_size
 
             secondary_partition_size = int(tensor_size // self.num_ranks_in_param_group)
-            if param.ds_secondary_tensor is None:
-                final_location = None
-                secondary_partitioned_tensor = torch.empty(secondary_partition_size,
-                                                           dtype=param.dtype,
-                                                           device=self.remote_device)
+            final_location = None
+            secondary_partitioned_tensor = torch.empty(secondary_partition_size,
+                                                       dtype=param.dtype,
+                                                       device=self.remote_device)
 
-                if self.pin_memory:
-                    secondary_partitioned_tensor = secondary_partitioned_tensor.pin_memory()
-                # quantize the tensor if it's not trainable
-                if not param.requires_grad and self.quantized_nontrainable_weights:
-                    secondary_partitioned_tensor, secondary_partitioned_tensor.ds_quant_scale = self.quantizer_module.quantize(
-                        secondary_partitioned_tensor)
-                secondary_partitioned_tensor.requires_grad = False
-                param.ds_secondary_tensor = secondary_partitioned_tensor
-                param.ds_secondary_tensor.ds_numel = secondary_partition_size
-                param.ds_secondary_tensor.status = PartitionedParamStatus.AVAILABLE
-                param.ds_secondary_tensor.final_location = final_location
+            if self.pin_memory:
+                secondary_partitioned_tensor = secondary_partitioned_tensor.pin_memory()
+            # quantize the tensor if it's not trainable
+            if not param.requires_grad and self.quantized_nontrainable_weights:
+                secondary_partitioned_tensor, secondary_partitioned_tensor.ds_quant_scale = self.quantizer_module.quantize(
+                    secondary_partitioned_tensor)
+            secondary_partitioned_tensor.requires_grad = False
+            param.ds_secondary_tensor = secondary_partitioned_tensor
+            param.ds_secondary_tensor.ds_numel = secondary_partition_size
+            param.ds_secondary_tensor.status = PartitionedParamStatus.AVAILABLE
+            param.ds_secondary_tensor.final_location = final_location
 
             #use rank in group for secondary tensor
             secondary_start = secondary_partition_size * self.rank_in_group
