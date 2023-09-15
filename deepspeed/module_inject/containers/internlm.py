@@ -3,8 +3,6 @@
 
 # DeepSpeed Team
 
-# Copyright (c) wangruohui
-
 import importlib
 
 import torch
