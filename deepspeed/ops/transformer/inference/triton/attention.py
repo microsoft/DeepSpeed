@@ -258,18 +258,11 @@ def _flash_packed_kernel(
     sm_scale,
     Out,
     stride_qz,
-    stride_qh,
+    stride_qn,
     stride_qm,
-    stride_mh,
-    stride_kz,
-    stride_kh,
-    stride_kn,
-    stride_vz,
-    stride_vh,
-    stride_vk,
+    stride_mz,
     stride_oz,
-    stride_oh,
-    stride_om,
+    stride_on,
     Z,
     H,
     N_CTX,
@@ -293,12 +286,12 @@ def _flash_packed_kernel(
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_DMODEL)
 
-    q_ptrs = QKV + q_offset + offs_m[:, None] * stride_qh + offs_d[None, :]
-    k_ptrs = QKV + hidden_size + q_offset + offs_n[:, None] * stride_qh + offs_d[None, :]
-    v_ptrs = QKV + 2 * hidden_size + q_offset + offs_n[:, None] * stride_qh + offs_d[None, :]
+    q_ptrs = QKV + q_offset + offs_m[:, None] * stride_qn + offs_d[None, :]
+    k_ptrs = QKV + hidden_size + q_offset + offs_n[:, None] * stride_qn + offs_d[None, :]
+    v_ptrs = QKV + 2 * hidden_size + q_offset + offs_n[:, None] * stride_qn + offs_d[None, :]
 
     # mask
-    off_mask = batch * stride_mh + offs_n[None, :]
+    off_mask = batch * stride_mz + offs_n[None, :]
     mask_ptrs = mask + off_mask
 
     # initialize pointer to m and l
@@ -317,8 +310,8 @@ def _flash_packed_kernel(
     hi = P_SEQ + (start_m + 1) * BLOCK_M if IS_CAUSAL else N_CTX + P_SEQ
     for start_n in range(lo, hi, BLOCK_N):
         # -- load k, v --
-        k = tl.load(k_ptrs + start_n * stride_qh, mask=(start_n + offs_n)[:, None] < N_CTX, other=0.0)
-        v = tl.load(v_ptrs + start_n * stride_qh, mask=(start_n + offs_n)[:, None] < N_CTX, other=0.0)
+        k = tl.load(k_ptrs + start_n * stride_qn, mask=(start_n + offs_n)[:, None] < N_CTX, other=0.0)
+        v = tl.load(v_ptrs + start_n * stride_qn, mask=(start_n + offs_n)[:, None] < N_CTX, other=0.0)
         # -- compute qk ---
         qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float16)
 
@@ -347,7 +340,7 @@ def _flash_packed_kernel(
     # write back l and m
     acc = acc / l_i[:, None]
     o_offset = batch * stride_oz + head * BLOCK_DMODEL
-    out_ptrs = Out + o_offset + (offs_m[:, None] * stride_oh + offs_d[None, :])
+    out_ptrs = Out + o_offset + (offs_m[:, None] * stride_on + offs_d[None, :])
     tl.store(out_ptrs, acc.to(tl.float16), mask=offs_m[:, None] < N_CTX)
 
 
@@ -378,15 +371,8 @@ def _triton_packed_flash(qkv, head_size, mask, sm_scale, causal=False, add_mask=
                                qkv.stride(1),
                                qkv.stride(2),
                                mask.stride(1) if add_mask else 0,
-                               qkv.stride(0),
-                               qkv.stride(1),
-                               qkv.stride(2),
-                               qkv.stride(0),
-                               qkv.stride(1),
-                               qkv.stride(2),
                                o.stride(0),
                                o.stride(1),
-                               o.stride(2),
                                qkv.shape[0],
                                heads,
                                qkv.shape[1],
