@@ -851,25 +851,62 @@ void quantized_gemm(void* output,
                     at::Tensor& qscale,
                     int groups,
                     int bsz,
-                    int hidden_size)
+                    int hidden_size,
+                    int num_bits=4)
 {
     // T* weight16 = (T*)InferenceContext::Instance().GetWorkSpace() + 12 * hidden_size * bsz;
-
     auto options = at::TensorOptions()
                        .dtype(at::kHalf)
                        .layout(at::kStrided)
                        .device(at::kCUDA)
                        .requires_grad(false);
-    auto tmp = torch::empty(weight.sizes(), options);
+    int input_size = weight.size(1);
+    if (num_bits == 4) input_size *= 2;
+    if (num_bits == 2) input_size *= 4;
+    auto tmp = torch::empty({weight.size(0), input_size}, options);
     T* weight16 = (T*)tmp.data_ptr();
-    launch_dequantize(weight16,
+    if (num_bits == 8) 
+        launch_dequantize(weight16,
                       (int8_t*)weight.data_ptr(),
                       (float*)qscale.data_ptr(),
                       weight.size(0),
-                      weight.size(1),
+                      input_size,
                       groups,
                       InferenceContext::Instance().GetCurrentStream());
-
+    else {
+        if (num_bits == 4) 
+        {
+            launch_dequantize_4bits(weight16,
+                      (int8_t*)weight.data_ptr(),
+                      (float*)qscale.data_ptr(),
+                      weight.size(0),
+                      input_size,
+                      groups,
+                      InferenceContext::Instance().GetCurrentStream());
+        }
+        else {
+            if (num_bits == 2) 
+            {
+                launch_dequantize_2bits(weight16,
+                        (int8_t*)weight.data_ptr(),
+                        (float*)qscale.data_ptr(),
+                        weight.size(0),
+                        weight.size(1),
+                        groups,
+                        InferenceContext::Instance().GetCurrentStream());
+            }
+            else {
+                if (num_bits == 10) 
+                    launch_dequantize_10bits(weight16,
+                            (int16_t*)weight.data_ptr(),
+                            (float*)qscale.data_ptr(),
+                            weight.size(0),
+                            weight.size(1),
+                            groups,
+                            InferenceContext::Instance().GetCurrentStream());
+            }
+        }
+    }
     float alpha = (T)1.0;
     float gemm_beta = (T)0.0;
     cublas_gemm_ex(InferenceContext::Instance().GetCublasHandle(),
@@ -877,7 +914,7 @@ void quantized_gemm(void* output,
                    CUBLAS_OP_N,
                    weight.size(0),
                    bsz,
-                   weight.size(1),
+                   input_size,
                    &alpha,
                    &gemm_beta,
                    weight16,
@@ -1168,7 +1205,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                 input.size(1),
                 (num_heads * padded_head_size),
                 num_heads,
-                num_heads,
+                -1,
                 -1,
                 false,
                 false,
@@ -1194,7 +1231,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                 input.size(1),
                 input_cont.size(2),
                 num_heads,
-                num_heads,
+                -1,
                 -1,
                 false,
                 false,
@@ -1330,7 +1367,8 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
                           q_scale,
                           q_scale.size(0),
                           bsz,
-                          input.size(2));
+                          input.size(2),
+                          4);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -1453,7 +1491,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                          InferenceContext::Instance().GetCurrentStream());
     }
 
-    if (q_int8) {
+    if (false) {
         quantized_gemm<T>(output.data_ptr(),
                           intermediate,
                           weight1,
@@ -1511,7 +1549,7 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                        .device(at::kCUDA)
                        .requires_grad(false);
 
-    int out_size = (q_int8 || transposed_mode) ? weight_out.size(0) : weight_out.size(1);
+    int out_size = weight_out.size(1);//(q_int8 || transposed_mode) ? weight_out.size(0) : weight_out.size(1);
     auto output =
         at::from_blob((T*)InferenceContext::Instance().GetWorkSpace() + torch::numel(input),
                       {input.size(0), input.size(1), out_size},
@@ -1555,9 +1593,9 @@ std::vector<at::Tensor> ds_rms_mlp_gemm(at::Tensor& input,
 {
     const int bsz = input.size(0) * input.size(1);
     const size_t input_neurons = input.size(2);
-    const size_t mlp_1_out_neurons = transposed_mode ? weight_interm.size(0)
+    const size_t mlp_1_out_neurons = (q_int8 || transposed_mode) ? weight_interm.size(0)
                                                      : weight_interm.size(1);
-    const size_t mlp_2_in_neurons = transposed_mode ? weight_out.size(1) : weight_out.size(0);
+    const size_t mlp_2_in_neurons = (transposed_mode) ? weight_out.size(1) : weight_out.size(0);
 
     auto options = at::TensorOptions()
                        .dtype(input.options().dtype())
@@ -1594,7 +1632,8 @@ std::vector<at::Tensor> ds_rms_mlp_gemm(at::Tensor& input,
                           q_scale,
                           q_scale.size(0),
                           bsz,
-                          input_neurons);
+                          input_neurons,
+                          4);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -1650,14 +1689,16 @@ std::vector<at::Tensor> ds_rms_mlp_gemm(at::Tensor& input,
                                 InferenceContext::Instance().GetCurrentStream());
     }
 
-    if (q_int8) {
+    if (false) {
         quantized_gemm<T>(output.data_ptr(),
                           intermediate_ptr,
                           weight_out,
                           q_scale1,
                           q_scale1.size(0),
                           bsz,
-                          input.size(2));
+                          input.size(2), 
+                          10 // num_bits
+                          );
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;

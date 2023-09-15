@@ -77,12 +77,10 @@ class QKVGemmOp(BaseOp):
         bias = bias if add_bias else torch.empty(1)  # type: ignore
         q_scale = weight.scale if hasattr(weight, 'scale') else torch.empty(1)  # type: ignore
         q_int8 = self.config.dtype == torch.int8
-
         if self.config.norm_type == NormType.LayerNorm:
             output, norm = self.qkv_gemm_func(input, weight, q_scale, bias, gamma, beta, self.config.epsilon, add_bias,
                                               q_int8, self.config.transposed_mode)
         else:
             output, norm = self.qkv_gemm_func(input, weight, q_scale, gamma, self.config.epsilon, q_int8,
                                               self.config.transposed_mode)
-
         return output, norm

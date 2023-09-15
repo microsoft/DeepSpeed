@@ -216,25 +216,25 @@ class BaseTransformerContainer(ABC):
         self.mlp_quantization()
 
     def attention_quantization(self):
-        self.module.attention.attn_qkvw = self.quantizer.quantize(self.module.attention.attn_qkvw)
-        self.module.attention.attn_ow = self.quantizer.quantize(self.module.attention.attn_ow)
+        self.qkvw = self.quantizer.quantize(self.qkvw, num_bits=4)
+        self.dense_w = self.quantizer.quantize(self.dense_w, num_bits=4)
 
     def mlp_quantization(self):
-        self.module.mlp.inter_w = self.quantizer.quantize(self.module.mlp.inter_w)
-        self.module.mlp.output_w = self.quantizer.quantize(self.module.mlp.output_w)
+        self._h4h_w = self.quantizer.quantize(self._h4h_w, num_bits=4)
+        #self._4hh_w = self.quantizer.quantize(self._4hh_w, num_bits=16)
 
-    def apply_tensor_parallelism(self, mp_replace):
+    def apply_tensor_parallelism(self, mp_replace, reversed_dim=False):
         # setup the new Attention module
-        self.attention_qkv_mp(mp_replace)
-        self.attention_o_mp(mp_replace)
+        self.attention_qkv_mp(mp_replace, reversed_dim=False)
+        self.attention_o_mp(mp_replace, reversed_dim=False)
 
         # setup the new MLP module
-        self.mlp_inter_mp(mp_replace)
-        self.mlp_output_mp(mp_replace)
+        self.mlp_inter_mp(mp_replace, reversed_dim=False)
+        self.mlp_output_mp(mp_replace, reversed_dim=False)
 
         # Apply weight quantization
         # TODO(cmikeh2): Re-enable this once verified
-        #self.apply_weight_quantization()
+        self.apply_weight_quantization()
 
     def attention_qkv_mp(self, mp_replace, reversed_dim=False):
         self.module.attention.attn_qkvw = mp_replace.strided_copy(self.module.attention.attn_qkvw,

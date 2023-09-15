@@ -80,4 +80,6 @@ class DeepSpeedLlama2Inference(DeepSpeedTransformerInference):
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
 
             output = output.to(input_type)
+        #print(f'{self.config.layer_id}: {output.norm()}, {output.shape}')
+        #exit()
         return output

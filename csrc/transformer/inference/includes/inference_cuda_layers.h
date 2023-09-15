@@ -141,6 +141,32 @@ void launch_dequantize(T* output,
                        cudaStream_t stream);
 
 template <typename T>
+void launch_dequantize_2bits(T* output,
+                       const int8_t* input,
+                       const float* qscale,
+                       unsigned output_size,
+                       unsigned hidden_dim,
+                       unsigned groups,
+                       cudaStream_t stream);
+
+template <typename T>
+void launch_dequantize_4bits(T* output,
+                       const int8_t* input,
+                       const float* qscale,
+                       unsigned output_size,
+                       unsigned hidden_dim,
+                       unsigned groups,
+                       cudaStream_t stream);
+
+template <typename T>
+void launch_dequantize_10bits(T* output,
+                       const int16_t* input,
+                       const float* qscale,
+                       unsigned output_size,
+                       unsigned hidden_dim,
+                       unsigned groups,
+                       cudaStream_t stream);
+template <typename T>
 void launch_dequantize(T* output,
                        const int8_t* input,
                        const float* qscale,
