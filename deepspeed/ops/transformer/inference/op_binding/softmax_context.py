@@ -28,8 +28,8 @@ class SoftmaxContextOp(BaseOp):
                                  num_layers, alibi):
         raise NotImplementedError
 
-    def forward(self, query_key_value: torch.Tensor, attn_mask: torch.Tensor, heads: int, num_kv: int, norm_factor: float,
-                no_masking: bool, layer_id: int, num_layers: int, alibi: torch.Tensor):
+    def forward(self, query_key_value: torch.Tensor, attn_mask: torch.Tensor, heads: int, num_kv: int,
+                norm_factor: float, no_masking: bool, layer_id: int, num_layers: int, alibi: torch.Tensor):
 
         if alibi is not None:
             batch_heads = query_key_value.shape[0] * heads

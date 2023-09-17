@@ -4,22 +4,11 @@
 # DeepSpeed Team
 
 import torch
-import torch.nn as nn
 from deepspeed import comm as dist
-from deepspeed.utils.logging import log_dist
-
-from deepspeed.ops.transformer.inference.ds_mlp import DeepSpeedMLP
-from deepspeed.ops.transformer.inference.ds_attention import DeepSpeedSelfAttention, BloomSelfAttention
-from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import InferenceBuilder
-import deepspeed
-if deepspeed.HAS_TRITON:
-    from deepspeed.ops.transformer.inference.triton.mlp import TritonMLP
-    from deepspeed.ops.transformer.inference.triton.attention import TritonSelfAttention
+from deepspeed.model_implementations.transformers.ds_transformer import DeepSpeedTransformerInference
 
 inference_module = None
 
-from deepspeed.model_implementations.transformers.ds_transformer import DeepSpeedTransformerInference
 
 class DeepSpeedLlama2Inference(DeepSpeedTransformerInference):
     """Initialize the DeepSpeed OPT Transformer Layer.
@@ -34,10 +23,7 @@ class DeepSpeedLlama2Inference(DeepSpeedTransformerInference):
                  mlp_extra_grouping=False):
         super().__init__(config, mp_group, quantize_scales, quantize_groups, merge_count, mlp_extra_grouping)
 
-    def forward(
-            self,
-            *args,
-            **kwargs):
+    def forward(self, *args, **kwargs):
 
         input = args[0]
         input_mask = None
