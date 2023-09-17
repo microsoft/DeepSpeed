@@ -241,15 +241,15 @@ void launch_dequantize_4bits(T* output,
         output, input, qscale, hidden_dim, hidden_dim, thd_cnt);
 }
 
-#define INSTANTIATE_DEQUANTIZE_NO_MERGE(T) \
+#define INSTANTIATE_DEQUANTIZE_4BIT(T) \
     template void launch_dequantize_4bits<T>(    \
         T*, const int8_t*, const float*, unsigned, unsigned, unsigned, cudaStream_t);
 
-INSTANTIATE_DEQUANTIZE_NO_MERGE(float);
+INSTANTIATE_DEQUANTIZE_4BIT(float);
 #ifdef BF16_AVAILABLE
-INSTANTIATE_DEQUANTIZE_NO_MERGE(__nv_bfloat16);
+INSTANTIATE_DEQUANTIZE_4BIT(__nv_bfloat16);
 #endif
-INSTANTIATE_DEQUANTIZE_NO_MERGE(__half);
+INSTANTIATE_DEQUANTIZE_4BIT(__half);
 
 
 
@@ -341,15 +341,15 @@ void launch_dequantize_2bits(T* output,
         output, input, qscale, hidden_dim, hidden_dim, thd_cnt);
 }
 
-#define INSTANTIATE_DEQUANTIZE_NO_MERGE(T) \
+#define INSTANTIATE_DEQUANTIZE_2BIT(T) \
     template void launch_dequantize_2bits<T>(    \
         T*, const int8_t*, const float*, unsigned, unsigned, unsigned, cudaStream_t);
 
-INSTANTIATE_DEQUANTIZE_NO_MERGE(float);
+INSTANTIATE_DEQUANTIZE_2BIT(float);
 #ifdef BF16_AVAILABLE
-INSTANTIATE_DEQUANTIZE_NO_MERGE(__nv_bfloat16);
+INSTANTIATE_DEQUANTIZE_2BIT(__nv_bfloat16);
 #endif
-INSTANTIATE_DEQUANTIZE_NO_MERGE(__half);
+INSTANTIATE_DEQUANTIZE_2BIT(__half);
 
 
 __global__ void dequantize_kernel_10bits(float* output,
@@ -420,12 +420,12 @@ void launch_dequantize_10bits(T* output,
         output, input, qscale, hidden_dim, hidden_dim, thd_cnt);
 }
 
-#define INSTANTIATE_DEQUANTIZE_NO_MERGE(T) \
+#define INSTANTIATE_DEQUANTIZE_10BIT(T) \
     template void launch_dequantize_10bits<T>(    \
         T*, const int16_t*, const float*, unsigned, unsigned, unsigned, cudaStream_t);
 
-INSTANTIATE_DEQUANTIZE_NO_MERGE(float);
+INSTANTIATE_DEQUANTIZE_10BIT(float);
 #ifdef BF16_AVAILABLE
-INSTANTIATE_DEQUANTIZE_NO_MERGE(__nv_bfloat16);
+INSTANTIATE_DEQUANTIZE_10BIT(__nv_bfloat16);
 #endif
-INSTANTIATE_DEQUANTIZE_NO_MERGE(__half);
+INSTANTIATE_DEQUANTIZE_10BIT(__half);

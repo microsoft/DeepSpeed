@@ -84,18 +84,7 @@ class HybridEngineContainer(ABC):
         the called methods to handle partitioned weights (i.e. if qkv is split, override
         the `attention_qkv_mp` method). If the model component is not split, it should
         be safe to use the default implementation.
-        """
-        
-        # Apply weight quantization
-        # TODO(cmikeh2): Re-enable this once verified
-        self.apply_weight_quantization()
-        
-        #self.qkvw = self.transpose_impl(self.qkvw.data)
-        #self._h4h_w = self.transpose_impl(self._h4h_w.data)
-        self._4hh_w = self.transpose_impl(self._4hh_w.data)
-        #print(self._4hh_w.shape)
-        #self.dense_w = self.transpose_impl(self.dense_w.data)
-
+        """        
         # Setup the new Attention module
         self.attention_qkv_mp(mp_replace, reversed_dim=reversed_dim)
         self.attention_o_mp(mp_replace, reversed_dim=reversed_dim)

@@ -66,6 +66,7 @@ class MLPGemmOp(BaseOp):
                 bias: Optional[torch.Tensor] = None,
                 gamma: Optional[torch.Tensor] = None,
                 beta: Optional[torch.Tensor] = None):
+        q_int8 = self.config.dtype == torch.int8
         if self.config.norm_type == NormType.LayerNorm:
             output, residual_add = self.mlp_gemm_func(
                 input,
@@ -81,7 +82,10 @@ class MLPGemmOp(BaseOp):
                 self.config.mlp_after_attn,
                 weight_interm.scale if hasattr(weight_interm, 'scale') else torch.empty(1),  # type: ignore
                 weight_out.scale if hasattr(weight_out, 'scale') else torch.empty(1),  # type: ignore
-                self.config.dtype == torch.int8,
+                q_int8 and self.config.weight_quantization.mlp1.enabled,
+                self.config.weight_quantization.mlp1.num_bits,
+                q_int8 and self.config.weight_quantization.mlp2.enabled,
+                self.config.weight_quantization.mlp2.num_bits,
                 self.config.mlp_act_func_type,
                 self.config.transposed_mode)
         else:
@@ -94,7 +98,10 @@ class MLPGemmOp(BaseOp):
                 self.config.epsilon,
                 weight_interm.scale if hasattr(weight_interm, 'scale') else torch.empty(1),  # type: ignore
                 weight_out.scale if hasattr(weight_out, 'scale') else torch.empty(1),  # type: ignore
-                self.config.dtype == torch.int8,
+                q_int8 and self.config.weight_quantization.mlp1.enabled,
+                self.config.weight_quantization.mlp1.num_bits,
+                q_int8 and self.config.weight_quantization.mlp2.enabled,
+                self.config.weight_quantization.mlp2.num_bits,
                 self.config.mlp_act_func_type,
                 self.config.transposed_mode)
         return output, residual_add

@@ -41,72 +41,91 @@ def get_transformer_name(replaced_module):
 
 class GroupQuantizer:
 
-    def __init__(self, q_int8=True, group_size=1, num_bits=8, num_groups=0):
+    def __init__(self, 
+                 q_int8=True, 
+                 group_size=1, 
+                 num_bits=8, 
+                 num_groups=0,
+                 symmetric=True):
         self.group_size = group_size
         self.num_bits = num_bits
         self.q_int8 = q_int8
-
+        self.symmetric = symmetric
         self.num_groups = num_groups
         
-    def q8(self, inputs, shape):
-        return inputs.reshape(shape).to(torch.int8).contiguous()
+    def q8(self, inputs, shape, symmetric=True):
+        if symmetric:
+            return inputs.reshape(shape).to(torch.int8).contiguous()
+        else:
+            return inputs.reshape(shape).to(torch.uint8).contiguous()
 
-    def q4(self, inputs, shape):
-        inputs = inputs.reshape(-1, 2).to(torch.int8)
+    def q4(self, inputs, shape, symmetric=True):
+        if symmetric:
+            inputs = inputs.reshape(-1, 2).to(torch.int8)
+        else:
+            inputs = inputs.reshape(-1, 2).to(torch.uint8)
         inputs_q = (inputs[:, 1] << 4 | (inputs[:, 0] & 0x0f))
 
         return inputs_q.reshape(shape[0], shape[-1] // 2).contiguous()
 
-    def q2(self, inputs, shape):
-        inputs = inputs.reshape(-1, 4).to(torch.int8)
+    def q2(self, inputs, shape, symmetric=True):
+        if symmetric:
+            inputs = inputs.reshape(-1, 4).to(torch.int8)
+        else:
+            inputs = inputs.reshape(-1, 4).to(torch.uint8)
         inputs_q = (inputs[:, 3] << 6 | ((inputs[:, 2] << 4) & 0x3f) | 
                     ((inputs[:, 1] << 2) & 0x0f) | (inputs[:, 0] & 0x03))
         
         return inputs_q.reshape(shape[0], shape[-1] // 4).contiguous()
 
-    def q10(self, inputs, shape):
-        return inputs.reshape(shape).to(torch.int16).contiguous()
-        inputs = inputs.reshape(-1, 8).int()
-        inputs_q1 = (inputs[:, 1] << 16 | (inputs[:, 0] & 0xffff)).unsqueeze(-1)
-        inputs_q2 = (inputs[:, 3] << 16 | (inputs[:, 2] & 0xffff)).unsqueeze(-1)
-        inputs_q3 = (inputs[:, 5] << 16 | (inputs[:, 4] & 0xffff)).unsqueeze(-1)
-        inputs_q4 = (inputs[:, 7] << 16 | (inputs[:, 6] & 0xffff)).unsqueeze(-1)
-
-        return torch.cat((inputs_q1,
-                          inputs_q2,
-                          inputs_q3,
-                          inputs_q4), dim=-1).reshape(shape[0], shape[-1] // 2).to(torch.int32).contiguous()
-
     def pack_with_n_bit_q(self, input_flat, shape, num_bits):
         if num_bits == 8:
             inputs_q = self.q8(input_flat, shape)
         elif num_bits == 4:
-            #inputs_q = self.q8(input_flat, shape)
             inputs_q = self.q4(input_flat, shape)
         elif num_bits == 2:
-            #inputs_q = self.q8(input_flat, shape)
             inputs_q = self.q2(input_flat, shape)
-        elif num_bits == 10:
-            inputs_q = self.q8(input_flat, shape)
-            #inputs_q = self.q4(input_flat, shape)
         else:
             print(f'please feel free to add the (de)quantization implementation for {num_bits}-quantization')
             raise NotImplementedError
         return inputs_q
 
-    def quantize(self, inputs, qkv=True, count=1, parallel_dim=0, num_bits=8):
-        if not self.q_int8 or not qkv:
+    def symmetric_quantization(self, input_flat, input_min, input_max, q_range): 
+        scale = torch.max(input_min.abs(), input_max.abs()) * 2.0 / (q_range)
+        input_flat = (input_flat / scale).round().clamp(-q_range // 2, q_range // 2 - 1)
+        return input_flat, scale
+        
+    def asymmetric_quantization(self, input_flat, input_min, input_max, q_range): 
+        scale = (input_max - input_min) / (q_range)
+        input_flat = ((input_flat - input_min) / scale).round().clamp(0, q_range - 1)
+        return input_flat, scale, input_min
+
+
+    def quantize(self, 
+                 inputs, 
+                 qkv=True, 
+                 count=1, 
+                 parallel_dim=0, 
+                 num_bits=None,
+                 layers=[],
+                 layer_id=0,
+                 param_name=None,
+                 symmetric=True):
+        if not self.q_int8 or not qkv or (len(layers) > 0 and layer_id not in layers):
             inputs = torch.nn.Parameter(inputs, requires_grad=False)
             inputs.scale = torch.empty(1)
             return inputs
-        q_range = 2**num_bits #self.num_bits
+        num_bits = self.num_bits if num_bits is None else num_bits
+        q_range = 2**num_bits
         num_groups = self.num_groups if self.num_groups > 0 else inputs.shape[0] // self.group_size
         inputs = inputs.to(get_accelerator().current_device_name())
         input_flat = inputs.reshape(num_groups, -1).contiguous()
         input_min = torch.min(input_flat, dim=1, keepdim=True)[0].float()
         input_max = torch.max(input_flat, dim=1, keepdim=True)[0].float()
-        scale = torch.max(input_min.abs(), input_max.abs()) * 2.0 / (q_range)
-        input_flat = (input_flat / scale).round().clamp(-q_range // 2, q_range // 2 - 1)
+        if symmetric:
+            input_flat, scale = self.symmetric_quantization(input_flat, input_min, input_max, q_range)
+        else:
+            input_flat, scale, offset = self.asymmetric_quantization(input_flat, input_min, input_max, q_range)
         inputs_q = self.pack_with_n_bit_q(input_flat, inputs.shape, num_bits)
         out = torch.nn.Parameter(inputs_q, requires_grad=False)
         inputs_split = inputs.split(inputs.shape[parallel_dim] // 2, dim=parallel_dim)
@@ -117,6 +136,8 @@ class GroupQuantizer:
                   for i in range(2)]
         out.scale = torch.cat([scale.squeeze().unsqueeze(0), scale1[0], scale1[1]], dim=0).reshape(num_groups,
                                                                                                    -1).contiguous()
+        if not symmetric:
+            out.offset = offset.reshape(num_groups, -1).contiguous()
         return out
 
 
@@ -291,21 +312,23 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         _container.create_module()
 
         # 8. transpose the weights and bias if needed
-        if not quantize:
-            _container.transpose()
+        _container.transpose()
 
-        # 9. deal with tensor parallelism.
+        # 9. quantize the model
+        _container.apply_weight_quantization()
+
+        # 10. deal with tensor parallelism.
         _container.apply_tensor_parallelism(mp_replace, reversed_dim=quantize)
 
-        # 10. copy the tensors from the model-specific container to the new module
+        # 11. copy the tensors from the model-specific container to the new module
         _container.copy_data_to_new_module()
 
-        # 11. set global for generic checkpoint loading
+        # 12. set global for generic checkpoint loading
         global container_g
 
         if container_g is None:
             container_g = _container
-
+        
         return _container.module
 
     def replace_wo_policy(module, all_reduce_linears, prefix="", state_dict=None):

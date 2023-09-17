@@ -852,7 +852,7 @@ void quantized_gemm(void* output,
                     int groups,
                     int bsz,
                     int hidden_size,
-                    int num_bits=4)
+                    int num_bits=8)
 {
     // T* weight16 = (T*)InferenceContext::Instance().GetWorkSpace() + 12 * hidden_size * bsz;
     auto options = at::TensorOptions()
@@ -895,16 +895,6 @@ void quantized_gemm(void* output,
                         groups,
                         InferenceContext::Instance().GetCurrentStream());
             }
-            else {
-                if (num_bits == 10) 
-                    launch_dequantize_10bits(weight16,
-                            (int16_t*)weight.data_ptr(),
-                            (float*)qscale.data_ptr(),
-                            weight.size(0),
-                            weight.size(1),
-                            groups,
-                            InferenceContext::Instance().GetCurrentStream());
-            }
         }
     }
     float alpha = (T)1.0;
@@ -938,6 +928,7 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
                               const float epsilon,
                               bool add_bias,
                               bool q_int8,
+                              int num_bits,
                               bool transposed_mode)
 {
     int bsz = input.size(0) * input.size(1);
@@ -947,7 +938,7 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
 
     if (q_int8) {
         quantized_gemm<T>(
-            output.data_ptr(), workspace, weight, q_scale, q_scale.size(0), bsz, input.size(2));
+            output.data_ptr(), workspace, weight, q_scale, q_scale.size(0), bsz, input.size(2), num_bits);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -987,6 +978,7 @@ std::vector<at::Tensor> ds_rms_qkv(at::Tensor& input,
                                    at::Tensor& gamma,
                                    const float epsilon,
                                    bool q_int8,
+                                   int num_bits,
                                    bool transposed_mode)
 {
     const int bsz = input.size(0) * input.size(1);
@@ -1019,7 +1011,8 @@ std::vector<at::Tensor> ds_rms_qkv(at::Tensor& input,
                           q_scale,
                           q_scale.size(0),
                           bsz,
-                          input.size(2));
+                          input.size(2),
+                          num_bits);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -1057,6 +1050,7 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
                                     const float epsilon,
                                     bool add_bias,
                                     bool q_int8,
+                                    int num_bits,
                                     bool transposed_mode)
 {
     int bsz = input.size(0) * input.size(1);
@@ -1080,6 +1074,7 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
                                           epsilon,
                                           add_bias,
                                           q_int8,
+                                          num_bits,
                                           transposed_mode);
 
     return {output, inp_norm};
@@ -1348,6 +1343,7 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
                             bool async_op,
                             at::Tensor& q_scale,
                             bool q_int8,
+                            int num_bits,
                             bool transposed_mode)
 {
     auto options = at::TensorOptions()
@@ -1368,7 +1364,7 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
                           q_scale.size(0),
                           bsz,
                           input.size(2),
-                          4);
+                          num_bits);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -1429,7 +1425,10 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                               bool mlp_after_attn,
                               at::Tensor& q_scale,
                               at::Tensor& q_scale1,
-                              bool q_int8,
+                              bool mlp1_q_int8,
+                              int mlp1_q_bits,
+                              bool mlp2_q_int8,
+                              int mlp2_q_bits,
                               ActivationFuncType act_func_type,
                               bool transposed_mode)
 {
@@ -1452,9 +1451,9 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
     } else {
         ds_layer_norm_internal(inp_norm, input, gamma, beta, epsilon);
     }
-    if (q_int8) {
+    if (mlp1_q_int8) {
         quantized_gemm<T>(
-            intermediate, inp_norm, weight, q_scale, q_scale.size(0), bsz, input.size(2));
+            intermediate, inp_norm, weight, q_scale, q_scale.size(0), bsz, input.size(2), mlp1_q_bits);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -1480,25 +1479,26 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
     if (act_func_type == ActivationFuncType::GELU) {
         launch_bias_gelu(intermediate,
                          (T*)bias.data_ptr(),
-                         (transposed_mode || q_int8) ? weight.size(0) : weight.size(1),
+                         (transposed_mode || mlp1_q_int8) ? weight.size(0) : weight.size(1),
                          bsz,
                          InferenceContext::Instance().GetCurrentStream());
     } else if (act_func_type == ActivationFuncType::ReLU) {
         launch_bias_relu(intermediate,
                          (T*)bias.data_ptr(),
-                         (transposed_mode || q_int8) ? weight.size(0) : weight.size(1),
+                         (transposed_mode || mlp1_q_int8) ? weight.size(0) : weight.size(1),
                          bsz,
                          InferenceContext::Instance().GetCurrentStream());
     }
 
-    if (false) {
+    if (mlp2_q_int8) {
         quantized_gemm<T>(output.data_ptr(),
                           intermediate,
                           weight1,
                           q_scale1,
                           q_scale1.size(0),
                           bsz,
-                          input.size(2));
+                          input.size(2),
+                          mlp2_q_bits);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -1539,7 +1539,10 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                     bool mlp_after_attn,
                                     at::Tensor& q_scale,
                                     at::Tensor& q_scale1,
-                                    bool q_int8,
+                                    bool mlp1_q_int8,
+                                    int  mlp1_q_bits,
+                                    bool mlp2_q_int8,
+                                    int  mlp2_q_bits,
                                     int activation_type,
                                     bool transposed_mode)
 {
@@ -1571,7 +1574,10 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                          mlp_after_attn,
                                          q_scale,
                                          q_scale1,
-                                         q_int8,
+                                         mlp1_q_int8,
+                                         mlp1_q_bits,
+                                         mlp2_q_int8,
+                                         mlp2_q_bits,
                                          act_func_type,
                                          transposed_mode);
 
@@ -1587,15 +1593,18 @@ std::vector<at::Tensor> ds_rms_mlp_gemm(at::Tensor& input,
                                         const float epsilon,
                                         at::Tensor& q_scale,
                                         at::Tensor& q_scale1,
-                                        bool q_int8,
+                                        bool mlp1_q_int8,
+                                        int  mlp1_q_bits,
+                                        bool mlp2_q_int8,
+                                        int  mlp2_q_bits,
                                         int activation_type,
                                         bool transposed_mode)
 {
     const int bsz = input.size(0) * input.size(1);
     const size_t input_neurons = input.size(2);
-    const size_t mlp_1_out_neurons = (q_int8 || transposed_mode) ? weight_interm.size(0)
+    const size_t mlp_1_out_neurons = (mlp1_q_int8 || transposed_mode) ? weight_interm.size(0)
                                                      : weight_interm.size(1);
-    const size_t mlp_2_in_neurons = (transposed_mode) ? weight_out.size(1) : weight_out.size(0);
+    const size_t mlp_2_in_neurons = (mlp2_q_int8 || transposed_mode) ? weight_out.size(1) : weight_out.size(0);
 
     auto options = at::TensorOptions()
                        .dtype(input.options().dtype())
@@ -1625,7 +1634,7 @@ std::vector<at::Tensor> ds_rms_mlp_gemm(at::Tensor& input,
                     input_neurons,
                     InferenceContext::Instance().GetCurrentStream());
 
-    if (q_int8) {
+    if (mlp1_q_int8) {
         quantized_gemm<T>(intermediate_ptr,
                           (T*)inp_norm.data_ptr(),
                           weight_interm,
@@ -1633,7 +1642,7 @@ std::vector<at::Tensor> ds_rms_mlp_gemm(at::Tensor& input,
                           q_scale.size(0),
                           bsz,
                           input_neurons,
-                          4);
+                          mlp1_q_bits);
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -1689,7 +1698,7 @@ std::vector<at::Tensor> ds_rms_mlp_gemm(at::Tensor& input,
                                 InferenceContext::Instance().GetCurrentStream());
     }
 
-    if (false) {
+    if (mlp2_q_int8) {
         quantized_gemm<T>(output.data_ptr(),
                           intermediate_ptr,
                           weight_out,
@@ -1697,7 +1706,7 @@ std::vector<at::Tensor> ds_rms_mlp_gemm(at::Tensor& input,
                           q_scale1.size(0),
                           bsz,
                           input.size(2), 
-                          10 // num_bits
+                          mlp2_q_bits
                           );
     } else {
         float alpha = (T)1.0;

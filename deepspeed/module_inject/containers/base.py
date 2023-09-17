@@ -90,7 +90,6 @@ class BaseTransformerContainer(ABC):
         assert self.num_attention_heads % self.mp_size == 0,\
                 "To run the model parallel across the GPUs, the attention_heads require to be divisible by the world_size!" +\
                 "This is because the attention computation is partitioned evenly among the parallel GPUs."
-
         self.ds_model_config = DeepSpeedInferenceConfig(
             hidden_size=self.hidden_size,
             intermediate_size=self.intermediate_size,
@@ -117,7 +116,8 @@ class BaseTransformerContainer(ABC):
             set_empty_params=self.config.set_empty_params,
             transposed_mode=self.config.transposed_mode,
             use_triton=self.use_triton,
-            triton_autotune=self.config.triton_autotune)
+            triton_autotune=self.config.triton_autotune,
+            weight_quantization=self.config.quant)
 
         if self.use_triton and deepspeed.HAS_TRITON:
             from .bert import DS_BERTContainer
@@ -209,32 +209,75 @@ class BaseTransformerContainer(ABC):
         self.input_nb = input_nb
 
     def apply_weight_quantization(self):
+        total_params = (self.qkvw.numel() + self.dense_w.numel() + self._4hh_w.numel() + self._h4h_w.numel())
         # quantize attention weights
-        self.attention_quantization()
+        self.attention_bits = self.attention_quantization()
 
         # quantize mlp weights
-        self.mlp_quantization()
+        self.mlp_bits = self.mlp_quantization()
+        
+        # calculate the quantization bits
+        self.q_bits = (self.attention_bits + self.mlp_bits) / total_params
+        if self.layer_id == 0 and self.q_bits < 16:
+            print(f'----- Running DS-Inference with {self.q_bits:.03f}-bit quantization -----')
+
+    def param_bits(self, param_elems, bits=None):
+        if bits is None:
+            return param_elems * (16 if self.config.dtype in [torch.half, torch.bfloat16, torch.int8] else 32)
+        else:
+            return param_elems * bits
 
     def attention_quantization(self):
-        self.qkvw = self.quantizer.quantize(self.qkvw, num_bits=4)
-        self.dense_w = self.quantizer.quantize(self.dense_w, num_bits=4)
+        qkv_numel = self.qkvw.numel()
+        dense_numel = self.dense_w.numel()
+        if self.config.quant.qkv.enabled:
+            qkv_bits = self.config.quant.qkv.num_bits
+            self.qkvw = self.quantizer.quantize(self.qkvw, 
+                    num_bits=qkv_bits, 
+                    layer_id=self.layer_id,
+                    param_name='qkv')
+        else:
+            qkv_bits = None
+        if self.config.quant.attn_out.enabled:
+            dense_bits = self.config.quant.attn_out.num_bits
+            self.dense_w = self.quantizer.quantize(self.dense_w, 
+                    num_bits=dense_bits, 
+                    layer_id=self.layer_id,
+                    param_name='attn_out')
+        else:
+            dense_bits = None
+        return self.param_bits(qkv_numel, bits=qkv_bits) + self.param_bits(dense_numel, bits=dense_bits)
 
     def mlp_quantization(self):
-        self._h4h_w = self.quantizer.quantize(self._h4h_w, num_bits=4)
-        #self._4hh_w = self.quantizer.quantize(self._4hh_w, num_bits=16)
+        mlp1_numel = self._h4h_w.numel()
+        mlp2_numel = self._4hh_w.numel()
+        if self.config.quant.mlp1.enabled:
+            mlp1_bits = self.config.quant.mlp1.num_bits
+            self._h4h_w = self.quantizer.quantize(self._h4h_w, 
+                    num_bits=mlp1_bits, 
+                    layer_id=self.layer_id,
+                    param_name='mlp1')
+        else:
+            mlp1_bits = None
+        if self.config.quant.mlp2.enabled:
+            mlp2_bits = self.config.quant.mlp2.num_bits
+            self._4hh_w = self.quantizer.quantize(self._4hh_w, 
+                    num_bits=mlp2_bits, 
+                    layer_id=self.layer_id,
+                    layers=self.config.quant.mlp2.layers,
+                    param_name='mlp2')
+        else:
+            mlp2_bits = None
+        return self.param_bits(mlp1_numel, bits=mlp1_bits) + self.param_bits(mlp2_numel, bits=mlp2_bits)
 
     def apply_tensor_parallelism(self, mp_replace, reversed_dim=False):
         # setup the new Attention module
-        self.attention_qkv_mp(mp_replace, reversed_dim=False)
-        self.attention_o_mp(mp_replace, reversed_dim=False)
+        self.attention_qkv_mp(mp_replace, reversed_dim=reversed_dim)
+        self.attention_o_mp(mp_replace, reversed_dim=reversed_dim)
 
         # setup the new MLP module
-        self.mlp_inter_mp(mp_replace, reversed_dim=False)
-        self.mlp_output_mp(mp_replace, reversed_dim=False)
-
-        # Apply weight quantization
-        # TODO(cmikeh2): Re-enable this once verified
-        self.apply_weight_quantization()
+        self.mlp_inter_mp(mp_replace, reversed_dim=reversed_dim)
+        self.mlp_output_mp(mp_replace, reversed_dim=reversed_dim)
 
     def attention_qkv_mp(self, mp_replace, reversed_dim=False):
         self.module.attention.attn_qkvw = mp_replace.strided_copy(self.module.attention.attn_qkvw,
@@ -287,13 +330,20 @@ class BaseTransformerContainer(ABC):
 
     def transpose_attention(self):
         if self.attn_linear_layer:
-            self.qkvw = self.transpose_impl(self.qkvw.data)
-            self.dense_w = self.transpose_impl(self.dense_w.data)
+            # transpose weights when the quantization is not enabled
+            if not self.config.quant.qkv.enabled:
+                self.qkvw = self.transpose_impl(self.qkvw.data)
+            if not self.config.quant.attn_out.enabled:
+                self.dense_w = self.transpose_impl(self.dense_w.data)
 
     def transpose_mlp(self):
         if self.mlp_linear_layer:
-            self._h4h_w = self.transpose_impl(self._h4h_w.data)
-            self._4hh_w = self.transpose_impl(self._4hh_w.data)
+            # transpose weights when the quantization is not enabled
+            if not self.config.quant.mlp1.enabled:
+                self._h4h_w = self.transpose_impl(self._h4h_w.data)
+            # transpose weights when the quantization is not enabled
+            if not self.config.quant.mlp2.enabled:
+                self._4hh_w = self.transpose_impl(self._4hh_w.data)
 
     def transpose_impl(self, data):
         data = data.contiguous()
