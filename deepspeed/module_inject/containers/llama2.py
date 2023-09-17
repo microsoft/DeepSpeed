@@ -20,7 +20,8 @@ from ..policy import (
 )
 
 
-class DS_LLAMA2Container(MetaTensorContainer, HybridGatedMLPContainer, HybridSplitQKVContainer, BaseTransformerContainer):
+class DS_LLAMA2Container(MetaTensorContainer, HybridGatedMLPContainer, HybridSplitQKVContainer,
+                         BaseTransformerContainer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -50,12 +51,12 @@ class DS_LLAMA2Container(MetaTensorContainer, HybridGatedMLPContainer, HybridSpl
                 self.policy.client_module.attention.wo.weight
             ]
         ]
+
     def get_lora_matched_pair(self):
         up_proj_lora, gate_proj_lora, down_proj_lora, q_lora, k_lora, v_lora, out_lora = self.get_lora_params()
         ret = [(up_proj_lora, self.inter_up_w), (gate_proj_lora, self.inter_gate_w), (down_proj_lora, self._4hh_w),
                (out_lora, self.dense_w), (q_lora, self.qw), (k_lora, self.kw), (v_lora, self.vw)]
         return ret
-
 
     def set_q_k_v(self):
         """
@@ -127,7 +128,7 @@ class LLAMA2LayerPolicy(TransformerPolicy):
                 self.client_module.n_heads, \
                 self.client_module.ffn_norm.eps, \
                 (self.client_module.feed_forward.w1.weight.shape[0] * \
-                    torch.distributed.get_world_size() if torch.distributed.is_initialized() else 1) # this is a hack to inject when model is already partitioned!
+                    deepspeed.comm.get_world_size() if deepspeed.comm.is_initialized() else 1) # this is a hack to inject when model is already partitioned!
 
     def attention(self, enable_training=False):
         qw = self.client_module.attention.wq.weight
@@ -147,7 +148,7 @@ class LLAMA2LayerPolicy(TransformerPolicy):
         mlp2 = self.client_module.feed_forward.w2.weight
 
         mlp1 = Parameter(torch.cat((mlp1_up, mlp1_gate), dim=0), requires_grad=enable_training)
-        
+
         return mlp1, None, mlp2, None
 
     def layernorm(self):
