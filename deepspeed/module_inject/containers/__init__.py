@@ -12,6 +12,7 @@ from .gptneo import DS_GPTNEOContainer, HFGPTNEOLayerPolicy
 from .gptneox import DS_GPTNEOXContainer, GPTNEOXLayerPolicy
 from .llama import DS_LLAMAContainer, LLAMALayerPolicy
 from .llama2 import LLAMA2LayerPolicy, DS_LLAMA2Container
+from .internlm import DS_InternLMContainer, InternLMLayerPolicy
 from .megatron_gpt import DS_MegatronGPTContainer, MegatronLayerPolicy
 from .megatron_gpt_moe import DS_MegatronGPTMoEContainer, MegatronMoELayerPolicy
 from .opt import DS_OPTContainer, HFOPTLayerPolicy
