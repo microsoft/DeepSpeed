@@ -37,7 +37,6 @@ torch_memory_reserved = get_accelerator().memory_reserved
 torch_max_memory_reserved = get_accelerator().max_memory_reserved
 
 
-
 class DummyOptim():
     """
     Dummy optimizer presents model parameters as a param group, this is
@@ -48,7 +47,10 @@ class DummyOptim():
         self.param_groups = []
         self.param_groups.append({'params': params})
 
+
 graph_cache = {}
+
+
 def graph_process(replay_first_step, func, *args, **kwargs):
     # `func` should only contain operations on the GPU
     # Please ensure that the memory address of the data required by 'func' remains constant
@@ -952,7 +954,7 @@ def clip_tensors_by_global_norm(input_tensors, max_norm=1.0, global_norm=None, m
     clip_coef = max_norm / (global_norm + eps)
     if clip_coef < 1:
         if use_graph:
-            
+
             def clip_tensors(_tensor_list, _clip_coef_tensor):
                 for t in _tensor_list:
                     t.detach().mul_(_clip_coef_tensor)

@@ -81,9 +81,8 @@ class BF16_Optimizer(ZeROOptimizer):
         self.use_graph_for_utils = use_graph_for_utils
         if self.using_real_optimizer:
             self._setup_for_real_optimizer()
-            
-        see_memory_usage('end bf16_optimizer', force=True)
 
+        see_memory_usage('end bf16_optimizer', force=True)
 
     def _setup_for_real_optimizer(self):
         dp_world_size = dist.get_world_size(group=self.dp_process_group)
