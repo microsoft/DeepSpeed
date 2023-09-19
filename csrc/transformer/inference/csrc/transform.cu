@@ -53,7 +53,7 @@ __global__ void bias_add_transform_0213(float* output,
 
     vals_vec += (d0 * (d1_stride + num_kv * 2 * d2_stride) * seq_length);
     vals_vec += d1 * (d1_stride + num_kv * 2 * d2_stride);
-    vals_vec += (cnt == 0 ? 0 : d1_stride) + (cnt == 0 ? 0 : (cnt - 1) * num_kv * 2 * d2_stride);
+    vals_vec += (cnt == 0 ? 0 : d1_stride) + (cnt == 0 ? 0 : (cnt - 1) * num_kv * d2_stride);
     vals_vec += ((cnt == 0 ? d2 : (d2 / head_stride)) * d2_stride);
 
     output_vec += (d1 * d2_stride);
