@@ -1,6 +1,7 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 from .builder import SYCLOpBuilder
 
 
@@ -15,14 +16,7 @@ class CPUAdagradBuilder(SYCLOpBuilder):
         return f'deepspeed.ops.adagrad.{self.NAME}_op'
 
     def sources(self):
-        return [
-            'csrc/xpu/adagrad/cpu_adagrad.dp.cpp',
-            'csrc/xpu/adam/custom_sycl_kernel.dp.cpp'
-        ]
+        return ['csrc/xpu/adagrad/cpu_adagrad.dp.cpp', 'csrc/xpu/adam/custom_sycl_kernel.dp.cpp']
 
     def include_paths(self):
-        return [
-            'csrc/xpu/includes',
-            'csrc/xpu/adagrad',
-            'csrc/includes'
-        ]
+        return ['csrc/xpu/includes', 'csrc/xpu/adagrad', 'csrc/includes']

@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #if __has_include(<sycl/sycl.hpp>)
 #include <sycl/sycl.hpp>
 using namespace sycl;
@@ -278,10 +283,8 @@ void attn_softmax(bf16* vals,
 
         int data_id = i * iteration_stride + seq_lane;
         if (data_id < seq_length) {
-            ushort4 data_ushort = {bf16(data[i].x()),
-                                   bf16(data[i].y()),
-                                   bf16(data[i].z()),
-                                   bf16(data[i].w())};
+            ushort4 data_ushort = {
+                bf16(data[i].x()), bf16(data[i].y()), bf16(data[i].z()), bf16(data[i].w())};
             val_cast[data_offset + data_id] = data_ushort;
         }
     }

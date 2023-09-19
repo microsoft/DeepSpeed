@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #if __has_include(<sycl/sycl.hpp>)
 #include <sycl/sycl.hpp>
 #elif __has_include(<CL/sycl.hpp>)
@@ -156,10 +161,8 @@ void transform_0213<bf16>(bf16* output,
     outputs.z() = inputs.z();
     outputs.w() = inputs.w();
 
-    ushort4 outputs_cast = {bf16(outputs.x()),
-                            bf16(outputs.y()),
-                            bf16(outputs.z()),
-                            bf16(outputs.w())};
+    ushort4 outputs_cast = {
+        bf16(outputs.x()), bf16(outputs.y()), bf16(outputs.z()), bf16(outputs.w())};
 
     output_vec[d0 * d0_out_stride + d1 * d1_out_stride + d2 * d2_out_stride + d3] = outputs_cast;
 }
@@ -369,10 +372,8 @@ void bias_add_transform_0213<bf16>(bf16* output,
     outputs.z() = inputs.z() + biases.z();
     outputs.w() = inputs.w() + biases.w();
 
-    ushort4 outputs_cast = {bf16(outputs.x()),
-                            bf16(outputs.y()),
-                            bf16(outputs.z()),
-                            bf16(outputs.w())};
+    ushort4 outputs_cast = {
+        bf16(outputs.x()), bf16(outputs.y()), bf16(outputs.z()), bf16(outputs.w())};
     output_vec[cnt * d0_out_stride * item_ct1.get_group_range(2) + d0 * d0_out_stride +
                d1 * d1_out_stride + d2 * d2_out_stride + d3] = outputs_cast;
 }

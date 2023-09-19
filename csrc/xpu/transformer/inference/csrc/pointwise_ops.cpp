@@ -4,8 +4,8 @@
 // DeepSpeed Team
 
 #include <sycl/sycl.hpp>
-#include "conversion_utils.hpp"
 #include "compatible.hpp"
+#include "conversion_utils.hpp"
 #include "memory_access_utils.hpp"
 
 namespace pwise {
@@ -15,8 +15,12 @@ constexpr int threads = 256;
 }  // namespace pwise
 
 template <typename T>
-void vector_add_kernel(T* out, const T* a, const T* b, float gamma, int num_elems,
-                       const sycl::nd_item<3> &item_ct1)
+void vector_add_kernel(T* out,
+                       const T* a,
+                       const T* b,
+                       float gamma,
+                       int num_elems,
+                       const sycl::nd_item<3>& item_ct1)
 {
     constexpr int T_per_access = pwise::granularity / sizeof(T);
 
@@ -62,10 +66,9 @@ void launch_vector_add(T* out,
     sycl::range<3> grid(1, 1, (num_elems + T_per_block - 1) / T_per_block);
 
     {
-        stream.parallel_for(sycl::nd_range<3>(grid * block, block),
-                             [=](sycl::nd_item<3> item_ct1) {
-                                 vector_add_kernel(out, a, b, gamma, num_elems, item_ct1);
-                             });
+        stream.parallel_for(sycl::nd_range<3>(grid * block, block), [=](sycl::nd_item<3> item_ct1) {
+            vector_add_kernel(out, a, b, gamma, num_elems, item_ct1);
+        });
     }
 }
 

@@ -1,6 +1,7 @@
-/*
-Copyright 2022 The Microsoft DeepSpeed Team
-*/
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
 
 #include "compatible.hpp"
 #include "conversion_utils.hpp"
@@ -108,7 +109,8 @@ public:
                 int data_id = i * (reduceWidth << 2) + (seq_lane);
                 bool check = (data_id >> 2) >= window_stride4;
                 bool low_x_check = check && (data_id < sequence_length) &&
-                                   (!triangular || (data_id <= seq_id)) && (data_id > window_stride);
+                                   (!triangular || (data_id <= seq_id)) &&
+                                   (data_id > window_stride);
                 bool low_y_check = check && ((data_id + reduceWidth) < sequence_length) &&
                                    (!triangular || ((data_id + reduceWidth) <= seq_id)) &&
                                    ((data_id + reduceWidth) > window_stride);
@@ -120,79 +122,87 @@ public:
                                     ((data_id + reduceWidth * 3) > window_stride);
 
                 if (mask && alibi) {
-                    low_data[i].x() = low_x_check
-                                        ? conversion::to<float>(rvals[data_id]) * layer_scale +
-                                              (conversion::to<float>(alibi[data_id + alibi_offset])) +
-                                              (conversion::to<float>(mask[data_id + mask_offset]))
-                                        : minus_infinity;
+                    low_data[i].x() =
+                        low_x_check ? conversion::to<float>(rvals[data_id]) * layer_scale +
+                                          (conversion::to<float>(alibi[data_id + alibi_offset])) +
+                                          (conversion::to<float>(mask[data_id + mask_offset]))
+                                    : minus_infinity;
                     low_data[i].y() =
                         low_y_check
                             ? conversion::to<float>(rvals[data_id + reduceWidth]) * layer_scale +
-                                  (conversion::to<float>(alibi[data_id + alibi_offset + reduceWidth])) +
+                                  (conversion::to<float>(
+                                      alibi[data_id + alibi_offset + reduceWidth])) +
                                   (conversion::to<float>(mask[data_id + mask_offset + reduceWidth]))
                             : minus_infinity;
                     high_data[i].x() =
-                        high_x_check
-                            ? conversion::to<float>(rvals[data_id + reduceWidth * 2]) * layer_scale +
-                                  (conversion::to<float>(
-                                      alibi[data_id + alibi_offset + reduceWidth * 2])) +
-                                  (conversion::to<float>(mask[data_id + mask_offset + reduceWidth * 2]))
-                            : minus_infinity;
+                        high_x_check ? conversion::to<float>(rvals[data_id + reduceWidth * 2]) *
+                                               layer_scale +
+                                           (conversion::to<float>(
+                                               alibi[data_id + alibi_offset + reduceWidth * 2])) +
+                                           (conversion::to<float>(
+                                               mask[data_id + mask_offset + reduceWidth * 2]))
+                                     : minus_infinity;
                     high_data[i].y() =
-                        high_y_check
-                            ? conversion::to<float>(rvals[data_id + reduceWidth * 3]) * layer_scale +
-                                  (conversion::to<float>(
-                                      alibi[data_id + alibi_offset + reduceWidth * 3])) +
-                                  (conversion::to<float>(mask[data_id + mask_offset + reduceWidth * 3]))
-                            : minus_infinity;
+                        high_y_check ? conversion::to<float>(rvals[data_id + reduceWidth * 3]) *
+                                               layer_scale +
+                                           (conversion::to<float>(
+                                               alibi[data_id + alibi_offset + reduceWidth * 3])) +
+                                           (conversion::to<float>(
+                                               mask[data_id + mask_offset + reduceWidth * 3]))
+                                     : minus_infinity;
                 } else if (mask) {
                     low_data[i].x() = low_x_check
-                                        ? conversion::to<float>(rvals[data_id]) * layer_scale +
-                                              (conversion::to<float>(mask[data_id + mask_offset]))
-                                        : minus_infinity;
+                                          ? conversion::to<float>(rvals[data_id]) * layer_scale +
+                                                (conversion::to<float>(mask[data_id + mask_offset]))
+                                          : minus_infinity;
                     low_data[i].y() =
                         low_y_check
                             ? conversion::to<float>(rvals[data_id + reduceWidth]) * layer_scale +
                                   (conversion::to<float>(mask[data_id + mask_offset + reduceWidth]))
                             : minus_infinity;
                     high_data[i].x() =
-                        high_x_check
-                            ? conversion::to<float>(rvals[data_id + reduceWidth * 2]) * layer_scale +
-                                  (conversion::to<float>(mask[data_id + mask_offset + reduceWidth * 2]))
-                            : minus_infinity;
+                        high_x_check ? conversion::to<float>(rvals[data_id + reduceWidth * 2]) *
+                                               layer_scale +
+                                           (conversion::to<float>(
+                                               mask[data_id + mask_offset + reduceWidth * 2]))
+                                     : minus_infinity;
                     high_data[i].y() =
-                        high_y_check
-                            ? conversion::to<float>(rvals[data_id + reduceWidth * 3]) * layer_scale +
-                                  (conversion::to<float>(mask[data_id + mask_offset + reduceWidth * 3]))
-                            : minus_infinity;
+                        high_y_check ? conversion::to<float>(rvals[data_id + reduceWidth * 3]) *
+                                               layer_scale +
+                                           (conversion::to<float>(
+                                               mask[data_id + mask_offset + reduceWidth * 3]))
+                                     : minus_infinity;
                 } else if (alibi) {
-                    low_data[i].x() = low_x_check
-                                        ? conversion::to<float>(rvals[data_id]) * layer_scale +
-                                              (conversion::to<float>(alibi[data_id + alibi_offset]))
-                                        : minus_infinity;
+                    low_data[i].x() =
+                        low_x_check ? conversion::to<float>(rvals[data_id]) * layer_scale +
+                                          (conversion::to<float>(alibi[data_id + alibi_offset]))
+                                    : minus_infinity;
                     low_data[i].y() =
                         low_y_check
                             ? conversion::to<float>(rvals[data_id + reduceWidth]) * layer_scale +
-                                  (conversion::to<float>(alibi[data_id + alibi_offset + reduceWidth]))
+                                  (conversion::to<float>(
+                                      alibi[data_id + alibi_offset + reduceWidth]))
                             : minus_infinity;
                     high_data[i].x() =
-                        high_x_check
-                            ? conversion::to<float>(rvals[data_id + reduceWidth * 2]) * layer_scale +
-                                  (conversion::to<float>(
-                                      alibi[data_id + alibi_offset + reduceWidth * 2]))
-                            : minus_infinity;
+                        high_x_check ? conversion::to<float>(rvals[data_id + reduceWidth * 2]) *
+                                               layer_scale +
+                                           (conversion::to<float>(
+                                               alibi[data_id + alibi_offset + reduceWidth * 2]))
+                                     : minus_infinity;
                     high_data[i].y() =
-                        high_y_check
-                            ? conversion::to<float>(rvals[data_id + reduceWidth * 3]) * layer_scale +
-                                  (conversion::to<float>(
-                                      alibi[data_id + alibi_offset + reduceWidth * 3]))
-                            : minus_infinity;
+                        high_y_check ? conversion::to<float>(rvals[data_id + reduceWidth * 3]) *
+                                               layer_scale +
+                                           (conversion::to<float>(
+                                               alibi[data_id + alibi_offset + reduceWidth * 3]))
+                                     : minus_infinity;
                 } else {
-                    low_data[i].x() = low_x_check ? conversion::to<float>(rvals[data_id]) * layer_scale
-                                                : minus_infinity;
+                    low_data[i].x() = low_x_check
+                                          ? conversion::to<float>(rvals[data_id]) * layer_scale
+                                          : minus_infinity;
                     low_data[i].y() =
-                        low_y_check ? conversion::to<float>(rvals[data_id + reduceWidth]) * layer_scale
-                                    : minus_infinity;
+                        low_y_check
+                            ? conversion::to<float>(rvals[data_id + reduceWidth]) * layer_scale
+                            : minus_infinity;
                     high_data[i].x() =
                         high_x_check
                             ? conversion::to<float>(rvals[data_id + reduceWidth * 2]) * layer_scale
@@ -255,16 +265,18 @@ public:
             }
             sum += 1e-6;
             for (int i = 0; i < iterations; i++) {
-            int data_id = i * (reduceWidth << 2) + (seq_lane);
+                int data_id = i * (reduceWidth << 2) + (seq_lane);
                 if (data_id < sequence_length) {
-                rvals[data_id] = conversion::to<T>(low_data[i].x() / sum);
-                if ((data_id + reduceWidth) < sequence_length)
-                    rvals[data_id + reduceWidth] = conversion::to<T>(low_data[i].y() / sum);
-                if ((data_id + reduceWidth * 2) < sequence_length)
-                    rvals[data_id + reduceWidth * 2] = conversion::to<T>(high_data[i].x() / sum);
-                if ((data_id + reduceWidth * 3) < sequence_length)
-                    rvals[data_id + reduceWidth * 3] = conversion::to<T>(high_data[i].y() / sum);
-            }
+                    rvals[data_id] = conversion::to<T>(low_data[i].x() / sum);
+                    if ((data_id + reduceWidth) < sequence_length)
+                        rvals[data_id + reduceWidth] = conversion::to<T>(low_data[i].y() / sum);
+                    if ((data_id + reduceWidth * 2) < sequence_length)
+                        rvals[data_id + reduceWidth * 2] =
+                            conversion::to<T>(high_data[i].x() / sum);
+                    if ((data_id + reduceWidth * 3) < sequence_length)
+                        rvals[data_id + reduceWidth * 3] =
+                            conversion::to<T>(high_data[i].y() / sum);
+                }
             }
         }
     };
@@ -380,16 +392,16 @@ public:
 
                 if (attn_mask) {
                     data[i].x() = x_check ? rvals[data_id] + attn_mask[data_id + mask_offset]
-                                        : minus_infinity;
+                                          : minus_infinity;
                     data[i].y() = y_check ? rvals[data_id + reduceWidth] +
-                                              attn_mask[data_id + mask_offset + reduceWidth]
-                                        : minus_infinity;
+                                                attn_mask[data_id + mask_offset + reduceWidth]
+                                          : minus_infinity;
                     data[i].z() = z_check ? rvals[data_id + reduceWidth * 2] +
-                                              attn_mask[data_id + mask_offset + reduceWidth * 2]
-                                        : minus_infinity;
+                                                attn_mask[data_id + mask_offset + reduceWidth * 2]
+                                          : minus_infinity;
                     data[i].w() = w_check ? rvals[data_id + reduceWidth * 3] +
-                                              attn_mask[data_id + mask_offset + reduceWidth * 3]
-                                        : minus_infinity;
+                                                attn_mask[data_id + mask_offset + reduceWidth * 3]
+                                          : minus_infinity;
                 } else {
                     data[i].x() = x_check ? rvals[data_id] : minus_infinity;
                     data[i].y() = y_check ? rvals[data_id + reduceWidth] : minus_infinity;
@@ -451,16 +463,16 @@ public:
             sum += 1e-6;
 
             for (int i = 0; i < iterations; i++) {
-            int data_id = i * (reduceWidth << 2) + (seq_lane);
+                int data_id = i * (reduceWidth << 2) + (seq_lane);
                 if (data_id < sequence_length) {
-                rvals[data_id] = data[i].x() / sum;
-                if ((data_id + reduceWidth) < sequence_length)
-                    rvals[data_id + reduceWidth] = data[i].y() / sum;
-                if ((data_id + reduceWidth * 2) < sequence_length)
-                    rvals[data_id + reduceWidth * 2] = data[i].z() / sum;
-                if ((data_id + reduceWidth * 3) < sequence_length)
-                    rvals[data_id + reduceWidth * 3] = data[i].w() / sum;
-              }
+                    rvals[data_id] = data[i].x() / sum;
+                    if ((data_id + reduceWidth) < sequence_length)
+                        rvals[data_id + reduceWidth] = data[i].y() / sum;
+                    if ((data_id + reduceWidth * 2) < sequence_length)
+                        rvals[data_id + reduceWidth * 2] = data[i].z() / sum;
+                    if ((data_id + reduceWidth * 3) < sequence_length)
+                        rvals[data_id + reduceWidth * 3] = data[i].w() / sum;
+                }
             }
         }
     };

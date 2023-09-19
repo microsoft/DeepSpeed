@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #include <torch/extension.h>
 #include <stdexcept>
 #include <vector>
@@ -281,17 +286,18 @@ at::Tensor qkv_unfused_sycl(at::Tensor& output,
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
 #ifdef USE_MKL_GEMM
-        onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
-                            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
-                            oneapi::mkl::transpose::nontrans,
-                            bsz,
-                            weight.size(1),
-                            input.size(2),
-                            alpha,
-                            gemm_beta,
-                            workspace,
-                            (T*)weight.data_ptr(),
-                            (T*)output.data_ptr());
+        onemkl_matmul_ex<T>(
+            InferenceContext::Instance().GetCurrentStream(),
+            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
+            oneapi::mkl::transpose::nontrans,
+            bsz,
+            weight.size(1),
+            input.size(2),
+            alpha,
+            gemm_beta,
+            workspace,
+            (T*)weight.data_ptr(),
+            (T*)output.data_ptr());
 #else
         onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
                             transposed_mode,
@@ -407,17 +413,18 @@ at::Tensor mlp_unfused_sycl(at::Tensor& output,
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
 #ifdef USE_MKL_GEMM
-        onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
-                            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
-                            oneapi::mkl::transpose::nontrans,
-                            bsz,
-                            weight.size(1),
-                            input.size(2),
-                            alpha,
-                            gemm_beta,
-                            inp_norm,
-                            (T*)weight.data_ptr(),
-                            intermediate);
+        onemkl_matmul_ex<T>(
+            InferenceContext::Instance().GetCurrentStream(),
+            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
+            oneapi::mkl::transpose::nontrans,
+            bsz,
+            weight.size(1),
+            input.size(2),
+            alpha,
+            gemm_beta,
+            inp_norm,
+            (T*)weight.data_ptr(),
+            intermediate);
 #else
         onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
                             transposed_mode,
@@ -448,17 +455,18 @@ at::Tensor mlp_unfused_sycl(at::Tensor& output,
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
 #ifdef USE_MKL_GEMM
-        onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
-                            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
-                            oneapi::mkl::transpose::nontrans,
-                            bsz,
-                            weight1.size(transposed_mode ? 0 : 1),
-                            weight1.size(transposed_mode ? 1 : 0),
-                            alpha,
-                            gemm_beta,
-                            intermediate,
-                            (T*)weight1.data_ptr(),
-                            (T*)output.data_ptr());
+        onemkl_matmul_ex<T>(
+            InferenceContext::Instance().GetCurrentStream(),
+            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
+            oneapi::mkl::transpose::nontrans,
+            bsz,
+            weight1.size(transposed_mode ? 0 : 1),
+            weight1.size(transposed_mode ? 1 : 0),
+            alpha,
+            gemm_beta,
+            intermediate,
+            (T*)weight1.data_ptr(),
+            (T*)output.data_ptr());
 #else
         onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
                             transposed_mode,
@@ -565,17 +573,18 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
         throw std::runtime_error("q_int8=true is not supported!");
     } else {
 #ifdef USE_MKL_GEMM
-        onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
-                            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
-                            oneapi::mkl::transpose::nontrans,
-                            bsz,
-                            intm_dim,
-                            input.size(2),
-                            alpha,
-                            gemm_beta,
-                            (T*)input.data_ptr(),
-                            (T*)weight.data_ptr(),
-                            (T*)intermediate.data_ptr());
+        onemkl_matmul_ex<T>(
+            InferenceContext::Instance().GetCurrentStream(),
+            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
+            oneapi::mkl::transpose::nontrans,
+            bsz,
+            intm_dim,
+            input.size(2),
+            alpha,
+            gemm_beta,
+            (T*)input.data_ptr(),
+            (T*)weight.data_ptr(),
+            (T*)intermediate.data_ptr());
 #else
         onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
                             transposed_mode,
@@ -602,17 +611,18 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
         throw std::runtime_error("q_int8=true is not supported!");
     } else {
 #ifdef USE_MKL_GEMM
-        onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
-                            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
-                            oneapi::mkl::transpose::nontrans,
-                            bsz,
-                            out_size,
-                            intm_dim,
-                            alpha,
-                            gemm_beta,
-                            (T*)intermediate.data_ptr(),
-                            (T*)weight_out.data_ptr(),
-                            (T*)output.data_ptr());
+        onemkl_matmul_ex<T>(
+            InferenceContext::Instance().GetCurrentStream(),
+            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
+            oneapi::mkl::transpose::nontrans,
+            bsz,
+            out_size,
+            intm_dim,
+            alpha,
+            gemm_beta,
+            (T*)intermediate.data_ptr(),
+            (T*)weight_out.data_ptr(),
+            (T*)output.data_ptr());
 #else
         onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
                             transposed_mode,
@@ -661,17 +671,18 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
 #ifdef USE_MKL_GEMM
-        onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
-                            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
-                            oneapi::mkl::transpose::nontrans,
-                            bsz,
-                            weight.size(transposed_mode ? 0 : 1),
-                            input.size(2),
-                            alpha,
-                            gemm_beta,
-                            (T*)input.data_ptr(),
-                            (T*)weight.data_ptr(),
-                            (T*)output.data_ptr());
+        onemkl_matmul_ex<T>(
+            InferenceContext::Instance().GetCurrentStream(),
+            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
+            oneapi::mkl::transpose::nontrans,
+            bsz,
+            weight.size(transposed_mode ? 0 : 1),
+            input.size(2),
+            alpha,
+            gemm_beta,
+            (T*)input.data_ptr(),
+            (T*)weight.data_ptr(),
+            (T*)output.data_ptr());
 #else
         onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
                             transposed_mode,

@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .builder import SYCLOpBuilder
 
 
@@ -17,16 +22,13 @@ class InferenceBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            'csrc/transformer/inference/csrc/softmax.cpp',
-            'csrc/transformer/inference/csrc/pt_binding.cpp',
+            'csrc/transformer/inference/csrc/softmax.cpp', 'csrc/transformer/inference/csrc/pt_binding.cpp',
             'csrc/transformer/inference/csrc/gelu.cpp',
             'csrc/transformer/inference/csrc/inference_onednn_wrappers.cpp',
             'csrc/transformer/inference/csrc/inference_onemkl_wrappers.cpp',
-            'csrc/transformer/inference/csrc/layer_norm.cpp',
-            'csrc/transformer/inference/csrc/pointwise_ops.cpp'
+            'csrc/transformer/inference/csrc/layer_norm.cpp', 'csrc/transformer/inference/csrc/pointwise_ops.cpp'
         ]
 
     def include_paths(self):
         includes = ['csrc/xpu/transformer/inference/includes', 'csrc/transformer/inference/includes']
         return includes
-

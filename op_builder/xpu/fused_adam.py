@@ -1,6 +1,7 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 from .builder import SYCLOpBuilder
 
 
@@ -21,10 +22,7 @@ class FusedAdamBuilder(SYCLOpBuilder):
         ]
 
     def include_paths(self):
-        return [
-            'csrc/xpu/includes',
-            'csrc/xpu/adam', 'csrc/includes'
-        ]
+        return ['csrc/xpu/includes', 'csrc/xpu/adam', 'csrc/includes']
 
     def cxx_args(self):
         args = super().cxx_args()

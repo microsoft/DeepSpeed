@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #pragma once
 
 #include <assert.h>
@@ -8,8 +13,8 @@
 #else
 #error "Unsupported compiler"
 #endif
-#include <oneapi/mkl.hpp>
 #include <oneapi/dnnl/dnnl_sycl.hpp>
+#include <oneapi/mkl.hpp>
 
 #include <stdio.h>
 

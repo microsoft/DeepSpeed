@@ -1,45 +1,54 @@
-#include <ATen/ATen.h>
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #include "inference_onednn_wrappers.hpp"
+#include <ATen/ATen.h>
 #include "inference_sycl_layers.hpp"
 
 struct hash_pair {
-  static size_t hash_combine( size_t lhs, size_t rhs ) {
-    lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
-    return lhs;
-  }
+    static size_t hash_combine(size_t lhs, size_t rhs)
+    {
+        lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
+        return lhs;
+    }
 
-  template <class T1, class T2>
-  std::size_t operator() (const std::pair<T1, T2> &pair) const {
-    return hash_combine(std::hash<T1>()(pair.first), std::hash<T2>()(pair.second));
-  }
+    template <class T1, class T2>
+    std::size_t operator()(const std::pair<T1, T2>& pair) const
+    {
+        return hash_combine(std::hash<T1>()(pair.first), std::hash<T2>()(pair.second));
+    }
 };
 
 // DNNL engine and stream should be permnantly existing and binding to sycl queue
-static std::pair<dnnl::engine, dnnl::stream> get_dnnl_engine_stream(sycl::queue queue) {
-  static std::unordered_map<sycl::queue, dnnl::stream> dnnl_streams;
-  auto it_stream = dnnl_streams.find(queue);
+static std::pair<dnnl::engine, dnnl::stream> get_dnnl_engine_stream(sycl::queue queue)
+{
+    static std::unordered_map<sycl::queue, dnnl::stream> dnnl_streams;
+    auto it_stream = dnnl_streams.find(queue);
 
-  static std::unordered_map<std::pair<sycl::device, sycl::context>, dnnl::engine, hash_pair> dnnl_engines;
-  auto context = std::make_pair(queue.get_device(), queue.get_context());
-  // if hit, we know both engine and queue are preserved
-  if (it_stream != dnnl_streams.end()) {
-    return std::make_pair(dnnl_engines[context], it_stream->second);
-  }
+    static std::unordered_map<std::pair<sycl::device, sycl::context>, dnnl::engine, hash_pair>
+        dnnl_engines;
+    auto context = std::make_pair(queue.get_device(), queue.get_context());
+    // if hit, we know both engine and queue are preserved
+    if (it_stream != dnnl_streams.end()) {
+        return std::make_pair(dnnl_engines[context], it_stream->second);
+    }
 
-  auto it = dnnl_engines.find(context);
+    auto it = dnnl_engines.find(context);
 
-  dnnl::engine engine;
-  if (it != dnnl_engines.end()) {
-    engine = it->second;
-  } else {
-    engine = dnnl::sycl_interop::make_engine(context.first, context.second);
-    dnnl_engines.emplace(std::make_pair(context, engine));
-  }
+    dnnl::engine engine;
+    if (it != dnnl_engines.end()) {
+        engine = it->second;
+    } else {
+        engine = dnnl::sycl_interop::make_engine(context.first, context.second);
+        dnnl_engines.emplace(std::make_pair(context, engine));
+    }
 
-  dnnl::stream stream = dnnl::sycl_interop::make_stream(engine, queue);
-  dnnl_streams.emplace(std::make_pair(queue, stream));
+    dnnl::stream stream = dnnl::sycl_interop::make_stream(engine, queue);
+    dnnl_streams.emplace(std::make_pair(queue, stream));
 
-  return std::make_pair(engine, stream);
+    return std::make_pair(engine, stream);
 }
 
 template <typename T, bool bmm>

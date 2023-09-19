@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #include "general_kernels.hpp"
 #if __has_include(<sycl/sycl.hpp>)
 #include <sycl/sycl.hpp>
@@ -182,10 +187,7 @@ void fused_add2_kernel(const int N,
         val.z() = inp1_reg.z() + inp2_reg.z();
         val.w() = inp1_reg.w() + inp2_reg.w();
 
-        out_cast[j] = {bf16(val.x()),
-                       bf16(val.y()),
-                       bf16(val.z()),
-                       bf16(val.w())};
+        out_cast[j] = {bf16(val.x()), bf16(val.y()), bf16(val.z()), bf16(val.w())};
     }
 }
 

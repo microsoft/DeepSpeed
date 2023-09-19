@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #if __has_include(<sycl/sycl.hpp>)
 #include <sycl/sycl.hpp>
 using namespace sycl;
@@ -447,10 +452,7 @@ void dropout_grad_kernel(const int N,
                          nd_item<3> item_ct1)
 {
     ushort* Xdata_cast = reinterpret_cast<ushort*>(Xdata);
-    DPCPP_1D_KERNEL_LOOP(i, N)
-    {
-        Xdata_cast[i] = bf16(float(Xdata_cast[i]) * scale * mask[i]);
-    }
+    DPCPP_1D_KERNEL_LOOP(i, N) { Xdata_cast[i] = bf16(float(Xdata_cast[i]) * scale * mask[i]); }
 }
 
 void dropout_grad_kernel(const int N,
@@ -568,10 +570,7 @@ void dropout_grad_kernel(const int N,
 {
     const ushort* Xdata_cast = reinterpret_cast<const ushort*>(Xdata);
     ushort* out_cast = reinterpret_cast<ushort*>(out);
-    DPCPP_1D_KERNEL_LOOP(i, N)
-    {
-        out_cast[i] = bf16(float(Xdata_cast[i]) * scale * mask[i]);
-    }
+    DPCPP_1D_KERNEL_LOOP(i, N) { out_cast[i] = bf16(float(Xdata_cast[i]) * scale * mask[i]); }
 }
 
 void dropout_grad_kernel(const int N,
@@ -1004,10 +1003,8 @@ void dropout_kernel(const int N,
         out_data.w() += res_data.w();
 
         mask_32[j] = m_32;
-        out_cast[j] = {bf16(out_data.x()),
-                       bf16(out_data.y()),
-                       bf16(out_data.z()),
-                       bf16(out_data.w())};
+        out_cast[j] = {
+            bf16(out_data.x()), bf16(out_data.y()), bf16(out_data.z()), bf16(out_data.w())};
     }
     int high_index = ((((N / unroll_factor) - 1) / item_ct1.get_local_range().get(2) + 1) *
                       (unroll_factor * item_ct1.get_local_range().get(2))) +

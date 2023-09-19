@@ -1,6 +1,7 @@
-/*
-Copyright 2022 The Microsoft DeepSpeed Team
-*/
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
 
 #pragma once
 
@@ -40,7 +41,6 @@ inline void store_global(void* dst, const void* src);
 // Shared accesses have no cache policy
 template <int AccessSize>
 inline void store_shared(void* dst, const void* src);
-
 
 // Util for tracking pipeline buffers
 // TODO: Evaluate whether this should also be guarded by ASYNC_COPY_AVAILABLE
@@ -98,9 +98,7 @@ inline void load_global<16, LoadPolicy::CacheGlobal>(void* dst, const void* src)
 }
 
 template <>
-inline void load_global<16, LoadPolicy::CacheGlobal>(void* dst,
-                                                                         const void* src,
-                                                                         bool do_access)
+inline void load_global<16, LoadPolicy::CacheGlobal>(void* dst, const void* src, bool do_access)
 {
     uint4* data = reinterpret_cast<uint4*>(dst);
     const uint4* src_cast = reinterpret_cast<const uint4*>(src);
@@ -115,8 +113,7 @@ inline void load_global<16, LoadPolicy::CacheGlobal>(void* dst,
 }
 
 template <>
-inline void load_global<16, LoadPolicy::CacheStreaming>(void* dst,
-                                                                            const void* src)
+inline void load_global<16, LoadPolicy::CacheStreaming>(void* dst, const void* src)
 {
     uint4* data = reinterpret_cast<uint4*>(dst);
     const uint4* src_cast = reinterpret_cast<const uint4*>(src);
@@ -124,9 +121,7 @@ inline void load_global<16, LoadPolicy::CacheStreaming>(void* dst,
 }
 
 template <>
-inline void load_global<16, LoadPolicy::CacheStreaming>(void* dst,
-                                                                            const void* src,
-                                                                            bool do_access)
+inline void load_global<16, LoadPolicy::CacheStreaming>(void* dst, const void* src, bool do_access)
 {
     uint4* data = reinterpret_cast<uint4*>(dst);
     const uint4* src_cast = reinterpret_cast<const uint4*>(src);
@@ -170,9 +165,7 @@ inline void load_global<8, LoadPolicy::CacheGlobal>(void* dst, const void* src)
 }
 
 template <>
-inline void load_global<8, LoadPolicy::CacheGlobal>(void* dst,
-                                                                        const void* src,
-                                                                        bool do_access)
+inline void load_global<8, LoadPolicy::CacheGlobal>(void* dst, const void* src, bool do_access)
 {
     uint2* data = reinterpret_cast<uint2*>(dst);
     const uint2* src_cast = reinterpret_cast<const uint2*>(src);
@@ -185,8 +178,7 @@ inline void load_global<8, LoadPolicy::CacheGlobal>(void* dst,
 }
 
 template <>
-inline void load_global<8, LoadPolicy::CacheStreaming>(void* dst,
-                                                                           const void* src)
+inline void load_global<8, LoadPolicy::CacheStreaming>(void* dst, const void* src)
 {
     uint2* data = reinterpret_cast<uint2*>(dst);
     const uint2* src_cast = reinterpret_cast<const uint2*>(src);
@@ -194,9 +186,7 @@ inline void load_global<8, LoadPolicy::CacheStreaming>(void* dst,
 }
 
 template <>
-inline void load_global<8, LoadPolicy::CacheStreaming>(void* dst,
-                                                                           const void* src,
-                                                                           bool do_access)
+inline void load_global<8, LoadPolicy::CacheStreaming>(void* dst, const void* src, bool do_access)
 {
     uint2* data = reinterpret_cast<uint2*>(dst);
     const uint2* src_cast = reinterpret_cast<const uint2*>(src);
@@ -237,9 +227,7 @@ inline void load_global<4, LoadPolicy::CacheGlobal>(void* dst, const void* src)
 }
 
 template <>
-inline void load_global<4, LoadPolicy::CacheGlobal>(void* dst,
-                                                                        const void* src,
-                                                                        bool do_access)
+inline void load_global<4, LoadPolicy::CacheGlobal>(void* dst, const void* src, bool do_access)
 {
     int32_t* data = reinterpret_cast<int32_t*>(dst);
     const int32_t* src_cast = reinterpret_cast<const int32_t*>(src);
@@ -251,8 +239,7 @@ inline void load_global<4, LoadPolicy::CacheGlobal>(void* dst,
 }
 
 template <>
-inline void load_global<4, LoadPolicy::CacheStreaming>(void* dst,
-                                                                           const void* src)
+inline void load_global<4, LoadPolicy::CacheStreaming>(void* dst, const void* src)
 {
     int32_t* data = reinterpret_cast<int32_t*>(dst);
     const int32_t* src_cast = reinterpret_cast<const int32_t*>(src);
@@ -260,9 +247,7 @@ inline void load_global<4, LoadPolicy::CacheStreaming>(void* dst,
 }
 
 template <>
-inline void load_global<4, LoadPolicy::CacheStreaming>(void* dst,
-                                                                           const void* src,
-                                                                           bool do_access)
+inline void load_global<4, LoadPolicy::CacheStreaming>(void* dst, const void* src, bool do_access)
 {
     int32_t* data = reinterpret_cast<int32_t*>(dst);
     const int32_t* src_cast = reinterpret_cast<const int32_t*>(src);
@@ -302,9 +287,7 @@ inline void load_global<2, LoadPolicy::CacheGlobal>(void* dst, const void* src)
 }
 
 template <>
-inline void load_global<2, LoadPolicy::CacheGlobal>(void* dst,
-                                                                        const void* src,
-                                                                        bool do_access)
+inline void load_global<2, LoadPolicy::CacheGlobal>(void* dst, const void* src, bool do_access)
 {
     int16_t* data = reinterpret_cast<int16_t*>(dst);
     const int16_t* src_cast = reinterpret_cast<const int16_t*>(src);
@@ -316,8 +299,7 @@ inline void load_global<2, LoadPolicy::CacheGlobal>(void* dst,
 }
 
 template <>
-inline void load_global<2, LoadPolicy::CacheStreaming>(void* dst,
-                                                                           const void* src)
+inline void load_global<2, LoadPolicy::CacheStreaming>(void* dst, const void* src)
 {
     int16_t* data = reinterpret_cast<int16_t*>(dst);
     const int16_t* src_cast = reinterpret_cast<const int16_t*>(src);
@@ -325,9 +307,7 @@ inline void load_global<2, LoadPolicy::CacheStreaming>(void* dst,
 }
 
 template <>
-inline void load_global<2, LoadPolicy::CacheStreaming>(void* dst,
-                                                                           const void* src,
-                                                                           bool do_access)
+inline void load_global<2, LoadPolicy::CacheStreaming>(void* dst, const void* src, bool do_access)
 {
     int16_t* data = reinterpret_cast<int16_t*>(dst);
     const int16_t* src_cast = reinterpret_cast<const int16_t*>(src);
@@ -413,8 +393,7 @@ inline void store_global<16>(void* dst, const void* src)
 }
 
 template <>
-inline void store_global<16, StorePolicy::CacheGlobal>(void* dst,
-                                                                           const void* src)
+inline void store_global<16, StorePolicy::CacheGlobal>(void* dst, const void* src)
 {
     const uint4* data = reinterpret_cast<const uint4*>(src);
     uint4* dst_cast = reinterpret_cast<uint4*>(dst);
@@ -422,8 +401,7 @@ inline void store_global<16, StorePolicy::CacheGlobal>(void* dst,
 }
 
 template <>
-inline void store_global<16, StorePolicy::CacheStreaming>(void* dst,
-                                                                              const void* src)
+inline void store_global<16, StorePolicy::CacheStreaming>(void* dst, const void* src)
 {
     const uint4* data = reinterpret_cast<const uint4*>(src);
     uint4* dst_cast = reinterpret_cast<uint4*>(dst);
@@ -439,8 +417,7 @@ inline void store_global<8>(void* dst, const void* src)
 }
 
 template <>
-inline void store_global<8, StorePolicy::CacheGlobal>(void* dst,
-                                                                          const void* src)
+inline void store_global<8, StorePolicy::CacheGlobal>(void* dst, const void* src)
 {
     const uint2* data = reinterpret_cast<const uint2*>(src);
     uint2* dst_cast = reinterpret_cast<uint2*>(dst);
@@ -448,8 +425,7 @@ inline void store_global<8, StorePolicy::CacheGlobal>(void* dst,
 }
 
 template <>
-inline void store_global<8, StorePolicy::CacheStreaming>(void* dst,
-                                                                             const void* src)
+inline void store_global<8, StorePolicy::CacheStreaming>(void* dst, const void* src)
 {
     const uint2* data = reinterpret_cast<const uint2*>(src);
     uint2* dst_cast = reinterpret_cast<uint2*>(dst);
@@ -465,8 +441,7 @@ inline void store_global<4>(void* dst, const void* src)
 }
 
 template <>
-inline void store_global<4, StorePolicy::CacheGlobal>(void* dst,
-                                                                          const void* src)
+inline void store_global<4, StorePolicy::CacheGlobal>(void* dst, const void* src)
 {
     const int32_t* data = reinterpret_cast<const int32_t*>(src);
     int32_t* dst_cast = reinterpret_cast<int32_t*>(dst);
@@ -474,8 +449,7 @@ inline void store_global<4, StorePolicy::CacheGlobal>(void* dst,
 }
 
 template <>
-inline void store_global<4, StorePolicy::CacheStreaming>(void* dst,
-                                                                             const void* src)
+inline void store_global<4, StorePolicy::CacheStreaming>(void* dst, const void* src)
 {
     const int32_t* data = reinterpret_cast<const int32_t*>(src);
     int32_t* dst_cast = reinterpret_cast<int32_t*>(dst);

@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #pragma once
 #if (__x86_64__ || __i386__)
 #if __has_include(<sycl/sycl.hpp>)
@@ -13,23 +18,22 @@
 
 #include <stdio.h>
 #include <cassert>
-#include "context.hpp"
 #include <oneapi/mkl.hpp>
+#include "context.hpp"
 
 #include <oneapi/mkl.hpp>
 #include <oneapi/mkl/rng/device.hpp>
 
 #include <cmath>
-#define STEP(SPAN)                                \
-    void Step_##SPAN(float* _params,              \
-                     float* grads,                \
-                     float* _exp_avg_sq,          \
-                     size_t _param_size,          \
+#define STEP(SPAN)                                    \
+    void Step_##SPAN(float* _params,                  \
+                     float* grads,                    \
+                     float* _exp_avg_sq,              \
+                     size_t _param_size,              \
                      sycl::half* dev_param = nullptr, \
                      bool half_precision = false);
 
 #define TILE (128 * 1024 * 1024)
-
 
 class Adagrad_Optimizer {
 public:
@@ -45,9 +49,9 @@ public:
     }
     ~Adagrad_Optimizer()
     {
-            sycl::queue& q_ct1 = *_streams[0];
-            sycl::free(_doubled_buffer[0], q_ct1);
-            sycl::free(_doubled_buffer[1], q_ct1);
+        sycl::queue& q_ct1 = *_streams[0];
+        sycl::free(_doubled_buffer[0], q_ct1);
+        sycl::free(_doubled_buffer[1], q_ct1);
     }
 
     STEP(1)
@@ -68,6 +72,7 @@ public:
         _eps = epsilon;
         _weight_decay = weight_decay;
     }
+
 private:
     float _alpha;
     float _eps;

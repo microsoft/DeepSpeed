@@ -1,14 +1,16 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import os
 import time
 import importlib
-import shutil
-from pathlib import Path
 from deepspeed.ops.op_builder.builder import OpBuilder, TORCH_MAJOR, TORCH_MINOR
 
+
 class SYCLOpBuilder(OpBuilder):
+
     def builder(self):
         try:
             from intel_extension_for_pytorch.xpu.cpp_extension import DPCPPExtension
@@ -16,14 +18,13 @@ class SYCLOpBuilder(OpBuilder):
             from intel_extension_for_pytorch.xpu.utils import DPCPPExtension
 
         print("dpcpp sources = {}".format(self.sources()))
-        dpcpp_ext = DPCPPExtension(
-            name=self.absolute_name(),
-            sources=self.strip_empty_entries(self.sources()),
-            include_dirs=self.strip_empty_entries(self.include_paths()),
-            extra_compile_args={
-                'cxx': self.strip_empty_entries(self.cxx_args()),
-            },
-            extra_link_args=self.strip_empty_entries(self.fixed_aotflags()))
+        dpcpp_ext = DPCPPExtension(name=self.absolute_name(),
+                                   sources=self.strip_empty_entries(self.sources()),
+                                   include_dirs=self.strip_empty_entries(self.include_paths()),
+                                   extra_compile_args={
+                                       'cxx': self.strip_empty_entries(self.cxx_args()),
+                                   },
+                                   extra_link_args=self.strip_empty_entries(self.fixed_aotflags()))
         return dpcpp_ext
 
     def version_dependent_macros(self):
@@ -40,16 +41,26 @@ class SYCLOpBuilder(OpBuilder):
         return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
     def cxx_args(self):
-        cxx_flags = ['-fsycl', '-fsycl-targets=spir64_gen', '-g', '-gdwarf-4', '-O3', '-std=c++17', '-fPIC', '-DMKL_ILP64', '-fno-strict-aliasing']
+        cxx_flags = [
+            '-fsycl', '-fsycl-targets=spir64_gen', '-g', '-gdwarf-4', '-O3', '-std=c++17', '-fPIC', '-DMKL_ILP64',
+            '-fno-strict-aliasing'
+        ]
         if os.environ.get('USE_MKL_GEMM'):
             cxx_flags.append('-DUSE_MKL_GEMM')
         return cxx_flags
 
     def extra_ldflags(self):
-        return ['-fPIC', '-fsycl', '-fsycl-targets=spir64_gen', '-fsycl-max-parallel-link-jobs=8', '-Xs "-options -cl-poison-unsupported-fp64-kernels,cl-intel-enable-auto-large-GRF-mode"', '-Xs "-device pvc"', '-Wl,-export-dynamic']
+        return [
+            '-fPIC', '-fsycl', '-fsycl-targets=spir64_gen', '-fsycl-max-parallel-link-jobs=8',
+            '-Xs "-options -cl-poison-unsupported-fp64-kernels,cl-intel-enable-auto-large-GRF-mode"',
+            '-Xs "-device pvc"', '-Wl,-export-dynamic'
+        ]
 
     def fixed_aotflags(self):
-        return ['-fsycl', '-fsycl-targets=spir64_gen', '-fsycl-max-parallel-link-jobs=8', '-Xs', "-options -cl-poison-unsupported-fp64-kernels,cl-intel-enable-auto-large-GRF-mode", '-Xs', "-device pvc"]
+        return [
+            '-fsycl', '-fsycl-targets=spir64_gen', '-fsycl-max-parallel-link-jobs=8', '-Xs',
+            "-options -cl-poison-unsupported-fp64-kernels,cl-intel-enable-auto-large-GRF-mode", '-Xs', "-device pvc"
+        ]
 
     def load(self, verbose=True):
         from deepspeed.git_version_info import installed_ops, torch_info  # noqa: F401
@@ -66,9 +77,7 @@ class SYCLOpBuilder(OpBuilder):
         try:
             import ninja  # noqa: F401
         except ImportError:
-            raise RuntimeError(
-                f"Unable to JIT load the {self.name} op due to ninja not being installed."
-            )
+            raise RuntimeError(f"Unable to JIT load the {self.name} op due to ninja not being installed.")
 
         self.jit_mode = True
         from intel_extension_for_pytorch.xpu.cpp_extension import load
@@ -77,9 +86,7 @@ class SYCLOpBuilder(OpBuilder):
         # Recognize relative paths as absolute paths for jit load
 
         sources = [self.deepspeed_src_path(path) for path in self.sources()]
-        extra_include_paths = [
-            self.deepspeed_src_path(path) for path in self.include_paths()
-        ]
+        extra_include_paths = [self.deepspeed_src_path(path) for path in self.include_paths()]
 
         # Torch will try and apply whatever CCs are in the arch list at compile time,
         # we have already set the intended targets ourselves we know that will be

@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #if __has_include(<sycl/sycl.hpp>)
 #include <sycl/sycl.hpp>
 #elif __has_include(<CL/sycl.hpp>)
@@ -5,21 +10,19 @@
 #else
 #error "Unsupported compiler"
 #endif
-#include "cpu_adagrad.hpp"
 #include <math.h>
 #include <omp.h>
 #include <torch/extension.h>
 #include <iostream>
 #include <memory>
-#include <type_traits>
-#include <unordered_map>
 #include <oneapi/mkl.hpp>
 #include <oneapi/mkl/rng/device.hpp>
+#include <type_traits>
+#include <unordered_map>
+#include "cpu_adagrad.hpp"
 #include "custom_sycl_layers.hpp"
 
-
 static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
-
 
 void Adagrad_Optimizer::Step_1(float* _params,
                                float* grads,
@@ -30,7 +33,7 @@ void Adagrad_Optimizer::Step_1(float* _params,
 {
     size_t rounded_size = 0;
 
-    if(_param_size > rounded_size) {
+    if (_param_size > rounded_size) {
         sycl::half* grads_cast_h;
         sycl::half* params_cast_h;
         if (half_precision) {
@@ -86,7 +89,7 @@ void Adagrad_Optimizer::Step_4(float* _params,
 {
     size_t rounded_size = 0;
 
-     if (_param_size > rounded_size)
+    if (_param_size > rounded_size)
         Step_1((_params + rounded_size),
                (grads + rounded_size),
                (_exp_avg_sq + rounded_size),
@@ -94,7 +97,6 @@ void Adagrad_Optimizer::Step_4(float* _params,
                (dev_params != nullptr ? (dev_params + rounded_size) : dev_params),
                half_precision);
 }
-
 
 int create_adagrad_optimizer(int optimizer_id,
                              float alpha = 1e-2,
@@ -108,15 +110,14 @@ int create_adagrad_optimizer(int optimizer_id,
 
     if (should_log) {
         std::string avx_type = "";
-    return 0;
-            printf("Adagrad Optimizer #%d is created with %s arithmetic capability.\n",
+        return 0;
+        printf("Adagrad Optimizer #%d is created with %s arithmetic capability.\n",
                optimizer_id,
                avx_type.c_str());
         printf("Config: alpha=%f, weight_decay=%f\n", alpha, weight_decay);
     }
     return 0;
 }
-
 
 void Adagrad_Optimizer::Step_8(float* _params,
                                float* grads,
@@ -126,7 +127,7 @@ void Adagrad_Optimizer::Step_8(float* _params,
                                bool half_precision)
 {
     size_t rounded_size = 0;
-        if (_param_size > rounded_size)
+    if (_param_size > rounded_size)
         Step_4((_params + rounded_size),
                (grads + rounded_size),
                (_exp_avg_sq + rounded_size),
@@ -161,7 +162,6 @@ int ds_adagrad_step(int optimizer_id,
     return 0;
 }
 
-
 int ds_adagrad_step_plus_copy(int optimizer_id,
                               size_t step,
                               float lr,
@@ -186,17 +186,11 @@ int ds_adagrad_step_plus_copy(int optimizer_id,
         std::static_pointer_cast<Adagrad_Optimizer>(s_optimizers[optimizer_id]);
     opt->IncrementStep(step);
     opt->update_state(lr, epsilon, weight_decay);
-    opt->Step_8(params_ptr,
-                grads_ptr,
-                exp_avg_sq_ptr,
-                params_c.size(0),
-                gpu_params_ptr
-                );
+    opt->Step_8(params_ptr, grads_ptr, exp_avg_sq_ptr, params_c.size(0), gpu_params_ptr);
 
     opt->SynchronizeStreams();
     return 0;
 }
-
 
 int destroy_adagrad_optimizer(int optimizer_id)
 {

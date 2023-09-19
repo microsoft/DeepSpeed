@@ -1,6 +1,7 @@
-"""
-Copyright 2020 The Microsoft DeepSpeed Team
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 from .builder import SYCLOpBuilder
 
 
@@ -15,17 +16,11 @@ class CPUAdamBuilder(SYCLOpBuilder):
         return f'deepspeed.ops.adam.{self.NAME}_op'
 
     def sources(self):
-        return [
-            'csrc/xpu/adam/cpu_adam.dp.cpp',
-            'csrc/xpu/adam/custom_sycl_kernel.dp.cpp'
-        ]
+        return ['csrc/xpu/adam/cpu_adam.dp.cpp', 'csrc/xpu/adam/custom_sycl_kernel.dp.cpp']
 
     def libraries_args(self):
         args = super().libraries_args()
         return args
 
     def include_paths(self):
-        return [
-            'csrc/xpu/includes',
-            'csrc/xpu/adam', 'csrc/includes'
-        ]
+        return ['csrc/xpu/includes', 'csrc/xpu/adam', 'csrc/includes']

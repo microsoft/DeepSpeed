@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #pragma once
 
 #if __has_include(<sycl/sycl.hpp>)
@@ -62,6 +67,6 @@ std::enable_if_t<std::is_trivially_destructible<T>::value && sycl::detail::is_gr
     // Silence unused variable warning
     [&args...] {}();
     throw sycl::exception(sycl::errc::feature_not_supported,
-        "sycl_ext_oneapi_local_memory extension is not supported on host device");
+                          "sycl_ext_oneapi_local_memory extension is not supported on host device");
 #endif
 }

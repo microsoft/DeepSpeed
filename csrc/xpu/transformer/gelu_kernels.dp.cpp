@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #if __has_include(<sycl/sycl.hpp>)
 #include <sycl/sycl.hpp>
 using namespace sycl;
@@ -159,14 +164,10 @@ void fused_bias_gelu(const bf16* input,
             ushort4 vals_vec = input_cast[row * row_stride + i * loop_stride + id];
             ushort4 bias_vec = bias_cast[i * loop_stride + id];
 
-            float4 data = {float(vals_vec.x()),
-                           float(vals_vec.y()),
-                           float(vals_vec.z()),
-                           float(vals_vec.w())};
-            float4 bias = {float(bias_vec.x()),
-                           float(bias_vec.y()),
-                           float(bias_vec.z()),
-                           float(bias_vec.w())};
+            float4 data = {
+                float(vals_vec.x()), float(vals_vec.y()), float(vals_vec.z()), float(vals_vec.w())};
+            float4 bias = {
+                float(bias_vec.x()), float(bias_vec.y()), float(bias_vec.z()), float(bias_vec.w())};
 
             data += bias;
 

@@ -56,16 +56,17 @@ def get_accelerator():
         if accelerator_name == "xpu":
             try:
                 import intel_extension_for_pytorch as ipex
-                assert(ipex._C._has_xpu(), "XPU_Accelerator requires an intel_extension_for_pytorch that supports XPU.")
+                assert ipex._C._has_xpu(), "XPU_Accelerator requires an intel_extension_for_pytorch that supports XPU."
             except ImportError as e:
                 raise ValueError(
                     f"XPU_Accelerator requires intel_extension_for_pytorch, which is not installed on this system.")
         elif accelerator_name == "xpu.external":
             try:
-                import intel_extension_for_deepspeed # noqa: F401 # type: ignore
+                import intel_extension_for_deepspeed  # noqa: F401 # type: ignore
             except ImportError as e:
                 raise ValueError(
-                    f"XPU_Accelerator external requires intel_extension_for_deepspeed, which is not installed on this system.")
+                    f"XPU_Accelerator external requires intel_extension_for_deepspeed, which is not installed on this system."
+                )
         elif accelerator_name == "cpu":
             try:
                 import intel_extension_for_pytorch  # noqa: F401 # type: ignore

@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #if __has_include(<sycl/sycl.hpp>)
 #include <sycl/sycl.hpp>
 using namespace sycl;
@@ -260,8 +265,8 @@ void fused_bias_residual_layer_norm(bf16* vals,
     }
     if ((high_index) < row_stride) {
         vals_arr[iterations] = vals_arr[iterations] * rsqrt(variance);
-        vals_arr[iterations] = vals_arr[iterations] * float(gamma[high_index]) +
-                               float(beta[high_index]);
+        vals_arr[iterations] =
+            vals_arr[iterations] * float(gamma[high_index]) + float(beta[high_index]);
         vals_cast[high_index] = bf16(vals_arr[iterations]);
     }
 }
@@ -1195,10 +1200,10 @@ void LayerNormBackward2(const bf16* out_grad,
         float gamma_reg = float(gamma_cast[high_index]);
         vals_arr[iterations] = float(out_grad_cast[high_index]);
         vals_arr[iterations] *= gamma_reg;
-        vals_hat_arr[iterations] = (invertible ? (float(vals_hat_cast[high_index]) -
-                                                  float(betta_cast[high_index])) /
-                                                     gamma_reg
-                                               : float(vals_hat_cast[high_index]));
+        vals_hat_arr[iterations] =
+            (invertible
+                 ? (float(vals_hat_cast[high_index]) - float(betta_cast[high_index])) / gamma_reg
+                 : float(vals_hat_cast[high_index]));
         iterations++;
     }
 
@@ -1262,15 +1267,15 @@ void LayerNormBackward2(const bf16* out_grad,
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++)
         if constexpr (is_fuseadd) {
-            inp_grad_cast[i * iteration_stride + id] = bf16(
-                (vals_arr[i] - sum) + float(out_grad_add_cast[i * iteration_stride + id]));
+            inp_grad_cast[i * iteration_stride + id] =
+                bf16((vals_arr[i] - sum) + float(out_grad_add_cast[i * iteration_stride + id]));
         } else {
             inp_grad_cast[i * iteration_stride + id] = bf16((vals_arr[i] - sum));
         }
     if ((high_index) < row_stride)
         if constexpr (is_fuseadd) {
-            inp_grad_cast[high_index] = bf16(
-                (vals_arr[iterations] - sum) + float(out_grad_add_cast[high_index]));
+            inp_grad_cast[high_index] =
+                bf16((vals_arr[iterations] - sum) + float(out_grad_add_cast[high_index]));
         } else {
             inp_grad_cast[high_index] = bf16((vals_arr[iterations] - sum));
         }
@@ -1856,15 +1861,15 @@ void LayerNormBackward2(const bf16* out_grad,
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++)
         if constexpr (is_fuseadd) {
-            inp_grad_cast[i * iteration_stride + id] = bf16(
-                (vals_arr[i] - sum) + float(out_grad_add_cast[i * iteration_stride + id]));
+            inp_grad_cast[i * iteration_stride + id] =
+                bf16((vals_arr[i] - sum) + float(out_grad_add_cast[i * iteration_stride + id]));
         } else {
             inp_grad_cast[i * iteration_stride + id] = bf16(vals_arr[i] - sum);
         }
     if ((high_index) < row_stride)
         if constexpr (is_fuseadd) {
-            inp_grad_cast[high_index] = bf16(
-                (vals_arr[iterations] - sum) + float(out_grad_add_cast[high_index]));
+            inp_grad_cast[high_index] =
+                bf16((vals_arr[iterations] - sum) + float(out_grad_add_cast[high_index]));
         } else {
             inp_grad_cast[high_index] = bf16(vals_arr[iterations] - sum);
         }
