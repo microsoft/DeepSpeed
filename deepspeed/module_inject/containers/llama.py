@@ -20,7 +20,8 @@ from ..policy import (
 )
 
 
-class DS_LLAMAContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSplitQKVContainer, BaseTransformerContainer):
+class DS_LLAMAContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSplitQKVContainer,
+                        BaseTransformerContainer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -106,6 +107,7 @@ class DS_LLAMAContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSpli
         maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[10], prefix + param_names[8])
 
         module.mlp.output_b = None
+
 
 class LLAMALayerPolicy(TransformerPolicy):
 
