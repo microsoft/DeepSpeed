@@ -4,5 +4,3 @@ from .cpu_adagrad import CPUAdagradBuilder
 from .fused_adam import FusedAdamBuilder
 from .transformer import TransformerBuilder
 from .transformer_inference import InferenceBuilder
-from .quantizer import QuantizerBuilder
-from .utils import UtilsBuilder

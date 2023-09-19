@@ -1,10 +1,16 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
-import intel_extension_for_pytorch as ipex  # noqa: F401
-import oneccl_bindings_for_pytorch  #noqa: F401
+import intel_extension_for_pytorch as ipex  # noqa: F401 # type: ignore
+import oneccl_bindings_for_pytorch  # noqa: F401 # type: ignore
 
 
 class XPU_Accelerator(DeepSpeedAccelerator):
+
     def __init__(self):
         self._name = 'xpu'
         self._communication_backend_name = 'ccl'
@@ -41,7 +47,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return torch.xpu.random
 
     def set_rng_state(self, new_state, device_index=None):
-        if device_index == None :
+        if device_index == None:
             return torch.xpu.set_rng_state(new_state)
         return torch.xpu.set_rng_state(new_state, device_index)
 
@@ -202,7 +208,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         else:
             return False
 
-    # create an instance of op builder and return, name specified by class_name 
+    # create an instance of op builder and return, name specified by class_name
     def create_op_builder(self, op_name):
         builder_class = self.get_op_builder(op_name)
         if builder_class != None:
@@ -215,13 +221,11 @@ class XPU_Accelerator(DeepSpeedAccelerator):
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
             from op_builder import __deepspeed__  # noqa: F401 # type: ignore
-            from op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder, InferenceBuilder
+            from op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, TransformerBuilder, InferenceBuilder
             from op_builder.async_io import AsyncIOBuilder
-            from op_builder.sparse_attn import SparseAttnBuilder
         except ImportError:
-            from deepspeed.ops.op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder, InferenceBuilder
+            from deepspeed.ops.op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, TransformerBuilder, InferenceBuilder
             from deepspeed.ops.op_builder.async_io import AsyncIOBuilder
-            from deepspeed.ops.op_builder.sparse_attn import SparseAttnBuilder
 
         if class_name == "AsyncIOBuilder":
             return AsyncIOBuilder
@@ -231,14 +235,8 @@ class XPU_Accelerator(DeepSpeedAccelerator):
             return CPUAdamBuilder
         elif class_name == "FusedAdamBuilder":
             return FusedAdamBuilder
-        elif class_name == "QuantizerBuilder":
-            return QuantizerBuilder
-        elif class_name == "SparseAttnBuilder":
-            return SparseAttnBuilder
         elif class_name == "TransformerBuilder":
             return TransformerBuilder
-        elif class_name == "UtilsBuilder":
-            return UtilsBuilder
         elif class_name == "InferenceBuilder":
             return InferenceBuilder
         else:
