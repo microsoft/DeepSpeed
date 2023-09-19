@@ -222,7 +222,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
     def LongTensor(self):
         return torch.LongTensor
 
-    def pin_memory(self, tensor, align_bytes=1, sc_page_align=False):
+    def pin_memory(self, tensor, align_bytes=1):
         return tensor
 
     def is_pinned(self, tensor):

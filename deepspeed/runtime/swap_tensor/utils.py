@@ -184,7 +184,7 @@ class SwapBufferManager(object):
         self.count = count
         self.dtype = dtype
         self.all_buffers = [
-            get_accelerator().pin_memory(torch.zeros(num_elems, device='cpu', dtype=dtype), sc_page_align=True)
+            get_accelerator().pin_memory(torch.zeros(num_elems, device='cpu', dtype=dtype), align_bytes=-1)
             for _ in range(count)
         ]
         self.free_buffer_index = [i for i in range(count)]

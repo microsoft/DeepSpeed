@@ -188,7 +188,7 @@ class NPU_Accelerator(DeepSpeedAccelerator):
     def LongTensor(self):
         return torch.npu.LongTensor
 
-    def pin_memory(self, tensor, align_bytes=1, sc_page_align=False):
+    def pin_memory(self, tensor, align_bytes=1):
         return tensor.pin_memory()
 
     def is_pinned(self, tensor):
