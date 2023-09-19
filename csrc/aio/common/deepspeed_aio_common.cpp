@@ -109,7 +109,6 @@ static void _do_io_submit_block(const long long int n_iocbs,
     assert(submit_ret > 0);
 }
 
-const char *ds_acc_env_var = "DS_ACCELERATOR";
 static int _do_io_complete(const long long int min_completes,
                            const long long int max_completes,
                            std::unique_ptr<aio_context>& aio_ctxt,

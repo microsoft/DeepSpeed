@@ -22,9 +22,6 @@ struct io_op_desc_t {
     torch::Tensor _contiguous_buffer;
     const bool _validate;
 
-    char* _aligned_buffer;
-    bool _use_aligned_buffer;
-
     io_op_desc_t(const bool read_op,
                  const torch::Tensor& buffer,
                  const int fd,

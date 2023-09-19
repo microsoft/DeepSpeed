@@ -108,12 +108,10 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
 
         if len(unpinned_tensors) > 0:
             pinned_buffers = self.swap_buffer_manager.allocate_all(num_elems=self.largest_numel, dtype=self.dtype)
-            swap_info_numel = self._io_aligned_numel(swap_info.numel())
             self._swap_out_unpinned_tensors(aio_handle=self.aio_handle,
                                             unpinned_tensors=unpinned_tensors,
                                             dest_paths=unpinned_paths,
-                                            pinned_buffers=pinned_buffers,
-                                            aligned_numel=swap_info_numel)
+                                            pinned_buffers=pinned_buffers)
             self.allocated_swap_buffers += pinned_buffers
 
             for t in unpinned_tensors:
@@ -177,7 +175,7 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
         unpinned_paths = []
 
         for tensor, path in zip(swap_info.tensors, swap_info.swap_paths):
-            if get_accelerator().is_pinned(tensor):
+            if get_accelerator().is_pinned(tensor) or get_accelerator().is_aligned(tensor):
                 pinned_tensors.append(tensor)
                 pinned_paths.append(path)
             else:
@@ -209,7 +207,7 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
         if not (swap_info and swap_info.has_gradients()):
             return
 
-        assert get_accelerator().is_pinned(dest_buffer)
+        assert get_accelerator().is_pinned(dest_buffer) or get_accelerator().is_aligned(dest_buffer)
         assert parameter.numel() <= dest_buffer.numel()
 
         parameter.grad = dest_buffer.narrow(0, 0, parameter.numel())

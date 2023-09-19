@@ -90,7 +90,7 @@ class OptimizerStateSwapInfo(object):
         return [grad.path for grad in self.swapped_gradients.values()]
 
     def get_unpinned_state_tensors(self):
-        return [t for t in self.tensors if not get_accelerator().is_pinned(t)]
+        return [t for t in self.tensors if not (get_accelerator().is_pinned(t) or get_accelerator().is_aligned(t))]
 
     def read_unswapped_gradients(self, dest_buffer):
         num_elem_count = 0
@@ -216,7 +216,7 @@ class OptimizerSwapper(object):
                                              fp16_pinned_buffers, fp32_parameters):
         assert len(fp32_parameters) == len(fp16_partitions_info)
         assert len(fp32_parameters) == len(fp16_num_elems)
-        assert all([get_accelerator().is_pinned(buffer) for buffer in fp16_pinned_buffers])
+        assert all([get_accelerator().is_pinned(buffer) or get_accelerator().is_aligned(buffer)for buffer in fp16_pinned_buffers])
 
         fp32_swap_paths = self._get_swap_paths(parameters=fp32_parameters, num_elems=fp16_num_elems)
 
@@ -348,7 +348,7 @@ class OptimizerSwapper(object):
         swap_paths = [info.swap_paths[0] for info in swap_info_list]
         return swap_paths
 
-    def _swap_out_unpinned_tensors(self, aio_handle, unpinned_tensors, dest_paths, pinned_buffers, aligned_numel=None):
+    def _swap_out_unpinned_tensors(self, aio_handle, unpinned_tensors, dest_paths, pinned_buffers):
 
         swap_buffer_count = len(pinned_buffers)
         unpinned_tensor_count = len(unpinned_tensors)
@@ -363,10 +363,7 @@ class OptimizerSwapper(object):
             for dst, src in zip(compute_buffers, src_tensors):
                 dst.data.copy_(src.data)
 
-            if aligned_numel is not None:
-                swap_lengths = [aligned_numel] * len(src_tensors)
-            else:
-                swap_lengths = [self._io_aligned_numel(t.numel()) for t in src_tensors]
+            swap_lengths = [self._io_aligned_numel(t.numel()) for t in src_tensors]
             swap_buffers = get_sized_buffers(pinned_buffers, swap_lengths)
 
             swap_paths = dest_paths[i:(i + swap_tensor_count)]
