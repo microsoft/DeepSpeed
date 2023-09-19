@@ -17,6 +17,7 @@ from deepspeed.runtime.swap_tensor.utils import swap_in_tensors, swap_out_tensor
 from deepspeed.runtime.swap_tensor.utils import SwapBufferManager, SwapBufferPool
 from deepspeed.accelerator import get_accelerator
 
+
 class FlattenedTensorSwapInfo(object):
 
     def __init__(self, path, length, offset):
@@ -216,7 +217,10 @@ class OptimizerSwapper(object):
                                              fp16_pinned_buffers, fp32_parameters):
         assert len(fp32_parameters) == len(fp16_partitions_info)
         assert len(fp32_parameters) == len(fp16_num_elems)
-        assert all([get_accelerator().is_pinned(buffer) or get_accelerator().is_aligned(buffer)for buffer in fp16_pinned_buffers])
+        assert all([
+            get_accelerator().is_pinned(buffer) or get_accelerator().is_aligned(buffer)
+            for buffer in fp16_pinned_buffers
+        ])
 
         fp32_swap_paths = self._get_swap_paths(parameters=fp32_parameters, num_elems=fp16_num_elems)
 

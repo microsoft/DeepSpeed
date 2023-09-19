@@ -224,13 +224,13 @@ class CPU_Accelerator(DeepSpeedAccelerator):
 
     def pin_memory(self, tensor):
         return tensor
-    
+
     def is_pinned(self, tensor):
         return tensor.is_pinned()
-    
+
     def align_memory(self, tensor):
         return tensor
-    
+
     def is_aligned(self, tensor):
         return False
 

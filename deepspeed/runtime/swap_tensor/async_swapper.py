@@ -38,7 +38,8 @@ class AsyncTensorSwapper(object):
 
     def add_buffers(self, buffer_list):
         assert len(self.all_buffers) == 0
-        assert all([get_accelerator().is_pinned(buffer) or get_accelerator().is_aligned(buffer) for buffer in buffer_list])
+        assert all(
+            [get_accelerator().is_pinned(buffer) or get_accelerator().is_aligned(buffer) for buffer in buffer_list])
         dtype = buffer_list[0].dtype
         assert all([buffer.dtype == dtype for buffer in buffer_list])
 
