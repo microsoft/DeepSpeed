@@ -449,7 +449,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
 {
     unsigned bsz = query_key_value.size(0);
     unsigned seq_len = query_key_value.size(1);
-    int k = query_key_value.size(2) / (heads + 2 * (num_kv > 0 ?  num_kv : heads));
+    int k = query_key_value.size(2) / (heads + 2 * (num_kv > 0 ? num_kv : heads));
     unsigned hidden_dim = heads * k;
 
     bool is_prompt = (seq_len > 1);
@@ -487,7 +487,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                       soft_len,
                                       hidden_dim,
                                       heads,
-                                      (num_kv > 0 ?  num_kv : heads),
+                                      (num_kv > 0 ? num_kv : heads),
                                       rotary_dim,
                                       rotate_half,
                                       rotate_every_two,
