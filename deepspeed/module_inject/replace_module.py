@@ -182,7 +182,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
-            e.g., transformers.modeling_bert.BertLayer.
+            e.g., transformers.models.bert.modeling_bert.BertLayer or transformers.BertLayer
         model (torch.nn.Module): user's nn.module representing their model
         checkpoint_dict: Dictionary for checkpoint passed from the Inference Engine
         config: top-level DS Inference config defined in inference/config.py
@@ -301,11 +301,12 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         checkpoint = checkpoint_dict["checkpoints"]
         pbar = tqdm.tqdm(total=len(checkpoint), desc=f"Loading {len(checkpoint)} checkpoint shards")
         for i in range(len(checkpoint)):
+            checkpoint_file = os.path.join(config.base_dir, checkpoint[i])
             replaced_module = replace_module(model=model,
                                              orig_class=orig_layer_impl,
                                              replace_fn=replace_fn,
                                              _replace_policy=config.injection_policy_tuple,
-                                             checkpoint=checkpoint[i])
+                                             checkpoint=checkpoint_file)
             pbar.update(1)
             gc.collect()
     else:
@@ -458,7 +459,7 @@ def revert_transformer_layer(orig_layer_impl, model, config, preln=False):
     """ Revert DeepSpeed's transformer layer back to original bert-style transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation that was replaced,
-            e.g., transformers.modeling_bert.BertLayer.
+            e.g., transformers.models.bert.modeling_bert.BertLayer or transformers.BertLayer
         model (torch.nn.Module): user's nn.module representing their model
         config (dict): model config containing hidden size, attention heads, etc.
     Returns:
