@@ -104,10 +104,11 @@ class AsyncPartitionedParameterSwapper(object):
 
         self.available_buffer_ids = [i for i in range(self.param_buffer_count)]
         self.reserved_buffer_ids = []
-        self.buffers = get_accelerator().pin_memory(
-            torch.empty(int(self.aligned_elements_per_buffer * self.param_buffer_count),
-                        dtype=self.dtype,
-                        requires_grad=False))
+        self.buffers = get_accelerator().pin_memory(torch.empty(int(self.aligned_elements_per_buffer *
+                                                                    self.param_buffer_count),
+                                                                dtype=self.dtype,
+                                                                requires_grad=False),
+                                                    sc_page_align=True)
 
         self.aio_read_handle = self.aio_handle(self.aio_config[AIO_BLOCK_SIZE], self.aio_config[AIO_QUEUE_DEPTH],
                                                self.aio_config[AIO_SINGLE_SUBMIT], self.aio_config[AIO_OVERLAP_EVENTS],
@@ -379,8 +380,10 @@ class AsyncPartitionedParameterSwapper(object):
 
     def reserve_partitioned_swap_space(self, partition_num_elems):
         aligned_numel = sum([self._io_aligned_numel(numel) for numel in partition_num_elems])
-        self.partitioned_swap_buffer = get_accelerator().pin_memory(
-            torch.zeros(aligned_numel, device='cpu', dtype=self.dtype))
+        self.partitioned_swap_buffer = get_accelerator().pin_memory(torch.zeros(aligned_numel,
+                                                                                device='cpu',
+                                                                                dtype=self.dtype),
+                                                                    sc_page_align=True)
         self.partitioned_swap_pool = SwapBufferPool([self.partitioned_swap_buffer])
 
     def swap_out_partitioned_params(self, dst_fp16_params, src_fp32_params):
