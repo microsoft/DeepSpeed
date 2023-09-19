@@ -52,7 +52,12 @@ class ReplaceWithTensorSlicing:
         src_split = torch.split(src.data, src.shape[outer_dim] // num_splits, dim=outer_dim)
         if (len(src_shape) == 2 and len(dst_shape) == 2):
             if src_shape[outer_dim] == dst_shape[self.out_dim]:
-                dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
+                try:
+                    dst = src
+                    #dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
+                except:
+                    print(dst.shape, src.shape)
+                    exit()
                 dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
                 if hasattr(src, 'scale'):
                     dst.scale = src.scale
@@ -90,8 +95,9 @@ class ReplaceWithTensorSlicing:
         dst_shape = dst.shape
         if (len(src_shape) == 2 and len(dst_shape) == 2):
 
-            if src_shape[inner_dim] == dst_shape[self.in_dim] and src_shape[outer_dim] == dst_shape[self.out_dim]:
-                dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
+            if True: #src_shape[inner_dim] == dst_shape[self.in_dim] and src_shape[outer_dim] == dst_shape[self.out_dim]:
+                dst = src
+                #dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
             else:
                 if src_shape[inner_dim] != dst_shape[self.in_dim]:
                     self.merge_assert(src_shape[inner_dim], dst_shape[self.in_dim])

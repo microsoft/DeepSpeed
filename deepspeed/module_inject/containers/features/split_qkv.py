@@ -46,7 +46,7 @@ class HybridSplitQKVContainer(HybridEngineContainer):
                     dst[:self.qw.shape[0] // mp_replace.mp_size], src, int8=reversed_dim,
                     allocate_tensor=reversed_dim) if src is not None else None
         else:
-            super().attention_qkv_mp(mp_replace)
+            super().attention_qkv_mp(mp_replace, reversed_dim=reversed_dim)
 
     def release_qkv(self):
         super().release_qkv()

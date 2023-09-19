@@ -92,31 +92,34 @@ class QuantTypeEnum(str, Enum):
 
 
 class BaseQuantConfig(DeepSpeedConfigModel):
-    enabled = True
-    num_bits = 8
+    enabled: bool = False
+    num_bits: int = 8
     q_type: QuantTypeEnum = QuantTypeEnum.sym
     q_groups: int = 1
+    layers: list = []
 
 
 class WeightQuantConfig(BaseQuantConfig):
-    enabled = True
+    enabled = False
     quantized_initialization: Dict = {}
     post_init_quant: Dict = {}
 
 
 class ActivationQuantConfig(BaseQuantConfig):
-    enabled = True
+    enabled = False
 
 
 class QKVQuantConfig(DeepSpeedConfigModel):
-    enabled = True
+    enabled = False
 
 
 class QuantizationConfig(DeepSpeedConfigModel):
-    enabled: bool = True
+    enabled: bool = False
     activation: ActivationQuantConfig = ActivationQuantConfig()
-    weight: WeightQuantConfig = WeightQuantConfig()
-    qkv: QKVQuantConfig = QKVQuantConfig()
+    qkv: WeightQuantConfig = WeightQuantConfig()
+    attn_out: WeightQuantConfig = WeightQuantConfig()
+    mlp1: WeightQuantConfig = WeightQuantConfig()
+    mlp2: WeightQuantConfig = WeightQuantConfig()
 
 
 # todo: brainstorm on how to do ckpt loading for DS inference
