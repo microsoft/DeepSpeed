@@ -175,7 +175,7 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
         unpinned_paths = []
 
         for tensor, path in zip(swap_info.tensors, swap_info.swap_paths):
-            if get_accelerator().is_pinned(tensor) or get_accelerator().is_aligned(tensor):
+            if get_accelerator().is_pinned(tensor):
                 pinned_tensors.append(tensor)
                 pinned_paths.append(path)
             else:
@@ -207,7 +207,7 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
         if not (swap_info and swap_info.has_gradients()):
             return
 
-        assert get_accelerator().is_pinned(dest_buffer) or get_accelerator().is_aligned(dest_buffer)
+        assert get_accelerator().is_pinned(dest_buffer)
         assert parameter.numel() <= dest_buffer.numel()
 
         parameter.grad = dest_buffer.narrow(0, 0, parameter.numel())

@@ -222,17 +222,11 @@ class CPU_Accelerator(DeepSpeedAccelerator):
     def LongTensor(self):
         return torch.LongTensor
 
-    def pin_memory(self, tensor):
+    def pin_memory(self, tensor, align=False):
         return tensor
 
     def is_pinned(self, tensor):
         return tensor.is_pinned()
-
-    def align_memory(self, tensor):
-        return tensor
-
-    def is_aligned(self, tensor):
-        return False
 
     def op_builder_dir(self):
         try:
