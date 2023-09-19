@@ -87,4 +87,6 @@ class QKVGemmOp(BaseOp):
                             self.config.weight_quantization.qkv.enabled and q_int8, 
                             self.config.weight_quantization.qkv.num_bits,
                             self.config.transposed_mode)
+            if add_bias:
+                output += bias
         return output, norm
