@@ -28,16 +28,16 @@ class EvoformerAttnBuilder(CUDAOpBuilder):
     def sources(self):
         src_dir = 'csrc/deepspeed4science/evoformer_attn'
         return [f'{src_dir}/attention.cpp', f'{src_dir}/attention_back.cu', f'{src_dir}/attention.cu']
-    
+
     def nvcc_args(self):
         args = super().nvcc_args()
         try:
             import torch
         except ImportError:
             self.warning("Please install torch if trying to pre-compile kernels")
-            return args  
-        major = torch.cuda.get_device_properties(0).major
-        minor = torch.cuda.get_device_properties(0).minor
+            return args
+        major = torch.cuda.get_device_properties(0).major  #ignore-cuda
+        minor = torch.cuda.get_device_properties(0).minor  #ignore-cuda
         args.append(f"-DGPU_ARCH={major}{minor}")
         return args
 
