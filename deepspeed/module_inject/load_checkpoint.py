@@ -250,6 +250,7 @@ def load_model_with_checkpoint(r_module,
                         setattr(module, name, child)
                     elif child.__class__ is nn.Linear:
                         child = LinearLayer(weight_shape=child.weight.shape, dtype=child.weight.dtype, bias=child.bias)
+                        setattr(module, name, child)
                     elif child.__class__ in [ColumnParallelLinear, RowParallelLinear]:
                         child = LinearLayer(weight_shape=child.weight.shape, bias=child.bias)
                         setattr(module, name, child)
