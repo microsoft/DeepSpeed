@@ -106,6 +106,8 @@ class DS_LLAMAContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSpli
         maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[8], prefix + param_names[7])
         maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[10], prefix + param_names[8])
 
+        # This line is necessary for proper output when kernels + meta tensors are used in Llama models
+        # TODO: Investigate root-cause and fix meta tensor loading
         module.mlp.output_b = None
 
 
