@@ -440,3 +440,4 @@ class AutoTP():
                 num_kv_heads = getattr(config, name)
                 if num_kv_heads != None:
                     break
+        return num_kv_heads
