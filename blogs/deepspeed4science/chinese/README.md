@@ -87,7 +87,7 @@ DeepSpeed4Science的旅程始于两个开创性的基于LLM的结构生物学研
 [OpenFold](https://github.com/aqlaboratory/openfold)是DeepMind的[AlphaFold2](https://alphafold.com/)的开源社区再现，使其可以在新数据集上训练或微调AlphaFold2。研究人员已经使用它从头开始重新训练AlphaFold2，生成新的模型参数集，研究AlphaFold2的早期训练阶段（图6），并开发新的蛋白质折叠系统。
 
 <div align="center">
-<img src="../media/Figure7.jpg" width="800px" alt="" />
+<img src="../media/Figure7.jpg" width="600px" alt="" />
 
 *图7. 在OpenFold中，对多序列比对（MSA）Attention内核（包含偏差）变体的训练峰值内存需求。 (左) 使用在AlphaFold2中的EvoformerAttention的原始OpenFold实现。对于这些类型的蛋白质结构预测模型，在训练/推理中的内存爆炸问题是常见的。最先进的FlashAttention无法有效支持这样的Attention变体。 (右) DeepSpeed4Science的一种新解决方案DS4Sci_EvoformerAttention在不影响模型品质的条件下显著地减少了OpenFold的训练峰值内存需求（最多13倍）。*
 </div>
@@ -107,7 +107,7 @@ DeepSpeed4Science的旅程始于两个开创性的基于LLM的结构生物学研
 [GenSLMs](https://github.com/ramanathanlab/genslm)，一个来自阿贡国家实验室的[2022年ACM 戈登贝尔奖获奖](https://www.acm.org/media-center/2022/november/gordon-bell-special-prize-covid-research-2022)的基因组模型，可以通过大型语言模型（LLMs）的基因组数据训练来学习SARS-CoV-2（COVID-19）基因组的进化。它旨在改变如何识别和分类引发大流行的病毒（特别是SARS-CoV-2）的新变种。GenSLMs代表了第一批可以泛化到其他预测任务的基因组基础模型。对潜在空间的良好理解可以帮助GenSLMs处理超出仅仅是病毒序列的新领域，并扩展它们模拟细菌病原体甚至真核生物的能力（例如，理解功能、途径成员资格和进化关系等事物）。为了实现这一科学目标，GenSLMs和类似的模型需要非常长的序列支持用于训练和推理，这超出了像[FlashAttention](https://arxiv.org/abs/2307.08691)这样的通用LLM的长序列策略。通过DeepSpeed4Science的新设计，科学家现在可以构建和训练具有显著更长的上下文窗口的模型，允许他们探索以前无法访问的关系。
 
 <div align="center">
-<img src="../media/Figure9.png" width="800px" alt="" />
+<img src="../media/Figure9.png" width="1000px" alt="" />
 
 *图9. 由不同框架在不同规模下支持的两个GenSLMs模型的最大序列长度。使用NVIDIA DGX，每个节点有八个40G A100 GPU。*
 </div>
