@@ -519,6 +519,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self._enable_universal_checkpoint()
         self._param_slice_mappings = self._create_param_mapping()
 
+    def destroy(self):
+        self._uncreate_param_mapping()
+
     def _enable_universal_checkpoint(self):
         for lp_param_group in self.bit16_groups:
             enable_universal_checkpoint(param_list=lp_param_group)
@@ -534,6 +537,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             param_mapping.append(param_mapping_per_group)
 
         return param_mapping
+
+    def _uncreate_param_mapping(self):
+        param_mapping = []
+        for i, _ in enumerate(self.optimizer.param_groups):
+            param_mapping_per_group = OrderedDict()
+            for lp in self.bit16_groups[i]:
+                lp._hp_mapping = None
+        return
 
     def _link_all_hp_params(self):
         dp_world_size = dist.get_world_size(group=self.dp_process_group)

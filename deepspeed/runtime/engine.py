@@ -362,6 +362,9 @@ class DeepSpeedEngine(Module):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
             self.optimizer.destroy()
 
+    def __del__(self):
+        self.destroy()
+
     def _get_model_parameters(self):
         if self.autotuning_profile_model_info():
             self.autotuning_model_info = {}
