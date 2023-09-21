@@ -539,9 +539,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         return param_mapping
 
     def _uncreate_param_mapping(self):
-        param_mapping = []
         for i, _ in enumerate(self.optimizer.param_groups):
-            param_mapping_per_group = OrderedDict()
             for lp in self.bit16_groups[i]:
                 lp._hp_mapping = None
         return
