@@ -134,6 +134,9 @@ class NPU_Accelerator(DeepSpeedAccelerator):
     def is_fp16_supported(self):
         return True
 
+    def supported_dtypes(self):
+        return [torch.float, torch.half, torch.bfloat16]
+
     # Misc
     def amp(self):
         if hasattr(torch.npu, 'amp'):
@@ -154,6 +157,9 @@ class NPU_Accelerator(DeepSpeedAccelerator):
 
     def communication_backend_name(self):
         return self._communication_backend_name
+
+    def is_triton_supported(self):
+        return False
 
     # Tensor operations
 
