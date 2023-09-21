@@ -70,7 +70,7 @@ void shared_close(SharedData* data)
 // SHM based allreduce helper functions
 // buffer that holds shm name
 #define NAME_BUF_SIZE 1000
-#define MAX_BUF_SIZE 1048576
+#define MAX_BUF_SIZE 1048576*16
 #define SHM_BUFFER_NAME "deepspeed_allreduce_buffer"
 SharedData allreduce_buffer;
 struct allreduce_workspace {
