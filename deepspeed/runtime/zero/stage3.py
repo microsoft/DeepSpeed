@@ -377,9 +377,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def destroy(self):
         self.parameter_offload.destroy()
-        del self.__ipg_bucket_flat_buffer
+        attributes = [attr for attr in vars(self) if not callable(getattr(self, attr))]
+        for attr in attributes:
+            delattr(self,attr)
 
     def initialize_ds_offload(
+
         self,
         module,
         timers,
