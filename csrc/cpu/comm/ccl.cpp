@@ -499,6 +499,17 @@ void all_reduce_caching(torch::Tensor& data,
                  .wait());
 }
 
+static void parallel_memcpy(void* to, void* from, size_t n_bytes)
+    __attribute__((target("avx512bw")));
+static void parallel_memcpy(void* to, void* from, size_t n_bytes)
+{
+    #pragma omp parallel for
+    for (int i=0;i<n_bytes;i+=VECTOR_LENGTH_IN_BYTES) {
+        auto val = _mm256_loadu_si256((__m256i*)((char*)from + i));
+        _mm256_storeu_si256((__m256i*)((char*)to + i), val);
+    }
+}
+
 void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, bool async_op)
 {
     static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
@@ -532,7 +543,7 @@ void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, 
 
     auto data_ptr = data.data_ptr();
 
-    memcpy(workspace[world_rank].buffer, data_ptr, data_size);
+    parallel_memcpy(workspace[world_rank].buffer, data_ptr, data_size);
     std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank].state = coll_allreduce_naive__copy_in_done;
 
@@ -545,11 +556,11 @@ void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, 
         reduce_all_buffers(workspace, numel, data.scalar_type(), world_size);
         std::atomic_thread_fence(std::memory_order_release);
         workspace[world_rank].state = coll_allreduce_naive__reduce_done;
-        memcpy(data_ptr, workspace[0].buffer, data_size);
+        parallel_memcpy(data_ptr, workspace[0].buffer, data_size);
     }
     if (world_rank != 0) {
         wait_buffer_state_until(0, coll_allreduce_naive__reduce_done);
-        memcpy(data_ptr, workspace[0].buffer, data_size);
+        parallel_memcpy(data_ptr, workspace[0].buffer, data_size);
         std::atomic_thread_fence(std::memory_order_release);
         workspace[world_rank].state = coll_allreduce_naive__copy_out_done;
     }
