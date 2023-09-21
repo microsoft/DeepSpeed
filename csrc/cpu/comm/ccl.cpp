@@ -584,6 +584,12 @@ void barrier(std::vector<int> group, bool async_op)
     CCLCHECK(ccl::barrier(_get_comm_from_group(group)).wait());
 }
 
+std::vector<std::string> get_available_coll()
+{
+    std::vector<std::string> colls{"broadcast", "all_reduce", "inference_all_reduce", "all_reduce_caching", "barrier"};
+    return colls;
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("get_kvs_addr", &get_kvs_addr, "create and get main kvs addr");
@@ -595,4 +601,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("inference_all_reduce", &inference_all_reduce, "low latency all_reduce implementation");
     m.def("all_reduce_caching", &all_reduce_caching, "ccl all_reduce with caching");
     m.def("barrier", &barrier, "barrier");
+    m.def("get_available_coll", &get_available_coll, "get_available_coll");
 }

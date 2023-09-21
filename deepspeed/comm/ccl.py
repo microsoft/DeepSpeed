@@ -50,80 +50,70 @@ class CCLBackend(TorchBackend):
         super(CCLBackend, self).broadcast(main_kvs, 0)
         self.ccl_comm_op.initialize(size, rank, main_kvs)
         self.initialized = True
+        self.available_coll = self.ccl_comm_op.get_available_coll()
 
     def is_initialized(self):
         return self.initialized
-
+    
+    def run_collective(self, name, **kwargs):
+        if name in self.available_coll:
+            kwargs['group'] = self.get_all_ranks_from_group(kwargs['group'])
+            func = "self.ccl_comm_op." + name
+            eval(func)(*(kwargs.values()))
+            return CCLHandler(self.ccl_comm_op)
+        else:
+            func = "super(CCLBackend, self)." + name
+            return eval(func)(*(kwargs.values()))
+        
     def all_reduce(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
         use_caching = False
-        group_ranks = self.get_all_ranks_from_group(group)
         if use_caching:
             match_id = f"{tensor.size()}-{op}"
-            self.ccl_comm_op.all_reduce_caching(tensor, op, match_id, group_ranks, async_op)
+            return self.run_collective(name="all_reduce_caching", tensor=tensor, op=op, match_id=match_id, group=group, async_op=async_op)
         else:
-            self.ccl_comm_op.all_reduce(tensor, op, group_ranks, async_op)
+            return self.run_collective(name="all_reduce", tensor=tensor, op=op, group=group, async_op=async_op)
 
     def inference_all_reduce(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
-        self.ccl_comm_op.inference_all_reduce(tensor, op, group, async_op)
+        return self.run_collective(name="inference_all_reduce", tensor=tensor, op=op, group=group, async_op=async_op)
 
     def broadcast(self, tensor, src, group=None, async_op=False):
-        group_ranks = self.get_all_ranks_from_group(group)
-        self.ccl_comm_op.broadcast(tensor, src, group_ranks, async_op)
-        return CCLHandler(self.ccl_comm_op)         
+        return self.run_collective(name="broadcast", tensor=tensor, src=src, group=group, async_op=async_op)     
 
     def all_gather(self, tensor_list, tensor, group=None, async_op=False):    
-        group_ranks = self.get_all_ranks_from_group(group)
-        self.ccl_comm_op.all_gather(tensor_list, tensor, group_ranks, async_op)
-        return CCLHandler(self.ccl_comm_op)
+        return self.run_collective(name="all_gather", tensor_list=tensor_list, tensor=tensor, group=group, async_op=async_op)
 
-    def reduce_scatter_tensor(self, output_tensor,input_tensor, op, group=None, async_op=False):
-        #todo: ccl version
-        super(CCLBackend, self).reduce_scatter_tensor(output_tensor,input_tensor, op, group)
+    def reduce_scatter_tensor(self, output_tensor, input_tensor, op, group=None, async_op=False):
+        return self.run_collective(name="reduce_scatter_tensor", output_tensor=output_tensor, input_tensor=input_tensor, op=op, group=group)
 
     def all_gather_into_tensor(self, output_tensor, input_tensor, group=None, async_op=False):
-        #todo: ccl version
-        super(CCLBackend, self).all_gather_into_tensor(output_tensor, input_tensor, group)
+        return self.run_collective(name="all_gather_into_tensor", output_tensor=output_tensor, input_tensor=input_tensor, group=group)
 
     def all_to_all_single(self, output, input, output_split_sizes, input_split_sizes, group=None, async_op=False):
-        #todo: ccl version
-        super(CCLBackend, self).all_to_all_single(output, input, output_split_sizes, input_split_sizes, group)
+        return self.run_collective(name="all_to_all_single", output=output, input=input, output_split_sizes=output_split_sizes, input_split_sizes=input_split_sizes, group=group)
 
     def send(self, tensor, dst, group=None, async_op=False):
-        group_ranks = self.get_all_ranks_from_group(group)
-        self.ccl_comm_op.send(tensor, dst, group_ranks, async_op)
-        return CCLHandler(self.ccl_comm_op)
+        return self.run_collective(name="send", tensor=tensor, dst=dst, group=group, async_op=async_op)
     
     def recv(self, tensor, src, group=None, async_op=False):
-        group_ranks = self.get_all_ranks_from_group(group)
-        self.ccl_comm_op.recv(tensor, src, group_ranks, async_op)
-        return CCLHandler(self.ccl_comm_op)
+        return self.run_collective(name="recv", tensor=tensor, src=src, group=group, async_op=async_op)
 
     def gather(self, tensor, gather_list, dst, group=None, async_op=False):
-        #todo: ccl version
-        super(CCLBackend, self).gather(tensor, gather_list, dst, group)
+        return self.run_collective(name="gather", tensor=tensor, gather_list=gather_list, dst=dst, group=group)
 
     def scatter(self, tensor, gather_list, dst, group=None, async_op=False):
-        #todo: ccl version
-        super(CCLBackend, self).scatter(tensor, gather_list, dst, group)
+        return self.run_collective(name="scatter", tensor=tensor, gather_list=gather_list, dst=dst, group=group)
 
     def barrier(self, group=None, async_op=False):      
-        group_ranks = self.get_all_ranks_from_group(group)
-        self.ccl_comm_op.barrier(group_ranks, async_op)
-        return CCLHandler(self.ccl_comm_op)
+        return self.run_collective(name="barrier", group=group, async_op=async_op)
         
     def monitored_barrier(self, group=None, timeout=None, wait_all_ranks=False):
-        #todo: ccl version
-        super(CCLBackend, self).monitored_barrier(group)
+        return self.run_collective(name="monitored_barrier", group=group)
 
     def reduce_scatter(self, output, input_list, op=ReduceOp.SUM, group=None, async_op=False):
-        group_ranks = self.get_all_ranks_from_group(group)
-        self.ccl_comm_op.reduce_scatter(output, input_list, op, group_ranks, async_op)
-        return CCLHandler(self.ccl_comm_op)
+        return self.run_collective(name="reduce_scatter", output=output, input_list=input_list, op=op, group=group, async_op=async_op)
 
     def reduce(self, tensor, dst, op=ReduceOp.SUM, group=None, async_op=False): 
-        group_ranks = self.get_all_ranks_from_group(group)
-        self.ccl_comm_op.reduce(tensor, dst, op, group_ranks, async_op)
-        return CCLHandler(self.ccl_comm_op)
+        return self.run_collective(name="reduce", tensor=tensor, dst=dst, op=op, group=group, async_op=async_op)
     
     def new_group(self, ranks):
         size = len(ranks)
