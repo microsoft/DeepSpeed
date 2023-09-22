@@ -28,7 +28,8 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.checkpoint.constants import (DS_VERSION, GROUP_PADDINGS, PARTITION_COUNT,
                                             SINGLE_PARTITION_OF_FP32_GROUPS, BASE_OPTIMIZER_STATE, CLIP_GRAD,
                                             ZERO_STAGE, PARAM_SLICE_MAPPINGS)
-from deepspeed.utils import link_hp_params
+
+from deepspeed.utils import link_hp_params, unlink_hp_mapping
 from deepspeed.checkpoint import enable_universal_checkpoint
 
 # Toggle this to true to enable correctness test
@@ -520,7 +521,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self._param_slice_mappings = self._create_param_mapping()
 
     def destroy(self):
-        self._uncreate_param_mapping()
+        for i, _ in enumerate(self.optimizer.param_groups):
+            unlink_hp_mapping(self.bit16_groups[i])
 
     def _enable_universal_checkpoint(self):
         for lp_param_group in self.bit16_groups:
@@ -537,12 +539,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             param_mapping.append(param_mapping_per_group)
 
         return param_mapping
-
-    def _uncreate_param_mapping(self):
-        for i, _ in enumerate(self.optimizer.param_groups):
-            for lp in self.bit16_groups[i]:
-                lp._hp_mapping = None
-        return
 
     def _link_all_hp_params(self):
         dp_world_size = dist.get_world_size(group=self.dp_process_group)

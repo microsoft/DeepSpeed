@@ -382,7 +382,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             delattr(self,attr)
 
     def initialize_ds_offload(
-
         self,
         module,
         timers,

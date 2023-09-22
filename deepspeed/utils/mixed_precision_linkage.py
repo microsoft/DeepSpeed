@@ -7,6 +7,11 @@ import types
 from deepspeed.utils import get_full_hp_param, get_full_hp_grad, get_hp_fragment_mapping
 from deepspeed.utils import set_full_hp_param
 
+def _uncreate_param_mapping(self):
+    for i, _ in enumerate(self.optimizer.param_groups):
+        for lp in self.bit16_groups[i]:
+            lp._hp_mapping = None
+    return
 
 def link_hp_params(lp_param_list, flat_hp_partition, gradient_dict, offload_gradient_dict, use_offload,
                    param_group_index, partition_start, partition_size, partition_optimizer_state, dp_group):
@@ -17,6 +22,10 @@ def link_hp_params(lp_param_list, flat_hp_partition, gradient_dict, offload_grad
                                                        offload_gradient_dict, use_offload, param_group_index,
                                                        partition_start, partition_size, partition_optimizer_state)
 
+def unlink_hp_mapping(lp_param_list):
+    for lp in lp_param_list:
+        lp._hp_mapping = None
+    return
 
 def _init_lp_to_hp_mapping(lp_param_list, partition_start, partition_size, dp_group):
     current_offset = 0
