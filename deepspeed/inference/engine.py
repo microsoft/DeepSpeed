@@ -28,6 +28,7 @@ from ..module_inject.auto_tp import AutoTP
 from ..module_inject.replace_policy import generic_policies
 from ..module_inject.auto_tp_model_utils import build_bloom_alibi_tensor, build_mpt_atten_bias_tensor, build_mpt_alibi_tensor
 from ..ops.transformer.inference.ds_attention import DeepSpeedSelfAttention
+from ..model_implementations.transformers.ds_transformer import DeepSpeedTransformerInference
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -54,7 +55,7 @@ class InferenceEngine(Module):
         # Have to import here because inference_module is a global, but python
         # globals only work at the module level and will not be updated unless
         # we import it each time we init a new inference engine.
-        from ..model_implementations.transformers.ds_transformer import DeepSpeedTransformerInference, inference_module
+        from ..model_implementations.transformers.ds_transformer import inference_module
         if inference_module is not None:
             self.destroy()
 
@@ -186,7 +187,7 @@ class InferenceEngine(Module):
         # Have to import here because inference_module is a global, but python
         # globals only work at the module level and will not be updated unless
         # we import it each time we init a new inference engine.
-        from ..model_implementations.transformers.ds_transformer import DeepSpeedTransformerInference, inference_module
+        from ..model_implementations.transformers.ds_transformer import inference_module
         DeepSpeedTransformerInference.layer_id = 0
         DeepSpeedSelfAttention.num_layers = 0
         if inference_module is not None:
