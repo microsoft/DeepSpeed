@@ -437,6 +437,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                            bool rotate_half,
                                            bool rotate_every_two,
                                            int heads,
+                                           int num_kv,
                                            float norm_factor,
                                            bool triangular,
                                            bool local_attention,
@@ -448,14 +449,14 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
 {
     unsigned bsz = query_key_value.size(0);
     unsigned seq_len = query_key_value.size(1);
-    unsigned hidden_dim = query_key_value.size(2) / 3;
+    int k = query_key_value.size(2) / (heads + 2 * (num_kv > 0 ? num_kv : heads));
+    unsigned hidden_dim = heads * k;
 
     bool is_prompt = (seq_len > 1);
 
     if (is_prompt) InferenceContext::Instance().reset_tokens(seq_len);
     unsigned soft_len = InferenceContext::Instance().current_tokens();
 
-    int k = hidden_dim / heads;
     auto options = at::TensorOptions()
                        .dtype(query_key_value.options().dtype())
                        .layout(at::kStrided)
@@ -486,6 +487,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                       soft_len,
                                       hidden_dim,
                                       heads,
+                                      (num_kv > 0 ? num_kv : heads),
                                       rotary_dim,
                                       rotate_half,
                                       rotate_every_two,
@@ -1167,6 +1169,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                 (num_heads * padded_head_size),
                 num_heads,
                 -1,
+                -1,
                 false,
                 false,
                 InferenceContext::Instance().GetCurrentStream(),
@@ -1191,6 +1194,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                 input.size(1),
                 input_cont.size(2),
                 num_heads,
+                -1,
                 -1,
                 false,
                 false,
@@ -1906,6 +1910,27 @@ void ds_release_workspace() { InferenceContext::Instance().release_workspace(); 
 
 bool ds_retake_workspace() { return InferenceContext::Instance().retake_workspace(); }
 
+template <typename T>
+at::Tensor ds_dequantize(at::Tensor& weight, at::Tensor& qscale, int groups)
+{
+    auto options = at::TensorOptions()
+                       .dtype(torch::kFloat16)
+                       .layout(at::kStrided)
+                       .device(at::kCUDA)
+                       .requires_grad(false);
+    auto weight16 = at::empty({weight.size(0), weight.size(1)}, options);
+
+    launch_dequantize((T*)weight16.data_ptr(),
+                      (int8_t*)weight.data_ptr(),
+                      (float*)qscale.data_ptr(),
+                      weight.size(0),
+                      weight.size(1),
+                      groups,
+                      InferenceContext::Instance().GetCurrentStream());
+
+    return weight16;
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("softmax_context_int8",
@@ -1973,7 +1998,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           "DeepSpeed residual add with " #_name " (CUDA)");                                       \
     m.def("allocate_workspace_" #_name,                                                           \
           &allocate_workspace<_dtype>,                                                            \
-          "DeepSpeed memory allocation for GPT inference with " #_name " (CUDA)")
+          "DeepSpeed memory allocation for GPT inference with " #_name " (CUDA)");                \
+    m.def("dequantize_" #_name,                                                                   \
+          &ds_dequantize<_dtype>,                                                                 \
+          "DeepSpeed dequantize with " #_name " (CUDA)")
 
     DEF_OPS(fp32, float);
     DEF_OPS(fp16, __half);
