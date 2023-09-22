@@ -103,7 +103,8 @@ class PartitionedParameterCoordinator:
         # side of the dequeue as they are fetched
         self.__param_queue: Deque[__class__.__ParamInTrace] = None
         self.__prefetch_bucket_sz: int = prefetch_bucket_sz
-        self.__prefetch_nvme: bool = prefetch_nvme
+        self.__enable_prefetch: bool = prefetch_bucket_sz > 0
+        self.__prefetch_nvme: bool = prefetch_nvme and prefetch_bucket_sz > 0
         self.hierarchy: int = 0
         self.zero_quantized_weights = zero_quantized_weights
         self.zero_quantized_nontrainable_weights = zero_quantized_nontrainable_weights
@@ -314,7 +315,7 @@ class PartitionedParameterCoordinator:
 
         # kick off parameter prefetches for upcoming modules
         # don't prefetch if we dont have a completed model trace
-        if self.is_complete_trace():
+        if self.is_complete_trace() and self.__enable_prefetch:
             # go through the parameters we need for the current module and pop them
             # off the fetch queue so that they aren't prefetched later.
             # if params have already been popped off the fetch queue by earlier
