@@ -22,11 +22,12 @@ class InferenceBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            'csrc/transformer/inference/csrc/softmax.cpp', 'csrc/transformer/inference/csrc/pt_binding.cpp',
-            'csrc/transformer/inference/csrc/gelu.cpp',
-            'csrc/transformer/inference/csrc/inference_onednn_wrappers.cpp',
-            'csrc/transformer/inference/csrc/inference_onemkl_wrappers.cpp',
-            'csrc/transformer/inference/csrc/layer_norm.cpp', 'csrc/transformer/inference/csrc/pointwise_ops.cpp'
+            'csrc/xpu/transformer/inference/csrc/softmax.cpp', 'csrc/xpu/transformer/inference/csrc/pt_binding.cpp',
+            'csrc/xpu/transformer/inference/csrc/gelu.cpp',
+            'csrc/xpu/transformer/inference/csrc/inference_onednn_wrappers.cpp',
+            'csrc/xpu/transformer/inference/csrc/inference_onemkl_wrappers.cpp',
+            'csrc/xpu/transformer/inference/csrc/layer_norm.cpp',
+            'csrc/xpu/transformer/inference/csrc/pointwise_ops.cpp'
         ]
 
     def include_paths(self):
