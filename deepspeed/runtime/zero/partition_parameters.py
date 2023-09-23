@@ -1494,7 +1494,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         # make sure param.ds_tensor requires_grad always be false,
                         # otherwise, torch tracer will complain.
                         param.ds_tensor.narrow(0, 0,
-                                            elements_to_copy).copy_(one_dim_param.narrow(0, start, elements_to_copy))
+                                               elements_to_copy).copy_(one_dim_param.narrow(0, start, elements_to_copy))
 
             #print(f"Remote device {self.remote_device}")
 
