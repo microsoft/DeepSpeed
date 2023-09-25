@@ -31,6 +31,8 @@ from deepspeed.checkpoint.constants import (DS_VERSION, GROUP_PADDINGS, PARTITIO
 from deepspeed.utils import link_hp_params
 from deepspeed.checkpoint import enable_universal_checkpoint
 
+from deepspeed.runtime.zero.zero15_utils import (Zero15_CommGroups, create_zero15_comm_groups)
+
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
 pg_correctness_test = False
@@ -183,6 +185,19 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         self.dp_process_group = dp_process_group
 
+        # origin grads reduce still process with dp_group
+        self.grad_dp_process_group=dp_process_group
+
+        ## zero15
+        self.zero15_comm_groups = create_zero15_comm_groups(
+            8,
+            self.dp_process_group,
+            hi_allreduce=False,
+            mpu=mpu)
+        
+        self.dp_process_group = self.zero15_comm_groups.param_zero15_shard_group
+        self.partition_count = self.zero15_comm_groups.param_zero15_shard_size
+
         #expert parallel group
         self.ep_process_group = expert_parallel_group
 
@@ -195,7 +210,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         #For MoE models this maybe different for different param group
         #It will be modified during MoE setup later in the init
         self.real_dp_process_group = [dp_process_group for i in range(len(self.optimizer.param_groups))]
+        self.real_grad_dp_process_group = [self.grad_dp_process_group for i in range(len(self.optimizer.param_groups))]
+
+
         self.partition_count = [dp_size for i in range(len(self.optimizer.param_groups))]
+        
 
         self.is_gradient_accumulation_boundary = True
 
@@ -973,18 +992,18 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             curr_size = 0
             prev_id, prev_process_group = -1, None
 
-            process_group = self.dp_process_group
+            process_group = self.grad_dp_process_group
             # count = 0
             for i, param, param_id in self.params_in_ipg_bucket:
 
-                process_group = self.dp_process_group
+                process_group = self.grad_dp_process_group
                 grad_reduc = self.get_gradient_for_reduction(param)
                 #Averages gradients at parameter level if ipg has a moe param
                 #Otherwise averaging is done at the entire buffer level at the end of the loop
                 # MoE param have different groups
                 if self.ipg_bucket_has_moe_params:
                     process_group = self.expert_dp_process_group[param.group_name] if is_moe_param(
-                        param) else self.dp_process_group
+                        param) else self.grad_dp_process_group
                     grad_reduc.data.div_(dist.get_world_size(group=process_group))
 
                 partition_ids = self.param_to_partition_ids[i][param_id]
