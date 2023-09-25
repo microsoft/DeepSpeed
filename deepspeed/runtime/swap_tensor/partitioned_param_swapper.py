@@ -108,7 +108,7 @@ class AsyncPartitionedParameterSwapper(object):
                                                                     self.param_buffer_count),
                                                                 dtype=self.dtype,
                                                                 requires_grad=False),
-                                                    align_bytes=-1)
+                                                    align_bytes=0)
 
         self.aio_read_handle = self.aio_handle(self.aio_config[AIO_BLOCK_SIZE], self.aio_config[AIO_QUEUE_DEPTH],
                                                self.aio_config[AIO_SINGLE_SUBMIT], self.aio_config[AIO_OVERLAP_EVENTS],
@@ -383,7 +383,7 @@ class AsyncPartitionedParameterSwapper(object):
         self.partitioned_swap_buffer = get_accelerator().pin_memory(torch.zeros(aligned_numel,
                                                                                 device='cpu',
                                                                                 dtype=self.dtype),
-                                                                    align_bytes=-1)
+                                                                    align_bytes=0)
         self.partitioned_swap_pool = SwapBufferPool([self.partitioned_swap_buffer])
 
     def swap_out_partitioned_params(self, dst_fp16_params, src_fp32_params):
