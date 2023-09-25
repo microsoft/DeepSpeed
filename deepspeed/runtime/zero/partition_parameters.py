@@ -1101,11 +1101,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             if len(params) == 1:
                 # have an opportunity to avoid some intermediate memory allocations
                 param, = params
-                buffer_size = math.ceil(param.ds_numel / world_size) * world_size
-                if not forward and param.ds_secondary_tensor is not None:
-                    buffer_size = param.ds_secondary_tensor.shape[0] * world_size  #make sure out is appropriately sized
 
                 param_ds_tensor = param.ds_secondary_tensor if not forward and param.ds_secondary_tensor is not None else param.ds_tensor
+                buffer_size = param_ds_tensor.ds_numel * world_size
                 param_buffer = torch.empty(
                     buffer_size,
                     dtype=param_ds_tensor.dtype if not quantize else torch.int8,
