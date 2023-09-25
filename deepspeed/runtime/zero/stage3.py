@@ -330,10 +330,13 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 count = count + 1
 
         #Largest partitioned param
-        largest_partitioned_param_numel = max([
-            max([max(tensor.numel(), tensor.ds_numel) for tensor in fp16_partitioned_group])
-            for fp16_partitioned_group in self.fp16_partitioned_groups
-        ])
+        largest_partitioned_param_numel = 0
+        for fp16_partitioned_group in self.fp16_partitioned_groups:
+            if len(fp16_partitioned_group) > 0:
+                largest_partitioned_param_numel = max(
+                    largest_partitioned_param_numel,
+                    max([max(tensor.numel(), tensor.ds_numel) for tensor in fp16_partitioned_group]))
+
         print_rank_0(f'Largest partitioned param numel = {largest_partitioned_param_numel}', force=False)
 
         self._setup_for_real_optimizer()
@@ -412,9 +415,20 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _get_trainable_parameter_groups(self):
         param_groups = []
+        PARAMS_KEY = "params"
         for param_group in self.optimizer.param_groups:
-            trainable_params = {"params": [p for p in param_group["params"] if p.requires_grad]}
-            param_groups.append(trainable_params)
+            trainable_params = [p for p in param_group[PARAMS_KEY] if p.requires_grad]
+            if len(trainable_params) == 0:
+                continue
+
+            trainable_param_group = {}
+            for key in param_group.keys():
+                if key == PARAMS_KEY:
+                    trainable_param_group[PARAMS_KEY] = trainable_params
+                else:
+                    trainable_param_group[key] = param_group[key]
+            param_groups.append(trainable_param_group)
+
         return param_groups
 
     def _set_zero_group_parallelism(self):
@@ -1102,7 +1116,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if not get_accelerator().is_synchronized_device():
             self.reduce_and_partition_stream.wait_stream(get_accelerator().default_stream())
 
-        if self.contiguous_gradients and self.elements_in_ipg_bucket + param.grad.numel() < self.reduce_bucket_size:
+        if self.contiguous_gradients and self.elements_in_ipg_bucket + param.grad.numel() <= self.reduce_bucket_size:
             # move the gradient to a contiguous buffer
             with get_accelerator().stream(self.reduce_and_partition_stream):
                 # move the parameter's gradient to the contiguous flat buffer
@@ -1852,7 +1866,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if self.swap_optimizer:
             self.optimizer_swapper.log_timers()
 
-        self.invalidate_secondary_tensor()
+        # self.invalidate_secondary_tensor() # given that we want hpz in forward pass when no_grad is set, we need to keep the secondary tensor
 
         self.timers.log(timer_names)
 

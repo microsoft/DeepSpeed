@@ -1181,13 +1181,11 @@ class DeepSpeedEngine(Module):
 
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
-        if client_optimizer is not None:
+        if client_optimizer is None:
+            basic_optimizer = self._configure_basic_optimizer(model_parameters)
+            log_dist(f"Using DeepSpeed Optimizer param name {self.optimizer_name()} as basic optimizer", ranks=[0])
+        else:
             if isinstance(client_optimizer, tuple(self._supported_optims())):
-                client_optimizer.param_groups[:] = [
-                    pg for pg in client_optimizer.param_groups if len(pg["params"]) != 0
-                ]
-                log_dist("Removing param_group that has no 'params' in the client Optimizer", ranks=[0])
-
                 basic_optimizer = client_optimizer
                 log_dist('Using client Optimizer as basic optimizer', ranks=[0])
             else:
@@ -1198,9 +1196,9 @@ class DeepSpeedEngine(Module):
                 if self.zero_force_ds_cpu_optimizer():
                     msg = f'You are using ZeRO-Offload with a client provided optimizer ({type(basic_optimizer)}) which in most cases will yield poor performance. Please either use deepspeed.ops.adam.DeepSpeedCPUAdam or set an optimizer in your ds-config (https://www.deepspeed.ai/docs/config-json/#optimizer-parameters). If you really want to use a custom optimizer w. ZeRO-Offload and understand the performance impacts you can also set <"zero_force_ds_cpu_optimizer": false> in your configuration file.'
                     raise ZeRORuntimeException(msg)
-        else:
-            basic_optimizer = self._configure_basic_optimizer(model_parameters)
-            log_dist(f"Using DeepSpeed Optimizer param name {self.optimizer_name()} as basic optimizer", ranks=[0])
+
+        basic_optimizer.param_groups[:] = [pg for pg in basic_optimizer.param_groups if len(pg["params"]) != 0]
+        log_dist("Removing param_group that has no 'params' in the basic Optimizer", ranks=[0])
 
         self._check_for_duplicates(basic_optimizer)
 
@@ -2149,6 +2147,7 @@ class DeepSpeedEngine(Module):
         if flops_profiler_active:
             if self.autotuning_enabled():
                 self.flops = self.flops_profiler.get_total_flops() * 3
+                self.fwd_duration = self.flops_profiler.get_total_duration()
             else:
                 self.flops_profiler.print_model_profile(
                     profile_step=self.global_steps,
@@ -2203,7 +2202,7 @@ class DeepSpeedEngine(Module):
             titer += msg[FORWARD_GLOBAL_TIMER] if FORWARD_GLOBAL_TIMER in msg else 0
             titer += msg[BACKWARD_GLOBAL_TIMER] if BACKWARD_GLOBAL_TIMER in msg else 0
             titer += msg[STEP_GLOBAL_TIMER] if STEP_GLOBAL_TIMER in msg else 0
-
+            titer *= self.gradient_accumulation_steps()
             msg["latency"] = titer
             msg["FLOPS_per_gpu"] = self.flops * 1_000_000 * self.gradient_accumulation_steps() / titer
             msg["throughput"] = self.train_batch_size() * 1_000_000 / \
