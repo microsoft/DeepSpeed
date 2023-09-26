@@ -22,6 +22,7 @@ from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
+from deepspeed.runtime.swap_tensor.optimizer_utils import OptimizerSwapper
 from deepspeed.runtime.swap_tensor.partitioned_optimizer_swapper import PartitionedOptimizerSwapper
 from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedOptimizerSwapper
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUPS, PARTITION_COUNT, ZERO_STAGE
@@ -262,6 +263,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # Holds a fused and flattened copy of the parameters
         self.fp16_partitioned_groups_flat = []
         self.fp16_partitioned_groups_flat_numel = []
+        self.fp16_partitioned_groups_flat_id = []
 
         #defragmented pinned memory
         self.param_groups_fp16_flat_cpu_memory = []
@@ -314,20 +316,17 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.grads_in_ipg_bucket = []
         self.params_in_ipg_bucket = []
 
+        self.params_already_reduced = {}
         self.is_gradient_accumulation_boundary = True
         self._release_ipg_buffers()
         self.previous_reduced_grads = None
 
-        # simplified param id
-        self.param_id = {}
-
-        count = 0
-        for i, params_group in enumerate(self.fp16_groups):
+        # model parameter traversal-based param id that's stable across runs
+        for params_group in self.fp16_groups:
             for param in params_group:
-                unique_id = id(param)
-                self.param_id[unique_id] = count
-                self.param_dict[count] = param
-                count = count + 1
+                param_id = self.get_param_id(param)
+                self.param_dict[param_id] = param
+                self.params_already_reduced[param_id] = False
 
         #Largest partitioned param
         largest_partitioned_param_numel = 0
@@ -652,6 +651,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 # record total elements of parameter partitions in sub group
                 self.fp16_partitioned_groups_flat_numel.append(sum(p.partition_numel() for p in sub_group))
 
+                # record ds_ids of parameter partitions in sub group
+                self.fp16_partitioned_groups_flat_id.append([p.ds_id for p in sub_group])
+
                 # record padding required to align group to world size (only applies to last rank)
                 rank_requires_padding = dist.get_rank(
                     self.dp_process_group) == dist.get_world_size(self.dp_process_group) - 1
@@ -819,6 +821,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                         self.device).clone().float().detach())
 
             self.fp32_partitioned_groups_flat[i].requires_grad = True  # keep this in case internal optimizer uses it
+            self.fp32_partitioned_groups_flat[i].ds_id = '_'.join(map(str, self.fp16_partitioned_groups_flat_id[i]))
 
         if len(swappable_fp32_tensors) > 0:
             self.optimizer_swapper.initialize_parameters(parameters=swappable_fp32_tensors,
@@ -1033,6 +1036,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if not get_accelerator().is_synchronized_device():
             self.reduce_and_partition_stream.synchronize()
 
+        for param_id in self.params_already_reduced.keys():
+            self.params_already_reduced[param_id] = False
+
         #in case of cpu offload, averaged gradients are already in fp32_partitioned_groups_flat.grad
         #TODO: use a similar code path for both cpu_offload and non-cpu offload
         if not self.offload_optimizer:
@@ -1084,8 +1090,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         print_rank_0(f'[End] Create gradient reduction hooks')
 
     def get_param_id(self, param):
-        unique_id = id(param)
-        return self.param_id[unique_id]
+        return OptimizerSwapper.parameter_id(param)
 
     def report_ipg_memory_usage(self, tag, param_elems):
         elem_count = self.elements_in_ipg_bucket + param_elems
@@ -1755,7 +1760,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _optimizer_states_and_gradient_swap_in(self, sub_group_id, timer_names):
         param_length = self.fp16_partitioned_groups_flat_numel[sub_group_id]
-        fp32_param_id = id(self.fp32_partitioned_groups_flat[sub_group_id])
+        fp32_param_id = self.get_param_id(self.fp32_partitioned_groups_flat[sub_group_id])
         assert self._swappable_optimizer_subgroup(sub_group_id), \
             f'Parameter {fp32_param_id} of numel={param_length} is not swappable'
 
@@ -1803,7 +1808,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _optimizer_states_and_gradient_swap_out(self, sub_group_id, timer_names):
         param_length = self.fp16_partitioned_groups_flat_numel[sub_group_id]
-        fp32_param_id = id(self.fp32_partitioned_groups_flat[sub_group_id])
+        fp32_param_id = self.get_param_id(self.fp32_partitioned_groups_flat[sub_group_id])
         assert self._swappable_optimizer_subgroup(sub_group_id), \
             f'Parameter {fp32_param_id} of numel={param_length} is not swappable'
 
