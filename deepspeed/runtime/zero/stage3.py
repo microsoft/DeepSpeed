@@ -2299,7 +2299,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self._set_fp32_optimizer_param_groups()
         state_dict[OPTIMIZER_STATE_DICT] = self.optimizer.state_dict()
-        state_dict[FP32_FLAT_GROUPS] = self.fp32_partitioned_groups_flat
+        if not (self.swap_optimizer or self.params_in_nvme_and_cpu):
+            state_dict[FP32_FLAT_GROUPS] = self.fp32_partitioned_groups_flat
         self._clear_fp32_optimizer_param_groups()
 
         return state_dict
@@ -2317,10 +2318,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         """
         if self.elastic_checkpoint:
             raise NotImplementedError("ZeRO-3 does not yet support elastic checkpointing, please disable for now.")
-
-        if self.swap_optimizer or self.params_in_nvme_and_cpu:
-            raise NotImplementedError(
-                "ZeRO-3 does not yet support checkpointing with NVMe offloading, please disable for now.")
 
         return self._rigid_state_dict()
 

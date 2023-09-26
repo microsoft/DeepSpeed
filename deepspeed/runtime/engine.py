@@ -736,6 +736,9 @@ class DeepSpeedEngine(Module):
     def zero_elastic_checkpoint(self):
         return self._config.zero_config.elastic_checkpoint
 
+    def zero_has_nvme_offload(self):
+        return self.optimizer.swap_optimizer or self.optimizer.params_in_nvme_and_cpu
+
     def zero_max_live_parameters(self):
         return self._config.zero_config.max_live_parameters
 
