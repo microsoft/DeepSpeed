@@ -2402,6 +2402,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.optimizer.load_state_dict(state_dict[OPTIMIZER_STATE_DICT])
             self._clear_fp32_optimizer_param_groups()
 
+        if self.swap_optimizer or self.params_in_nvme_and_cpu:
+            # Purge the swapped optimizer state, it was initialized to the freshly created model and not the checkpoint
+            for swap_info in self.optimizer_swapper.swap_params_info.values():
+                swap_info.tensors = [swap_info.tensors[0]]
+                swap_info.has_state_tensors = False
+
         if not (self.swap_optimizer or self.params_in_nvme_and_cpu):
             # restore fp32 partitions
             for curr_param, saved_param in zip(self.fp32_partitioned_groups_flat, state_dict[FP32_FLAT_GROUPS]):
@@ -2474,6 +2480,13 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if len(self.persistent_parameters) > 0:
             self.persistent_parameters[0].partition(self.persistent_parameters)
             # self.persistent_parameters[0].all_gather(self.persistent_parameters) # this will be done in checkpoint_event_epilogue() so remove it to prevent double all_gather
+
+    def reset_swap_buffers(self):
+        timer_names = set()
+        for sub_group_id, group in enumerate(self.fp16_groups):
+            self._prepare_sub_group(sub_group_id, timer_names)
+            self._reassign_or_swap_out_partitioned_parameters(sub_group_id)
+            self._release_sub_group(sub_group_id, timer_names)
 
     def checkpoint_event_prologue(self):
         self._partition_all_parameters()

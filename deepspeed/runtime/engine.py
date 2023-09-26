@@ -2713,6 +2713,7 @@ class DeepSpeedEngine(Module):
             copytree(offload_ckpt_dir, offload_dir, dirs_exist_ok=True)
             _, _, free = disk_usage(offload_dir)
             logger.info(f"Copying complete! {free / 1e9:,.2f} GB free on target filesystem")
+            self.optimizer.reset_swap_buffers()
 
         if self._optimizer_has_ckpt_event_epilogue():
             self.optimizer.checkpoint_event_epilogue()
