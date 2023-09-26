@@ -309,6 +309,17 @@ DeepSpeed can automatically detect the following external parameter scenarios:
 .. autofunction:: deepspeed.zero.unregister_external_parameter
 
 
+.. `Module.apply <https://pytorch.org/docs/stable/generated/torch.nn.Module.html?highlight=module+apply#torch.nn.Module.apply>`_
+Overriding Module.apply
+===============================
+A convenient mechanism for customizing model initialization is `Module.apply <https://pytorch.org/docs/stable/generated/torch.nn.Module.html?highlight=module+apply#torch.nn.Module.apply>`_.
+With ZeRO stage 3, ``Module.apply`` implementations must account for parameter partitioning by ``zero.Init`` during model initialization. The default behavior of ZeRO stage 3 is to automatically
+handle this issue by overriding ``Module.apply`` to ensure that parameters are gathered before access by ``Module.apply``. The benefit of this approach is development convenience, since
+users are saved the burden of manual parameter coordination in ``Module.apply``. However, the downside is slow model initialization, since all the model parameters (e.g., billions) are gathered
+even though the common usage of ``Module.apply`` is to customize a few parameters. Developers can disable this default behavior by setting the ``override_module_apply`` configuration knob to ``False``,
+for faster model initialization at the cost of manually handling partitioned parameters in their ``Module.apply`` implementations.
+
+
 Memory-Centric Tiling
 ---------------------
 
@@ -363,6 +374,35 @@ These routines can be used in a training loop as shown in the following snippet.
 
     [...]
     optimizer.step()
+
+
+
+Modifying Partitioned States
+----------------------------
+
+Sometimes, a user may want to modify parameters or optimizer states outside of the regular training loop. This is currently difficult in ZeRO training because of partitioning. To overcome that, DeepSpeed provides the following two routines for modifying the fp32 master parameters and the fp32 optimizer states.
+
+.. autofunction:: deepspeed.utils.safe_set_full_fp32_param
+
+.. autofunction:: deepspeed.utils.safe_set_full_optimizer_state
+
+
+These routines can be used at any point after initialization of the DeepSpeed engine (i.e., ``deepspeed.initialize()``) as shown in the following snippet.
+
+.. code-block:: python
+
+    [...]
+    from deepspeed.utils import safe_set_full_fp32_param, safe_set_full_optimizer_state
+    # Here is an example to zero all the fp32 parameters and optimizer states.
+    for n, lp in model.named_parameters():
+        # Assume zero stage 1 or 2, since stage 3 requires a gather to assemble lp
+        zero_tensor = torch.zeros_like(lp)
+
+        hp = safe_set_full_fp32_param(lp, zero_tensor)
+        exp_avg = safe_get_full_optimizer_state(lp, zero_tensor, "exp_avg")
+        exp_avg_sq = safe_get_full_optimizer_state(lp, zero_tensor, "exp_avg_sq")
+
+    [...]
 
 
 GPU Memory Management

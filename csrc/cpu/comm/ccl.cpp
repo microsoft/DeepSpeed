@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <immintrin.h>
 #include <math.h>
+#include <omp.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -15,6 +16,15 @@
 #include <cstdlib>
 #include <iostream>
 #include <oneapi/ccl.hpp>
+
+// states for collectives
+enum coll_state {
+    coll_begin = 0,
+    // coll states for naive allreduce
+    coll_allreduce_naive__copy_in_done,   // this state is for rank != 0
+    coll_allreduce_naive__reduce_done,    // this state is for rank == 0
+    coll_allreduce_naive__copy_out_done,  // this state is for rank != 0
+};
 
 // SHM building blocks
 struct SharedData {
@@ -58,20 +68,30 @@ void shared_close(SharedData* data)
 }
 
 // SHM based allreduce helper functions
+// buffer that holds shm name
+#define NAME_BUF_SIZE 1000
 #define MAX_BUF_SIZE 1048576
 #define SHM_BUFFER_NAME "deepspeed_allreduce_buffer"
 SharedData allreduce_buffer;
 struct allreduce_workspace {
-    int state;
+    enum coll_state state;
     char buffer[MAX_BUF_SIZE];
 };
 struct allreduce_workspace* workspace;
 
-void wait_buffer_state_until(int index, int state)
+void wait_buffer_state_until(int index, enum coll_state state)
 {
-    volatile int* state_ptr = &(workspace[index].state);
+    volatile enum coll_state* state_ptr = &(workspace[index].state);
 
     while (*state_ptr != state)
+        ;
+}
+
+void wait_buffer_state_until_not(int index, enum coll_state state)
+{
+    volatile enum coll_state* state_ptr = &(workspace[index].state);
+
+    while (*state_ptr == state)
         ;
 }
 
@@ -188,6 +208,7 @@ void reduce_all_buffers(struct allreduce_workspace* workspace,
 // num_elements must be divisible by 16 (caller check)
 void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
 {
+#pragma omp parallel for
     for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0].buffer + i)));
         switch (num_buffers) {
@@ -205,6 +226,7 @@ void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_wor
 
 void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
 {
+#pragma omp parallel for
     for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in_out + i)));
         auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
@@ -222,6 +244,7 @@ void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
 // num_elements must be divisible by 16 (caller check)
 void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
 {
+#pragma omp parallel for
     for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = _mm256_loadu_ps((float*)(workspace[0].buffer + i));
         switch (num_buffers) {
@@ -239,6 +262,7 @@ void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_wor
 
 void reduce_2_fp32_buffers(int num_elements, void* in_out, void* in1)
 {
+#pragma omp parallel for
     for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = _mm256_loadu_ps((float*)((char*)in_out + i));
         auto in1_val = _mm256_loadu_ps((float*)((char*)in1 + i));
@@ -298,22 +322,31 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
 
     _ccl_comms.emplace_back(ccl::create_communicator(size, rank, kvs));
 
+    auto addr_string = std::getenv("MASTER_ADDR");
+    if (addr_string == NULL) { addr_string = ""; }
+    auto port_string = std::getenv("MASTER_PORT");
+    if (port_string == NULL) { port_string = ""; }
+    char shm_name[NAME_BUF_SIZE];
+    snprintf(shm_name,
+             NAME_BUF_SIZE,
+             "%s_%d_%s_%s",
+             SHM_BUFFER_NAME,
+             getuid(),
+             addr_string,
+             port_string);
     // create shared workspace for SHM based allreduce
     if (all_ranks_local_p) {
         if (rank == 0) {
             workspace =
                 (struct allreduce_workspace*)malloc(size * sizeof(struct allreduce_workspace));
-            shared_create(&allreduce_buffer,
-                          SHM_BUFFER_NAME,
-                          workspace,
-                          size * sizeof(struct allreduce_workspace));
+            shared_create(
+                &allreduce_buffer, shm_name, workspace, size * sizeof(struct allreduce_workspace));
             workspace = (struct allreduce_workspace*)allreduce_buffer.bytes;
-            for (int i = 0; i < size; i++) { workspace[i].state = 0; }
+            for (int i = 0; i < size; i++) { workspace[i].state = coll_begin; }
         }
         CCLCHECK(ccl::barrier(_get_comm_from_group()).wait());
         if (rank != 0) {
-            shared_open(
-                &allreduce_buffer, SHM_BUFFER_NAME, size * sizeof(struct allreduce_workspace));
+            shared_open(&allreduce_buffer, shm_name, size * sizeof(struct allreduce_workspace));
         }
         workspace = (struct allreduce_workspace*)allreduce_buffer.bytes;
     }
@@ -374,6 +407,7 @@ ccl::datatype get_ccl_datatype(c10::ScalarType type)
     ccl::datatype ccl_type;
     switch (type) {
         case c10::ScalarType::Int: ccl_type = ccl::datatype::int32; break;
+        case c10::ScalarType::Long: ccl_type = ccl::datatype::int64; break;
         case c10::ScalarType::Float: ccl_type = ccl::datatype::float32; break;
         case c10::ScalarType::Double: ccl_type = ccl::datatype::float64; break;
         case c10::ScalarType::BFloat16: ccl_type = ccl::datatype::bfloat16; break;
@@ -500,33 +534,38 @@ void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, 
 
     memcpy(workspace[world_rank].buffer, data_ptr, data_size);
     std::atomic_thread_fence(std::memory_order_release);
-    workspace[world_rank].state = 1;
+    workspace[world_rank].state = coll_allreduce_naive__copy_in_done;
 
     if (world_rank == 0) {
         // compute allreduce result on rank 0
         for (int i = 1; i < world_size; i++) {
             // wait until the other rank copy the buffer
-            wait_buffer_state_until(i, 1);
+            wait_buffer_state_until(i, coll_allreduce_naive__copy_in_done);
         }
         reduce_all_buffers(workspace, numel, data.scalar_type(), world_size);
         std::atomic_thread_fence(std::memory_order_release);
-        workspace[world_rank].state = 2;
+        workspace[world_rank].state = coll_allreduce_naive__reduce_done;
         memcpy(data_ptr, workspace[0].buffer, data_size);
     }
     if (world_rank != 0) {
-        wait_buffer_state_until(0, 2);
+        wait_buffer_state_until(0, coll_allreduce_naive__reduce_done);
         memcpy(data_ptr, workspace[0].buffer, data_size);
         std::atomic_thread_fence(std::memory_order_release);
-        workspace[world_rank].state = 2;
+        workspace[world_rank].state = coll_allreduce_naive__copy_out_done;
     }
     if (world_rank == 0) {
-        for (int i = 1; i < world_size; i++) { wait_buffer_state_until(i, 2); }
+        for (int i = 1; i < world_size; i++) {
+            wait_buffer_state_until(i, coll_allreduce_naive__copy_out_done);
+        }
         std::atomic_thread_fence(std::memory_order_release);
-        workspace[world_rank].state = 0;
+        workspace[world_rank].state = coll_begin;
     }
     if (world_rank != 0) {
-        wait_buffer_state_until(0, 0);
-        workspace[world_rank].state = 0;
+        // if rank 0 spin too fast it could be in state 1 of next allreduce
+        // in this case wait_buffer_state_until(0, 0) may cause deadlock
+        // what we are certain is when rank 0 finishes the state won't be 2
+        wait_buffer_state_until_not(0, coll_allreduce_naive__reduce_done);
+        workspace[world_rank].state = coll_begin;
     }
 }
 

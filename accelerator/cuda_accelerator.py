@@ -173,6 +173,13 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def communication_backend_name(self):
         return self._communication_backend_name
 
+    def is_triton_supported(self):
+        major, _ = torch.cuda.get_device_capability()
+        if major >= 8:
+            return True
+        else:
+            return False
+
     # Tensor operations
 
     @property
@@ -217,7 +224,7 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         try:
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
-            from op_builder import __deepspeed__  # noqa: F401
+            from op_builder import __deepspeed__  # noqa: F401 # type: ignore
             return "op_builder"
         except ImportError:
             return "deepspeed.ops.op_builder"
