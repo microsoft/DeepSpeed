@@ -2402,23 +2402,24 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.optimizer.load_state_dict(state_dict[OPTIMIZER_STATE_DICT])
             self._clear_fp32_optimizer_param_groups()
 
-        # restore fp32 partitions
-        for curr_param, saved_param in zip(self.fp32_partitioned_groups_flat, state_dict[FP32_FLAT_GROUPS]):
-            curr_param.data.copy_(saved_param.data)
+        if not (self.swap_optimizer or self.params_in_nvme_and_cpu):
+            # restore fp32 partitions
+            for curr_param, saved_param in zip(self.fp32_partitioned_groups_flat, state_dict[FP32_FLAT_GROUPS]):
+                curr_param.data.copy_(saved_param.data)
 
-        # restore fp16 partitions from fp32
-        for sub_group_id in range(len(self.fp32_partitioned_groups_flat)):
-            fp32_param = self.fp32_partitioned_groups_flat[sub_group_id]
-            fp16_param = self.fp16_partitioned_groups_flat[sub_group_id]
-            fp16_param.data.copy_(fp32_param.data)
+            # restore fp16 partitions from fp32
+            for sub_group_id in range(len(self.fp32_partitioned_groups_flat)):
+                fp32_param = self.fp32_partitioned_groups_flat[sub_group_id]
+                fp16_param = self.fp16_partitioned_groups_flat[sub_group_id]
+                fp16_param.data.copy_(fp32_param.data)
 
-        # update fp16 unflattened params
-        for sub_group_id in range(len(self.fp16_partitioned_groups_flat)):
-            updated_params = self.unflatten(self.fp16_partitioned_groups_flat[sub_group_id],
-                                            self.fp16_partitioned_groups[sub_group_id])
+            # update fp16 unflattened params
+            for sub_group_id in range(len(self.fp16_partitioned_groups_flat)):
+                updated_params = self.unflatten(self.fp16_partitioned_groups_flat[sub_group_id],
+                                                self.fp16_partitioned_groups[sub_group_id])
 
-            for partitioned_param, q in zip(self.fp16_partitioned_groups[sub_group_id], updated_params):
-                partitioned_param.data = q.data
+                for partitioned_param, q in zip(self.fp16_partitioned_groups[sub_group_id], updated_params):
+                    partitioned_param.data = q.data
 
     # TODO: Support different/changing load/save DP degree.
     def load_state_dict(self,
@@ -2454,10 +2455,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         if self.elastic_checkpoint:
             raise NotImplementedError("ZeRO-3 does not yet support elastic checkpointing, please disable for now.")
-
-        if self.swap_optimizer or self.params_in_nvme_and_cpu:
-            raise NotImplementedError(
-                "ZeRO-3 does not yet support checkpointing with NVMe offloading, please disable for now.")
 
         self._rigid_load_state_dict(state_dict_list[dist.get_rank(group=self.dp_process_group)],
                                     load_optimizer_states=load_optimizer_states)
