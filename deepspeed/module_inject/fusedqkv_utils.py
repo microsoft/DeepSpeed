@@ -16,7 +16,7 @@ def split_by_qkvlist_and_refuse(qkv_list, split_size, split_dim=0, cat_dim=0):
 
 
 def require_tp_fused_qkvw(name, mp_size):
-    fused_qkvw_name_list = ['qkv_proj', 'query_key_value']
+    fused_qkvw_name_list = ['qkv_proj', 'query_key_value', 'attn.Wqkv']
 
     if mp_size == 1:
         return False
@@ -33,6 +33,8 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
         'CodeGenBlock': 'codegentype',
         'BloomBlock': 'bloomtype',
         'GLMBlock': 'glmtype',
+        "MPTBlock": 'glmtype',
+        "MptBlock": 'glmtype',
     }
 
     def _codegen_type_transpose(input, mp_size, codegen_mp_num=4):
@@ -66,7 +68,9 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
         return tp_fuseqkv_weight[gpu_index * dst_shape:(gpu_index + 1) * dst_shape]
 
     def _bloom_type_transpose(input, mp_size):
-        return input
+        shape = input.shape
+        dst_shape = shape[0] // mp_size
+        return input[gpu_index * dst_shape:(gpu_index + 1) * dst_shape]
 
     def _transpose_fused_qkvw(src, mp_size, fused_qkv_type=None):
 
@@ -89,4 +93,4 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
             return _transpose_fused_qkvw(src, mp_size, fused_type)
     warning_once(f"Unrecognized fusedkqv weight type, default to using bloom type,"
                  f"please check in prepare_tp_fused_qkvw() to avoid potential calculation errors")
-    return src
+    return _bloom_type_transpose(src, mp_size)

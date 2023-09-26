@@ -99,6 +99,8 @@ class BaseQuantConfig(DeepSpeedConfigModel):
 
 class WeightQuantConfig(BaseQuantConfig):
     enabled: bool = True
+    quantized_initialization: Dict = {}
+    post_init_quant: Dict = {}
 
 
 class ActivationQuantConfig(BaseQuantConfig):
@@ -201,7 +203,7 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     Path to deepspeed compatible checkpoint or path to JSON with load policy.
     """
 
-    base_dir: Optional[str] = None
+    base_dir: Optional[str] = ""
     """
     This shows the root directory under which all the checkpoint files exists.
     This can be passed through the json config too.

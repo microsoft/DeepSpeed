@@ -120,6 +120,10 @@ class BaseTransformerContainer(ABC):
             triton_autotune=self.config.triton_autotune)
 
         if self.use_triton and deepspeed.HAS_TRITON:
+            from .bert import DS_BERTContainer
+            if not isinstance(self, DS_BERTContainer):
+                raise NotImplementedError("Triton kernels are only for BERT-like models yet")
+
             if not self.config.triton_autotune:
                 from deepspeed.ops.transformer.inference.triton.matmul_ext import fp16_matmul
                 fp16_matmul.skip_autotune()
@@ -138,7 +142,7 @@ class BaseTransformerContainer(ABC):
         self.set_attention(*self.policy.attention(enable_training=enable_training))
         self.set_mlp(*self.policy.mlp(enable_training=enable_training))
         self.set_layernorm(*self.policy.layernorm())
-        self.check_meta_tensor_support()
+        #self.check_meta_tensor_support()
 
     def convert_to_required_dtype(self):
         # Note: converting tensors to fp16 requires that we do it in-place using self.__dict__ and not make a list/dict copy

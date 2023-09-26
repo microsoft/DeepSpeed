@@ -26,7 +26,9 @@ from ..module_inject.policy import TransformerPolicy
 from ..module_inject.auto_tp import AutoTP
 
 from ..module_inject.replace_policy import generic_policies
-from ..module_inject.auto_tp_model_utils import build_bloom_alibi_tensor, build_mpt_atten_bias_tensor
+from ..module_inject.auto_tp_model_utils import build_bloom_alibi_tensor, build_mpt_atten_bias_tensor, build_mpt_alibi_tensor
+from ..ops.transformer.inference.ds_attention import DeepSpeedSelfAttention
+from ..model_implementations.transformers.ds_transformer import DeepSpeedTransformerInference
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -49,6 +51,13 @@ class InferenceEngine(Module):
         DS_INFERENCE_ENABLED = True
 
         super().__init__()
+
+        # Have to import here because inference_module is a global, but python
+        # globals only work at the module level and will not be updated unless
+        # we import it each time we init a new inference engine.
+        from ..model_implementations.transformers.ds_transformer import inference_module
+        if inference_module is not None:
+            self.destroy()
 
         self.module = model
         self._config = config
@@ -129,11 +138,21 @@ class InferenceEngine(Module):
             # 1. User specified Tensor Parallelism
             assert not config.replace_with_kernel_inject, "Cannot use both user specified injection policy and kernel injection"
             for client_module, injection_policy in self.injection_dict.items():
+
+                assert issubclass(client_module,
+                                  torch.nn.Module), f"{client_module} is not a subclass of torch.nn.Module"
+
                 # construct the tuple and pass that instead of a string or dict.
                 if isinstance(injection_policy, str):
                     config.injection_policy_tuple = (injection_policy, )
                 else:
                     config.injection_policy_tuple = injection_policy
+
+                layer_names = [name for name, _ in self.module.named_modules()]
+                for policy in config.injection_policy_tuple:
+                    if not any(name.endswith(policy) for name in layer_names):
+                        raise ValueError(f"Injection policy layer'{policy}' not valid.")
+
                 self._apply_injection_policy(config, client_module)
         else:
             if config.replace_with_kernel_inject:
@@ -164,6 +183,17 @@ class InferenceEngine(Module):
         # Check if local CUDA graphs can be created in replacement modules
         self.local_cuda_graph = self._local_cuda_graph_used(self.module)
 
+    def destroy(self):
+        # Have to import here because inference_module is a global, but python
+        # globals only work at the module level and will not be updated unless
+        # we import it each time we init a new inference engine.
+        from ..model_implementations.transformers.ds_transformer import inference_module
+        DeepSpeedTransformerInference.layer_id = 0
+        DeepSpeedSelfAttention.num_layers = 0
+        if inference_module is not None:
+            inference_module.release_workspace()
+            inference_module = None
+
     def profile_model_time(self, use_cuda_events=True):
         if not self.model_profile_enabled and not self._config.enable_cuda_graph:
             self.module.register_forward_pre_hook(self._pre_forward_hook)
@@ -187,6 +217,9 @@ class InferenceEngine(Module):
         if hasattr(self.module, 'transformer'):
             if hasattr(self.module.transformer, 'build_alibi_tensor'):
                 self.module.transformer.build_alibi_tensor = build_bloom_alibi_tensor
+            if hasattr(self.module.transformer, 'build_mpt_alibi_tensor'):
+                self.module.transformer.build_mpt_alibi_tensor_orig = self.module.transformer.build_mpt_alibi_tensor
+                self.module.transformer.__class__.build_mpt_alibi_tensor = build_mpt_alibi_tensor
 
     def build_attn_bias(self):
         if hasattr(self.module, 'transformer'):
@@ -371,10 +404,7 @@ class InferenceEngine(Module):
         checkpoint = SDLoaderFactory.get_sd_loader_json(checkpoint_dir,
                                                         self.checkpoint_engine) if checkpoint_dir is not None else None
 
-        generic_injection(self.module,
-                          fp16=(config.dtype == torch.half) or (config.dtype == torch.int8),
-                          bf16=(config.dtype == torch.bfloat16),
-                          enable_cuda_graph=config.enable_cuda_graph)
+        generic_injection(self.module, dtype=config.dtype, enable_cuda_graph=config.enable_cuda_graph)
 
         if isinstance(self.module, torch.nn.Module):
             # config is our DeepSpeedInferenceConfig and self.config is the HF model config
@@ -587,5 +617,13 @@ class InferenceEngine(Module):
         if num_beams > 1:
             raise NotImplementedError("DeepSpeed does not support `num_beams` > 1, if this is important to you please "
                                       "add your request to: https://github.com/microsoft/DeepSpeed/issues/2506")
+
+        if ("input_ids" in kwargs) and (kwargs["input_ids"].dim() == 2):
+            for input_tensor in kwargs["input_ids"]:
+                tensor_length = input_tensor.shape[-1]
+                if tensor_length > self._config.max_out_tokens:
+                    raise RuntimeError(
+                        f"Input with size {tensor_length} exceeds maximum length of {self._config.max_out_tokens}. Please increase `max_tokens` in the DeepSpeed Inference Config."
+                    )
 
         return self.module.generate(*inputs, **kwargs)
