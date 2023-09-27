@@ -1,3 +1,7 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 """Pydantic v1 compatibility module.
 
 Pydantic v2 introduced breaking changes that hinder its adoption:
