@@ -24,6 +24,10 @@ jobs:
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
 
+      - id: Get linux version
+        run: |
+          lsb_release -d
+
       - name: Install pytorch
         run: |
           # use the same pytorch version as transformers CI
