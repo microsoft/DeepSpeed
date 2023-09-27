@@ -24,7 +24,7 @@ jobs:
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
 
-      - id: Get linux version
+      - name: Get linux version
         run: |
           lsb_release -d
 
