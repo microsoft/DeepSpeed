@@ -277,15 +277,15 @@ int world_size = -1;
 
 std::set<int> _comm_ids;
 std::set<int> _colors;
-ccl::vector_class<ccl::communicator> _ccl_comms;
+std::vector<ccl::communicator> _ccl_comms;
+ccl::shared_ptr_class<ccl::kvs> sub_kvs;
 std::map<std::vector<int>, int> group_to_comm_id;
 
 ccl::communicator& _get_comm_from_group() { return _ccl_comms[0]; }
 ccl::communicator& _get_comm_from_group(py::object group) { return _ccl_comms[0]; }
-ccl::communicator& _get_comm_from_group(std::vector<int> ranks) 
-{ 
-    if (group_to_comm_id.find(ranks) != group_to_comm_id.end())
-    {
+ccl::communicator& _get_comm_from_group(std::vector<int> ranks)
+{
+    if (group_to_comm_id.find(ranks) != group_to_comm_id.end()) {
         auto id = group_to_comm_id.find(ranks);
         return _ccl_comms[id->second];
     }
@@ -410,6 +410,31 @@ py::object new_group(std::vector<int> ranks)
     int color = next_unique_val(_colors);
     std::cout << "RANK: " << get_rank() << " COMM_ID: " << comm_id << " COLOR: " << color
               << std::endl;
+}
+
+std::vector<uint8_t> get_sub_kvs_addr(bool first)
+{
+    if (first) {
+        sub_kvs = ccl::create_main_kvs();
+        ccl::kvs::address_type main_addr = sub_kvs->get_address();
+        auto ccl_kvs_addr = std::vector<uint8_t>(main_addr.begin(), main_addr.end());
+        return ccl_kvs_addr;
+    } else {
+        ccl::kvs::address_type main_addr;
+        auto ccl_kvs_addr = std::vector<uint8_t>(main_addr.begin(), main_addr.end());
+        return ccl_kvs_addr;
+    }
+}
+
+void initialize_sub_comm(int size, int rank, torch::Tensor& kvs_data, std::vector<int> ranks)
+{
+    ccl::kvs::address_type main_addr;
+    if (rank != 0) {
+        memcpy(main_addr.data(), kvs_data.data_ptr(), main_addr.size());
+        sub_kvs = ccl::create_kvs(main_addr);
+    }
+    _ccl_comms.push_back(ccl::create_communicator(size, rank, sub_kvs));
+    group_to_comm_id[ranks] = _ccl_comms.size() - 1;
 }
 
 ccl::datatype get_ccl_datatype(c10::ScalarType type)
@@ -586,7 +611,8 @@ void barrier(std::vector<int> group, bool async_op)
 
 std::vector<std::string> get_available_coll()
 {
-    std::vector<std::string> colls{"broadcast", "all_reduce", "inference_all_reduce", "all_reduce_caching", "barrier"};
+    std::vector<std::string> colls{
+        "broadcast", "all_reduce", "inference_all_reduce", "all_reduce_caching", "barrier"};
     return colls;
 }
 
