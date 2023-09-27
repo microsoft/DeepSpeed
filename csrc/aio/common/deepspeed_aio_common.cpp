@@ -116,7 +116,7 @@ static int _do_io_complete(const long long int min_completes,
 {
     const auto start_time = std::chrono::high_resolution_clock::now();
     long long int n_completes = io_pgetevents(
-        aio_ctxt->_io_ctxt, min_completes, max_completes, aio_ctxt->_io_events.data(), NULL, NULL);
+        aio_ctxt->_io_ctxt, min_completes, max_completes, aio_ctxt->_io_events.data(), nullptr, nullptr);
     reap_times.push_back(std::chrono::high_resolution_clock::now() - start_time);
     assert(n_completes >= min_completes);
     return n_completes;
