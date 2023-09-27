@@ -173,7 +173,7 @@ class PreBackwardFunction(torch.autograd.Function):
 class PostBackwardFunction(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, module, pre_backward_function, output):
+    def forward(ctx, module, post_backward_function, output):
         ctx.module = module
         if output.requires_grad:
             #TODO SOME TIMES post backward does not seem to be triggered debug in detail
@@ -185,7 +185,7 @@ class PostBackwardFunction(torch.autograd.Function):
             #if module.ds_grads_remaining == 0:
             #    print(f"Before Forward: {ctx.module.__class__.__name__}")
             module.ds_grads_remaining += 1
-            ctx.pre_backward_function = pre_backward_function
+            ctx.post_backward_function = post_backward_function
         output = output.detach()
         return output
 
@@ -193,34 +193,45 @@ class PostBackwardFunction(torch.autograd.Function):
     def backward(ctx, *args):
         ctx.module.ds_grads_remaining = ctx.module.ds_grads_remaining - 1
         if ctx.module.ds_grads_remaining == 0:
-            ctx.pre_backward_function(ctx.module)
+            ctx.post_backward_function(ctx.module)
             #print(f"After Backward: {ctx.module.__class__.__name__}")
         return (None, None) + args
 
 
 class DeepSpeedZeRoOffload(object):
 
-    def __init__(self,
-                 module,
-                 timers,
-                 ds_config,
-                 overlap_comm=True,
-                 prefetch_bucket_size=50000000,
-                 max_reuse_distance=1000000000,
-                 max_live_parameters=1000000000,
-                 param_persistence_threshold=100000,
-                 model_persistence_threshold=sys.maxsize,
-                 offload_param_config=None,
-                 mpu=None):
+    def __init__(
+        self,
+        module,
+        timers,
+        ds_config,
+        overlap_comm=True,
+        prefetch_bucket_size=50000000,
+        max_reuse_distance=1000000000,
+        max_live_parameters=1000000000,
+        param_persistence_threshold=100000,
+        model_persistence_threshold=sys.maxsize,
+        dp_process_group=None,
+        offload_param_config=None,
+        mpu=None,
+        zero_param_parallel_group=None,
+        zero_quantized_weights=False,
+        zero_quantized_nontrainable_weights=False,
+    ):
 
         see_memory_usage("DeepSpeedZeRoOffload initialize [begin]", force=True)
 
         print_rank_0(f"initialized {__class__.__name__} with args: {locals()}", force=False)
 
         self.module = module
+        self.timers = timers
         self.dtype = list(module.parameters())[0].dtype
+        self.dp_process_group = dp_process_group
         self.offload_device = None
         self.offload_param_pin_memory = False
+        self.zero_param_parallel_group = zero_param_parallel_group
+        self.zero_quantized_weights = zero_quantized_weights
+        self.zero_quantized_nontrainable_weights = zero_quantized_nontrainable_weights
 
         if offload_param_config is not None and offload_param_config.device != OffloadDeviceEnum.none:
             self.offload_device = offload_param_config.device
@@ -242,10 +253,14 @@ class DeepSpeedZeRoOffload(object):
         self._prefetch_bucket_sz = int(prefetch_bucket_size)
         self._max_reuse_distance_in_numel = int(max_reuse_distance)
         self._max_available_parameters_in_numel = int(max_live_parameters)
-        self.__allgather_stream = get_accelerator().Stream() if overlap_comm else get_accelerator().default_stream()
+        self.__allgather_stream = None if get_accelerator().is_synchronized_device() else get_accelerator().Stream(
+        ) if overlap_comm else get_accelerator().default_stream()
 
         if not hasattr(module, "ds_inflight_param_registry"):
-            module.ds_inflight_param_registry = InflightParamRegistry()
+            module.ds_inflight_param_registry = dict()
+            # we need two registries, one for training and one for eval. They will be used when creating PartitionedParameterCoordinator
+            module.ds_inflight_param_registry[True] = InflightParamRegistry()
+            module.ds_inflight_param_registry[False] = InflightParamRegistry()
         self.__inflight_param_registry = module.ds_inflight_param_registry
 
         self.forward_hooks = []
@@ -274,8 +289,11 @@ class DeepSpeedZeRoOffload(object):
                 max_reuse_distance_in_numel=self._max_reuse_distance_in_numel,
                 max_available_parameters_in_numel=self._max_available_parameters_in_numel,
                 allgather_stream=self.__allgather_stream,
-                inflight_param_registry=self.__inflight_param_registry,
+                inflight_param_registry=self.__inflight_param_registry[training],
                 prefetch_nvme=self.offload_device == OffloadDeviceEnum.nvme,
+                timers=self.timers,
+                zero_quantized_weights=self.zero_quantized_weights,
+                zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights,
             )
 
         return self.param_coordinators[training]
@@ -300,7 +318,10 @@ class DeepSpeedZeRoOffload(object):
                      config_dict_or_path=ds_config,
                      remote_device=self.offload_device,
                      pin_memory=self.offload_param_pin_memory,
-                     mpu=mpu)
+                     mpu=mpu,
+                     zero_param_parallel_group=self.zero_param_parallel_group,
+                     zero_quantized_weights=self.zero_quantized_weights,
+                     zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights)
 
     def destroy(self):
         self._remove_module_hooks()
@@ -340,7 +361,7 @@ class DeepSpeedZeRoOffload(object):
         persistent_params = []
         total_persistent_parameters = 0
         params_count = 0
-        for _, param in self.module.named_parameters(recurse=True):
+        for name, param in self.module.named_parameters(recurse=True):
             if param.ds_numel + total_persistent_parameters > model_threshold:
                 continue
 
@@ -469,10 +490,11 @@ class DeepSpeedZeRoOffload(object):
         # post backward hook
         self.backward_hooks.append(module.register_forward_pre_hook(_post_backward_module_hook))
 
-    @torch.no_grad()
     def pre_sub_module_forward_function(self, sub_module):
         see_memory_usage(f"Before sub module function {sub_module.__class__.__name__}", force=False)
-
+        prev_grad_state = torch.is_grad_enabled(
+        )  # we don't want to enable grad for sub modules fetching, yet the subfunction need to know if grad is enabled
+        torch.set_grad_enabled(False)
         global FWD_MODULE_STACK
         FWD_MODULE_STACK.append(sub_module)
 
@@ -480,8 +502,8 @@ class DeepSpeedZeRoOffload(object):
         param_coordinator.trace_prologue(sub_module)
         if param_coordinator.is_record_trace():
             param_coordinator.record_module(sub_module)
-        param_coordinator.fetch_sub_module(sub_module)
-
+        param_coordinator.fetch_sub_module(sub_module, forward=prev_grad_state)
+        torch.set_grad_enabled(prev_grad_state)
         see_memory_usage(f"Before sub module function {sub_module.__class__.__name__} after fetch", force=False)
 
     @torch.no_grad()
@@ -490,7 +512,7 @@ class DeepSpeedZeRoOffload(object):
                          force=False)
 
         param_coordinator = self.get_param_coordinator(training=sub_module.training)
-        param_coordinator.release_sub_module(sub_module)
+        param_coordinator.release_sub_module(sub_module, backward=False)
 
         see_memory_usage(f"After sub module function {sub_module.__class__.__name__}  {sub_module.id} after release",
                          force=False)
@@ -502,7 +524,7 @@ class DeepSpeedZeRoOffload(object):
         param_coordinator.trace_prologue(sub_module)
         if param_coordinator.is_record_trace():
             param_coordinator.record_module(sub_module)
-        param_coordinator.fetch_sub_module(sub_module)
+        param_coordinator.fetch_sub_module(sub_module, forward=False)
 
     @torch.no_grad()
     def post_sub_module_backward_function(self, sub_module):
@@ -511,7 +533,7 @@ class DeepSpeedZeRoOffload(object):
             f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} before release",
             force=False)
 
-        self.get_param_coordinator(training=True).release_sub_module(sub_module)
+        self.get_param_coordinator(training=True).release_sub_module(sub_module, backward=True)
 
         see_memory_usage(
             f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} after release",

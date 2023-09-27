@@ -10,6 +10,17 @@
 
 </div>
 
+如需引用 DeepSpeed Chat，请引用我们的[arxiv report](https://arxiv.org/abs/2308.01320):
+
+```
+@article{yao2023dschat,
+  title={{DeepSpeed-Chat: Easy, Fast and Affordable RLHF Training of ChatGPT-like Models at All Scales}},
+  author={Zhewei Yao and Reza Yazdani Aminabadi and Olatunji Ruwase and Samyam Rajbhandari and Xiaoxia Wu and Ammar Ahmad Awan and Jeff Rasley and Minjia Zhang and Conglong Li and Connor Holmes and Zhongzhu Zhou and Michael Wyatt and Molly Smith and Lev Kurilenko and Heyang Qin and Masahiro Tanaka and Shuai Che and Shuaiwen Leon Song and Yuxiong He},
+  journal={arXiv preprint arXiv:2308.01320},
+  year={2023}
+}
+```
+
 # 1. 概述
 
 近日来，ChatGPT及类似模型引发了人工智能（AI）领域的一场风潮。 这场风潮对数字世界产生了革命性影响。ChatGPT类模型具有惊人的泛用性，能够执行归纳、编程、翻译等任务，其结果与人类专家相当甚至更优。为了使ChatGPT等模型的训练和部署更轻松，AI 开源社区进行了各种尝试（例如 ChatLLaMa、Alpaca、Vicuna、Databricks-Dolly等）。
@@ -308,7 +319,7 @@ DeepSpeed-HE 的核心技术基于 ZeRO，用于训练过程中将模型状态�
 DeepSpeed-Chat 是更大的DeepSpeed生态系统的一部分，包括众多深度学习系统和建模技术。要了解更多信息，
 
 * 请访问我们的[网站](https://www.deepspeed.ai/)，了解详细的博客文章、教程和有用的文档。
-* 你还可以关注我们的[英文 Twitter](https://twitter.com/MSFTDeepSpeed) 和[日文 Twitter](https://twitter.com/MSFTDeepSpeedJP)，了解 DeepSpeed 的最新动态。我们还将授权开源社KAIYUANSHE微信公众号第一时间发布我们的中文博客。
+* 我们会在[知乎](https://www.zhihu.com/people/deepspeed)上发布最新中文博客及动态。你还可以关注我们的[英文 Twitter](https://twitter.com/MSFTDeepSpeed) 和[日文 Twitter](https://twitter.com/MSFTDeepSpeedJP)。
 
 
 DeepSpeed 欢迎你的贡献！我们鼓励你在 [DeepSpeed GitHub](https://github.com/microsoft/DeepSpeed/) 页面报告问题、贡献 PR 并参与讨论。请参阅我们的[贡献指南](https://github.com/microsoft/DeepSpeed/blob/master/CONTRIBUTING.md)了解更多详情。我们愿意与大学、研究实验室、公司等进行合作，共同开展深度学习研究，将 DeepSpeed 应用于赋能现实世界的 AI 模型和应用等。对于此类需求（以及其他不适合在 GitHub 上提出的需求），请直接发送电子邮件至 deepspeed-info@microsoft.com。
