@@ -404,14 +404,6 @@ int next_unique_val(std::set<int> s)
     }
 }
 
-py::object new_group(std::vector<int> ranks)
-{
-    int comm_id = next_unique_val(_comm_ids);
-    int color = next_unique_val(_colors);
-    std::cout << "RANK: " << get_rank() << " COMM_ID: " << comm_id << " COLOR: " << color
-              << std::endl;
-}
-
 std::vector<uint8_t> get_sub_kvs_addr(bool first)
 {
     if (first) {
@@ -627,5 +619,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("inference_all_reduce", &inference_all_reduce, "low latency all_reduce implementation");
     m.def("all_reduce_caching", &all_reduce_caching, "ccl all_reduce with caching");
     m.def("barrier", &barrier, "barrier");
+    m.def("initialize_sub_comm", &initialize_sub_comm, "initialize_sub_comm");
+    m.def("get_sub_kvs_addr", &get_sub_kvs_addr, "get_sub_kvs_addr");
     m.def("get_available_coll", &get_available_coll, "get_available_coll");
 }
