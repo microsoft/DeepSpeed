@@ -503,8 +503,8 @@ static void parallel_memcpy(void* to, void* from, size_t n_bytes)
     __attribute__((target("avx512bw")));
 static void parallel_memcpy(void* to, void* from, size_t n_bytes)
 {
-    #pragma omp parallel for
-    for (int i=0;i<n_bytes;i+=VECTOR_LENGTH_IN_BYTES) {
+#pragma omp parallel for
+    for (int i = 0; i < n_bytes; i += VECTOR_LENGTH_IN_BYTES) {
         auto val = _mm256_loadu_si256((__m256i*)((char*)from + i));
         _mm256_storeu_si256((__m256i*)((char*)to + i), val);
     }
@@ -528,8 +528,7 @@ void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, 
         default: data_type_fallback = true;
     }
 
-    if (data_type_fallback ||
-        (data_size % VECTOR_LENGTH_IN_BYTES) != 0 || !all_ranks_local_p) {
+    if (data_type_fallback || (data_size % VECTOR_LENGTH_IN_BYTES) != 0 || !all_ranks_local_p) {
         // fallback to oneccl allreduce
         CCLCHECK(ccl::allreduce(data.data_ptr(),
                                 data.data_ptr(),
@@ -541,10 +540,10 @@ void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, 
         return;
     }
 
-    for (int offset = 0; offset < data_size; offset+=MAX_BUF_SIZE) {
-        auto data_ptr = ((char*)(data.data_ptr())+offset);
+    for (int offset = 0; offset < data_size; offset += MAX_BUF_SIZE) {
+        auto data_ptr = ((char*)(data.data_ptr()) + offset);
         size_t chunk_size = data_size - offset > MAX_BUF_SIZE ? MAX_BUF_SIZE : data_size - offset;
-        size_t chunk_el = chunk_size/(data_size/numel);
+        size_t chunk_el = chunk_size / (data_size / numel);
 
         parallel_memcpy(workspace[world_rank].buffer, data_ptr, chunk_size);
         std::atomic_thread_fence(std::memory_order_release);
