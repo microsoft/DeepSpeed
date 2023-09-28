@@ -3036,6 +3036,16 @@ class DeepSpeedEngine(Module):
             self._create_zero_checkpoint_files(save_dir, tag)
             self._save_zero_checkpoint(save_dir, tag)
 
+        if self.zero_has_nvme_offload():
+            from shutil import copytree, disk_usage
+            offload_dir = self.optimizer.optimizer_swapper.swap_folder
+            offload_ckpt_dir = os.path.join(save_dir, tag, "offloaded_tensors")
+            _, _, free = disk_usage(save_dir)
+            logger.info(f"Copying NVMe offload files from {offload_dir} to {offload_ckpt_dir}, {free / 1e9:,.2f} GB free on target filesystem...")
+            copytree(offload_dir, offload_ckpt_dir, dirs_exist_ok=False)
+            _, _, free = disk_usage(save_dir)
+            logger.info(f"Copying complete! {free / 1e9:,.2f} GB free on target filesystem")
+
         if self._optimizer_has_ckpt_event_epilogue():
             self.optimizer.checkpoint_event_epilogue()
 
