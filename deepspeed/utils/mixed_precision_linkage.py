@@ -16,7 +16,7 @@ def link_hp_params(lp_param_list, flat_hp_partition, gradient_dict, offload_grad
                                                        offload_gradient_dict, use_offload, param_group_index,
                                                        partition_start, partition_size, partition_optimizer_state)
 
-def unlink_hp_mapping(lp_param_list):
+def unlink_hp_params(lp_param_list):
     for lp in lp_param_list:
         lp._hp_mapping = None
     return

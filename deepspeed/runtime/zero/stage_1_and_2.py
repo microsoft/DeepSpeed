@@ -12,7 +12,7 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
 from deepspeed.runtime import ZeROOptimizer
 from deepspeed.runtime.fp16.loss_scaler import CreateLossScaler
-from deepspeed.runtime.utils import (bwc_tensor_model_parallel_rank, get_global_norm, empty_cache, see_memory_usage,
+from deepspeed.runtime.utils import (bwc_tensor_model_parallel_rank, get_global_norm, empty_cache, see_memory_usage, del_obj_attrs,
                                      inf, is_model_parallel_parameter, align_dense_tensors, all_gather_dp_groups)
 
 from deepspeed.runtime.zero.config import ZeroStageEnum
@@ -29,7 +29,7 @@ from deepspeed.checkpoint.constants import (DS_VERSION, GROUP_PADDINGS, PARTITIO
                                             SINGLE_PARTITION_OF_FP32_GROUPS, BASE_OPTIMIZER_STATE, CLIP_GRAD,
                                             ZERO_STAGE, PARAM_SLICE_MAPPINGS)
 
-from deepspeed.utils import link_hp_params, unlink_hp_mapping
+from deepspeed.utils import link_hp_params, unlink_hp_params
 from deepspeed.checkpoint import enable_universal_checkpoint
 
 # Toggle this to true to enable correctness test
@@ -522,7 +522,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     def destroy(self):
         for i, _ in enumerate(self.optimizer.param_groups):
-            unlink_hp_mapping(self.bit16_groups[i])
+            unlink_hp_params(self.bit16_groups[i])
+        del_obj_attrs(self)
 
     def _enable_universal_checkpoint(self):
         for lp_param_group in self.bit16_groups:
