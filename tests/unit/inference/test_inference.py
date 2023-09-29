@@ -22,9 +22,6 @@ from torch import nn
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
 
-if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
-    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
-
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
     pytest.skip("skip inference tests on rocm for now", allow_module_level=True)
@@ -366,7 +363,7 @@ class TestMPSize(DistributedTest):
             pytest.skip(invalid_test_msg)
 
         if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
-            pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
+            pytest.skip("This op had not been implemented on this system.")
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
