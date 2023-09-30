@@ -280,6 +280,9 @@ class TestModelTask(DistributedTest):
         if invalid_test_msg:
             pytest.skip(invalid_test_msg)
 
+        if dtype not in get_accelerator().supported_dtypes():
+            pytest.skip(f"Acceleraor {get_accelerator().device_name()} does not support {dtype}.")
+
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
