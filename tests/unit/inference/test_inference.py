@@ -283,6 +283,9 @@ class TestModelTask(DistributedTest):
         if dtype not in get_accelerator().supported_dtypes():
             pytest.skip(f"Acceleraor {get_accelerator().device_name()} does not support {dtype}.")
 
+        if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
+            pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
+
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
