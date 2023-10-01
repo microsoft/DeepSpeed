@@ -211,7 +211,6 @@ else:
 
 
 def create_dir_symlink(src, dest):
-
     if not os.path.islink(dest):
         if os.path.exists(dest):
             os.remove(dest)
