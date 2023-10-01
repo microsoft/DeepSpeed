@@ -137,7 +137,6 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         """
         Zero FP16 parameter grads.
         """
-        # For speed, set model fp16 grad to None by default
         for group in self.fp16_groups:
             for p in group:
                 if set_to_none:

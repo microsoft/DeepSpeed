@@ -115,7 +115,6 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
         Zero FP16 parameter grads.
         """
         # FP32 grad should never exist outside of the step function
-        # For speed, set model fp16 grad to None by default
         for group in self.fp16_groups:
             for p in group:
                 if set_to_none:
