@@ -99,7 +99,16 @@ def model_w_task(request):
     return request.param
 
 
-@pytest.fixture(params=[torch.float, torch.half], ids=["fp32", "fp16"])
+_dtypes = []
+_dtype_ids = []
+for dt, id in [(torch.float32, "fp32"), (torch.float16, "fp16")]:
+    if dt in get_accelerator().supported_dtypes():
+        _dtypes.append(dt)
+        _dtype_ids.append(id)
+assert len(_dtypes) > 0, "Accelerator does not support any tested data types"
+
+
+@pytest.fixture(params=_dtypes, ids=_dtype_ids)
 def dtype(request):
     return request.param
 
@@ -279,6 +288,12 @@ class TestModelTask(DistributedTest):
         invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph, enable_triton)
         if invalid_test_msg:
             pytest.skip(invalid_test_msg)
+
+        if dtype not in get_accelerator().supported_dtypes():
+            pytest.skip(f"Acceleraor {get_accelerator().device_name()} does not support {dtype}.")
+
+        if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
+            pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
