@@ -1524,6 +1524,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         Zero FP16 parameter grads.
         """
         # FP32 grad should never exist.
+        # For speed, set model fp16 grad to None by default
         # zero all pointers to grad tensors
         for group in self.bit16_groups:
             for p in group:
