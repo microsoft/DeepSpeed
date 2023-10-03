@@ -230,15 +230,12 @@ void launch_dequantize_int4_to_half_experimental(uint8_t* data_in,
 }
 
 template <int N>
-__device__ __forceinline__ AlignedArray<half, N> int8_to_half(
-    const AlignedArray<uint8_t, N>& data)
+__device__ __forceinline__ AlignedArray<half, N> int8_to_half(const AlignedArray<uint8_t, N>& data)
 {
     AlignedArray<half, N> ret;
 
 #pragma unroll
-    for (int idx = 0; idx < N; idx += 1) {
-        ret[idx] = half(int(data[idx]));
-    }
+    for (int idx = 0; idx < N; idx += 1) { ret[idx] = half(int(data[idx])); }
 
     return ret;
 }
