@@ -2869,10 +2869,10 @@ class DeepSpeedEngine(Module):
                 return False
 
         self.optimizer.load_state_dict(state_dict_list=zero_sd_list,
-                                load_optimizer_states=load_optimizer_states,
-                                load_from_fp32_weights=self.zero_load_from_fp32_weights(),
-                                checkpoint_folder=checkpoint_folder,
-                                load_serial=load_serial)
+                                       load_optimizer_states=load_optimizer_states,
+                                       load_from_fp32_weights=self.zero_load_from_fp32_weights(),
+                                       checkpoint_folder=checkpoint_folder,
+                                       load_serial=load_serial)
 
         if self.load_universal_checkpoint():
             logger.info(f'loaded universal zero checkpoints from {checkpoint_folder} for rank {self.global_rank}')
