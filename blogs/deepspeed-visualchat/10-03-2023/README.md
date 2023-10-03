@@ -1,6 +1,6 @@
 <div align="center">
 
-# DeepSpeed-VisualChat: Improve Your Chat Experience with Multi-Round Multi-Image Interleave Inputs
+# DeepSpeed-VisualChat: Improve Your Chat Experience with Multi-Round Multi-Image Inputs
 
 </div>
 
