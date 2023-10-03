@@ -126,8 +126,6 @@ class DeQuantizer:
 
             return quantized_tensor.reshape(shape)
 
-        print(f"{(self.config['group_dim'],len(tensor.shape) - 1, self.dtype, device)}")
-
         if self.config['num_bits'] == 4:
             tensor = self._decompress_uint4_to_uint8(tensor)
         elif self.config['num_bits'] != 8:
