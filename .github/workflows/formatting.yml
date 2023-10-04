@@ -27,6 +27,11 @@ jobs:
           which python
           python --version
 
+      - name: Install deepspeed
+        run: |
+          pip install .[dev]
+          ds_report
+
       - name: Formatting checks
         run: |
            pip show pre-commit clang-format
