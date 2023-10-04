@@ -27,10 +27,10 @@ jobs:
           which python
           python --version
 
-      - name: Install deepspeed
+      - name: Install dependencies
         run: |
-          pip install .[dev]
-          ds_report
+           grep "clang" requirements/requirements-dev.txt | xargs pip install
+           grep "pre-commit" requirements/requirements-dev.txt | xargs pip install
 
       - name: Formatting checks
         run: |
