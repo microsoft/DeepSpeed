@@ -1,3 +1,28 @@
+
+<div align="center">
+
+# DeepSpeed-VisualChat：通过多轮多图输入提高聊天体验
+
+</div>
+
+<div align="center">
+
+<img src="../assets/images/hero-figure.png" width="1000px" alt="DeepSpeed-VisualChat!"/>
+
+</div>
+
+要引用 DeepSpeed-VisualChat，请引用我们的 [arxiv 报告](https://arxiv.org/abs/2309.14327)：
+
+
+```
+@article{yao2023deepspeed-visualchat,
+  title={{DeepSpeed-VisualChat: Multi-Round Multi-Image Interleave Chat via Multi-Modal Causal Attention}},
+  author={Zhewei Yao and Xiaoxia Wu and Conglong Li and Minjia Zhang and Heyang Qin and Olatunji Ruwase and Ammar Ahmad Awan and Samyam Rajbhandari and Yuxiong He},
+  journal={arXiv preprint arXiv:2309.14327},
+  year={2023}
+}
+```
+
 # 1. 概述
 大型语言模型 (LLMs)，如 GPT 和 LLaMa，在各种文本生成和理解任务中都展现出了卓越的能力，特别是在进行零次/少次学习，特别是在经过指导的微调后。然而，要让 AI 代理为多样化的任务做好准备，需要加入的一个关键特性是多模态能力；例如，AI 代理应该能够读取图像、听到声音、观看视频等。这种能力在纯文本基础的 LLMs 中基本上是不存在的。
 
