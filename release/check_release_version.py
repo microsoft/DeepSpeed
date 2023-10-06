@@ -8,9 +8,7 @@ from packaging import version as pkg_version
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--release_version",
-                    type=str,
-                    help="The new version being published.")
+parser.add_argument("--release_version", type=str, help="The new version being published.")
 
 args = parser.parse_args()
 
