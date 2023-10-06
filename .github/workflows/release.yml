@@ -34,7 +34,7 @@ jobs:
     - name: Create Pull Request
       uses: peter-evans/create-pull-request@v4
       with:
-        token: ${{ secrets.GHP_TOKEN }}
+        token: ${{ secrets.GH_PAT }}
         add-paths: |
           version.txt
         body: |
