@@ -5,6 +5,7 @@ on:
     paths-ignore:
       - 'docs/**'
       - 'blogs/**'
+  workflow_dispatch:
   merge_group:
     branches: [ master ]
 
@@ -17,7 +18,7 @@ jobs:
     runs-on: ubuntu-20.04
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
@@ -76,4 +77,5 @@ jobs:
           source oneCCL/build/_install/env/setvars.sh
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
-          TRANSFORMERS_CACHE=~/tmp/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest -m 'seq_inference' -m 'inference_ops' -m 'inference' unit/
+          TRANSFORMERS_CACHE=~/tmp/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest -m 'seq_inference' unit/
+          TRANSFORMERS_CACHE=~/tmp/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest -m 'inference_ops' -m 'inference' unit/
