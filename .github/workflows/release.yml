@@ -22,7 +22,7 @@ jobs:
         python release/check_release_version.py --release_version ${{ env.RELEASE_VERSION }}
     - name: Build DeepSpeed
       run: |
-        DS_BUILD_STRING=" " python setup.py bdist_wheel
+        DS_BUILD_STRING=" " python setup.py sdist_wheel
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
