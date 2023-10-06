@@ -17,6 +17,9 @@ jobs:
     - name: Get release version from tag
       run: |
         echo "RELEASE_VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
+    - name: Check release version
+      run: |
+        python release/check_release_version.py --release_version ${{ env.RELEASE_VERSION }}
     - name: Build DeepSpeed
       run: |
         DS_BUILD_STRING=" " python setup.py sdist
@@ -30,8 +33,6 @@ jobs:
         python release/bump_patch_version.py --current_version ${{ env.RELEASE_VERSION }}
     - name: Commit version.txt
       run: |
-        # git config --global user.name 'mrwyattii'
-        # git config --global user.email 'mrwyattii@users.noreply.github.com'
         git config --global user.name 'ds-release-bot'
         git config --global user.email 'ds-release-bot@users.noreply.github.com'
         git add version.txt
