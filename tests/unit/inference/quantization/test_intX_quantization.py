@@ -331,7 +331,7 @@ class TestQuantizedInt(DistributedTest):
                         'layer': {
                             'num_bits': quantization_bits,
                             'group_size': 64,
-                            'group_dim': 1,
+                            'group_dim': 0,
                             'symmetric': False
                         }
                     }
