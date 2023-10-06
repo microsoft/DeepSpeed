@@ -251,6 +251,10 @@ def zero3_quantized_initialization_test_helper(cpu_offload: bool, nvme_offload: 
 def quantization_bits(request):
     return request.param
 
+@pytest.fixture(params=[0, 1], ids=["0", "1"])
+def group_dim(request):
+    return request.param
+
 
 class TestQuantizedInt(DistributedTest):
 
@@ -310,7 +314,7 @@ class TestQuantizedInt(DistributedTest):
             assert type(model.self_attn.out_proj) is QuantizedLinear
 
     @pytest.mark.skipif(device == 'cpu', reason='CPU does support FP16 GEMM')
-    def test_quantized_linear(self, quantization_bits):
+    def test_quantized_linear(self, quantization_bits, group_dim):
         reset_random()
 
         layers = []
@@ -331,7 +335,7 @@ class TestQuantizedInt(DistributedTest):
                         'layer': {
                             'num_bits': quantization_bits,
                             'group_size': 64,
-                            'group_dim': 0,
+                            'group_dim': group_dim,
                             'symmetric': False
                         }
                     }
