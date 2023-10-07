@@ -102,10 +102,10 @@ class DeepSpeedConfigModel(BaseModel):
                 self._process_deprecated_field(pydantic_config, field)
 
     class Config:
-        validate_all = True
+        validate_default = True
         validate_assignment = True
         use_enum_values = True
-        allow_population_by_field_name = True
+        populate_by_name = True
         extra = "forbid"
         arbitrary_types_allowed = True
 
