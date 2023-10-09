@@ -251,6 +251,7 @@ def zero3_quantized_initialization_test_helper(cpu_offload: bool, nvme_offload: 
 def quantization_bits(request):
     return request.param
 
+
 @pytest.fixture(params=[0, 1], ids=["0", "1"])
 def group_dim(request):
     return request.param
