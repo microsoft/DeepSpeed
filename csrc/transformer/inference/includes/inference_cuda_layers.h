@@ -168,6 +168,7 @@ void launch_apply_rotary_pos_emb(T* mixed_query,
                                  unsigned offset,
                                  unsigned num_heads,
                                  unsigned batch,
+                                 float rope_theta,
                                  cudaStream_t stream,
                                  int max_out_tokens);
 

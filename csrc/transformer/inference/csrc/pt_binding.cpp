@@ -445,7 +445,8 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                            bool no_masking,
                                            unsigned layer_id,
                                            unsigned num_layers,
-                                           at::Tensor& alibi)
+                                           at::Tensor& alibi,
+                                           float rope_theta)
 {
     unsigned bsz = query_key_value.size(0);
     unsigned seq_len = query_key_value.size(1);
@@ -503,6 +504,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                     (is_prompt ? 0 : soft_len - 1),
                                     heads,
                                     bsz,
+                                    rope_theta,
                                     InferenceContext::Instance().GetCurrentStream(),
                                     InferenceContext::Instance().GetMaxTokenLength());
 
@@ -1847,7 +1849,8 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                              unsigned rotary_dim,
                                              unsigned offset,
                                              unsigned num_heads,
-                                             bool rotate_half)
+                                             bool rotate_half,
+                                             float rope_theta)
 {
     auto query_cont = mixed_query.contiguous();
     auto key_cont = key_layer.contiguous();
@@ -1865,6 +1868,7 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                            offset,
                                            num_heads,
                                            bsz,
+                                           rope_theta,
                                            InferenceContext::Instance().GetCurrentStream(),
                                            InferenceContext::Instance().GetMaxTokenLength());
     else
@@ -1876,6 +1880,7 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                             offset,
                                             num_heads,
                                             bsz,
+                                            rope_theta,
                                             InferenceContext::Instance().GetCurrentStream(),
                                             InferenceContext::Instance().GetMaxTokenLength());
     return {query_cont, key_cont};
