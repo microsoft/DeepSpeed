@@ -1,4 +1,4 @@
-name: Build and publish DeepSpeed release
+name: Build DeepSpeed
 
 on:
   pull_request:
