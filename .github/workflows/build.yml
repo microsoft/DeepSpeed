@@ -1,0 +1,17 @@
+name: Build and publish DeepSpeed release
+
+on:
+  pull_request:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-20.04
+    environment: release-env
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        ref: "master"
+    - name: Build DeepSpeed
+      run: |
+        DS_BUILD_STRING=" " python setup.py sdist_wheel
