@@ -12,6 +12,10 @@ jobs:
     - uses: actions/checkout@v3
       with:
         ref: "master"
+
+    - id: setup-venv
+      uses: ./.github/workflows/setup-venv
+
     - name: Build DeepSpeed
       run: |
         DS_BUILD_STRING=" " python setup.py sdist_wheel
