@@ -18,4 +18,4 @@ jobs:
 
     - name: Build DeepSpeed
       run: |
-        DS_BUILD_STRING=" " python setup.py sdist_wheel
+        DS_BUILD_STRING=" " python setup.py sdist
