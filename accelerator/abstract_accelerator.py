@@ -185,6 +185,10 @@ class DeepSpeedAccelerator(ABC):
     def communication_backend_name(self):
         ...
 
+    @abc.abstractmethod
+    def is_triton_supported(self):
+        ...
+
     # Tensor operations
     @property
     @abc.abstractmethod
@@ -222,7 +226,11 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     @abc.abstractmethod
-    def pin_memory(self, tensor):
+    def pin_memory(self, tensor, align_bytes=1):
+        ...
+
+    @abc.abstractmethod
+    def is_pinned(self, tensor):
         ...
 
     @abc.abstractmethod

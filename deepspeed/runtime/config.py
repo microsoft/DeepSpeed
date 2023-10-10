@@ -30,6 +30,7 @@ from .zero.config import get_zero_config, ZeroStageEnum
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
 from ..comm.config import DeepSpeedCommsConfig
 from ..monitor.config import get_monitor_config
+from ..inference.config import WeightQuantConfig
 
 from deepspeed import comm as dist
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
@@ -76,9 +77,10 @@ ONEBIT_LAMB_OPTIMIZER = 'onebitlamb'
 MUADAM_OPTIMIZER = 'muadam'
 MUADAMW_OPTIMIZER = 'muadamw'
 MUSGD_OPTIMIZER = 'musgd'
+LION_OPTIMIZER = 'lion'
 DEEPSPEED_OPTIMIZERS = [
     ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER,
-    ZERO_ONE_ADAM_OPTIMIZER, MUADAM_OPTIMIZER, MUADAMW_OPTIMIZER, MUSGD_OPTIMIZER
+    ZERO_ONE_ADAM_OPTIMIZER, MUADAM_OPTIMIZER, MUADAMW_OPTIMIZER, MUSGD_OPTIMIZER, LION_OPTIMIZER
 ]
 
 # extra optimizer parameters for adam/adamw
@@ -877,6 +879,9 @@ class DeepSpeedConfig(object):
         self.dataloader_drop_last = get_dataloader_drop_last(param_dict)
 
         self.nebula_config = DeepSpeedNebulaConfig(param_dict)
+
+        self.weight_quantization_config = WeightQuantConfig(
+            **param_dict['weight_quantization']) if 'weight_quantization' in param_dict else None
 
     def _batch_assertion(self):
 
