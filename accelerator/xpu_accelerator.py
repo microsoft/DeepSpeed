@@ -196,7 +196,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return tensor.pin_memory(device=self.current_device_name())
 
     def is_pinned(self, tensor):
-        if tensor.is_pinned(device=self.current_device_name())
+        return tensor.is_pinned(device=self.current_device_name())
 
     def op_builder_dir(self):
         try:
