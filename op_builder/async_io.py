@@ -35,11 +35,17 @@ class AsyncIOBuilder(OpBuilder):
         # -O0 for improved debugging, since performance is bound by I/O
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
+        import torch  # Keep this import here to avoid errors when building DeepSpeed wheel without torch installed
+        TORCH_MAJOR, TORCH_MINOR = map(int, torch.__version__.split('.')[0:2])
+        if TORCH_MAJOR >= 2 and TORCH_MINOR >= 1:
+            CPP_STD = '-std=c++17'
+        else:
+            CPP_STD = '-std=c++14'
         return [
             '-g',
             '-Wall',
             '-O0',
-            '-std=c++14',
+            CPP_STD,
             '-shared',
             '-fPIC',
             '-Wno-reorder',
@@ -79,7 +85,7 @@ class AsyncIOBuilder(OpBuilder):
         # which is a function provided by libaio that is used in the async_io op.
         # If needed, one can define -I and -L entries in CFLAGS and LDFLAGS
         # respectively to specify the directories for libaio.h and libaio.so.
-        aio_compatible = self.has_function('io_submit', ('aio', ))
+        aio_compatible = self.has_function('io_pgetevents', ('aio', ))
         if verbose and not aio_compatible:
             self.warning(f"{self.NAME} requires the dev libaio .so object and headers but these were not found.")
 
