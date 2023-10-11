@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from .base import *
 from .base_moe import *
@@ -10,6 +13,7 @@ from packaging import version as pkg_version
 
 
 class DS_MegatronGPTMoEContainer(MegatronContainer, BaseTransformerMoEContainer):
+
     def __init__(self, policy, config, model_config, layer_id):
         super().__init__(policy, config, model_config, layer_id)
 
@@ -53,7 +57,7 @@ class MegatronMoELayerPolicy(MegatronLayerPolicy):
     def get_num_experts(self):
         return self.num_experts
 
-    def mlp(self, moe_type='standard'):
+    def mlp(self, moe_type='standard', enable_training=False):
         # for now, all of this is tightly coupled to megatron-deepspeed moe implementation
         # todo: think and refactor this to be more general
 

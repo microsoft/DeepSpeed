@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from mpi4py import MPI
 import torch
@@ -35,8 +38,7 @@ def torch_sim(a):
     a_list = torch.chunk(a_compressed, chunks=dist.get_world_size())
     server_scale = [chunk_a.norm() / np.sqrt(chunk_a.numel()) for chunk_a in a_list]
     a_sign_list = torch.chunk(a_server_sign, dist.get_world_size())
-    a_server_compressed = torch.cat(
-        [server_scale[i] * a_sign_list[i] for i in range(dist.get_world_size())])
+    a_server_compressed = torch.cat([server_scale[i] * a_sign_list[i] for i in range(dist.get_world_size())])
     rank = dist.get_rank()
     server_error = a_list[rank] - server_scale[rank] * a_sign_list[rank]
     get_accelerator().synchronize()

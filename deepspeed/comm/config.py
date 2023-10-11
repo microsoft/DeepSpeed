@@ -1,14 +1,14 @@
-'''Copyright The Microsoft DeepSpeed Team'''
-"""
-Copyright (c) Microsoft Corporation
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
-from pydantic import BaseModel
+# DeepSpeed Team
+
 from .constants import *
+from ..pydantic_v1 import BaseModel
 
 
 class CommsConfig(BaseModel):
+
     class Config:
         validate_all = True
         validate_assignment = True
@@ -25,6 +25,7 @@ class CommsLoggerConfig(CommsConfig):
 
 
 class DeepSpeedCommsConfig:
+
     def __init__(self, ds_config):
         self.comms_logger_enabled = 'comms_logger' in ds_config
 

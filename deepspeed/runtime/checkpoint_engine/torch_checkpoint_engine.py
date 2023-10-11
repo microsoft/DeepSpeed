@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 from deepspeed.utils import logger, log_dist
@@ -7,6 +10,7 @@ from deepspeed.runtime.checkpoint_engine.checkpoint_engine import \
 
 
 class TorchCheckpointEngine(CheckpointEngine):
+
     def __init__(self, config_params=None):
         super().__init__(config_params)
 

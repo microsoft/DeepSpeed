@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 #!/usr/bin/env python
 # run the benchmark under timeit (-t), cProfile (-c), line_profiler (-l)
@@ -26,12 +29,9 @@ unflatten = util_ops.unflatten
 torch.manual_seed(0)
 # emulate a small typical model weights
 x = [
-    torch.rand((512,
-                512)).to(get_accelerator().device_name()),
-    torch.rand((512,
-                1024)).to(get_accelerator().device_name()),
-    torch.rand((512,
-                30000)).to(get_accelerator().device_name())
+    torch.rand((512, 512)).to(get_accelerator().device_name()),
+    torch.rand((512, 1024)).to(get_accelerator().device_name()),
+    torch.rand((512, 30000)).to(get_accelerator().device_name())
 ]
 t = x * 30
 
@@ -110,15 +110,15 @@ def timeme():
 def line_profileme():
     print("--------------- line_profiler -----------------")
     print("py")
-    profile(py)()  # noqa: F821
+    profile(py)()  # noqa: F821 # type: ignore
     gc.collect()
     get_accelerator().empty_cache()
     print("cpp")
-    profile(cpp)()  # noqa: F821
+    profile(cpp)()  # noqa: F821 # type: ignore
     gc.collect()
     get_accelerator().empty_cache()
     print("apex")
-    profile(apex)()  # noqa: F821
+    profile(apex)()  # noqa: F821 # type: ignore
     gc.collect()
     get_accelerator().empty_cache()
 

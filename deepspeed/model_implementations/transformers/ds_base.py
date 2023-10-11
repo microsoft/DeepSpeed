@@ -1,9 +1,13 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch.nn as nn
 
 
 class DeepSpeedTransformerBase(nn.module):
+
     def __init__(self):
         pass
 

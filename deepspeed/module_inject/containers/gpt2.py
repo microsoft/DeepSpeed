@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from .base import *
 from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
@@ -6,6 +9,7 @@ from ..policy import TransformerPolicy
 
 
 class DS_GPT2Container(BaseTransformerContainer):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -33,15 +37,17 @@ class HFGPT2LayerPolicy(TransformerPolicy):
 
     def get_hidden_heads(self):
         return self.client_module.attn.embed_dim, \
-                self.client_module.attn.num_heads
+                self.client_module.attn.num_heads, \
+                self.client_module.ln_1.eps, \
+                DEFAULT_INTERMEDIATE_SIZE
 
-    def attention(self):
+    def attention(self, enable_training=False):
         return  self.client_module.attn.c_attn.weight, \
                 self.client_module.attn.c_attn.bias, \
                 self.client_module.attn.c_proj.weight, \
                 self.client_module.attn.c_proj.bias
 
-    def mlp(self):
+    def mlp(self, enable_training=False):
         return self.client_module.mlp.c_fc.weight, \
                self.client_module.mlp.c_fc.bias, \
                self.client_module.mlp.c_proj.weight, \

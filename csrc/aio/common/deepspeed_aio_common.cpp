@@ -1,7 +1,9 @@
-/*
-Copyright 2020 The Microsoft DeepSpeed Team
-Licensed under the MIT license.
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
 
+// DeepSpeed Team
+
+/*
 Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 */
 
@@ -113,10 +115,13 @@ static int _do_io_complete(const long long int min_completes,
                            std::vector<std::chrono::duration<double>>& reap_times)
 {
     const auto start_time = std::chrono::high_resolution_clock::now();
-    const auto n_completes = io_getevents(
-        aio_ctxt->_io_ctxt, min_completes, max_completes, aio_ctxt->_io_events.data(), nullptr);
+    long long int n_completes = io_pgetevents(aio_ctxt->_io_ctxt,
+                                              min_completes,
+                                              max_completes,
+                                              aio_ctxt->_io_events.data(),
+                                              nullptr,
+                                              nullptr);
     reap_times.push_back(std::chrono::high_resolution_clock::now() - start_time);
-
     assert(n_completes >= min_completes);
     return n_completes;
 }
@@ -262,7 +267,7 @@ void report_file_error(const char* filename, const std::string file_op, const in
 
 int open_file(const char* filename, const bool read_op)
 {
-    const int flags = read_op ? (O_RDONLY | __O_DIRECT) : (O_WRONLY | O_CREAT | __O_DIRECT);
+    const int flags = read_op ? (O_RDONLY | O_DIRECT) : (O_WRONLY | O_CREAT | O_DIRECT);
     const int mode = 0600;
     const auto fd = open(filename, flags, mode);
     if (fd == -1) {

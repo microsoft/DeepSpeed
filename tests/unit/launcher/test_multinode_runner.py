@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from copy import deepcopy
 from deepspeed.launcher import multinode_runner as mnrunner
@@ -19,7 +22,7 @@ def runner_info():
 def test_pdsh_runner(runner_info):
     env, resource_pool, world_info, args = runner_info
     runner = mnrunner.PDSHRunner(args, world_info)
-    cmd, kill_cmd = runner.get_cmd(env, resource_pool)
+    cmd, kill_cmd, env = runner.get_cmd(env, resource_pool)
     assert cmd[0] == 'pdsh'
     assert env['PDSH_RCMD_TYPE'] == 'ssh'
 

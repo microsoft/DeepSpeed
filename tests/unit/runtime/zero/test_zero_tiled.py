@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import copy
 
@@ -120,6 +123,7 @@ class LinearWrapper(torch.nn.Linear):
 
     Megatron-LM optionally delays the bias addition to fuse with a proceeding kernel.
     """
+
     def forward(self, input):
         out = super().forward(input)
         return out, self.bias

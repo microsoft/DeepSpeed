@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from .base import *
 from deepspeed.model_implementations.transformers.ds_bert import DeepSpeedBERTInference
@@ -8,12 +11,14 @@ from ..policy import TransformerPolicy
 
 
 class DS_DistilBERTContainer(BaseTransformerContainer):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
         # All model specific things should be defined here instead of the base class.
         self.triangular_masking = False
         self.return_single_tuple = True
+        self.use_triton = kwargs['config'].use_triton and deepspeed.HAS_TRITON
 
     def create_module(self, config=None):
         _config = config if config is not None else self.ds_model_config
@@ -41,9 +46,11 @@ class HFDistilBertLayerPolicy(TransformerPolicy):
 
     def get_hidden_heads(self):
         return self.client_module.attention.q_lin.weight.shape[1], \
-                self.client_module.attention.n_heads
+                self.client_module.attention.n_heads, \
+                self.client_module.sa_layer_norm.eps, \
+                DEFAULT_INTERMEDIATE_SIZE
 
-    def attention(self):
+    def attention(self, enable_training=False):
         qw = self.client_module.attention.q_lin.weight
         qb = self.client_module.attention.q_lin.bias
         kw = self.client_module.attention.k_lin.weight
@@ -51,15 +58,15 @@ class HFDistilBertLayerPolicy(TransformerPolicy):
         vw = self.client_module.attention.v_lin.weight
         vb = self.client_module.attention.v_lin.bias
 
-        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0))
-        qkvb = Parameter(torch.cat((qb, kb, vb), dim=0))
+        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=enable_training)
+        qkvb = Parameter(torch.cat((qb, kb, vb), dim=0), requires_grad=enable_training)
 
         return qkvw, \
                qkvb, \
                self.client_module.attention.out_lin.weight, \
                self.client_module.attention.out_lin.bias
 
-    def mlp(self):
+    def mlp(self, enable_training=False):
         intermediate_ff = self.client_module.ffn.lin1
 
         return intermediate_ff.weight, intermediate_ff.bias, \

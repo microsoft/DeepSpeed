@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import torch
 import deepspeed
@@ -24,6 +27,7 @@ class TestAdamBF16ZeroOneCycleCompatibility(DistributedTest):
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
+            "train_micro_batch_size_per_gpu": 1,
             "steps_per_print": 1,
             "optimizer": {
                 "type": "Adam",
@@ -59,9 +63,7 @@ class TestAdamBF16ZeroOneCycleCompatibility(DistributedTest):
 
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                             model=model,
-                                             model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -86,7 +88,7 @@ class TestZeroAllowUntestedOptimizer(DistributedTest):
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
-            "train_batch_size": 4,
+            "train_micro_batch_size_per_gpu": 4,
             "steps_per_print": 1,
             "fp16": {
                 "enabled": False,
@@ -154,9 +156,7 @@ class TestZeroEmptyPartition(DistributedTest):
 
         # Ensure model has 2 parameters, to cause empty partition with DP=3
         assert len(list(model.parameters())) == 2
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
         # Now make sure things work..
         data_loader = random_dataloader(model=model,
@@ -181,7 +181,7 @@ class TestZeroSupportedClientOptimizer(DistributedTest):
             )
 
         config_dict = {
-            "train_batch_size": 2,
+            "train_micro_batch_size_per_gpu": 2,
             "steps_per_print": 1,
             "fp16": {
                 "enabled": False
@@ -197,9 +197,7 @@ class TestZeroSupportedClientOptimizer(DistributedTest):
 
         model = SimpleModel(hidden_dim)
         client_optimizer = optimizer_constructor(params=model.parameters())
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              optimizer=client_optimizer)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, optimizer=client_optimizer)
 
 
 class TestZero2ReduceScatterOff(DistributedTest):
@@ -212,7 +210,7 @@ class TestZero2ReduceScatterOff(DistributedTest):
             )
 
         config_dict = {
-            "train_batch_size": 2,
+            "train_micro_batch_size_per_gpu": 2,
             "steps_per_print": 1,
             "optimizer": {
                 "type": "Adam",
@@ -239,9 +237,7 @@ class TestZero2ReduceScatterOff(DistributedTest):
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -263,7 +259,7 @@ class TestZeroEmptyGrad(DistributedTest):
             )
 
         config_dict = {
-            "train_batch_size": 1,
+            "train_micro_batch_size_per_gpu": 1,
             "steps_per_print": 1,
             "fp16": {
                 "enabled": False
@@ -279,9 +275,7 @@ class TestZeroEmptyGrad(DistributedTest):
 
         model = SimpleModel(hidden_dim)
         optimizer = torch.optim.Adam(model.parameters())
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              optimizer=optimizer)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, optimizer=optimizer)
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -293,18 +287,8 @@ class TestZeroEmptyGrad(DistributedTest):
             model.step()
 
 
-@pytest.mark.parametrize("comp_type",
-                         [torch.float16,
-                          torch.bfloat16,
-                          torch.float],
-                         ids=["fp16",
-                              "bfp16",
-                              "fp32"])
-@pytest.mark.parametrize("comm_type",
-                         [torch.float16,
-                          torch.bfloat16],
-                         ids=["fp16",
-                              "bfp16"])
+@pytest.mark.parametrize("comp_type", [torch.float16, torch.bfloat16, torch.float], ids=["fp16", "bfp16", "fp32"])
+@pytest.mark.parametrize("comm_type", [torch.float16, torch.bfloat16, None], ids=["fp16", "bfp16", "default"])
 class TestZeroDtypeCocktail(DistributedTest):
     world_size = 2
 
@@ -318,7 +302,7 @@ class TestZeroDtypeCocktail(DistributedTest):
         type_str = {torch.float16: "fp16", torch.bfloat16: "bfp16"}
 
         config_dict = {
-            "train_batch_size": 2,
+            "train_micro_batch_size_per_gpu": 2,
             "steps_per_print": 1,
             "fp16": {
                 "enabled": comp_type == torch.float16
@@ -329,15 +313,16 @@ class TestZeroDtypeCocktail(DistributedTest):
             "zero_optimization": {
                 "stage": 2
             },
-            "communication_data_type": type_str[comm_type]
         }
+        if comm_type is not None:
+            config_dict["communication_data_type"] = type_str[comm_type]
+        else:
+            comm_type = comp_type
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
         optimizer = torch.optim.Adam(model.parameters())
-        model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              optimizer=optimizer)
+        model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, optimizer=optimizer)
         data_loader = random_dataloader(model=model,
                                         total_samples=2,
                                         hidden_dim=hidden_dim,

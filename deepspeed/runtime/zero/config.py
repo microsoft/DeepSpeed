@@ -1,13 +1,12 @@
-'''Copyright The Microsoft DeepSpeed Team'''
-"""
-Copyright (c) Microsoft Corporation
-Licensed under the MIT license.
-"""
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
 
-from pydantic import Field, validator
+# DeepSpeed Team
+
 import sys
 from typing import Optional
 from enum import Enum
+from deepspeed.pydantic_v1 import Field, validator
 from deepspeed.runtime.config_utils import get_scalar_param, pp_int, DeepSpeedConfigModel
 from deepspeed.utils import logger
 from .offload_config import DeepSpeedZeroOffloadParamConfig, DeepSpeedZeroOffloadOptimizerConfig, OffloadDeviceEnum
@@ -35,7 +34,13 @@ ZeRO optimization should be enabled as:
     "offload_param": {...},
     "offload_optimizer": {...},
     "ignore_unused_parameters": [true|false],
-    "round_robin_gradients": [true|false]
+    "round_robin_gradients": [true|false],
+    "zero_hpz_partition_size": 1,
+    "zero_quantized_weights": [true|false],
+    "zero_quantized_nontrainable_weights": [true|false],
+    "zero_quantized_gradients": [true|false],
+    "memory_efficient_linear": [true|false],
+    "override_module_apply": [true|false],
     }
 }
 """
@@ -47,13 +52,10 @@ def read_zero_config_deprecated(param_dict):
     zero_config_dict = {}
     zero_config_dict["stage"] = 1 if param_dict[ZERO_OPTIMIZATION] else 0
     if zero_config_dict["stage"] > 0:
-        zero_config_dict["allgather_bucket_size"] = get_scalar_param(
-            param_dict,
-            "allgather_size",
-            5e8)
+        zero_config_dict["allgather_bucket_size"] = get_scalar_param(param_dict, "allgather_size", 5e8)
     logger.warning(
-        "DeepSpeedConfig: this format of ZeRO optimization setup is deprecated. Please use the following format: {}"
-        .format(ZERO_FORMAT))
+        "DeepSpeedConfig: this format of ZeRO optimization setup is deprecated. Please use the following format: {}".
+        format(ZERO_FORMAT))
     return zero_config_dict
 
 
@@ -161,9 +163,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
         None,
         deprecated=True,
         new_param="offload_param",
-        new_param_fn=(
-            lambda val: DeepSpeedZeroOffloadParamConfig(device=OffloadDeviceEnum.cpu)
-            if val else None),
+        new_param_fn=(lambda val: DeepSpeedZeroOffloadParamConfig(device=OffloadDeviceEnum.cpu) if val else None),
     )
     """ Deprecated, please use ``offload_param`` """
 
@@ -179,31 +179,24 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
         None,
         deprecated=True,
         new_param="offload_optimizer",
-        new_param_fn=(
-            lambda val: DeepSpeedZeroOffloadOptimizerConfig(device=OffloadDeviceEnum.cpu)
-            if val else None),
+        new_param_fn=(lambda val: DeepSpeedZeroOffloadOptimizerConfig(device=OffloadDeviceEnum.cpu) if val else None),
     )
     """ Deprecated, please use ``offload_optimizer`` """
 
-    prefetch_bucket_size: int = Field(pp_int(5e7),
-                                      ge=0,
-                                      alias="stage3_prefetch_bucket_size")
+    prefetch_bucket_size: int = Field(pp_int(5e7), ge=0, alias="stage3_prefetch_bucket_size")
     """
     Maximum number of parameter elements to fetch ahead of use. Used by ZeRO3,
     ZeRO3-Offload, ZeRO-Infinity, and ZeRO-Inference.
     """
 
-    param_persistence_threshold: int = Field(pp_int(1e5),
-                                             ge=0,
-                                             alias="stage3_param_persistence_threshold")
+    param_persistence_threshold: int = Field(pp_int(1e5), ge=0, alias="stage3_param_persistence_threshold")
     """
     Do not partition parameters smaller than this threshold. Smaller values use
     less memory, but can greatly increase communication (especially
     latency-bound messages).
     """
 
-    model_persistence_threshold: int = Field(pp_int(sys.maxsize,
-                                                    "sys.maxsize"),
+    model_persistence_threshold: int = Field(pp_int(sys.maxsize, "sys.maxsize"),
                                              ge=0,
                                              alias="stage3_model_persistence_threshold")
     """
@@ -213,9 +206,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     ZeRO3-Offload, ZeRO-Infinity and ZeRO-Inference.
     """
 
-    max_live_parameters: int = Field(pp_int(1e9),
-                                     ge=0,
-                                     alias="stage3_max_live_parameters")
+    max_live_parameters: int = Field(pp_int(1e9), ge=0, alias="stage3_max_live_parameters")
     """
     The maximum number of parameters resident per GPU before releasing. Smaller
     values use less memory, but perform more communication.
@@ -227,9 +218,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     parameters. Smaller values use less memory, but perform more communication.
     """
 
-    gather_16bit_weights_on_model_save: bool = Field(
-        False,
-        alias="stage3_gather_16bit_weights_on_model_save")
+    gather_16bit_weights_on_model_save: bool = Field(False, alias="stage3_gather_16bit_weights_on_model_save")
     """
     Consolidate the weights before saving the model by ``save_16bit_model()``.
     Since the weights are partitioned across GPUs, they aren’t part of
@@ -237,10 +226,9 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     this option is enabled and then saves the fp16 model weights.
     """
 
-    stage3_gather_fp16_weights_on_model_save: bool = Field(
-        False,
-        deprecated=True,
-        new_param="gather_16bit_weights_on_model_save")
+    stage3_gather_fp16_weights_on_model_save: bool = Field(False,
+                                                           deprecated=True,
+                                                           new_param="gather_16bit_weights_on_model_save")
     """ Deprecated, please use ``gather_16bit_weights_on_model_save`` """
 
     ignore_unused_parameters: bool = True
@@ -248,7 +236,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     Unused parameters in modules may be unexpected in static networks, but
     could be normal in dynamic networks. This controls whether or not training
     should terminate with an error message when unused parameters are detected.
-    This is set to ``False`` by default, which means unused parameters are
+    This is set to ``True`` by default, which means unused parameters are
     ignored and training continues. Now is just used in stage 2.
     """
 
@@ -265,13 +253,50 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     Performance benefit grows with gradient accumulation steps (more copying
     between optimizer steps) or GPU count (increased parallelism).
     """
+    zero_hpz_partition_size: int = Field(1, ge=0)
+    """
+    Number of ranks in zero parameters partitioning secondary group
+    """
+    zero_quantized_weights: bool = False
+    """
+    Boolean indicating whether to quantize zero parameters (weights)
+    for efficient all_gather comm
+    """
+    zero_quantized_nontrainable_weights: bool = False
+    """
+    Boolean indicating whether to quantize non-trainable zero parameters (weights)
+    for efficient memory usage and communication. Different from zero_quantized_weights
+    that stores the weights in original precision and only perform quantization during communication,
+    this flag will store the weights in quantized precision. This is useful for LoRA training.
+    """
+    zero_quantized_gradients: bool = False
+    """
+    Boolean indicating whether to use quantized zero gradients
+    for efficient all_2_all_reduce comm
+    """
+
+    mics_shard_size: int = Field(-1, new_param="mics_shard_size")
+
+    mics_hierarchical_params_gather: bool = False
+
+    memory_efficient_linear: bool = True
+    """
+    Use memory efficient linear implementation, for Stage 3.
+    """
+    """
+    Whether force load checkpoint in pipeline mode, current only for Stage 3.
+    """
+    pipeline_loading_checkpoint: bool = False
+
+    override_module_apply: bool = True
+    """
+    Override nn.Module apply function, for Stage 3.
+    """
 
     # Validators
     @validator("overlap_comm")
     def overlap_comm_valid(cls, field_value, values):
         if field_value is None:
-            assert (
-                "stage" in values
-            ), "DeepSpeedZeroConfig: 'stage' must be defined before 'overlap_comm'"
+            assert ("stage" in values), "DeepSpeedZeroConfig: 'stage' must be defined before 'overlap_comm'"
             field_value = values["stage"] == ZeroStageEnum.weights
         return field_value

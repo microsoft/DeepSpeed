@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 import os
 import torch
@@ -9,8 +12,10 @@ from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
+from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 
 from unit.simple_model import *
+from unittest.mock import MagicMock, patch
 
 
 def compare_deepspeed_states(saved_model, loaded_model):
@@ -22,38 +27,44 @@ def compare_deepspeed_states(saved_model, loaded_model):
     assert saved_model.global_steps == loaded_model.global_steps
 
 
-def compare_model_states(saved_model,
-                         loaded_model,
-                         compare_optimizer=True,
-                         load_module_only=False):
+def zero3_params_to_fetch(param_list):
+    return [p for p in param_list if hasattr(p, 'ds_id') and p.ds_status == ZeroParamStatus.NOT_AVAILABLE]
+
+
+def compare_model_states(saved_model, loaded_model, compare_optimizer=True, load_module_only=False):
     if not load_module_only:
         compare_deepspeed_states(saved_model, loaded_model)
 
-    for p0, p1 in zip(saved_model.module.named_parameters(), loaded_model.module.named_parameters()):
-        np0, p0 = p0
-        np1, p1 = p1
-        if 'deepspeed_moe.gate.wg' in np0:
-            # these params are converted to float at runtime, cast to half for comparison
-            p1 = p1.half()
-            p0 = p0.half()
-        assert id(p0) != id(p1), f'Comparing fp16 model state tensor against itself : {id(p0)} <====> {id(p1)}'
-        try:
-            assert torch.allclose(p0, p1, atol=1e-07), f"FP16 model state {p0} is not equal to {p1}, names:{np0}, {np1}"
-        except RuntimeError as err:
-            print(f"FP16 model state {p0} is not equal to {p1}, names:{np0}, {np1}")
-            raise err
+    params_to_fetch = zero3_params_to_fetch(
+        list(saved_model.module.named_parameters()) + list(loaded_model.module.named_parameters()))
+    enable_gather = len(params_to_fetch) > 0
+    with deepspeed.zero.GatheredParameters(params_to_fetch, enabled=enable_gather):
+        for p0, p1 in zip(saved_model.module.named_parameters(), loaded_model.module.named_parameters()):
+            np0, p0 = p0
+            np1, p1 = p1
+            if 'deepspeed_moe.gate.wg' in np0:
+                # these params are converted to float at runtime, cast to half for comparison
+                p1 = p1.half()
+                p0 = p0.half()
+            assert id(p0) != id(p1), f'Comparing fp16 model state tensor against itself : {id(p0)} <====> {id(p1)}'
+            try:
+                assert torch.allclose(p0, p1,
+                                      atol=1e-07), f"FP16 model state {p0} is not equal to {p1}, names:{np0}, {np1}"
+            except RuntimeError as err:
+                print(f"FP16 model state {p0} is not equal to {p1}, names:{np0}, {np1}")
+                raise err
 
     if not compare_optimizer:
         return
 
-    if DeepSpeedZeroOptimizer_Stage3 is not None and isinstance(
-            saved_model.optimizer,
-            DeepSpeedZeroOptimizer_Stage3):
-        for p0, p1 in zip(saved_model.optimizer.fp32_partitioned_groups_flat, loaded_model.optimizer.fp32_partitioned_groups_flat):
+    if DeepSpeedZeroOptimizer_Stage3 is not None and isinstance(saved_model.optimizer, DeepSpeedZeroOptimizer_Stage3):
+        for p0, p1 in zip(saved_model.optimizer.fp32_partitioned_groups_flat,
+                          loaded_model.optimizer.fp32_partitioned_groups_flat):
             assert torch.allclose(p0, p1, atol=1e-07), f"Fp32 model states {p0} is not equal to {p1}"
 
     elif isinstance(saved_model.optimizer, DeepSpeedZeroOptimizer):
-        for p0, p1 in zip(saved_model.optimizer.single_partition_of_fp32_groups, loaded_model.optimizer.single_partition_of_fp32_groups):
+        for p0, p1 in zip(saved_model.optimizer.single_partition_of_fp32_groups,
+                          loaded_model.optimizer.single_partition_of_fp32_groups):
             assert id(p0) != id(p1), f'Comparing fp32 model state tensor against itself: {id(p0)} <====> {id(p1)}'
             assert torch.allclose(p0, p1, atol=1e-07), f"Fp32 model states {p0} is not equal to {p1}"
 
@@ -89,8 +100,7 @@ def compare_optimizer_states(saved_model, loaded_model, hidden_dim, fp16=True):
     saved_optimizer = saved_model.optimizer.optimizer if fp16 else saved_model.optimizer
     loaded_optimizer = loaded_model.optimizer.optimizer if fp16 else loaded_model.optimizer
 
-    for state0, state1 in zip(saved_optimizer.state.values(),
-                              loaded_optimizer.state.values()):
+    for state0, state1 in zip(saved_optimizer.state.values(), loaded_optimizer.state.values()):
         compare_state_dicts(state0, state1)
 
 
@@ -130,6 +140,7 @@ def create_deepspeed_model(config_dict, model, base_optimizer):
                                              model=model,
                                              model_parameters=create_moe_param_groups(model),
                                              optimizer=base_optimizer)
+    ds_model.empty_partition_cache()
     return ds_model
 
 
@@ -141,15 +152,12 @@ def checkpoint_correctness_verification(config_dict,
                                         load_lr_scheduler_states=False,
                                         fp16=True,
                                         train_batch=False,
-                                        base_optimizers=[None,
-                                                         None],
+                                        base_optimizers=[None, None],
                                         empty_tag=False,
                                         seq_dataloader=False,
                                         load_module_only=False):
     dtype = torch.half if fp16 else torch.float32
-    ds_model = create_deepspeed_model(config_dict=config_dict,
-                                      model=models[0],
-                                      base_optimizer=base_optimizers[0])
+    ds_model = create_deepspeed_model(config_dict=config_dict, model=models[0], base_optimizer=base_optimizers[0])
 
     if seq_dataloader:
         data_loader = sequence_dataloader(model=ds_model,
@@ -174,6 +182,9 @@ def checkpoint_correctness_verification(config_dict,
             ds_model.backward(loss)
             ds_model.step()
 
+    # Flush zero stage 3 cache
+    ds_model.empty_partition_cache()
+
     trained_model = ds_model
 
     save_folder = os.path.join(tmpdir, 'saved_checkpoint')
@@ -196,17 +207,20 @@ def checkpoint_correctness_verification(config_dict,
                 stored = sum(v for _, v in storages.items())
                 assert needed == stored, f"MoE expert checkpoint uses more storage than required: {f}"
 
-    loaded_model = create_deepspeed_model(config_dict=config_dict,
-                                          model=models[1],
-                                          base_optimizer=base_optimizers[1])
-    assert list(trained_model.parameters())[0].dtype == list(
-        loaded_model.parameters())[0].dtype
+    loaded_model = create_deepspeed_model(config_dict=config_dict, model=models[1], base_optimizer=base_optimizers[1])
+    assert list(trained_model.parameters())[0].dtype == list(loaded_model.parameters())[0].dtype
 
-    loaded_model.load_checkpoint(save_folder,
-                                 tag=save_tag,
-                                 load_optimizer_states=load_optimizer_states,
-                                 load_lr_scheduler_states=load_lr_scheduler_states,
-                                 load_module_only=load_module_only)
+    context = patch.object(loaded_model, "_get_optimizer_ckpt_name",
+                           wraps=loaded_model._get_optimizer_ckpt_name) if not load_optimizer_states else MagicMock()
+    with context as optim_load_state_dict_mock:
+        loaded_model.load_checkpoint(save_folder,
+                                     tag=save_tag,
+                                     load_optimizer_states=load_optimizer_states,
+                                     load_lr_scheduler_states=load_lr_scheduler_states,
+                                     load_module_only=load_module_only)
+        if not load_optimizer_states:
+            # should not attempt to get the file name to load it
+            optim_load_state_dict_mock.assert_not_called()
 
     compare_model_states(trained_model,
                          loaded_model,

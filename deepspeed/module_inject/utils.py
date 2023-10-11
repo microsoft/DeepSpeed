@@ -1,4 +1,7 @@
-'''Copyright The Microsoft DeepSpeed Team'''
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
 
 from deepspeed.utils import log_dist
 
@@ -14,6 +17,9 @@ def policy_to_ds_container(**kwargs):
     from .containers import HFOPTLayerPolicy, DS_OPTContainer
     from .containers import MegatronLayerPolicy, DS_MegatronGPTContainer
     from .containers import HFDistilBertLayerPolicy, DS_DistilBERTContainer
+    from .containers import LLAMALayerPolicy, DS_LLAMAContainer
+    from .containers import LLAMA2LayerPolicy, DS_LLAMA2Container
+    from .containers import InternLMLayerPolicy, DS_InternLMContainer
 
     policy_to_container = {
         HFGPT2LayerPolicy: DS_GPT2Container,
@@ -25,6 +31,9 @@ def policy_to_ds_container(**kwargs):
         HFOPTLayerPolicy: DS_OPTContainer,
         MegatronLayerPolicy: DS_MegatronGPTContainer,
         HFDistilBertLayerPolicy: DS_DistilBERTContainer,
+        LLAMALayerPolicy: DS_LLAMAContainer,
+        LLAMA2LayerPolicy: DS_LLAMA2Container,
+        InternLMLayerPolicy: DS_InternLMContainer
     }
 
     container = None

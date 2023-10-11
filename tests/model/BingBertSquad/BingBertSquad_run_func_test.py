@@ -1,6 +1,10 @@
-# Copyright (c) 2019, The Microsoft DeepSpeed Team. All rights reserved.
-#
-# Note: please copy webtext data to "Megatron-LM" folder, before running this script.
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+"""
+Note: please copy webtext data to "Megatron-LM" folder, before running this script.
+"""
 
 import unittest
 import os
@@ -28,6 +32,7 @@ def grep_loss_from_file(file_name):
 
 
 class BingBertSquadFuncTestCase(BaseTestCase):
+
     def __init__(self, methodName="DeepSpeed function test on BingBertSquad model"):
         super(BingBertSquadFuncTestCase, self).__init__(methodName)
 
@@ -112,8 +117,7 @@ class BingBertSquadFuncTestCase(BaseTestCase):
         prefix = "BingBertSquad_func"
 
         test_config['other_args'] += f" --max_steps {test_config['max_steps']}"
-        test_config[
-            'other_args'] += f" --max_steps_per_epoch {test_config['max_epoch_steps']}"
+        test_config['other_args'] += f" --max_steps_per_epoch {test_config['max_epoch_steps']}"
 
         # baseline run...
         test_config["deepspeed"] = False
