@@ -300,7 +300,7 @@ class MiCS_Init(Init):
         return self.mics_comm_groups.param_shard_rank
 
     @property
-    def num_partitions(self):
+    def num_partitions(self, parition_type=None):
         return self.mics_comm_groups.param_shard_size
 
 

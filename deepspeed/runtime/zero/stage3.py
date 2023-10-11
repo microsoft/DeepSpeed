@@ -27,6 +27,10 @@ from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedO
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUPS, PARTITION_COUNT, ZERO_STAGE
 from deepspeed.accelerator import get_accelerator
 
+
+from deepspeed.runtime.zero.zero35_utils import zero35_g_p_reduce_scatter_coalesced, \
+    zero35_g_p_all_gather_coalesced, zero35_debug, global_zero35_manager
+
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
 pg_correctness_test = False
@@ -188,6 +192,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             zero_quantized_weights=zero_quantized_weights,
             zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights)
 
+        self._get_param_coordinator(training=True).gradient_accumulation_steps = gradient_accumulation_steps
         self.persistent_parameters = self.parameter_offload.persistent_parameters
         self._configure_offloading(offload_optimizer_config, offload_param_config)
 
@@ -250,6 +255,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             assert self.communication_data_type in valid_reduce_scatter_dtypes, f"ZeRO-3 supports {valid_reduce_scatter_dtypes} communication_data_type with reduce scatter enabled. Got: '{self.communication_data_type}'"
             assert self.gradient_predivide_factor == 1.0, "gradient_predivide_factor != 1.0 is not yet supported with ZeRO-3 with reduce scatter enabled"
             assert self.postscale_gradients, "pre-scale gradients is not yet supported with ZeRO-3 with reduce scatter enabled"
+
+        if self.enable_zero35:
+            assert global_zero35_manager is not None
 
         # Holds the mode parameter
         # The param.data may not hold any meaningful data
@@ -469,7 +477,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         all_params = list(itertools.chain.from_iterable(self.fp16_groups))
 
-        self.grad_partitions_flat_buffer: Tensor = torch.zeros(sum(p.partition_numel() for p in all_params),
+        self.grad_partitions_flat_buffer: Tensor = torch.zeros(sum(p.partition_numel(parition_type="grad") for p in all_params),
                                                                dtype=self.gradient_accumulation_dtype,
                                                                device=self.device)
         if self.offload_optimizer_pin_memory:
@@ -477,9 +485,11 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         offset = 0
         for param in all_params:
-            self.__param_id_to_grad_partition[param.ds_id] = self.grad_partitions_flat_buffer.narrow(
-                0, offset, param.partition_numel())
-            offset += param.partition_numel()
+            # self.__param_id_to_grad_partition[param.ds_id] = self.grad_partitions_flat_buffer.narrow(
+            #     0, offset, param.partition_numel())
+            # offset += param.partition_numel()
+            self.__param_id_to_grad_partition[param.ds_id] = self.grad_partitions_flat_buffer.narrow(0, offset, param.partition_numel(parition_type="grad"))
+            offset += param.partition_numel(parition_type="grad")
 
     def _link_all_hp_params(self):
         for p in self.module.parameters():
@@ -650,7 +660,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 self.sub_group_to_group_id[sub_group_idx] = param_group_idx
 
                 # record total elements of parameter partitions in sub group
-                self.fp16_partitioned_groups_flat_numel.append(sum(p.partition_numel() for p in sub_group))
+                self.fp16_partitioned_groups_flat_numel.append(sum(p.partition_numel(parition_type="os") for p in sub_group))
 
                 # record padding required to align group to world size (only applies to last rank)
                 rank_requires_padding = dist.get_rank(
@@ -670,7 +680,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             # contiguous flat buffer for all parameters that we created earlier
             offset = 0
             for sub_group in self.fp16_groups:
-                sub_group_numel = sum(param.partition_numel() for param in sub_group)
+                sub_group_numel = sum(param.partition_numel(parition_type="os") for param in sub_group)
                 self.fp16_partitioned_groups_flat.append(device_buffer.narrow(0, offset, sub_group_numel))
                 offset += sub_group_numel
         else:  # partitioned params offloaded to CPU when not in use
@@ -854,7 +864,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _create_fp16_sub_groups(self, params_group):
 
-        params_group_numel = sum([param.partition_numel() for param in params_group])
+        params_group_numel = sum([param.partition_numel(parition_type="os") for param in params_group])
         sub_group_size = self.sub_group_size
 
         if sub_group_size is None or sub_group_size >= params_group_numel:
@@ -866,7 +876,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         for param in params_group:
 
             sub_group.append(param)
-            local_sub_group_size += param.partition_numel()
+            local_sub_group_size += param.partition_numel(parition_type="os")
 
             if local_sub_group_size >= sub_group_size or id(param) == id(params_group[-1]):
 
@@ -921,6 +931,13 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         num_subgroups = len(self.fp16_groups)
 
         largest_numel = max([sum([p.ds_numel for p in psg]) for psg in self.fp16_partitioned_groups])
+
+        if global_zero35_manager.enable_zero35:
+            scale_unit = dist.get_world_size() // global_zero35_manager.zero35_parallel_size
+            old_largest_numel = largest_numel
+            largest_numel = largest_numel * scale_unit
+            zero35_debug(f"old_largest_numel: {old_largest_numel}, largest_numel:{largest_numel}, scale_unit:{scale_unit}", flush=True)
+
         gradient_dtype = self.fp32_partitioned_groups_flat[0].dtype
         gradient_buffer = torch.zeros(int(largest_numel), dtype=gradient_dtype, device=self.device)
 
@@ -1039,7 +1056,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             for i, sub_group in enumerate(self.fp16_groups):
                 #TODO: This is redundant
                 self.averaged_gradients[i] = [
-                    self.__param_id_to_grad_partition[param.ds_id]
+                    global_zero35_manager.get_sub_p_g_parition(param, self.__param_id_to_grad_partition[param.ds_id])
                     if param.requires_grad else torch.zeros_like(param.ds_tensor) for param in sub_group
                 ]
         # this method gets called after every backward. need to increment
@@ -1133,7 +1150,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     @torch.no_grad()
     def __reduce_and_partition_ipg_grads(self, safe_mode: bool = False) -> None:
         if not self.params_in_ipg_bucket:
+            zero35_debug(f"Rank: {os.environ['SLURM_PROCID']}: self.micro_step_id: {self.micro_step_id} params_in_ipg_bucket is empty, skip __reduce_and_partition_ipg_grads!", force=False)
             return
+        else:
+            zero35_debug(f"Rank: {os.environ['SLURM_PROCID']}: self.micro_step_id: {self.micro_step_id} do __reduce_and_partition_ipg_grads!", force=False)
 
         for param in self.params_in_ipg_bucket:
             if param.grad.numel() != param.ds_numel:
@@ -1158,7 +1178,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 self.params_in_ipg_bucket.sort(key=lambda p: p.ds_id)
                 grad_partitions = self.__avg_scatter_grads(self.params_in_ipg_bucket)
 
-            self.partition_grads(self.params_in_ipg_bucket, grad_partitions)
+            # (TODO):wgt
+            if global_zero35_manager.enable_zero35:
+                scatter_parition_grads = self.__avg_scatter_grads(self.params_in_ipg_bucket, partition_type="grad")
+                self.partition_grads(self.params_in_ipg_bucket, scatter_parition_grads)
+            else:
+                self.partition_grads(self.params_in_ipg_bucket, grad_partitions)
 
             self.params_in_ipg_bucket.clear()
 
@@ -1169,6 +1194,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     @instrument_w_nvtx
     def __avg_scatter_contiguous_grads(self, buffer_to_reduce: Tensor) -> List[Tensor]:
+        assert global_zero35_manager is None or global_zero35_manager.enable_zero35 is False
+
         dtype = buffer_to_reduce.dtype
         if self.communication_data_type == self.dtype:
             buffer_to_reduce = buffer_to_reduce.to(self.communication_data_type)
@@ -1219,13 +1246,53 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if self.postscale_gradients and self.gradient_predivide_factor != 1.0:
             full_grads_for_rank = [g.div(self.gradient_predivide_factor) for g in full_grads_for_rank]
 
+
+        if self.micro_step_id != self.gradient_accumulation_steps - 1:
+            # 梯度累加
+            # 假设 dp_world_size = 8, 每个节点只有4张卡
+            # os 切分: 
+            #       节点1: [[0], [1], [2], [3]], 节点2: [[4], [5], [6], [7]]
+            # grad/param切分: 
+            #       节点1：[[0, 4], [1, 5] ,[2, 6], [3, 7]], 节点2: [[0, 4], [1, 5] ,[2, 6], [3, 7]]
+            # [[0, 1, 2, 3], [4, 5, 6, 7]] -> [[0], 1, 2, 3,  [16], 5, 6, 7]
+            # [[0, 1, 2, 3], [4, 5, 6, 7]] -> [0, [4], 2, 3,  4, [20], 6, 7]
+            # [[0, 1, 2, 3], [4, 5, 6, 7]] -> [0, 1, [8], 3,  4, 5, [24], 7]
+            # [[0, 1, 2, 3], [4, 5, 6, 7]] -> [0, 1, 2, [12], 4, 5, 6, [28]]]
+            tensor_list, scatter_comm_group = zero35_g_p_reduce_scatter_coalesced(tensor_list, 
+                                                dp_comm_group=self.get_dp_process_group(partition_type="os"),
+                                                param_comm_group=self.get_dp_process_group(partition_type="grad"),
+                                                partition_type="grad")
+
+            zero35_debug(f"Rank: {os.environ['SLURM_PROCID']}, mico_step: {self.micro_step_id}, \
+before __avg_scatter_grads : {self.__avg_scatter_grads_count}, \
+before grad_tensor_list: {tensor_list_debug},  \
+after grad_tensor_list : {tensor_list}", flush=True)
+        else:
+            # boundary
+            # 在 boundary 阶段，进行 dp 范围的 reduce-scatter，
+            # [0, 1, 2, 3, 4, 5, 6, 7]  -> [[0], 1, 2, 3, 4, 5, 6, 7]
+            # [0, 1, 2, 3, 4, 5, 6, 7]  -> [0, [8], 2, 3, 4, 5, 6, 7]
+            # [0, 1, 2, 3, 4, 5, 6, 7]  -> [0, 1, [16], 3, 4, 5, 6, 7]
+            # [0, 1, 2, 3, 4, 5, 6, 7]  -> [0, 1, 2, [24], 4, 5, 6, 7]
+            # [0, 1, 2, 3, 4, 5, 6, 7]  -> [0, 1, 2, 3, [32], 5, 6, 7]
+            # [0, 1, 2, 3, 4, 5, 6, 7]  -> [0, 1, 2, 3, 4, [40], 6, 7]
+            # [0, 1, 2, 3, 4, 5, 6, 7]  -> [0, 1, 2, 3, 4, 5, [48], 7]
+            # [0, 1, 2, 3, 4, 5, 6, 7]  -> [0, 1, 2, 3, 4, 5, 6, [56]]
+            zero35_debug(f"Rank: {os.environ['SLURM_PROCID']}, mico_step: {self.micro_step_id}, \
+skip zero35_g_p_reduce_scatter_coalesced, \
+before __avg_scatter_grads : {self.__avg_scatter_grads_count},\n \
+before grad_tensor_list", flush=True)
+            scatter_comm_group = self.get_dp_process_group(partition_type="os")
+
         local_world_size = get_accelerator().device_count()
         global_world_size = dist.get_world_size()
         num_nodes = global_world_size // local_world_size
         if self.all2all_process_group is not None and num_nodes > 1:
             grad_partitions_for_rank = all_to_all_quant_reduce(full_grads_for_rank, self.all2all_process_group)
         else:
-            grad_partitions_for_rank = reduce_scatter_coalesced(full_grads_for_rank, self.dp_process_group)
+            zero35_debug(f"before __avg_scatter_grads: {tensor_list}", flush=True)
+            grad_partitions_for_rank = reduce_scatter_coalesced(full_grads_for_rank, scatter_comm_group)
+            zero35_debug(f"after __avg_scatter_grads: {tensor_list}", flush=True)
 
         if self.postscale_gradients and self.gradient_predivide_factor != 1.0 and self.gradient_predivide_factor != dist.get_world_size(
                 self.dp_process_group):
@@ -1302,7 +1369,15 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         buffers = []
         for param, grad_partition in zip(params_to_release, grad_partitions):
 
-            contains_real_data = param.partition_numel() * dist.get_rank(self.dp_process_group) < param.ds_numel
+            if global_zero35_manager.enable_zero35:
+                if self.micro_step_id == self.gradient_accumulation_steps - 1:  # bounary
+                    grad_rank = dist.get_rank(self.get_dp_process_group(partition_type="os"))
+                else:
+                    grad_rank = dist.get_rank(self.get_dp_process_group(partition_type="grad"))
+                contains_real_data = param.partition_numel(parition_type="grad") * grad_rank < param.ds_numel
+            else:
+                contains_real_data = param.partition_numel() * dist.get_rank(self.dp_process_group) < param.ds_numel
+
             if not contains_real_data:
                 # this grad partition is empty - don't need to do anything
                 param.grad = None
@@ -1822,11 +1897,26 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.fp32_partitioned_groups_flat[sub_group_id].grad = None
 
     def _unflatten_partitioned_parameters(self, sub_group_id):
-        updated_params = self.unflatten(self.fp16_partitioned_groups_flat[sub_group_id],
-                                        self.fp16_partitioned_groups[sub_group_id])
+        if not global_zero35_manager.enable_zero35:
+            updated_params = self.unflatten(self.fp16_partitioned_groups_flat[sub_group_id],
+                                            self.fp16_partitioned_groups[sub_group_id])
+            
+            for partitioned_param, q in zip(self.fp16_partitioned_groups[sub_group_id], updated_params):
+                partitioned_param.data = q.data
+        else:
+            def get_sub_p_g_parition_from_torch_tensor(torch_tensor, i):
+                zero35_rank = dist.get_rank() // 8  # TODO, remove hard code
+                zero35_debug(f"self._param_partition_unit_size[sub_group_id]: {self._param_partition_unit_size[sub_group_id]}", flush=True)
+                return torch_tensor.reshape(-1, self._param_partition_unit_size[sub_group_id][i])[zero35_rank]
 
-        for partitioned_param, q in zip(self.fp16_partitioned_groups[sub_group_id], updated_params):
-            partitioned_param.data = q.data
+            sub_fp16_partitioned_groups_flat = self.fp16_partitioned_groups_flat[sub_group_id]
+            sub_fp16_partitioned_groups = [get_sub_p_g_parition_from_torch_tensor(param, i) for i, param in enumerate(self.fp16_partitioned_groups[sub_group_id])]
+
+            updated_params = self.unflatten(sub_fp16_partitioned_groups_flat, sub_fp16_partitioned_groups)
+
+            # (TODO):wgt 为了简单，这里直接注释掉了，为了防止 intra 划分的 ds_tensor 覆盖 dp 划分的 ds_tensor
+            # for partitioned_param, q in zip(self.fp16_partitioned_groups[sub_group_id], updated_params):
+            #     partitioned_param.data = q.data
 
     def _overflow_clean_up(self, prev_scale):
         see_memory_usage('After overflow before clearing gradients', force=False)

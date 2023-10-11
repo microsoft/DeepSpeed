@@ -16,6 +16,8 @@ from deepspeed.runtime.zero.partitioned_param_profiler import PartitionedParamet
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id
 from deepspeed.accelerator import get_accelerator
+from deepspeed_wgt.runtime.zero.zero35_utils import zero35_g_p_all_gather_coalesced
+
 import logging
 
 ENABLE_PROFILER = False
@@ -125,6 +127,12 @@ class PartitionedParameterCoordinator:
         self.__max_ongoing_fetch_events: int = 2
         self.__profiler = PartitionedParameterProfiler(timers if ENABLE_PROFILER else None)
 
+        # （TODO):wgt
+        self.is_gradient_accumulation_boundary = True
+        self.mico_step_id = 0
+        self.gradient_accumulation_steps = 1
+        self.all_gahter_count = 0
+
     """Tracing and Tracking
     TODO. consider performing trace before initializing PartitionedParameterCoordinator
     and passing trace results into constructor. This way all the code in here can
@@ -133,6 +141,9 @@ class PartitionedParameterCoordinator:
 
     Bookkeeping operations used to track where we are in the forward/backward pass
     """
+
+    def now_mico_step_id(self): # （TODO):wgt
+        return self.mico_step_id % self.gradient_accumulation_steps
 
     def _clear_trace_structures(self) -> None:
         self.__submodule_order = []
@@ -260,6 +271,7 @@ class PartitionedParameterCoordinator:
         3. block on parameters in immediately required sub module
         """
         if logger.isEnabledFor(logging.DEBUG):
+            zero35_debug(f"Rank: {os.environ['SLURM_PROCID']} do fetch_sub_module!", flush=True)
             debug_rank0(
                 f"{self.__step_id}: M{current_submodule.id}({type(current_submodule).__name__}) P{[p.ds_id for p in iter_params(current_submodule)]} "
                 + str({
@@ -269,8 +281,7 @@ class PartitionedParameterCoordinator:
                 }))
 
         params_to_fetch = frozenset(iter_params(current_submodule))
-        fetch_numel = sum(
-            [p.partition_numel() for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE])
+        fetch_numel = sum([p.partition_numel(parition_type="param") for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE])
         if fetch_numel > 0:
             event_name = __class__.FORWARD_FETCH_SUBMIT if forward else __class__.BACKWARD_FETCH_SUBMIT
             self._dump_param_ids(event_name, current_submodule.id,
@@ -293,7 +304,7 @@ class PartitionedParameterCoordinator:
             if logger.isEnabledFor(logging.DEBUG):
                 debug_rank0(f"-wait: {param.ds_summary()}")
             if param in self.__inflight_param_registry:
-                wait_numel += param.partition_numel()
+                wait_numel += param.partition_numel(parition_type="param")
                 with get_accelerator().stream(self.__allgather_stream):
                     while self.__ongoing_fetch_events and self.__ongoing_fetch_events[0].query():
                         self.__ongoing_fetch_events.popleft()
@@ -301,6 +312,19 @@ class PartitionedParameterCoordinator:
                         self.__ongoing_fetch_events.popleft().synchronize()
 
                     self.__inflight_param_registry.pop(param).wait()
+
+                    # 在每个micro_step 的第一次fwd时需要做全局的 all-gather
+                    # 在后续的 fwd/bwd 只需要做节点内的 all-gahter
+                    if self.now_mico_step_id() == 0 and forward:
+                        zero35_debug(f"Rank: {os.environ['SLURM_PROCID']}, now_mico_step_id:{self.now_mico_step_id()}, \
+forward:{forward}, skip: {self.all_gahter_count} get : {param}!", flush=True)
+                        # TODO: 这个时候需要用gather到的参数覆盖当前param的值
+                    else:
+                        zero35_g_p_all_gather_coalesced([param], self._dp_dp_comm_group, self._param_process_group) # partition_type
+                        zero35_debug(f"Rank: {os.environ['SLURM_PROCID']}, now_mico_step_id:{self.now_mico_step_id()}, forward:{forward}, \
+do _dist_allgather_fn finish: {self.all_gahter_count} get : {param}!", flush=True)
+
+                    self.all_gahter_count += 1
 
                     if not get_accelerator().is_synchronized_device():
                         event = get_accelerator().Event()
@@ -445,7 +469,8 @@ class PartitionedParameterCoordinator:
                 self.__profiler.start_event(event_name)
                 handle = partitioned_params[0].all_gather_coalesced(partitioned_params,
                                                                     forward=forward,
-                                                                    quantize=quantize)
+                                                                    quantize=quantize,
+                                                                    mico_step=self.now_mico_step_id())
                 self.__profiler.stop_event(event_name, all_gather_numel)
 
             for param in partitioned_params:
