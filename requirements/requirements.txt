@@ -5,5 +5,5 @@ packaging>=20.0
 psutil
 py-cpuinfo
 pydantic
-torch
+torch==2.0.1
 tqdm
