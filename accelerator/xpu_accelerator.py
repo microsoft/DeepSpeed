@@ -149,6 +149,9 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def communication_backend_name(self):
         return self._communication_backend_name
 
+    def is_triton_supported(self):
+        return False
+
     # Data types
     def is_bf16_supported(self):
         return True
@@ -191,6 +194,9 @@ class XPU_Accelerator(DeepSpeedAccelerator):
 
     def pin_memory(self, tensor):
         return tensor.pin_memory(device=self.current_device_name())
+
+    def is_pinned(self, tensor):
+        if tensor.is_pinned(device=self.current_device_name())
 
     def op_builder_dir(self):
         try:
