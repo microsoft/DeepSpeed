@@ -30,12 +30,13 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def _init_pynvml(self):
         global pynvml
         try:
-            import pynvml
+            import pynvml as tmp_pynvml
         except ImportError:
             return
         try:
-            pynvml.nvmlInit()
-        except pynvml.NVMLError:
+            tmp_pynvml.nvmlInit()
+            pynvml = tmp_pynvml
+        except tmp_pynvml.NVMLError:
             return
 
     def is_synchronized_device(self):
