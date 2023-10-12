@@ -22,18 +22,21 @@ pynvml = None
 class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def __init__(self):
-        global pynvml
         self._name = 'cuda'
         self._communication_backend_name = 'nccl'
         if pynvml is None:
-            try:
-                import pynvml
-            except ImportError:
-                pass
-            try:
-                pynvml.nvmlInit()
-            except pynvml.NVMLError:
-                pynvml = None
+            self._init_pynvml()
+
+    def _init_pynvml(self):
+        global pynvml
+        try:
+            import pynvml
+        except ImportError:
+            return
+        try:
+            pynvml.nvmlInit()
+        except pynvml.NVMLError:
+            return
 
     def is_synchronized_device(self):
         return False
