@@ -213,9 +213,6 @@ class XPU_Accelerator(DeepSpeedAccelerator):
                     return True
         return False
 
-    def is_pinned(self, tensor):
-        return tensor.is_pinned(device=self.current_device_name())
-
     def op_builder_dir(self):
         try:
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
