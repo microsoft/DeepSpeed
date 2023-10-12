@@ -494,7 +494,8 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                       rotate_every_two,
                                       InferenceContext::Instance().GetCurrentStream(),
                                       3,
-                                      InferenceContext::Instance().GetMaxTokenLength());
+                                      InferenceContext::Instance().GetMaxTokenLength(),
+                                      rope_theta);
     if (rotary_dim > 0 && rotate_half)
         launch_apply_rotary_pos_emb(query_cont,
                                     kv_cache,
