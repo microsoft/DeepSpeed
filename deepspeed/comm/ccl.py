@@ -49,7 +49,7 @@ class CCLBackend(TorchBackend):
         size = self.get_world_size()
         rank = self.get_rank()
         main_kvs = self.ccl_comm_op.get_kvs_addr(rank)
-        main_kvs = torch.tensor(main_kvs).to(torch.uint8).to(get_accelerator().device_name(rank))
+        main_kvs = torch.tensor(main_kvs).to(torch.uint8).to(get_accelerator().current_device_name())
         super(CCLBackend, self).broadcast(main_kvs, 0)
         self.ccl_comm_op.initialize(size, rank, main_kvs)
         self.initialized = True
@@ -156,8 +156,7 @@ class CCLBackend(TorchBackend):
         size = len(ranks)
         rank = self.get_rank()
         sub_main_kvs = self.ccl_comm_op.get_sub_kvs_addr(rank == ranks[0])
-        sub_main_kvs = torch.tensor(sub_main_kvs).to(torch.uint8).to("xpu:" + str(rank))
-        torch_new_group = group
+        sub_main_kvs = torch.tensor(sub_main_kvs).to(torch.uint8).to(get_accelerator().current_device_name())
         super(CCLBackend, self).broadcast(sub_main_kvs, ranks[0], group)
         self.ccl_comm_op.initialize_sub_comm(size, ranks.index(rank), sub_main_kvs, ranks)
         self.groups.append(tuple(ranks))
