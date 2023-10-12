@@ -14,6 +14,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
         self._name = 'xpu'
         self._communication_backend_name = 'ccl'
+        self.aligned_tensors = []
 
     def is_synchronized_device(self):
         return False
@@ -192,8 +193,25 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def LongTensor(self):
         return torch.xpu.LongTensor
 
-    def pin_memory(self, tensor):
-        return tensor.pin_memory(device=self.current_device_name())
+    def pin_memory(self, tensor, align_bytes=1):
+        if align_bytes == 1:
+            return tensor.pin_memory(device=self.current_device_name())
+        elif align_bytes == 0:
+            from intel_extension_for_deepspeed.op_builder.async_io import AsyncIOBuilder
+            self.aio_handle = AsyncIOBuilder().load().aio_handle(128 * 1024, 8, False, False, False)
+            aligned_t = self.aio_handle.new_cpu_locked_tensor(tensor.numel(), tensor)
+            aligned_t = aligned_t[:tensor.numel()].copy_(tensor)
+            self.aligned_tensors.append([aligned_t.data_ptr(), aligned_t[-1].data_ptr()])
+            return aligned_t
+
+    def is_pinned(self, tensor):
+        if tensor.is_pinned(device=self.current_device_name()):
+            return True
+        else:
+            for begin, end in self.aligned_tensors:
+                if begin <= tensor.data_ptr() and tensor.data_ptr() <= end:
+                    return True
+        return False
 
     def is_pinned(self, tensor):
         return tensor.is_pinned(device=self.current_device_name())
@@ -227,11 +245,9 @@ class XPU_Accelerator(DeepSpeedAccelerator):
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
             from op_builder import __deepspeed__  # noqa: F401 # type: ignore
-            from op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder
-            from op_builder.async_io import AsyncIOBuilder
+            from op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, AsyncIOBuilder
         except ImportError:
-            from deepspeed.ops.op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder
-            from deepspeed.ops.op_builder.async_io import AsyncIOBuilder
+            from deepspeed.ops.op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, AsyncIOBuilder
 
         if class_name == "AsyncIOBuilder":
             return AsyncIOBuilder
