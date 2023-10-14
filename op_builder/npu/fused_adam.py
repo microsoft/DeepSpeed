@@ -39,7 +39,7 @@ class NPUFusedAdam:
                     None,  # max_grad_norm
                     False,  # amsgrad
                     False,  # maximize
-                    out=(param_flat.data, m_flat, v_flat)
+                    out=(param_flat.data, m_flat, v_flat))
                 )
             else:
                 param_flat.data, m_flat, v_flat = torch_npu.npu_apply_adam(
