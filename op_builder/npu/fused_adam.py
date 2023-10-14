@@ -16,7 +16,7 @@ class NPUFusedAdam:
     def multi_tensor_adam(chunk_size, noop_flag_buffer, tensor_lists, lr, beta1, beta2, epsilon, step, adam_w_mode,
                           bias_correction, weight_decay, *args):
         bias_correction1 = beta1 ** step
-        bias_correction2 = beta2 ** step
+        bias_correction2 = beta2**step
 
         # iteration group['params']
         for i in range(len(tensor_lists[0])):
