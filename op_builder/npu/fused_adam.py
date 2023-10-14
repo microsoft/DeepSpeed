@@ -51,7 +51,7 @@ class NPUFusedAdam:
                     grad_flat,
                     False,  # use_locking
                     False,  # use_nesterov
-                    out=(param_flat.data, m_flat, v_flat)
+                    out=(param_flat.data, m_flat, v_flat))
                 )
 
 
