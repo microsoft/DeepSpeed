@@ -40,7 +40,6 @@ class NPUFusedAdam:
                     False,  # amsgrad
                     False,  # maximize
                     out=(param_flat.data, m_flat, v_flat))
-                )
             else:
                 param_flat.data, m_flat, v_flat = torch_npu.npu_apply_adam(
                     bias_correction1,
