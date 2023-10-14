@@ -12,6 +12,7 @@ except ImportError as e:
 
 
 class NPUFusedAdam:
+
     @staticmethod
     def multi_tensor_adam(chunk_size, noop_flag_buffer, tensor_lists, lr, beta1, beta2, epsilon, step, adam_w_mode,
                           bias_correction, weight_decay, *args):
