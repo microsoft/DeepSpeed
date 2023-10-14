@@ -16,6 +16,7 @@ except ImportError:
 
 class NPU_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
+
         super().__init__()
         self._name = 'npu'
         self._communication_backend_name = 'hccl'
