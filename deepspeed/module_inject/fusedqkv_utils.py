@@ -3,7 +3,7 @@
 
 # DeepSpeed Team
 import torch
-from deepspeed.utils.logging import warning_once
+from deepspeed.utils import warning_once
 import re
 
 

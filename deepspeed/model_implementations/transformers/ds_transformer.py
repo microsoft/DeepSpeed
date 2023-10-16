@@ -6,7 +6,7 @@
 import torch
 import torch.nn as nn
 from deepspeed import comm as dist
-from deepspeed.utils.logging import log_dist
+from deepspeed.utils import log_dist
 
 from deepspeed.ops.transformer.inference.ds_mlp import DeepSpeedMLP
 from deepspeed.ops.transformer.inference.ds_attention import DeepSpeedSelfAttention, BloomSelfAttention

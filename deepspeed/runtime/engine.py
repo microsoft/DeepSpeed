@@ -97,7 +97,7 @@ from ..moe.utils import is_moe_param
 from ..git_version_info import version
 
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
-from deepspeed.utils.logging import print_json_dist, print_configuration
+from deepspeed.utils import print_json_dist, print_configuration
 
 from deepspeed.accelerator import get_accelerator
 
@@ -2711,6 +2711,9 @@ class DeepSpeedEngine(Module):
 
         if self._optimizer_has_ckpt_event_epilogue():
             self.optimizer.checkpoint_event_epilogue()
+
+        if self.load_universal_checkpoint():
+            self.optimizer.update_lp_params()
 
         return load_path, client_states
 
