@@ -286,7 +286,7 @@ class Autotuner:
         # ZeroStageEnum.disabled:
         params_mem = num_params * (2 if fp16_enabled else 4)
         gradients_mem = num_params * (2 if fp16_enabled else 4)
-        optimizer_mem = num_params * (16 if fp16_enabled else 8)
+        optimizer_mem = num_params * (4 if fp16_enabled else 8)
 
         if zero_stage >= ZeroStageEnum.optimizer_states:
             optimizer_mem = optimizer_mem / total_gpus
