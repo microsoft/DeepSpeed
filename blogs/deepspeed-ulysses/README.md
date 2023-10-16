@@ -14,7 +14,7 @@ To cite DeepSpeed-Ulysses, please cite our [arxiv report](https://arxiv.org/abs/
 
 ```
 @article{jacobs2023deepspeed,
-      title={DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models}, 
+      title={DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models},
       author={Sam Ade Jacobs and Masahiro Tanaka and Chengming Zhang and Minjia Zhang and Shuaiwen Leon Song and Samyam Rajbhandari and Yuxiong He},
       journal={arXiv preprint arXiv:2309.14509},
       year={2023},
@@ -231,33 +231,33 @@ at different sequence length and GPU count.*
 
 ### Dense Attention Evaluation
 
-Next, we evaluate Ulysses on 7 billion (7B) and 30 billion (30B) parameter 
-GPT dense attention models and compare against Megatron-LM's sequence 
-parallelism (Megatron LM) and Colosal AI sequence parallelism (ColAI-SP) on 
-32 and 64 A100 GPUs respectively. The results of these evaluations are shown 
-in Figures 3 and 4.  
+Next, we evaluate Ulysses on 7 billion (7B) and 30 billion (30B) parameter
+GPT dense attention models and compare against Megatron-LM's sequence
+parallelism (Megatron LM) and Colosal AI sequence parallelism (ColAI-SP) on
+32 and 64 A100 GPUs respectively. The results of these evaluations are shown
+in Figures 3 and 4.
 
-We compare Ulysses with Megatron-LM and ColAI-SP for 7B and 30B models 
-running various sequence lengths. We chose the sequence parallelism 
-degree and micro-batch size that produced the best performance 
-(measured as TFLOPs) for the three methods, this we call optimal 
-(batch size-sequence length) configurations. For Ulysses, we always 
-use a ZeRO-3 parallelism degrees of 32 and 64 for 7B and 30B models 
+We compare Ulysses with Megatron-LM and ColAI-SP for 7B and 30B models
+running various sequence lengths. We chose the sequence parallelism
+degree and micro-batch size that produced the best performance
+(measured as TFLOPs) for the three methods, this we call optimal
+(batch size-sequence length) configurations. For Ulysses, we always
+use a ZeRO-3 parallelism degrees of 32 and 64 for 7B and 30B models
 respectively.
 
 
-Figures 3 and 4 show that Ulysses consistently outperforms Megatron-LM 
-and ColAI-SP for the sequence length that can be run with them. In addition, 
-Ulysses can run longer sequence than the two existing methods. Ulysses 
-performance advantages are two folds: (1) Ulysses in combination with ZeRO-3 
-parameter sharding across both data and sequence parallel groups fits more 
-samples than Megatron-LM and ColAI-SP because of the memory optimization 
-leading to higher throughput (2) Ulysses benefits from efficient *all-to-all* 
-communication relative to *all-gather* *reduce-scatter* and *ring-style* P2P 
-communication as applied in Megatron-LM and ColAI-SP sequence parallelism. 
-However, for dense attention at long sequence length, the throughput is 
-primarily determined by local attention computation due to quadratic 
-computation complexity of attention, therefore performance gap between Ulysses 
+Figures 3 and 4 show that Ulysses consistently outperforms Megatron-LM
+and ColAI-SP for the sequence length that can be run with them. In addition,
+Ulysses can run longer sequence than the two existing methods. Ulysses
+performance advantages are two folds: (1) Ulysses in combination with ZeRO-3
+parameter sharding across both data and sequence parallel groups fits more
+samples than Megatron-LM and ColAI-SP because of the memory optimization
+leading to higher throughput (2) Ulysses benefits from efficient *all-to-all*
+communication relative to *all-gather* *reduce-scatter* and *ring-style* P2P
+communication as applied in Megatron-LM and ColAI-SP sequence parallelism.
+However, for dense attention at long sequence length, the throughput is
+primarily determined by local attention computation due to quadratic
+computation complexity of attention, therefore performance gap between Ulysses
 and the two existing methods closes for sequence length that can be run with them.
 
 <div align="center">
@@ -276,26 +276,26 @@ and the two existing methods closes for sequence length that can be run with the
 
 ### Sparse Attention Evaluation
 
-Similarly, we evaluate Ulysses on 7 billion and 30 billion parameter sparse 
-attention models and benchmark against Megatron-LM sequence parallelism. 
-There is no public implementation of block sparse attention for ColAI-SP, 
-therefore, evaluation of sparse attention is in comparison with Megatron-LM. 
-Results of our evaluation are shown in Figures 5 and 6. We observe similar 
+Similarly, we evaluate Ulysses on 7 billion and 30 billion parameter sparse
+attention models and benchmark against Megatron-LM sequence parallelism.
+There is no public implementation of block sparse attention for ColAI-SP,
+therefore, evaluation of sparse attention is in comparison with Megatron-LM.
+Results of our evaluation are shown in Figures 5 and 6. We observe similar
 trends with sparse attention as dense attention experiments. We observe more
-than 2x throughput performance of Ulysses compared to Megatron-LM. For memory 
-saving, Ulysses leveraging ZeRO-3 scales to 4x longer sequence lengths 
+than 2x throughput performance of Ulysses compared to Megatron-LM. For memory
+saving, Ulysses leveraging ZeRO-3 scales to 4x longer sequence lengths
 than Megatron-LM.
 
-Ulysses outperforms Megatron-LM for sequence length that can be run with both. 
-In fact, the current Ulysses throughput is bottle-necked by the local sparse 
-attention implementation, and as a result Ulysses throughput decreases as 
-the sequence length increases. We expect this gap in performance between our 
-method and Megatron-LM to increase further for larger sequence lengths as we 
-improve the performance of the local sparse attention implementation in future. 
-A noteworthy observation is that the decreasing performance gap between Ulysses 
-and Megatron-LM observed in dense attention evaluation is less pronounced in 
-sparse attention evaluation, because the attention computation in sparse attention 
-is less dominant compared to dense attention. 
+Ulysses outperforms Megatron-LM for sequence length that can be run with both.
+In fact, the current Ulysses throughput is bottle-necked by the local sparse
+attention implementation, and as a result Ulysses throughput decreases as
+the sequence length increases. We expect this gap in performance between our
+method and Megatron-LM to increase further for larger sequence lengths as we
+improve the performance of the local sparse attention implementation in future.
+A noteworthy observation is that the decreasing performance gap between Ulysses
+and Megatron-LM observed in dense attention evaluation is less pronounced in
+sparse attention evaluation, because the attention computation in sparse attention
+is less dominant compared to dense attention.
 
 <div align="center">
 <img src="./media/sparse7B.png" style="width:5in;height:4in" />
