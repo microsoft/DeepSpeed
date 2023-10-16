@@ -10,6 +10,17 @@
 
 </div>
 
+To cite DeepSpeed-Ulysses, please cite our [arxiv report](https://arxiv.org/abs/2309.14327):
+
+```
+@article{jacobs2023deepspeed,
+      title={DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models}, 
+      author={Sam Ade Jacobs and Masahiro Tanaka and Chengming Zhang and Minjia Zhang and Shuaiwen Leon Song and Samyam Rajbhandari and Yuxiong He},
+      journal={arXiv preprint arXiv:2309.14509},
+      year={2023},
+}
+```
+
 ## Introduction
 
 Training large models with long sequences is becoming very important
