@@ -1103,7 +1103,8 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                            bool add_bias,
                            bool do_flash_attn,
                            int num_heads,
-                           bool transposed_mode)
+                           bool transposed_mode,
+                           float rope_theta)
 {
     auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
@@ -1177,7 +1178,8 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                 false,
                 InferenceContext::Instance().GetCurrentStream(),
                 3,
-                input.size(1));
+                input.size(1),
+                rope_theta);
             return at::from_blob(final_output,
                                  {3, input.size(0), num_heads, input.size(1), padded_head_size},
                                  options);
@@ -1203,7 +1205,8 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                 false,
                 InferenceContext::Instance().GetCurrentStream(),
                 3,
-                input.size(1));
+                input.size(1),
+                rope_theta);
             return at::from_blob(
                 final_output, {3, input.size(0), num_heads, input.size(1), head_size}, options);
             // return at::from_blob(workspace, {input.size(0) * input.size(1), 3, num_heads,
