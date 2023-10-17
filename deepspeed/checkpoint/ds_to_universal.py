@@ -54,10 +54,9 @@ def parse_arguments():
     parser.add_argument('--for_release',
                         action='store_true',
                         help='Convert for release purpose, reset some (progress) counters.')
-    parser.add_argument('--keep_temp_folder', 
+    parser.add_argument('--keep_temp_folder',
                         action='store_true',
-                        help='Preserve temporary folder of intermediate checkpoint slice files. Useful for debugging.'
-                        )
+                        help='Preserve temporary folder of intermediate checkpoint slice files. Useful for debugging.')
     args = parser.parse_args()
     print(f'args = {args}')
     return args
