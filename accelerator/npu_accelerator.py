@@ -127,6 +127,9 @@ class NPU_Accelerator(DeepSpeedAccelerator):
     def total_memory(self, device_index=None):
         return torch.npu.get_device_properties(device_index).total_memory
 
+    def available_memory(self, device_index=None):
+        return self.total_memory(device_index) - self.memory_allocated(device_index)
+
     # Data types
     def is_bf16_supported(self):
         return torch.npu.is_bf16_supported()
@@ -158,6 +161,9 @@ class NPU_Accelerator(DeepSpeedAccelerator):
     def communication_backend_name(self):
         return self._communication_backend_name
 
+    def is_triton_supported(self):
+        return False
+
     # Tensor operations
 
     @property
@@ -188,8 +194,11 @@ class NPU_Accelerator(DeepSpeedAccelerator):
     def LongTensor(self):
         return torch.npu.LongTensor
 
-    def pin_memory(self, tensor):
+    def pin_memory(self, tensor, align_bytes=1):
         return tensor.pin_memory()
+
+    def is_pinned(self, tensor):
+        return tensor.is_pinned()
 
     def on_accelerator(self, tensor):
         device_str = str(tensor.device)
