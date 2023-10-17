@@ -51,9 +51,6 @@ def parse_arguments():
         help=
         'How many parallel processes to merge tp slices (more memory intensive, use much fewer than --num_extract_workers))'
     )
-    parser.add_argument('--for_release',
-                        action='store_true',
-                        help='Convert for release purpose, reset some (progress) counters.')
     parser.add_argument('--keep_temp_folder',
                         action='store_true',
                         help='Preserve temporary folder of intermediate checkpoint slice files. Useful for debugging.')
@@ -135,7 +132,7 @@ def dump_param_fragment(dir, tp_index, dp_index, state_name, state_flat_tensor, 
 
     #print(f"{param_name}: {offset}: {numel} => {path}")
 
-    t = state_flat_tensor.narrow(0, offset, numel)
+    t = state_flat_tensor.narrow(0, offset, numel).clone()
     _save_checkpoint(path, t)
 
 
@@ -143,7 +140,7 @@ def _merge_zero_shards(param_base_path, state, tp_degree, slice_shape):
     slices = []
     for tp_index in range(tp_degree):
         prefix_path = os.path.join(param_base_path, str(tp_index), f"{state}")
-        paths = sorted(list(glob.glob(f"{prefix_path}.0*")))
+        paths = sorted(list(glob.glob(f"{prefix_path}.*")))
         shards = [torch.load(p) for p in paths]
         slice = torch.cat(shards, dim=0).reshape(slice_shape)
         slices.append(slice)
