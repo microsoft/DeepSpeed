@@ -703,7 +703,7 @@ class PartitionedTensor:
         dist.all_gather(partition_tensors, partition_tensors[self.rank], group=self.group)
 
         for i in range(len(partition_tensors)):
-            partition_tensors[i].data = torch.zeros(1)
+            partition_tensors[i].data = torch.zeros(1, device=partition_tensors[i].data.device)
             partition_tensors[i] = None
 
         return flat_tensor.view(self.full_size()).clone().detach()
