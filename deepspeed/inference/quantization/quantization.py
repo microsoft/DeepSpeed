@@ -10,7 +10,7 @@ import gc
 from deepspeed.inference.quantization import layers
 from .layers import QUANTIZATION_LAYER_MAPPINGS
 from .utils import get_AsyncPartitionedParameterSwapper, recursive_setattr
-from deepspeed.utils import logger
+from deepspeed.utils.logging import logger
 from collections import deque
 from transformers.utils.generic import ContextManagers
 from .quantization_context import QuantizationContext

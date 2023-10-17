@@ -38,10 +38,8 @@ from deepspeed.checkpoint import (
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input_folder', type=str, help='Input DeepSpeed Checkpoint folder')
-    parser.add_argument('--output_folder', type=str, help='Output DeepSpeed checkpoint folder')
-    parser.add_argument('--target_tp', default=1, type=int, help='Target TP degree')
-    parser.add_argument('--target_pp', default=1, type=int, help='Target PP degree')
+    parser.add_argument('--input_folder', type=str, required=True, help='Input DeepSpeed Checkpoint folder')
+    parser.add_argument('--output_folder', type=str, required=True, help='Output DeepSpeed checkpoint folder')
     parser.add_argument('--num_extract_workers',
                         default=4,
                         type=int,
@@ -56,6 +54,10 @@ def parse_arguments():
     parser.add_argument('--for_release',
                         action='store_true',
                         help='Convert for release purpose, reset some (progress) counters.')
+    parser.add_argument('--keep_temp_folder', 
+                        action='store_true',
+                        help='Preserve temporary folder of intermediate checkpoint slice files. Useful for debugging.'
+                        )
     args = parser.parse_args()
     print(f'args = {args}')
     return args
@@ -165,7 +167,6 @@ def merge_tp_slices(ds_checkpoint, dir, slice_dir, tp_degree, name_and_shape):
 
     universal_checkpoint_info = ds_checkpoint.get_checkpoint_info(UNIVERSAL_CHECKPOINT_INFO)
     parameters_to_average = universal_checkpoint_info.get(PARAMETER_TO_AVERAGE_PATTERNS, [])
-    print(f'{parameters_to_average=}')
     parameters_with_row_parallelism = universal_checkpoint_info.get(PARAMETER_WITH_ROW_PARALLELISM_PATTERNS, [])
     vocabulary_parameters = universal_checkpoint_info.get(VOCABULARY_PARAMETER_PATTERNS, [])
     for state in ("fp32", "exp_avg", "exp_avg_sq"):
@@ -177,10 +178,10 @@ def merge_tp_slices(ds_checkpoint, dir, slice_dir, tp_degree, name_and_shape):
         ckpt_dict = {}
         if any(re.match(pattern, name) for pattern in parameters_to_average):
             param = sum(slices) / len(slices)
-            print(f'merge {name} using average')
+            # print(f'merge {name} using average')
         else:
             cat_dim = 1 if any(re.match(pattern, name) for pattern in parameters_with_row_parallelism) else 0
-            print(f"merge {name} with CAT DIM: {cat_dim}")
+            # print(f"merge {name} with CAT DIM: {cat_dim}")
             param = torch.cat(slices, dim=cat_dim)
             ckpt_dict[CAT_DIM] = cat_dim
 
@@ -252,7 +253,7 @@ def main():
     args = parse_arguments()
     print(f'Converting DeepSpeed checkpoint in {args.input_folder} to Universal checkpoint in {args.output_folder}')
 
-    ds_checkpoint = DeepSpeedCheckpoint(args.input_folder)  #, 1, 2) # args.target_tp, args.target_pp)
+    ds_checkpoint = DeepSpeedCheckpoint(args.input_folder)
     _check_for_required_state(ds_checkpoint)
 
     iteration = ds_checkpoint.get_iteration()
@@ -278,7 +279,8 @@ def main():
     print('*** 3. Saving common optimizer states')
     _save_optimizer_state(args, ds_checkpoint)
 
-    # shutil.rmtree(temp_dir, ignore_errors=True)
+    if not args.keep_temp_folder:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
     # Copy mp* files into output folder
     for f in glob.glob(os.path.join(args.input_folder, 'mp*')):

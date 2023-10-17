@@ -9,7 +9,7 @@ from collections import UserDict
 from typing import Deque, Set
 
 from deepspeed import comm as dist
-from deepspeed.utils import logger
+from deepspeed.utils.logging import logger
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.partitioned_param_profiler import PartitionedParameterProfiler

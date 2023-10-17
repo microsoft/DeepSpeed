@@ -5,7 +5,7 @@
 
 import torch
 from deepspeed.ops.op_builder import CPUAdagradBuilder
-from deepspeed.utils import should_log_le
+from deepspeed.utils.logging import should_log_le
 
 
 class DeepSpeedCPUAdagrad(torch.optim.Optimizer):

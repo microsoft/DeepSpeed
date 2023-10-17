@@ -5,7 +5,7 @@
 
 import time
 from numpy import mean
-from deepspeed.utils import log_dist
+from deepspeed.utils.logging import log_dist
 from deepspeed.accelerator import get_accelerator
 
 FORWARD_MICRO_TIMER = 'fwd_microstep'

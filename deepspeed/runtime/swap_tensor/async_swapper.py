@@ -8,7 +8,7 @@ Functionality of swapping tensors to/from (NVMe) storage devices.
 import torch
 
 from deepspeed import comm as dist
-from deepspeed.utils import logger
+from deepspeed.utils.logging import logger
 from deepspeed.runtime.swap_tensor.utils import swap_out_tensors, SwapBuffer
 from deepspeed.accelerator import get_accelerator
 

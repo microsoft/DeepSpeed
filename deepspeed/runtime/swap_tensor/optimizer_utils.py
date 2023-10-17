@@ -10,7 +10,7 @@ import os
 import torch
 
 from deepspeed import comm as dist
-from deepspeed.utils import logger
+from deepspeed.utils.logging import logger
 from deepspeed.runtime.swap_tensor.constants import *
 from deepspeed.runtime.swap_tensor.utils import swap_in_tensors, swap_out_tensors, \
     MIN_AIO_BYTES, AIO_ALIGNED_BYTES, get_sized_buffers
