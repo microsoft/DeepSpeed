@@ -11,7 +11,7 @@ from .replace_policy import replace_policies
 from typing import Optional
 import torch
 from deepspeed import comm as dist
-from .layers import LinearAllreduce, LinearLayer
+from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce
 from deepspeed.accelerator import get_accelerator
 from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw
 
@@ -52,7 +52,11 @@ class ReplaceWithTensorSlicing:
         src_split = torch.split(src.data, src.shape[outer_dim] // num_splits, dim=outer_dim)
         if (len(src_shape) == 2 and len(dst_shape) == 2):
             if src_shape[outer_dim] == dst_shape[self.out_dim]:
-                dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
+                try:
+                    dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
+                except:
+                    print(dst.shape, src.shape)
+                    exit()
                 dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
                 if hasattr(src, 'scale'):
                     dst.scale = src.scale
@@ -113,6 +117,11 @@ class ReplaceWithTensorSlicing:
 
 
 class Loading():
+
+    def is_load_module(module):
+        load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm]
+        load_layer_names = ["LPLayerNorm", "SharedEmbedding", "OPTLearnedPositionalEmbedding", "LlamaRMSNorm"]
+        return module.__class__ in load_layers or module._get_name() in load_layer_names
 
     def load_buffer(module, state_dict, prefix):
         for name in module._buffers.keys():
@@ -296,21 +305,6 @@ class AutoTP():
         if getattr(child, "replaced", False) == True:
             return
         weight_shape = child.weight.shape
-        if name == 'attn.Wqkv' and self.module._get_name() == 'MPTBlock':
-            # MPT block qkv weight's allocation is different from other models, it's [3,num_head,head_dim,hidden_size]
-            # instead of [num_head,3,head_dim,hidden_size]
-            new_weight = torch.empty((
-                weight_shape[0] // self.mp_size,
-                weight_shape[1],
-            ),
-                                     device=child.weight.device,
-                                     dtype=child.weight.dtype)
-            reversed_dim = True
-            mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group, out_dim=0)
-            # todo: can we remove new tensor allocation if we use strided copy?
-            mp_replace.strided_copy(new_weight, child.weight.data, num_splits=3, int8=reversed_dim)
-            setattr(child, "replaced", True)
-            return LinearLayer(weight=new_weight.to(get_accelerator().current_device_name()), bias=None)
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
         if name in self.all_reduce_linears:
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
@@ -320,10 +314,16 @@ class AutoTP():
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
             data = child.weight.data.split(
                 (weight_shape[0] if self.conv_linear_layer else weight_shape[1]) // self.mp_size, dim=1)
-            data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+            data_dc = data[mp_replace.gpu_index].to(get_accelerator().current_device_name()).clone().detach()
+            del data
 
             setattr(child, "replaced", True)
-            return LinearAllreduce(data, child.bias if child.bias is None else \
+            if name == "lm_head" or name == 'embed_out':
+                return LmHeadLinearAllreduce(
+                    torch.nn.parameter.Parameter(data_dc, requires_grad=False), dist.get_rank(), dist.get_world_size(),
+                    child.bias if child.bias is None else torch.nn.parameter.Parameter(
+                        child.bias.to(get_accelerator().current_device_name())), self.mp_group)
+            return LinearAllreduce(torch.nn.parameter.Parameter(data_dc, requires_grad=False), child.bias if child.bias is None else \
                         torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), self.mp_group)
         else:
 
@@ -336,25 +336,29 @@ class AutoTP():
                 #for detecting fused type
                 module_str = str(self.module).strip()
                 #The copy is a regular copy, The shape of dst and src is the same
-                data = prepare_tp_fused_qkvw(module_str, child.weight.data, self.mp_size, mp_replace.gpu_index)
+                data_dc = prepare_tp_fused_qkvw(module_str, child.weight.data, self.mp_size, mp_replace.gpu_index)
 
-                bias_data = None if child.bias is None else prepare_tp_fused_qkvw(
+                bias_data_dc = None if child.bias is None else prepare_tp_fused_qkvw(
                     module_str, child.bias.data, self.mp_size, mp_replace.gpu_index).to(
                         get_accelerator().current_device_name())
             else:
                 data = child.weight.data.split((weight_shape[0]) // self.mp_size,
                                                dim=1 if self.conv_linear_layer else 0)
-                data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+                data_dc = data[mp_replace.gpu_index].to(get_accelerator().current_device_name()).clone().detach()
+                del data
 
                 if child.bias is not None:
                     bias_data = child.bias.data.split(
                         (weight_shape[1] if self.conv_linear_layer else weight_shape[0]) // self.mp_size, dim=0)
                     bias_data = bias_data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+                    bias_data_dc = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
+                    del bias_data
                 else:
-                    bias_data = None
+                    bias_data_dc = None
 
             setattr(child, "replaced", True)
-            return LinearLayer(weight=data.to(get_accelerator().current_device_name()), bias=bias_data)
+            return LinearLayer(weight=torch.nn.parameter.Parameter(data_dc.to(get_accelerator().current_device_name()), requires_grad=False), \
+                        bias=bias_data_dc)
 
     def _slice_embedding(self, child, name, conv_linear_layer):
         if getattr(child, "replaced", False) == True:
@@ -366,6 +370,7 @@ class AutoTP():
         else:
             data = child.weight.data.split(child.weight.shape[1] // self.mp_size, dim=1)
         data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+        data = torch.nn.parameter.Parameter(data, requires_grad=False)
 
         new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // self.mp_size)
         new_embedding.weight.data.copy_(data)
@@ -411,8 +416,7 @@ class AutoTP():
             else:
                 class_name = prev_class_name + '.' + prev_name
             checking_key = self.prefix + '.' + class_name + '.' + name + '.' if class_name != "" else self.prefix + '.' + name + '.'
-            if (child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm]
-                    or child._get_name() in ["LPLayerNorm", "SharedEmbedding"]) and self.state_dict is not None:
+            if Loading.is_load_module(child) and self.state_dict is not None:
                 if any(checking_key in item for item in self.state_dict):
                     Loading.load(child, self.state_dict, checking_key, self.mp_group)
                 else:
@@ -436,4 +440,17 @@ class AutoTP():
             else:
                 self.update_mp_params(child)
                 self._replace_module(child, name, class_name)
+        return r_module
+
+    def _replace_last_linear_module(self, r_module):
+        if hasattr(r_module, "lm_head"):
+            name = "lm_head"
+            child = r_module.lm_head
+        elif hasattr(r_module, "embed_out"):
+            name = "embed_out"
+            child = r_module.embed_out
+        else:
+            return r_module
+        if child.__class__ in self.linear_policies:
+            setattr(r_module, name, self.linear_policies[child.__class__](child, name, self.conv_linear_layer))
         return r_module

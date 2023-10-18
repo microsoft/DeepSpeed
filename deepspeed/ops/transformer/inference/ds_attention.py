@@ -37,7 +37,8 @@ class DeepSpeedSelfAttention(nn.Module):
             self.attn_ow = None
             self.attn_ob = None
         else:
-            qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3
+            qkv_size_per_partition = (self.config.hidden_size // self.config.mp_size) * 3 if config.num_kv < 0 else \
+                                     ((self.config.heads + self.config.num_kv * 2) // self.config.mp_size) * (self.config.hidden_size // self.config.heads)
             self.attn_qkvw = nn.Parameter(torch.empty(self.config.hidden_size,
                                                       qkv_size_per_partition,
                                                       dtype=data_type,
@@ -56,6 +57,7 @@ class DeepSpeedSelfAttention(nn.Module):
                                         requires_grad=False)
 
         self.num_attention_heads_per_partition = self.config.heads // self.config.mp_size
+        self.num_kv_partition = self.config.num_kv // self.config.mp_size
         self.hidden_size_per_partition = self.config.hidden_size // self.config.mp_size
         self.hidden_size_per_attention_head = self.config.hidden_size // self.config.heads
 
@@ -101,6 +103,7 @@ class DeepSpeedSelfAttention(nn.Module):
             attn_mask=((1 - input_mask).to(qkv_out.dtype) *
                        minus_inf) if input_mask.dtype == torch.int64 else input_mask,
             heads=self.num_attention_heads_per_partition,
+            num_kv=self.num_kv_partition,
             norm_factor=(1 / self.norm_factor if self.config.scale_attention else 1.0),
             no_masking=no_masking,
             layer_id=self.config.layer_id,
@@ -139,7 +142,6 @@ class DeepSpeedSelfAttention(nn.Module):
         else:
             self._attn_qkvw = self.attn_qkvw
             self._attn_qkvb = self.attn_qkvb
-
         if not self.config.pre_layer_norm:
             qkv_out = self.linear_func(input=input,
                                        weight=self._attn_qkvw,
@@ -159,12 +161,12 @@ class DeepSpeedSelfAttention(nn.Module):
                                                                        input_mask=input_mask,
                                                                        layer_past=layer_past,
                                                                        alibi=alibi)
+
         output = self.vector_matmul_func(input=context_layer, weight=self.attn_ow)
         inp_norm = qkv_out[-1]
 
         if self.config.mlp_after_attn and self.mp_group is not None and dist.get_world_size(group=self.mp_group) > 1:
             dist.all_reduce(output, group=self.mp_group)
-
         return (output, key_layer, value_layer, context_layer, inp_norm)
 
 
@@ -247,6 +249,11 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
 
         offset = dist.get_rank() * self.num_attention_heads_per_partition if dist.is_initialized() else 0
         target_dtype = torch.float16 if self.config.dtype == torch.int8 else self.config.dtype
+
+        # When using the hybrid engine with BLOOM, input_mask needs to be converted from torch.bool -> torch.int64
+        if input_mask.dtype == torch.bool:
+            input_mask = input_mask.long()
+
         attention_probs = self.softmax_func(attn_scores=attention_scores,
                                             attn_mask=((1 - input_mask).to(target_dtype) * minus_inf),
                                             alibi=alibi,

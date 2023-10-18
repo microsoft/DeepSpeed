@@ -3,10 +3,10 @@
 
 # DeepSpeed Team
 
-from pydantic import Field, validator
 import sys
 from typing import Optional
 from enum import Enum
+from deepspeed.pydantic_v1 import Field, validator
 from deepspeed.runtime.config_utils import get_scalar_param, pp_int, DeepSpeedConfigModel
 from deepspeed.utils import logger
 from .offload_config import DeepSpeedZeroOffloadParamConfig, DeepSpeedZeroOffloadOptimizerConfig, OffloadDeviceEnum
@@ -37,6 +37,7 @@ ZeRO optimization should be enabled as:
     "round_robin_gradients": [true|false],
     "zero_hpz_partition_size": 1,
     "zero_quantized_weights": [true|false],
+    "zero_quantized_nontrainable_weights": [true|false],
     "zero_quantized_gradients": [true|false],
     "memory_efficient_linear": [true|false],
     "override_module_apply": [true|false],
@@ -235,7 +236,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     Unused parameters in modules may be unexpected in static networks, but
     could be normal in dynamic networks. This controls whether or not training
     should terminate with an error message when unused parameters are detected.
-    This is set to ``False`` by default, which means unused parameters are
+    This is set to ``True`` by default, which means unused parameters are
     ignored and training continues. Now is just used in stage 2.
     """
 
@@ -258,8 +259,15 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     """
     zero_quantized_weights: bool = False
     """
-    Boolean indicating whether to quantized zero parameters (weights)
+    Boolean indicating whether to quantize zero parameters (weights)
     for efficient all_gather comm
+    """
+    zero_quantized_nontrainable_weights: bool = False
+    """
+    Boolean indicating whether to quantize non-trainable zero parameters (weights)
+    for efficient memory usage and communication. Different from zero_quantized_weights
+    that stores the weights in original precision and only perform quantization during communication,
+    this flag will store the weights in quantized precision. This is useful for LoRA training.
     """
     zero_quantized_gradients: bool = False
     """
