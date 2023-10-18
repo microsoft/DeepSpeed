@@ -942,7 +942,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
 
             if self.gradient_predivide_factor != dp_world_size:
-                tensor_to_allreduce.mul_(self.gradient_predivide_factor / (dp_world_size / float(self.sequence_parallel_size)))
+                tensor_to_allreduce.mul_(self.gradient_predivide_factor /
+                                         (dp_world_size / float(self.sequence_parallel_size)))
         else:
             tensor_to_allreduce.div_(dp_world_size / float(self.sequence_parallel_size))
             dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)

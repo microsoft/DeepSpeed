@@ -807,7 +807,7 @@ class DeepSpeedEngine(Module):
             return torch.bfloat16
 
         return torch.float32
-    
+
     @communication_data_type.setter
     def communication_data_type(self, value):
         self._config.communication_data_type = value
@@ -2438,7 +2438,8 @@ class DeepSpeedEngine(Module):
 
         if self.postscale_gradients():
             if self.gradient_average:
-                values.mul_(self.gradient_predivide_factor() / (dist.get_world_size(group=dp_group) / float(self.sequence_parallel_size)))
+                values.mul_(self.gradient_predivide_factor() /
+                            (dist.get_world_size(group=dp_group) / float(self.sequence_parallel_size)))
         else:
             values.mul_(1. / (dist.get_world_size(group=dp_group) / float(self.sequence_parallel_size)))
 
