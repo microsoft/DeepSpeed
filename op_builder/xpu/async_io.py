@@ -34,7 +34,7 @@ class AsyncIOBuilder(SYCLOpBuilder):
 
     def include_paths(self):
         return [
-            'csrc/aio/py_lib', 'csrc/aio/common', '/home/maliangl/nightly/auto/nite_auto_20230523/libaio/usr/include'
+            'csrc/aio/py_lib', 'csrc/aio/common'
         ]
 
     def cxx_args(self):
