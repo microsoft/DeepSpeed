@@ -39,4 +39,6 @@ class CPUAdamBuilder(TorchCPUOpBuilder):
             CUDA_INCLUDE = []
         elif not self.is_rocm_pytorch():
             CUDA_INCLUDE = [os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")]
+        else:
+            CUDA_INCLUDE = []
         return ['csrc/includes'] + CUDA_INCLUDE
