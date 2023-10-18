@@ -31,6 +31,7 @@ from deepspeed.checkpoint import (
     UNIVERSAL_CHECKPOINT_INFO,
     VOCABULARY_PARAMETER_PATTERNS,
     PIPELINE_REPLICATED_PARAMETER_PATTERNS,
+    TP_REPLICATED_PARAMETER_PATTERNS,
     PARAMETER_TO_AVERAGE_PATTERNS,
     PARAMETER_WITH_ROW_PARALLELISM_PATTERNS,
 )
@@ -148,9 +149,9 @@ def _merge_zero_shards(param_base_path, state, tp_degree, slice_shape):
     return slices
 
 
-def _get_vocab_divisibility_padding_tensor(ds_checkpoint, padded_vocab_tensor):
-    checkpoint_info = ds_checkpoint.get_checkpoint_info()
-    if padded_vocab_tensor.shape[0] > checkpoint_info[ORIGINAL_VOCAB_SIZE]:
+def _get_vocab_divisibility_padding_tensor(universal_checkpoint_info, padded_vocab_tensor):
+    original_vocab_size = universal_checkpoint_info.get(ORIGINAL_VOCAB_SIZE)
+    if padded_vocab_tensor.shape[0] > original_vocab_size:
         return padded_vocab_tensor[-1]
     else:
         return torch.zeros(padded_vocab_tensor.shape[1])
@@ -162,6 +163,7 @@ def merge_tp_slices(ds_checkpoint, dir, slice_dir, tp_degree, name_and_shape):
     param_base_path = os.path.join(dir, name)
 
     universal_checkpoint_info = ds_checkpoint.get_checkpoint_info(UNIVERSAL_CHECKPOINT_INFO)
+    replicated_parameters = universal_checkpoint_info.get(TP_REPLICATED_PARAMETER_PATTERNS, [])
     parameters_to_average = universal_checkpoint_info.get(PARAMETER_TO_AVERAGE_PATTERNS, [])
     parameters_with_row_parallelism = universal_checkpoint_info.get(PARAMETER_WITH_ROW_PARALLELISM_PATTERNS, [])
     vocabulary_parameters = universal_checkpoint_info.get(VOCABULARY_PARAMETER_PATTERNS, [])
@@ -172,7 +174,12 @@ def merge_tp_slices(ds_checkpoint, dir, slice_dir, tp_degree, name_and_shape):
         #print(f"Expected shape: {shape}")
         #print(f"Fragment sizes:", list(frag.shape for frag in slices))
         ckpt_dict = {}
-        if any(re.match(pattern, name) for pattern in parameters_to_average):
+        if any(re.match(pattern, name) for pattern in replicated_parameters):
+            if len(slices) > 1:
+                assert all([slices[0].equal(other_slice) for other_slice in slices[1:]])
+            param = slices[0]
+            # print(f'replicate {name} using first slice')
+        elif any(re.match(pattern, name) for pattern in parameters_to_average):
             param = sum(slices) / len(slices)
             # print(f'merge {name} using average')
         else:
@@ -185,7 +192,8 @@ def merge_tp_slices(ds_checkpoint, dir, slice_dir, tp_degree, name_and_shape):
             #print(f"Before {param.shape=}")
             # strip padding
             #param = _strip_vocab_padding(ds_checkpoint, param)
-            ckpt_dict[VOCAB_DIVISIBILITY_PADDING_TENSOR] = _get_vocab_divisibility_padding_tensor(ds_checkpoint, param)
+            ckpt_dict[VOCAB_DIVISIBILITY_PADDING_TENSOR] = _get_vocab_divisibility_padding_tensor(
+                universal_checkpoint_info, param)
             #print(f"After {param.shape=}")
 
         #print(f"Final shape: {param.shape}")

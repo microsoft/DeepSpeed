@@ -25,7 +25,7 @@ from deepspeed.git_version_info import version
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from deepspeed.accelerator import get_accelerator
 
-from deepspeed.checkpoint.constants import (DS_VERSION, GROUP_PADDINGS, PARTITION_COUNT,
+from deepspeed.checkpoint.constants import (DS_VERSION, GROUP_PADDINGS, PARTITION_COUNT, LOSS_SCALER,
                                             SINGLE_PARTITION_OF_FP32_GROUPS, BASE_OPTIMIZER_STATE,
                                             BASE_OPTIMIZER_STATE_STEP, CLIP_GRAD, ZERO_STAGE, PARAM_SLICE_MAPPINGS)
 from deepspeed.utils import link_hp_params
@@ -2036,7 +2036,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             torch.save(checkpoint, "saved.pth")
         """
         state_dict = {}
-        state_dict['loss_scaler'] = self.loss_scaler
+        state_dict[LOSS_SCALER] = self.loss_scaler
         state_dict['dynamic_loss_scale'] = self.dynamic_loss_scale
         state_dict['overflow'] = self.overflow
         state_dict[CLIP_GRAD] = self.clip_grad
@@ -2198,7 +2198,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                                                 tp_world_size)
 
     def _load_global_state(self, sd):
-        self.loss_scaler = sd.get('loss_scaler', self.loss_scaler)
+        self.loss_scaler = sd.get(LOSS_SCALER, self.loss_scaler)
         self.dynamic_loss_scale = sd.get('dynamic_loss_scale', self.dynamic_loss_scale)
         self.overflow = sd.get('overflow', self.overflow)
         self.clip_grad = sd.get(CLIP_GRAD, self.clip_grad)
