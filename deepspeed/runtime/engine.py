@@ -1114,6 +1114,9 @@ class DeepSpeedEngine(Module):
         self.mp_world_size = groups._get_model_parallel_world_size()
         self.expert_parallel_group = groups._get_expert_parallel_group_dict()
         self.expert_data_parallel_group = groups._get_expert_data_parallel_group_dict()
+        self.sequence_parallel_size = groups._get_sequence_parallel_world_size()
+        if self.sequence_parallel_size > 1:
+            self.communication_data_type = torch.float32
 
         if not (self.amp_enabled() or is_zero_init_model):
             self._broadcast_model()
@@ -2303,9 +2306,9 @@ class DeepSpeedEngine(Module):
             dist.all_reduce(tensor_to_allreduce, group=dp_group)
             if self.gradient_average:
                 if self.gradient_predivide_factor() != dist.get_world_size(group=dp_group):
-                    tensor_to_allreduce.mul_(self.gradient_predivide_factor() / dist.get_world_size(group=dp_group))
+                    tensor_to_allreduce.mul_(self.gradient_predivide_factor() / (dist.get_world_size(group=dp_group) / float(self.sequence_parallel_size)))
         else:
-            tensor_to_allreduce.mul_(1. / dist.get_world_size(group=dp_group))
+            tensor_to_allreduce.mul_(1. / (dist.get_world_size(group=dp_group) / float(self.sequence_parallel_size)))
             dist.all_reduce(tensor_to_allreduce, group=dp_group)
 
         if self.communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
@@ -2431,9 +2434,9 @@ class DeepSpeedEngine(Module):
 
         if self.postscale_gradients():
             if self.gradient_average:
-                values.mul_(self.gradient_predivide_factor() / dist.get_world_size(group=dp_group))
+                values.mul_(self.gradient_predivide_factor() / (dist.get_world_size(group=dp_group) / float(self.sequence_parallel_size)))
         else:
-            values.mul_(1. / dist.get_world_size(group=dp_group))
+            values.mul_(1. / (dist.get_world_size(group=dp_group) / float(self.sequence_parallel_size)))
 
         indices_device_list = self.sparse_all_gather(indices, dp_group)
         values_device_list = self.sparse_all_gather(values, dp_group)
