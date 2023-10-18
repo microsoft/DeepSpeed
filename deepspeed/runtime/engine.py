@@ -807,6 +807,10 @@ class DeepSpeedEngine(Module):
             return torch.bfloat16
 
         return torch.float32
+    
+    @communication_data_type.setter
+    def communication_data_type(self, value):
+        self._config.communication_data_type = value
 
     def postscale_gradients(self):
         return not self._config.prescale_gradients
@@ -2306,9 +2310,9 @@ class DeepSpeedEngine(Module):
             dist.all_reduce(tensor_to_allreduce, group=dp_group)
             if self.gradient_average:
                 if self.gradient_predivide_factor() != dist.get_world_size(group=dp_group):
-                    tensor_to_allreduce.mul_(self.gradient_predivide_factor() / (dist.get_world_size(group=dp_group) / float(self.sequence_parallel_size)))
+                    tensor_to_allreduce.mul_(self.gradient_predivide_factor() / dist.get_world_size(group=dp_group))
         else:
-            tensor_to_allreduce.mul_(1. / (dist.get_world_size(group=dp_group) / float(self.sequence_parallel_size)))
+            tensor_to_allreduce.mul_(1. / dist.get_world_size(group=dp_group))
             dist.all_reduce(tensor_to_allreduce, group=dp_group)
 
         if self.communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
@@ -2373,7 +2377,7 @@ class DeepSpeedEngine(Module):
             if self.pipeline_parallelism:
                 dp_group = self.mpu.get_data_parallel_group()
             else:
-                dp_group = groups._get_data_parallel_group()
+                dp_group = groups._get_sequence_data_parallel_group()
 
             if bucket_type == SparseTensor.type():
                 self.sparse_allreduce_no_retain(bucket, dp_group=dp_group)
