@@ -69,7 +69,8 @@ class DeepSpeedBigCodeInference(DeepSpeedTransformerInference):
                                   output_attentions=output_attentions,
                                   **kwargs)
 
-        if get_present and is_mqa:
+        if get_present:
+            outputs = list(outputs)
             (key, value) = outputs[1]
             if is_mqa:
                 key = key[:, 0, :, :]
@@ -77,4 +78,4 @@ class DeepSpeedBigCodeInference(DeepSpeedTransformerInference):
             presents = torch.cat((key, value), dim=-1)
             outputs[1] = presents
 
-        return outputs
+        return tuple(outputs)
