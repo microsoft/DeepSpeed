@@ -159,6 +159,9 @@ class CPU_Accelerator(DeepSpeedAccelerator):
     def total_memory(self, device_index=None):
         return psutil.virtual_memory().total
 
+    def available_memory(self, device_index=None):
+        return psutil.virtual_memory().available
+
     # Misc
     def amp(self):
         return torch.cpu.amp
@@ -181,6 +184,9 @@ class CPU_Accelerator(DeepSpeedAccelerator):
 
     def communication_backend_name(self):
         return self._communication_backend_name
+
+    def is_triton_supported(self):
+        return False
 
     # Data types
     def is_bf16_supported(self):
@@ -222,8 +228,11 @@ class CPU_Accelerator(DeepSpeedAccelerator):
     def LongTensor(self):
         return torch.LongTensor
 
-    def pin_memory(self, tensor):
+    def pin_memory(self, tensor, align_bytes=1):
         return tensor
+
+    def is_pinned(self, tensor):
+        return tensor.is_pinned()
 
     def op_builder_dir(self):
         try:

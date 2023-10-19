@@ -25,6 +25,13 @@ if [ "${version}" != `cat version.txt` ]; then
     exit 1
 fi
 
+echo "checking that the version is valid"
+python release/check_release_version.py --release_version ${version}
+if [ $? != 0 ]; then
+    echo 'please check the version number selected'
+    exit 1
+fi
+
 python -c "import twine"
 if [ $? != 0 ]; then
     echo 'please install twine via pip'
@@ -45,5 +52,4 @@ git tag v${version}
 git push origin v${version}
 
 echo "bumping up patch version"
-cd -
-python bump_patch_version.py
+python release/bump_patch_version.py --current_version ${version}
