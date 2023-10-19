@@ -20,10 +20,12 @@ def policy_to_ds_container(**kwargs):
     from .containers import LLAMALayerPolicy, DS_LLAMAContainer
     from .containers import LLAMA2LayerPolicy, DS_LLAMA2Container
     from .containers import InternLMLayerPolicy, DS_InternLMContainer
+    from .containers import HFBigCodeLayerPolicy, DS_BigCodeContainer
 
     policy_to_container = {
         HFGPT2LayerPolicy: DS_GPT2Container,
         HFBertLayerPolicy: DS_BERTContainer,
+        HFBigCodeLayerPolicy: DS_BigCodeContainer,
         BLOOMLayerPolicy: DS_BloomContainer,
         HFGPTJLayerPolicy: DS_GPTJContainer,
         HFGPTNEOLayerPolicy: DS_GPTNEOContainer,
