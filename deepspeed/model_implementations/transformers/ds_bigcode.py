@@ -43,14 +43,18 @@ class DeepSpeedBigCodeInference(DeepSpeedTransformerInference):
             **kwargs):
 
         get_present = (get_present or get_key_value or use_cache)
+        # is Multi-Query Attention
         is_mqa = self.config.num_kv != self.config.heads and self.config.num_kv == 1
 
+        # We need to convert mask to Long, because BigCode uses boolean mask
         attention_mask = attention_mask.to(torch.int64) if attention_mask.dtype != torch.int64 else attention_mask
 
-        # if Multi-Query Attention
+        # We need to return normal shape of the mask for MQA, because BigCode uses another shape for MQA
+        # See: https://github.com/huggingface/transformers/blob/9b1976697d87e1e350fd712993ae313c006b8467/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py#L609
         if is_mqa:
             attention_mask = attention_mask.squeeze(2).unsqueeze(1)
 
+        # Basic forward with fixed mask
         outputs = super().forward(input=input,
                                   input_mask=input_mask,
                                   attention_mask=attention_mask,
@@ -69,13 +73,20 @@ class DeepSpeedBigCodeInference(DeepSpeedTransformerInference):
                                   output_attentions=output_attentions,
                                   **kwargs)
 
+        # We need to update presents because BigCode expects merged keys and values along last dimension
+        # For MQA shape is: [batch, full_seq_len, 2 * head_dim]
+        # For MHA shape is: [batch, num_heads, full_seq_len, 2 * head_dim]
+        # See: https://github.com/huggingface/transformers/blob/9b1976697d87e1e350fd712993ae313c006b8467/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py#L244
         if get_present:
             outputs = list(outputs)
+
             (key, value) = outputs[1]
             if is_mqa:
                 key = key[:, 0, :, :]
                 value = value[:, 0, :, :]
             presents = torch.cat((key, value), dim=-1)
-            outputs[1] = presents
 
-        return tuple(outputs)
+            outputs[1] = presents
+            outputs = tuple(outputs)
+
+        return outputs
