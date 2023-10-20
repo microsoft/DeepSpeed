@@ -347,6 +347,12 @@ def all_to_all_single(output,
 
 
 @timed_op
+def all_to_all(output_tensor_list, input_tensor_list, group=None, async_op=False):
+    global cdb
+    return cdb.all_to_all(output_tensor_list, input_tensor_list, group=group, async_op=async_op)
+
+
+@timed_op
 def send(tensor, dst, group=None, tag=0, prof=False, log_name='send', debug=get_caller_func()):
     global cdb
     return cdb.send(tensor=tensor, dst=dst, group=group, tag=tag)
@@ -410,7 +416,7 @@ def monitored_barrier(group=None,
                       log_name='monitored_barrier',
                       debug=get_caller_func()):
     global cdb
-    return cdb.barrier(group=group, timeout=timeout, wait_all_ranks=wait_all_ranks)
+    return cdb.monitored_barrier(group=group, timeout=timeout, wait_all_ranks=wait_all_ranks)
 
 
 def log_summary(show_straggler=False):

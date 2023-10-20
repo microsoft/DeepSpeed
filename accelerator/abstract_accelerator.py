@@ -147,6 +147,10 @@ class DeepSpeedAccelerator(ABC):
     def total_memory(self, device_index=None):
         ...
 
+    @abc.abstractmethod
+    def available_memory(self, device_index=None):
+        ...
+
     # Data types
     @abc.abstractmethod
     def is_bf16_supported(self):
@@ -183,6 +187,10 @@ class DeepSpeedAccelerator(ABC):
 
     @abc.abstractmethod
     def communication_backend_name(self):
+        ...
+
+    @abc.abstractmethod
+    def is_triton_supported(self):
         ...
 
     # Tensor operations
@@ -222,7 +230,11 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     @abc.abstractmethod
-    def pin_memory(self, tensor):
+    def pin_memory(self, tensor, align_bytes=1):
+        ...
+
+    @abc.abstractmethod
+    def is_pinned(self, tensor):
         ...
 
     @abc.abstractmethod

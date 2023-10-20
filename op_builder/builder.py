@@ -229,14 +229,6 @@ class OpBuilder(ABC):
     def extra_ldflags(self):
         return []
 
-    def libraries_installed(self, libraries):
-        valid = False
-        check_cmd = 'dpkg -l'
-        for lib in libraries:
-            result = subprocess.Popen(f'dpkg -l {lib}', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-            valid = valid or result.wait() == 0
-        return valid
-
     def has_function(self, funcname, libraries, verbose=False):
         '''
         Test for existence of a function within a tuple of libraries.
@@ -459,7 +451,7 @@ class OpBuilder(ABC):
                 f"Unable to JIT load the {self.name} op due to it not being compatible due to hardware/software issue. {self.error_log}"
             )
         try:
-            import ninja  # noqa: F401
+            import ninja  # noqa: F401 # type: ignore
         except ImportError:
             raise RuntimeError(f"Unable to JIT load the {self.name} op due to ninja not being installed.")
 
@@ -710,6 +702,8 @@ class TorchCPUOpBuilder(CUDAOpBuilder):
         if not self.build_for_cpu:
             if not self.is_rocm_pytorch():
                 CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
+                if not os.path.exists(CUDA_LIB64):
+                    CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib")
             else:
                 CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")
 
