@@ -74,8 +74,8 @@ class DeepSpeedBigCodeInference(DeepSpeedTransformerInference):
                                   **kwargs)
 
         # We need to update presents because BigCode expects merged keys and values along last dimension
-        # For MQA shape is: [batch, full_seq_len, 2 * head_dim]
-        # For MHA shape is: [batch, num_heads, full_seq_len, 2 * head_dim]
+        # For MQA shape must be: [batch, full_seq_len, 2 * head_dim]
+        # For MHA shape must be: [batch, num_heads, full_seq_len, 2 * head_dim]
         # See: https://github.com/huggingface/transformers/blob/9b1976697d87e1e350fd712993ae313c006b8467/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py#L244
         if get_present:
             outputs = list(outputs)
