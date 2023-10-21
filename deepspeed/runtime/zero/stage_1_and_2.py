@@ -38,7 +38,8 @@ pg_correctness_test = False
 OPTIMIZER_ALLGATHER_TIMER = 'optimizer_allgather'
 OPTIMIZER_GRADIENTS_TIMER = 'optimizer_gradients'
 OPTIMIZER_STEP_TIMER = 'optimizer_step'
-OPTIMIZER_TIMERS = [OPTIMIZER_ALLGATHER_TIMER, OPTIMIZER_GRADIENTS_TIMER, OPTIMIZER_STEP_TIMER]
+OPTIMIZER_COPY_TIMER = 'optimizer_memcpy'
+OPTIMIZER_TIMERS = [OPTIMIZER_ALLGATHER_TIMER, OPTIMIZER_GRADIENTS_TIMER, OPTIMIZER_STEP_TIMER, OPTIMIZER_COPY_TIMER]
 
 
 def input(msg):
@@ -1740,7 +1741,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 self.timers(OPTIMIZER_GRADIENTS_TIMER).stop()
                 self.timers(OPTIMIZER_STEP_TIMER).start()
                 self._optimizer_step(i)
-
+                self.timers(OPTIMIZER_STEP_TIMER).stop()
                 # Disabled, this is not currently working
                 #from deepspeed.ops.adam import DeepSpeedCPUAdam
                 #if not (type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half):
@@ -1749,9 +1750,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 #    bit16_partitions[partition_id].data.copy_(fp32_partition.data)
                 bit16_partitions = self.parallel_partitioned_bit16_groups[i]
                 fp32_partition = self.single_partition_of_fp32_groups[i]
+                self.timers(OPTIMIZER_COPY_TIMER).start()
                 bit16_partitions[partition_id].data.copy_(fp32_partition.data)
-
-                self.timers(OPTIMIZER_STEP_TIMER).stop()
+                self.timers(OPTIMIZER_COPY_TIMER).stop()
             else:
                 # free gradients for all the parameters that are not updated by this process(ZeRO stage2)
                 self.free_grad_in_param_list(self.params_not_in_partition[i])
