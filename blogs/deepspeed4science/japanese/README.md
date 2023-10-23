@@ -12,6 +12,17 @@
 *図1：DeepSpeed4Scienceのアプローチ: 汎用の言語モデルのサポートを超え、科学的発見とその複雑さの解決に特化したAI技術を開発*
 </div>
 
+DeepSpeed4Science を引用するには、こちらの[white paper](https://arxiv.org/abs/2310.04610)を引用してください:
+
+```
+@article{song2023deepspeed4science,
+  title={DeepSpeed4Science Initiative: Enabling Large-Scale Scientific Discovery through Sophisticated AI System Technologies},
+  author={Song, Shuaiwen Leon and Kruft, Bonnie and Zhang, Minjia and Li, Conglong and Chen, Shiyang and Zhang, Chengming and Tanaka, Masahiro and Wu, Xiaoxia and Rasley, Jeff and Awan, Ammar Ahmad and others},
+  journal={arXiv preprint arXiv:2310.04610},
+  year={2023}
+}
+```
+
 ## はじめに
 
 自然の出来事をモデル化し予測する深層学習の能力は急速に高まっており、次の１０年間に、自然科学に革命を起こすかも知れません。薬の開発から再生可能エネルギーまでの各セクターで、大きな進展をもたらす新しい科学的探求の時代が到来するでしょう。「地球上のすべての人と組織がもっと多くのことを成し遂げられるようにする」というMicrosoftのミッションに従い、この機会に、[DeepSpeedチーム](https://www.deepspeed.ai/)では[DeepSpeed4Science](https://deepspeed4science.ai/)という新しいイニシアティブを立ち上げました。これは、AIシステム技術のイノベーションを通じて他に類を見ない技術を構築し、様々な分野の専門家が、科学分野における大きな謎を解き明かす手助けをすることを目指しています。
@@ -29,7 +40,7 @@ DeepSpeed4Scienceによる新しいシステム技術はAI駆動の幅広い科�
 #### 科学基盤モデル (Scientific Foundation Model, SFM), Microsoft Research AI4Science
 
 <div align="center">
-<img src="../media/Figure2-1.jpg" width="800px" alt="" />
+<img src="../media/Figure2-1.png" width="800px" alt="" />
 <img src="../media/Figure2-2.gif" width="800px" alt="" />
 
 *図2: 科学基盤モデル (Scientific foundation model, SFM) とその探索: Distributional Graphormer*
@@ -47,7 +58,7 @@ DeepSpeed4Scienceによる新しいシステム技術はAI駆動の幅広い科�
 
 気候の変化は、より頻繁な異常気象を引き起こしています。悪影響を軽減するため、これらのイベントが発生する場所を予測することがますます重要になっています。[ClimaX](https://www.microsoft.com/en-us/research/group/autonomous-systems-group-robotics/articles/introducing-climax-the-first-foundation-model-for-weather-and-climate/)は、さまざまな気象および気候モデリングタスクを実行するために設計された最初の基盤モデルです。さまざまな変数と解像度を持つ多くの異なるデータセットを扱えるため、天気予報の精度が向上する可能性があります。DeepSpeed4Scienceは、非常に大きな高解像度画像データ(数十から数百ペタバイトなど)を長いシーケンスで処理しながら、より大きな基盤モデルを効率的に事前訓練/ファインチューニングするためのClimaXの新しいシステムサポートを提供しています。
 
-#### AIを用いたAb Initio分子動力学法（AI Powered Ab Initio Molecular Dynamics，AI<sup>2</sup>MD），Microsoft Research AI4Science
+#### 分子動力学と機械学習型力場（Molecular Dynamics and Machine Learning Force Field），Microsoft Research AI4Science
 
 <div align="center">
 <img src="../media/Figure4.gif" width="800px" alt="" />
