@@ -163,7 +163,7 @@ at::Tensor einsum_sec_sm_ecm(at::Tensor& Q, at::Tensor& W)
                    (T*)W.data_ptr(),
                    (T*)Q.data_ptr(),
                    (T*)O.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                    rocblas_gemm_algo_standard);
 #else
                    CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -216,7 +216,7 @@ void attention_unfused(at::Tensor& prev_key_cont,
                                 seq_len * k,
                                 seq_len * soft_len,
                                 bsz * heads,
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                                 rocblas_gemm_algo_standard);
 #else
                                 CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -253,7 +253,7 @@ void attention_unfused(at::Tensor& prev_key_cont,
                                 seq_len * soft_len,
                                 seq_len * k,
                                 bsz * heads,
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                                 rocblas_gemm_algo_standard);
 #else
                                 CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -388,7 +388,7 @@ void attention_unfused(T* prev_key_cont,
                                 seq_len * k,
                                 seq_len * soft_len,
                                 bsz * heads,
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                                 rocblas_gemm_algo_standard);
 #else
                                 CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -421,7 +421,7 @@ void attention_unfused(T* prev_key_cont,
                                 seq_len * soft_len,
                                 seq_len * k,
                                 bsz * heads,
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                                 rocblas_gemm_algo_standard);
 #else
                                 CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -445,7 +445,8 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                            bool no_masking,
                                            unsigned layer_id,
                                            unsigned num_layers,
-                                           at::Tensor& alibi)
+                                           at::Tensor& alibi,
+                                           float rope_theta)
 {
     unsigned bsz = query_key_value.size(0);
     unsigned seq_len = query_key_value.size(1);
@@ -493,7 +494,8 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                       rotate_every_two,
                                       InferenceContext::Instance().GetCurrentStream(),
                                       3,
-                                      InferenceContext::Instance().GetMaxTokenLength());
+                                      InferenceContext::Instance().GetMaxTokenLength(),
+                                      rope_theta);
     if (rotary_dim > 0 && rotate_half)
         launch_apply_rotary_pos_emb(query_cont,
                                     kv_cache,
@@ -503,6 +505,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                     (is_prompt ? 0 : soft_len - 1),
                                     heads,
                                     bsz,
+                                    rope_theta,
                                     InferenceContext::Instance().GetCurrentStream(),
                                     InferenceContext::Instance().GetMaxTokenLength());
 
@@ -883,7 +886,7 @@ void quantized_gemm(void* output,
                    weight16,
                    (T*)input,
                    (T*)output,
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                    rocblas_gemm_algo_standard);
 #else
                    CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -928,7 +931,7 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
                        (T*)weight.data_ptr(),
                        workspace,
                        (T*)output.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                        rocblas_gemm_algo_standard);
 #else
                        CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -1000,7 +1003,7 @@ std::vector<at::Tensor> ds_rms_qkv(at::Tensor& input,
                        (T*)weight.data_ptr(),
                        (T*)rms_norm.data_ptr(),
                        (T*)output.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                        rocblas_gemm_algo_standard);
 #else
                        CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -1086,7 +1089,7 @@ void quantized_gemm(at::Tensor& output,
                    (T*)weight16.data_ptr(),
                    (T*)input.data_ptr(),
                    (T*)output.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                    rocblas_gemm_algo_standard);
 #else
                    CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -1100,7 +1103,8 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                            bool add_bias,
                            bool do_flash_attn,
                            int num_heads,
-                           bool transposed_mode)
+                           bool transposed_mode,
+                           float rope_theta)
 {
     auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
@@ -1131,7 +1135,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                    (T*)weight.data_ptr(),
                    (T*)input_cont.data_ptr(),
                    (T*)output.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                    rocblas_gemm_algo_standard);
 #else
                    CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -1174,7 +1178,8 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                 false,
                 InferenceContext::Instance().GetCurrentStream(),
                 3,
-                input.size(1));
+                input.size(1),
+                rope_theta);
             return at::from_blob(final_output,
                                  {3, input.size(0), num_heads, input.size(1), padded_head_size},
                                  options);
@@ -1200,7 +1205,8 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                 false,
                 InferenceContext::Instance().GetCurrentStream(),
                 3,
-                input.size(1));
+                input.size(1),
+                rope_theta);
             return at::from_blob(
                 final_output, {3, input.size(0), num_heads, input.size(1), head_size}, options);
             // return at::from_blob(workspace, {input.size(0) * input.size(1), 3, num_heads,
@@ -1347,7 +1353,7 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
                        (T*)weight.data_ptr(),
                        (T*)input.data_ptr(),
                        (T*)output.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                        rocblas_gemm_algo_standard);
 #else
                        CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -1433,7 +1439,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                        (T*)weight.data_ptr(),
                        inp_norm,
                        intermediate,
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                        rocblas_gemm_algo_standard);
 #else
                        CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -1477,7 +1483,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                        (T*)weight1.data_ptr(),
                        intermediate,
                        (T*)output.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                        rocblas_gemm_algo_standard);
 #else
                        CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -1611,7 +1617,7 @@ std::vector<at::Tensor> ds_rms_mlp_gemm(at::Tensor& input,
                        (T*)weight_interm.data_ptr(),
                        (T*)inp_norm.data_ptr(),
                        intermediate_ptr,
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                        rocblas_gemm_algo_standard);
 #else
                        CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -1674,7 +1680,7 @@ std::vector<at::Tensor> ds_rms_mlp_gemm(at::Tensor& input,
                        (T*)weight_out.data_ptr(),
                        intermediate_ptr,
                        (T*)output.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                        rocblas_gemm_algo_standard,
 #else
                        CUBLAS_GEMM_DEFAULT_TENSOR_OP,
@@ -1736,7 +1742,7 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
                        (T*)weight.data_ptr(),
                        (T*)input.data_ptr(),
                        (T*)intermediate.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                        rocblas_gemm_algo_standard);
 #else
                        CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -1770,7 +1776,7 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
                        (T*)weight_out.data_ptr(),
                        (T*)intermediate.data_ptr(),
                        (T*)output.data_ptr(),
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
                        rocblas_gemm_algo_standard);
 #else
                        CUBLAS_GEMM_DEFAULT_TENSOR_OP);
@@ -1847,7 +1853,8 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                              unsigned rotary_dim,
                                              unsigned offset,
                                              unsigned num_heads,
-                                             bool rotate_half)
+                                             bool rotate_half,
+                                             float rope_theta)
 {
     auto query_cont = mixed_query.contiguous();
     auto key_cont = key_layer.contiguous();
@@ -1865,6 +1872,7 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                            offset,
                                            num_heads,
                                            bsz,
+                                           rope_theta,
                                            InferenceContext::Instance().GetCurrentStream(),
                                            InferenceContext::Instance().GetMaxTokenLength());
     else
@@ -1876,6 +1884,7 @@ std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
                                             offset,
                                             num_heads,
                                             bsz,
+                                            rope_theta,
                                             InferenceContext::Instance().GetCurrentStream(),
                                             InferenceContext::Instance().GetMaxTokenLength());
     return {query_cont, key_cont};
