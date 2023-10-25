@@ -1120,7 +1120,7 @@ class DeepSpeedEngine(Module):
         self.expert_data_parallel_group = groups._get_expert_data_parallel_group_dict()
         self.sequence_parallel_size = groups._get_sequence_parallel_world_size()
         if self.sequence_parallel_size > 1:
-            self.communication_data_type = torch.float32
+            self.communication_data_type = self._config.seq_parallel_communication_data_type
 
         if not (self.amp_enabled() or is_zero_init_model):
             self._broadcast_model()
