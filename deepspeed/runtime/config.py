@@ -786,8 +786,8 @@ class DeepSpeedConfig(object):
 
         self.disable_allgather = get_disable_allgather(param_dict)
         self.communication_data_type = get_communication_data_type(param_dict)
-        self.seq_parallel_communication_data_type = get_communication_data_type(param_dict,
-                SEQ_PARALLEL_COMMUNICATION_DATA_TYPE,SEQ_PARALLEL_COMMUNICATION_DATA_TYPE_DEFAULT)
+        self.seq_parallel_communication_data_type = get_communication_data_type(
+            param_dict, SEQ_PARALLEL_COMMUNICATION_DATA_TYPE, SEQ_PARALLEL_COMMUNICATION_DATA_TYPE_DEFAULT)
         self.prescale_gradients = get_prescale_gradients(param_dict)
         self.gradient_predivide_factor = get_gradient_predivide_factor(param_dict)
         self.sparse_gradients_enabled = get_sparse_gradients_enabled(param_dict)
