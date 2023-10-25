@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   unit-tests:
-    runs-on: ubuntu-20.04
+    runs-on: [self-hosted, nvidia, cu116, v100]
 
     steps:
       - uses: actions/checkout@v3
