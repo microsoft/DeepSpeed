@@ -109,6 +109,11 @@ def add_tuning_arguments(parser):
                        type=str,
                        default=WARMUP_LOG_RATE,
                        help='WarmupLR increasing function during warmup')
+
+    # WarmUP cos LR
+    group.add_argument("--warmup_min_ratio", type=float, default=0.01, help='Cosine LR lower bound.')
+    group.add_argument("--cos_min_ratio", type=float, default=0.01, help='Cosine LR lower bound.')
+
     return parser
 
 
@@ -761,3 +766,77 @@ class WarmupDecayLR(WarmupLR):
             0.0,
             float(self.total_num_steps - self.last_batch_iteration) /
             float(max(1.0, self.total_num_steps - self.warmup_num_steps)))
+
+
+class WarmupCosineLR(WarmupLR):
+    """Increase the learning rate of each parameter group from min lr ratio to max lr ratio
+        over warmup_num_steps steps, and then decay at cosine rate over the remaining training steps to min cosine ratio.
+
+        Args:
+            optimizer (Optimizer): Wrapped optimizer.
+            total_num_steps (int): total number of training steps
+            warmup_min_ratio (float or list): warmup start learning rate ratio. Default: 0
+            warmup_num_steps (int): number of steps to warm up from warmup_min_ratio to 1.0. Default: 1000
+            warmup_type {‘log’, ‘linear’}: increasing function from min_lr to max_lr during warmup. Default: log
+            cos_min_ratio (float): cosine end learning rate ratio. Default: 0.0001
+            last_batch_iteration (int): The index of the last batch. Default: -1.
+        Example:
+            >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
+            >>> scheduler = WarmupCosineLR(optimizer, 1000000)
+            >>> data_loader = torch.utils.data.DataLoader(...)
+            >>> for epoch in range(10):
+            >>>     for batch in data_loader:
+            >>>         train_batch(...)
+            >>>         scheduler.step()
+
+    """
+
+    def __init__(self,
+                 optimizer: Optimizer,
+                 total_num_steps: int,
+                 warmup_min_ratio: float = 0.0,
+                 warmup_num_steps: int = 1000,
+                 cos_min_ratio: float = 0.0001,
+                 warmup_type: str = WARMUP_LOG_RATE,
+                 last_batch_iteration: int = -1):
+
+        self.total_num_steps = total_num_steps
+        self.warmup_min_ratio = warmup_min_ratio
+        self.cos_min_ratio = cos_min_ratio
+        super(WarmupCosineLR, self).__init__(optimizer,
+                                    last_batch_iteration=last_batch_iteration,
+                                    warmup_num_steps=warmup_num_steps,)
+        if self.total_num_steps < self.warmup_num_steps:
+            logger.warning('total_num_steps {} is less than warmup_num_steps {}'.format(
+                total_num_steps, warmup_num_steps))
+        self.org_lrs = [group['lr'] for group in self.optimizer.param_groups]
+
+    def get_lr_ratio(self):
+        if self.last_batch_iteration < 0:
+            logger.warning("Attempting to get learning rate from scheduler before it has started")
+            return [0.0]
+
+        if self.last_batch_iteration < self.warmup_num_steps:
+            if self.warmup_type == WARMUP_LOG_RATE:
+                ratio = self.inverse_log_warm_up * math.log(self.last_batch_iteration + 1)
+            elif self.warmup_type == WARMUP_LINEAR_RATE:
+                ratio = self.last_batch_iteration / self.warmup_num_steps
+            ratio_delta = 1. - self.warmup_min_ratio
+            ratio = self.warmup_min_ratio + ratio * ratio_delta
+        else:
+            real_last_step = self.last_batch_iteration - self.warmup_num_steps
+            real_total_steps = self.total_num_steps - self.warmup_num_steps
+            ratio_delta = 1. - self.cos_min_ratio
+            ratio = (1 + math.cos(math.pi * real_last_step / real_total_steps)) / 2
+            ratio = max(0.0, self.cos_min_ratio + ratio_delta * ratio)
+        return ratio
+
+    def step(self, last_batch_iteration=None):
+        if last_batch_iteration is None:
+            last_batch_iteration = self.last_batch_iteration + 1
+        self.last_batch_iteration = last_batch_iteration
+
+        lr_ratio = self.get_lr_ratio()
+        for param_group, org_lr in zip(self.optimizer.param_groups, self.org_lrs):
+            param_group['lr'] = lr_ratio * org_lr
+        self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
