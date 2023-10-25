@@ -341,6 +341,37 @@ class TestModelTask(DistributedTest):
         assert assert_fn(bs_output, ds_output)
 
 
+# Setup for these models is different from other pipelines, so we add a separate test
+@pytest.mark.inference
+class TestStableDiffusion(DistributedTest):
+    world_size = 1
+
+    def test(self):
+        from diffusers import DiffusionPipeline
+
+        prompt = "a dog on a rocket"
+        model = "prompthero/midjourney-v4-diffusion"
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+        device = torch.device(f"cuda:{local_rank}")
+
+        pipe = DiffusionPipeline.from_pretrained(model, torch_dtype=torch.half)
+        pipe = pipe.to(device)
+        baseline_image = pipe(prompt, guidance_scale=7.5).images[0]
+
+        pipe = deepspeed.init_inference(
+            pipe,
+            mp_size=1,
+            dtype=torch.half,
+            replace_method="auto",
+            replace_with_kernel_inject=True,
+            enable_cuda_graph=False,
+        )
+        deepspeed_image = pipe(prompt, guidance_scale=7.5).images[0]
+
+        # Need to determine a heuristic for checking if images are "similar"
+        #assert baseline_image == deepspeed_image
+
+
 @pytest.mark.seq_inference
 @pytest.mark.parametrize("model_w_task", [("EleutherAI/gpt-neo-1.3B", "text-generation"),
                                           ("EleutherAI/gpt-neox-20b", "text-generation"),
