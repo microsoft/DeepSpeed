@@ -26,6 +26,8 @@ def skip_on_cuda(valid_cuda):
         CUDA_VERSION = (CUDA_MAJOR * 10) + CUDA_MINOR
         if valid_cuda.count(CUDA_VERSION) == 0:
             pytest.skip(f"requires cuda versions {valid_cuda}")
+    elif deepspeed.accelerator.get_accelerator().device_name() == 'npu':
+        return
     else:
         assert deepspeed.accelerator.get_accelerator().device_name() == 'xpu'
         return
