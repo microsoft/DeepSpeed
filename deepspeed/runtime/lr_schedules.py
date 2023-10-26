@@ -19,7 +19,8 @@ LR_RANGE_TEST = 'LRRangeTest'
 ONE_CYCLE = 'OneCycle'
 WARMUP_LR = 'WarmupLR'
 WARMUP_DECAY_LR = 'WarmupDecayLR'
-VALID_LR_SCHEDULES = [LR_RANGE_TEST, ONE_CYCLE, WARMUP_LR, WARMUP_DECAY_LR]
+WARMUP_COSINE_LR = 'WarmupCosineLR'
+VALID_LR_SCHEDULES = [LR_RANGE_TEST, ONE_CYCLE, WARMUP_LR, WARMUP_DECAY_LR, WARMUP_COSINE_LR]
 
 LR_RANGE_TEST_MIN_LR = 'lr_range_test_min_lr'
 LR_RANGE_TEST_STEP_RATE = 'lr_range_test_step_rate'
@@ -49,6 +50,9 @@ WARMUP_NUM_STEPS = 'warmup_num_steps'
 WARMUP_TYPE = 'warmup_type'
 WARMUP_LOG_RATE = 'log'
 WARMUP_LINEAR_RATE = 'linear'
+
+WARMUP_MIN_RATIO = 'warmup_min_ratio'
+COS_MIN_RATIO = 'cos_min_ratio'
 
 TOTAL_NUM_STEPS = 'total_num_steps'
 
@@ -803,9 +807,11 @@ class WarmupCosineLR(WarmupLR):
         self.total_num_steps = total_num_steps
         self.warmup_min_ratio = warmup_min_ratio
         self.cos_min_ratio = cos_min_ratio
-        super(WarmupCosineLR, self).__init__(optimizer,
-                                    last_batch_iteration=last_batch_iteration,
-                                    warmup_num_steps=warmup_num_steps,)
+        super(WarmupCosineLR, self).__init__(
+            optimizer,
+            last_batch_iteration=last_batch_iteration,
+            warmup_num_steps=warmup_num_steps,
+        )
         if self.total_num_steps < self.warmup_num_steps:
             logger.warning('total_num_steps {} is less than warmup_num_steps {}'.format(
                 total_num_steps, warmup_num_steps))
