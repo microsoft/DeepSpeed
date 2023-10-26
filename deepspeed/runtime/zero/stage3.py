@@ -1158,7 +1158,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     @instrument_w_nvtx
     def __avg_scatter_contiguous_grads(self, buffer_to_reduce: Tensor) -> List[Tensor]:
-        dtype = buffer_to_reduce.dtype
         if self.communication_data_type != self.dtype:
             buffer_to_reduce = buffer_to_reduce.to(self.communication_data_type)
         if self.postscale_gradients and self.gradient_predivide_factor != 1.0:
