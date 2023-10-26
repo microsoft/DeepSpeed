@@ -81,6 +81,9 @@ def set_accelerator_visible():
                 match = re.search('Device Type.*GPU', line)
                 if match:
                     num_accelerators += 1
+        elif get_accelerator().device_name() == 'npu':
+            npu_smi = subprocess.check_output(['npu-smi', 'info', '-l'])
+            num_accelerators = int(npu_smi.decode('utf-8').strip().split('\n')[0].split(':')[1].strip())
         else:
             assert get_accelerator().device_name() == 'cpu'
             cpu_sockets = int(
