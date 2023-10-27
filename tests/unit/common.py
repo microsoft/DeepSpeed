@@ -207,12 +207,12 @@ class DistributedExec(ABC):
             if get_accelerator().is_available():
                 set_accelerator_visible()
 
+            if get_accelerator().is_available():
+                get_accelerator().set_device(local_rank)
+
             if self.init_distributed:
                 deepspeed.init_distributed(dist_backend=self.backend)
                 dist.barrier()
-
-            if get_accelerator().is_available():
-                get_accelerator().set_device(local_rank)
 
         try:
             self.run(**self._fixture_kwargs)
