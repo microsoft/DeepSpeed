@@ -449,6 +449,7 @@ class TestWarmupCosineLR(DistributedTest):
 
     @pytest.mark.parametrize("total_num_steps, warmup_num_steps, cos_min_ratio, warmup_min_ratio",
                              [
+                                 (100, 10, 0.1, 0.2),
                                  (200, 20, 0.1, 0.2),
                                  (500, 30, 0.0, 0.2),
                                  (600, 300, 0.1, 0.0),
@@ -490,22 +491,22 @@ class TestWarmupCosineLR(DistributedTest):
 
         step_lrs = []
         for _, batch in enumerate(data_loader):
-            step_lrs.extend(lr_scheduler.get_lr())
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
+            step_lrs.extend(lr_scheduler.get_lr())
 
         # Verify starting lr
-        assert step_lrs[0] == opt_lr * warmup_min_ratio
+        assert abs(step_lrs[0] - opt_lr * warmup_min_ratio) < 1e-7
 
         # Verify peak lr
-        assert step_lrs[warmup_num_steps] == opt_lr
+        assert abs(step_lrs[warmup_num_steps - 1] - opt_lr) < 1e-7
 
         # Verify end lr
-        assert step_lrs[total_num_steps - 1] == opt_lr * cos_min_ratio
+        assert abs(step_lrs[total_num_steps - 1] - opt_lr * cos_min_ratio) < 1e-7
 
         # Verify increasing phase
         _verify_continuous_increase(step_lrs[:warmup_num_steps])
 
         # Verify decreasing phase
-        _verify_continuous_decrease(step_lrs[warmup_num_steps:])
+        _verify_continuous_decrease(step_lrs[warmup_num_steps:total_num_steps])

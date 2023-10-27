@@ -771,7 +771,7 @@ class WarmupDecayLR(WarmupLR):
             float(max(1.0, self.total_num_steps - self.warmup_num_steps)))
 
 
-class WarmupCosineLR(WarmupLR):
+class WarmupCosineLR(object):
     """Increase the learning rate of each parameter group from min lr ratio to max lr ratio
         over warmup_num_steps steps, and then decay at cosine rate over the remaining training steps to min cosine ratio.
 
@@ -803,14 +803,17 @@ class WarmupCosineLR(WarmupLR):
                  warmup_type: str = WARMUP_LOG_RATE,
                  last_batch_iteration: int = -1):
 
+        self.optimizer = get_torch_optimizer(optimizer)
+
         self.total_num_steps = total_num_steps
-        self.warmup_min_ratio = warmup_min_ratio
+        self.last_batch_iteration = last_batch_iteration
         self.cos_min_ratio = cos_min_ratio
-        super(WarmupCosineLR, self).__init__(
-            optimizer,
-            last_batch_iteration=last_batch_iteration,
-            warmup_num_steps=warmup_num_steps,
-        )
+
+        self.warmup_type = warmup_type
+        self.warmup_min_ratio = warmup_min_ratio
+        self.warmup_num_steps = max(2, warmup_num_steps)
+        self.inverse_log_warm_up = 1.0 / math.log(warmup_num_steps)
+
         if self.total_num_steps < self.warmup_num_steps:
             logger.warning('total_num_steps {} is less than warmup_num_steps {}'.format(
                 total_num_steps, warmup_num_steps))
@@ -828,12 +831,13 @@ class WarmupCosineLR(WarmupLR):
                 ratio = self.last_batch_iteration / self.warmup_num_steps
             ratio_delta = 1. - self.warmup_min_ratio
             ratio = self.warmup_min_ratio + ratio * ratio_delta
-        else:
-            real_last_step = self.last_batch_iteration - self.warmup_num_steps
-            real_total_steps = self.total_num_steps - self.warmup_num_steps
-            ratio_delta = 1. - self.cos_min_ratio
-            ratio = (1 + math.cos(math.pi * real_last_step / real_total_steps)) / 2
-            ratio = max(0.0, self.cos_min_ratio + ratio_delta * ratio)
+            return ratio
+
+        real_last_step = self.last_batch_iteration - self.warmup_num_steps + 1
+        real_total_steps = self.total_num_steps - self.warmup_num_steps
+        ratio_delta = 1. - self.cos_min_ratio
+        ratio = (1 + math.cos(math.pi * real_last_step / real_total_steps)) / 2
+        ratio = max(0.0, self.cos_min_ratio + ratio_delta * ratio)
         return ratio
 
     def step(self, last_batch_iteration=None):
@@ -841,7 +845,28 @@ class WarmupCosineLR(WarmupLR):
             last_batch_iteration = self.last_batch_iteration + 1
         self.last_batch_iteration = last_batch_iteration
 
-        lr_ratio = self.get_lr_ratio()
-        for param_group, org_lr in zip(self.optimizer.param_groups, self.org_lrs):
-            param_group['lr'] = lr_ratio * org_lr
+        lrs = self.get_lr()
+        for param_group, lr in zip(self.optimizer.param_groups, lrs):
+            param_group['lr'] = lr
         self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
+
+    def get_lr(self):
+        if self.last_batch_iteration < 0:
+            logger.warning("Attempting to get learning rate from scheduler before it has started")
+            return [0.0]
+        lr_ratio = self.get_lr_ratio()
+        return [org_lr * lr_ratio for org_lr in self.org_lrs]
+
+    def state_dict(self):
+        return {'last_batch_iteration': self.last_batch_iteration}
+
+    def load_state_dict(self, sd):
+        self.last_batch_iteration = sd['last_batch_iteration']
+
+    def _format_param(self, optimizer, param_value, param_name):
+        if isinstance(param_value, list) or isinstance(param_value, tuple):
+            if len(param_value) != len(optimizer.param_groups):
+                raise ValueError("expected {} value for {}, got {}".format(len(optimizer.param_groups), param_name,
+                                                                           FileNotFoundError(param_value)))
+            return list(param_value)
+        return [param_value] * len(optimizer.param_groups)
