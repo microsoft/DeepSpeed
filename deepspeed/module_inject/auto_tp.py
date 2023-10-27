@@ -14,7 +14,7 @@ from deepspeed import comm as dist
 from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce
 from deepspeed.accelerator import get_accelerator
 from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw
-from deepspeed.utils.tp_shard import get_shard_size, get_shard_size_list
+from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 
 
 class ReplaceWithTensorSlicing:
@@ -53,7 +53,11 @@ class ReplaceWithTensorSlicing:
         src_split = torch.split(src.data, src.shape[outer_dim] // num_splits, dim=outer_dim)
         if (len(src_shape) == 2 and len(dst_shape) == 2):
             if src_shape[outer_dim] == dst_shape[self.out_dim]:
-                dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
+                try:
+                    dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
+                except:
+                    print(dst.shape, src.shape)
+                    exit()
                 dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
                 if hasattr(src, 'scale'):
                     dst.scale = src.scale
@@ -317,16 +321,12 @@ class AutoTP():
 
             setattr(child, "replaced", True)
             if name == "lm_head" or name == 'embed_out':
-                return LmHeadLinearAllreduce(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False),
-                                             rank=dist.get_rank(),
-                                             world_size=dist.get_world_size(),
-                                             bias=child.bias if child.bias is None else torch.nn.parameter.Parameter(
-                                                 child.bias.to(get_accelerator().current_device_name())),
-                                             mp_group=self.mp_group)
-            return LinearAllreduce(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False),
-                                   bias=child.bias if child.bias is None else \
-                                        torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())),
-                                   mp_group=self.mp_group)
+                return LmHeadLinearAllreduce(
+                    torch.nn.parameter.Parameter(data_dc, requires_grad=False), dist.get_rank(), dist.get_world_size(),
+                    child.bias if child.bias is None else torch.nn.parameter.Parameter(
+                        child.bias.to(get_accelerator().current_device_name())), self.mp_group)
+            return LinearAllreduce(torch.nn.parameter.Parameter(data_dc, requires_grad=False), child.bias if child.bias is None else \
+                        torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), self.mp_group)
         else:
 
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
@@ -346,7 +346,7 @@ class AutoTP():
             else:
                 data = child.weight.data.split(get_shard_size_list(weight_shape[0], self.mp_size),
                                                dim=1 if self.conv_linear_layer else 0)
-                data_dc = data[mp_replace.gpu_index].clone().detach()
+                data_dc = data[mp_replace.gpu_index].to(get_accelerator().current_device_name()).clone().detach()
                 del data
 
                 if child.bias is not None:
@@ -354,8 +354,7 @@ class AutoTP():
                         weight_shape[1] if self.conv_linear_layer else weight_shape[0], self.mp_size),
                                                       dim=0)
                     bias_data = bias_data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
-                    bias_data = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
-                    bias_data_dc = bias_data.clone().detach()
+                    bias_data_dc = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
                     del bias_data
                 else:
                     bias_data_dc = None

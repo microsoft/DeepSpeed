@@ -15,14 +15,15 @@ used throughout the codebase.
 #define DS_HD_INLINE __host__ __device__ __forceinline__
 #define DS_D_INLINE __device__ __forceinline__
 
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
 
 // constexpr variant of warpSize for templating
 constexpr int hw_warp_size = 64;
 #define HALF_PRECISION_AVAILABLE = 1
 #include <hip/hip_cooperative_groups.h>
+#include <hip/hip_fp16.h>
 
-#else  // !__HIP_PLATFORM_HCC__
+#else  // !__HIP_PLATFORM_AMD__
 
 // constexpr variant of warpSize for templating
 constexpr int hw_warp_size = 32;
@@ -37,8 +38,9 @@ constexpr int hw_warp_size = 32;
 #endif  // __CUDA_ARCH__ >= 800
 
 #include <cooperative_groups.h>
+#include <cuda_fp16.h>
 
-#endif  //__HIP_PLATFORM_HCC__
+#endif  //__HIP_PLATFORM_AMD__
 
 inline int next_pow2(const int val)
 {

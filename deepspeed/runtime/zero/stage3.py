@@ -181,6 +181,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             max_live_parameters=max_live_parameters,
             param_persistence_threshold=param_persistence_threshold,
             model_persistence_threshold=model_persistence_threshold,
+            dp_process_group=dp_process_group,
             offload_param_config=offload_param_config,
             mpu=mpu,
             zero_param_parallel_group=zero_param_parallel_group,
@@ -217,7 +218,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self.reduce_scatter = reduce_scatter
 
-        self.dp_process_group = dp_process_group
+        self.dp_process_group = self.parameter_offload.dp_process_group
 
         self.all2all_process_group = all2all_process_group
 
@@ -329,10 +330,13 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 count = count + 1
 
         #Largest partitioned param
-        largest_partitioned_param_numel = max([
-            max([max(tensor.numel(), tensor.ds_numel) for tensor in fp16_partitioned_group])
-            for fp16_partitioned_group in self.fp16_partitioned_groups
-        ])
+        largest_partitioned_param_numel = 0
+        for fp16_partitioned_group in self.fp16_partitioned_groups:
+            if len(fp16_partitioned_group) > 0:
+                largest_partitioned_param_numel = max(
+                    largest_partitioned_param_numel,
+                    max([max(tensor.numel(), tensor.ds_numel) for tensor in fp16_partitioned_group]))
+
         print_rank_0(f'Largest partitioned param numel = {largest_partitioned_param_numel}', force=False)
 
         self._setup_for_real_optimizer()
@@ -386,6 +390,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         max_live_parameters,
         param_persistence_threshold,
         model_persistence_threshold,
+        dp_process_group,
         offload_param_config,
         mpu,
         zero_param_parallel_group,
@@ -401,6 +406,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                     max_live_parameters=max_live_parameters,
                                     param_persistence_threshold=param_persistence_threshold,
                                     model_persistence_threshold=model_persistence_threshold,
+                                    dp_process_group=dp_process_group,
                                     offload_param_config=offload_param_config,
                                     mpu=mpu,
                                     zero_param_parallel_group=zero_param_parallel_group,
@@ -409,9 +415,20 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _get_trainable_parameter_groups(self):
         param_groups = []
+        PARAMS_KEY = "params"
         for param_group in self.optimizer.param_groups:
-            trainable_params = {"params": [p for p in param_group["params"] if p.requires_grad]}
-            param_groups.append(trainable_params)
+            trainable_params = [p for p in param_group[PARAMS_KEY] if p.requires_grad]
+            if len(trainable_params) == 0:
+                continue
+
+            trainable_param_group = {}
+            for key in param_group.keys():
+                if key == PARAMS_KEY:
+                    trainable_param_group[PARAMS_KEY] = trainable_params
+                else:
+                    trainable_param_group[key] = param_group[key]
+            param_groups.append(trainable_param_group)
+
         return param_groups
 
     def _set_zero_group_parallelism(self):
@@ -1048,19 +1065,19 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     param.all_gather()
 
                     #print(f"After all gather {param.device}, {param.shape}")
-                    def wrapper(param, i):
+                    def wrapper(param):
                         param_tmp = param.expand_as(param)
                         grad_acc = param_tmp.grad_fn.next_functions[0][0]
 
                         @instrument_w_nvtx
                         def reduce_partition_and_remove_grads(*notneeded):
-                            self.reduce_ready_partitions_and_remove_grads(param, i)
+                            self.reduce_ready_partitions_and_remove_grads(param)
 
                         grad_acc.register_hook(reduce_partition_and_remove_grads)
                         self.grad_accs.append(grad_acc)
 
                     #print(f"param grad fn {param.expand_as(param).grad_fn}")
-                    wrapper(param, i)
+                    wrapper(param)
 
                     # Partition the parameter after creating the hook
                     param.partition()
@@ -1078,7 +1095,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             force=False)
 
     ###############Independent Partition Gradient ########################
-    def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):
+    def reduce_independent_p_g_buckets_and_remove_grads(self, param):
         #print_rank_0(f"Inside reduce ipg buckets. {debug_param2name_id_shape(param)}, ipg elements {self.elements_in_ipg_bucket}, reduce bucket size {self.reduce_bucket_size}", force=True)
 
         # Because the ipg bucket is initialized with a random place holder tensor, we must
@@ -1099,7 +1116,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if not get_accelerator().is_synchronized_device():
             self.reduce_and_partition_stream.wait_stream(get_accelerator().default_stream())
 
-        if self.contiguous_gradients and self.elements_in_ipg_bucket + param.grad.numel() < self.reduce_bucket_size:
+        if self.contiguous_gradients and self.elements_in_ipg_bucket + param.grad.numel() <= self.reduce_bucket_size:
             # move the gradient to a contiguous buffer
             with get_accelerator().stream(self.reduce_and_partition_stream):
                 # move the parameter's gradient to the contiguous flat buffer
@@ -1344,9 +1361,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                                           gradient_tensors=offload_fp32_gradients[i])
         return buffers
 
-    def reduce_ready_partitions_and_remove_grads(self, param, i):
+    def reduce_ready_partitions_and_remove_grads(self, param):
         #print_rank_0(f"Backward {debug_param2name_id_shape(param)}", force=True)
-        self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
+        self.reduce_independent_p_g_buckets_and_remove_grads(param)
 
     def zero_reduced_gradients(self, partition_id, i):
 
@@ -1552,7 +1569,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         return params_in_partition, params_not_in_partition, first_offset
 
     @instrument_w_nvtx
-    def zero_grad(self, set_to_none=False):
+    def zero_grad(self, set_to_none=True):
         """
         Zero FP16 parameter grads.
         """
@@ -1849,7 +1866,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if self.swap_optimizer:
             self.optimizer_swapper.log_timers()
 
-        self.invalidate_secondary_tensor()
+        # self.invalidate_secondary_tensor() # given that we want hpz in forward pass when no_grad is set, we need to keep the secondary tensor
 
         self.timers.log(timer_names)
 
@@ -2098,16 +2115,17 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         return grad_dict
 
-    def _fp32_state_allgather(self, param, fp32_state):
-        reduce_buffer = torch.zeros(self.partition_count * fp32_state.numel(),
+    def _fp32_state_allgather(self, param, fp32_state_partition):
+        reduce_buffer = torch.zeros(self.partition_count * fp32_state_partition.numel(),
                                     dtype=torch.float32,
                                     device=param.device).flatten()
         my_rank = dist.get_rank(group=self.dp_process_group)
         partitions = [
             reduce_buffer.narrow(0,
-                                 fp32_state.numel() * i, fp32_state.numel()) for i in range(self.partition_count)
+                                 fp32_state_partition.numel() * i, fp32_state_partition.numel())
+            for i in range(self.partition_count)
         ]
-        partitions[my_rank].data.copy_(fp32_state.data, non_blocking=False)
+        partitions[my_rank].data.copy_(fp32_state_partition.data, non_blocking=False)
 
         dist.all_gather(partitions, partitions[my_rank], group=self.dp_process_group)
 
@@ -2122,19 +2140,16 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         if self.offload_optimizer:
             group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
-            fp32_grad = self.fp32_partitioned_groups_flat[group_idx].grad.narrow(0, dest_offset,
-                                                                                 num_elements).to(device=param.device)
+            fp32_grad = self.fp32_partitioned_groups_flat[group_idx].grad.narrow(0, dest_offset, num_elements)
         else:
             fp32_grad = self.__param_id_to_grad_partition[param.ds_id].float()
 
         return self._fp32_state_allgather(param, fp32_grad)
 
-    def get_full_hp_param(self, param, optim_state_key=None) -> Tensor:
-        if not param.requires_grad:
-            return None
-
+    def _get_fp32_opt_state_partition(self, param, optim_state_key=None):
         if not get_accelerator().is_synchronized_device():
             self.reduce_and_partition_stream.synchronize()
+
         group_idx, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
 
         if self._swappable_optimizer_subgroup(group_idx):
@@ -2142,15 +2157,40 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         fp32_param = self.fp32_partitioned_groups_flat[group_idx]
         if optim_state_key is None:
-            fp32_opt_state = fp32_param.narrow(0, dest_offset, num_elements).to(device=param.device)
+            fp32_opt_state = fp32_param.narrow(0, dest_offset, num_elements)
         else:
-            fp32_opt_state = self.optimizer.state[fp32_param][optim_state_key].narrow(
-                0, dest_offset, num_elements).to(device=param.device)
+            fp32_opt_state = self.optimizer.state[fp32_param][optim_state_key].narrow(0, dest_offset, num_elements)
 
+        return fp32_opt_state, group_idx
+
+    def get_full_hp_param(self, param, optim_state_key=None) -> Tensor:
+        if not param.requires_grad:
+            return None
+
+        fp32_opt_state, group_idx = self._get_fp32_opt_state_partition(param, optim_state_key)
         hp_param = self._fp32_state_allgather(param, fp32_opt_state)
+
         if self._swappable_optimizer_subgroup(group_idx):
             self._optimizer_states_and_gradient_swap_out(group_idx)
+
         return hp_param
+
+    def set_full_hp_param(self, value, param, optim_state_key=None):
+        if not param.requires_grad:
+            return
+
+        assert value.numel(
+        ) == param.ds_numel, f" Number of elements do not match: {value.numel()} != {param.ds_numel}"
+
+        fp32_opt_state_partition, group_idx = self._get_fp32_opt_state_partition(param, optim_state_key)
+        my_rank = dist.get_rank(group=self.dp_process_group)
+        value_partition = value.flatten().narrow(0,
+                                                 fp32_opt_state_partition.numel() * my_rank,
+                                                 fp32_opt_state_partition.numel())
+        fp32_opt_state_partition.data.copy_(value_partition.data)
+
+        if self._swappable_optimizer_subgroup(group_idx):
+            self._optimizer_states_and_gradient_swap_out(group_idx)
 
     @instrument_w_nvtx
     def _partition_all_parameters(self):

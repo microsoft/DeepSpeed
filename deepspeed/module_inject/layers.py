@@ -10,7 +10,7 @@ from torch.nn import functional as F
 
 from torch.nn.parameter import Parameter
 from deepspeed.accelerator import get_accelerator
-from deepspeed.utils.tp_shard import get_shard_size, get_shard_size_list
+from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 
 
 class LinearAllreduce(nn.Module):
