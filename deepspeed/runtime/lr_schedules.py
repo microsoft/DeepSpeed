@@ -466,7 +466,6 @@ class OneCycle(object):
         if cycle_momentum:
             self._initialize_momentum(self.optimizer, cycle_min_mom, cycle_max_mom, decay_mom_rate,
                                       last_batch_iteration)
-
         # Initialize batch iteration tracker
         self.last_batch_iteration = last_batch_iteration
 

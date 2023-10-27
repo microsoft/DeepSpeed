@@ -10,9 +10,10 @@ from unit.common import DistributedTest
 from unit.simple_model import SimpleModel, random_dataloader
 from deepspeed.runtime.lr_schedules import LR_RANGE_TEST, LR_RANGE_TEST_MIN_LR, LR_RANGE_TEST_STEP_RATE, LR_RANGE_TEST_STEP_SIZE, LR_RANGE_TEST_STAIRCASE
 from deepspeed.runtime.lr_schedules import WARMUP_LR, WARMUP_MIN_LR, WARMUP_MAX_LR, WARMUP_NUM_STEPS, WARMUP_TYPE, WARMUP_LOG_RATE, WARMUP_LINEAR_RATE
-from deepspeed.runtime.lr_schedules import ONE_CYCLE, CYCLE_MIN_LR, CYCLE_MAX_LR, CYCLE_FIRST_STEP_SIZE, DECAY_LR_RATE, DECAY_STEP_SIZE, WARMUP_COSINE_LR
+from deepspeed.runtime.lr_schedules import ONE_CYCLE, CYCLE_MIN_LR, CYCLE_MAX_LR, CYCLE_FIRST_STEP_SIZE, DECAY_LR_RATE, DECAY_STEP_SIZE
 from deepspeed.runtime.lr_schedules import CYCLE_MIN_MOM, CYCLE_MAX_MOM, DECAY_MOM_RATE
 from deepspeed.runtime.lr_schedules import WARMUP_DECAY_LR, TOTAL_NUM_STEPS
+from deepspeed.runtime.lr_schedules import WARMUP_COSINE_LR, WARMUP_MIN_RATIO, COS_MIN_RATIO
 
 
 def _verify_continuous_decrease(values):
@@ -464,11 +465,6 @@ class TestWarmupCosineLR(DistributedTest):
                     "lr": opt_lr
                 },
             },
-
-                 total_num_steps: int,
-                 warmup_min_ratio: float = 0.0,
-                 warmup_num_steps: int = 1000,
-                 cos_min_ratio: float = 0.0001,
             "scheduler": {
                 "type": WARMUP_COSINE_LR,
                 "params": {
@@ -487,7 +483,7 @@ class TestWarmupCosineLR(DistributedTest):
                                                          model=model,
                                                          model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
-                                        total_samples=max(50, cycle_step_size * 3),
+                                        total_samples=max(50, total_num_steps * 3),
                                         hidden_dim=hidden_dim,
                                         device=model.device,
                                         dtype=torch.float)
