@@ -37,7 +37,8 @@ from deepspeed.runtime.bf16_optimizer import BF16_Optimizer
 
 from deepspeed.runtime.config import DEEPSPEED_OPTIMIZERS, \
     ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER, \
-    TORCH_ADAM_PARAM, ADAM_W_MODE, ADAM_W_MODE_DEFAULT, ZERO_ONE_ADAM_OPTIMIZER, MUADAM_OPTIMIZER, MUADAMW_OPTIMIZER, MUSGD_OPTIMIZER
+    TORCH_ADAM_PARAM, ADAM_W_MODE, ADAM_W_MODE_DEFAULT, ZERO_ONE_ADAM_OPTIMIZER, MUADAM_OPTIMIZER, MUADAMW_OPTIMIZER, \
+    MUSGD_OPTIMIZER, LION_OPTIMIZER
 
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
@@ -807,6 +808,10 @@ class DeepSpeedEngine(Module):
 
         return torch.float32
 
+    @communication_data_type.setter
+    def communication_data_type(self, value):
+        self._config.communication_data_type = value
+
     def postscale_gradients(self):
         return not self._config.prescale_gradients
 
@@ -1113,6 +1118,9 @@ class DeepSpeedEngine(Module):
         self.mp_world_size = groups._get_model_parallel_world_size()
         self.expert_parallel_group = groups._get_expert_parallel_group_dict()
         self.expert_data_parallel_group = groups._get_expert_data_parallel_group_dict()
+        self.sequence_parallel_size = groups._get_sequence_parallel_world_size()
+        if self.sequence_parallel_size > 1:
+            self.communication_data_type = self._config.seq_parallel_communication_data_type
 
         if not (self.amp_enabled() or is_zero_init_model):
             self._broadcast_model()
@@ -1181,13 +1189,11 @@ class DeepSpeedEngine(Module):
 
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
-        if client_optimizer is not None:
+        if client_optimizer is None:
+            basic_optimizer = self._configure_basic_optimizer(model_parameters)
+            log_dist(f"Using DeepSpeed Optimizer param name {self.optimizer_name()} as basic optimizer", ranks=[0])
+        else:
             if isinstance(client_optimizer, tuple(self._supported_optims())):
-                client_optimizer.param_groups[:] = [
-                    pg for pg in client_optimizer.param_groups if len(pg["params"]) != 0
-                ]
-                log_dist("Removing param_group that has no 'params' in the client Optimizer", ranks=[0])
-
                 basic_optimizer = client_optimizer
                 log_dist('Using client Optimizer as basic optimizer', ranks=[0])
             else:
@@ -1198,9 +1204,9 @@ class DeepSpeedEngine(Module):
                 if self.zero_force_ds_cpu_optimizer():
                     msg = f'You are using ZeRO-Offload with a client provided optimizer ({type(basic_optimizer)}) which in most cases will yield poor performance. Please either use deepspeed.ops.adam.DeepSpeedCPUAdam or set an optimizer in your ds-config (https://www.deepspeed.ai/docs/config-json/#optimizer-parameters). If you really want to use a custom optimizer w. ZeRO-Offload and understand the performance impacts you can also set <"zero_force_ds_cpu_optimizer": false> in your configuration file.'
                     raise ZeRORuntimeException(msg)
-        else:
-            basic_optimizer = self._configure_basic_optimizer(model_parameters)
-            log_dist(f"Using DeepSpeed Optimizer param name {self.optimizer_name()} as basic optimizer", ranks=[0])
+
+        basic_optimizer.param_groups[:] = [pg for pg in basic_optimizer.param_groups if len(pg["params"]) != 0]
+        log_dist("Removing param_group that has no 'params' in the basic Optimizer", ranks=[0])
 
         self._check_for_duplicates(basic_optimizer)
 
@@ -1298,6 +1304,13 @@ class DeepSpeedEngine(Module):
             optimizer = OnebitLamb(model_parameters, self, **optimizer_parameters)
             if not self.fp16_enabled():
                 logger.warning(f"Currently the convergence of 1-bit Lamb is only verified under FP16")
+        elif self.optimizer_name() == LION_OPTIMIZER:
+            if self.zero_use_cpu_optimizer():
+                from deepspeed.ops.lion import DeepSpeedCPULion
+                optimizer = DeepSpeedCPULion(model_parameters, **optimizer_parameters)
+            else:
+                from deepspeed.ops.lion import FusedLion
+                optimizer = FusedLion(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == MUADAM_OPTIMIZER:
             try:
                 from mup import MuAdam
@@ -2364,7 +2377,7 @@ class DeepSpeedEngine(Module):
             if self.pipeline_parallelism:
                 dp_group = self.mpu.get_data_parallel_group()
             else:
-                dp_group = groups._get_data_parallel_group()
+                dp_group = groups._get_sequence_data_parallel_group()
 
             if bucket_type == SparseTensor.type():
                 self.sparse_allreduce_no_retain(bucket, dp_group=dp_group)
@@ -2425,9 +2438,10 @@ class DeepSpeedEngine(Module):
 
         if self.postscale_gradients():
             if self.gradient_average:
-                values.mul_(self.gradient_predivide_factor() / dist.get_world_size(group=dp_group))
+                values.mul_(self.gradient_predivide_factor() /
+                            (dist.get_world_size(group=dp_group) / float(self.sequence_parallel_size)))
         else:
-            values.mul_(1. / dist.get_world_size(group=dp_group))
+            values.mul_(1. / (dist.get_world_size(group=dp_group) / float(self.sequence_parallel_size)))
 
         indices_device_list = self.sparse_all_gather(indices, dp_group)
         values_device_list = self.sparse_all_gather(values, dp_group)
@@ -2705,6 +2719,9 @@ class DeepSpeedEngine(Module):
 
         if self._optimizer_has_ckpt_event_epilogue():
             self.optimizer.checkpoint_event_epilogue()
+
+        if self.load_universal_checkpoint():
+            self.optimizer.update_lp_params()
 
         return load_path, client_states
 
@@ -2988,7 +3005,8 @@ class DeepSpeedEngine(Module):
         # There seems to be issue creating them in parallel
 
         # Ensure save_dir directory exists
-        self.checkpoint_engine.makedirs(save_dir, exist_ok=True)
+        if rank == 0:
+            self.checkpoint_engine.makedirs(save_dir, exist_ok=True)
         dist.barrier()
 
         if tag is None:
@@ -3281,7 +3299,7 @@ class DeepSpeedEngine(Module):
         # if we don't use it, we get parameters ordered incorrectly
         if hasattr(self.optimizer, "round_robin_bit16_groups"):
             bit16_groups = self.optimizer.round_robin_bit16_groups
-        elif self.bfloat16_enabled() and not self.zero_optimization():
+        elif self.bfloat16_enabled() and hasattr(self.optimizer, "bf16_groups"):
             bit16_groups = self.optimizer.bf16_groups
         else:
             bit16_groups = self.optimizer.bit16_groups if self.zero_optimization_stage(
