@@ -26,8 +26,7 @@ from deepspeed.checkpoint import (
     PARAM_SHAPES,
     PARAM,
     CAT_DIM,
-    VOCAB_DIVISIBILITY_PADDING_TENSOR,
-    ORIGINAL_VOCAB_SIZE,
+    VOCAB_TENSOR,
     UNIVERSAL_CHECKPOINT_INFO,
     VOCABULARY_PARAMETER_PATTERNS,
     PIPELINE_REPLICATED_PARAMETER_PATTERNS,
@@ -149,14 +148,6 @@ def _merge_zero_shards(param_base_path, state, tp_degree, slice_shape):
     return slices
 
 
-def _get_vocab_divisibility_padding_tensor(universal_checkpoint_info, padded_vocab_tensor):
-    original_vocab_size = universal_checkpoint_info.get(ORIGINAL_VOCAB_SIZE)
-    if padded_vocab_tensor.shape[0] > original_vocab_size:
-        return padded_vocab_tensor[-1]
-    else:
-        return torch.zeros(padded_vocab_tensor.shape[1])
-
-
 def merge_tp_slices(ds_checkpoint, dir, slice_dir, tp_degree, name_and_shape):
     name, shape = name_and_shape
     slice_base_path = os.path.join(slice_dir, name)
@@ -191,9 +182,9 @@ def merge_tp_slices(ds_checkpoint, dir, slice_dir, tp_degree, name_and_shape):
         if any(re.match(pattern, name) for pattern in vocabulary_parameters):
             #print(f"Before {param.shape=}")
             # strip padding
-            #param = _strip_vocab_padding(ds_checkpoint, param)
-            ckpt_dict[VOCAB_DIVISIBILITY_PADDING_TENSOR] = _get_vocab_divisibility_padding_tensor(
-                universal_checkpoint_info, param)
+            original_vocab_size = universal_checkpoint_info['original_vocab_size']
+            param = param[:original_vocab_size, :]
+            ckpt_dict[VOCAB_TENSOR] = True
             #print(f"After {param.shape=}")
 
         #print(f"Final shape: {param.shape}")
