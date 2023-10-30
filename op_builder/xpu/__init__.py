@@ -8,3 +8,4 @@ from .cpu_adam import CPUAdamBuilder
 from .cpu_adagrad import CPUAdagradBuilder
 from .fused_adam import FusedAdamBuilder
 from .async_io import AsyncIOBuilder
+from .transformer_inference import InferenceBuilder

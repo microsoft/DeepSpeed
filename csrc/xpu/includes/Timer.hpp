@@ -1,3 +1,7 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
 
 #ifndef __TIMER_H__
 #define __TIMER_H__

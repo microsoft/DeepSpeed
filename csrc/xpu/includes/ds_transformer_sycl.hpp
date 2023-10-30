@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #pragma once
 
 #if __has_include(<sycl/sycl.hpp>)
@@ -185,6 +190,6 @@ private:
     bool _normalize_invertible;
     bool _gelu_checkpoint;
 
-    // High Performace flags
+    // High Performance flags
     bool _stochastic_mode;
 };

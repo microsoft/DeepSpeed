@@ -40,6 +40,7 @@ from op_builder.builder import installed_cuda_version
 
 # Fetch rocm state.
 is_rocm_pytorch = OpBuilder.is_rocm_pytorch()
+is_sycl_enabled = OpBuilder.is_sycl_enabled()
 rocm_version = OpBuilder.installed_rocm_version()
 
 RED_START = '\033[31m'
@@ -184,6 +185,9 @@ for op_name, builder in ALL_OPS.items():
     # If op is compatible but install is not enabled (JIT mode).
     if is_rocm_pytorch and op_compatible and not op_enabled(op_name):
         builder.hipify_extension()
+
+    if is_sycl_enabled and op_compatible and not op_enabled(op_name):
+        builder.sycl_extension()
 
     # If op install enabled, add builder to extensions.
     if op_enabled(op_name) and op_compatible:

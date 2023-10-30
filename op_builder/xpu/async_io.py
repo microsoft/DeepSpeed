@@ -33,9 +33,7 @@ class AsyncIOBuilder(SYCLOpBuilder):
         ]
 
     def include_paths(self):
-        return [
-            'csrc/aio/py_lib', 'csrc/aio/common'
-        ]
+        return ['csrc/aio/py_lib', 'csrc/aio/common']
 
     def cxx_args(self):
         # -O0 for improved debugging, since performance is bound by I/O

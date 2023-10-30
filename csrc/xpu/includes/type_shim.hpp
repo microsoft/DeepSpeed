@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 /* Taken from NVIDIA/apex commit 855808f3fc268e9715d613f3c2e56469d8c986d8 */
 #include <ATen/ATen.h>
 #if __has_include(<sycl/sycl.hpp>)
@@ -8,7 +13,7 @@
 #error "Unsupported compiler"
 #endif
 
-// Forward/backward compatiblity hack around
+// Forward/backward compatibility hack around
 // https://github.com/pytorch/pytorch/commit/3aeb78079bcd68282fe9117088e138b77318e288
 // pending more future-proof guidance from upstream.
 // struct TypeShim

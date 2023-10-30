@@ -102,6 +102,7 @@ def assert_no_cuda_mismatch(name=""):
 class OpBuilder(ABC):
     _rocm_version = None
     _is_rocm_pytorch = None
+    _is_sycl_enabled = None
 
     def __init__(self, name):
         self.name = name
@@ -126,6 +127,9 @@ class OpBuilder(ABC):
         pass
 
     def hipify_extension(self):
+        pass
+
+    def sycl_extension(self):
         pass
 
     @staticmethod
@@ -178,6 +182,22 @@ class OpBuilder(ABC):
                     _is_rocm_pytorch = ROCM_HOME is not None
         OpBuilder._is_rocm_pytorch = _is_rocm_pytorch
         return OpBuilder._is_rocm_pytorch
+
+    @staticmethod
+    def is_sycl_enabled():
+        if OpBuilder._is_sycl_enabled is not None:
+            return OpBuilder._is_sycl_enabled
+
+        _is_sycl_enabled = False
+        try:
+            result = subprocess.run(["c2s", "--version"], capture_output=True)
+        except:
+            pass
+        else:
+            _is_sycl_enabled = True
+
+        OpBuilder._is_sycl_enabled = _is_sycl_enabled
+        return OpBuilder._is_sycl_enabled
 
     @staticmethod
     def installed_rocm_version():
