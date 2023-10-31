@@ -274,7 +274,9 @@ def top1gating(logits: Tensor,
     locations1_sc = _one_hot_to_float(locations1_s, capacity)
     combine_weights = einsum("se,sc->sec", gates, locations1_sc)
 
-    dispatch_mask = combine_weights.bool()
+    # Work around due to bug in torch_npu, revert me after fixed
+    with torch.no_grad():
+        dispatch_mask = combine_weights.bool()
 
     return l_aux, combine_weights, dispatch_mask, exp_counts
 

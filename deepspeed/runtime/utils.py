@@ -251,7 +251,8 @@ class CheckOverflow(object):
         overflow = self.has_overflow_serial(params)
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
-        overflow_gpu = get_accelerator().ByteTensor([overflow])
+        # Work around due to bug in HCCL, revert me after fixed
+        overflow_gpu = get_accelerator().IntTensor([overflow])
         # deepspeed.comm.all_reduce(overflow_gpu,
         #                             op=deepspeed.comm.ReduceOp.MAX,
         #                             group=mpu.get_model_parallel_group())

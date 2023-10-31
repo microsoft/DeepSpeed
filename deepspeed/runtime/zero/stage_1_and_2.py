@@ -588,6 +588,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         assert self.ep_process_group is not None, "Expert parallel group should be configured with MoE"
 
     def _update_model_bit16_weights(self, group_index):
+        # Work around due to bug in torch_npu, @see https://gitee.com/ascend/pytorch/pulls/6484
+        # Remove me after torch_npu fixed.
+        unflatten_sizes = [tensor.to(get_accelerator().current_device_name()) 
+                           for tensor in self.round_robin_bit16_groups[group_index]]
         updated_params = self.unflatten(self.bit16_groups_flat[group_index],
                                         self.round_robin_bit16_groups[group_index])
         for p, q in zip(self.round_robin_bit16_groups[group_index], updated_params):
@@ -1878,7 +1882,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def has_overflow(self, partition_gradients=True):
         if partition_gradients:
             overflow = self.local_overflow if self.cpu_offload else self.has_overflow_partitioned_grads_serial()
-            overflow_gpu = get_accelerator().ByteTensor([overflow])
+            # Work around due to bug in HCCL, revert me after fixed
+            overflow_gpu = get_accelerator().IntTensor([overflow])
             '''This will capture overflow across all data parallel and expert parallel process
             Since expert parallel process are a subset of data parallel process'''
             dist.all_reduce(overflow_gpu, op=dist.ReduceOp.MAX, group=self.dp_process_group)
@@ -1888,9 +1893,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             for group in self.bit16_groups:
                 for param in group:
                     params.append(param)
-
             overflow = self.has_overflow_serial(params, is_grad_list=partition_gradients)
-            overflow_gpu = get_accelerator().ByteTensor([overflow])
+            # Work around due to bug in HCCL, revert me after fixed
+            overflow_gpu = get_accelerator().IntTensor([overflow])
 
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs

@@ -2041,7 +2041,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     params.append(param)
 
             overflow = self.has_overflow_serial(params, is_grad_list=partition_gradients)
-            overflow_gpu = get_accelerator().ByteTensor([overflow])
+            # Work around due to bug in HCCL, revert me after fixed
+            overflow_gpu = get_accelerator().IntTensor([overflow])
 
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
