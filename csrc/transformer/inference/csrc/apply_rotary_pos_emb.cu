@@ -4,7 +4,7 @@
 // DeepSpeed Team
 
 #include "conversion_utils.h"
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
 #include "hip/hip_cooperative_groups.h"
 #else
 #include "cooperative_groups.h"
@@ -13,7 +13,7 @@
 #include "inference_cuda_layers.h"
 #include "memory_access_utils.h"
 
-#ifndef __HIP_PLATFORM_HCC__
+#ifndef __HIP_PLATFORM_AMD__
 #include <cuda_profiler_api.h>
 #endif
 
@@ -32,6 +32,7 @@ __global__ void apply_rotary_pos_half(T* mixed_query,
                                       unsigned num_heads,
                                       unsigned head_size,
                                       unsigned total_count,
+                                      float rope_theta,
                                       int max_out_tokens)
 {
     constexpr int T_per_thread = granularity / sizeof(T);
@@ -61,7 +62,7 @@ __global__ void apply_rotary_pos_half(T* mixed_query,
             const int neuron_idx = base_neuron_idx + i;
             if (neuron_idx < rotary_dim) {
                 float inv_freq = (float)((neuron_idx % half_dim) * 2) / (float)rotary_dim;
-                inv_freq = 1.0 / powf(10000.0, inv_freq) * (float)seq_idx;
+                inv_freq = 1.0 / powf(rope_theta, inv_freq) * (float)seq_idx;
 
                 float rotary_sign = (neuron_idx > (half_dim - 1) ? -1.0 : 1.0);
                 float q_rot = conversion::to<float>(q[i]) * rotary_sign;
@@ -95,9 +96,10 @@ __global__ void apply_rotary_pos_half(T* mixed_query,
                                                                                   num_heads,   \
                                                                                   head_size,   \
                                                                                   total_count, \
+                                                                                  rope_theta,  \
                                                                                   max_out_tokens);
 
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
 #define LAUNCH_FOR_ALIGNMENT(ALIGNMENT)         \
     if (threads_per_head == 4) {                \
         LAUNCH_ROT_POS_EMB_HALF(4, ALIGNMENT);  \
@@ -136,6 +138,7 @@ void launch_apply_rotary_pos_emb(T* mixed_query,
                                  unsigned offset,
                                  unsigned num_heads,
                                  unsigned batch,
+                                 float rope_theta,
                                  cudaStream_t stream,
                                  int max_out_tokens)
 {
@@ -176,9 +179,18 @@ void launch_apply_rotary_pos_emb(T* mixed_query,
     }
 }
 
-#define INSTANTIATE_LAUNCH_ROTARY_POS_EMB(T)      \
-    template void launch_apply_rotary_pos_emb<T>( \
-        T*, T*, unsigned, unsigned, unsigned, unsigned, unsigned, unsigned, cudaStream_t, int);
+#define INSTANTIATE_LAUNCH_ROTARY_POS_EMB(T)                   \
+    template void launch_apply_rotary_pos_emb<T>(T*,           \
+                                                 T*,           \
+                                                 unsigned,     \
+                                                 unsigned,     \
+                                                 unsigned,     \
+                                                 unsigned,     \
+                                                 unsigned,     \
+                                                 unsigned,     \
+                                                 float,        \
+                                                 cudaStream_t, \
+                                                 int);
 
 INSTANTIATE_LAUNCH_ROTARY_POS_EMB(float);
 #ifdef BF16_AVAILABLE
