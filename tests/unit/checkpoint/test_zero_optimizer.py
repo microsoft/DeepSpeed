@@ -545,6 +545,7 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
         assert loaded_trainable_param_names == trainable_param_names
 
         # Validate custom state_dict model
+        state_dict_bk = model.state_dict
         model.state_dict = model.custom_state_dict
         custom_state_dict_ckpt_folder = os.path.join(tmpdir, 'custom_state_dict')
         ds_engine.save_checkpoint(custom_state_dict_ckpt_folder, exclude_frozen_parameters=True)
@@ -559,6 +560,8 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
         overlap_names = set.intersection(custom_state_dict_param_names, trainable_param_names)
 
         assert loaded_custom_state_dict_param_names == overlap_names
+
+        model.state_dict = state_dict_bk
 
 
 class TestSaveTensorClone(DistributedTest):
