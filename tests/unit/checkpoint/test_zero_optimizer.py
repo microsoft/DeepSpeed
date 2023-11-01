@@ -544,6 +544,28 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
         trainable_param_names = set([n for n, p in model.named_parameters() if p.requires_grad])
         assert loaded_trainable_param_names == trainable_param_names
 
+    @pytest.mark.parametrize('zero_stage', [1, 2])
+    def test_save_exclude_custom_frozen_weights(self, tmpdir, zero_stage):
+        world_size = 1
+        config_dict = {
+            "train_micro_batch_size_per_gpu": 1,
+            "optimizer": {
+                "type": 'Adam'
+            },
+            "fp16": {
+                "enabled": True,
+                "initial_scale_power": 8
+            },
+            "zero_optimization": {
+                "stage": zero_stage,
+            }
+        }
+        hidden_dim = 10
+
+        model = SimpleFrozenModel(hidden_dim, empty_grad=False)
+
+        ds_engine, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
+
         # Validate custom state_dict model
         state_dict_bk = model.state_dict
         model.state_dict = model.custom_state_dict
