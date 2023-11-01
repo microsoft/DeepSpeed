@@ -11,9 +11,10 @@ from .replace_policy import replace_policies
 from typing import Optional
 import torch
 from deepspeed import comm as dist
-from .layers import LinearAllreduce, LinearLayer
+from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce
 from deepspeed.accelerator import get_accelerator
 from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw
+from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 
 
 class ReplaceWithTensorSlicing:
@@ -312,12 +313,19 @@ class AutoTP():
 
             if self.conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
-            data = child.weight.data.split(
-                (weight_shape[0] if self.conv_linear_layer else weight_shape[1]) // self.mp_size, dim=1)
-            data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+            data = child.weight.data.split(get_shard_size_list(
+                weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size),
+                                           dim=1)
+            data_dc = data[mp_replace.gpu_index].to(get_accelerator().current_device_name()).clone().detach()
+            del data
 
             setattr(child, "replaced", True)
-            return LinearAllreduce(torch.nn.parameter.Parameter(data, requires_grad=False), child.bias if child.bias is None else \
+            if name == "lm_head" or name == 'embed_out':
+                return LmHeadLinearAllreduce(
+                    torch.nn.parameter.Parameter(data_dc, requires_grad=False), dist.get_rank(), dist.get_world_size(),
+                    child.bias if child.bias is None else torch.nn.parameter.Parameter(
+                        child.bias.to(get_accelerator().current_device_name())), self.mp_group)
+            return LinearAllreduce(torch.nn.parameter.Parameter(data_dc, requires_grad=False), child.bias if child.bias is None else \
                         torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), self.mp_group)
         else:
 
@@ -330,27 +338,30 @@ class AutoTP():
                 #for detecting fused type
                 module_str = str(self.module).strip()
                 #The copy is a regular copy, The shape of dst and src is the same
-                data = prepare_tp_fused_qkvw(module_str, child.weight.data, self.mp_size, mp_replace.gpu_index)
+                data_dc = prepare_tp_fused_qkvw(module_str, child.weight.data, self.mp_size, mp_replace.gpu_index)
 
-                bias_data = None if child.bias is None else prepare_tp_fused_qkvw(
+                bias_data_dc = None if child.bias is None else prepare_tp_fused_qkvw(
                     module_str, child.bias.data, self.mp_size, mp_replace.gpu_index).to(
                         get_accelerator().current_device_name())
             else:
-                data = child.weight.data.split((weight_shape[0]) // self.mp_size,
+                data = child.weight.data.split(get_shard_size_list(weight_shape[0], self.mp_size),
                                                dim=1 if self.conv_linear_layer else 0)
-                data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+                data_dc = data[mp_replace.gpu_index].to(get_accelerator().current_device_name()).clone().detach()
+                del data
 
                 if child.bias is not None:
-                    bias_data = child.bias.data.split(
-                        (weight_shape[1] if self.conv_linear_layer else weight_shape[0]) // self.mp_size, dim=0)
+                    bias_data = child.bias.data.split(get_shard_size_list(
+                        weight_shape[1] if self.conv_linear_layer else weight_shape[0], self.mp_size),
+                                                      dim=0)
                     bias_data = bias_data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
-                    bias_data = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
+                    bias_data_dc = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
+                    del bias_data
                 else:
-                    bias_data = None
+                    bias_data_dc = None
 
             setattr(child, "replaced", True)
-            return LinearLayer(weight=torch.nn.parameter.Parameter(data.to(get_accelerator().current_device_name()), requires_grad=False), \
-                        bias=bias_data)
+            return LinearLayer(weight=torch.nn.parameter.Parameter(data_dc.to(get_accelerator().current_device_name()), requires_grad=False), \
+                        bias=bias_data_dc)
 
     def _slice_embedding(self, child, name, conv_linear_layer):
         if getattr(child, "replaced", False) == True:
@@ -358,13 +369,13 @@ class AutoTP():
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
 
         if hasattr(child.weight, 'ds_tensor'):
-            data = child.weight.ds_tensor.data.split(child.weight.shape[1] // self.mp_size, dim=1)
+            data = child.weight.ds_tensor.data.split(get_shard_size_list(child.weight.shape[1], self.mp_size), dim=1)
         else:
-            data = child.weight.data.split(child.weight.shape[1] // self.mp_size, dim=1)
+            data = child.weight.data.split(get_shard_size_list(child.weight.shape[1], self.mp_size), dim=1)
         data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
         data = torch.nn.parameter.Parameter(data, requires_grad=False)
 
-        new_embedding = nn.Embedding(child.weight.shape[0], child.weight.shape[1] // self.mp_size)
+        new_embedding = nn.Embedding(child.weight.shape[0], get_shard_size(child.weight.shape[1], self.mp_size))
         new_embedding.weight.data.copy_(data)
         setattr(child, "replaced", True)
         return new_embedding
@@ -378,8 +389,7 @@ class AutoTP():
         ]:
             if hasattr(child, param):
                 param_val = getattr(child, param)
-                assert param_val % self.mp_size == 0, f"{param} ({param_val}) must be divisible by mp_size ({self.mp_size})"
-                setattr(child, param, param_val // self.mp_size)
+                setattr(child, param, get_shard_size(param_val, self.mp_size))
         setattr(child, "replaced", True)
 
     def update_linear_policies(self):
@@ -432,4 +442,27 @@ class AutoTP():
             else:
                 self.update_mp_params(child)
                 self._replace_module(child, name, class_name)
+        return r_module
+
+    def get_model_num_kv_heads(self, config):
+        num_kv_heads = None
+        kv_head_names = ['num_key_value_heads', 'num_attention_heads', 'n_heads']
+        for name in kv_head_names:
+            if hasattr(config, name):
+                num_kv_heads = getattr(config, name)
+                if num_kv_heads != None:
+                    break
+        return num_kv_heads
+
+    def _replace_last_linear_module(self, r_module):
+        if hasattr(r_module, "lm_head"):
+            name = "lm_head"
+            child = r_module.lm_head
+        elif hasattr(r_module, "embed_out"):
+            name = "embed_out"
+            child = r_module.embed_out
+        else:
+            return r_module
+        if child.__class__ in self.linear_policies:
+            setattr(r_module, name, self.linear_policies[child.__class__](child, name, self.conv_linear_layer))
         return r_module

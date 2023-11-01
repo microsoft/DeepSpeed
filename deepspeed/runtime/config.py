@@ -77,9 +77,10 @@ ONEBIT_LAMB_OPTIMIZER = 'onebitlamb'
 MUADAM_OPTIMIZER = 'muadam'
 MUADAMW_OPTIMIZER = 'muadamw'
 MUSGD_OPTIMIZER = 'musgd'
+LION_OPTIMIZER = 'lion'
 DEEPSPEED_OPTIMIZERS = [
     ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER,
-    ZERO_ONE_ADAM_OPTIMIZER, MUADAM_OPTIMIZER, MUADAMW_OPTIMIZER, MUSGD_OPTIMIZER
+    ZERO_ONE_ADAM_OPTIMIZER, MUADAM_OPTIMIZER, MUADAMW_OPTIMIZER, MUSGD_OPTIMIZER, LION_OPTIMIZER
 ]
 
 # extra optimizer parameters for adam/adamw
@@ -237,8 +238,10 @@ def get_sparse_gradients_enabled(param_dict):
     return get_scalar_param(param_dict, SPARSE_GRADIENTS, SPARSE_GRADIENTS_DEFAULT)
 
 
-def get_communication_data_type(param_dict):
-    val = get_scalar_param(param_dict, COMMUNICATION_DATA_TYPE, COMMUNICATION_DATA_TYPE_DEFAULT)
+def get_communication_data_type(param_dict,
+                                comm_type=COMMUNICATION_DATA_TYPE,
+                                comm_data_type_default=COMMUNICATION_DATA_TYPE_DEFAULT):
+    val = get_scalar_param(param_dict, comm_type, comm_data_type_default)
     val = val.lower() if val is not None else val
     if val is None:
         return val  # we must determine it by other parameters
@@ -783,6 +786,8 @@ class DeepSpeedConfig(object):
 
         self.disable_allgather = get_disable_allgather(param_dict)
         self.communication_data_type = get_communication_data_type(param_dict)
+        self.seq_parallel_communication_data_type = get_communication_data_type(
+            param_dict, SEQ_PARALLEL_COMMUNICATION_DATA_TYPE, SEQ_PARALLEL_COMMUNICATION_DATA_TYPE_DEFAULT)
         self.prescale_gradients = get_prescale_gradients(param_dict)
         self.gradient_predivide_factor = get_gradient_predivide_factor(param_dict)
         self.sparse_gradients_enabled = get_sparse_gradients_enabled(param_dict)

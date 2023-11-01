@@ -22,9 +22,6 @@ from torch import nn
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import InferenceBuilder
 
-if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
-    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
-
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
     pytest.skip("skip inference tests on rocm for now", allow_module_level=True)
@@ -365,6 +362,9 @@ class TestMPSize(DistributedTest):
         if invalid_test_msg:
             pytest.skip(invalid_test_msg)
 
+        if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
+            pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
+
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
@@ -401,6 +401,9 @@ class TestLowCpuMemUsage(DistributedTest):
     ):
         model, task = model_w_task
         dtype = torch.float16
+        if dtype not in get_accelerator().supported_dtypes():
+            pytest.skip(f"Acceleraor {get_accelerator().device_name()} does not support {dtype}.")
+
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
         pipe = pipeline(task, model=model, model_kwargs={"low_cpu_mem_usage": True}, device=local_rank, framework="pt")
@@ -514,7 +517,7 @@ class TestInjectionPolicy(DistributedTest):
     [("Helsinki-NLP/opus-mt-en-de", "translation"), ("Salesforce/codegen-350M-mono", "text-generation")],
     ids=["marian", "codegen"],  #codegen has fusedqkv weight.
 )
-@pytest.mark.parametrize("dtype", [torch.float16], ids=["fp16"])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
 class TestAutoTensorParallelism(DistributedTest):
     world_size = [2]
 
@@ -530,6 +533,13 @@ class TestAutoTensorParallelism(DistributedTest):
         if invalid_test_msg:
             pytest.skip(invalid_test_msg)
 
+        if dtype not in get_accelerator().supported_dtypes():
+            pytest.skip(f"Acceleraor {get_accelerator().device_name()} does not support {dtype}.")
+
+        # TODO: enable this test after torch 2.1 stable release
+        if dtype == torch.bfloat16 and model_w_task[0] == "Salesforce/codegen-350M-mono":
+            pytest.skip("Codegen model(bf16) need to use torch version > 2.0.")
+
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         world_size = int(os.getenv("WORLD_SIZE", "2"))
@@ -542,6 +552,38 @@ class TestAutoTensorParallelism(DistributedTest):
         pipe.model = deepspeed.init_inference(pipe.model, mp_size=world_size, dtype=dtype)
         # Switch device to GPU so that input tensors are not on CPU
         pipe.device = torch.device(get_accelerator().device_name(local_rank))
+        ds_output = pipe(query, **inf_kwargs)
+
+        print(local_rank, "baseline", bs_output)
+        print(local_rank, "deepspeed", ds_output)
+        assert assert_fn(bs_output, ds_output)
+
+    @pytest.mark.world_size(3)
+    def test_odd_world_size(
+        self,
+        model_w_task,
+        query,
+        inf_kwargs,
+        assert_fn,
+        dtype,
+    ):
+        invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
+        if invalid_test_msg:
+            pytest.skip(invalid_test_msg)
+
+        model, task = model_w_task
+        if model == "Salesforce/codegen-350M-mono":
+            pytest.skip("codegen does not supported by odd world_size")
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+        world_size = int(os.getenv("WORLD_SIZE", "3"))
+
+        pipe = pipeline(task,
+                        model=model,
+                        device=torch.device(get_accelerator().device_name(local_rank)),
+                        framework="pt")
+        bs_output = pipe(query, **inf_kwargs)
+
+        pipe.model = deepspeed.init_inference(pipe.model, mp_size=world_size, dtype=dtype)
         ds_output = pipe(query, **inf_kwargs)
 
         print(local_rank, "baseline", bs_output)
