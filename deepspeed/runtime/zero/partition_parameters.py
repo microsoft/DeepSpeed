@@ -1558,8 +1558,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             else:
                 if secondary_start < param.ds_numel:
                     elements_to_copy = param.ds_numel - secondary_start
-                    param.ds_secondary_tensor.narrow(0, 0,
-                                           elements_to_copy).copy_(one_dim_param.narrow(0, secondary_start, elements_to_copy))
+                    param.ds_secondary_tensor.narrow(0, 0, elements_to_copy).copy_(
+                        one_dim_param.narrow(0, secondary_start, elements_to_copy))
 
             print_rank_0(f"{param.ds_id} partitioned type {param.dtype} dev {param.device} shape {param.shape}",
                          force=False)
