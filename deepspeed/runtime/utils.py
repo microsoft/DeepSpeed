@@ -73,6 +73,10 @@ def ensure_directory_exists(filename):
     dirname = os.path.dirname(filename)
     os.makedirs(dirname, exist_ok=True)
 
+def del_obj_attrs(obj):
+    attributes = [attr for attr in vars(obj) if not callable(getattr(obj, attr))]
+    for attr in attributes:
+        delattr(obj,attr)
 
 def set_random_seed(seed):
     """Set the random seed for common PRNGs used during training: random, numpy, and torch.
