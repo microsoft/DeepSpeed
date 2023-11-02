@@ -235,3 +235,6 @@ class MPS_Accelerator(DeepSpeedAccelerator):
         from torch.utils.cpp_extension import BuildExtension
 
         return BuildExtension
+
+    def get_found_device_version(self):
+        pass

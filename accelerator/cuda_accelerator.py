@@ -305,3 +305,6 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def build_extension(self):
         from torch.utils.cpp_extension import BuildExtension
         return BuildExtension
+
+    def get_found_device_version(self):
+        return torch.version.cuda

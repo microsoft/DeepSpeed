@@ -11,6 +11,7 @@ import os
 from os.path import abspath, dirname, join
 import torch
 import warnings
+from deepspeed.accelerator import get_accelerator
 
 # Set this environment variable for the T5 inference unittest(s) (e.g. google/t5-v1_1-small)
 os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
@@ -30,10 +31,12 @@ def pytest_configure(config):
 
 def pytest_addoption(parser):
     parser.addoption("--torch_ver", default=None, type=str)
-    parser.addoption("--cuda_ver", default=None, type=str)
+    parser.addoption("--device_ver", default=None, type=str)
 
 
 def validate_version(expected, found):
+    if found == "ALL_SUPPORT":
+        return True
     version_depth = expected.count('.') + 1
     found = '.'.join(found.split('.')[:version_depth])
     return found == expected
@@ -42,7 +45,8 @@ def validate_version(expected, found):
 @pytest.fixture(scope="session", autouse=True)
 def check_environment(pytestconfig):
     expected_torch_version = pytestconfig.getoption("torch_ver")
-    expected_cuda_version = pytestconfig.getoption("cuda_ver")
+    expected_device_version = pytestconfig.getoption("device_ver")
+    found_device_version = get_accelerator.get_found_device_version()
     if expected_torch_version is None:
         warnings.warn(
             "Running test without verifying torch version, please provide an expected torch version with --torch_ver")
@@ -50,12 +54,13 @@ def check_environment(pytestconfig):
         pytest.exit(
             f"expected torch version {expected_torch_version} did not match found torch version {torch.__version__}",
             returncode=2)
-    if expected_cuda_version is None:
-        warnings.warn(
-            "Running test without verifying cuda version, please provide an expected cuda version with --cuda_ver")
-    elif not validate_version(expected_cuda_version, torch.version.cuda):
+    if expected_device_version is None:
+        warnings.warn("Running test without verifying device version, "
+                      "please provide an expected device version with --device_ver")
+    elif not validate_version(expected_device_version, found_device_version):
         pytest.exit(
-            f"expected cuda version {expected_cuda_version} did not match found cuda version {torch.version.cuda}",
+            f"expected device version {expected_device_version} "
+            f"did not match found device version {found_device_version}",
             returncode=2)
 
 
