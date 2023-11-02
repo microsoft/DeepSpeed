@@ -43,7 +43,9 @@ jobs:
               BRANCH="${{ github.event.inputs.dse_branch }}"
           fi
           echo "DeepSpeedExamples Branch: $BRANCH"
-          git clone -b $BRANCH https://github.com/microsoft/DeepSpeedExamples.git
+          #git clone -b $BRANCH https://github.com/microsoft/DeepSpeedExamples.git
+          # TODO: Revert back to main branch once fork is merged into DSE
+          git clone -b $BRANCH https://github.com/santacml/DeepSpeedExamples.git
           cd DeepSpeedExamples/applications/DeepSpeed-Chat
           pip install -r requirements.txt
           pip install -e .
