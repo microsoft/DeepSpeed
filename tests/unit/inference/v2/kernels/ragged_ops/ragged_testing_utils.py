@@ -19,7 +19,7 @@ from deepspeed.inference.v2.ragged import (
     PlaceholderSequenceDescriptor,
     RaggedBatchWrapper,
 )
-from ...inference_test_utils import allclose
+from ....v2.inference_test_utils import allclose
 
 
 def build_simple_batch(seq_lens: List[int],

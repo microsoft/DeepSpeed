@@ -11,7 +11,7 @@ import torch
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.kernels.core_ops import CUDAGatedActivation
 from deepspeed.inference.v2.inference_utils import ActivationType
-from ...inference_test_utils import get_dtypes, allclose
+from ....v2.inference_test_utils import get_dtypes, allclose
 
 
 def reference_geglu_implementation(input: torch.Tensor,

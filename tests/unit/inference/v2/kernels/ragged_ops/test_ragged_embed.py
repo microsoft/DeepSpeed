@@ -10,7 +10,7 @@ import torch
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.kernels.ragged_ops import RaggedEmbeddingKernel
-from ...inference_test_utils import allclose, get_dtypes
+from ....v2.inference_test_utils import allclose, get_dtypes
 from .ragged_testing_utils import build_batch_and_manager
 
 

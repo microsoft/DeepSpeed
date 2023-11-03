@@ -13,7 +13,7 @@ from deepspeed.inference.v2.inference_utils import ActivationType, DtypeEnum, is
 from deepspeed.inference.v2.modules import ConfigBundle
 from deepspeed.inference.v2.modules.configs import DSLinearConfig
 from deepspeed.inference.v2.modules.interfaces import DSLinearRegistry
-from ..inference_test_utils import allclose
+from ...v2.inference_test_utils import allclose
 
 
 def reference_implementation(hidden_states: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor],

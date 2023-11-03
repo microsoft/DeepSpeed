@@ -15,7 +15,7 @@ from deepspeed.inference.v2.modules.configs import DSMoEConfig
 from deepspeed.inference.v2.modules.interfaces import DSMoERegistry
 
 from ..kernels.ragged_ops.ragged_testing_utils import build_simple_batch
-from ..inference_test_utils import allclose, get_dtypes
+from ...v2.inference_test_utils import allclose, get_dtypes
 
 
 def _gating_reference(logits: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:

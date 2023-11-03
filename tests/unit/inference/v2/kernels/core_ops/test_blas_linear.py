@@ -10,7 +10,7 @@ import torch
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.kernels.core_ops import BlasLibLinear
-from ...inference_test_utils import allclose
+from ....v2.inference_test_utils import allclose
 
 # Note: only testing with FP16 and BF16 because we use TF32 on Ampere and we don't have a good
 # set of tolerances. Since this is just on top of BLAS though, the test is more about

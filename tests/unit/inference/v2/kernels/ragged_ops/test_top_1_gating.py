@@ -11,7 +11,7 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.inference_utils import DtypeEnum
 from deepspeed.inference.v2.kernels.ragged_ops import RaggedTop1Gating
 from .ragged_testing_utils import build_simple_batch
-from ...inference_test_utils import allclose
+from ....v2.inference_test_utils import allclose
 
 
 def _test_single_mapping_helper(n_tokens: int,

@@ -12,7 +12,7 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.kernels.ragged_ops import BlockedRotaryEmbeddings, BlockedTrainedRotaryEmbeddings
 from deepspeed.inference.v2.ragged import RaggedBatchWrapper, DSSequenceDescriptor
 from .ragged_testing_utils import build_batch_and_manager, validate_kv_cache
-from ...inference_test_utils import allclose
+from ....v2.inference_test_utils import allclose
 """
 NOTE(cmikeh2): It is very possible to see unit test failures (even on FP16) depending on when
 certain values are casted up to or down from float32. If we are seeing accuracy issues, we should

@@ -11,7 +11,7 @@ from deepspeed.inference.v2.modules import ConfigBundle
 from deepspeed.inference.v2.modules.interfaces import DSPostNormRegistry
 from deepspeed.inference.v2.modules.configs import DSNormConfig
 from deepspeed.inference.v2.modules.implementations import cuda_post_ln
-from ..inference_test_utils import allclose
+from ...v2.inference_test_utils import allclose
 
 
 def reference_implementation(residual: torch.Tensor, hidden_states: torch.Tensor, gamma: torch.Tensor,

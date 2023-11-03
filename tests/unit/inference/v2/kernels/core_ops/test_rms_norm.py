@@ -9,7 +9,7 @@ import torch
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.inference_utils import DtypeEnum
 from deepspeed.inference.v2.kernels.core_ops import CUDARMSNorm, CUDARMSPreNorm
-from ...inference_test_utils import get_dtypes, allclose
+from ....v2.inference_test_utils import get_dtypes, allclose
 
 
 def reference_rms_norm(vals: torch.Tensor, gamma: torch.Tensor, epsilon: float = 1e-5) -> torch.Tensor:

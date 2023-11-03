@@ -8,7 +8,7 @@ import torch
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.kernels.core_ops import CUDAFPPreLN
-from ...inference_test_utils import get_dtypes, allclose
+from ....v2.inference_test_utils import get_dtypes, allclose
 
 
 def reference_implementation(residual: torch.Tensor, hidden_states: torch.Tensor, gamma: torch.Tensor,
