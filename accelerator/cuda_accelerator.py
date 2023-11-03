@@ -180,6 +180,17 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         else:
             return False
 
+    # Graph operations
+    def create_graph(self):
+        return torch.cuda.CUDAGraph()
+
+    def capture_to_graph(self, graph):
+        return torch.cuda.graph(graph)
+
+    def replay_graph(self, graph):
+        graph.replay()
+        return
+
     # Tensor operations
 
     @property

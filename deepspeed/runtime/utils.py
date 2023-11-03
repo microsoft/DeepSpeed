@@ -60,14 +60,13 @@ def graph_process(replay_first_step, func, *args, **kwargs):
         with get_accelerator().stream(cuda_stream):
             func(*args, **kwargs)
         get_accelerator().current_stream().wait_stream(cuda_stream)
-        # TODO: Apply get_accelerator interface for torch.cuda.CUDAGraph and torch.cuda.graph  #ignore-cuda
-        graph_cache[func.__name__] = torch.cuda.CUDAGraph()  #ignore-cuda
-        with torch.cuda.graph(graph_cache[func.__name__]):  #ignore-cuda
+        graph_cache[func.__name__] = get_accelerator().create_graph()
+        with get_accelerator().capture_to_graph(graph_cache[func.__name__]):
             func(*args, **kwargs)
         if replay_first_step:
-            graph_cache[func.__name__].replay()
+            get_accelerator().replay_graph(graph_cache[func.__name__])
     else:
-        graph_cache[func.__name__].replay()
+        get_accelerator().replay_graph(graph_cache[func.__name__])
 
 
 def noop_decorator(func):

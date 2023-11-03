@@ -163,6 +163,17 @@ class MPS_Accelerator(DeepSpeedAccelerator):
     def is_triton_supported(self):
         return False
 
+    # Graph operations
+    def create_graph(self):
+        return None
+
+    def capture_to_graph(self, graph):
+        from deepspeed.runtime.utils import noop_context
+        return noop_context()
+
+    def replay_graph(self, graph):
+        return
+
     # Tensor operations
     @property
     def BFloat16Tensor(self):
