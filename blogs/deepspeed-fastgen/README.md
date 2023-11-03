@@ -229,7 +229,7 @@ We currently support the following model architectures in this alpha release of 
 
 All current models leverage [HuggingFace](https://github.com/huggingface) APIs in our backend to provide both the model weights and the model's corresponding tokenizer.
 
-> We plan to add additional models in the coming weeks and months after the initial release. If there are specific model architectures you would like supported, please [file an issue](https://github.com/microsoft/DeepSpeed-MII/issues) and let us know.
+We plan to add additional models in the coming weeks and months after the initial release. If there are specific model architectures you would like supported, please [file an issue](https://github.com/microsoft/DeepSpeed-MII/issues) and let us know.
 
 ### B. Deployment options
 All of the examples below are runnable in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples/tree/master/inference/mii). Once installed you have two options for deployment: an interactive non-persistent pipeline or a persistent serving deployment:
