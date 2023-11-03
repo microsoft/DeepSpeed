@@ -24,6 +24,17 @@ jobs:
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
 
+      - name: Install gcc-9
+        run: |
+          sudo add-apt-repository -u ppa:ubuntu-toolchain-r/test
+          sudo apt install -y gcc-9
+
+      - name: Check gcc version
+        run: |
+          # Get gcc version
+          gcc --version
+          g++ --version
+
       - name: Detect instruction sets on instance
         run: |
           lscpu
@@ -75,16 +86,16 @@ jobs:
           pip install .[dev,1bit,autotuning,inf]
           ds_report
 
-      - name: Python environment
+      - name: Python environment check
         run: |
           pip list
-
-      - name: Unit tests
-        run: |
           source oneCCL/build/_install/env/setvars.sh
           # check whether the environment is properly setup
           python -c "import torch;import intel_extension_for_pytorch as ipex;import oneccl_bindings_for_pytorch;print('done')"
           python -c "import deepspeed;from deepspeed.accelerator import get_accelerator;print(get_accelerator().device_name());print(get_accelerator().is_available())"
+
+      - name: Unit tests
+        run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd  tests
           # LOCAL_SIZE=2 enforce CPU to report 2 devices, this helps run the test on github default runner
