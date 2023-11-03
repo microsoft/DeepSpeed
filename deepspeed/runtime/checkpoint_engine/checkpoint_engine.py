@@ -22,9 +22,15 @@ class CheckpointEngine(object):
     def save(self, state_dict, path: str):
         pass
 
+    def commit(self, tag):
+        # to tell checkpoint services if all files are readys.
+        pass
+
+    def open(self, load_dir=None, tag=None):
+        pass
+
     def load(self, path: str, map_location=None):
         pass
 
-    def commit(self, tag):
-        # to tell checkpoint services if all files are readys.
+    def close(self, tag):
         pass
