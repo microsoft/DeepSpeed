@@ -127,6 +127,9 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def total_memory(self, device_index=None):
         return torch.xpu.get_device_properties(device_index).total_memory
 
+    def available_memory(self, device_index=None):
+        return self.total_memory(device_index) - self.memory_allocated(device_index)
+
     # Misc
     def amp(self):
         return torch.xpu.amp
