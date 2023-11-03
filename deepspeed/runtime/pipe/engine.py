@@ -11,6 +11,7 @@ from deepspeed import comm as dist
 from deepspeed.utils import logger
 from deepspeed.utils.timer import ThroughputTimer
 from deepspeed.accelerator import get_accelerator
+from deepspeed.runtime.bf16_optimizer import BF16_Optimizer
 
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
 from deepspeed.utils.timer import FORWARD_MICRO_TIMER, FORWARD_GLOBAL_TIMER, BACKWARD_MICRO_TIMER, \
@@ -75,6 +76,8 @@ class PipelineEngine(DeepSpeedEngine):
         self.has_bool_tensors = has_bool_tensors
         self.eval_return_logits = False
         self.outputs = None
+        # BF16 Optimizer is hardcoded for fp32 gradient accumulation
+        self.using_bf16_optimizer = type(self.optimizer) == BF16_Optimizer
 
         # used to disable the pipeline all-reduce when used with 1-bit Adam/1-bit LAMB
         self.pipeline_enable_backward_allreduce = True
@@ -186,6 +189,14 @@ class PipelineEngine(DeepSpeedEngine):
 
         if self._config.pipeline['activation_checkpoint_interval'] > 0:
             self.module.activation_checkpoint_interval = self._config.pipeline['activation_checkpoint_interval']
+            # set use_reentrant default to True.
+            if self._config.pipeline.get('use_reentrant') is None:
+                self._config.pipeline['use_reentrant'] = True
+            if self._config.pipeline['use_reentrant'] is False:
+                # set activation_checkpoint_func to non_reentrant_checkpoint func.
+                self.module.activation_checkpoint_func = ds_checkpointing.non_reentrant_checkpoint
+                if self.grid.get_global_rank() == 0:
+                    logger.info(f'CONFIG: activation_checkpoint_func=non_reentrant_checkpoint')
 
         self.module.checkpoint_parallel_write_pipeline = self._config.checkpoint_parallel_write_pipeline
 
@@ -249,13 +260,13 @@ class PipelineEngine(DeepSpeedEngine):
 
         weight_group_list = self.module.get_tied_weights_and_groups()
         for weight, group in weight_group_list:
-            grad = weight._hp_grad if self.bfloat16_enabled() else weight.grad
+            grad = weight._hp_grad if self.using_bf16_optimizer else weight.grad
             dist.all_reduce(grad, group=group)
 
     def _exec_reduce_grads(self):
         self._force_grad_boundary = True
         if self.pipeline_enable_backward_allreduce:
-            if self.bfloat16_enabled():
+            if self.using_bf16_optimizer:
                 # PP+BF16 work for ZeRO Stage 1
                 self._bf16_reduce_grads()
             else:
@@ -332,7 +343,7 @@ class PipelineEngine(DeepSpeedEngine):
                 self.global_steps):
                 self.reset_activation_shape()
 
-        if data_iter:
+        if data_iter is not None:
             self.set_dataiterator(data_iter)
 
         self.module.train()
@@ -358,6 +369,8 @@ class PipelineEngine(DeepSpeedEngine):
                       f'loss: {self.agg_train_loss:0.4f} '
                       f'iter time (s): {iter_time:0.3f} '
                       f'samples/sec: {tput:0.3f}')
+            else:
+                self.timers(TRAIN_BATCH_TIMER).elapsed(reset=True)
 
         # Monitoring
         if self.global_rank == 0 and self.monitor.enabled:
@@ -376,7 +389,7 @@ class PipelineEngine(DeepSpeedEngine):
         # TODO: should return precisely what loss returned and allow others to be queried?
         return self.agg_train_loss
 
-    def eval_batch(self, data_iter, return_logits=False, compute_loss=True, reduce_output='avg'):
+    def eval_batch(self, data_iter, return_logits=False, compute_loss=True, reduce_output='avg', bcast_loss=True):
         """Evaluate the pipeline on a batch of data from ``data_iter``. The
         engine will evaluate ``self.train_batch_size()`` total samples
         collectively across all workers.
@@ -439,7 +452,7 @@ class PipelineEngine(DeepSpeedEngine):
         if self.is_last_stage():
             eval_output = self._reduce_outputs(self.fwd_outputs, reduce=reduce_output)
 
-        if compute_loss:
+        if compute_loss and (bcast_loss or self.monitor.enabled):
             eval_output = self._bcast_pipe_scalar(eval_output)
 
         if self.global_rank == 0 and self.monitor.enabled:
@@ -539,7 +552,7 @@ class PipelineEngine(DeepSpeedEngine):
                 agg_loss /= self.dp_world_size
 
             assert self.global_rank in self.grid.pp_group
-            losses = torch.Tensor([self.dp_group_loss, agg_loss]).to(self.device)
+            losses = torch.stack([self.dp_group_loss, agg_loss])
             if self.is_pipe_parallel:
                 dist.broadcast(tensor=losses, src=self.global_rank, group=self.mpu.get_pipe_parallel_group())
         else:
@@ -636,10 +649,7 @@ class PipelineEngine(DeepSpeedEngine):
             inputs = inputs[0] if len(inputs) == 1 else inputs
             self.pipe_buffers['inputs'][buffer_id] = inputs
 
-        # Zero out the gradients each time we use the tensor because only the data in
-        # tensor changes across batches
-        self._zero_grads(inputs)
-
+        # inputs has no gradient because it is from a cloned tensor
         outputs = super().forward(inputs)
 
         # Reset activation checkpointing buffers.
@@ -738,7 +748,7 @@ class PipelineEngine(DeepSpeedEngine):
             part_grad = None
             #print(f'RANK={self.global_rank} BEFORE-BWD restored grad={self.grad_layer[0].size()} {self.grad_layer[1].size()}')
 
-        if self.bfloat16_enabled() and not self.is_last_stage():
+        if self.using_bf16_optimizer and not self.is_last_stage():
             # manually call because we don't call optimizer.backward()
             self.optimizer.clear_lp_grads()
 
@@ -750,7 +760,7 @@ class PipelineEngine(DeepSpeedEngine):
         else:
             torch.autograd.backward(tensors=(outputs, ), grad_tensors=(grad_tensors, ))
 
-        if self.bfloat16_enabled() and not self.is_last_stage():
+        if self.using_bf16_optimizer and not self.is_last_stage():
             # manually call because we don't call optimizer.backward()
             self.optimizer.update_hp_grads(clear_lp_grads=False)
 
@@ -777,7 +787,9 @@ class PipelineEngine(DeepSpeedEngine):
             loaded = None
             if torch.is_tensor(batch[0]):
                 loaded = batch[0].clone().to(self.device).detach()
-                loaded.requires_grad = loaded.is_floating_point()
+                if self._config.pipeline['activation_checkpoint_interval'] > 0 and self._config.pipeline[
+                        'use_reentrant']:
+                    loaded.requires_grad = loaded.is_floating_point()
             else:
                 assert isinstance(batch[0], (tuple, list))
                 # Assume list or tuple
@@ -785,7 +797,9 @@ class PipelineEngine(DeepSpeedEngine):
                 for x in batch[0]:
                     assert torch.is_tensor(x)
                     mine = x.clone().detach().to(self.device)
-                    mine.requires_grad = mine.is_floating_point()
+                    if self._config.pipeline['activation_checkpoint_interval'] > 0 and self._config.pipeline[
+                            'use_reentrant']:
+                        mine.requires_grad = mine.is_floating_point()
                     loaded.append(mine)
                 loaded = tuple(loaded)
 
@@ -795,7 +809,8 @@ class PipelineEngine(DeepSpeedEngine):
             loaded = batch[1]
             if torch.is_tensor(batch[1]):
                 loaded = batch[1].to(self.device)
-            elif isinstance(batch[1], tuple):
+            # XXX: torch 1.6.0 DataLoader will auto convert tuple to list
+            elif isinstance(batch[1], (tuple, list)):
                 loaded = []
                 for x in batch[1]:
                     assert torch.is_tensor(x)
@@ -973,7 +988,7 @@ class PipelineEngine(DeepSpeedEngine):
             if isinstance(inputs, tuple):
                 first_input = inputs[0]
                 assert all([torch.is_tensor(elt) for elt in inputs[1:]])
-                inputs_grad_tail = [elt.grad for elt in inputs[1:] if elt.grad is not None]
+                inputs_grad_tail = [elt.grad for elt in inputs[1:]]
             elif torch.is_tensor(inputs):
                 first_input = inputs
                 inputs_grad_tail = []
@@ -1059,7 +1074,7 @@ class PipelineEngine(DeepSpeedEngine):
         self.pipe_buffers['inputs'][buffer_id] = recvd
 
         if self.wall_clock_breakdown():
-            self.timers(PIPE_RECV_GRAD_TIMER).stop()
+            self.timers(PIPE_RECV_INPUT_TIMER).stop()
 
     def _exec_recv_grads(self, buffer_id):
         if self.wall_clock_breakdown():
@@ -1157,15 +1172,6 @@ class PipelineEngine(DeepSpeedEngine):
                     BACKWARD_REDUCE_GLOBAL_TIMER,
                     STEP_GLOBAL_TIMER,
                 ])
-
-    def _zero_grads(self, inputs):
-        if isinstance(inputs, torch.Tensor):
-            if inputs.grad is not None:
-                inputs.grad.data.zero_()
-        else:
-            for t in inputs:
-                if t.grad is not None:
-                    t.grad.data.zero_()
 
     def _allocate_zeros(self, shape, **kwargs):
         """ Allocate a tensor of zeros on the engine's device.
@@ -1282,7 +1288,7 @@ class PipelineEngine(DeepSpeedEngine):
                                     exclude_frozen_params=exclude_frozen_parameters)
         return None
 
-    def load_module_state_dict(self, checkpoint, strict=True, custom_load_fn=None):
+    def load_module_state_dict(self, checkpoint, strict=True, custom_load_fn=None, fetch_z3_params=False):
         """Override hack to instead use a directory path.
 
         This is important because pipeline models checkpoint by layer instead of rank.
