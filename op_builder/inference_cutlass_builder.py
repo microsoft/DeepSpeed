@@ -89,5 +89,4 @@ class InferenceCutlassBuilder(CUDAOpBuilder):
 
         prefix = self.get_prefix()
         sources = [os.path.join(prefix, src) for src in sources]
-
         return sources
