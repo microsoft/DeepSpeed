@@ -73,7 +73,7 @@ Before describing  Dynamic SplitFuse, we answer three key performance questions 
 <img src="assets/images/observation-prompt-v-latency.png" alt="" width="480"/><br>
 </div>
 
-*__2. How does a model's throughput respond to changing the number of tokens in the forward pass?__* An LLM has two key operating regions with a relatively steep transition. With a small number of tokens, the GPU bottleneck is reading the model from memory and so throughput scales with the number of tokens, whereas with many tokens the model is throughput bound by compute and sees near-constant throughput.  The model should run highly efficiently if all forward passes are in the throughput saturating region.
+*__2. How does a model's throughput respond to changing the number of tokens in the forward pass?__* An LLM has two key operating regions with a relatively steep transition. With a small number of tokens, the GPU bottleneck is reading the model from memory and so throughput scales with the number of tokens, whereas with many tokens the model is throughput bound by compute and sees near-constant throughput.  The model should run highly efficiently if all forward passes are in the throughput-saturating region.
 
 <div align="center">
 <img src="assets/images/observation-prompt-v-flops.png" alt="" width="480"/><br>
@@ -100,7 +100,7 @@ Together, these two techniques provide concrete benefits on all user metrics:
 
 1. *__Better Responsiveness__:* Since long prompts no longer require extremely long forward passes to process, the model will provide lower client latency. More forward passes are performed within the same window of time.
 2. *__Higher Efficiency:__* Fusion of short prompts to larger token budgets enables the model to consistently operate in the high throughput regime.
-3. *__Lower variance and better consistency:__* Since forward passes are of consistent size and forward pass size is the primary determinant of performance, the latency of each forward pass is much more consistent than competing systems as is the perceived generation frequency. There is no pre-emption or long running prompts to increase the latency as in other prior work.
+3. *__Lower variance and better consistency:__* Since forward passes are of consistent size and forward pass size is the primary determinant of performance, the latency of each forward pass is much more consistent than competing systems as is the perceived generation frequency. There are no pre-emption or long-running prompts to increase the latency as in other prior work.
 
 Consequently, DeepSpeed-FastGen will consume tokens from incoming prompts at a rate that permits fast ongoing generation while adding tokens to the system that increase system utilization, providing lower latency and higher throughput streaming generation to all clients as compared to other state-of-the-art serving systems.
 
