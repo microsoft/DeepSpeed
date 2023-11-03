@@ -172,7 +172,7 @@ In contrast, DeepSpeed-FastGen typically processes the prompt and generation for
 <div align="center">
   <img src="assets/images/token_latency.png" alt="" width="400"/><br>
 
-  *Figure 5: Per-Token generation Latency of Llama 2 70B/A100-80GB using tensor parallelism across 4 A100-80GB GPUs, 16 clients. A normal distribution was applied to prompt and generation lengths with averages of 2600 and 128, respectively, and a 30% variance. A normal distribution was applied to prompt and generation lengths with averages of 2600 and 128, respectively, and a 30% variance*
+  *Figure 5: Per-Token generation Latency of Llama 2 70B/A100-80GB using tensor parallelism across 4 A100-80GB GPUs, 16 clients. A normal distribution was applied to prompt and generation lengths with averages of 2600 and 128, respectively, and a 30% variance.*
 </div><br>
 
 
