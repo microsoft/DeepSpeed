@@ -346,7 +346,7 @@ class TestModelTask(DistributedTest):
                                           ("EleutherAI/gpt-neox-20b", "text-generation"),
                                           ("bigscience/bloom-3b", "text-generation"),
                                           ("EleutherAI/gpt-j-6b", "text-generation")],
-                         ids=["gpt-neo", "gpt-neox", "bloom", "gpt-j"])
+                         ids=["gpt-neo", "gpt-neox", "gpt-j"])
 class TestMPSize(DistributedTest):
     world_size = 2
 
