@@ -41,6 +41,7 @@ ZeRO optimization should be enabled as:
     "zero_quantized_gradients": [true|false],
     "memory_efficient_linear": [true|false],
     "override_module_apply": [true|false],
+    "graph_harvesting": [true|false],
     }
 }
 """
@@ -291,6 +292,10 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     override_module_apply: bool = True
     """
     Override nn.Module apply function, for Stage 3.
+    """
+    graph_harvesting: bool = False
+    """
+    Whether to use graph for continuous kernel launching processes, current only for BF16_Optimizer.
     """
 
     # Validators
