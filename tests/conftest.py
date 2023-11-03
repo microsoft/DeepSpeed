@@ -46,7 +46,7 @@ def validate_version(expected, found):
 def check_environment(pytestconfig):
     expected_torch_version = pytestconfig.getoption("torch_ver")
     expected_device_version = pytestconfig.getoption("device_ver")
-    found_device_version = get_accelerator.get_found_device_version()
+    found_device_version = get_accelerator().get_found_device_version()
     if expected_torch_version is None:
         warnings.warn(
             "Running test without verifying torch version, please provide an expected torch version with --torch_ver")
