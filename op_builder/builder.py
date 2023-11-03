@@ -494,6 +494,9 @@ class OpBuilder(ABC):
                 nvcc_args.append("-U__CUDA_NO_BFLOAT16_OPERATORS__")
                 nvcc_args.append("-U__CUDA_NO_BFLOAT162_OPERATORS__")
 
+        if self.is_rocm_pytorch():
+            cxx_args.append("-D__HIP_PLATFORM_AMD__=1")
+
         op_module = load(name=self.name,
                          sources=self.strip_empty_entries(sources),
                          extra_include_paths=self.strip_empty_entries(extra_include_paths),
