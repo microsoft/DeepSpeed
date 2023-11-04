@@ -70,7 +70,7 @@ cuda_minor_mismatch_ok = {
         "10.2",
     ],
     11: ["11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8"],
-    12: ["12.0", "12.1"],
+    12: ["12.0", "12.1", "12.2", "12.3"],
 }
 
 
@@ -462,11 +462,12 @@ class OpBuilder(ABC):
             raise RuntimeError(f"Unable to JIT load the {self.name} op due to ninja not being installed.")
 
         if isinstance(self, CUDAOpBuilder) and not self.is_rocm_pytorch():
-            try:
-                assert_no_cuda_mismatch(self.name)
-                self.build_for_cpu = False
-            except BaseException:
-                self.build_for_cpu = True
+            #TODO(jeff): need to come back and fix cpu-only builds, this came in on #3085 but is hiding real user env issues (eg. torch cuda != sys cuda)
+            #try:
+            assert_no_cuda_mismatch(self.name)
+            self.build_for_cpu = False
+            #except BaseException:
+            #    self.build_for_cpu = True
 
         self.jit_mode = True
         from torch.utils.cpp_extension import load
