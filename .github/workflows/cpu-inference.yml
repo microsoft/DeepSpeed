@@ -27,7 +27,10 @@ jobs:
       - name: Install gcc-9
         run: |
           sudo add-apt-repository -u ppa:ubuntu-toolchain-r/test
-          sudo apt install -y gcc-9
+          sudo apt install -y gcc-9 g++-9
+          # set gcc-9 and g++9 to default
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 99
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 99
 
       - name: Check gcc version
         run: |
