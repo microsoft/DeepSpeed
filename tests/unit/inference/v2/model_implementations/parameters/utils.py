@@ -17,6 +17,7 @@ class SimpleParam(ParameterBase):
 
     param: torch.Tensor
 
+    @on_device
     def finalize(self) -> torch.Tensor:
         return self.inference_model.transform(self.param)
 
@@ -39,6 +40,7 @@ class ListParam(ParameterBase):
 
     params: SimpleParametrizedList
 
+    @on_device
     def finalize(self) -> torch.Tensor:
         return self.inference_model.transform(torch.cat(tuple(self.params)))
 
@@ -49,7 +51,6 @@ class DummyInferenceModel:
     def num_dependencies(self) -> int:
         return 2
 
-    @on_device
     def transform(self, param: torch.Tensor) -> torch.Tensor:
         return param
 
