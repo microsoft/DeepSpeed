@@ -462,12 +462,11 @@ class OpBuilder(ABC):
             raise RuntimeError(f"Unable to JIT load the {self.name} op due to ninja not being installed.")
 
         if isinstance(self, CUDAOpBuilder) and not self.is_rocm_pytorch():
-            #TODO(jeff): need to come back and fix cpu-only builds, this came in on #3085 but is hiding real user env issues (eg. torch cuda != sys cuda)
-            #try:
-            assert_no_cuda_mismatch(self.name)
-            self.build_for_cpu = False
-            #except BaseException:
-            #    self.build_for_cpu = True
+            try:
+                assert_no_cuda_mismatch(self.name)
+                self.build_for_cpu = False
+            except BaseException:
+                self.build_for_cpu = True
 
         self.jit_mode = True
         from torch.utils.cpp_extension import load
