@@ -64,11 +64,7 @@ def get_default_compute_capabilities():
 # list compatible minor CUDA versions - so that for example pytorch built with cuda-11.0 can be used
 # to build deepspeed and system-wide installed cuda 11.2
 cuda_minor_mismatch_ok = {
-    10: [
-        "10.0",
-        "10.1",
-        "10.2",
-    ],
+    10: ["10.0", "10.1", "10.2"],
     11: ["11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8"],
     12: ["12.0", "12.1", "12.2", "12.3"],
 }
@@ -620,7 +616,7 @@ class CUDAOpBuilder(OpBuilder):
 
         compile_args = {'cxx': self.strip_empty_entries(self.cxx_args())} if self.build_for_cpu else \
                        {'cxx': self.strip_empty_entries(self.cxx_args()), \
-                           'nvcc': self.strip_empty_entries(self.nvcc_args())}
+                        'nvcc': self.strip_empty_entries(self.nvcc_args())}
 
         if not self.build_for_cpu and self.enable_bf16:
             compile_args['cxx'].append("-DBF16_AVAILABLE")
