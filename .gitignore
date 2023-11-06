@@ -23,9 +23,8 @@ docs/code-docs/build
 .jekyll-cache/
 .jekyll-metadata
 
-# Testing data
-tests/unit/saved_checkpoint/
-
-# Dev/IDE data
-.vscode
-.theia
+# scanning data
+*/docs_site
+.*so
+deepspeed_info/
+scan.txt
