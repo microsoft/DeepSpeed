@@ -23,14 +23,14 @@
 
 <!-- NOTE: we must use html for news items otherwise links will be broken in the 'more news' section -->
 <details>
-<summary>More news</summary>
-<ul>
+ <summary>More news</summary>
+ <ul>
   <li>[2023/08] <a href="https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-chat/ds-chat-release-8-31/README.md")>DeepSpeed-Chat: Llama/Llama-2 system support, efficiency boost, and training stability improvements</a></li>
 
-  <li>[2023/08] <a href="https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-ulysses">DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models</a> <a href="https://github.com/microsoft/DeepSpeed/blob/master/blogs/deepspeed-ulysses/chinese/README.md">[中文]</a> <a href="https://github.com/microsoft/DeepSpeed/blob/master/blogs/deepspeed-ulysses/japanese/README.md">[日本語]</a></li>
+  <li>[2023/08] <a href="https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-ulysses">DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models</a> [<a href="https://github.com/microsoft/DeepSpeed/blob/master/blogs/deepspeed-ulysses/chinese/README.md">中文</a>] [<a href="https://github.com/microsoft/DeepSpeed/blob/master/blogs/deepspeed-ulysses/japanese/README.md">日本語</a>]</li>
 
-  <li>[2023/06] <a href="https://www.microsoft.com/en-us/research/blog/deepspeed-zero-a-leap-in-speed-for-llm-and-chat-model-training-with-4x-less-communication/">ZeRO++: A leap in speed for LLM and chat model training with 4X less communication</a> <a href="https://www.microsoft.com/en-us/research/blog/deepspeed-zero-a-leap-in-speed-for-llm-and-chat-model-training-with-4x-less-communication/">[English]</a> <a href="https://github.com/microsoft/DeepSpeed/blob/master/blogs/zeropp/chinese/README.md">[中文]</a> <a href="https://github.com/microsoft/DeepSpeed/blob/master/blogs/zeropp/japanese/README.md">[日本語]</a></li>
-</ul>
+  <li>[2023/06] <a href="https://www.microsoft.com/en-us/research/blog/deepspeed-zero-a-leap-in-speed-for-llm-and-chat-model-training-with-4x-less-communication/">ZeRO++: A leap in speed for LLM and chat model training with 4X less communication</a> [<a href="https://www.microsoft.com/en-us/research/blog/deepspeed-zero-a-leap-in-speed-for-llm-and-chat-model-training-with-4x-less-communication/">English</a>] [<a href="https://github.com/microsoft/DeepSpeed/blob/master/blogs/zeropp/chinese/README.md">中文</a>] [<a href="https://github.com/microsoft/DeepSpeed/blob/master/blogs/zeropp/japanese/README.md">日本語</a>]</li>
+ </ul>
 </details>
 
 ---
