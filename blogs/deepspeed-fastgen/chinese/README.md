@@ -21,9 +21,9 @@
 
 ## 1. 引言 <a name="introduction"></a>
 
-GPT-4 和 LLaMA 这样的大型语言模型（LLMs）已在各个层次上成为了集成 AI 的主流服务应用。从常规聊天模型到文档摘要，从自动驾驶到各个软件中的Copilot功能，这些模型的部署和服务需求正在迅速增加。尽管像 DeepSpeed、PyTorch 和其他几个框架可以在 LLM 训练期间实现良好的硬件利用率，但受限于这些应用的交互性以及开放式文本等任务本身生成阶段的计算密度较低等因素，现有系统往往在推理吞吐量上遇到瓶颈。
+GPT-4 和 LLaMA 这样的大型语言模型（LLMs）已在各个层次上成为了集成 AI 的主流服务应用。从常规聊天模型到文档摘要，从自动驾驶到各个软件中的Copilot功能，这些模型的部署和服务需求正在迅速增加。像 DeepSpeed、PyTorch 和其他几个框架可以在 LLM 训练期间实现良好的硬件利用率。但它们在与用户互动及处理开放式文本生成等任务时，受限于这些操作的计算密集度相对较低，现有系统往往在推理吞吐量上遇到瓶颈。
 
-为了解决这一问题，像 [vLLM](https://arxiv.org/pdf/2309.06180.pdf) 这样由 PagedAttention 驱动的框架和像 [Orca](https://www.usenix.org/system/files/osdi22-yu.pdf) 这样的研究系统显著提高了 LLM 推理的性能。然而，这些系统在面对长提示的工作负载时，依旧难以提供良好的服务质量。随着越来越多的模型，如 [MPT-StoryWriter](https://www.mosaicml.com/blog/mpt-7b)和例如 [DeepSpeed Ulysses](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-ulysses)的系统支持延伸到数万个令牌的上下文窗口，这些长提示工作负载变得越来越重要。为了更好地理解问题空间，我们在下文中提供了详细的示例来说明 LLM 的文本生成是如何在称为提示处理和生成的两个不同阶段中工作的。当系统将它们视为不同的阶段时，生成阶段将被提示处理所抢占，这可能会破坏服务级别协议（SLAs）。
+为了解决这一问题， [vLLM](https://arxiv.org/pdf/2309.06180.pdf) 这样由 PagedAttention 驱动的框架和 [Orca](https://www.usenix.org/system/files/osdi22-yu.pdf) 这样的研究系统显著提高了 LLM 推理的性能。然而，这些系统在面对长提示的工作负载时，依旧难以提供良好的服务质量。随着越来越多的模型，如 [MPT-StoryWriter](https://www.mosaicml.com/blog/mpt-7b)和 [DeepSpeed Ulysses](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-ulysses)的系统支持延伸到数万个令牌的上下文窗口，这些长提示工作负载变得越来越重要。为了更好地理解问题，我们在下文中提供了详细的示例来说明 LLM 的文本生成是如何在“提示处理”和“生成”的这两个阶段中工作的。当系统将它们视为不同的阶段时，生成阶段将被提示处理所抢占，这可能会破坏服务级别协议（SLAs）。
 
 今天，我们很高兴地介绍 DeepSpeed-FastGen 框架，它通过采用我们提出的动态 SplitFuse 技术，能够提供比vLLM 等先进系统高出多达 2.3 倍的有效吞吐量。DeepSpeed-FastGen 是 DeepSpeed-MII 和 DeepSpeed-Inference 的结合，提供了一个易于使用的服务系统。
 
@@ -33,7 +33,7 @@ GPT-4 和 LLaMA 这样的大型语言模型（LLMs）已在各个层次上成为
 pip install deepspeed-mii
 ```
 
-要使用简单的非持久性管道部署生成文本，请运行以下代码。有关更多详情，请参见[第 5 节](#using-deepspeed-fastgen)。
+要使用简单的非持久性管道部署生成文本，请运行以下代码。更多详情，请参见[第 5 节](#using-deepspeed-fastgen)。
 
 ```python
 from mii import pipeline
@@ -48,7 +48,7 @@ print(output)
 
 _<b> 分块 KV 缓存：</b>_
 
-vLLM 发现大型单体 KV 缓存会导致内存碎片化，这严重限制了 LLM 服务系统的并行处理能力，并因此提出了 [Paged Attention](https://arxiv.org/pdf/2309.06180.pdf) 技术。此技术采用分页缓存机制，从而提升了系统的整体吞吐量。不同于之前分配各个不同大小的连续内存块的做法，分块 KV 缓存中的底层存储是固定大小的块（也称为页面）。分块 KV 缓存通过消除 KV 缓存引起的内存碎片化，增加了潜在的序列并发量，从而增加了系统吞吐量。非连续 KV 缓存也被 [HuggingFace TGI](https://github.com/huggingface/text-generation-inference) 和 [NVIDIA TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) 等框架所实现。
+vLLM识别出，由于大型单体KV缓存导致的内存碎片化显著降低了大型语言模型服务系统的并发性，并提出了“分页注意力”[Paged Attention](https://arxiv.org/pdf/2309.06180.pdf) 机制来实现非连续KV缓存，并增加整个系统的总吞吐量。此技术采用分页缓存机制，从而提升了系统的整体吞吐量。不同于之前分配各个不同大小的连续内存块的做法，分块 KV 缓存中的底层存储是固定大小的块（也称为页面）。分块 KV 缓存通过消除 KV 缓存引起的内存碎片化，增加了潜在的序列并发量，从而增加了系统吞吐量。非连续 KV 缓存也被 [HuggingFace TGI](https://github.com/huggingface/text-generation-inference) 和 [NVIDIA TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) 等框架所实现。
 
 _<b> 连续批处理：</b>_
 
@@ -62,12 +62,12 @@ _<b> 连续批处理：</b>_
 
 ## 3. 动态 SplitFuse：一种新颖的提示和生成组合策略<a name="technical-approach"></a>
 
-类似于现有的框架如 TRT-LLM、TGI 和 vLLM，DeepSpeed-FastGen 的目标是利用连续批处理和非连续 KV 缓存技术，以提升数据中心服务大型语言模型（LLM）的硬件利用率和响应速度。为了实现更高的性能，DeepSpeed-FastGen 提出了 SplitFuse 技术，它利用动态提示和生成分解与统一来进一步改善连续批处理和系统吞吐量。
+类似于现有的框架如 TRT-LLM、TGI 和 vLLM，DeepSpeed-FastGen 的目标是利用连续批处理和非连续 KV 缓存技术，以提升数据中心服务大型语言模型（LLM）的硬件利用率和响应速度。为了实现更高的性能，DeepSpeed-FastGen 提出了 SplitFuse 技术，它利用动态提示和生成分解, 统一来进一步改善连续批处理和系统吞吐量。
 
 ### A. 三个性能见解
 在描述动态 SplitFuse 之前，我们回答三个关键的性能问题，这些问题解释了SplitFuse背后的逻辑。
 
-*__1. 哪些因素影响单个 LLM 的前向传递？__* 为了有效地调度，我们必须首先了解调度过程中应考虑的独立变量有哪些。我们观察到，在前向传递中序列的组成（序列中的批次大小）对性能的影响可以忽略不计。这意味着我们可以围绕单一变量————即前向传递中的令牌数量————构建一个高效的调度器。
+*__1. 哪些因素影响单个 LLM 的前向传递？__* 为了有效地调度，我们必须首先了解调度过程中应考虑的独立变量有哪些。我们观察到，在前向传递中序列的组成（序列中的批次大小）对性能的影响可以忽略不计。这意味着我们可以围绕单一变量--即前向传递中的令牌数量--构建一个高效的调度器。
 
 <div align="center">
 <img src="../assets/images/observation-prompt-v-latency.png" alt="" width="480"/><br>
@@ -100,7 +100,7 @@ _<b> 连续批处理：</b>_
 
 1. **更好的响应性：** 由于长提示不再需要极长的前向传递来处理，模型将提供更低的客户端延迟。在同一时间窗口内执行的前向传递更多。
 2. **更高的效率：** 短提示的融合到更大的令牌预算使模型能够持续运行在高吞吐量状态。
-3. **更低的波动和更好的一致性：** 由于前向传递的大小一致，且前向传递大小是性能的主要决定因素，每个前向传递的延迟比其他系统更加一致。生成频率也是如此，因为DeepSpeed-FastGen不需要像其他系统那样抢占或长时间运行提示，因此延迟会更低。
+3. **更低的波动和更好的一致性：** 由于前向传递的大小一致，且前向传递大小是性能的主要决定因素，每个前向传递的延迟比其他系统更加一致。生成频率也是如此，因为DeepSpeed-FastGen不需要像其他先前的系统那样抢占或长时间运行提示，因此延迟会更低。
 
 因此，与现有最先进的服务系统相比，DeepSpeed-FastGen 将以允许快速、持续生成的速率消耗来自提示的令牌，同时向系统添加令牌，提高系统利用率，提供更低的延迟和更高的吞吐量流式生成给所有客户端。
 
@@ -130,7 +130,7 @@ DeepSpeed-FastGen 利用分块 KV 缓存和动态分割融合连续批处理，�
 
 在这个过程的每个阶段，系统都有可能提供不利的用户体验；例如，第一个令牌到达得太慢；或生成似乎停止了一段时间。我们提出了一个考虑这两个维度的 SLA 框架。
 
-由于提示和生成文本的长度差异很大，影响计算成本，因此设定同一个 SLA 值对于吞吐量和延迟是不切实际的。因此，我们将提示延迟的 SLA 定义为 |提示中的令牌| / 512 秒（= 512 令牌/秒）。此外，考虑到人类的阅读速度，我们将生成延迟的 SLA 设置在指数移动平均（EMA）上为 2、4 或 6 令牌/秒。能够达到这些 SLA 的请求被认为是成功的，这些成功请求的吞吐量被称为**有效吞吐量**。
+由于提示和生成文本的长度差异很大，影响计算成本，因此设定同一个 SLA 值对于吞吐量和延迟是不切实际的。因此，我们将提示延迟的 SLA 定义为 “|提示中的令牌|/512” 秒（= 512 令牌/秒）。此外，考虑到人类的阅读速度，我们将生成延迟的 SLA 设置在指数移动平均（EMA）上为 2、4 或 6 令牌/秒。能够达到这些 SLA 的请求被认为是成功的，这些成功请求的吞吐量被称为**有效吞吐量**。
 
 我们通过在 NVIDIA A100、H100 和 A6000 上运行 Llama-2 7B、Llama-2 13B 和 Llama-2 70B 对 vLLM 和 DeepSpeed-FastGen进行了评估。
 
