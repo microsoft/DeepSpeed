@@ -297,4 +297,3 @@ DeepSpeed 欢迎您的贡献！我们鼓励您在 [DeepSpeed GitHub](https://git
 # 7. 致谢 <a name="acknowledgements"></a>
 
 我们要对包括 HuggingFace、vLLM 和 HuggingFace TGI 在内的多个开源社区项目表示感谢。在 alpha 版本中, 我们利用 HF API 来调用模型和分词器，并计划未来添加更多模型。我们特别感谢 [Flash Attention](https://github.com/Dao-AILab/flash-attention) 开发者的出色工作。我们在系统中广泛利用了 FlashAttention 内核，并已经在我们的代码库的对应的文件头部进行了致谢。最后，我们要感谢我们在 MoE 内核（作为 DeepSpeed-Kernels 仓库的一部分发布）中使用的 [FasterTransformer](https://github.com/NVIDIA/FasterTransformer) 内核的开发者。
-
