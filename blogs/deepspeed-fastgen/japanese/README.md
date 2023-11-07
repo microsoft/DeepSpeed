@@ -313,4 +313,3 @@ DeepSpeedは、皆様の開発への参加を歓迎しています。DeepSpeed�
 # 7. 謝辞 <a name="acknowledgements"></a>
 
 HuggingFace、vLLM、HuggingFace TGIを含むさまざまなオープンソースコミュニティプロジェクトに感謝します。私たちはアルファリリースでのモデルとトークナイザーをサポートするためにHF APIを活用し、今後もさらに多くのモデルを追加する予定です。特に、[Flash Attention](https://github.com/Dao-AILab/flash-attention) の開発者の素晴らしい成果に感謝します。私たちはシステムでFlashAttentionカーネルを広範囲に活用しており、コードリポジトリに含まれる適切なファイルヘッダーにそのことを記載しています。最後に、私たちのMoEカーネルで使用している [FasterTransformer](https://github.com/NVIDIA/FasterTransformer) カーネルの開発者に感謝します（DeepSpeed-Kernelsリポジトリの一部としてリリースされました）。
-
