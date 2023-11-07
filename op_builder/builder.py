@@ -597,12 +597,7 @@ class CUDAOpBuilder(OpBuilder):
         return super().is_compatible(verbose)
 
     def builder(self):
-        try:
-            if not self.is_rocm_pytorch():
-                assert_no_cuda_mismatch(self.name)
-            self.build_for_cpu = False
-        except BaseException:
-            self.build_for_cpu = True
+        self.build_for_cpu = not torch.cuda.is_available()
 
         if self.build_for_cpu:
             from torch.utils.cpp_extension import CppExtension as ExtensionBuilder
