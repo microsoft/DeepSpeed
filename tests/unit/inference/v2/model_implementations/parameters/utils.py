@@ -51,6 +51,7 @@ class DummyInferenceModel:
     def num_dependencies(self) -> int:
         return 2
 
+    @on_device
     def transform(self, param: torch.Tensor) -> torch.Tensor:
         return param
 
