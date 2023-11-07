@@ -145,7 +145,7 @@ DeepSpeed-FastGen 利用分块 KV 缓存和动态分割融合连续批处理，�
 </div><br>
 
 <div align="center">
-  <img src="../assets/images/throughput_latency_13B.png" alt="" width="850"/><br>
+  <img src="../assets/images/throughput_latency_13B_no_arrow.png" alt="" width="850"/><br>
 
   *图 3: 使用 Llama 2 13B 进行文本生成的吞吐量和延迟（A100-80GB GPU，无张量并行）。提示和生成长度遵循正态分布，平均值分别为 1200/2600 和 60/128，并且有 30% 的方差*
 </div>
