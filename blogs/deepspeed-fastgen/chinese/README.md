@@ -23,7 +23,7 @@
 
 GPT-4 和 LLaMA 这样的大型语言模型（LLMs）已在各个层次上成为了集成 AI 的主流服务应用。从常规聊天模型到文档摘要，从自动驾驶到各个软件中的Copilot功能，这些模型的部署和服务需求正在迅速增加。像 DeepSpeed、PyTorch 和其他几个框架可以在 LLM 训练期间实现良好的硬件利用率。但它们在与用户互动及处理开放式文本生成等任务时，受限于这些操作的计算密集度相对较低，现有系统往往在推理吞吐量上遇到瓶颈。
 
-为了解决这一问题， [vLLM](https://arxiv.org/pdf/2309.06180.pdf) 这样由 PagedAttention 驱动的框架和 [Orca](https://www.usenix.org/system/files/osdi22-yu.pdf) 这样的研究系统显著提高了 LLM 推理的性能。然而，这些系统在面对长提示的工作负载时，依旧难以提供良好的服务质量。随着越来越多的模型，如 [MPT-StoryWriter](https://www.mosaicml.com/blog/mpt-7b)和 [DeepSpeed Ulysses](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-ulysses)的系统支持延伸到数万个令牌的上下文窗口，这些长提示工作负载变得越来越重要。为了更好地理解问题，我们在下文中提供了详细的示例来说明 LLM 的文本生成是如何在“提示处理”和“生成”的这两个阶段中工作的。当系统将它们视为不同的阶段时，生成阶段将被提示处理所抢占，这可能会破坏服务级别协议（SLAs）。
+为了解决这一问题， [vLLM](https://arxiv.org/pdf/2309.06180.pdf) 这样由 PagedAttention 驱动的框架和 [Orca](https://www.usenix.org/system/files/osdi22-yu.pdf) 这样的系统显著提高了 LLM 推理的性能。然而，这些系统在面对长提示的工作负载时，依旧难以提供良好的服务质量。随着越来越多的模型（例如 [MPT-StoryWriter](https://www.mosaicml.com/blog/mpt-7b)）和系统（例如[DeepSpeed Ulysses](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-ulysses)）支持延伸到数万个令牌的上下文窗口，这些长提示工作负载变得越来越重要。为了更好地理解问题，我们在下文中提供了详细的示例来说明 LLM 的文本生成是如何在“提示处理”和“生成”的这两个阶段中工作的。当系统将它们视为不同的阶段时，生成阶段将被提示处理所抢占，这可能会破坏服务级别协议（SLAs）。
 
 今天，我们很高兴地介绍 DeepSpeed-FastGen 框架，它通过采用我们提出的动态 SplitFuse 技术，能够提供比vLLM 等先进系统高出多达 2.3 倍的有效吞吐量。DeepSpeed-FastGen 是 DeepSpeed-MII 和 DeepSpeed-Inference 的结合，提供了一个易于使用的服务系统。
 
@@ -33,7 +33,7 @@ GPT-4 和 LLaMA 这样的大型语言模型（LLMs）已在各个层次上成为
 pip install deepspeed-mii
 ```
 
-要使用简单的非持久性管道部署生成文本，请运行以下代码。更多详情，请参见[第 5 节](#using-deepspeed-fastgen)。
+要使用简单的非持久性管道部署并生成文本，请运行以下代码。更多详情，请参见[第 5 节](#using-deepspeed-fastgen)。
 
 ```python
 from mii import pipeline
@@ -48,7 +48,7 @@ print(output)
 
 _<b> 分块 KV 缓存：</b>_
 
-vLLM识别出，由于大型单体KV缓存导致的内存碎片化显著降低了大型语言模型服务系统的并发性，并提出了“分页注意力”[Paged Attention](https://arxiv.org/pdf/2309.06180.pdf) 机制来实现非连续KV缓存，并增加整个系统的总吞吐量。此技术采用分页缓存机制，从而提升了系统的整体吞吐量。不同于之前分配各个不同大小的连续内存块的做法，分块 KV 缓存中的底层存储是固定大小的块（也称为页面）。分块 KV 缓存通过消除 KV 缓存引起的内存碎片化，增加了潜在的序列并发量，从而增加了系统吞吐量。非连续 KV 缓存也被 [HuggingFace TGI](https://github.com/huggingface/text-generation-inference) 和 [NVIDIA TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) 等框架所实现。
+vLLM识别出大型单体KV缓存导致的内存碎片化显著降低了大型语言模型服务系统的并发性，并提出了“分页注意力”[Paged Attention](https://arxiv.org/pdf/2309.06180.pdf) 机制来实现非连续KV缓存，并增加整个系统的总吞吐量。此技术采用分页缓存机制，从而提升了系统的整体吞吐量。不同于之前分配各个不同大小的连续内存块的做法，分块 KV 缓存中的底层存储是固定大小的块（也称为页面）。分块 KV 缓存通过消除 KV 缓存引起的内存碎片化，增加了潜在的序列并发量，从而增加了系统吞吐量。非连续 KV 缓存也被 [HuggingFace TGI](https://github.com/huggingface/text-generation-inference) 和 [NVIDIA TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) 等框架所实现。
 
 _<b> 连续批处理：</b>_
 
@@ -96,7 +96,7 @@ _<b> 连续批处理：</b>_
 1. 将长提示分解成更小的块，并在多个前向传递（迭代）中进行调度，只有在最后一个传递中才执行生成。
 2. 短提示将被组合以精确填满目标令牌预算。即使是短提示也可能被分解，以确保预算被精确满足，前向大小（forward sizes）保持良好对齐。
 
-动态分割融合（Dynamic SplitFuse）为所有用户指标提供了具体的好处：
+动态分割融合（Dynamic SplitFuse）提升了以下性能指标：
 
 1. **更好的响应性：** 由于长提示不再需要极长的前向传递来处理，模型将提供更低的客户端延迟。在同一时间窗口内执行的前向传递更多。
 2. **更高的效率：** 短提示的融合到更大的令牌预算使模型能够持续运行在高吞吐量状态。
@@ -108,7 +108,7 @@ _<b> 连续批处理：</b>_
   <img src="../assets/images/fastgen-overview-light.png#gh-light-mode-only" width="640">
   <img src="../assets/images/fastgen-overview-dark.png#gh-dark-mode-only" width="640"><br>
 
-  *图 1: 连续批处理策略的示意图。每个块显示一个前向传递的执行。箭头表示前向传递有一个或多个生成的令牌序列。vLLM 在一个前向传递中要么生成令牌，要么处理提示；令牌生成抢占提示处理。Orca 在生成过程中以完整长度运行提示。DeepSpeed-FastGen动态分割融合则执行固定大小批次的动态组合，包括生成和提示令牌。*
+  *图 1: 连续批处理策略的示意图。每个块显示一个前向传递的执行。箭头表示前向传递有一个或多个生成的令牌序列。vLLM 在一个前向传递中要么生成令牌，要么处理提示；令牌生成抢占提示处理。Orca 在生成过程中以完整长度处理提示。DeepSpeed-FastGen动态分割融合则执行固定大小批次的动态组合，包括生成和提示令牌。*
 
 </div>
 
