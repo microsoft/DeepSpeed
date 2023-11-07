@@ -14,12 +14,14 @@ FP32_GROUPS = "fp32_groups"
 FP32_FLAT_GROUPS = 'fp32_flat_groups'
 
 BASE_OPTIMIZER_STATE = 'base_optimizer_state'
+BASE_OPTIMIZER_STATE_STEP = 'base_optimizer_state_step'
 SINGLE_PARTITION_OF_FP32_GROUPS = "single_partition_of_fp32_groups"
 GROUP_PADDINGS = 'group_paddings'
 PARTITION_COUNT = 'partition_count'
 ZERO_STAGE = 'zero_stage'
 CLIP_GRAD = 'clip_grad'
 FP32_WEIGHT_KEY = "fp32"
+LOSS_SCALER = 'loss_scaler'
 
 #########################################
 # Module checkpoint keys
@@ -68,3 +70,4 @@ VOCABULARY_PARAMETER_PATTERNS = 'vocabulary_parameter_patterns'
 PIPELINE_REPLICATED_PARAMETER_PATTERNS = 'pipeline_replicated_parameter_patterns'
 PARAMETER_TO_AVERAGE_PATTERNS = 'parameter_to_average_patterns'
 PARAMETER_WITH_ROW_PARALLELISM_PATTERNS = 'parameter_with_row_parallelism_patterns'
+TP_REPLICATED_PARAMETER_PATTERNS = 'tp_replicated_parameter_patterns'

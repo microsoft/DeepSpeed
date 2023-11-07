@@ -3,10 +3,15 @@ name: nv-h100
 on:
   schedule:
     - cron: "0 0 * * *"
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   unit-tests:
@@ -49,3 +54,12 @@ jobs:
           cd tests
           python -m pytest $PYTEST_OPTS -n 4  unit/ --torch_ver="2.0" --cuda_ver="12"
           python -m pytest $PYTEST_OPTS -m 'sequential' unit/ --torch_ver="2.0" --cuda_ver="12"
+
+      - name: Open GitHub issue if nightly CI fails
+        if: ${{ failure() && (github.event_name == 'schedule') }}
+        uses: JasonEtco/create-an-issue@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          filename: .github/ISSUE_TEMPLATE/ci_failure_report.md
+          update_existing: true
