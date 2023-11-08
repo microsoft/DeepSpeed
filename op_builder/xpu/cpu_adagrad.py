@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # DeepSpeed Team
-from .builder import SYCLOpBuilder
+
+import os
+from .builder import SYCLAutoOpBuilder
 
 
-class CPUAdagradBuilder(SYCLOpBuilder):
+class CPUAdagradBuilder(SYCLAutoOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAGRAD"
     NAME = "cpu_adagrad"
 
@@ -16,7 +18,7 @@ class CPUAdagradBuilder(SYCLOpBuilder):
         return f'deepspeed.ops.adagrad.{self.NAME}_op'
 
     def sources(self):
-        return ['csrc/xpu/adagrad/cpu_adagrad.dp.cpp', 'csrc/xpu/adam/custom_sycl_kernel.dp.cpp']
+        return ['csrc/adagrad/cpu_adagrad.cpp', 'csrc/common/custom_cuda_kernel.cu']
 
     def include_paths(self):
-        return ['csrc/xpu/includes', 'csrc/xpu/adagrad', 'csrc/includes']
+        return ['csrc/includes']

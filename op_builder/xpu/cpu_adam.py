@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # DeepSpeed Team
-from .builder import SYCLOpBuilder
+
+import os
+from .builder import SYCLAutoOpBuilder
 
 
-class CPUAdamBuilder(SYCLOpBuilder):
+class CPUAdamBuilder(SYCLAutoOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAM"
     NAME = "cpu_adam"
 
@@ -16,11 +18,10 @@ class CPUAdamBuilder(SYCLOpBuilder):
         return f'deepspeed.ops.adam.{self.NAME}_op'
 
     def sources(self):
-        return ['csrc/xpu/adam/cpu_adam.dp.cpp', 'csrc/xpu/adam/custom_sycl_kernel.dp.cpp']
+        if self.build_for_cpu:
+            return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/cpu_adam_impl.cpp']
 
-    def libraries_args(self):
-        args = super().libraries_args()
-        return args
+        return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/cpu_adam_impl.cpp', 'csrc/common/custom_cuda_kernel.cu']
 
     def include_paths(self):
-        return ['csrc/xpu/includes', 'csrc/xpu/adam', 'csrc/includes']
+        return ['csrc/includes']

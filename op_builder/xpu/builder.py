@@ -12,6 +12,26 @@ import filecmp
 import subprocess
 from deepspeed.ops.op_builder.builder import OpBuilder, TORCH_MAJOR, TORCH_MINOR
 
+def are_dirs_equal(dir1, dir2):
+    # Check if the directories exist
+    if not os.path.exists(dir1) or not os.path.exists(dir2):
+        return False
+
+    # Compare directory contents
+    dir_cmp = filecmp.dircmp(dir1, dir2)
+
+    # Check if the directory structures are the same
+    if dir_cmp.left_only or dir_cmp.right_only or dir_cmp.diff_files:
+        return False
+
+    # Recursively check subdirectories
+    for common_dir in dir_cmp.common_dirs:
+        sub_dir1 = os.path.join(dir1, common_dir)
+        sub_dir2 = os.path.join(dir2, common_dir)
+        if not are_dirs_equal(sub_dir1, sub_dir2):
+            return False
+
+    return True
 
 class SYCLOpBuilder(OpBuilder):
 
@@ -150,8 +170,10 @@ class SYCLAutoOpBuilder(OpBuilder):
             sycl_inc_path = os.path.join(sycl_link_path, include_path)
             extra_args += " --extra-arg=" + "\"" + "-I " + f'{build_inc_path}' + "\""
 
-            if os.path.exists(build_inc_path) and filecmp.dircmp(build_inc_path, ds_inc_path):
+            if os.path.exists(build_inc_path) and are_dirs_equal(build_inc_path, ds_inc_path):
                 continue
+            elif os.path.exists(build_inc_path):
+                shutil.rmtree(build_inc_path)
 
             os.makedirs(os.path.dirname(build_inc_path), exist_ok=True)
             shutil.copytree(ds_inc_path, build_inc_path)
@@ -198,6 +220,7 @@ class SYCLAutoOpBuilder(OpBuilder):
             sycl_link_path = os.path.join(ds_root_path, sycl_ds_kernel_path)
 
             extra_args = " --use-experimental-features=local-memory-kernel-scope-allocation "
+            extra_args += " --use-experimental-features=free-function-queries "
             extra_args += " --change-cuda-files-extension-only "
             extra_args += " --extra-arg=" + "\"" + "-DBF16_AVAILABLE=1" + "\""
 
@@ -231,8 +254,8 @@ class SYCLAutoOpBuilder(OpBuilder):
                 extra_args += " --rule-file " + f'{rule_file}'
 
             # add pre_process and post_process cmd scripts
-            pre_process_script = os.path.join(ds_root_path, 'op_builder/xpu', 'pre_process.sh')
-            post_process_script = os.path.join(ds_root_path, 'op_builder/xpu', 'post_process.sh')
+            pre_process_script = os.path.join(ds_root_path, 'op_builder/xpu', f'pre_process_{self.NAME}.sh')
+            post_process_script = os.path.join(ds_root_path, 'op_builder/xpu', f'post_process_{self.NAME}.sh')
 
             if os.path.exists(pre_process_script):
                 p = subprocess.Popen('source ' + f'{pre_process_script}', stdout=subprocess.PIPE, shell=True)
@@ -367,3 +390,5 @@ class SYCLAutoOpBuilder(OpBuilder):
             os.environ["TORCH_CUDA_ARCH_LIST"] = torch_arch_list
         '''
         return op_module
+
+
