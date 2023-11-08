@@ -91,12 +91,8 @@ def DS4Sci_EvoformerAttention(Q, K, V, biases):
 
     if biases[0] is not None:
         assert biases[0].shape == bias_1_shape(Q)
-    else:
-        biases[0] = Q.new_zeros(bias_1_shape(Q))
 
     if biases[1] is not None:
         assert biases[1].shape == bias_2_shape(Q)
-    else:
-        biases[1] = Q.new_zeros(bias_2_shape(Q))
 
     return EvoformerFusedAttention.apply(Q, K, V, biases[0], biases[1])
