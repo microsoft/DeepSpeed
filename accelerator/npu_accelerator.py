@@ -180,7 +180,7 @@ class NPU_Accelerator(DeepSpeedAccelerator):
     def create_graph(self):
         return None
 
-    def capture_to_graph(self, graph):
+    def capture_to_graph(self, graph, pool=None, stream=None):
         from deepspeed.runtime.utils import noop_context
         return noop_context()
 
