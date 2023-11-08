@@ -2,7 +2,7 @@
 *.pyc
 
 # Ignore IDE-specific files and directories
-.idea/        # JetBrains IDE settings
+.idea/         # JetBrains IDE settings
 .vscode/       # Visual Studio Code settings
 .theia/        # Theia IDE settings
 
@@ -23,7 +23,7 @@ __pycache__
 build/                  # Build artifacts
 dist/                   # Distribution files
 *.so                    # Compiled shared objects
-deepspeed.egg-info/      # Deepspeed package info
+deepspeed.egg-info/     # Deepspeed package info
 build.txt               # Build information
 
 # Website generated files
