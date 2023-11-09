@@ -3,7 +3,7 @@
 
 # DeepSpeed Team
 
-from typing import Dict, Iterable, Tuple
+from typing import Dict, Iterable, Tuple, Optional
 from os import path
 
 import torch
@@ -20,9 +20,9 @@ class TensorMetadata(DeepSpeedConfigModel):
     """
     A class to represent a tensor specification.
     """
-    dtype: str
-    shape: Tuple[int, ...]
-    strides: Tuple[int, ...]
+    dtype: Optional[str]
+    shape: Optional[Tuple[int, ...]]
+    strides: Optional[Tuple[int, ...]]
     offset: int
 
 
@@ -123,6 +123,7 @@ def flatten_inference_model(
 
             if param is None:
                 param_metadata.core_param = TensorMetadata(offset=-1)
+                layer_metadata.params[p_name] = param_metadata
                 continue
 
             param_metadata.core_param = TensorMetadata(dtype=str(param.dtype),
@@ -206,7 +207,7 @@ def restore_inference_model(buffer: torch.Tensor, metadata: ModelMetadata,
             p_metadata = l_metadata.params[p_name]
 
             if p_metadata.core_param.offset == -1:
-                setattr(layer_container, p_name, None)
+                layer_container.direct_injection(p_name, None)
                 continue
 
             dummy_tensor = torch.empty([], dtype=STR_TO_DTYPE[p_metadata.core_param.dtype])

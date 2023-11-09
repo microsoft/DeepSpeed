@@ -13,6 +13,7 @@ STR_TO_DTYPE = {
     "torch.float32": torch.float32,
     "torch.float64": torch.float64,
     "torch.float16": torch.float16,
+    "torch.bfloat16": torch.bfloat16,
     "torch.int64": torch.int64,
     "torch.int32": torch.int32,
     "torch.int16": torch.int16,

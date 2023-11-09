@@ -215,7 +215,7 @@ class LayerContainer(metaclass=LayerMetaclass):
                 continue
             elif not isinstance(tensor, InferenceParameter):
                 raise ValueError(
-                    "Layer should be finalized, but {} is neither InferenceParameter or None".format(name))
+                    "Layer should be finalized, but {} ({}) is neither InferenceParameter or None".format(name, type(tensor)))
             elif check_device and tensor.device != torch.device(get_accelerator().current_device()):
                 raise RuntimeError("Layer should be finalized, but {} is not on device {}".format(
                     name,
@@ -305,7 +305,6 @@ class LayerContainer(metaclass=LayerMetaclass):
                     target_dependency = getattr(target_param, target_dependency_name)
                     target_dependency[target_idx] = dep_value
                 return
-
         raise ValueError(
             "Could not find a mapping for dependency \"{}\". Check that it is included in the ``MAPPING_PARAMS``. See docstring for more on ``MAPPING_PARAMS``"
             .format(dep_name))
