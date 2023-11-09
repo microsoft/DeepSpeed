@@ -348,7 +348,11 @@ class TestStableDiffusion(DistributedTest):
 
     def test(self):
         from diffusers import DiffusionPipeline
+        from image_similarity_measures.evaluate import evaluation
 
+        generator = torch.Generator(device=torch.cuda.current_device())
+        seed = 0xABEDABE7
+        generator.manual_seed(seed)
         prompt = "a dog on a rocket"
         model = "prompthero/midjourney-v4-diffusion"
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -356,20 +360,27 @@ class TestStableDiffusion(DistributedTest):
 
         pipe = DiffusionPipeline.from_pretrained(model, torch_dtype=torch.half)
         pipe = pipe.to(device)
-        baseline_image = pipe(prompt, guidance_scale=7.5).images[0]
+        baseline_image = pipe(prompt, guidance_scale=7.5, generator=generator).images[0]
 
         pipe = deepspeed.init_inference(
             pipe,
             mp_size=1,
             dtype=torch.half,
-            replace_method="auto",
             replace_with_kernel_inject=True,
-            enable_cuda_graph=False,
+            enable_cuda_graph=True,
         )
-        deepspeed_image = pipe(prompt, guidance_scale=7.5).images[0]
+        generator.manual_seed(seed)
+        deepspeed_image = pipe(prompt, guidance_scale=7.5, generator=generator).images[0]
 
-        # Need to determine a heuristic for checking if images are "similar"
-        #assert baseline_image == deepspeed_image
+        baseline_image.save(f"baseline.png")
+        deepspeed_image.save(f"deepspeed.png")
+
+        rmse = evaluation(org_img_path="./baseline.png",
+           pred_img_path="./deepspeed.png",
+           metrics=["rmse"])
+
+        # RMSE threshold value is arbitrary, may need to adjust as needed
+        assert rmse['rmse'] <= 0.01
 
 
 @pytest.mark.seq_inference
