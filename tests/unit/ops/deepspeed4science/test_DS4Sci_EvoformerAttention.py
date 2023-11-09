@@ -69,10 +69,7 @@ def test_DS4Sci_EvoformerAttention(dtype, tensor_shape):
                     dtype=dtype,
                     device=get_accelerator().device_name(),
                     requires_grad=True)
-    mask = torch.randint(0, 2, 
-                        (batch, n, 1, 1, seq_len),
-                        dtype=dtype,
-                        device=get_accelerator().device_name())
+    mask = torch.randint(0, 2, (batch, n, 1, 1, seq_len), dtype=dtype, device=get_accelerator().device_name())
     mask_bias = 1e9 * (mask - 1)
     bias = torch.randn(batch,
                        1,
