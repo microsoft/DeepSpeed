@@ -35,7 +35,6 @@ class CudaEventTimer(object):
         self.end_event = end_event
 
     def get_elapsed_msec(self):
-        get_accelerator().current_stream().wait_event(self.end_event)
         self.end_event.synchronize()
         return self.start_event.elapsed_time(self.end_event)
 
