@@ -350,7 +350,7 @@ class TestStableDiffusion(DistributedTest):
         from diffusers import DiffusionPipeline
         from image_similarity_measures.evaluate import evaluation
 
-        generator = torch.Generator(device=torch.cuda.current_device())
+        generator = torch.Generator(device=get_accelerator().current_device())
         seed = 0xABEDABE7
         generator.manual_seed(seed)
         prompt = "a dog on a rocket"
