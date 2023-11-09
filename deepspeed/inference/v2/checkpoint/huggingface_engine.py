@@ -41,6 +41,8 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
         # NOTE(jeff): allow_patterns here are explicitly not using safetensors or other
         # checkpoint files that may be present. Example of all files in the llama-2-7b
         # repo here: https://huggingface.co/meta-llama/Llama-2-7b-hf/tree/main
+
+        # UPDATE: allow safetensors now
         from huggingface_hub import snapshot_download
 
         if os.path.isdir(self.model_name_or_path):
@@ -51,6 +53,7 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
                                                                "*.bin",
                                                                "*.json",
                                                                "*.pt",
+                                                               "*.safetensors",
                                                            ],
                                                            revision=None,
                                                            token=self.auth_token)
@@ -59,22 +62,33 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
             self._local_checkpoint_dir
         ), f"Checkpoint dir {self._local_checkpoint_dir} is not a directory, cannot load checkpoint."
 
-        model_param_json = os.path.join(self._local_checkpoint_dir, "pytorch_model.bin.index.json")
+        # Prioritize .safetensors over .bin
+        safe_model_param_json = os.path.join(self._local_checkpoint_dir, "model.safetensors.index.json")
 
-        if not os.path.isfile(model_param_json):
-            # We don't need any json as all such HF models will have pytorch_model.bin
-            all_checkpoint_files = [os.path.join(self._local_checkpoint_dir, 'pytorch_model.bin')]
+        if os.path.isfile(safe_model_param_json):
+            param_map = json.load(open(safe_model_param_json, "r"))
         else:
-            param_map = json.load(open(model_param_json, "r"))
+            model_param_json = os.path.join(self._local_checkpoint_dir, "pytorch_model.bin.index.json")
+            if os.path.isfile(model_param_json):
+                param_map = json.load(open(model_param_json, "r"))        
+            else:
+                # We don't need any json as all such HF models will have one model file
+                safe_model_file = os.path.join(self._local_checkpoint_dir, 'model.safetensors')
+                if os.path.isfile(safe_model_file):
+                    all_checkpoint_files = [safe_model_file]
+                else:
+                    all_checkpoint_files = [os.path.join(self._local_checkpoint_dir, 'pytorch_model.bin')]
 
-            # weight_map -> { "lm_head.weight": "pytorch_model-00002-of-00002.bin", ... }
-            weight_map = param_map["weight_map"]
+                return all_checkpoint_files
+            
+        # weight_map -> { "lm_head.weight": "pytorch_model-00002-of-00002.bin", ... }
+        weight_map = param_map["weight_map"]
 
-            # unique set of all checkpoint files
-            all_checkpoint_files = set(weight_map.values())
+        # unique set of all checkpoint files
+        all_checkpoint_files = set(weight_map.values())
 
-            # get absolute path of all unique checkpoint files
-            all_checkpoint_files = [os.path.join(self._local_checkpoint_dir, f) for f in all_checkpoint_files]
+        # get absolute path of all unique checkpoint files
+        all_checkpoint_files = [os.path.join(self._local_checkpoint_dir, f) for f in all_checkpoint_files]
 
         return all_checkpoint_files
 
@@ -82,9 +96,14 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
         """
         Generator of model parameters (satisfies the CheckpointEngineBase interface).
         """
+        from safetensors.torch import load_file
+
         for checkpoint in self._all_ckpt_paths:
             inference_logger().info(f"Loading checkpoint: {checkpoint}")
-            checkpoint_sd = torch.load(checkpoint, map_location='cpu')
+            if checkpoint.endswith(".safetensors"):
+                checkpoint_sd = load_file(checkpoint, device="cpu")
+            else:
+                checkpoint_sd = torch.load(checkpoint, map_location='cpu')
             param_keys = list(checkpoint_sd.keys())
             for param_name in param_keys:
                 param = checkpoint_sd[param_name]
