@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import os
 import torch
 import pytest
@@ -6,6 +11,7 @@ from unit.common import DistributedTest
 from deepspeed.accelerator import get_accelerator
 from diffusers import DiffusionPipeline
 from image_similarity_measures.evaluate import evaluation
+
 
 # Setup for these models is different from other pipelines, so we add a separate test
 @pytest.mark.stable_diffusion
