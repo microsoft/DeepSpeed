@@ -44,10 +44,9 @@ jobs:
           python -m pip install .
       - name: Install deepspeed
         run: |
-          pip install diffusers
           pip install image_similarity_measures
           python -m pip install docutils==0.18.1 jinja2==3.0 urllib3==1.26.11 ninja
-          python -m pip install .[dev,1bit,autotuning]
+          python -m pip install .[dev,1bit,autotuning,sd]
           ds_report
       - name: Python environment
         run: |
