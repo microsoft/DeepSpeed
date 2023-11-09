@@ -248,6 +248,10 @@ class LayerContainer(metaclass=LayerMetaclass):
         return self._n_params
 
     @property
+    def annotation_attrs(self) -> list:
+        return self._annotation_attrs
+
+    @property
     def mapping_params(self) -> dict:
         return getattr(self.__class__, MAPPING_KEY, {})
 

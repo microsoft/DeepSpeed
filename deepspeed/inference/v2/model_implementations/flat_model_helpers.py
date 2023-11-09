@@ -117,7 +117,7 @@ def flatten_inference_model(
 
         layer_metadata = LayerMetadata()
 
-        for p_name in layer_container._annotation_attrs:
+        for p_name in layer_container.annotation_attrs:
             param = getattr(layer_container, p_name)
             param_metadata = ParameterMetadata()
 
@@ -157,7 +157,7 @@ def flatten_inference_model(
 
     def copy_layer(layer_container: LayerContainer, l_name: str) -> int:
         l_metadata = metadata.layers[l_name]
-        for p_name in layer_container._annotation_attrs:
+        for p_name in layer_container.annotation_attrs:
             p_metadata = l_metadata.params[p_name]
             param = getattr(layer_container, p_name)
 
@@ -203,7 +203,7 @@ def restore_inference_model(buffer: torch.Tensor, metadata: ModelMetadata,
     def restore_layer(layer_container: LayerContainer, l_name: str) -> None:
         l_metadata = metadata.layers[l_name]
 
-        for p_name in layer_container._annotation_attrs:
+        for p_name in layer_container.annotation_attrs:
             p_metadata = l_metadata.params[p_name]
 
             if p_metadata.core_param.offset == -1:

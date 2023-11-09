@@ -20,6 +20,7 @@ from .logging import inference_logger
 from .ragged import DSStateManager, RaggedBatchWrapper, PlaceholderSequenceDescriptor
 from .scheduling_utils import SchedulingError, SchedulingResult
 from .model_implementations.flat_model_helpers import make_param_filename, make_metadata_filename
+from .model_implementations.inference_model_base import DSInferenceModelBase
 
 from .config_v2 import RaggedInferenceEngineConfig
 
@@ -33,7 +34,7 @@ class InferenceEngineV2:
     Configuration of the inference engine.
     """
 
-    #_model: DSInferenceModelBase
+    _model: DSInferenceModelBase
     """
     Inference model supporting ragged inference.
     """
@@ -49,6 +50,13 @@ class InferenceEngineV2:
         Number of free KV blocks.
         """
         return self._state_manager.free_blocks
+
+    @property
+    def model(self) -> DSInferenceModelBase:
+        """
+        The model implementation.
+        """
+        return self._model
 
     def __init__(self, policy: InferenceV2Policy, engine_config: RaggedInferenceEngineConfig) -> None:
         """
