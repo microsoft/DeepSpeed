@@ -7,6 +7,7 @@ import os
 import torch
 import pytest
 import deepspeed
+import numpy
 from unit.common import DistributedTest
 from deepspeed.accelerator import get_accelerator
 
@@ -18,7 +19,7 @@ class TestStableDiffusion(DistributedTest):
 
     def test(self):
         from diffusers import DiffusionPipeline
-        from image_similarity_measures.evaluate import evaluation
+        from image_similarity_measures.quality_metrics import rmse
         generator = torch.Generator(device=get_accelerator().current_device())
         seed = 0xABEDABE7
         generator.manual_seed(seed)
@@ -41,10 +42,7 @@ class TestStableDiffusion(DistributedTest):
         generator.manual_seed(seed)
         deepspeed_image = pipe(prompt, guidance_scale=7.5, generator=generator).images[0]
 
-        baseline_image.save(f"baseline.png")
-        deepspeed_image.save(f"deepspeed.png")
-
-        rmse = evaluation(org_img_path="./baseline.png", pred_img_path="./deepspeed.png", metrics=["rmse"])
+        rmse_value = rmse(org_img=numpy.asarray(baseline_image), pred_img=numpy.asarray(deepspeed_image))
 
         # RMSE threshold value is arbitrary, may need to adjust as needed
-        assert rmse['rmse'] <= 0.01
+        assert rmse_value <= 0.01
