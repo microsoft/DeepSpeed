@@ -1,3 +1,3 @@
 diffusers
-triton
 image_similarity_measures
+triton
