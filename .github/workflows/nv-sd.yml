@@ -51,5 +51,4 @@ jobs:
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
-          git clone https://github.com/microsoft/DeepSpeedExamples.git
           python -m pytest --color=yes --durations=0 --verbose -rF -m 'inference' -k "TestStableDiffusion" unit/ --torch_ver="2.0" --cuda_ver="12"
