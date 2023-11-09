@@ -375,9 +375,7 @@ class TestStableDiffusion(DistributedTest):
         baseline_image.save(f"baseline.png")
         deepspeed_image.save(f"deepspeed.png")
 
-        rmse = evaluation(org_img_path="./baseline.png",
-           pred_img_path="./deepspeed.png",
-           metrics=["rmse"])
+        rmse = evaluation(org_img_path="./baseline.png", pred_img_path="./deepspeed.png", metrics=["rmse"])
 
         # RMSE threshold value is arbitrary, may need to adjust as needed
         assert rmse['rmse'] <= 0.01
