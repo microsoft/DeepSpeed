@@ -33,20 +33,19 @@ class InferenceParameter(torch.Tensor):
     def __new__(cls, tensor, *args, **kwargs):
         new_tensor = super().__new__(cls, tensor, *args, **kwargs)
         if hasattr(tensor, "_aux_attrs"):
-            new_tensor._aux_attrs = tensor.aux_attrs
+            setattr(new_tensor, "_aux_attrs", tensor.aux_attrs)
         return new_tensor
 
     def to(self, *args, **kwargs):
         new_tensor = super().to(*args, **kwargs)
         if hasattr(self, "_aux_attrs"):
-            new_tensor._aux_attrs = self.aux_attrs
-
+            setattr(new_tensor, "_aux_attrs", self.aux_attrs)
         try:
             _ = torch.device(args[0])
             for name, attr in new_tensor.aux_attrs.items():
                 new_attr = attr.to(*args, **kwargs)
                 setattr(new_tensor, name, new_attr)
-                new_tensor._aux_attrs[name] = new_attr
+                new_tensor.aux_attrs[name] = new_attr
         except:
             pass
 
@@ -58,7 +57,7 @@ class InferenceParameter(torch.Tensor):
         Create the inference parameter.
         """
         param = InferenceParameter(core_param)
-        param._aux_attrs = kwargs
+        setattr(param, "_aux_attrs", kwargs)
 
         for attr_name, attr in kwargs.items():
             if hasattr(param, attr_name):

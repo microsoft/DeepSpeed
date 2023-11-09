@@ -106,6 +106,13 @@ class DSInferenceModelBase(torch.nn.Module, ABC):
         self._flattened_param_buffer = None
         self._flattened_param_metadata = None
 
+    @property
+    def config(self) -> DSModelImplementationConfig:
+        """
+        The model config.
+        """
+        return self._config
+
     def set_parameters(self, transformer: Iterable[LayerContainer], non_transformer: LayerContainer,
                        flattened_param_buffer: torch.Tensor, flattened_param_metadata: ModelMetadata):
         """
