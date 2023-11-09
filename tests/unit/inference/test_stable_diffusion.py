@@ -9,8 +9,6 @@ import pytest
 import deepspeed
 from unit.common import DistributedTest
 from deepspeed.accelerator import get_accelerator
-from diffusers import DiffusionPipeline
-from image_similarity_measures.evaluate import evaluation
 
 
 # Setup for these models is different from other pipelines, so we add a separate test
@@ -19,6 +17,8 @@ class TestStableDiffusion(DistributedTest):
     world_size = 1
 
     def test(self):
+        from diffusers import DiffusionPipeline
+        from image_similarity_measures.evaluate import evaluation
         generator = torch.Generator(device=get_accelerator().current_device())
         seed = 0xABEDABE7
         generator.manual_seed(seed)
