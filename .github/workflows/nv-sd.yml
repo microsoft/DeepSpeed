@@ -55,6 +55,7 @@ jobs:
       - name: Unit tests
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
+          python download_sd_model.py
           cd tests
           python -m pytest --color=yes --durations=0 --verbose -rF -s -m 'stable_diffusion' -k "TestStableDiffusion" unit/ --torch_ver="2.0" --cuda_ver="12"
 
