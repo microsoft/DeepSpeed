@@ -20,6 +20,27 @@ from .model_implementations import (
 from .model_implementations.inference_policy_base import POLICIES, InferenceV2Policy
 from .model_implementations.flat_model_helpers import make_metadata_filename, ModelMetadata
 
+def buid_engine_from_ds_checkpoint(path:str, engine_config: RaggedInferenceEngineConfig,
+                    debug_level: int = logging.INFO) -> InferenceEngineV2::
+    
+    inference_logger(level=debug_level)
+    # Load metadata, for grabbing the policy name we'll have all ranks just check for
+    # rank 0.
+    metadata_filename = make_metadata_filename(path, 0, engine_config.tensor_parallel.tp_size)
+    metadata = json.load(open(metadata_filename, "r"))
+    metadata = ModelMetadata.parse_raw(metadata)
+
+    # Get the policy
+    try:
+        policy_cls: InferenceV2Policy = POLICIES[metadata.policy]
+    except KeyError:
+        raise ValueError(f"Unknown policy {metadata.policy} for model {path}")
+
+    # Load the model config
+    model_config = pickle.load(open(os.path.join(path, "ds_model_config.pkl"), "rb"))
+    policy = policy_cls(model_config, inf_checkpoint_path=path)
+    
+    return InferenceEngineV2(policy, engine_config)
 
 def build_hf_engine(path: str,
                     engine_config: RaggedInferenceEngineConfig,
@@ -27,27 +48,12 @@ def build_hf_engine(path: str,
     """
     Build an InferenceV2 engine for HuggingFace models.
     """
-    # Set up logging
-    inference_logger(level=debug_level)
 
     if os.path.exists(os.path.join(path, "ds_model_config.pkl")):
-
-        # Load metadata, for grabbing the policy name we'll have all ranks just check for
-        # rank 0.
-        metadata_filename = make_metadata_filename(path, 0, engine_config.tensor_parallel.tp_size)
-        metadata = json.load(open(metadata_filename, "r"))
-        metadata = ModelMetadata.parse_raw(metadata)
-
-        # Get the policy
-        try:
-            policy_cls: InferenceV2Policy = POLICIES[metadata.policy]
-        except KeyError:
-            raise ValueError(f"Unknown policy {metadata.policy} for model {path}")
-
-        # Load the model config
-        model_config = pickle.load(open(os.path.join(path, "ds_model_config.pkl"), "rb"))
-        policy = policy_cls(model_config, inf_checkpoint_path=path)
+        return buid_engine_from_ds_checkpoint(path, engine_config)
     else:
+        # Set up logging
+        inference_logger(level=debug_level)
         # get HF checkpoint engine
         checkpoint_engine = HuggingFaceCheckpointEngine(path)
 
@@ -65,4 +71,4 @@ def build_hf_engine(path: str,
         else:
             raise ValueError(f"Unsupported model type {model_config.model_type}")
 
-    return InferenceEngineV2(policy, engine_config)
+        return InferenceEngineV2(policy, engine_config)

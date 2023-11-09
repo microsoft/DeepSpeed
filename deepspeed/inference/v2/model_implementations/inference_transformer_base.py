@@ -182,7 +182,7 @@ class DSTransformerModelBase(DSInferenceModelBase):
     """
 
     def __init__(self, config: DSModelImplementationConfig, engine_config: RaggedInferenceEngineConfig,
-                 base_mp_group: MPType) -> None:
+                 base_mp_group: MPType, please_dont_shard: bool=False) -> None:
         """
         Base implementation for initialization. By default, this will initialize
         the traditional components of a transformer model:
@@ -201,7 +201,7 @@ class DSTransformerModelBase(DSInferenceModelBase):
             engine_config (RaggedInferenceEngineConfig): Engine configuration.
             base_mp_group (MPType): Base communication group for Tensor-parallel inference.
         """
-        super().__init__(config, engine_config, base_mp_group)
+        super().__init__(config, engine_config, base_mp_group, please_dont_shard)
 
         self.make_norm_layer()
         self.make_qkv_layer()

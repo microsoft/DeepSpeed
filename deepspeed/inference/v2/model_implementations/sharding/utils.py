@@ -69,6 +69,7 @@ def shard_param(param: Optional[torch.Tensor],
         bias_dims (int): The number of dimensions that are considered bias dimensions. This is used to support
             sharding of MoE and non-MoE biases on the same codepath.
     """
+    return param
     assert shard_rank < num_shards, "Shard rank must be less than num_shards"
 
     # Easier to hide this inside of the sharding logic than to add checks in every model

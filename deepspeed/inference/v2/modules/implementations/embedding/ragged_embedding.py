@@ -68,6 +68,7 @@ class DSRaggedEmbedding(DSEmbeddingBase):
             ragged_batch (RaggedBatchWrapper): The input ids and associated ragged batch metadata.
             word_embeddings (torch.Tensor): The word embedding table
         """
+
         output = empty_from(self._output, (ragged_batch.tensor_toks, self._config.embedding_dim))
         self._ragged_embed(output,
                            ragged_batch,
