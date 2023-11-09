@@ -99,7 +99,10 @@ def flatten_inference_model(
     Flatten the underlying parameters into
 
     Arguments:
-        layer_containers: Iterable of layer containers.
+        transformer_containers: Iterable of layer containers corresponding to the transformer
+            parameters.
+        non_transformer_container: Layer container corresponding to the non-transformer parameters.
+        policy_name: The name of the policy class (typically accessed with `type(policy).__name__`).
 
     Returns:
         Iterable[Any]: Flattened list of parameters.
@@ -110,6 +113,21 @@ def flatten_inference_model(
     metadata = ModelMetadata(policy=policy_name)
 
     def process_layer(layer_container: LayerContainer, l_name: str, cur_offset: int) -> int:
+        """
+        Iterate over the parameters of a single container and collect metadata for the final
+        flattened buffer.
+
+        Arguments:
+            layer_container: The layer container to process.
+            l_name: The name of the layer container to key the metadata.
+            cur_offset: The current offset into the flattened buffer.
+
+        Captured Variables:
+            metadata: The metadata object to populate.
+
+        Returns:
+            int: The updated offset into the flattened buffer.
+        """
         try:
             _ = layer_container.is_populated
         except ValueError as e:
@@ -155,7 +173,18 @@ def flatten_inference_model(
 
     buffer = torch.empty(total_size, dtype=torch.uint8, device=get_accelerator().current_device())
 
-    def copy_layer(layer_container: LayerContainer, l_name: str) -> int:
+    def copy_layer(layer_container: LayerContainer, l_name: str) -> None:
+        """
+        Local method for copying from the layer container to the flattened buffer.
+
+        Arguments:
+            layer_container: The layer container to copy from.
+            l_name: The name of the layer container to key the metadata.
+
+        Captured Variables:
+            buffer: The flattened buffer to copy into.
+            metadata: The metadata object to populate.
+        """
         l_metadata = metadata.layers[l_name]
         for p_name in layer_container.annotation_attrs:
             p_metadata = l_metadata.params[p_name]
@@ -201,6 +230,19 @@ def restore_inference_model(buffer: torch.Tensor, metadata: ModelMetadata,
     alloc_fn = RaggedUtilsBuilder().load().allocate_view_like
 
     def restore_layer(layer_container: LayerContainer, l_name: str) -> None:
+        """
+        Local method for restoring a layer container from a flattened buffer. This
+        only constructs views for the parameters onto the buffer. No data movement
+        is performed.
+
+        Arguments:
+            layer_container: The layer container to restore.
+            l_name: The name of the layer container to key the metadata.
+
+        Captured Variables:
+            buffer: The flattened buffer to reconstruct views on top of.
+            metadata: The metadata object describing the each parameter in the model.
+        """
         l_metadata = metadata.layers[l_name]
 
         for p_name in layer_container.annotation_attrs:
