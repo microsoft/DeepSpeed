@@ -21,7 +21,7 @@ from .model_implementations.inference_policy_base import POLICIES, InferenceV2Po
 from .model_implementations.flat_model_helpers import make_metadata_filename, ModelMetadata
 
 def buid_engine_from_ds_checkpoint(path:str, engine_config: RaggedInferenceEngineConfig,
-                    debug_level: int = logging.INFO) -> InferenceEngineV2::
+                    debug_level: int = logging.INFO) -> InferenceEngineV2:
     
     inference_logger(level=debug_level)
     # Load metadata, for grabbing the policy name we'll have all ranks just check for
