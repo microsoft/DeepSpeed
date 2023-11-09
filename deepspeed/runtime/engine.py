@@ -700,6 +700,9 @@ class DeepSpeedEngine(Module):
             return self._config.zero_config.offload_optimizer.device == OffloadDeviceEnum.cpu
         return False
 
+    def zero_partial_offload(self):
+        return getattr(self._config.zero_config.offload_optimizer, "ratio", 1.0)
+
     def zero_sub_group_size(self):
         return self._config.zero_config.sub_group_size
 
@@ -807,6 +810,10 @@ class DeepSpeedEngine(Module):
             return torch.bfloat16
 
         return torch.float32
+
+    @communication_data_type.setter
+    def communication_data_type(self, value):
+        self._config.communication_data_type = value
 
     def postscale_gradients(self):
         return not self._config.prescale_gradients
@@ -1114,6 +1121,9 @@ class DeepSpeedEngine(Module):
         self.mp_world_size = groups._get_model_parallel_world_size()
         self.expert_parallel_group = groups._get_expert_parallel_group_dict()
         self.expert_data_parallel_group = groups._get_expert_data_parallel_group_dict()
+        self.sequence_parallel_size = groups._get_sequence_parallel_world_size()
+        if self.sequence_parallel_size > 1:
+            self.communication_data_type = self._config.seq_parallel_communication_data_type
 
         if not (self.amp_enabled() or is_zero_init_model):
             self._broadcast_model()
@@ -1558,6 +1568,7 @@ class DeepSpeedEngine(Module):
                     offload_optimizer_config=self.zero_offload_optimizer(),
                     offload_param_config=self.zero_offload_param(),
                     sub_group_size=self.zero_sub_group_size(),
+                    offload_ratio=self.zero_partial_offload(),
                     mpu=self.mpu,
                     postscale_gradients=self.postscale_gradients(),
                     gradient_predivide_factor=self.gradient_predivide_factor(),
@@ -2370,7 +2381,7 @@ class DeepSpeedEngine(Module):
             if self.pipeline_parallelism:
                 dp_group = self.mpu.get_data_parallel_group()
             else:
-                dp_group = groups._get_data_parallel_group()
+                dp_group = groups._get_sequence_data_parallel_group()
 
             if bucket_type == SparseTensor.type():
                 self.sparse_allreduce_no_retain(bucket, dp_group=dp_group)
@@ -2431,9 +2442,10 @@ class DeepSpeedEngine(Module):
 
         if self.postscale_gradients():
             if self.gradient_average:
-                values.mul_(self.gradient_predivide_factor() / dist.get_world_size(group=dp_group))
+                values.mul_(self.gradient_predivide_factor() /
+                            (dist.get_world_size(group=dp_group) / float(self.sequence_parallel_size)))
         else:
-            values.mul_(1. / dist.get_world_size(group=dp_group))
+            values.mul_(1. / (dist.get_world_size(group=dp_group) / float(self.sequence_parallel_size)))
 
         indices_device_list = self.sparse_all_gather(indices, dp_group)
         values_device_list = self.sparse_all_gather(values, dp_group)
@@ -2480,7 +2492,7 @@ class DeepSpeedEngine(Module):
         # Remove frozen parameter weights from state_dict if specified
         if exclude_frozen_parameters:
             for n, p in self.module.named_parameters():
-                if not p.requires_grad:
+                if not p.requires_grad and n in sd:
                     del sd[n]
 
         if self.random_ltd_enabled():
@@ -2712,6 +2724,11 @@ class DeepSpeedEngine(Module):
         if self._optimizer_has_ckpt_event_epilogue():
             self.optimizer.checkpoint_event_epilogue()
 
+        if self.load_universal_checkpoint():
+            self.optimizer.update_lp_params()
+            if load_zero_checkpoint:
+                self.update_optimizer_step(step=client_states['iteration'] + 1)
+
         return load_path, client_states
 
     def _load_checkpoint(self,
@@ -2888,6 +2905,24 @@ class DeepSpeedEngine(Module):
             logger.info(f"loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}")
         return True
 
+    def update_optimizer_step(self, step):
+
+        def set_step(d):
+            if isinstance(d['step'], torch.Tensor):
+                d['step'] = torch.tensor(step, dtype=d['step'].dtype, device=d['step'].device)
+            else:
+                d['step'] = step
+
+        optimizer = self.optimizer
+        base_optimizer = optimizer.optimizer
+        state = base_optimizer.state
+        for group in optimizer.param_groups:
+            if 'step' in group:
+                set_step(group)
+            for p in group['params']:
+                if p in state and len(state[p]) > 0 and 'step' in state[p]:
+                    set_step(state[p])
+
     def _get_mp_rank_zero_checkpoint_names(self, load_dir, tag, mp_rank, dp_world_size, bf16_mode):
         zero_ckpt_names = []
         for dp_rank in range(dp_world_size):
@@ -2994,7 +3029,8 @@ class DeepSpeedEngine(Module):
         # There seems to be issue creating them in parallel
 
         # Ensure save_dir directory exists
-        self.checkpoint_engine.makedirs(save_dir, exist_ok=True)
+        if rank == 0:
+            self.checkpoint_engine.makedirs(save_dir, exist_ok=True)
         dist.barrier()
 
         if tag is None:
