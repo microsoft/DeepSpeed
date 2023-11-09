@@ -7,6 +7,7 @@ import torch
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.allocator import on_device
+from deepspeed.inference.v2.inference_parameter import InferenceParameter
 from deepspeed.inference.v2.model_implementations.parameter_base import ParameterBase, ParametrizedList
 
 
@@ -53,7 +54,7 @@ class DummyInferenceModel:
 
     @on_device
     def transform(self, param: torch.Tensor) -> torch.Tensor:
-        return param
+        return InferenceParameter.initialize(param)
 
 
 def validate_device(tensor: torch.Tensor):
