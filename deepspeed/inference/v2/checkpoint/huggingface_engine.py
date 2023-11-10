@@ -70,7 +70,7 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
         else:
             model_param_json = os.path.join(self._local_checkpoint_dir, "pytorch_model.bin.index.json")
             if os.path.isfile(model_param_json):
-                param_map = json.load(open(model_param_json, "r"))        
+                param_map = json.load(open(model_param_json, "r"))
             else:
                 # We don't need any json as all such HF models will have one model file
                 safe_model_file = os.path.join(self._local_checkpoint_dir, 'model.safetensors')
@@ -80,7 +80,7 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
                     all_checkpoint_files = [os.path.join(self._local_checkpoint_dir, 'pytorch_model.bin')]
 
                 return all_checkpoint_files
-            
+
         # weight_map -> { "lm_head.weight": "pytorch_model-00002-of-00002.bin", ... }
         weight_map = param_map["weight_map"]
 
