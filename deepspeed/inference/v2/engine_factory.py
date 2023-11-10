@@ -24,6 +24,19 @@ from .model_implementations.flat_model_helpers import make_metadata_filename, Mo
 def buid_engine_from_ds_checkpoint(path: str,
                                    engine_config: RaggedInferenceEngineConfig,
                                    debug_level: int = logging.INFO) -> InferenceEngineV2:
+    """
+    Creates an engine from a checkpoint saved by ``InferenceEngineV2``.
+
+    Arguments:
+        path: Path to the checkpoint. This does not need to point to any files in particular,
+            just the directory containing the checkpoint.
+        engine_config: Engine configuration. See ``RaggedInferenceEngineConfig`` for details.
+        debug_level: Logging level to use. Unless you are actively seeing issues, the recommended
+            value is ``logging.INFO``.
+
+    Returns:
+        Fully initialized inference engine ready to serve queries.
+    """
 
     inference_logger(level=debug_level)
     # Load metadata, for grabbing the policy name we'll have all ranks just check for
@@ -49,7 +62,18 @@ def build_hf_engine(path: str,
                     engine_config: RaggedInferenceEngineConfig,
                     debug_level: int = logging.INFO) -> InferenceEngineV2:
     """
-    Build an InferenceV2 engine for HuggingFace models.
+    Build an InferenceV2 engine for HuggingFace models. This can accept both a HuggingFace
+    model name or a path to an Inference-V2 checkpoint.
+
+    Arguments:
+        path: Path to the checkpoint. This does not need to point to any files in particular,
+            just the directory containing the checkpoint.
+        engine_config: Engine configuration. See ``RaggedInferenceEngineConfig`` for details.
+        debug_level: Logging level to use. Unless you are actively seeing issues, the recommended
+            value is ``logging.INFO``.
+
+    Returns:
+        Fully initialized inference engine ready to serve queries.
     """
 
     if os.path.exists(os.path.join(path, "ds_model_config.pkl")):
