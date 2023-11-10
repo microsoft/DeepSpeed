@@ -81,10 +81,8 @@ def test_contiguify_roundtrip():
 
     non_transformer_params = [p.to(get_accelerator().current_device()) for p in non_transformer_params]
 
-    def validate_containers(t_containers: List[LayerContainer],
-                            n_t_containers: LayerContainer,
-                            t_params: List[List[torch.Tensor]],
-                            n_t_params: List[torch.Tensor]):
+    def validate_containers(t_containers: List[LayerContainer], n_t_containers: LayerContainer,
+                            t_params: List[List[torch.Tensor]], n_t_params: List[torch.Tensor]):
         """
         Validate params match what is on the containers.
         """
@@ -107,8 +105,7 @@ def test_contiguify_roundtrip():
     buffer, metadata = flatten_inference_model(transformer_containers, non_transformer_container, "NoOpPolicy")
 
     # Validate containers before contiguify
-    validate_containers(transformer_containers, non_transformer_container, transformer_params,
-                        non_transformer_params)
+    validate_containers(transformer_containers, non_transformer_container, transformer_params, non_transformer_params)
 
     # Validate restore pass
     transformer_containers_r = []
@@ -121,5 +118,3 @@ def test_contiguify_roundtrip():
 
     validate_containers(transformer_containers_r, non_transformer_container_r, transformer_params,
                         non_transformer_params)
-
-

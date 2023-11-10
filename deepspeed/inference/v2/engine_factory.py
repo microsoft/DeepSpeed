@@ -20,8 +20,10 @@ from .model_implementations import (
 from .model_implementations.inference_policy_base import POLICIES, InferenceV2Policy
 from .model_implementations.flat_model_helpers import make_metadata_filename, ModelMetadata
 
-def buid_engine_from_ds_checkpoint(path:str, engine_config: RaggedInferenceEngineConfig,
-                    debug_level: int = logging.INFO) -> InferenceEngineV2:
+
+def buid_engine_from_ds_checkpoint(path: str,
+                                   engine_config: RaggedInferenceEngineConfig,
+                                   debug_level: int = logging.INFO) -> InferenceEngineV2:
 
     inference_logger(level=debug_level)
     # Load metadata, for grabbing the policy name we'll have all ranks just check for
@@ -41,6 +43,7 @@ def buid_engine_from_ds_checkpoint(path:str, engine_config: RaggedInferenceEngin
     policy = policy_cls(model_config, inf_checkpoint_path=path)
 
     return InferenceEngineV2(policy, engine_config)
+
 
 def build_hf_engine(path: str,
                     engine_config: RaggedInferenceEngineConfig,

@@ -214,8 +214,8 @@ class LayerContainer(metaclass=LayerMetaclass):
             if tensor is None:
                 continue
             elif not isinstance(tensor, InferenceParameter):
-                raise ValueError(
-                    "Layer should be finalized, but {} ({}) is neither InferenceParameter or None".format(name, type(tensor)))
+                raise ValueError("Layer should be finalized, but {} ({}) is neither InferenceParameter or None".format(
+                    name, type(tensor)))
             elif check_device and tensor.device != torch.device(get_accelerator().current_device()):
                 raise RuntimeError("Layer should be finalized, but {} is not on device {}".format(
                     name,

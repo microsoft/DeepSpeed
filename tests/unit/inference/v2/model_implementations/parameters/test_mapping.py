@@ -23,6 +23,7 @@ class MultiDependencyContainer(ParameterBase):
         param = torch.cat([self.dependency_1, self.dependency_2])
         return InferenceParameter.initialize(param)
 
+
 class ListDependencyContainer(ParameterBase):
 
     dependencies: ParamList("list_items")  # noqa: F821
