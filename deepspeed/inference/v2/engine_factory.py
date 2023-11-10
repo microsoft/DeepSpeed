@@ -22,7 +22,7 @@ from .model_implementations.flat_model_helpers import make_metadata_filename, Mo
 
 def buid_engine_from_ds_checkpoint(path:str, engine_config: RaggedInferenceEngineConfig,
                     debug_level: int = logging.INFO) -> InferenceEngineV2:
-    
+
     inference_logger(level=debug_level)
     # Load metadata, for grabbing the policy name we'll have all ranks just check for
     # rank 0.
@@ -39,7 +39,7 @@ def buid_engine_from_ds_checkpoint(path:str, engine_config: RaggedInferenceEngin
     # Load the model config
     model_config = pickle.load(open(os.path.join(path, "ds_model_config.pkl"), "rb"))
     policy = policy_cls(model_config, inf_checkpoint_path=path)
-    
+
     return InferenceEngineV2(policy, engine_config)
 
 def build_hf_engine(path: str,
@@ -50,7 +50,7 @@ def build_hf_engine(path: str,
     """
 
     if os.path.exists(os.path.join(path, "ds_model_config.pkl")):
-        return buid_engine_from_ds_checkpoint(path, engine_config)
+        return buid_engine_from_ds_checkpoint(path, engine_config, debug_level=debug_level)
     else:
         # Set up logging
         inference_logger(level=debug_level)

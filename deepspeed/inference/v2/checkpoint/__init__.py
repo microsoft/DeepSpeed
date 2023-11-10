@@ -6,5 +6,3 @@
 from .base_engine import CheckpointEngineBase
 from .in_memory_engine import InMemoryModelEngine
 from .huggingface_engine import HuggingFaceCheckpointEngine
-
-from .megatron_engine import MegatronCheckpointEngine

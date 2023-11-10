@@ -111,9 +111,5 @@ class GQAMegatronQKVParameter(ParameterBase):
         head_size = self.inference_model.head_size
         n_q_heads = self.inference_model.n_heads_q
         n_kv_heads = self.inference_model.n_heads_kv
-        if self.params.shape[0] != (2 * n_kv_heads + n_q_heads) * head_size:
-            world_size = 1 if not torch.distributed.is_initialized() else torch.distributed.get_world_size()
-            n_q_heads = n_q_heads // world_size
-            n_kv_heads = n_kv_heads // world_size
         transposed_param = transform_gqa_megatron(self.params, head_size, n_q_heads, n_kv_heads)
         return self.inference_model.transform_qkv_param(transposed_param)
