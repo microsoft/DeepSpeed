@@ -29,3 +29,17 @@ tests/unit/saved_checkpoint/
 # Dev/IDE data
 .vscode
 .theia
+
+# App_dev
+system/_software/
+files/build
+files/code-files/files/_build
+files/files-docs/_build
+files/code-docs/build
+.sass-cache/
+.jekyll-cache/
+.jekyll-software
+
+# Dev/IDE data
+.vscode
+.gradiea
