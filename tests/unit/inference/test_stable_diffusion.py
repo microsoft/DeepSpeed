@@ -18,10 +18,6 @@ class TestStableDiffusion(DistributedTest):
     world_size = 1
 
     def test(self):
-        from importlib.util import find_spec
-        if find_spec('diffusers') is None:
-            pytest.skip("diffusers library is not installed.")
-
         from diffusers import DiffusionPipeline
         from image_similarity_measures.quality_metrics import rmse
         generator = torch.Generator(device=get_accelerator().current_device())
