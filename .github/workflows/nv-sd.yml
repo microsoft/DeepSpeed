@@ -8,6 +8,8 @@ on:
     paths:
       - "deepspeed/ops/transformer/inference/diffusers_**"
       - "tests/unit/inference/test_stable_diffusion.py"
+      - "deepspeed/model_implementations/diffusers/unet.py"
+      - "deepspeed/model_implementations/diffusers/vae.py"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
