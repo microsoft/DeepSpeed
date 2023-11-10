@@ -20,7 +20,6 @@ class TestStableDiffusion(DistributedTest):
     def test(self):
         from diffusers import DiffusionPipeline
         from image_similarity_measures.quality_metrics import rmse
-        print(f"Setup generator")
         generator = torch.Generator(device=get_accelerator().current_device())
         seed = 0xABEDABE7
         generator.manual_seed(seed)
@@ -29,13 +28,10 @@ class TestStableDiffusion(DistributedTest):
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         device = torch.device(f"cuda:{local_rank}")
 
-        print(f"Build SD pipeline")
         pipe = DiffusionPipeline.from_pretrained(model, torch_dtype=torch.half)
         pipe = pipe.to(device)
-        print(f"Generate baseline image")
         baseline_image = pipe(prompt, guidance_scale=7.5, generator=generator).images[0]
 
-        print(f"Pass pipeline through DS inference API")
         pipe = deepspeed.init_inference(
             pipe,
             mp_size=1,
@@ -44,12 +40,9 @@ class TestStableDiffusion(DistributedTest):
             enable_cuda_graph=True,
         )
         generator.manual_seed(seed)
-        print(f"Generate deepspeed image")
         deepspeed_image = pipe(prompt, guidance_scale=7.5, generator=generator).images[0]
 
-        print(f"Calculate RMSE value")
         rmse_value = rmse(org_img=numpy.asarray(baseline_image), pred_img=numpy.asarray(deepspeed_image))
 
         # RMSE threshold value is arbitrary, may need to adjust as needed
-        print(f"Perform assertion")
         assert rmse_value <= 0.01
