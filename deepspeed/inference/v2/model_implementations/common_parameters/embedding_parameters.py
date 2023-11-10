@@ -23,5 +23,4 @@ class EmbeddingParameter(ParameterBase):
     """
 
     def finalize(self) -> torch.Tensor:
-        print("EmbeddingParameter.finalize")
         return self.inference_model.transform_embedding_param(self.params)
