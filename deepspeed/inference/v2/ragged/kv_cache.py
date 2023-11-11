@@ -132,9 +132,9 @@ class BlockedKVCache:
             head_size = config.cache_shape[2]
 
             alloc_shape = (num_caches, num_blocks, config.block_size, 2, num_heads, head_size)
-            inference_logger().info(f"Allocating KV-cache {cache_group_id} with shape: {alloc_shape} consisting of {num_blocks} blocks.")
-            caches.append(torch.empty(alloc_shape,
-                                      dtype=config.cache_dtype,
+            inference_logger().info(
+                f"Allocating KV-cache {cache_group_id} with shape: {alloc_shape} consisting of {num_blocks} blocks.")
+            caches.append(torch.empty(alloc_shape, dtype=config.cache_dtype,
                                       device=get_accelerator().current_device()))
             allocators.append(BlockedAllocator(num_blocks))
 

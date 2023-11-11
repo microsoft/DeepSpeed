@@ -158,14 +158,14 @@ class DSStateManager:
                 f"Unable to create tracking slot for sequence {uid} since the metadata buffers are full.")
 
         seq_block_ids = tuple(all_block_ids[tracking_slot] for all_block_ids in self._all_block_ids)
-        seq_block_ids_shadow = tuple(all_block_ids_shadow[tracking_slot] for all_block_ids_shadow in
-                                     self._all_block_ids_shadow)
+        seq_block_ids_shadow = tuple(all_block_ids_shadow[tracking_slot]
+                                     for all_block_ids_shadow in self._all_block_ids_shadow)
 
         self._seqs[uid] = DSSequenceDescriptor(tracking_slot,
                                                seq_block_ids,
                                                seq_block_ids_shadow,
                                                max_context=self._config.max_context)
-        # TODO(cmikeh2): Debug call here might be unecessary and is potentially on critical path.
+        # TODO(cmikeh2): Debug call here might be unnecessary and is potentially on critical path.
         logger.debug(f"Created sequence {uid} with tracking slot {tracking_slot}.")
         return self._seqs[uid]
 

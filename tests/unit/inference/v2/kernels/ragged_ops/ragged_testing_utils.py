@@ -135,7 +135,7 @@ def build_batch_and_manager(
                                   memory_config=memory_config)
 
     batch = RaggedBatchWrapper(config)
-    state_manager = DSStateManager(config, (kv_config,))
+    state_manager = DSStateManager(config, (kv_config, ))
 
     # At the beginning of operation, the design of the allocator is such that it will return
     # linear blocks of memory. The following will "warm up" the allocator so that we can be

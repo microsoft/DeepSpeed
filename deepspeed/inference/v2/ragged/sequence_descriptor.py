@@ -123,8 +123,10 @@ class DSSequenceDescriptor(BaseSequenceDescriptor):
         self._seen_tokens = 0
         self._in_flight_tokens = 0
 
-        self._num_allocation_groups = tuple(kv_cache_ids_shadow.shape[0] for kv_cache_ids_shadow in kv_cache_ids_shadow)
-        self._blocks_per_allocation_group = tuple(torch.zeros(num_groups, dtype=torch.int32, device="cpu") for num_groups in self._num_allocation_groups)
+        self._num_allocation_groups = tuple(kv_cache_ids_shadow.shape[0]
+                                            for kv_cache_ids_shadow in kv_cache_ids_shadow)
+        self._blocks_per_allocation_group = tuple(
+            torch.zeros(num_groups, dtype=torch.int32, device="cpu") for num_groups in self._num_allocation_groups)
 
         for cache_group, kv_cache_ids in enumerate(kv_cache_ids):
             assert self._num_allocation_groups[cache_group] == kv_cache_ids.shape[0]
@@ -202,7 +204,8 @@ class DSSequenceDescriptor(BaseSequenceDescriptor):
             cache_group (int): The cache group to query.
         """
         block_ids = []
-        for allocation_group, num_blocks in zip(self._kv_cache_ids[cache_group], self._blocks_per_allocation_group[cache_group]):
+        for allocation_group, num_blocks in zip(self._kv_cache_ids[cache_group],
+                                                self._blocks_per_allocation_group[cache_group]):
             block_ids.append(allocation_group[:num_blocks])
         return torch.cat(block_ids)
 
@@ -239,7 +242,8 @@ class DSSequenceDescriptor(BaseSequenceDescriptor):
             new_ids = [new_ids]
 
         if len(new_ids) != self._num_allocation_groups[cache_group]:
-            raise ValueError(f"Only {len(new_ids)} allocation groups provided, expected {self._num_allocation_groups[cache_group]}")
+            raise ValueError(
+                f"Only {len(new_ids)} allocation groups provided, expected {self._num_allocation_groups[cache_group]}")
 
         for group_id, new_group_ids in enumerate(new_ids):
             new_blocks = new_group_ids.numel()
