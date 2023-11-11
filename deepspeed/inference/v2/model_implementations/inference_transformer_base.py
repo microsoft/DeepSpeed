@@ -346,7 +346,7 @@ class DSTransformerModelBase(DSInferenceModelBase):
         self.attn = heuristics.instantiate_attention(attn_config, self._engine_config)
 
     def get_kv_requirements(self, sequence: DSSequenceDescriptor, max_new_tokens: int,
-                            max_new_blocks: int) -> Tuple[int, Tuple[int, ...]]:
+                            max_new_blocks: int) -> Tuple[int, torch.Tensor]:
         """
         See ``DSInferenceModelBase.get_kv_requirements`` for documentation.
 
@@ -363,7 +363,7 @@ class DSTransformerModelBase(DSInferenceModelBase):
         token_capacity = (max_new_blocks +
                           sequence.cur_allocated_blocks) * self.attn.kv_block_size - sequence.seen_tokens
 
-        return token_capacity, (max_new_blocks,)
+        return token_capacity, torch.tensor([max_new_blocks])
 
     def maybe_allocate_kv(self, sequence: DSSequenceDescriptor, n_new_tokens: int) -> None:
         """

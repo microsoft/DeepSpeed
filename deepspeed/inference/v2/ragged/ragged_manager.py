@@ -54,7 +54,7 @@ class DSStateManager:
 
     def __init__(self,
                  config: DSStateManagerConfig,
-                 kv_configs: Tuple[KVCacheConfig],
+                 kv_configs: Tuple[KVCacheConfig, ...],
                  base_mp_group: Optional[Any] = None) -> None:
         """
         The key
@@ -83,7 +83,7 @@ class DSStateManager:
             )
 
             all_block_ids.append(torch.zeros(ids_shape, dtype=torch.int32, device=get_accelerator().current_device()))
-            all_block_ids_shadow.append(self._ragged_utils.allocate_fast_host_buffer(self._all_block_ids))
+            all_block_ids_shadow.append(self._ragged_utils.allocate_fast_host_buffer(all_block_ids[-1]))
 
         self._all_block_ids = tuple(all_block_ids)
         self._all_block_ids_shadow = tuple(all_block_ids_shadow)
@@ -191,14 +191,14 @@ class DSStateManager:
         return self._kv_config.block_size
 
     @property
-    def n_kv_caches(self) -> int:
+    def n_kv_cache_groups(self) -> int:
         """
         Return the number of KV caches.
         """
         return self._kv_cache.num_caches
 
     @property
-    def free_blocks(self) -> Tuple[int, ...]:
+    def free_blocks(self) -> torch.Tensor:
         """
         Return the number of free blocks in the KV cache.
         """

@@ -127,19 +127,22 @@ class BlockedKVCache:
         allocators = []
 
         for cache_group_id, config in enumerate(self._configs):
-            num_caches = self._config.cache_shape[0]
-            num_heads = self._config.cache_shape[1]
-            head_size = self._config.cache_shape[2]
+            num_caches = config.cache_shape[0]
+            num_heads = config.cache_shape[1]
+            head_size = config.cache_shape[2]
 
-            alloc_shape = (num_caches, num_blocks, self._config.block_size, 2, num_heads, head_size)
+            alloc_shape = (num_caches, num_blocks, config.block_size, 2, num_heads, head_size)
             inference_logger().info(f"Allocating KV-cache {cache_group_id} with shape: {alloc_shape} consisting of {num_blocks} blocks.")
             caches.append(torch.empty(alloc_shape,
-                                      dtype=self._config.cache_dtype,
+                                      dtype=config.cache_dtype,
                                       device=get_accelerator().current_device()))
             allocators.append(BlockedAllocator(num_blocks))
 
         self._caches = tuple(caches)
         self._allocators = tuple(allocators)
+        self._free_blocks = torch.empty(len(self._allocators), dtype=torch.int32, device="cpu")
+        for i, allocator in enumerate(self._allocators):
+            self._free_blocks[i] = allocator.free_blocks
 
     def reserve(self, num_blocks: int, cache_group: int = 0) -> torch.Tensor:
         """
@@ -150,7 +153,7 @@ class BlockedKVCache:
             num_blocks (int): The number of blocks to reserve.
             cache_group (int): The cache group to reserve from. Default is 0.
         """
-        return self._allocators[cache_group].reserve(num_blocks)
+        return self._allocators[cache_group].allocate(num_blocks)
 
     def free(self, blocks: Iterable[int], cache_group: int = 0) -> None:
         """
@@ -194,11 +197,13 @@ class BlockedKVCache:
         return self._caches[cache_group][cache_id]
 
     @property
-    def free_blocks(self) -> Tuple[int, ...]:
+    def free_blocks(self) -> torch.Tensor:
         """
         Return the number of free blocks in each cache
         """
-        return tuple(allocator.free_blocks for allocator in self._allocators)
+        for i, allocator in enumerate(self._allocators):
+            self._free_blocks[i] = allocator.free_blocks
+        return self._free_blocks
 
     @property
     def num_caches(self) -> int:

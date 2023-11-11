@@ -118,7 +118,7 @@ class DSSequenceDescriptor(BaseSequenceDescriptor):
         self._kv_cache_ids = kv_cache_ids
         self._kv_cache_ids_shadow = kv_cache_ids_shadow
         self._max_context = max_context
-        self._n_cache_groups == len(kv_cache_ids)
+        self._n_cache_groups = len(kv_cache_ids)
 
         self._seen_tokens = 0
         self._in_flight_tokens = 0
