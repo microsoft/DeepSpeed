@@ -20,6 +20,8 @@ try:
 except ImportError as e:
     dsa2 = None
 
+SUPPORTED_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'npu', 'mps']
+
 ds_accelerator = None
 
 
@@ -42,6 +44,10 @@ def _validate_accelerator(accel_obj):
     #    f'{accel_obj.__class__.__name__} accelerator fails is_available() test'
 
 
+def is_current_accelerator_supported():
+    return get_accelerator() in SUPPORTED_ACCELERATOR_LIST
+
+
 def get_accelerator():
     global ds_accelerator
     if ds_accelerator is not None:
@@ -50,7 +56,6 @@ def get_accelerator():
     accelerator_name = None
     ds_set_method = None
     # 1. Detect whether there is override of DeepSpeed accelerators from environment variable.
-    DS_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'npu', 'mps']
     if "DS_ACCELERATOR" in os.environ.keys():
         accelerator_name = os.environ["DS_ACCELERATOR"]
         if accelerator_name == "xpu":
@@ -79,11 +84,9 @@ def get_accelerator():
                 torch.mps.current_allocated_memory()
             except (RuntimeError, ImportError) as e:
                 raise ValueError(f"MPS_Accelerator requires torch.mps, which is not installed on this system.")
-        elif accelerator_name == "cuda":
-            pass
-        else:
+        elif is_current_accelerator_supported():
             raise ValueError(
-                f'DS_ACCELERATOR must be one of {DS_ACCELERATOR_LIST}.  Value "{accelerator_name}" is not supported')
+                f'DS_ACCELERATOR must be one of {SUPPORTED_ACCELERATOR_LIST}.  Value "{accelerator_name}" is not supported')
         ds_set_method = "override"
 
     # 2. If no override, detect which accelerator to use automatically
