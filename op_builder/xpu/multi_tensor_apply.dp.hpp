@@ -8,10 +8,10 @@ Copyright NVIDIA/apex
 This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 */
 
-#include <sycl/sycl.hpp>
-#include <dpct/dpct.hpp>
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
+#include <dpct/dpct.hpp>
+#include <sycl/sycl.hpp>
 // #include <ATen/cuda/CUDAContext.h>
 // #include <ATen/cuda/Exceptions.h>
 #include <ipex.h>
@@ -22,21 +22,23 @@ This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 #include <utility>
 
 namespace at {
-  namespace cuda {
-    dpct::queue_ptr getCurrentCUDAStream() {
-      auto device_type = c10::DeviceType::XPU;
-      c10::impl::VirtualGuardImpl impl(device_type);
-      c10::Stream c10_stream = impl.getStream(c10::Device(device_type));
-      auto& queue = xpu::get_queue_from_stream(c10_stream);
-      return &queue;
-    }
-
-    dpct::queue_ptr getStreamFromPool(bool) {
-      // not implemented
-      return nullptr;
-    }
-  }
+namespace cuda {
+dpct::queue_ptr getCurrentCUDAStream()
+{
+    auto device_type = c10::DeviceType::XPU;
+    c10::impl::VirtualGuardImpl impl(device_type);
+    c10::Stream c10_stream = impl.getStream(c10::Device(device_type));
+    auto& queue = xpu::get_queue_from_stream(c10_stream);
+    return &queue;
 }
+
+dpct::queue_ptr getStreamFromPool(bool)
+{
+    // not implemented
+    return nullptr;
+}
+}  // namespace cuda
+}  // namespace at
 // #include <iostream>
 
 // This header is the one-stop shop for all your multi-tensor apply needs.
@@ -57,43 +59,58 @@ struct TensorListMetadata {
 template <typename T, typename U, typename... ArgTypes>
 class multi_tensor_apply_kernel {
 public:
-  multi_tensor_apply_kernel(
-      int chunk_size, volatile int* noop_flag, T tl, U callable, ArgTypes... args)
-    : chunk_size(chunk_size), noop_flag(noop_flag), tl(tl), callable(callable), args(args...)
-  {}
+    multi_tensor_apply_kernel(int chunk_size,
+                              volatile int* noop_flag,
+                              T tl,
+                              U callable,
+                              ArgTypes... args)
+        : chunk_size(chunk_size), noop_flag(noop_flag), tl(tl), callable(callable), args(args...)
+    {
+    }
 
-  // This should be identical to original __global__ function
-  static void inline __global__function(
-      int chunk_size, volatile int* noop_flag, T tl, U callable, ArgTypes... args
-  ) {
-    callable(chunk_size, noop_flag, tl, args...);
-  }
+    // This should be identical to original __global__ function
+    static void inline __global__function(int chunk_size,
+                                          volatile int* noop_flag,
+                                          T tl,
+                                          U callable,
+                                          ArgTypes... args)
+    {
+        callable(chunk_size, noop_flag, tl, args...);
+    }
 
-  // If global function template contains parameter pack,
-  // we only deal with parameter pack at the end of template parameter list
-  template <typename Tuple, std::size_t... I>
-  static void inline __tuple_expand_driver(
-      int chunk_size, volatile int* noop_flag,
-      T tl, U callable, Tuple args, std::index_sequence<I...>
-  ) {
-    __global__function(chunk_size, noop_flag, tl, callable, std::get<I>(args)...);
-  }
+    // If global function template contains parameter pack,
+    // we only deal with parameter pack at the end of template parameter list
+    template <typename Tuple, std::size_t... I>
+    static void inline __tuple_expand_driver(int chunk_size,
+                                             volatile int* noop_flag,
+                                             T tl,
+                                             U callable,
+                                             Tuple args,
+                                             std::index_sequence<I...>)
+    {
+        __global__function(chunk_size, noop_flag, tl, callable, std::get<I>(args)...);
+    }
 
-  //
-  // Because __global__ function can't really use any reference types, we can sure that args
-  // are all good behaviors
-  //
-  void operator() (sycl::nd_item<3>) const {
-    __tuple_expand_driver(chunk_size, noop_flag, tl, callable, args,
-        std::make_index_sequence<sizeof ...(ArgTypes)>());
-  }
+    //
+    // Because __global__ function can't really use any reference types, we can sure that args
+    // are all good behaviors
+    //
+    void operator()(sycl::nd_item<3>) const
+    {
+        __tuple_expand_driver(chunk_size,
+                              noop_flag,
+                              tl,
+                              callable,
+                              args,
+                              std::make_index_sequence<sizeof...(ArgTypes)>());
+    }
 
 private:
-  int chunk_size;
-  volatile int* noop_flag;
-  T tl;
-  U callable;
-  std::tuple<ArgTypes...> args;
+    int chunk_size;
+    volatile int* noop_flag;
+    T tl;
+    U callable;
+    std::tuple<ArgTypes...> args;
 };
 
 template <int depth, typename T, typename... ArgTypes>
@@ -161,28 +178,33 @@ void multi_tensor_apply(int block_size,
                 get the device limit, query info::device::max_work_group_size. Adjust the work-group
                 size if needed.
                 */
-                /* multi_tensor_apply_kernel<TensorListMetadata<depth>, T, ArgTypes...> fn(chunk_size, noop_flag.DATA_PTR<int>(), tl, callable, args...); */
-              if constexpr (sizeof(multi_tensor_apply_kernel(chunk_size, noop_flag.DATA_PTR<int>(), tl, callable, args...)) < 2048) {
-                ((sycl::queue*)(stream))
-                    ->parallel_for(
-                        sycl::nd_range<3>(
-                            sycl::range<3>(1, 1, loc_block_info) * sycl::range<3>(1, 1, block_size),
-                            sycl::range<3>(1, 1, block_size)),
-                        multi_tensor_apply_kernel(chunk_size, noop_flag.DATA_PTR<int>(), tl, callable, args...));
-              } else {
-                auto capture = multi_tensor_apply_kernel(chunk_size, noop_flag.DATA_PTR<int>(), tl, callable, args...);
-                sycl::buffer params(const_cast<const decltype(capture) *>(&capture), sycl::range<1>(1));
-                stream->submit([&] (sycl::handler &cgh) {
-                  auto device_params = params.template get_access<sycl::access_mode::read, sycl::target::constant_buffer>(cgh);
-                  cgh.parallel_for(
-                        sycl::nd_range<3>(
-                            sycl::range<3>(1, 1, loc_block_info) * sycl::range<3>(1, 1, block_size),
-                            sycl::range<3>(1, 1, block_size)),
-                        [=] (sycl::nd_item<3> item) {
-                        device_params[0](item);
-                        });
-                });
-              }
+                /* multi_tensor_apply_kernel<TensorListMetadata<depth>, T, ArgTypes...>
+                 * fn(chunk_size, noop_flag.DATA_PTR<int>(), tl, callable, args...); */
+                if constexpr (sizeof(multi_tensor_apply_kernel(
+                                  chunk_size, noop_flag.DATA_PTR<int>(), tl, callable, args...)) <
+                              2048) {
+                    ((sycl::queue*)(stream))
+                        ->parallel_for(
+                            sycl::nd_range<3>(sycl::range<3>(1, 1, loc_block_info) *
+                                                  sycl::range<3>(1, 1, block_size),
+                                              sycl::range<3>(1, 1, block_size)),
+                            multi_tensor_apply_kernel(
+                                chunk_size, noop_flag.DATA_PTR<int>(), tl, callable, args...));
+                } else {
+                    auto capture = multi_tensor_apply_kernel(
+                        chunk_size, noop_flag.DATA_PTR<int>(), tl, callable, args...);
+                    sycl::buffer params(const_cast<const decltype(capture)*>(&capture),
+                                        sycl::range<1>(1));
+                    stream->submit([&](sycl::handler& cgh) {
+                        auto device_params =
+                            params.template get_access<sycl::access_mode::read,
+                                                       sycl::target::constant_buffer>(cgh);
+                        cgh.parallel_for(sycl::nd_range<3>(sycl::range<3>(1, 1, loc_block_info) *
+                                                               sycl::range<3>(1, 1, block_size),
+                                                           sycl::range<3>(1, 1, block_size)),
+                                         [=](sycl::nd_item<3> item) { device_params[0](item); });
+                    });
+                }
                 /*
                 DPCT1010:5: SYCL uses exceptions to report errors and does not use the error codes.
                 The call was replaced with 0. You need to rewrite this code.

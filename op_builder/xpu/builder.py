@@ -12,6 +12,7 @@ import filecmp
 import subprocess
 from deepspeed.ops.op_builder.builder import OpBuilder, TORCH_MAJOR, TORCH_MINOR
 
+
 def are_dirs_equal(dir1, dir2):
     # Check if the directories exist
     if not os.path.exists(dir1) or not os.path.exists(dir2):
@@ -32,6 +33,7 @@ def are_dirs_equal(dir1, dir2):
             return False
 
     return True
+
 
 class SYCLOpBuilder(OpBuilder):
 
@@ -390,5 +392,3 @@ class SYCLAutoOpBuilder(OpBuilder):
             os.environ["TORCH_CUDA_ARCH_LIST"] = torch_arch_list
         '''
         return op_module
-
-
