@@ -1799,10 +1799,15 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.timers(OPTIMIZER_ALLGATHER_TIMER).start()
         # Gather the updated weights from everyone.
         # Then all partitions of the model parameters are updated and ready for next round forward.
-        all_gather_dp_groups(partitioned_param_groups=self.parallel_partitioned_bit16_groups,
-                             dp_process_group=self.real_dp_process_group,
-                             start_alignment_factor=self.nccl_start_alignment_factor,
-                             allgather_bucket_size=self.allgather_bucket_size)
+        if dist.has_all_gather_into_tensor():
+            all_gather_all_partitions(global_flatten_group=self.bit16_groups_flat,
+                                      partitioned_param_groups=self.parallel_partitioned_bit16_groups,
+                                      dp_process_group=self.real_dp_process_group)
+        else:
+            all_gather_dp_groups(partitioned_param_groups=self.parallel_partitioned_bit16_groups,
+                                 dp_process_group=self.real_dp_process_group,
+                                 start_alignment_factor=self.nccl_start_alignment_factor,
+                                 allgather_bucket_size=self.allgather_bucket_size)
 
         self.timers(OPTIMIZER_ALLGATHER_TIMER).stop()
 
@@ -1825,7 +1830,12 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             # if i == 0:
             #     print_rank_0(f'{fp32_partition[:10]=}', force=True)
 
-        all_gather_dp_groups(partitioned_param_groups=self.parallel_partitioned_bit16_groups,
+        if dist.has_all_gather_into_tensor():
+            all_gather_all_partitions(global_flatten_group=self.bit16_groups_flat,
+                                      partitioned_param_groups=self.parallel_partitioned_bit16_groups,
+                                      dp_process_group=self.real_dp_process_group)
+        else:
+            all_gather_dp_groups(partitioned_param_groups=self.parallel_partitioned_bit16_groups,
                              dp_process_group=self.real_dp_process_group,
                              start_alignment_factor=self.nccl_start_alignment_factor,
                              allgather_bucket_size=self.allgather_bucket_size)
