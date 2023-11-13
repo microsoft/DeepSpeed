@@ -5,7 +5,6 @@
 
 import pytest
 import torch
-import deepspeed
 from deepspeed.accelerator import get_accelerator, is_current_accelerator_supported
 from deepspeed.git_version_info import torch_info
 from packaging import version as pkg_version
