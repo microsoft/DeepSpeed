@@ -7,6 +7,8 @@ import json
 import logging
 import os
 import pickle
+from typing import Any
+from packaging import version
 
 from .engine_v2 import InferenceEngineV2
 from .config_v2 import RaggedInferenceEngineConfig
@@ -94,6 +96,11 @@ def build_hf_engine(path: str,
         elif model_config.model_type == "llama":
             policy = Llama2Policy(model_config, checkpoint_engine=checkpoint_engine)
         elif model_config.model_type == "mistral":
+            from .model_implementations.mistral.policy import MistralPolicy
+            # Ensure we're using the correct version of transformers for mistral
+            import transformers
+            assert version.parse(transformers.__version__) >= version.parse("4.34.0"), \
+                f"Mistral requires transformers >= 4.34.0, you have version {transformers.__version__}"
             policy = MistralPolicy(model_config, checkpoint_engine=checkpoint_engine)
         else:
             raise ValueError(f"Unsupported model type {model_config.model_type}")
