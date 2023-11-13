@@ -79,10 +79,12 @@ def nvcc_version():
     release = output_split[release_idx + 1].replace(',', '').split(".")
     return ".".join(release)
 
+
 def installed_cann_path():
     if "ASCEND_HOME_PATH" in os.environ or os.path.exists(os.environ["ASCEND_HOME_PATH"]):
         return os.environ["ASCEND_HOME_PATH"]
     return None
+
 
 def installed_cann_version():
     import re
@@ -150,8 +152,7 @@ def debug_report():
         import torch_npu
         report.extend([("deepspeed wheel compiled w.", f"torch {torch_info['version']}"),
                        ("torch_npu install path", torch_npu.__path__), ("torch_npu version", torch_npu.__version__),
-                       ("cann version", installed_cann_version())
-                       ])
+                       ("ascend_cann version", installed_cann_version())])
     else:
         report.extend([("deepspeed wheel compiled w.", f"torch {torch_info['version']} ")])
 

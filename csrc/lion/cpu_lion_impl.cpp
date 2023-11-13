@@ -93,8 +93,11 @@ void Lion_Optimizer::Step_1(float* _params,
 #elif defined(__ENABLE_CANN__)
             if (dev_params) {
                 size_t memcpy_size = copy_size * sizeof(_doubled_buffer[_buf_index][0]);
-                aclrtMemcpy(dev_params + t, memcpy_size, _doubled_buffer[_buf_index], memcpy_size,
-                    aclrtMemcpyKind::ACL_MEMCPY_HOST_TO_DEVICE);
+                aclrtMemcpy(dev_params + t,
+                            memcpy_size,
+                            _doubled_buffer[_buf_index],
+                            memcpy_size,
+                            aclrtMemcpyKind::ACL_MEMCPY_HOST_TO_DEVICE);
 
                 _buf_index = !_buf_index;
             }

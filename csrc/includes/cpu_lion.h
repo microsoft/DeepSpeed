@@ -121,7 +121,8 @@ private:
     bool _buf_index;
 #elif defined(__ENABLE_CANN__)
     float* _doubled_buffer[2];
-    c10_npu::NPUStream _streams[2] = { c10_npu::getCurrentNPUStream(), c10_npu::getNPUStreamFromPool() };
+    c10_npu::NPUStream _streams[2] = {c10_npu::getCurrentNPUStream(),
+                                      c10_npu::getNPUStreamFromPool()};
     bool _buf_index;
 #endif
 };
@@ -222,10 +223,12 @@ void Lion_Optimizer::Step_AVX(size_t* rounded_size,
 #elif defined(__ENABLE_CANN__)
         if (dev_params) {
             size_t memcpy_size = copy_size * sizeof(_doubled_buffer[_buf_index][0]);
-            if (half_precision)
-                memoryCopySize /= 2;
-            aclrtMemcpy(dev_params + t, memcpy_size, _doubled_buffer[_buf_index], memcpy_size,
-                    aclrtMemcpyKind::ACL_MEMCPY_HOST_TO_DEVICE);
+            if (half_precision) memoryCopySize /= 2;
+            aclrtMemcpy(dev_params + t,
+                        memcpy_size,
+                        _doubled_buffer[_buf_index],
+                        memcpy_size,
+                        aclrtMemcpyKind::ACL_MEMCPY_HOST_TO_DEVICE);
 
             _buf_index = !_buf_index;
 #endif

@@ -31,7 +31,7 @@ class NPUOpBuilder(OpBuilder):
         try:
             self._cann_version = self.installed_cann_version(self.name)
         except BaseException:
-            print(f"{self.name} cann is missing, npu ops cannot be compiled!")
+            print(f"{self.name} ascend_cann is missing, npu ops cannot be compiled!")
 
     def cann_defs(self):
         if self._cann_version:
@@ -62,22 +62,25 @@ class NPUOpBuilder(OpBuilder):
 
     def include_paths(self):
         paths = super().include_paths()
-        paths += [os.path.join(self._ascend_path, 'include'),
-            os.path.join(self._torch_npu_path, 'include')]
+        paths += [os.path.join(self._ascend_path, 'include'), os.path.join(self._torch_npu_path, 'include')]
         return paths
 
     def cxx_args(self):
         args = super().cxx_args()
         args += ['-O3', '-std=c++17', '-g', '-Wno-reorder', '-fopenmp']
-        args += ['-fstack-protector-all', '-Wl,-z,relro,-z,now,-z,noexecstack',
-                '-Wl,--disable-new-dtags,--rpath']
-        args += [self.cann_defs(), self.cpu_arch(),self.simd_width(),
-                '-L' + os.path.join(self._ascend_path, 'lib64'),
-                '-L' + os.path.join(self._torch_npu_path, 'lib')]
+        args += ['-fstack-protector-all', '-Wl,-z,relro,-z,now,-z,noexecstack', '-Wl,--disable-new-dtags,--rpath']
+        args += [
+            self.cann_defs(),
+            self.cpu_arch(),
+            self.simd_width(), '-L' + os.path.join(self._ascend_path, 'lib64'),
+            '-L' + os.path.join(self._torch_npu_path, 'lib')
+        ]
         return args
 
     def extra_ldflags(self):
         flags = super().extra_ldflags()
-        flags += ['-L' + os.path.join(self._ascend_path, 'lib64'), '-lascendcl',
-            '-L' + os.path.join(self._torch_npu_path, 'lib'), '-ltorch_npu']
+        flags += [
+            '-L' + os.path.join(self._ascend_path, 'lib64'), '-lascendcl',
+            '-L' + os.path.join(self._torch_npu_path, 'lib'), '-ltorch_npu'
+        ]
         return flags
