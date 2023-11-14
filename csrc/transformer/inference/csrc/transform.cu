@@ -3,7 +3,7 @@
 
 // DeepSpeed Team
 
-#ifndef __HIP_PLATFORM_HCC__
+#ifndef __HIP_PLATFORM_AMD__
 #include <cuda_profiler_api.h>
 #endif
 #include "conversion_utils.h"
@@ -26,11 +26,14 @@ __global__ void bias_add_transform_0213(float* output,
                                         int seq_length,
                                         unsigned seq_offset,
                                         int heads,
+                                        int head_stride,
+                                        int num_kv,
                                         int rotary_dim,
                                         bool rotate_half,
                                         bool rotate_every_two,
                                         int head_ext,
-                                        int max_out_tokens)
+                                        int max_out_tokens,
+                                        float rope_theta)
 {
     int d0_stride = hidden_dim * seq_length;
     int d1_stride = hidden_dim;
@@ -49,10 +52,10 @@ __global__ void bias_add_transform_0213(float* output,
     float4* output_vec =
         reinterpret_cast<float4*>(cnt == 0 ? output : (cnt == 1 ? k_cache : v_cache));
 
-    vals_vec += (d0 * d0_stride * (gridDim.z / head_ext));
-    vals_vec += (d1 * d1_stride * (gridDim.z / head_ext));
-    vals_vec += (cnt * d1_stride);
-    vals_vec += (d2 * d2_stride);
+    vals_vec += (d0 * (d1_stride + num_kv * 2 * d2_stride) * seq_length);
+    vals_vec += d1 * (d1_stride + num_kv * 2 * d2_stride);
+    vals_vec += (cnt == 0 ? 0 : d1_stride) + (cnt == 0 ? 0 : (cnt - 1) * num_kv * d2_stride);
+    vals_vec += ((cnt == 0 ? d2 : (d2 / head_stride)) * d2_stride);
 
     output_vec += (d1 * d2_stride);
     output_vec += (d0 * d0_out_stride);
@@ -68,7 +71,7 @@ __global__ void bias_add_transform_0213(float* output,
 #pragma unroll
             for (int o = 0; o < 2; o++) {
                 float inv_freq = (float)(((d3 << 1) + o) * 2) / (float)(rotary_dim << 2);
-                inv_freq = 1.0 / powf(10000.0, inv_freq) * (float)seq_id;
+                inv_freq = 1.0 / powf(rope_theta, inv_freq) * (float)seq_id;
                 q_f[o].x = (-1.0 * q_f[o].y * sinf(inv_freq) + q_f[o].x * cosf(inv_freq));
                 q_f[o].y = (q_f[o].x * sinf(inv_freq) + q_f[o].y * cosf(inv_freq));
             }
@@ -92,11 +95,14 @@ __global__ void bias_add_transform_0213(T* output,  // q
                                         unsigned seq_offset,
                                         int all_tokens,
                                         int heads,
+                                        int head_stride,
+                                        int num_kv,
                                         int rotary_dim,
                                         bool rotate_half,
                                         bool rotate_every_two,
                                         int head_ext,
-                                        int max_out_tokens)
+                                        int max_out_tokens,
+                                        float rope_theta)
 {
     using T2 =
         typename std::conditional<std::is_same<T, __half>::value, __half2, __nv_bfloat162>::type;
@@ -124,10 +130,10 @@ __global__ void bias_add_transform_0213(T* output,  // q
     float4* output_vec =
         reinterpret_cast<float4*>(cnt == 0 ? output : (cnt == 1 ? k_cache : v_cache));
 
-    vals_vec += (d0 * d0_stride * (gridDim.z / head_ext));
-    vals_vec += (d1 * d1_stride * (gridDim.z / head_ext));
-    vals_vec += (cnt * d1_stride);
-    vals_vec += (d2 * d2_stride);
+    vals_vec += (d0 * (d1_stride + num_kv * 2 * d2_stride) * seq_length);
+    vals_vec += (d1 * (d1_stride + num_kv * 2 * d2_stride));
+    vals_vec += (cnt == 0 ? 0 : d1_stride) + (cnt == 0 ? 0 : (cnt - 1) * num_kv * d2_stride);
+    vals_vec += ((cnt == 0 ? d2 : (d2 / head_stride)) * d2_stride);
 
     output_vec += (d1 * d2_stride);
     output_vec += (d0 * d0_out_stride);
@@ -143,7 +149,7 @@ __global__ void bias_add_transform_0213(T* output,  // q
 #pragma unroll
             for (int o = 0; o < 4; o++) {
                 float inv_freq = (float)(((d3 << 2) + o) * 2) / (float)(rotary_dim << 3);
-                inv_freq = 1.0 / powf(10000.0, inv_freq) * (float)seq_id;
+                inv_freq = 1.0 / powf(rope_theta, inv_freq) * (float)seq_id;
                 float q_data[2];
                 q_data[0] = conversion::to<float>(q_h[o].x);
                 q_data[1] = conversion::to<float>(q_h[o].y);
@@ -171,12 +177,14 @@ void launch_bias_add_transform_0213<float>(float* output,
                                            int all_tokens,
                                            int hidden_dim,
                                            int heads,
+                                           int num_kv,
                                            int rotary_dim,
                                            bool rotate_half,
                                            bool rotate_every_two,
                                            cudaStream_t stream,
                                            int trans_count,
-                                           int max_out_tokens)
+                                           int max_out_tokens,
+                                           float rope_theta)
 {
     hidden_dim >>= 2;
     int head_ext = (hidden_dim - 1) / MAX_THREADS + 1;
@@ -193,11 +201,14 @@ void launch_bias_add_transform_0213<float>(float* output,
                                                                 seq_length,
                                                                 seq_offset,
                                                                 heads,
+                                                                num_kv > 0 ? (heads / num_kv) : 1,
+                                                                num_kv > 0 ? num_kv : heads,
                                                                 rotary_dim >> 2,
                                                                 rotate_half,
                                                                 rotate_every_two,
                                                                 head_ext,
-                                                                max_out_tokens);
+                                                                max_out_tokens,
+                                                                rope_theta);
 }
 
 template <typename T>
@@ -212,12 +223,14 @@ void launch_bias_add_transform_0213(T* output,
                                     int all_tokens,
                                     int hidden_dim,
                                     int heads,
+                                    int num_kv,
                                     int rotary_dim,
                                     bool rotate_half,
                                     bool rotate_every_two,
                                     cudaStream_t stream,
                                     int trans_count,
-                                    int max_out_tokens)
+                                    int max_out_tokens,
+                                    float rope_theta)
 {
     hidden_dim >>= 3;
     int head_ext = 1;  // (hidden_dim - 1) / MAX_THREADS + 1;
@@ -233,11 +246,14 @@ void launch_bias_add_transform_0213(T* output,
                                                                 seq_offset,
                                                                 all_tokens,
                                                                 heads,
+                                                                num_kv > 0 ? (heads / num_kv) : 1,
+                                                                num_kv > 0 ? num_kv : heads,
                                                                 rotary_dim >> 3,
                                                                 rotate_half,
                                                                 rotate_every_two,
                                                                 head_ext,
-                                                                max_out_tokens);
+                                                                max_out_tokens,
+                                                                rope_theta);
 }
 
 #define INSTANTIATE_LAUNCH_BIAS_ADD_TRANSFORM_0213(T)             \
@@ -253,11 +269,13 @@ void launch_bias_add_transform_0213(T* output,
                                                     int,          \
                                                     int,          \
                                                     int,          \
+                                                    int,          \
                                                     bool,         \
                                                     bool,         \
                                                     cudaStream_t, \
                                                     int,          \
-                                                    int)
+                                                    int,          \
+                                                    float)
 
 #ifdef BF16_AVAILABLE
 INSTANTIATE_LAUNCH_BIAS_ADD_TRANSFORM_0213(__nv_bfloat16);

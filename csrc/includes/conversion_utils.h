@@ -7,7 +7,6 @@
 
 #include "ds_kernel_utils.h"
 
-#include <cuda_fp16.h>
 #include <stdint.h>
 
 #ifdef BF16_AVAILABLE
@@ -266,7 +265,7 @@ DS_D_INLINE float2 to(__nv_bfloat162 val)
 template <>
 DS_D_INLINE __half to(double val)
 {
-#ifdef __HIP_PLATFORM_HCC__
+#ifdef __HIP_PLATFORM_AMD__
     float val_f = __double2float_rn(val);
     return __float2half(val_f);
 #else

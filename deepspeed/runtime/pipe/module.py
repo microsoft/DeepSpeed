@@ -148,11 +148,11 @@ class LayerSpec:
 
 class TiedLayerSpec(LayerSpec):
 
-    def __init__(self, key, typename, *module_args, forward_fn=None, tied_weight_attr='weight', **module_kwargs):
+    def __init__(self, key, typename, *module_args, forward_fn=None, tied_weight_attr=['weight'], **module_kwargs):
         super().__init__(typename, *module_args, **module_kwargs)
         self.key = key
         self.forward_fn = forward_fn
-        self.tied_weight_attr = tied_weight_attr
+        self.tied_weight_attr = [tied_weight_attr] if type(tied_weight_attr) == str else tied_weight_attr
 
 
 class PipelineModule(nn.Module):
@@ -276,7 +276,9 @@ class PipelineModule(nn.Module):
         self._synchronize_tied_weights()
 
         self.activation_checkpoint_interval = activation_checkpoint_interval
+
         self.activation_checkpoint_func = activation_checkpoint_func
+        # if configuration use_reentrant = False, self.activation_checkpoint_func will be set to ``checkpointing.non_reentrant_checkpoint``
 
     def _build(self):
         specs = self._layer_specs
@@ -493,23 +495,26 @@ class PipelineModule(nn.Module):
     def allreduce_tied_weight_gradients(self):
         '''All reduce the gradients of the tied weights between tied stages'''
         for key, comm in self.tied_comms.items():
-            weight = getattr(self.tied_modules[key], comm['weight_attr'])
-            dist.all_reduce(weight.grad, group=comm['group'])
+            for attr_name in comm['weight_attr']:
+                weight = getattr(self.tied_modules[key], attr_name)
+                dist.all_reduce(weight.grad, group=comm['group'])
 
     def get_tied_weights_and_groups(self):
         weight_group_list = []
         for key, comm in self.tied_comms.items():
-            weight = getattr(self.tied_modules[key], comm['weight_attr'])
-            weight_group_list.append((weight, comm['group']))
+            for attr_name in comm['weight_attr']:
+                weight = getattr(self.tied_modules[key], attr_name)
+                weight_group_list.append((weight, comm['group']))
         return weight_group_list
 
     def _synchronize_tied_weights(self):
         for key, comm in self.tied_comms.items():
-            dist.broadcast(
-                getattr(comm['module'], comm['weight_attr']),
-                src=min(comm['ranks']),
-                group=comm['group'],
-            )
+            for attr_name in comm['weight_attr']:
+                dist.broadcast(
+                    getattr(comm['module'], attr_name),
+                    src=min(comm['ranks']),
+                    group=comm['group'],
+                )
 
     def _index_tied_modules(self):
         ''' Build communication structures for tied modules. '''
@@ -690,14 +695,15 @@ class PipelineModule(nn.Module):
         self._synchronize_tied_weights()
 
     def _is_checkpointable(self, funcs):
-        # This is an unfortunate hack related to torch and deepspeed activation checkpoint implementations.
-        # Some layers like torch.nn.Embedding will not receive grads if checkpointed, which breaks things.
-        # I presume it's related to the discrete inputs that cannot require_grad? Need to revisit.
-        if self.__class__.__name__ in ('GPTModelPipe', 'GPT2ModelPipe'):
-            return all('ParallelTransformerLayerPipe' in f.__class__.__name__ for f in funcs)
+
+        if self.activation_checkpoint_func is not checkpointing.non_reentrant_checkpoint:
+            # This hook excludes the embedding layer
+            # because only non_reentrant_checkpoint can accept inputs with requires_grad=False
+            # otherwise, the backward of the embedding layer won't receive gradients.
+            if self.__class__.__name__ in ('GPTModelPipe', 'GPT2ModelPipe'):
+                return all('ParallelTransformerLayerPipe' in f.__class__.__name__ for f in funcs)
         if self.checkpointable_layers is not None:
             return all(f.__class__.__name__ in self.checkpointable_layers for f in funcs)
-
         params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
         return any(len(list(p)) > 0 for p in params)
     

@@ -3,10 +3,10 @@
 
 # DeepSpeed Team
 
-from pydantic import Field, validator
 import sys
 from typing import Optional
 from enum import Enum
+from deepspeed.pydantic_v1 import Field, validator, root_validator
 from deepspeed.runtime.config_utils import get_scalar_param, pp_int, DeepSpeedConfigModel
 from deepspeed.utils import logger
 from .offload_config import DeepSpeedZeroOffloadParamConfig, DeepSpeedZeroOffloadOptimizerConfig, OffloadDeviceEnum
@@ -236,7 +236,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     Unused parameters in modules may be unexpected in static networks, but
     could be normal in dynamic networks. This controls whether or not training
     should terminate with an error message when unused parameters are detected.
-    This is set to ``False`` by default, which means unused parameters are
+    This is set to ``True`` by default, which means unused parameters are
     ignored and training continues. Now is just used in stage 2.
     """
 
@@ -300,3 +300,10 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
             assert ("stage" in values), "DeepSpeedZeroConfig: 'stage' must be defined before 'overlap_comm'"
             field_value = values["stage"] == ZeroStageEnum.weights
         return field_value
+
+    @root_validator
+    def offload_ratio_check(cls, values):
+        offload_config = getattr(values, "offload_optimizer", {})
+        if offload_config and offload_config.ratio < 1.0:
+            assert values.get("stage") == ZeroStageEnum.weights, "Partial offloading only supported for ZeRO Stage 3."
+        return values

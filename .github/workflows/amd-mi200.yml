@@ -3,6 +3,7 @@ name: amd-mi200
 on:
   schedule:
     - cron: "0 0 * * *"
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -27,7 +28,7 @@ jobs:
 
       - name: Install pytorch
         run: |
-          pip install -U --cache-dir $TORCH_CACHE torch torchvision --extra-index-url https://download.pytorch.org/whl/rocm5.4.2
+          pip install -U --cache-dir $TORCH_CACHE torch torchvision --index-url https://download.pytorch.org/whl/rocm5.6
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -44,6 +45,7 @@ jobs:
         run: |
           git clone https://github.com/ROCmSoftwarePlatform/apex.git
           cd apex
+          git checkout torch_2.1_higher
           CURRENT_VER=$(git rev-parse HEAD)
           INSTALLED_VER=$(cat /blob/amd-apex/.venv_installed_version)
           if [[ "$CURRENT_VER" != "$INSTALLED_VER" ]]; then
@@ -71,7 +73,7 @@ jobs:
           pytest $PYTEST_OPTS -m 'sequential' unit/
 
       - name: Open GitHub issue if nightly CI fails
-        if: failure()
+        if: ${{ failure() && (github.event_name == 'schedule') }}
         uses: JasonEtco/create-an-issue@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

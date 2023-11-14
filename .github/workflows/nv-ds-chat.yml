@@ -27,7 +27,7 @@ jobs:
 
       - name: Install pytorch
         run: |
-          pip3 install -U --cache-dir $TORCH_CACHE torch
+          pip3 install -U --cache-dir $TORCH_CACHE torch --index-url https://download.pytorch.org/whl/cu118
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -36,11 +36,7 @@ jobs:
           pip install .[dev]
           ds_report
 
-      - name: Python environment
-        run: |
-          pip list
-
-      - name: DS-Chat unit tests
+      - name: Install deepspeed-chat
         run: |
           BRANCH="master"
           if [[ ! -z "${{ github.event.inputs.dse_branch }}" ]]; then
@@ -50,12 +46,21 @@ jobs:
           git clone -b $BRANCH https://github.com/microsoft/DeepSpeedExamples.git
           cd DeepSpeedExamples/applications/DeepSpeed-Chat
           pip install -r requirements.txt
+          pip install -e .
+
+      - name: Python environment
+        run: |
+          pip list
+
+      - name: DS-Chat unit tests
+        run: |
+          cd DeepSpeedExamples/applications/DeepSpeed-Chat
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
-          cd training/tests
+          cd tests
           pytest $PYTEST_OPTS ./
 
       - name: Open GitHub issue if nightly CI fails
-        if: failure()
+        if: ${{ failure() && (github.event_name == 'schedule') }}
         uses: JasonEtco/create-an-issue@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
