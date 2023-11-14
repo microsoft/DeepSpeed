@@ -26,8 +26,9 @@ from deepspeed.checkpoint.utils import clone_tensors_for_torch_save
 class PipelineError(Exception):
     """Errors related to the use of deepspeed.PipelineModule """
 
-    
+
 class Lambda(torch.nn.Module):
+
     def __init__(self, func):
         super().__init__()
         self.func = func
@@ -35,7 +36,7 @@ class Lambda(torch.nn.Module):
     def forward(self, x):
         return self.func(x)
 
-    
+
 class SequentialWrapper(torch.nn.Module):
     """
     Used to convert a deepspeed PipelineModule to an nn.Sequential like model whilst retaining
@@ -51,8 +52,7 @@ class SequentialWrapper(torch.nn.Module):
 
     def _is_checkpointable(self, funcs):
         if self.parent_class_name == 'GPT2ModelPipe':
-            return all('ParallelTransformerLayerPipe' in f.__class__.__name__
-                       for f in funcs)
+            return all('ParallelTransformerLayerPipe' in f.__class__.__name__ for f in funcs)
         params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
         return any(len(list(p)) > 0 for p in params)
 
@@ -80,20 +80,16 @@ class SequentialWrapper(torch.nn.Module):
             num_layers = len(self.sequential)
             x = forward_input
             for start_idx in range(0, num_layers, self.activation_checkpoint_interval):
-                end_idx = min(start_idx + self.activation_checkpoint_interval,
-                              num_layers)
+                end_idx = min(start_idx + self.activation_checkpoint_interval, num_layers)
 
                 funcs = self.sequential[start_idx:end_idx]
                 # Since we either pass tensors or tuples of tensors without unpacking, we
                 # need to be careful not to double-wrap tensors with tuple.
                 if not isinstance(x, tuple):
-                    x = (x,)
+                    x = (x, )
 
                 if self._is_checkpointable(funcs):
-                    x = self.activation_checkpoint_func(
-                        exec_range_func(start_idx,
-                                        end_idx),
-                        *x)
+                    x = self.activation_checkpoint_func(exec_range_func(start_idx, end_idx), *x)
                 else:
                     x = exec_range_func(start_idx, end_idx)(*x)
         return x
@@ -706,7 +702,7 @@ class PipelineModule(nn.Module):
             return all(f.__class__.__name__ in self.checkpointable_layers for f in funcs)
         params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
         return any(len(list(p)) > 0 for p in params)
-    
+
     def to_sequential(self):
         """
         Transforms the PipelineModule to a plain nn.Sequential-like model
