@@ -22,7 +22,7 @@ from .model_implementations.inference_policy_base import POLICIES, InferenceV2Po
 from .model_implementations.flat_model_helpers import make_metadata_filename, ModelMetadata
 
 
-def buid_engine_from_ds_checkpoint(path: str,
+def build_engine_from_ds_checkpoint(path: str,
                                    engine_config: RaggedInferenceEngineConfig,
                                    debug_level: int = logging.INFO) -> InferenceEngineV2:
     """
@@ -78,7 +78,7 @@ def build_hf_engine(path: str,
     """
 
     if os.path.exists(os.path.join(path, "ds_model_config.pkl")):
-        return buid_engine_from_ds_checkpoint(path, engine_config, debug_level=debug_level)
+        return build_engine_from_ds_checkpoint(path, engine_config, debug_level=debug_level)
     else:
         # Set up logging
         inference_logger(level=debug_level)
