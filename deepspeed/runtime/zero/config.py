@@ -21,6 +21,7 @@ ZeRO optimization should be enabled as:
     "stage3_max_live_parameters" : 1000000000,
     "stage3_max_reuse_distance" : 1000000000,
     "allgather_partitions": [true|false],
+    "use_multi_rank_bucket_allreduce": [true|false],
     "allgather_bucket_size": 500000000,
     "reduce_scatter": [true|false],
     "contiguous_gradients" : [true|false]
@@ -107,6 +108,13 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     for the allgather for large model sizes
     """
 
+    use_multi_rank_bucket_allreduce: bool = True
+    """
+    Combine the reduce buckets of the different ranks and do an All-Reduce instead of multiple Reduce ops. 
+    This feature is useful when the model is small and we want to scale it on too many GPUs which therefore 
+    reduces the message sizes of each packet.
+    """
+    
     allgather_partitions: bool = True
     """
     Chooses between allgather collective or a series of broadcast collectives
