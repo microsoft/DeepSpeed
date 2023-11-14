@@ -23,8 +23,8 @@ from .model_implementations.flat_model_helpers import make_metadata_filename, Mo
 
 
 def build_engine_from_ds_checkpoint(path: str,
-                                   engine_config: RaggedInferenceEngineConfig,
-                                   debug_level: int = logging.INFO) -> InferenceEngineV2:
+                                    engine_config: RaggedInferenceEngineConfig,
+                                    debug_level: int = logging.INFO) -> InferenceEngineV2:
     """
     Creates an engine from a checkpoint saved by ``InferenceEngineV2``.
 
