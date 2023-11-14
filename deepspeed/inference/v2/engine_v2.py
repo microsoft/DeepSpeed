@@ -4,6 +4,8 @@
 # DeepSpeed Team
 
 import os
+import json
+import pickle
 from typing import Iterable, Tuple
 
 import torch
@@ -17,6 +19,8 @@ from .model_implementations import InferenceV2Policy
 from .logging import inference_logger
 from .ragged import DSStateManager, RaggedBatchWrapper, PlaceholderSequenceDescriptor
 from .scheduling_utils import SchedulingError, SchedulingResult
+from .model_implementations.flat_model_helpers import make_param_filename, make_metadata_filename
+from .model_implementations.inference_model_base import DSInferenceModelBase
 
 from .config_v2 import RaggedInferenceEngineConfig
 
@@ -30,7 +34,7 @@ class InferenceEngineV2:
     Configuration of the inference engine.
     """
 
-    #_model: DSInferenceModelBase
+    _model: DSInferenceModelBase
     """
     Inference model supporting ragged inference.
     """
@@ -54,6 +58,12 @@ class InferenceEngineV2:
         Number of KV cache groups.
         """
         return self._state_manager.n_kv_cache_groups
+
+    def model(self) -> DSInferenceModelBase:
+        """
+        The model implementation.
+        """
+        return self._model
 
     def __init__(self, policy: InferenceV2Policy, engine_config: RaggedInferenceEngineConfig) -> None:
         """
@@ -223,3 +233,22 @@ class InferenceEngineV2:
             uid (int): The UID of the sequence to flush.
         """
         self._state_manager.flush_sequence(uid)
+
+    def serialize(self, save_path: str) -> None:
+        """
+        Serialize the model to a file.
+
+        Arguments:
+            path (str): Path to the file to serialize to.
+        """
+        param_file_name = make_param_filename(save_path, self._model.tp_rank, self._model.tp_size)
+        metadata_file_name = make_metadata_filename(save_path, self._model.tp_rank, self._model.tp_size)
+
+        # Save the flattened parameters
+
+        torch.save(self._model.flattened_params, param_file_name)
+
+        json.dump(self._model.flattened_param_metadata.json(), open(metadata_file_name, "w"))
+
+        if self._model.tp_rank == 0:
+            pickle.dump(self._model._config, open(os.path.join(save_path, "ds_model_config.pkl"), "wb"))
