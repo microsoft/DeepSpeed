@@ -1110,7 +1110,7 @@ class DeepSpeedEngine(Module):
         # Set deepspeed parallelism spec. for the model including expert parallelism
         for _, module in self.module.named_modules():
             if hasattr(module, 'set_deepspeed_parallelism'):
-                module.set_deepspeed_parallelism()
+                module.set_deepspeed_parallelism(self._config.use_data_before_expert_parallel_)
 
         # Query the groups module to get information about various parallel groups
         self.local_all_to_all_group = None
