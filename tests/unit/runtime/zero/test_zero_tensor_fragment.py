@@ -16,6 +16,7 @@ from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_grad, safe_g
 from deepspeed.utils import safe_set_full_fp32_param, safe_set_full_optimizer_state
 from deepspeed.utils import (
     safe_get_local_fp32_param,
+    safe_get_local_grad,
     safe_get_local_optimizer_state,
     safe_set_local_fp32_param,
     safe_set_local_optimizer_state
@@ -39,7 +40,23 @@ def validate_full_tensors(model):
             assert all([p is not None for p in param_list])
         else:
             assert all([p is None for p in param_list])
+            
+def validate_local_tensors(model):
+    for _, lp in model.named_parameters():
+        hp = safe_get_local_fp32_param(lp)
+        exp_avg = safe_get_local_optimizer_state(lp, 'exp_avg')
+        exp_avg_sq = safe_get_local_optimizer_state(lp, 'exp_avg_sq')
+        hp_grad = safe_get_local_grad(lp)
+        param_list = [hp, hp_grad, exp_avg, exp_avg_sq]
+        if lp.requires_grad:
+            assert all([p is not None for p in param_list])
+        else:
+            assert all([p is None for p in param_list])
 
+validate_funcs_mapping = {
+    "full": validate_full_tensors,
+    "local": validate_local_tensors
+}
 
 class MyModel(torch.nn.Module):
 
@@ -64,7 +81,7 @@ class MyModel(torch.nn.Module):
         return val
 
 
-def run_fragmented_model(model, config_dict, hidden_dim, dtype):
+def run_fragmented_model(model, config_dict, hidden_dim, dtype, validate_func):
     model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
     data_loader = random_dataloader(model=model,
                                     total_samples=10,
@@ -76,7 +93,7 @@ def run_fragmented_model(model, config_dict, hidden_dim, dtype):
         loss = model(batch[0], batch[1])
         loss = loss[1]
         model.backward(loss)
-        validate_full_tensors(model)
+        validate_func(model)
         model.step()
 
     # Needed in ZeRO 3. Not doing so can give memory leak
@@ -89,14 +106,18 @@ class TestTensorFragmentGet(DistributedTest):
     world_size = 2
     reuse_dist_env = True
 
+    @pytest.mark.parametrize('api_type', ['local', 'full'])
     @pytest.mark.parametrize('zero_stage', [1, 2, 3])
     @pytest.mark.parametrize('offload_device', [OffloadDeviceEnum.none, OffloadDeviceEnum.cpu, OffloadDeviceEnum.nvme])
-    def test_zero_fragments(self, tmpdir, zero_stage, offload_device, frozen_weights):
+    def test_zero_fragments(self, tmpdir, api_type, zero_stage, offload_device, frozen_weights):
         if offload_device == OffloadDeviceEnum.nvme:
             if zero_stage != 3:
                 pytest.skip(f"Nvme offload not supported for zero stage {zero_stage}")
             if not deepspeed.ops.__compatible_ops__[AsyncIOBuilder.NAME]:
                 pytest.skip('Skip tests since async-io is not compatible')
+
+        if api_type == "local" and zero_stage != 3:
+            pytest.skip(f"Local APIs only for zero stage 3 but current stage is {zero_stage}")
 
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
@@ -130,8 +151,10 @@ class TestTensorFragmentGet(DistributedTest):
                 model = MyModel(hidden_dim, frozen_weights)
         else:
             model = MyModel(hidden_dim, frozen_weights)
+        
+        validate_func = validate_funcs_mapping[api_type]
 
-        run_fragmented_model(model, config_dict, hidden_dim, torch.float16)
+        run_fragmented_model(model, config_dict, hidden_dim, torch.float16, validate_func)
 
     def test_bf16_fragments(self, frozen_weights):
         if frozen_weights:
@@ -160,7 +183,7 @@ class TestTensorFragmentGet(DistributedTest):
 
         hidden_dim = 128
         model = MyModel(hidden_dim, frozen_weights)
-        run_fragmented_model(model, config_dict, hidden_dim, torch.bfloat16)
+        run_fragmented_model(model, config_dict, hidden_dim, torch.bfloat16, validate_full_tensors)
 
 
 def create_random_values(model, key_list, group, use_cuda=True):
