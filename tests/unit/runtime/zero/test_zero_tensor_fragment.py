@@ -163,7 +163,7 @@ class TestTensorFragmentGet(DistributedTest):
         run_fragmented_model(model, config_dict, hidden_dim, torch.bfloat16)
 
 
-def create_random_values(model, key_list, group):
+def create_random_values(model, key_list, group, use_cuda=True):
     param_values = {}
     for n, lp in model.named_parameters():
         param_shape = lp.ds_shape if hasattr(lp, 'ds_id') else lp.shape
@@ -194,13 +194,14 @@ def validate_param_values_with_dict(model, value_dict):
             assert torch.equal(expected_tensor, actual_tensor)
 
 
-def create_random_values_for_local(model, key_list, group):
+def create_random_values_for_local(model, key_list, group, use_cuda=True):
     param_values = {}
     for n, lp in model.named_parameters():
         param_shape = lp.ds_tensor.shape
         param_values[n] = {}
         for key in key_list:
-            rand_value = torch.rand(param_shape, dtype=torch.float32, device=model.device)
+            device = model.device if use_cuda else "cpu"
+            rand_value = torch.rand(param_shape, dtype=torch.float32, device=device)
             # dist.broadcast(rand_value, src=0, group=group)
             param_values[n][key] = rand_value
     return param_values
@@ -304,7 +305,8 @@ class TestTensorFragmentUpdate(DistributedTest):
         dist.barrier()
         optim_keys = [WEIGHT_KEY, FIRST_ORDER_KEY, SECOND_ORDER_KEY]
         helper_funcs = helper_funcs_mapping[api_type]
-        optim_state_values = helper_funcs["create_random_values"](model, optim_keys, group)
+        optim_state_values = helper_funcs["create_random_values"](
+            model, optim_keys, group, use_cuda= offload_device == OffloadDeviceEnum.none)
         helper_funcs["set_param_values_with_dict"](model, optim_state_values)
         helper_funcs["validate_param_values_with_dict"](model, optim_state_values)
 
