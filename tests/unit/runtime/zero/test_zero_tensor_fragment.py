@@ -14,13 +14,8 @@ from unit.util import bf16_required_version_check
 import deepspeed
 from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_grad, safe_get_full_optimizer_state
 from deepspeed.utils import safe_set_full_fp32_param, safe_set_full_optimizer_state
-from deepspeed.utils import (
-    safe_get_local_fp32_param,
-    safe_get_local_grad,
-    safe_get_local_optimizer_state,
-    safe_set_local_fp32_param,
-    safe_set_local_optimizer_state
-    )
+from deepspeed.utils import safe_get_local_fp32_param, safe_get_local_grad, safe_get_local_optimizer_state
+from deepspeed.utils import safe_set_local_fp32_param, safe_set_local_optimizer_state
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.ops.aio import AsyncIOBuilder
 
@@ -40,7 +35,8 @@ def validate_full_tensors(model):
             assert all([p is not None for p in param_list])
         else:
             assert all([p is None for p in param_list])
-            
+
+
 def validate_local_tensors(model):
     for _, lp in model.named_parameters():
         hp = safe_get_local_fp32_param(lp)
@@ -53,10 +49,9 @@ def validate_local_tensors(model):
         else:
             assert all([p is None for p in param_list])
 
-validate_funcs_mapping = {
-    "full": validate_full_tensors,
-    "local": validate_local_tensors
-}
+
+validate_funcs_mapping = {"full": validate_full_tensors, "local": validate_local_tensors}
+
 
 class MyModel(torch.nn.Module):
 
@@ -151,7 +146,7 @@ class TestTensorFragmentGet(DistributedTest):
                 model = MyModel(hidden_dim, frozen_weights)
         else:
             model = MyModel(hidden_dim, frozen_weights)
-        
+
         validate_func = validate_funcs_mapping[api_type]
 
         run_fragmented_model(model, config_dict, hidden_dim, torch.float16, validate_func)
@@ -229,6 +224,7 @@ def create_random_values_for_local(model, key_list, group, use_cuda=True):
             param_values[n][key] = rand_value
     return param_values
 
+
 def set_local_param_values_with_dict(model, value_dict):
     for n, lp in model.named_parameters():
 
@@ -237,6 +233,7 @@ def set_local_param_values_with_dict(model, value_dict):
                 safe_set_local_fp32_param(lp, value_tensor)
             else:
                 safe_set_local_optimizer_state(lp, value_tensor, key)
+
 
 def validate_local_param_values_with_dict(model, value_dict):
     for n, lp in model.named_parameters():
@@ -249,17 +246,18 @@ def validate_local_param_values_with_dict(model, value_dict):
 
 
 helper_funcs_mapping = {
-    "full":{
+    "full": {
         "create_random_values": create_random_values,
         "set_param_values_with_dict": set_param_values_with_dict,
         "validate_param_values_with_dict": validate_param_values_with_dict
-        },
-    "local":{
+    },
+    "local": {
         "create_random_values": create_random_values_for_local,
         "set_param_values_with_dict": set_local_param_values_with_dict,
         "validate_param_values_with_dict": validate_local_param_values_with_dict
     }
 }
+
 
 @pytest.mark.parametrize('dtype', [torch.bfloat16, torch.float16, torch.float32])
 class TestTensorFragmentUpdate(DistributedTest):
@@ -328,8 +326,10 @@ class TestTensorFragmentUpdate(DistributedTest):
         dist.barrier()
         optim_keys = [WEIGHT_KEY, FIRST_ORDER_KEY, SECOND_ORDER_KEY]
         helper_funcs = helper_funcs_mapping[api_type]
-        optim_state_values = helper_funcs["create_random_values"](
-            model, optim_keys, group, use_cuda= offload_device == OffloadDeviceEnum.none)
+        optim_state_values = helper_funcs["create_random_values"](model,
+                                                                  optim_keys,
+                                                                  group,
+                                                                  use_cuda=offload_device == OffloadDeviceEnum.none)
         helper_funcs["set_param_values_with_dict"](model, optim_state_values)
         helper_funcs["validate_param_values_with_dict"](model, optim_state_values)
 

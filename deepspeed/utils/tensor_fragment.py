@@ -186,7 +186,6 @@ def safe_get_full_grad(param):
 
 
 ### Local API  START ###
-
 def safe_get_local_grad(param):
     """Get the fp32 gradient of a partitioned parameter.
         Args:
@@ -201,6 +200,7 @@ def safe_get_local_grad(param):
 
     return None
 
+
 def safe_get_local_fp32_param(param):
     """Get the fp32 partitioned parameter.
         Args:
@@ -212,6 +212,7 @@ def safe_get_local_fp32_param(param):
 
     return None
 
+
 def safe_get_local_optimizer_state(param, optim_state_key):
     """Get the fp32 optimizer state of a partitioned parameter.
         Args:
@@ -221,8 +222,9 @@ def safe_get_local_optimizer_state(param, optim_state_key):
     # ZeRO stage 3 param
     if hasattr(param, 'ds_id'):
         return param._z3_optimizer.get_local_fp32_param(param, optim_state_key)
-    
+
     return None
+
 
 def safe_set_local_optimizer_state(param, value, optim_state_key):
     """Update the partitioned fp32 optimizer state of a partitioned parameter.
@@ -235,6 +237,7 @@ def safe_set_local_optimizer_state(param, value, optim_state_key):
     if hasattr(param, 'ds_id'):
         param._z3_optimizer.set_local_hp_param(value, param, optim_state_key)
 
+
 def safe_set_local_fp32_param(param, value):
     """Update the partitioned fp32 parameter of a partitioned parameter.
         Args:
@@ -245,8 +248,8 @@ def safe_set_local_fp32_param(param, value):
     if hasattr(param, 'ds_id'):
         param._z3_optimizer.set_local_hp_param(value, param)
 
-### Local API  END ###
 
+### Local API  END ###
 
 # TODO: Implement API for setting ZeRO partitioned gradients
 
