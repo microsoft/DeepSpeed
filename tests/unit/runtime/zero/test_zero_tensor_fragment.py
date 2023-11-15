@@ -14,6 +14,12 @@ from unit.util import bf16_required_version_check
 import deepspeed
 from deepspeed.utils import safe_get_full_fp32_param, safe_get_full_grad, safe_get_full_optimizer_state
 from deepspeed.utils import safe_set_full_fp32_param, safe_set_full_optimizer_state
+from deepspeed.utils import (
+    safe_get_local_fp32_param,
+    safe_get_local_optimizer_state,
+    safe_set_local_fp32_param,
+    safe_set_local_optimizer_state
+    )
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.ops.aio import AsyncIOBuilder
 
@@ -188,20 +194,67 @@ def validate_param_values_with_dict(model, value_dict):
             assert torch.equal(expected_tensor, actual_tensor)
 
 
+def create_random_values_for_local(model, key_list, group):
+    param_values = {}
+    for n, lp in model.named_parameters():
+        param_shape = lp.ds_tensor.shape
+        param_values[n] = {}
+        for key in key_list:
+            rand_value = torch.rand(param_shape, dtype=torch.float32, device=model.device)
+            # dist.broadcast(rand_value, src=0, group=group)
+            param_values[n][key] = rand_value
+    return param_values
+
+def set_local_param_values_with_dict(model, value_dict):
+    for n, lp in model.named_parameters():
+
+        for key, value_tensor in value_dict[n].items():
+            if key == WEIGHT_KEY:
+                safe_set_local_fp32_param(lp, value_tensor)
+            else:
+                safe_set_local_optimizer_state(lp, value_tensor, key)
+
+def validate_local_param_values_with_dict(model, value_dict):
+    for n, lp in model.named_parameters():
+        for key, expected_tensor in value_dict[n].items():
+            if key == WEIGHT_KEY:
+                actual_tensor = safe_get_local_fp32_param(lp)
+            else:
+                actual_tensor = safe_get_local_optimizer_state(lp, key)
+            assert torch.equal(expected_tensor, actual_tensor)
+
+
+helper_funcs_mapping = {
+    "full":{
+        "create_random_values": create_random_values,
+        "set_param_values_with_dict": set_param_values_with_dict,
+        "validate_param_values_with_dict": validate_param_values_with_dict
+        },
+    "local":{
+        "create_random_values": create_random_values_for_local,
+        "set_param_values_with_dict": set_local_param_values_with_dict,
+        "validate_param_values_with_dict": validate_local_param_values_with_dict
+    }
+}
+
 @pytest.mark.parametrize('dtype', [torch.bfloat16, torch.float16, torch.float32])
 class TestTensorFragmentUpdate(DistributedTest):
     # Need multiple gpus to test possible hanging
     world_size = 2
     reuse_dist_env = True
 
+    @pytest.mark.parametrize('api_type', ['local', 'full'])
     @pytest.mark.parametrize('zero_stage', [1, 2, 3])
     @pytest.mark.parametrize('offload_device', [OffloadDeviceEnum.none, OffloadDeviceEnum.cpu, OffloadDeviceEnum.nvme])
-    def test_zero_fragments(self, tmpdir, zero_stage, offload_device, dtype):
+    def test_zero_fragments(self, tmpdir, api_type, zero_stage, offload_device, dtype):
 
         if dtype == torch.bfloat16 and not bf16_required_version_check(accelerator_check=False):
             pytest.skip(
                 " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
             )
+
+        if api_type == "local" and zero_stage != 3:
+            pytest.skip(f"Local APIs only for zero stage 3 but current stage is {zero_stage}")
 
         if offload_device == OffloadDeviceEnum.nvme:
             if zero_stage != 3:
@@ -250,9 +303,10 @@ class TestTensorFragmentUpdate(DistributedTest):
 
         dist.barrier()
         optim_keys = [WEIGHT_KEY, FIRST_ORDER_KEY, SECOND_ORDER_KEY]
-        optim_state_values = create_random_values(model, optim_keys, group)
-        set_param_values_with_dict(model, optim_state_values)
-        validate_param_values_with_dict(model, optim_state_values)
+        helper_funcs = helper_funcs_mapping[api_type]
+        optim_state_values = helper_funcs["create_random_values"](model, optim_keys, group)
+        helper_funcs["set_param_values_with_dict"](model, optim_state_values)
+        helper_funcs["validate_param_values_with_dict"](model, optim_state_values)
 
         # Needed in ZeRO 3. Not doing so can leak memory.
         model.destroy()
