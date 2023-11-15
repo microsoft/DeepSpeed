@@ -4,6 +4,8 @@
 # DeepSpeed Team
 
 import os
+import json
+import pickle
 from typing import Iterable, Tuple
 
 import torch
@@ -17,6 +19,8 @@ from .model_implementations import InferenceV2Policy
 from .logging import inference_logger
 from .ragged import DSStateManager, RaggedBatchWrapper, PlaceholderSequenceDescriptor
 from .scheduling_utils import SchedulingError, SchedulingResult
+from .model_implementations.flat_model_helpers import make_param_filename, make_metadata_filename
+from .model_implementations.inference_model_base import DSInferenceModelBase
 
 from .config_v2 import RaggedInferenceEngineConfig
 
@@ -30,7 +34,7 @@ class InferenceEngineV2:
     Configuration of the inference engine.
     """
 
-    #_model: DSInferenceModelBase
+    _model: DSInferenceModelBase
     """
     Inference model supporting ragged inference.
     """
@@ -41,11 +45,25 @@ class InferenceEngineV2:
     """
 
     @property
-    def free_blocks(self) -> int:
+    def free_blocks(self) -> torch.Tensor:
         """
-        Number of free KV blocks.
+        Number of free KV blocks. This is a tensor of shape [n_kv_cache_groups] where each
+        element is the number of free blocks in the corresponding KV cache group.
         """
         return self._state_manager.free_blocks
+
+    @property
+    def n_kv_cache_groups(self) -> int:
+        """
+        Number of KV cache groups.
+        """
+        return self._state_manager.n_kv_cache_groups
+
+    def model(self) -> DSInferenceModelBase:
+        """
+        The model implementation.
+        """
+        return self._model
 
     def __init__(self, policy: InferenceV2Policy, engine_config: RaggedInferenceEngineConfig) -> None:
         """
@@ -132,7 +150,7 @@ class InferenceEngineV2:
 
         return logits
 
-    def query(self, uid: int, max_request_tokens: int, max_request_blocks) -> Tuple[int, int]:
+    def query(self, uid: int, max_request_tokens: int, max_request_blocks) -> Tuple[int, torch.Tensor]:
         """
         Determine the number of tokens and KV blocks to reserve for a given request. Given a UID
         (this UID may not be recognized by the model yet), this will return the number of tokens
@@ -215,3 +233,22 @@ class InferenceEngineV2:
             uid (int): The UID of the sequence to flush.
         """
         self._state_manager.flush_sequence(uid)
+
+    def serialize(self, save_path: str) -> None:
+        """
+        Serialize the model to a file.
+
+        Arguments:
+            path (str): Path to the file to serialize to.
+        """
+        param_file_name = make_param_filename(save_path, self._model.tp_rank, self._model.tp_size)
+        metadata_file_name = make_metadata_filename(save_path, self._model.tp_rank, self._model.tp_size)
+
+        # Save the flattened parameters
+
+        torch.save(self._model.flattened_params, param_file_name)
+
+        json.dump(self._model.flattened_param_metadata.json(), open(metadata_file_name, "w"))
+
+        if self._model.tp_rank == 0:
+            pickle.dump(self._model._config, open(os.path.join(save_path, "ds_model_config.pkl"), "wb"))
