@@ -76,7 +76,6 @@ class BF16_Optimizer(ZeROOptimizer):
         self.fp32_groups_gradient_flat_partition = []
         self.fp32_groups_has_gradients = []
 
-        self.step_count = 0
         self.group_paddings = []
         self.graph_harvesting = graph_harvesting
         if self.using_real_optimizer:
@@ -255,7 +254,6 @@ class BF16_Optimizer(ZeROOptimizer):
         self.update_lp_params()
 
         self.clear_hp_grads()
-        self.step_count += 1
 
     def backward(self, loss, update_hp_grads=True, clear_lp_grads=False, **bwd_kwargs):
         """Perform a backward pass and copy the low-precision gradients to the
