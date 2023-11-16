@@ -32,7 +32,7 @@ class ReplaceWithTensorSlicing:
         else:
             self.gpu_index = 0
         self.out_dim = out_dim
-        self.in_dim = in_dimsl
+        self.in_dim = in_dim
         self.mp_size = mp_size
 
     def merge_assert(self, dim1, dim2):
