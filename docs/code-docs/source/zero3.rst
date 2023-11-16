@@ -417,11 +417,11 @@ These routines can be used at any point after initialization of the DeepSpeed en
     for n, lp in model.named_parameters():
         # 1. For zero stage 1 or 2, set the full fp32 and their full optim states
         zero_tensor = torch.zeros_like(lp)
-        
+
         safe_set_full_fp32_param(lp, zero_tensor)
         safe_get_full_optimizer_state(lp, zero_tensor, "exp_avg")
         safe_get_full_optimizer_state(lp, zero_tensor, "exp_avg_sq")
-        
+
         # 2. For zero stage 3, each process sets its local fp32 parameters and their local optimizer states individually
         zero_tensor_local = torch.zeros_like(lp.ds_tensor.shape)
 
