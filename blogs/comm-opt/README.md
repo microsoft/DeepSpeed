@@ -88,7 +88,7 @@ Unfortunately, this fix alone did not resolve all the convergence issue, and we 
 
 After further investigation, we find that the precision-loss is the main source of the different training behaviour due to partitioning the gradient GeMMs' calculation across the SP group. When using mixed-precission training, the accumulation for the dot-product normally used a higher-precision to reduce the risk of precision-loss. However, when using SP, we convert the partial GeMM's result to lower-precision (fp16/bf16) before reducing it across the SP ranks. To remedy this, we use high-precision all-reduce when using sequence-parallelism (this introduces about 5% of overhead on average).
 <div align="center">
-  <img src="assets/images/sp-conv.png" alt="" /><br>
+  <img src="assets/images/sp-conv.png" alt="" width=500 /><br>
 
   *Fig 3: Fix SP-Convergence issue. Orange: baseline (no-SP), gray: SP-2 (fix gradient averaging), blue: SP-2 (fix precision). After fixing the scaling for the gradient averaging (gray), we see the loss and grad-norm start matching, however there is gradual increas of grad-norm and the accuracy degrades after 14K steps. By increasing the all-reduce precision to fp32 (blue), we see the lm-loss and grad-norm matching baseline.*<br>
 </div>
