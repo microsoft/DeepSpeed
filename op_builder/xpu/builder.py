@@ -10,7 +10,14 @@ import shutil
 from pathlib import Path
 import filecmp
 import subprocess
-from deepspeed.ops.op_builder.builder import OpBuilder, TORCH_MAJOR, TORCH_MINOR
+
+try:
+    # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
+    # if successful this also means we're doing a local install and not JIT compile path
+    from op_builder import __deepspeed__  # noqa: F401 # type: ignore
+    from op_builder.builder import OpBuilder, TORCH_MAJOR, TORCH_MINOR
+except ImportError:
+    from deepspeed.ops.op_builder.builder import OpBuilder, TORCH_MAJOR, TORCH_MINOR
 
 
 def are_dirs_equal(dir1, dir2):
