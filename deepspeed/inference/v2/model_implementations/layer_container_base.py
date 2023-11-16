@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 
+import re
 from typing import Type
 
 import torch
@@ -277,11 +278,32 @@ class LayerContainer(metaclass=LayerMetaclass):
             dep_name (str): The name of the dependency to set.
             dep_value (torch.Tensor): The value to set the dependency to.
         """
-        if dep_name in self.mapping_params:
-            # If we have an exact match, it's a direct mapping and we can immediately set
-            # the value.
-            target = self.mapping_params[dep_name]
 
+        def get_dep_name_target(dep_name: str) -> str:
+            """
+            Helper method for getting the target name for a dependency from the
+            mapping params. Tries to match exact string first, then looks for
+            wildcards and attempts regex matching. Will return empty string if
+            no match found.
+            """
+            if dep_name in self.mapping_params:
+                # If we have an exact match, it's a direct mapping and we can
+                # immediately set the value.
+                return self.mapping_params[dep_name]
+
+            matched_targets = []
+            for key, target in self.mapping_params.items():
+                regex_key = key.replace("*", ".*")
+                if re.match(regex_key, dep_name):
+                    matched_targets.append(target)
+            if len(matched_targets) > 1:
+                raise ValueError(f"Multiple targets matched for dependency {dep_name}: {matched_targets}")
+            if matched_targets:
+                return matched_targets[0]
+            return ""
+
+        target = get_dep_name_target(dep_name)
+        if target:
             # Convert single targets to a list for consistency
             if isinstance(target, str):
                 target = [target]
