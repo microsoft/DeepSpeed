@@ -6,5 +6,6 @@ psutil
 py-cpuinfo
 pydantic
 pynvml
-torch
+torch==2.1.0
 tqdm
+intel-extension-for-pytorch
