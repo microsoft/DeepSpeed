@@ -396,7 +396,7 @@ These routines can be used in a training loop as shown in the following snippet.
 Modifying Partitioned States
 ----------------------------
 
-Sometimes, a user may want to modify parameters or optimizer states outside of the regular training loop. This is currently difficult in ZeRO training because of partitioning. To overcome that, DeepSpeed provides the following routines for modifying fp32 master parameters and the fp32 optimizer states.
+Sometimes, a user may want to modify parameters or optimizer states outside of the regular training loop. This is currently difficult in ZeRO training because of partitioning. To overcome that, DeepSpeed provides the following routines for modifying the fp32 master parameters and the fp32 optimizer states.
 
 .. autofunction:: deepspeed.utils.safe_set_full_fp32_param
 
@@ -422,7 +422,7 @@ These routines can be used at any point after initialization of the DeepSpeed en
         safe_get_full_optimizer_state(lp, zero_tensor, "exp_avg")
         safe_get_full_optimizer_state(lp, zero_tensor, "exp_avg_sq")
         
-        # 2. For ZeRO-3, set each process's local fp32 parameters and theri local optimizer states individually
+        # 2. For zero stage 3, each process sets its local fp32 parameters and their local optimizer states individually
         zero_tensor_local = torch.zeros_like(lp.ds_tensor.shape)
 
         safe_set_local_fp32_param(lp, zero_tensor_local)
