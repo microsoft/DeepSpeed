@@ -857,6 +857,12 @@ class WarmupCosineLR(object):
         lr_ratio = self.get_lr_ratio()
         return [org_lr * lr_ratio for org_lr in self.org_lrs]
 
+    def get_last_lr(self):
+        """ Return last computed learning rate by current scheduler.
+        """
+        assert getattr(self, '_last_lr', None) is not None, "need to call step() first"
+        return self._last_lr
+
     def state_dict(self):
         return {'last_batch_iteration': self.last_batch_iteration}
 
