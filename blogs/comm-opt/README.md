@@ -62,7 +62,7 @@ By adding these optimizations, we see about 10 to 15% speedup compared to the pr
 |----------|:------:|:------:|:------:|:------:|:------:|:------:|
 256	| 256|	8192	|2|1	| 60.71	 |1
 512	| 256|	8192	|2|2	| 111.18 |	1.83
-512	| 128|	16384 |2|	2|	4 | 108.81 |	1.79 
+512	| 128|	16384 |2|4 | 108.81 |	1.79 
 512	| 64	|32768	|2|8	| 106.54 |	1.75
 512	| 64	|65536	|4|8	| 110.05 |	1.81
 
@@ -74,9 +74,9 @@ Table 1. Sequence-Parallelism scalability using DeepSpeed-Ulysses.
 
 Let's first start with a real scenario that we used Sequence-Parallelism to improve the training efficiency. When training a 7B dense model, using SP-2 and sequence-length 8K, we see some convergence issue that happens in relatively long run after more than 10K training steps. By further debugging this, we realized that gradients and parameter norms don't match between SP-1 and SP-2. Next, we dive into the solutions applied to matching the accuracy between these two experiments.
 
-By using sequence-parallelism (SP), we partition the tokens by the SP size, and combine them when computing the attention-scores. Thus, all of the transformer operations only work on part of the data, except for the attention that the heads are scattered and we combine all tokens for each portion of heads using all-to-all communication. However, when computing the gradinets for each parameter in the backward, we need to combine them between the SP ranks, since they are only partially computed with 1/SP of the data (as shown in Fig 2). This is due to the fact that loss computation (cross-entropy) has to consider all tokens before propagting the loss back into the network.
+By using sequence-parallelism (SP), we partition the tokens by the SP size, and combine them when computing the attention-scores. Thus, all of the transformer operations only work on part of the data, except for the attention that the heads are scattered and we combine all tokens using all-to-all communication. On the backward path though, the gradinet of each parameter needs to combine them between the SP ranks, since they are only partially computed with 1/SP of the data (as shown in Fig 2). This is due to the fact that loss function (cross-entropy) is computed over all tokens before backpropagting the loss back into the network.
 
-Fig 2 shows illustrates the difference between a SP-1 and SP-2 gradinent computatuion. As we see, we only compute half of the dot-product for SP-2 compared to SP-1. Therefore, we need to reduce these two on the SP-group before averaging the gradients across the data-parallel group. To fix the difference in gradient norm, we scale down the total world-size by the SP size, and then we can match the gradient norms
+Fig 2 shows illustrates the difference between a SP-1 and SP-2 gradinent computatuion. As we see, the dot-product computation is divided between SP ranks for the SP-2 case. Therefore, we need to reduce the GeMM's output across the SP-group before averaging the gradients for the data-parallel group. To fix the difference in gradient norm, we scale down the total world-size by the SP size, and then we can match the gradient norms.
 
 <div align="center">
   <img src="assets/images/sp+fp.png" alt="" width=400/><br>
@@ -84,9 +84,9 @@ Fig 2 shows illustrates the difference between a SP-1 and SP-2 gradinent computa
   *Fig 2: Gradient-accumulation difference between SP-1 and SP-2. When using Sp-2 we increase the precision of all-reduce to fp32 to match the accuracy with the no-SP experiment.*<br>
 </div>
 
-Unfortunately, this fix alone did not resolve all the convergence issue, and we see a flattened lm-loss behaviour after a running over 14K training steps. As before, we use gradient-norm as the main metric for debgging this issue. As Fig 3 shows, gradients-norm for SP-2 start off to be similar to SP-1, however, we see a gradual increase in the gradient norm, which seems to be harmfule for training LLMs.
+Unfortunately, this fix alone did not resolve all the convergence issue, and we see a flattened lm-loss behaviour after running over 14K training steps. As before, we use gradient-norm as the main metric for debgging this issue. As Fig 3 shows, gradients-norm for SP-2 starts off to be similar to SP-1, however, we see a gradual increase in the gradient norm, which seems to be harmful for training convergence.
 
-After further investigation, we find that the precision-loss is the main source of the different training behaviour due to partitioning the gradient GeMMs' calculation across the SP group. When using mixed-precission training, the accumulation for the dot-product normally used a higher-precision to reduce the risk of precision-loss. However, when using SP, we convert the partial GeMM's result to lower-precision (fp16/bf16) before reducing it across the SP ranks. To remedy this, we use high-precision all-reduce when using sequence-parallelism (this introduces about 5% of overhead on average).
+After further investigation, we find that the precision-loss is the main source of the different training behaviour due to partitioning the gradient-GeMM calculation across the SP group. When using mixed-precission training, the accumulation for the dot-product normally uses a higher-precision to reduce the risk of precision-loss. However, when using SP, we convert the partial GeMM's result to lower-precision (fp16/bf16) before reducing it across the SP ranks. To remedy this, we use high-precision all-reduce when using sequence-parallelism (this introduces about 5% of overhead on average).
 <div align="center">
   <img src="assets/images/sp-conv.png" alt="" width=700 /><br>
 
