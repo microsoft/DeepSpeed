@@ -768,7 +768,7 @@ class DeepSpeedEngine(Module):
         return self._config.zero_config.ignore_unused_parameters
 
     def graph_harvesting(self):
-        return self._config.zero_config.graph_harvesting
+        return self._config.graph_harvesting
 
     def fp16_enabled(self):
         return self._config.fp16_enabled
