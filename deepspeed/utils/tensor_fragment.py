@@ -227,7 +227,7 @@ def safe_get_local_optimizer_state(param, optim_state_key):
 
 
 def safe_set_local_optimizer_state(param, value, optim_state_key):
-    """Update the partitioned fp32 optimizer state of a partitioned parameter.
+    """Update the fp32 optimizer state of a partitioned parameter.
         Args:
             param (``torch.nn.Parameter``): A model parameter
             value (``torch.Tensor``): New value
@@ -239,7 +239,7 @@ def safe_set_local_optimizer_state(param, value, optim_state_key):
 
 
 def safe_set_local_fp32_param(param, value):
-    """Update the partitioned fp32 parameter of a partitioned parameter.
+    """Update the partitioned fp32 parameter.
         Args:
             param (``torch.nn.Parameter``): A model parameter
             value (``torch.Tensor``): New value
