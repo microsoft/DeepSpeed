@@ -38,6 +38,11 @@ jobs:
           gcc --version
           g++ --version
 
+      - name: Mitigation for GLIBCXX_3.4.30
+        run: |
+          # install glibc higher version
+          conda install -c conda-forge libstdcxx-ng=12
+
       - name: Detect instruction sets on instance
         run: |
           lscpu
