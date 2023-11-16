@@ -49,6 +49,7 @@ repos:
         entry: ./scripts/check-license.py
         language: python
         files: \.(py|c|cpp|cu|cc|h|hpp|cuh|hip|tr)$
+        exclude: ^(deepspeed/inference/v2/kernels/ragged_ops/blocked_flash|deepspeed/inference/v2/kernels/cutlass_ops/grouped_gemm)
 
 -   repo: https://github.com/codespell-project/codespell
     rev: v2.1.0
@@ -58,7 +59,7 @@ repos:
             # Do not check files that are automatically generated
             '--skip=docs/Gemfile.lock,tests/unit/gpt2-merges.txt,tests/unit/gpt2-vocab.json',
             '--ignore-regex=\\n',  # Do not count the 'n' in an escaped newline as part of a word
-            '--ignore-words-list=youn,unsupport',  # Word used in error messages that need rewording
+            '--ignore-words-list=youn,unsupport,noe',  # Word used in error messages that need rewording
             --check-filenames,
             --check-hidden
         ]
