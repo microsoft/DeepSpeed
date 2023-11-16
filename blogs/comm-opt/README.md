@@ -62,7 +62,7 @@ Unfortunately, this fix alone did not resolve all the convergence issue, and we 
 
 After further investigation, we find that the precision-loss is the main source of the different training behaviour due to partitioning the gradient GeMMs' calculation across the SP group. When using mixed-precission training, the accumulation for the dot-product normally used a higher-precision to reduce the risk of precision-loss. However, when using SP, we convert the partial GeMM's result to lower-precision (fp16/bf16) before reducing it across the SP ranks. To remedy this, we use high-precision all-reduce when using sequence-parallelism (this introduces about 5% of overhead on average).
 <div align="center">
-  <img src="assets/images/repl_scale_llama70b_tp4_p2600g60.png" alt="" width="400"/><br>
+  <img src="assets/" alt="" width="400"/><br>
 
-  *Figure 6: Scalability using the load balancing feature. A normal distribution was applied to prompt and generation lengths with averages of 2600 and 60, respectively, and a 30% variance*<br>
+  *Figure 3: *<br>
 </div>
