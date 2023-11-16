@@ -302,8 +302,11 @@ class LayerContainer(metaclass=LayerMetaclass):
                 return matched_targets[0]
             return ""
 
-        target = get_dep_name_target(dep_name)
-        if target:
+        if dep_name in self.mapping_params:
+            # If we have an exact match, it's a direct mapping and we can immediately set
+            # the value.
+            target = self.mapping_params[dep_name]
+
             # Convert single targets to a list for consistency
             if isinstance(target, str):
                 target = [target]
@@ -331,6 +334,22 @@ class LayerContainer(metaclass=LayerMetaclass):
                     target_dependency = getattr(target_param, target_dependency_name)
                     target_dependency[target_idx] = dep_value
                 return
+
+        # TODO: Refactor this with the help of cmikeh2
+        # We should be able to combine this with the wildcard matching above.
+        target = get_dep_name_target(dep_name)
+        if target:
+            # Convert single targets to a list for consistency
+            if isinstance(target, str):
+                target = [target]
+
+            for target_name in target:
+                # Double setting doesn't set the attribute correctly, so we do a getattr then setattr
+                target_param_name, target_dependency_name = target_name.split(".")
+                target_param = getattr(self, target_param_name)
+                setattr(target_param, target_dependency_name, dep_value)
+            return
+
         raise ValueError(
             "Could not find a mapping for dependency \"{}\". Check that it is included in the ``MAPPING_PARAMS``. See docstring for more on ``MAPPING_PARAMS``"
             .format(dep_name))
