@@ -138,7 +138,8 @@ def flatten_inference_model(
         try:
             _ = layer_container.is_populated
         except ValueError as e:
-            raise ValueError(f"Layer container {l_name} is not populated.") from e
+            raise ValueError(
+                f"Layer container {l_name} is not populated.") from e
 
         layer_metadata = LayerMetadata()
 
@@ -156,7 +157,8 @@ def flatten_inference_model(
                                                        strides=param.stride(),
                                                        offset=cur_offset)
 
-            cur_offset += pad_to_aligned_offset(elem_size(param.dtype) * param.numel())
+            cur_offset += pad_to_aligned_offset(
+                elem_size(param.dtype) * param.numel())
 
             for t_name, tensor in param.aux_attrs.items():
                 param_metadata.aux_params[t_name] = TensorMetadata(dtype=str(tensor.dtype),
@@ -164,7 +166,8 @@ def flatten_inference_model(
                                                                    strides=tensor.stride(),
                                                                    offset=cur_offset)
 
-                cur_offset += pad_to_aligned_offset(elem_size(param.dtype) * param.numel())
+                cur_offset += pad_to_aligned_offset(
+                    elem_size(tensor.dtype) * tensor.numel())
 
             layer_metadata.params[p_name] = param_metadata
 
@@ -178,7 +181,8 @@ def flatten_inference_model(
     l_name = "non_transformer"
     total_size = process_layer(non_transformer_container, l_name, total_size)
 
-    buffer = torch.empty(total_size, dtype=torch.uint8, device=get_accelerator().current_device())
+    buffer = torch.empty(total_size, dtype=torch.uint8,
+                         device=get_accelerator().current_device())
 
     def copy_layer(layer_container: LayerContainer, l_name: str) -> None:
         """
@@ -206,11 +210,13 @@ def flatten_inference_model(
             aux_params = {}
 
             for t_name, tensor in param.aux_attrs.items():
-                t_view = alloc_fn(tensor, buffer, p_metadata.aux_params[t_name].offset)
+                t_view = alloc_fn(
+                    tensor, buffer, p_metadata.aux_params[t_name].offset)
                 aux_params[t_name] = t_view
                 t_view.copy_(tensor)
 
-            setattr(layer_container, p_name, InferenceParameter.initialize(core_param, **aux_params))
+            setattr(layer_container, p_name,
+                    InferenceParameter.initialize(core_param, **aux_params))
 
     for i, layer in enumerate(transformer_containers):
         l_name = f"transformer_layer_{i}"
@@ -259,19 +265,23 @@ def restore_inference_model(buffer: torch.Tensor, metadata: ModelMetadata,
                 layer_container.direct_injection(p_name, None)
                 continue
 
-            dummy_tensor = torch.empty([], dtype=STR_TO_DTYPE[p_metadata.core_param.dtype])
+            dummy_tensor = torch.empty(
+                [], dtype=STR_TO_DTYPE[p_metadata.core_param.dtype])
             core_param = alloc_fn(p_metadata.core_param.shape, p_metadata.core_param.strides, dummy_tensor, buffer,
                                   p_metadata.core_param.offset)
 
             aux_params = {}
 
             for t_name, t_metadata in p_metadata.aux_params.items():
-                dummy_tensor = torch.empty([], dtype=STR_TO_DTYPE[t_metadata.dtype])
-                t_view = alloc_fn(t_metadata.shape, t_metadata.strides, dummy_tensor, buffer, t_metadata.offset)
+                dummy_tensor = torch.empty(
+                    [], dtype=STR_TO_DTYPE[t_metadata.dtype])
+                t_view = alloc_fn(t_metadata.shape, t_metadata.strides,
+                                  dummy_tensor, buffer, t_metadata.offset)
 
                 aux_params[t_name] = t_view
 
-            restored_param = InferenceParameter.initialize(core_param, **aux_params)
+            restored_param = InferenceParameter.initialize(
+                core_param, **aux_params)
             layer_container.direct_injection(p_name, restored_param)
 
     for i, layer in enumerate(transformer_containers):
