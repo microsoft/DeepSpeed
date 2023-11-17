@@ -33,4 +33,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     // rms_norm.h
     m.def("rms_norm", &rms_norm, "DeepSpeed rms norm in CUDA");
     m.def("rms_pre_norm", &rms_pre_norm, "DeepSpeed rms pre norm in CUDA");
+
+    // cuda_linear_kernels.h
+    m.def("cuda_wf6af16_linear", &cuda_wf6af16_linear, "DeepSpeed Wf6Af16 linear in CUDA");
 }
