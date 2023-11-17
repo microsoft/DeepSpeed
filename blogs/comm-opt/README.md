@@ -9,12 +9,12 @@
 1. [Introduction](#introduction)
 2. [Gradient AllReduce Optimization for ZeRO stages 1 and 2](#ar-opt)
 3. [Optimizing Parameter All-Gather for ZeRO2 Training](#ag-opt)
-4. [Sequence-Parallel Optimization](#sp-opt)
+4. [Optimizing AlltoAll for Sequence-Parallel Training](#sp-opt)
 5. [Sequence-Parallel Convergence Consideration](#convergence)
 
 
 ## 1. Introduction <a name="introduction"></a>
-Training LLMs on large data-set can be costly both in terms of resource-budget and time-to-completion. An important step to minimize such cost is to find the right number of resources together with a scalable library that assures training under a time limit. In this post, we target a key component of the scalability feature at DeepSpeed, the communication optimization. There are several communication collectives used in the main DeepSpeed's technologies, which we go through their optimization in detail in the following sections.
+Training LLMs on large data-set can be costly both in terms of resource-budget and time-to-completion. An important step to minimize such cost is to find the right number of resources together with a scalable library that assures training under a time limit. In this post, we target a key component of the scalability feature at DeepSpeed, the communication optimization. There are several communication collectives used in the main DeepSpeed's technologies, which we go through their optimization in detail in the following sections. In the end, we bring a sequence-parallel training show-case, where careful consideration needs to be taken for the AllReduce communication.
 
 ## 2. Gradient AllReduce Optimization for ZeRO stages 1 and 2 <a name="ar-opt"></a>
 
