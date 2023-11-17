@@ -28,14 +28,14 @@ In this section, we introduce two main optimization techniques for alleviating t
 
 First, Multi-rank bucketing for the same process group: for this optimization, we simply pack all data that requires to be reduced from different ranks into one big flattened tensor and call all-reduce instead of reduce operations. After the reduction, we scatter the right portion of data to the corresponding ranks.
 
-Second, Add new layout for the expert-data parallelism: the default parallelism layout for MoE architecture (shown in Fig1) is planned in a way that the experts are placed first on E parallel GPUs and replicated D times (data-parallel). With this layout, we encounter slower all-reduce as data-parallel ranks are placed farther away espcially when we have cross-rank communication. We call this layout E + D. 
+Second, add new layout for the expert-data parallelism: the default parallelism layout for MoE architecture (as shown in Fig 1) is planned in a way that the experts are placed first on E parallel GPUs and replicated D times (data-parallel). With this layout, we encounter slower all-reduce as data-parallel ranks are placed farther away espcially when we have cross-rank communication. We call this layout E + D. 
 
 <div align="center">
-  <img src="assets/images/e+d.png" alt="" /><br>
+  <img src="assets/images/e+d.png" alt="" width=600 /><br>
 
   *Fig 1: Different MoE parallel layout. left) E + D, which places the GPUs in EP dimension first before adding DP, right) D + E, that replicates each expert by DP size, before constructing EP. We get faster all-reduce for the second layout while increasing the all-to-all time. It potentially resutls in faster e2e training time, as the communication volume for all-reduce (total parameter size) is normally much more than all-to-all (MLP activation memory).*<br>
 </div>
-By changing this layout from E + D to D + E (shown in Fig1), where we first replicate each expert by D times and then the add expert-parallel dimension, we can reduce the all-reduce time substantially. On an A100-DGX cluster, where each node has 8 GPUs, we see about 8x cross-node communication-volume reduction for the parameter update process. Note that by adding this optimization, we increase the cost of All-to-All happening for the MoE part of the model, however, we have seen that the preformance benfit of all-reduce overweighs this cost.
+By changing this layout from E + D to D + E (shown in Fig 1), where we first replicate each expert by D times and then add them across expert-parallel dimension, we can reduce the all-reduce time substantially. On an A100-DGX cluster, where each node has 8 GPUs, we see about 8x reduction in cross-node communication-volume for the parameter update process. Note that by adding this optimization, we increase the cost of All-to-All happening for the MoE part of the model, however, we have seen that the preformance benfit of all-reduce overweighs this cost.
 
 After applying these two techniques for our training scenario, we reduce the all-reduce time by 2x for dense architecture and 5x - 8x for the MoE one using the multi-rank bucketing technique, and another 2x using the new D + E layout for the MoE architecture. We see higher performance gain on MoE architectures when using large number of GPUs. For the end-to-end training of a 7B-base MoE architecture, we reduce iteration-time from 13 sec to 9.5 sec on 512 GPUs (37%) and from 16 sec to 4.9 sec on 1k-GPU setup (3.3x).
 
