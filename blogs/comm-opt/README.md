@@ -10,11 +10,10 @@
 2. [Gradient AllReduce Optimization for ZeRO stages 1 and 2](#ar-opt)
 3. [Optimizing Parameter All-Gather for ZeRO2 Training](#ag-opt)
 4. [Optimizing AlltoAll for Sequence-Parallel Training](#sp-opt)
-5. [Sequence-Parallel Convergence Consideration](#convergence)
 
 
 ## 1. Introduction <a name="introduction"></a>
-Training LLMs on large data-set can be costly both in terms of resource-budget and time-to-completion. An important step to minimize such cost is to find the right number of resources together with a scalable library that assures training under a time limit. In this post, we target a key component of the scalability feature at DeepSpeed, the communication optimization. There are several communication collectives used in the main DeepSpeed's technologies, which we go through their optimization in detail in the following sections. In the end, we bring a sequence-parallel training show-case, where careful consideration needs to be taken for the AllReduce communication.
+Training LLMs on large data-set can be costly both in terms of resource-budget and time-to-completion. An important step to minimize such cost is to find the right number of resources together with a scalable library that assures training under a time limit. In this post, we target a key component of the scalability feature at DeepSpeed, the communication optimization. There are several communication collectives used in the main DeepSpeed's technologies, which we go through their optimization in detail in the following sections. We made these optimization available in DeepSpeed versions >= 0.x.x.
 
 ## 2. Gradient AllReduce Optimization for ZeRO stages 1 and 2 <a name="ar-opt"></a>
 
@@ -35,7 +34,7 @@ Second, add new layout for the expert-data parallelism: the default parallelism 
 
   *Fig 1: Different MoE parallel layout. left) E + D, which places the GPUs in EP dimension first before adding DP, right) D + E, that replicates each expert by DP size, before constructing EP. We get faster AllReduce for the second layout while increasing the AlltoAll time. It potentially resutls in faster e2e training time, as the communication volume for AllReduce (total parameter size) is normally much more than AlltoAll (MLP activation memory).*<br>
 </div>
-By changing this layout from E + D to D + E (shown in Fig 1), where we first replicate each expert by D times and then add them across expert-parallel dimension, we can reduce the AllReduce time substantially. On an A100-DGX cluster, where each node has 8 GPUs, we see about 8x reduction in cross-node communication-volume for the parameter update process. Note that by adding this optimization, we increase the cost of AlltoAll happening for the MoE part of the model, however, we have seen that the preformance benfit of AllReduce overweighs this cost.
+By changing this layout from E + D to D + E (shown in Fig 1), where we first replicate each expert by D times and then add them across expert-parallel dimension, we can reduce the AllReduce time substantially. On an A100-DGX cluster, where each node has 8 GPUs, we see about 8x reduction in cross-node infiniband communication-volume for the parameter update process, which are now processed faster using the intra-node NVLinks. Note that by adding this optimization, we increase the cost of AlltoAll happening for the MoE part of the model, however, we have seen that the preformance benfit of AllReduce overweighs this cost.
 
 Table 1 summarizes the saving observed for training a 7B dense and a MoE architecture by using the optimized AllReduce scheme. After applying the multi-rank bucketing technique, we reduce the AllReduce time by 4x for dense architecture and 5x - 8x for the MoE one. In addition, we obtain an extra 3x saving using the new D + E layout for the MoE architecture. Therefore, we see higher performance gain on MoE architectures when using large number of GPUs. For instance, when training a 7B-base MoE architecture, we reduce iteration-time from 13 sec to 9.5 sec on 512 GPUs (37%) and from 16.1 sec to 5.1 sec on 1k-GPU setup (3.2x).
 <div align="center">
@@ -50,6 +49,7 @@ optimized (MoE)	| 1024	| 0.45 | 5.1
 Table 1. AllReduce saving observed for both dense and MoE architectures.
 
 </div>
+
 ## 3. Optimizing Parameter All-Gather for ZeRO2 Training <a name="ag-opt"></a>
 
 The same as with AllReduce, all-gather takes longer as we have more partitions. As the parameters are stored in a flattened buffer for ZeRO stage-2, we can simply have a one call to all-gather the parameters into this tensor.
@@ -79,27 +79,4 @@ By adding these optimizations, we see about 10 to 15% speedup compared to the pr
 
 Table 2. Sequence-Parallelism scalability using DeepSpeed-Ulysses.
 
-</div>
-
-## 5. Sequence-Parallel Convergence Consideration <a name="convergence"></a>
-
-Let's first start with a real scenario that we used Sequence-Parallelism to improve the training efficiency. When training a 7B dense model, using SP-2 and sequence-length 8K, we see some convergence issue that happens in relatively long run after more than 10K training steps. By further debugging this, we realized that gradients and parameter norms don't match between SP-1 and SP-2. Next, we dive into the solutions applied to matching the accuracy between these two experiments.
-
-By using sequence-parallelism (SP), we partition the tokens by the SP size, and combine them when computing the attention-scores. Thus, all of the transformer operations only work on part of the data, except for the attention that the heads are scattered and we combine all tokens using AlltoAll communication. On the backward path though, the gradinet of each parameter needs to combine them between the SP ranks, since they are only partially computed with 1/SP of the data (as shown in Fig 2). This is due to the fact that loss function (cross-entropy) is computed over all tokens before backpropagting the loss back into the network.
-
-Fig 2 shows illustrates the difference between a SP-1 and SP-2 gradinent computatuion. As we see, the dot-product computation is divided between SP ranks for the SP-2 case. Therefore, we need to reduce the GeMM's output across the SP-group before averaging the gradients for the data-parallel group. To fix the difference in gradient norm, we scale down the total world-size by the SP size, and then we can match the gradient norms.
-
-<div align="center">
-  <img src="assets/images/sp+fp.png" alt="" width=400/><br>
-
-  *Fig 2: Gradient-accumulation difference between SP-1 and SP-2. When using Sp-2 we increase the precision of AllReduce to fp32 to match the accuracy with the no-SP experiment.*<br>
-</div>
-
-Unfortunately, this fix alone did not resolve all the convergence issue, and we see a flattened lm-loss behaviour after running over 14K training steps. As before, we use gradient-norm as the main metric for debgging this issue. As Fig 3 shows, gradients-norm for SP-2 starts off to be similar to SP-1, however, we see a gradual increase in the gradient norm, which seems to be harmful for training convergence.
-
-After further investigation, we find that the precision-loss is the main source of the different training behaviour due to partitioning the gradient-GeMM calculation across the SP group. When using mixed-precission training, the accumulation for the dot-product normally uses a higher-precision to reduce the risk of precision-loss. However, when using SP, we convert the partial GeMM's result to lower-precision (fp16/bf16) before reducing it across the SP ranks. To remedy this, we use high-precision AllReduce when using sequence-parallelism (this introduces about 5% of overhead on average).
-<div align="center">
-  <img src="assets/images/sp-conv.png" alt="" width=700 /><br>
-
-  *Fig 3: Fix SP-Convergence issue. Orange: baseline (no-SP), gray: SP-2 (fix gradient averaging), blue: SP-2 (fix precision). After fixing the scaling for the gradient averaging (gray), we see the loss and grad-norm start matching, however there is gradual increas of grad-norm and the accuracy degrades after 14K steps. By increasing the AllReduce precision to fp32 (blue), we see the lm-loss and grad-norm matching baseline.*<br>
 </div>
