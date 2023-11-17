@@ -31,7 +31,7 @@ First, Multi-rank bucketing for the same process group: for this optimization, w
 Second, add new layout for the expert-data parallelism: the default parallelism layout for MoE architecture (as shown in Fig 1) is planned in a way that the experts are placed first on E parallel GPUs and replicated D times (data-parallel). With this layout, we encounter slower all-reduce as data-parallel ranks are placed farther away espcially when we have cross-rank communication. We call this layout E + D. 
 
 <div align="center">
-  <img src="assets/images/e+d.png" alt="" width=600 /><br>
+  <img src="assets/images/e+d.png" alt="" width=800 /><br>
 
   *Fig 1: Different MoE parallel layout. left) E + D, which places the GPUs in EP dimension first before adding DP, right) D + E, that replicates each expert by DP size, before constructing EP. We get faster all-reduce for the second layout while increasing the all-to-all time. It potentially resutls in faster e2e training time, as the communication volume for all-reduce (total parameter size) is normally much more than all-to-all (MLP activation memory).*<br>
 </div>
