@@ -3,12 +3,14 @@
 
 # DeepSpeed Team
 
+import re
 from typing import Type
 
 import torch
 
 from deepspeed.accelerator import get_accelerator
 from .parameter_base import ParameterBase, ParametrizedList
+from ..inference_parameter import InferenceParameter
 
 # Currently have dependency loops for the type hints.
 InferenceModel = Type["InferenceModel"]
@@ -199,8 +201,7 @@ class LayerContainer(metaclass=LayerMetaclass):
         self.inference_model = model
         self._finalized_params = 0
 
-    @property
-    def is_initialized(self) -> bool:
+    def _initialization_checker(self, check_device: bool = True) -> bool:
         """
         Returns whether or not all parameters have been initialized and transformed by
         the model. Once this returns True, all the `ParameterBase` instances will be
@@ -213,13 +214,31 @@ class LayerContainer(metaclass=LayerMetaclass):
             tensor = getattr(self, name)
             if tensor is None:
                 continue
-            elif not isinstance(tensor, torch.Tensor):
-                raise ValueError("Layer should be finalized, but {} is neither Tensor or None".format(name))
-            elif tensor.device != torch.device(get_accelerator().current_device()):
+            elif not isinstance(tensor, InferenceParameter):
+                raise ValueError("Layer should be finalized, but {} ({}) is neither InferenceParameter or None".format(
+                    name, type(tensor)))
+            elif check_device and tensor.device != torch.device(get_accelerator().current_device()):
                 raise RuntimeError("Layer should be finalized, but {} is not on device {}".format(
                     name,
                     get_accelerator().current_device()))
         return True
+
+    @property
+    def is_populated(self) -> bool:
+        """
+        Returns whether or not all parameters have been populated by the checkpoint engine, but
+        does not validat the parameters are on the correct device.
+        """
+        return self._initialization_checker(check_device=False)
+
+    @property
+    def is_initialized(self) -> bool:
+        """
+        Returns whether or not all parameters have been initialized and transformed by
+        the model and are located on the appropriate device. Once this returns True, all
+        the `ParameterBase` instances ``InferenceParameter``s or explicitly set to ``None``.
+        """
+        return self._initialization_checker()
 
     @property
     def n_params(self) -> int:
@@ -230,12 +249,24 @@ class LayerContainer(metaclass=LayerMetaclass):
         return self._n_params
 
     @property
+    def annotation_attrs(self) -> list:
+        return self._annotation_attrs
+
+    @property
     def mapping_params(self) -> dict:
         return getattr(self.__class__, MAPPING_KEY, {})
 
     @property
     def plist_helpers(self) -> list:
         return getattr(self.__class__, PLIST_HELPERS, [])
+
+    def direct_injection(self, name: str, tensor: InferenceParameter) -> None:
+
+        if name not in self._annotation_attrs:
+            raise ValueError(f"Cannot directly inject {name}, not a valid parameter.")
+
+        setattr(self, name, tensor)
+        self._finalized_params += 1
 
     def set_dependency(self, dep_name: str, dep_value: torch.Tensor) -> None:
         """
@@ -247,6 +278,30 @@ class LayerContainer(metaclass=LayerMetaclass):
             dep_name (str): The name of the dependency to set.
             dep_value (torch.Tensor): The value to set the dependency to.
         """
+
+        def get_dep_name_target(dep_name: str) -> str:
+            """
+            Helper method for getting the target name for a dependency from the
+            mapping params. Tries to match exact string first, then looks for
+            wildcards and attempts regex matching. Will return empty string if
+            no match found.
+            """
+            if dep_name in self.mapping_params:
+                # If we have an exact match, it's a direct mapping and we can
+                # immediately set the value.
+                return self.mapping_params[dep_name]
+
+            matched_targets = []
+            for key, target in self.mapping_params.items():
+                regex_key = key.replace("*", ".*")
+                if re.match(regex_key, dep_name):
+                    matched_targets.append(target)
+            if len(matched_targets) > 1:
+                raise ValueError(f"Multiple targets matched for dependency {dep_name}: {matched_targets}")
+            if matched_targets:
+                return matched_targets[0]
+            return ""
+
         if dep_name in self.mapping_params:
             # If we have an exact match, it's a direct mapping and we can immediately set
             # the value.
@@ -280,10 +335,21 @@ class LayerContainer(metaclass=LayerMetaclass):
                     target_dependency[target_idx] = dep_value
                 return
 
+        # TODO: Refactor this with the help of cmikeh2
+        # We should be able to combine this with the wildcard matching above.
+        target = get_dep_name_target(dep_name)
+        if target:
+            # Convert single targets to a list for consistency
+            if isinstance(target, str):
+                target = [target]
+
+            for target_name in target:
+                # Double setting doesn't set the attribute correctly, so we do a getattr then setattr
+                target_param_name, target_dependency_name = target_name.split(".")
+                target_param = getattr(self, target_param_name)
+                setattr(target_param, target_dependency_name, dep_value)
+            return
+
         raise ValueError(
             "Could not find a mapping for dependency \"{}\". Check that it is included in the ``MAPPING_PARAMS``. See docstring for more on ``MAPPING_PARAMS``"
             .format(dep_name))
-
-
-class ContainerMap:
-    pass
