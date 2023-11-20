@@ -26,8 +26,6 @@ class TestNVMeCheckpointing(DistributedTest):
                               (OffloadDeviceEnum.cpu, OffloadDeviceEnum.nvme),
                               (OffloadDeviceEnum.nvme, OffloadDeviceEnum.nvme)])
     def test_nvme_checkpointing(self, tmpdir, param_offload_device, optim_offload_device):
-        tmpdir = "/home/eeisenst/workspace/temp/temp"
-        shutil.rmtree(tmpdir, ignore_errors=True)
         zero_dir, ckpt_dir = os.path.join(tmpdir, "zero"), os.path.join(tmpdir, "checkpoint")
 
         first_stage_steps, second_stage_steps = 2, 2
