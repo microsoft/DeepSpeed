@@ -58,6 +58,7 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         super().__init__(config, implementation_config)
 
         self._linear_impl = CUDAWf6Af16Linear(self._config.input_dtype)
+        self.scale = 1.0 # TODO: how to get the scale of quantization?
 
         if is_gated(config.activation):
             self._is_gated = True
@@ -80,8 +81,7 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         Parameters:
             param (torch.Tensor): Weight or bias tensor.
         """
-        param = param.to(self._config.output_dtype)
-        return InferenceParameter.initialize(param)
+        ...
 
     def forward(self, hidden_states: torch.Tensor, w: torch.Tensor, b: Optional[torch.Tensor] = None) -> torch.Tensor:
 
@@ -89,10 +89,10 @@ class QuantizedWf6Af16Linear(DSLinearBase):
 
         if self._is_gated:
             staging_output = empty_from(self._double_buffer, (hidden_states.shape[0], self._config.out_channels * 2))
-            self._linear_impl(staging_output, hidden_states, w)
+            self._linear_impl(staging_output, hidden_states, w, self.scale)
             self._act_fn(output, staging_output, b)
         else:
-            self._linear_impl(output, hidden_states, w)
+            self._linear_impl(output, hidden_states, w, self.scale)
             self._act_fn(output, b)
 
         return output

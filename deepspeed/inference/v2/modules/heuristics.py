@@ -86,8 +86,11 @@ def instantiate_linear(linear_config: DSLinearConfig, engine_config: RaggedInfer
         A linear module implementing the given configuration.
     """
 
-    # Currently, we only have one implementation, so we just return it.
-    config = ConfigBundle(name="blas_fp_linear", config=linear_config)
+    if engine_config.quantization.quantization_mode is None:
+        config = ConfigBundle(name="blas_fp_linear", config=linear_config)
+    else:
+        # Currently, we only support ``quantized_wf6af16_linear``.
+        config = ConfigBundle(name="quantized_wf6af16_linear", config=linear_config)
     return DSLinearRegistry.instantiate_config(config)
 
 
