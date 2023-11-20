@@ -8,7 +8,6 @@ import pytest
 import shutil
 import deepspeed.comm as dist
 import torch
-import numpy as np
 
 from unit.common import DistributedTest
 from unit.simple_model import random_dataloader, SimpleModel
