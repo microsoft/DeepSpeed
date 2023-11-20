@@ -22,11 +22,10 @@ from deepspeed.ops.aio import AsyncIOBuilder
 class TestNVMeCheckpointing(DistributedTest):
     world_size = 1
 
-    @pytest.mark.parametrize('param_offload_device, optim_offload_device', [
-        (OffloadDeviceEnum.cpu, OffloadDeviceEnum.cpu),
-        (OffloadDeviceEnum.cpu, OffloadDeviceEnum.nvme),
-        (OffloadDeviceEnum.nvme, OffloadDeviceEnum.nvme)
-    ])
+    @pytest.mark.parametrize('param_offload_device, optim_offload_device',
+                             [(OffloadDeviceEnum.cpu, OffloadDeviceEnum.cpu),
+                              (OffloadDeviceEnum.cpu, OffloadDeviceEnum.nvme),
+                              (OffloadDeviceEnum.nvme, OffloadDeviceEnum.nvme)])
     def test_nvme_checkpointing(self, tmpdir, param_offload_device, optim_offload_device):
         tmpdir = "/home/eeisenst/workspace/temp/temp"
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -62,12 +61,12 @@ class TestNVMeCheckpointing(DistributedTest):
                     "device": optim_offload_device,
                     "nvme_path": str(zero_dir)
                 },
-		        "sub_group_size": 100,
-		        "stage3_max_live_parameters": 100,
-        		"stage3_param_persistence_threshold": 0,
+                "sub_group_size": 100,
+                "stage3_max_live_parameters": 100,
+                "stage3_param_persistence_threshold": 0,
             },
             "aio": {
-                "block_size": 1048576       # Minimum AIO bytes, anything smaller than this will not be offloaded
+                "block_size": 1048576  # Minimum AIO bytes, anything smaller than this will not be offloaded
             }
         }
 
@@ -95,11 +94,12 @@ class TestNVMeCheckpointing(DistributedTest):
         model.save_checkpoint(ckpt_dir)
 
         if second_stage_steps > 0:
-            second_stage_batches = list(random_dataloader(model=model,
-                                                          total_samples=second_stage_steps,
-                                                          hidden_dim=hidden_dim,
-                                                          device=model.device,
-                                                          dtype=torch.float16))
+            second_stage_batches = list(
+                random_dataloader(model=model,
+                                  total_samples=second_stage_steps,
+                                  hidden_dim=hidden_dim,
+                                  device=model.device,
+                                  dtype=torch.float16))
             dist.barrier()
             for n, batch in enumerate(second_stage_batches):
                 loss = model(batch[0], batch[1])
@@ -107,11 +107,13 @@ class TestNVMeCheckpointing(DistributedTest):
                 model.step()
             dist.barrier()
 
-        final_batch = next(iter(random_dataloader(model=model,
-                                                  total_samples=1,
-                                                  hidden_dim=hidden_dim,
-                                                  device=model.device,
-                                                  dtype=torch.float16)))
+        final_batch = next(
+            iter(
+                random_dataloader(model=model,
+                                  total_samples=1,
+                                  hidden_dim=hidden_dim,
+                                  device=model.device,
+                                  dtype=torch.float16)))
         dist.barrier()
         loss_before = float(model(final_batch[0], final_batch[1]))
 
