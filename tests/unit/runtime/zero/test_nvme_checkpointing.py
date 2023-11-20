@@ -5,7 +5,6 @@
 
 import os
 import pytest
-import shutil
 import deepspeed.comm as dist
 import torch
 
