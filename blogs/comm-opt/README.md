@@ -17,7 +17,7 @@ Training LLMs on large datasets can be extremely costly both in terms of hardwar
 
 ## 2. Gradient AllReduce Optimization for ZeRO stages 1 and 2 <a name="ar-opt"></a>
 
-Before diving into this techniques, let's take a step back and show some of the case studies that motivates this work of AllReduce optimization.
+Before diving into this optimization, let's take a step back and show some of the case studies that demonstrate the need.
 
 AllReduce operation is an important part of the training process. In ZeRO, we handle this in buckets, which can be configured to get good communication throughput. As the number of GPUs increases, we encounter smaller-partition AllReduces. In this case, the current bucketing scheme cannot help with the communication overhead. This mostly becomes an issue when training smaller-scale models (like Llama-7B) with large number of GPUs.
 
