@@ -13,7 +13,7 @@
 
 
 ## 1. Introduction <a name="introduction"></a>
-Training LLMs on large data-set can be costly both in terms of resource-budget and time-to-completion. An important step to minimize such cost is to find the right number of resources together with a scalable library that assures training under a time limit. In this post, we target a key component of the scalability feature at DeepSpeed, the communication optimization. There are several communication collectives used in the main DeepSpeed's technologies, which we go through their optimization in detail in the following sections. We made these optimization available in DeepSpeed versions >= 0.x.x.
+Training LLMs on large datasets can be extremely costly both in terms of hardware resources and time. An important step to minimize such costs is to carefully combine an appropriate number of resources together with a scalable library that guarantees training completion within a time limit. In this post, we discuss a key aspect of the scalability features of DeepSpeed, the communication optimization. Communication collectives (e.g., all-reduce, all-gather, etc.) are critical pieces of many popular DeepSpeed technologies (e.g., ZeRO, MoE, AutoTP, etc.), and in the following sections we discuss our new optimizations of some of these collectives. These optimizations are available in DeepSpeed versions >= 0.x.x.
 
 ## 2. Gradient AllReduce Optimization for ZeRO stages 1 and 2 <a name="ar-opt"></a>
 
