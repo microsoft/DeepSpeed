@@ -1090,7 +1090,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
             for bucket_key in buckets:
                 if self.use_multi_rank_bucket_allreduce:
-                    if dist.get_world_size() != dist.get_world_size(group=bucket_key):
                     self.allreduce_and_scatter(buckets[bucket_key], 
                                                numel_per_bucket=self.reduce_bucket_size, 
                                                divide=self.ipg_bucket_has_moe_params, 
