@@ -227,6 +227,8 @@ void launch_kv_rotary_kernel(T* kv_cache,
     DISPATCH_KV_ROTARY_IMPL(5, 128)
     DISPATCH_KV_ROTARY_IMPL(8, 64)
     DISPATCH_KV_ROTARY_IMPL(8, 128)
+    DISPATCH_KV_ROTARY_IMPL(71, 64)
+    DISPATCH_KV_ROTARY_IMPL(71, 128)
 }
 
 #define INSTANTIATE_KV_ROTARY_KERNEL(TYPE)                                        \
