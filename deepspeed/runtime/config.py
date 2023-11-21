@@ -543,8 +543,10 @@ def get_hybrid_engine_config(param_dict):
     hybrid_engine_config = HybridEngineConfig(**hybrid_engine_config_dict)
     return hybrid_engine_config
 
+
 def get_expert_data_topo_config(param_dict):
     return get_scalar_param(param_dict, USE_DATA_BEFORE_EXPERT_PARALLEL, USE_DATA_BEFORE_EXPERT_PARALLEL_DEFAULT)
+
 
 def get_eigenvalue_config(param_dict):
     if get_quantize_enabled(param_dict):

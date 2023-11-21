@@ -110,11 +110,11 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
 
     use_multi_rank_bucket_allreduce: bool = True
     """
-    Combine the reduce buckets of the different ranks and do an All-Reduce instead of multiple Reduce ops. 
-    This feature is useful when the model is small and we want to scale it on too many GPUs which therefore 
+    Combine the reduce buckets of the different ranks and do an All-Reduce instead of multiple Reduce ops.
+    This feature is useful when the model is small and we want to scale it on too many GPUs which therefore
     reduces the message sizes of each packet.
     """
-    
+
     allgather_partitions: bool = True
     """
     Chooses between allgather collective or a series of broadcast collectives

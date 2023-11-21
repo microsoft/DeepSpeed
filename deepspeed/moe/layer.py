@@ -89,12 +89,12 @@ class MoE(torch.nn.Module):
             if (groups.mpu is None) or (not self.enable_expert_tensor_parallelism):
                 # Condition 1 - no groups.mpu means no tensor parallelism
                 # Condition 2 - disabling expert tensor parallelism on purpose
-                groups._create_expert_and_data_parallel(self.ep_size, use_data_before_expert_parallel_=use_data_before_expert_parallel_)
+                groups._create_expert_and_data_parallel(
+                    self.ep_size, use_data_before_expert_parallel_=use_data_before_expert_parallel_)
             else:
                 # expert tensor parallelism is enabled
-                groups._create_expert_data_and_model_parallel(self.ep_size, 
-                                                              mpu=groups.mpu, 
-                                                              use_data_before_expert_parallel_=use_data_before_expert_parallel_)
+                groups._create_expert_data_and_model_parallel(
+                    self.ep_size, mpu=groups.mpu, use_data_before_expert_parallel_=use_data_before_expert_parallel_)
         # Set the group handle for the MOELayer (deepspeed_moe) object
         self.deepspeed_moe._set_ep_group(groups._get_expert_parallel_group(self.expert_group_name))
 

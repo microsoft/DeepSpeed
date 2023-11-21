@@ -122,7 +122,7 @@ def _create_expert_and_data_parallel(expert_parallel_size_, use_data_before_expe
         expert_data_parallel_group = [0,2,4,6,8,10,12,14], [1,3,5,7,9,11,13,15] - all reduce is only on MoE params
         expert_parallel_group = [0, 1], [2,3], [4,5], [6,7], [8,9] - no all reduce, but all to all
         data_parallel_group = [0,1,...,15] - all reduce is only on non-MoE
-        use_data_before_expert_parallel_ (bool): Use the D + E instead of E + D topology 
+        use_data_before_expert_parallel_ (bool): Use the D + E instead of E + D topology
     """
     assert dist.is_initialized()
 
@@ -138,7 +138,7 @@ def _create_expert_and_data_parallel(expert_parallel_size_, use_data_before_expe
     global _EXPERT_DATA_PARALLEL_GROUP
 
     ep_stride = world_size // expert_parallel_size_
-    
+
     # Only create group if it does not already exist
     if group_name not in _EXPERT_DATA_PARALLEL_GROUP:
         for i in range(expert_parallel_size_):
@@ -175,8 +175,9 @@ def _create_expert_and_data_parallel(expert_parallel_size_, use_data_before_expe
                 if i == (rank // expert_parallel_size_):
                     _EXPERT_PARALLEL_GROUP[group_name] = group
 
-def _get_expert_parallel_ranks(world_size, 
-                               model_parallel_size_, 
+
+def _get_expert_parallel_ranks(world_size,
+                               model_parallel_size_,
                                expert_parallel_size_,
                                use_data_before_expert_parallel_=False):
     """Generate expert parallel and expert data parallel group ranks list.
@@ -194,7 +195,7 @@ def _get_expert_parallel_ranks(world_size,
         world_size (int): Distributed world size.
         model_parallel_size_ (int): Model parallel group size.
         expert_parallel_size_ (int): Expert parallel group size.
-        use_data_before_expert_parallel_ (bool): Use the D + E instead of E + D topology 
+        use_data_before_expert_parallel_ (bool): Use the D + E instead of E + D topology
     Returns:
         Expert parallel group ranks and Expert data parallel group ranks list.
     """
@@ -207,13 +208,14 @@ def _get_expert_parallel_ranks(world_size,
     dp_group_size = model_parallel_size_
 
     if use_data_before_expert_parallel_:
-        dp_stride = world_size // expert_parallel_size_ // model_parallel_size_ 
+        dp_stride = world_size // expert_parallel_size_ // model_parallel_size_
         for i in range(dp_group_size):
             data_parallel_groups.append(list())
             for ds in range(dp_stride):
                 # [0, 4, 8, 12, 16, 20, 24, 28, 2, 6, 10, 14, 18, 22, 26, 30]
                 # [1, 5, 9, 13, 17, 21, 25, 29, 3, 7, 11, 15, 19, 23, 27, 31]
-                data_parallel_groups[-1].extend(list(range(i + ds * model_parallel_size_, world_size, dp_stride * model_parallel_size_)))
+                data_parallel_groups[-1].extend(
+                    list(range(i + ds * model_parallel_size_, world_size, dp_stride * model_parallel_size_)))
     else:
         for i in range(dp_group_size):
             data_parallel_groups.append(list(range(i, world_size, dp_group_size)))

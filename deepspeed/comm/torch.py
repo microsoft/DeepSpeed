@@ -202,7 +202,7 @@ class TorchBackend(Backend):
             return Noop()
         else:
             return torch.distributed.all_gather(tensor_list=tensor_list, tensor=tensor, group=group, async_op=async_op)
-                   
+
     def all_gather_into_tensor(self, output_tensor, input_tensor, group=None, async_op=False):
         if self.has_all_gather_into_tensor():
             return self.all_gather_function(output_tensor=output_tensor,

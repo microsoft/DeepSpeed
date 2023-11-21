@@ -714,7 +714,7 @@ class DeepSpeedEngine(Module):
 
     def zero_reduce_bucket_size(self):
         return self._config.zero_config.reduce_bucket_size
-        
+
     def zero_multi_rank_bucket_allreduce(self):
         return self._config.zero_config.use_multi_rank_bucket_allreduce
 

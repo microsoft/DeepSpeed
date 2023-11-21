@@ -11,8 +11,9 @@ from torch.nn import Module
 
 import deepspeed.comm as dist
 
-def single_all_to_all(input, scatter_idx, gather_idx, seq_world_size):
 
+def single_all_to_all(input, scatter_idx, gather_idx, group):
+    seq_world_size = dist.get_world_size(group)
     inp_shape = list(input.shape)
     inp_shape[scatter_idx] = inp_shape[scatter_idx] // seq_world_size
     if scatter_idx < 2:
@@ -27,7 +28,7 @@ def single_all_to_all(input, scatter_idx, gather_idx, seq_world_size):
             inp_shape[scatter_idx + 1:]
         ).transpose(0, 1).contiguous()
 
-    output = torch.empty_like(input_t)        
+    output = torch.empty_like(input_t)
     dist.all_to_all_single(output, input_t, group=group)
 
     # if scattering the seq-dim, transpose the heads back to the original dimension
@@ -39,6 +40,7 @@ def single_all_to_all(input, scatter_idx, gather_idx, seq_world_size):
         [inp_shape[gather_idx] * seq_world_size,] + \
         inp_shape[gather_idx + 1:]).contiguous()
 
+
 class _SeqAllToAll(torch.autograd.Function):
 
     @staticmethod
@@ -48,9 +50,7 @@ class _SeqAllToAll(torch.autograd.Function):
         ctx.scatter_idx = scatter_idx
         ctx.gather_idx = gather_idx
 
-        seq_world_size = dist.get_world_size(group)
-
-        return single_all_to_all(input, scatter_idx, gather_idx, seq_world_size)
+        return single_all_to_all(input, scatter_idx, gather_idx, group)
 
     @staticmethod
     def backward(ctx: Any, *grad_output: Tensor) -> Tuple[None, Tensor, None, None]:
@@ -94,7 +94,7 @@ class DistributedAttention(torch.nn.Module):
             * output (Tensor): context output
         """
         # TODO Merge three alltoall calls into one
-        # TODO (Reza): change the api on the megatron-deepspeed side so that we only recieve all data (q,k, and v) together!
+        # TODO (Reza): change the api on the megatron-deepspeed side so that we only receive all data (q,k, and v) together!
         #in shape : e.g.,  [s/p:h:]
         query_layer = _SeqAllToAll.apply(self.spg, query, self.scatter_idx, self.gather_idx)
         key_layer = _SeqAllToAll.apply(self.spg, key, self.scatter_idx, self.gather_idx)
