@@ -274,7 +274,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         # 3. Try to get num_key_heads from model_config.num_key_value_heads
         num_kv_heads = None
-        kv_head_names = ['num_key_value_heads', 'num_attention_heads', 'n_heads']
+        kv_head_names = ['num_kv_heads', 'num_key_value_heads', 'num_attention_heads', 'n_heads']
         for name in kv_head_names:
             if hasattr(model_config, name):
                 num_kv_heads = getattr(model_config, name)
