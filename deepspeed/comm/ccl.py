@@ -84,7 +84,7 @@ class CCLBackend(TorchBackend):
                 group = self.get_all_ranks_from_group(group)
                 return self.ccl_comm_op.all_reduce_caching(tensor, op, match_id, group, async_op)
             else:
-                return self.run_collective(name="all_reduce_caching",
+                return self.run_collective(name=name,
                                             tensor=tensor,
                                             op=op,
                                             match_id=match_id,
