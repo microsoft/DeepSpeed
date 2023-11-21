@@ -5,6 +5,8 @@ on:
     paths-ignore:
       - 'docs/**'
       - 'blogs/**'
+      - 'deepspeed/inference/v2/**'
+      - "tests/unit/inference/v2/**"
   merge_group:
     branches: [ master ]
   schedule:
@@ -34,6 +36,7 @@ jobs:
         run: |
           git clone https://github.com/huggingface/transformers
           cd transformers
+          git checkout f370bebdc
           git rev-parse --short HEAD
           pip install .
 
