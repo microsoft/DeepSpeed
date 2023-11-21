@@ -1,6 +1,6 @@
 <div align="center">
 
-# Communictaion Optimization for Large-Scale Training
+# Communication Optimizations for Large-Scale Training
 
 </div>
 
