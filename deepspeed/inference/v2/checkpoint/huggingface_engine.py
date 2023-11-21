@@ -8,6 +8,7 @@ import json
 import torch
 from .base_engine import CheckpointEngineBase
 from typing import Iterable, Tuple
+from functools import partial
 
 from ..logging import inference_logger
 
@@ -28,6 +29,7 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
         else:
             self.model_config.max_seq_length = self.generation_config.max_length
 
+        self._local_checkpoint_dir = None
         self._all_ckpt_paths = self._fetch_checkpoint_files()
 
     def _fetch_checkpoint_files(self):
@@ -41,71 +43,64 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
         # NOTE(jeff): allow_patterns here are explicitly not using safetensors or other
         # checkpoint files that may be present. Example of all files in the llama-2-7b
         # repo here: https://huggingface.co/meta-llama/Llama-2-7b-hf/tree/main
+        from huggingface_hub import snapshot_download, list_files_info
 
-        # UPDATE: allow safetensors now. Will auto fetch `*.safetensors` by default;
-        # fallback to fetch the `.bin` files if there are no `*.safetensors`.
-        from huggingface_hub import snapshot_download
-
-        def snapshot_download_bin():
-            return snapshot_download(self.model_name_or_path,
-                                                            allow_patterns=[
-                                                                "*.bin",
-                                                                "*.json",
-                                                                "*.pt",
-                                                            ],
-                                                            revision=None,
-                                                            token=self.auth_token)
-
-        def snapshot_download_safetensors():
-            return snapshot_download(self.model_name_or_path,
-                                                            allow_patterns=[
-                                                                "*.json",
-                                                                "*.pt",
-                                                                "*.safetensors",
-                                                            ],
-                                                            revision=None,
-                                                            token=self.auth_token)
+        def model_has_safetensors(model_name_or_path: str) -> bool:
+            if os.path.isdir(model_name_or_path):
+                file_list = os.listdir(model_name_or_path)
+            else:
+                file_list = [rf.rfilename for rf in list_files_info(model_name_or_path)]
+            for f in file_list:
+                if f.endswith(".safetensors"):
+                    return True
+            return False
 
         if os.path.isdir(self.model_name_or_path):
             self._local_checkpoint_dir = self.model_name_or_path
         else:
-            self._local_checkpoint_dir = snapshot_download_safetensors()
+            # We need to download the checkpoint files from HF
+            if model_has_safetensors(self.model_name_or_path):
+                # Prioritize downloading safetensors if they are available
+                allow_patterns = ["*.safetensors", "*.json", "*.pt"]
+            else:
+                # Fallback to bin files when safetensors are not present
+                allow_patterns = ["*.bin", "*.json", "*.pt"]
+            self._local_checkpoint_dir = snapshot_download(self.model_name_or_path,
+                                                           allow_patterns=allow_patterns,
+                                                           revision=None,
+                                                           token=self.auth_token)
 
         assert os.path.isdir(
             self._local_checkpoint_dir
         ), f"Checkpoint dir {self._local_checkpoint_dir} is not a directory, cannot load checkpoint."
 
-        safe_model_param_json = os.path.join(self._local_checkpoint_dir, "model.safetensors.index.json")
-        safe_model_file = os.path.join(self._local_checkpoint_dir, 'model.safetensors')
-        model_param_json = os.path.join(self._local_checkpoint_dir, "pytorch_model.bin.index.json")
-        model_file = os.path.join(self._local_checkpoint_dir, 'pytorch_model.bin')
-
-        # Prioritize `*.safetensors` over `*.bin`
-        if os.path.isfile(safe_model_param_json):
-            param_map = json.load(open(safe_model_param_json, "r"))
+        # Set the appropriate file names based on whether we have safetensors or not
+        if model_has_safetensors(self._local_checkpoint_dir):
+            from safetensors.torch import load_file
+            model_param_json_fname = "model.safetensors.index.json"
+            model_file_fname = "model.safetensors"
+            self._checkpoint_load_fn = load_file
         else:
-            if os.path.isfile(safe_model_file):
-                all_checkpoint_files = [safe_model_file]
+            model_param_json_fname = "pytorch_model.bin.index.json"
+            model_file_fname = "pytorch_model.bin"
+            self._checkpoint_load_fn = partial(torch.load, map_location="cpu")
 
-                return all_checkpoint_files
-            else:
-                self._local_checkpoint_dir = snapshot_download_bin()
+        model_param_json = os.path.join(self._local_checkpoint_dir, model_param_json_fname)
 
-                if os.path.isfile(model_param_json):
-                    param_map = json.load(open(model_param_json, "r"))
-                else:
-                    all_checkpoint_files = [model_file]
+        if not os.path.isfile(model_param_json):
+            # We don't need any json as all such HF models will have pytorch_model.bin
+            all_checkpoint_files = [os.path.join(self._local_checkpoint_dir, model_file_fname)]
+        else:
+            param_map = json.load(open(model_param_json, "r"))
 
-                    return all_checkpoint_files
+            # weight_map -> { "lm_head.weight": "pytorch_model-00002-of-00002.bin", ... }
+            weight_map = param_map["weight_map"]
 
-        # weight_map -> { "lm_head.weight": "pytorch_model-00002-of-00002.bin", ... }
-        weight_map = param_map["weight_map"]
+            # unique set of all checkpoint files
+            all_checkpoint_files = set(weight_map.values())
 
-        # unique set of all checkpoint files
-        all_checkpoint_files = set(weight_map.values())
-
-        # get absolute path of all unique checkpoint files
-        all_checkpoint_files = [os.path.join(self._local_checkpoint_dir, f) for f in all_checkpoint_files]
+            # get absolute path of all unique checkpoint files
+            all_checkpoint_files = [os.path.join(self._local_checkpoint_dir, f) for f in all_checkpoint_files]
 
         return all_checkpoint_files
 
@@ -113,14 +108,9 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
         """
         Generator of model parameters (satisfies the CheckpointEngineBase interface).
         """
-        from safetensors.torch import load_file
-
         for checkpoint in self._all_ckpt_paths:
             inference_logger().info(f"Loading checkpoint: {checkpoint}")
-            if checkpoint.endswith(".safetensors"):
-                checkpoint_sd = load_file(checkpoint, device="cpu")
-            else:
-                checkpoint_sd = torch.load(checkpoint, map_location='cpu')
+            checkpoint_sd = self._checkpoint_load_fn(checkpoint)
             param_keys = list(checkpoint_sd.keys())
             for param_name in param_keys:
                 param = checkpoint_sd[param_name]
