@@ -122,7 +122,6 @@ def split_half_float_double_sparse(tensors):
     device_type = get_accelerator().device_name()
     supported_types = get_accelerator().supported_dtypes()
 
-    tensors = [eval(t) for t in tensors if isinstance(t,str)]
     for t in tensors:
         assert t.dtype in supported_types, f"attempting to reduce an unsupported grad type: {t.dtype}"
 
@@ -2379,12 +2378,10 @@ class DeepSpeedEngine(Module):
 
     def _reduce_non_expert_gradients(self, grads, elements_per_buffer):
         split_sparse_tensor_buckets, split_dense_tensor_buckets = split_half_float_double_sparse(grads)
-
-            if self.pipeline_parallelism:
-                dp_group = self.mpu.get_data_parallel_group()
-            else:
-                dp_group = groups._get_sequence_data_parallel_group()
-
+        if self.pipeline_parallelism:
+            dp_group = self.mpu.get_data_parallel_group()
+        else:
+            dp_group = groups._get_sequence_data_parallel_group()
 
         for _, sparse_bucket in split_sparse_tensor_buckets:
             if sparse_bucket:
