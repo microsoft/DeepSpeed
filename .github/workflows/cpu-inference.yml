@@ -38,11 +38,6 @@ jobs:
           gcc --version
           g++ --version
 
-      - name: Mitigation for GLIBCXX_3.4.30
-        run: |
-          # install glibc higher version
-          sudo conda install -y -c conda-forge libstdcxx-ng=12
-
       - name: Detect instruction sets on instance
         run: |
           lscpu
@@ -100,6 +95,7 @@ jobs:
         run: |
           pip list
           source oneCCL/build/_install/env/setvars.sh
+          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
           # check whether the environment is properly setup
           python -c "import torch;import intel_extension_for_pytorch as ipex;import oneccl_bindings_for_pytorch;print('done')"
           python -c "import deepspeed;from deepspeed.accelerator import get_accelerator;print(get_accelerator().device_name());print(get_accelerator().is_available())"
