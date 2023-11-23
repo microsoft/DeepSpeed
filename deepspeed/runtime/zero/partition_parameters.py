@@ -312,6 +312,8 @@ class InsertPostInitMethodToModuleSubClasses(object):
             torch.half, torch.bfloat16, torch.float
         ], f"Invalid data type {self.dtype}, allowed values are [torch.half, torch.bfloat16, torch.float]"
         self.wrapped_cls = set()
+        self.skip_init_depth = 0
+        self.deferred_init_list = []
 
         self.quantized_initialization = None
         if ds_config is not None and ds_config.weight_quantization_config and ds_config.weight_quantization_config.quantized_initialization:
@@ -456,16 +458,29 @@ class InsertPostInitMethodToModuleSubClasses(object):
                     is_child_module = True
                     setattr(module, "_ds_child_entered", True)
 
+                init_on_meta = 'device' in kwargs and kwargs['device'] == 'meta'
+                if init_on_meta:
+                    self.skip_init_depth += 1
+
                 f(module, *args, **kwargs)
+                if not init_on_meta and self.skip_init_depth == 0 and len(self.deferred_init_list) > 0:
+                    for deferred_init_module in self.deferred_init_list:
+                        self._post_init_method(deferred_init_module)
+                    self.deferred_init_list = []
 
                 if is_child_module:
                     # child's __init__ is done, now we can run a single post_init on the child object
                     delattr(module, "_ds_child_entered")
 
                     print_rank_0(f'Running post_init for {module.__class__.__name__}', force=False)
-                    self._post_init_method(module)
+                    if self.skip_init_depth == 0:
+                        self._post_init_method(module)
+                    else:
+                        self.deferred_init_list.append(module)
 
                 print_rank_0(f'After initializing followed by post init for {module.__class__.__name__}', force=False)
+                if init_on_meta:
+                    self.skip_init_depth -= 1
 
             return wrapper
 
@@ -512,7 +527,8 @@ class InsertPostInitMethodToModuleSubClasses(object):
         self.patched = True
 
     def unpatch_init_and_builtins(self):
-
+        assert len(self.deferred_init_list
+                   ) == 0, f"Please refrain from using skip_init or meta initialization for the entire model"
         if self.patched:
 
             def _disable_class(cls):
