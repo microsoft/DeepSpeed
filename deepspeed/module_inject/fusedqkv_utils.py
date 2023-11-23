@@ -37,6 +37,7 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
         "MPTBlock": 'glmtype',
         "MptBlock": 'glmtype',
         "BaichuanLayer": 'glmtype',
+        "DecoderLayer": 'glmtype',
     }
 
     def _codegen_type_transpose(input, mp_size, codegen_mp_num=4):
