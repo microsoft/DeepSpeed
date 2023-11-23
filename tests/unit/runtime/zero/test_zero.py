@@ -1241,7 +1241,6 @@ class TestParamPartitioningSkipInit(DistributedTest):
                 x = self.l4(x)
                 loss = self.cel(x, y)
                 val = [x, loss]
-
                 return val
 
         with deepspeed.zero.Init():
