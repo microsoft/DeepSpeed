@@ -1243,7 +1243,7 @@ class TestParamPartitioningSkipInit(DistributedTest):
                 val = [x, loss]
                 return val
 
-        with deepspeed.zero.Init():
+        with deepspeed.zero.Init(config=config_dict):
             model = MyModel(hidden_dim)
         world_size = dist.get_world_size()
         ds_tensor_numel = math.ceil(hidden_dim * hidden_dim / world_size)
