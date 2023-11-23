@@ -715,6 +715,9 @@ class DeepSpeedEngine(Module):
     def zero_reduce_bucket_size(self):
         return self._config.zero_config.reduce_bucket_size
 
+    def zero_multi_rank_bucket_allreduce(self):
+        return self._config.zero_config.use_multi_rank_bucket_allreduce
+
     def zero_allgather_bucket_size(self):
         return self._config.zero_config.allgather_bucket_size
 
@@ -1107,7 +1110,7 @@ class DeepSpeedEngine(Module):
         # Set deepspeed parallelism spec. for the model including expert parallelism
         for _, module in self.module.named_modules():
             if hasattr(module, 'set_deepspeed_parallelism'):
-                module.set_deepspeed_parallelism()
+                module.set_deepspeed_parallelism(self._config.use_data_before_expert_parallel_)
 
         # Query the groups module to get information about various parallel groups
         self.local_all_to_all_group = None
@@ -1490,6 +1493,7 @@ class DeepSpeedEngine(Module):
                 clip_grad=self.gradient_clipping(),
                 contiguous_gradients=contiguous_gradients,
                 reduce_bucket_size=self.zero_reduce_bucket_size(),
+                use_multi_rank_bucket_allreduce=self.zero_multi_rank_bucket_allreduce(),
                 allgather_bucket_size=self.zero_allgather_bucket_size(),
                 dp_process_group=self.seq_data_parallel_group,
                 expert_parallel_group=self.expert_parallel_group if self.has_moe_layers else None,
@@ -2492,7 +2496,7 @@ class DeepSpeedEngine(Module):
         # Remove frozen parameter weights from state_dict if specified
         if exclude_frozen_parameters:
             for n, p in self.module.named_parameters():
-                if not p.requires_grad:
+                if not p.requires_grad and n in sd:
                     del sd[n]
 
         if self.random_ltd_enabled():
@@ -2726,6 +2730,8 @@ class DeepSpeedEngine(Module):
 
         if self.load_universal_checkpoint():
             self.optimizer.update_lp_params()
+            if load_zero_checkpoint:
+                self.update_optimizer_step(step=client_states['iteration'] + 1)
 
         return load_path, client_states
 
@@ -2902,6 +2908,24 @@ class DeepSpeedEngine(Module):
         else:
             logger.info(f"loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}")
         return True
+
+    def update_optimizer_step(self, step):
+
+        def set_step(d):
+            if isinstance(d['step'], torch.Tensor):
+                d['step'] = torch.tensor(step, dtype=d['step'].dtype, device=d['step'].device)
+            else:
+                d['step'] = step
+
+        optimizer = self.optimizer
+        base_optimizer = optimizer.optimizer
+        state = base_optimizer.state
+        for group in optimizer.param_groups:
+            if 'step' in group:
+                set_step(group)
+            for p in group['params']:
+                if p in state and len(state[p]) > 0 and 'step' in state[p]:
+                    set_step(state[p])
 
     def _get_mp_rank_zero_checkpoint_names(self, load_dir, tag, mp_rank, dp_world_size, bf16_mode):
         zero_ckpt_names = []

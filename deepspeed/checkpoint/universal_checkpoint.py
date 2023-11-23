@@ -6,7 +6,7 @@
 import os
 import torch
 import types
-from .constants import (FP32_WEIGHT_KEY, PARAM, VOCAB_DIVISIBILITY_PADDING_TENSOR, CAT_DIM)
+from .constants import (FP32_WEIGHT_KEY, PARAM, VOCAB_TENSOR, CAT_DIM, PARAM_N_SUB_PARAMS)
 
 
 def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
@@ -43,21 +43,16 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
         # the converter to universal currently strips the original padding completely so the saved
         # weight is padding-free and we just need to add new padding depending on the target TP
         # degree
-        vocab_divisibility_padding_tensor = ckpt_dict.get(VOCAB_DIVISIBILITY_PADDING_TENSOR, None)
-        if vocab_divisibility_padding_tensor is not None:
+        is_vocab_tensor = ckpt_dict.get(VOCAB_TENSOR, False)
+        if is_vocab_tensor:
             # In the absence of data passed from the user wrt new padded vocab specific to tp degree
             # we can again derive that data by reverse engineering the target shapes like so:
             padded_target_vocab_size = self.shape[0] * tp_world_size
+            assert padded_target_vocab_size >= full_hp_param.shape[0], \
+                f'Vocab tensor padded size {padded_target_vocab_size} < loaded universal size {full_hp_param.shape[0]}'
             if padded_target_vocab_size > full_hp_param.shape[0]:
-                # Need to expand
                 padding_size = padded_target_vocab_size - full_hp_param.shape[0]
-                # Implement the following concat in efficient way using pad
-                #full_hp_param = torch.cat((full_hp_param, padding_tensor), 0)
                 full_hp_param = torch.nn.functional.pad(full_hp_param, (0, 0, 0, padding_size), "constant", 0)
-                full_hp_param[:-padding_size, :] = vocab_divisibility_padding_tensor
-            else:
-                # Need to shrink or keep the same
-                full_hp_param = full_hp_param[:padded_target_vocab_size, :]
 
         full_param_numel = full_hp_param.numel()
         tp_slice_numel = self.numel()
@@ -73,10 +68,18 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
         #        print(f"{dst_tensor.shape=} {dst_tensor.numel()=}{folder=}")
 
         # since when we do many to 1 on tp we cat sometimes on dim=0 and other times on dim=1 we have to do exactly the same in reverse
+        # special case is when a single parameter is effectively a container for multiple sub parameters
+        # (more details at PARAM_N_SUB_PARAMS definition)
         chunk_dim = ckpt_dict.get(CAT_DIM, 0)
+        n_sub_params = ckpt_dict.get(PARAM_N_SUB_PARAMS, 1)
+        if n_sub_params > 1:
+            sub_params = full_hp_param.chunk(n_sub_params, dim=chunk_dim)
+            sub_params_tp_slice = [p.chunk(tp_world_size, dim=chunk_dim)[tp_rank] for p in sub_params]
+            tp_hp_slice = torch.cat(sub_params_tp_slice, dim=chunk_dim)
+        else:
+            # this performs the opposite of cat when merging TP slices
+            tp_hp_slice = full_hp_param.chunk(tp_world_size, chunk_dim)[tp_rank]
 
-        # this performs the opposite of cat when merging TP slices
-        tp_hp_slice = full_hp_param.chunk(tp_world_size, chunk_dim)[tp_rank]
         tp_hp_slice = tp_hp_slice.flatten()
 
         lp_frag_address = hp_mapping.lp_fragment_address
