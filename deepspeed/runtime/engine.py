@@ -2393,7 +2393,8 @@ class DeepSpeedEngine(Module):
 
     def _reduce_expert_gradients(self, expert_grads, elements_per_buffer):
         for ep_name, expert_grads_group in expert_grads.items():
-            split_sparse_tensor_buckets, split_dense_tensor_buckets = split_half_float_double_sparse(expert_grads_group)
+            split_sparse_tensor_buckets, split_dense_tensor_buckets = split_half_float_double_sparse(
+                expert_grads_group)
 
             for _, sparse_bucket in split_sparse_tensor_buckets:
                 if sparse_bucket:
