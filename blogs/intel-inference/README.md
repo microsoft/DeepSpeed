@@ -95,7 +95,7 @@ Examples of LLM optimizations for DeepSpeed AutoTP models with Intel Extension f
 DeepSpeed enables optimal distribution of LLM inference on two 4th gen Intel Xeon sockets. Intel AMX on 4th gen Intel Xeon can be used to accelerate BF16 matrix multiplication operations. Support for Intel AMX is available through Intel Extension for PyTorch. Performance speedups in GPT-J-6B and LLaMA2-13B from DeepSpeed AutoTP on 2 sockets are shown in Figure 2 below. GPT-J-6B has 6 billion parameters, requiring 12 GB of memory for its weights. Llama-2-13B has 13 billion parameters, requiring 26 GB of memory for the weights. Latency improvement is the metric used. Prompt latency and per token latency improved as shown by the speedups in the plot.
 
 <div align="center">
- <img src="assets/intel-results.png" width="600px"><br>
+ <img src="assets/intel-results.png" width="800px"><br>
 Figure 2. Performance speedups from 1-socket to 2-socket 4th gen Intel Xeon with DeepSpeed AutoTP. Higher speedup represents higher performance. Per token latency is per token latency for 2nd and subsequent tokens. in/out refers to the input token size and output token size. Beam search size was 4. See backup for configurations, results may vary.
 </div>
 
