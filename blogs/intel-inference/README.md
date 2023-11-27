@@ -1,6 +1,8 @@
 
 # Llama 2 Inference on 4th Gen Intel® Xeon® Scalable Processor with DeepSpeed
 
+> This blog is co-published with Intel and can also be viewed on [Intel's website](https://www.intel.com/content/www/us/en/developer/articles/technical/xllama-2-on-xeon-scalable-processor-with-deepspeed.html).
+
 ## Introduction
 
 Transformer models have revolutionized natural language processing with their ability to capture complex semantic and syntactic relationships. However, these models also pose significant challenges for efficient inference, especially for large language models (LLMs) that have billions of parameters. For example, running half-precision inference of Megatron-Turing 530B would require 40 A100-40GB GPUs [1]. To address challenges associated with the inference of large-scale transformer models, the DeepSpeed team at Microsoft* developed DeepSpeed Inference [2]. It provides high-performance multi-GPU inferencing capabilities and introduces several features to efficiently serve transformer-based PyTorch models using GPU. Today, we are very excited to share that DeepSpeed Inference has been implemented for the 4th Gen Intel® Xeon® scalable processor.
