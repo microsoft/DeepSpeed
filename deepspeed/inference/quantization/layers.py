@@ -53,7 +53,6 @@ class QuantizedLinear(nn.Linear):
                                               device=pre_quant_layer.weight.device,
                                               dtype=pre_quant_layer.weight.dtype)
         self.config = config
-
         self.quantizer = Quantizer(config=config)
         self.bias = pre_quant_layer.bias
         self.weight = get_quantized_weight_wrapper(self, pre_quant_layer.weight,
@@ -70,6 +69,107 @@ class QuantizedLinear(nn.Linear):
         # replaced by LinearFunctionForZeroStage3. Which assume weight is non-temporary.
         # If weight is temp buffer there will be memory leak.
         return torch._C._nn.linear(input, temp_dequantized_weight, self.bias)
+
+
+class QuantizedLinearAllreduce(nn.Linear):
+
+    def __init__(self, config: Dict, pre_quant_layer: nn.Linear) -> None:
+        super(QuantizedLinearAllreduce, self).__init__(in_features=pre_quant_layer.weight.shape[1],
+                                                       out_features=pre_quant_layer.weight.shape[0],
+                                                       bias=pre_quant_layer.bias is not None,
+                                                       device=pre_quant_layer.weight.device,
+                                                       dtype=pre_quant_layer.weight.dtype)
+        self.config = config
+        self.mp_group = pre_quant_layer.mp_group if hasattr(pre_quant_layer, 'mp_group') else None
+        self.quantizer = Quantizer(config=config, mp_group=self.mp_group)
+        self.bias = pre_quant_layer.bias
+        self.weight = get_quantized_weight_wrapper(self, pre_quant_layer.weight,
+                                                   get_quantize_weight_fn(self.quantizer, pre_quant_layer.weight))
+
+        self.weight.dequantizer = DeQuantizer(config, pre_quant_layer.weight.dtype)
+
+    def forward(self, input: Tensor) -> Tensor:
+        quantized_weight, quant_scale, quant_min = self.weight.deconcat(self.weight)
+        temp_dequantized_weight = self.weight.dequantizer.dequantize(quantized_weight.view(torch.uint8), quant_scale,
+                                                                     quant_min)
+
+        # !!! Do not use torch.functional.linear(input, temp_dequantized_weight, self.bias) here as in zero3 torch.functional.linear is
+        # replaced by LinearFunctionForZeroStage3. Which assume weight is non-temporary.
+        # If weight is temp buffer there will be memory leak.
+        output = torch._C._nn.linear(input, temp_dequantized_weight)
+        if self.mp_group is not None:
+            from deepspeed import comm as dist
+            dist.inference_all_reduce(output, group=self.mp_group)
+        if self.bias is not None:
+            output += self.bias
+        return output
+
+
+class QuantizedLinearLayer(nn.Linear):
+
+    def __init__(self, config: Dict, pre_quant_layer: nn.Linear) -> None:
+        super(QuantizedLinearLayer, self).__init__(in_features=pre_quant_layer.weight.shape[1],
+                                                   out_features=pre_quant_layer.weight.shape[0],
+                                                   bias=pre_quant_layer.bias is not None,
+                                                   device=pre_quant_layer.weight.device,
+                                                   dtype=pre_quant_layer.weight.dtype)
+        self.config = config
+        self.quantizer = Quantizer(config=config)
+        self.bias = pre_quant_layer.bias
+        self.weight = get_quantized_weight_wrapper(self, pre_quant_layer.weight,
+                                                   get_quantize_weight_fn(self.quantizer, pre_quant_layer.weight))
+
+        self.weight.dequantizer = DeQuantizer(config, pre_quant_layer.weight.dtype)
+
+    def forward(self, input: Tensor) -> Tensor:
+        quantized_weight, quant_scale, quant_min = self.weight.deconcat(self.weight)
+        temp_dequantized_weight = self.weight.dequantizer.dequantize(quantized_weight.view(torch.uint8), quant_scale,
+                                                                     quant_min)
+
+        # !!! Do not use torch.functional.linear(input, temp_dequantized_weight, self.bias) here as in zero3 torch.functional.linear is
+        # replaced by LinearFunctionForZeroStage3. Which assume weight is non-temporary.
+        # If weight is temp buffer there will be memory leak.
+        return torch._C._nn.linear(input, temp_dequantized_weight, self.bias)
+
+
+class QuantizedLmHeadLinearAllreduce(nn.Linear):
+
+    def __init__(self, config: Dict, pre_quant_layer: nn.Linear) -> None:
+        super(QuantizedLinearLayer, self).__init__(in_features=pre_quant_layer.weight.shape[1],
+                                                   out_features=pre_quant_layer.weight.shape[0],
+                                                   bias=pre_quant_layer.bias is not None,
+                                                   device=pre_quant_layer.weight.device,
+                                                   dtype=pre_quant_layer.weight.dtype)
+        self.config = config
+        self.quantizer = Quantizer(config=config)
+        self.bias = pre_quant_layer.bias
+        self.rank = pre_quant_layer.rank
+        self.world_size = pre_quant_layer.world_size
+        self.weight = get_quantized_weight_wrapper(self, pre_quant_layer.weight,
+                                                   get_quantize_weight_fn(self.quantizer, pre_quant_layer.weight))
+
+        self.weight.dequantizer = DeQuantizer(config, pre_quant_layer.weight.dtype)
+
+    def forward(self, input: Tensor) -> Tensor:
+        quantized_weight, quant_scale, quant_min = self.weight.deconcat(self.weight)
+        temp_dequantized_weight = self.weight.dequantizer.dequantize(quantized_weight.view(torch.uint8), quant_scale,
+                                                                     quant_min)
+        from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
+        input_shard_size = get_shard_size(input.shape[-1], self.world_size)
+        input_shard_offset = sum(get_shard_size_list(input.shape[-1], self.world_size)[0:self.rank])
+
+        # !!! Do not use torch.functional.linear(input, temp_dequantized_weight, self.bias) here as in zero3 torch.functional.linear is
+        # replaced by LinearFunctionForZeroStage3. Which assume weight is non-temporary.
+        # If weight is temp buffer there will be memory leak.
+        output = torch._C._nn.linear(input[:, :, input_shard_offset:input_shard_offset + input_shard_size],
+                                     temp_dequantized_weight.transpose(-1, -2))
+
+        if self.mp_group is not None:
+            from deepspeed import comm as dist
+            dist.inference_all_reduce(output, group=self.mp_group)
+        if self.bias is not None:
+            output += self.bias
+        return output
 
 
 class QuantizedEmbedding(nn.Embedding):
@@ -108,7 +208,12 @@ class QuantizedEmbedding(nn.Embedding):
                            self.scale_grad_by_freq, self.sparse)
 
 
+from ...module_inject import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce
+
 QUANTIZATION_LAYER_MAPPINGS = {
     nn.Linear: QuantizedLinear,
     nn.Embedding: QuantizedEmbedding,
+    LinearAllreduce: QuantizedLinearAllreduce,
+    LinearLayer: QuantizedLinearLayer,
+    LmHeadLinearAllreduce: QuantizedLmHeadLinearAllreduce
 }
