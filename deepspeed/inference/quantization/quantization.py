@@ -71,6 +71,13 @@ def _init_group_wise_weight_quantization(model: nn.Module, ds_config: Dict) -> n
                     assert matched_key is None, f'{module_name} matched multiple quantization key word {matched_key} and {key}'
                     matched_key = key
                     matched_quantization_config = config
+                elif key == '*':
+                    # The preserved key '*' is used to present all quantizable layers for simplifying the ds_config
+                    assert matched_key is None, f'{module_name} matched multiple quantization key word {matched_key} and the wildcard "*"'
+                    matched_key = module_name
+                    matched_quantization_config = config
+                else:
+                    continue
 
             if matched_key is None:
                 continue
