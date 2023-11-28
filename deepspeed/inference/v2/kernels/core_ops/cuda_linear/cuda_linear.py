@@ -7,6 +7,7 @@ import torch
 
 from ....inference_utils import DtypeEnum
 from deepspeed.ops.op_builder import InferenceCoreBuilder
+from typing import Tuple
 from ... import DSKernelBase
 
 
@@ -16,6 +17,7 @@ class CUDAWf6Af16Linear(DSKernelBase):
 
     Performs z = x @ y
     """
+    supported_dtypes = [DtypeEnum.fp16]
 
     def __init__(self):
         self.inf_module = InferenceCoreBuilder().load()
