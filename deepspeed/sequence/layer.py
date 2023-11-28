@@ -73,6 +73,8 @@ class DistributedAttention(torch.nn.Module):
         sequence_process_group: dist.ProcessGroup,
         scatter_idx: int = 2,
         gather_idx: int = 0,
+        hidden_size_per_attention_head: int = 128,
+        num_q_per_kv: int = -1
     ) -> None:
 
         super(DistributedAttention, self).__init__()
@@ -80,29 +82,33 @@ class DistributedAttention(torch.nn.Module):
         self.spg = sequence_process_group
         self.scatter_idx = scatter_idx
         self.gather_idx = gather_idx
+        self.hidden_size_per_attention_head = hidden_size_per_attention_head
+        self.num_q_per_kv = num_q_per_kv
 
-    def forward(self, query: Tensor, key: Tensor, value: Tensor, *args: Any) -> Tensor:
+    def forward(self, mixed_x_layer: Tensor, *args: Any, **kwargs: Any) -> Tensor:
         """ forward
 
         Arguments:
-            query (Tensor): query input to the layer
-            key (Tensor): key input to the layer
-            value (Tensor): value input to the layer
+            mixed_x_layer including:
+                1. query (Tensor): query input to the layer
+                2. key (Tensor): key input to the layer
+                3. value (Tensor): value input to the layer
             args: other args
-
+            kwargs: other kw args
         Returns:
             * output (Tensor): context output
         """
-        # TODO Merge three alltoall calls into one
-        # TODO (Reza): change the api on the megatron-deepspeed side so that we only recieve all data (q,k, and v) together!
-        #in shape : e.g.,  [s/p:h:]
-        query_layer = _SeqAllToAll.apply(self.spg, query, self.scatter_idx, self.gather_idx)
-        key_layer = _SeqAllToAll.apply(self.spg, key, self.scatter_idx, self.gather_idx)
-        value_layer = _SeqAllToAll.apply(self.spg, value, self.scatter_idx, self.gather_idx)
-
+        sq, bs = mixed_x_layer.shape[:2]
+        if self.num_q_per_kv > 0 and \
+            mixed_x_layer.shape[-1] % ((self.num_q_per_kv + 2) * self.hidden_size_per_attention_head) == 0:
+            intermediate_shape = (sq, bs, -1, (self.num_q_per_kv + 2), self.hidden_size_per_attention_head)
+        else:
+            intermediate_shape = (sq, bs, -1, self.hidden_size_per_attention_head)
+        mixed_x_layer = mixed_x_layer.view(*intermediate_shape)
+        mixed_x_layer = _SeqAllToAll.apply(self.spg, mixed_x_layer, self.scatter_idx, self.gather_idx)
         #out shape : e.g., [s:h/p:]
-        context_layer = self.local_attn(query_layer, key_layer, value_layer, *args)
-
+        context_layer = self.local_attn(mixed_x_layer.reshape(sq, bs, -1), *args, **kwargs)
+        
         output = _SeqAllToAll.apply(self.spg, context_layer, self.gather_idx, self.scatter_idx)
 
         #out e.g., [s/p::h]
