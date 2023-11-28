@@ -169,11 +169,46 @@ of JIT compiling) or install pre-compiled ops via PyPI please see our [advanced
 installation instructions](https://www.deepspeed.ai/tutorials/advanced-install/).
 
 ## Windows
-Windows support is partially supported with DeepSpeed. On Windows you can build wheel with following steps, currently only inference mode is supported.
-1. Install pytorch, such as pytorch 1.8 + cuda 11.1
-2. Install visual cpp build tools, such as VS2019 C++ x64/x86 build tools
-3. Launch cmd console with Administrator privilege for creating required symlink folders
-4. Run `python setup.py bdist_wheel` to build wheel in `dist` folder
+Windows is partially supported with DeepSpeed in inference mode only, Python 3.9.x and DeepSpeed 8.3.
+
+On Windows you can build wheel with following steps:
+1) Download the 8.3 release of [DeepSpeed](https://github.com/microsoft/DeepSpeed/releases/tag/v0.8.3) extract it to a folder.
+2) Install Visual C++ build tools, such as [VS2019 C++ x64/x86](https://learn.microsoft.com/en-us/visualstudio/releases/2019/redistribution#vs2019-download) build tools.
+3) Download and install the  [Nvidia Cuda Toolkit 11.8 or 12.1](https://developer.nvidia.com/cuda-toolkit-archive)
+4) Edit your Windows environment variables to ensure that CUDA_HOME and CUDA_PATH are set to your Nvidia Cuda Toolkit path. (The folder **above** the bin folder that **nvcc.exe** is installed in). You can set the paths at your command prompt with the `set`command. Path examples are:
+
+CUDA 11.8
+- `CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8`
+- `CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8`
+
+CUDA 12.1
+- `CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1`
+- `CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1`
+
+
+5) **_OPTIONAL_** **Currently Python versions 3.9.x are supported**. If you do not have an python environment already created, you can install [Miniconda](https://docs.conda.io/projects/miniconda/en/latest/miniconda-install.html), then at a command prompt, create and activate your environment with:
+- `conda create -n pythonenv python=3.9.18`
+- `activate pythonenv`
+7) Launch the Command Prompt **cmd** with **Administrator privilege** as it requires admin to allow creating symlink folders.
+6) Install [PyTorch,](https://pytorch.org/get-started/previous-versions/#v210) 2.1.0 with CUDA 11.8 or CUDA 12.1 into your Python 3.9.x environment e.g.
+
+CUDA 11.8
+- `activate pythonenv` (activate your python environment)
+- `conda install pytorch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 pytorch-cuda=11.8 -c pytorch -c nvidia`
+
+CUDA 12.1
+- `activate pythonenv` (activate your python environment)
+- `conda install pytorch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 pytorch-cuda=12.1 -c pytorch -c nvidia`
+
+8) In your python environment and double check that your CUDA_HOME and CUDA_PATH are **still** pointing to the correct location.
+Type `set` in the command prompt to list the windows environment variables. Refer to step 4 if CUDA_HOME is incorrect.
+9) Navigate to your deepspeed folder in the Command Prompt e.g.`cd c:\deepspeed`
+10) You can try using the **build_win.bat** however you may need to set installation options e.g. https://www.deepspeed.ai/tutorials/advanced-install/#pre-install-deepspeed-ops. Type the following into the command prompt:
+- `set DS_BUILD_AIO=0`
+- `set DS_BUILD_SPARSE_ATTN=0`
+- `set DS_BUILD_EVOFORMER_ATTN=0`
+- `build_win.bat` (This will start building your wheel file and may take a while)
+11) After the wheel has finished compiling navigate inot your `dist` folder e.g. `cd dist` and you can now `pip install deepspeed-_YOURFILENAME_.whl`
 
 # Features
 
