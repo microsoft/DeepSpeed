@@ -10,6 +10,17 @@ from deepspeed.utils.logging import should_log_le
 from deepspeed.ops.op_builder import CPUAdamBuilder
 
 
+def maximum_scaling(amax, dtype=torch.float16):
+    if amax <= 0:
+        return 1
+    fp_max = float(torch.finfo(dtype).max) / 2
+    from math import floor, log2
+    
+    exp = floor(log2(fp_max / amax))
+    sf = round(2 ** abs(exp))
+    return 1 / sf if exp < 0 else sf
+
+
 class DeepSpeedCPUAdam(torch.optim.Optimizer):
     optimizer_id = 0
 
@@ -22,7 +33,8 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                  weight_decay=0,
                  amsgrad=False,
                  adamw_mode=True,
-                 fp32_optimizer_states=True):
+                 fp32_optimizer_states=True,
+                 use_cuda_cache=False):
         """Fast vectorized implementation of two variations of Adam optimizer on CPU:
 
         * Adam: A Method for Stochastic Optimization: (https://arxiv.org/abs/1412.6980);
@@ -92,9 +104,14 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
         self.adam_w_mode = adamw_mode
         self.fp32_optimizer_states = fp32_optimizer_states
         self.ds_opt_adam = CPUAdamBuilder().load()
-
+        
+        self.avg_sq_infos = {}
+        self.avg_infos = {}
+        self.sub_group_id = None
+        
+        self.use_cuda_cache = use_cuda_cache
         self.ds_opt_adam.create_adam(self.opt_id, lr, betas[0], betas[1], eps, weight_decay, adamw_mode,
-                                     should_log_le("info"))
+                                     should_log_le("info"), use_cuda_cache)
 
     def __del__(self):
         # need to destroy the C++ object explicitly to avoid a memory leak when deepspeed.initialize
@@ -168,14 +185,39 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
 
                 state['step'] += 1
                 beta1, beta2 = group['betas']
+                assert self.sub_group_id is not None
+                query_key = (self.sub_group_id, group_id, param_id)
+                self.avg_infos.setdefault(query_key, (0, 1))
+                self.avg_sq_infos.setdefault(query_key, (0, 1))
 
+                #  Estimating the maximum of the average and average square moments
+                if state['exp_avg'].dtype != torch.float32:
+                    max_g = float(torch.max(torch.abs(p.grad.data)).item())
+                    max_avg, avg_scaling = self.avg_infos[query_key]
+                    est_max_avg = max_avg * beta1 + (1 - beta1) * max_g
+                    new_avg_scaling = maximum_scaling(est_max_avg, dtype=p.dtype)
+                    max_avg_sq, avg_sq_scaling = self.avg_sq_infos[query_key]
+                    est_max_avg_sq = max_avg_sq * beta2 + (1 - beta2) * (max_g ** 2)
+                    new_avg_sq_scaling = maximum_scaling(est_max_avg_sq, dtype=p.dtype)
+                else:
+                    avg_scaling = avg_sq_scaling = new_avg_scaling = new_avg_sq_scaling = 1
+                    est_max_avg = est_max_avg_sq = None
+                
                 if fp16_param_groups is not None:
-                    self.ds_opt_adam.adam_update_copy(self.opt_id, state['step'], group['lr'], beta1, beta2,
+                    assert self.use_cuda_cache, "use_cuda_cache must be enabled to use fp16_param_groups"
+                    max_avg, max_avg_sq = self.ds_opt_adam.adam_update_copy(self.opt_id, state['step'], group['lr'], beta1, beta2,
                                                       group['eps'], group['weight_decay'], group['bias_correction'],
                                                       p.data, p.grad.data, state['exp_avg'], state['exp_avg_sq'],
-                                                      fp16_param_groups[group_id][param_id].data)
+                                                      fp16_param_groups[group_id][param_id].data, 
+                                                      avg_scaling, avg_sq_scaling, new_avg_scaling, new_avg_sq_scaling)
                 else:
-                    self.ds_opt_adam.adam_update(self.opt_id, state['step'], group['lr'], beta1, beta2, group['eps'],
-                                                 group['weight_decay'], group['bias_correction'], p.data, p.grad.data,
-                                                 state['exp_avg'], state['exp_avg_sq'])
+                    max_avg, max_avg_sq = self.ds_opt_adam.adam_update(self.opt_id, state['step'], group['lr'], beta1, beta2, group['eps'],
+                                                 group['weight_decay'], group['bias_correction'], p.data, p.grad.data, 
+                                                 state['exp_avg'], state['exp_avg_sq'], 
+                                                 avg_scaling, avg_sq_scaling, new_avg_scaling, new_avg_sq_scaling)
+                
+                if not self.fp32_optimizer_states:
+                    self.avg_infos[query_key] = (max_avg, new_avg_scaling)
+                    self.avg_sq_infos[query_key] = (max_avg_sq, new_avg_sq_scaling)
+                
         return loss
