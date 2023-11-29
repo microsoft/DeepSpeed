@@ -3,10 +3,10 @@
 
 # DeepSpeed Team
 
-from .builder import SYCLAutoOpBuilder
+from .builder import SYCLOpBuilder
 
 
-class CPUAdamBuilder(SYCLAutoOpBuilder):
+class CPUAdamBuilder(SYCLOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAM"
     NAME = "cpu_adam"
 
@@ -18,9 +18,12 @@ class CPUAdamBuilder(SYCLAutoOpBuilder):
 
     def sources(self):
         if self.build_for_cpu:
-            return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/cpu_adam_impl.cpp']
+            return ['csrc/xpu/adam/cpu_adam.cpp', 'csrc/xpu/adam/cpu_adam_impl.cpp']
 
-        return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/cpu_adam_impl.cpp', 'csrc/common/custom_cuda_kernel.cu']
+        return [
+            'csrc/xpu/adam/cpu_adam.cpp', 'csrc/xpu/adam/cpu_adam_impl.cpp',
+            'csrc/xpu/common/custom_cuda_kernel.dp.cpp'
+        ]
 
     def include_paths(self):
-        return ['csrc/includes']
+        return ['csrc/xpu/includes']

@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # DeepSpeed Team
-from .builder import SYCLAutoOpBuilder
+from .builder import SYCLOpBuilder
 
 
-class FusedAdamBuilder(SYCLAutoOpBuilder):
+class FusedAdamBuilder(SYCLOpBuilder):
     BUILD_VAR = "DS_BUILD_FUSED_ADAM"
     NAME = "fused_adam"
 
@@ -16,10 +16,10 @@ class FusedAdamBuilder(SYCLAutoOpBuilder):
         return f'deepspeed.ops.adam.{self.NAME}_op'
 
     def sources(self):
-        return ['csrc/adam/fused_adam_frontend.cpp', 'csrc/adam/multi_tensor_adam.cu']
+        return ['csrc/xpu/adam/fused_adam_frontend.cpp', 'csrc/xpu/adam/multi_tensor_adam.dp.cpp']
 
     def include_paths(self):
-        return ['csrc/includes', 'csrc/adam']
+        return ['csrc/xpu/includes', 'csrc/xpu/adam']
 
     def cxx_args(self):
         args = super().cxx_args()

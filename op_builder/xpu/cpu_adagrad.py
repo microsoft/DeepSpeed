@@ -3,10 +3,10 @@
 
 # DeepSpeed Team
 
-from .builder import SYCLAutoOpBuilder
+from .builder import SYCLOpBuilder
 
 
-class CPUAdagradBuilder(SYCLAutoOpBuilder):
+class CPUAdagradBuilder(SYCLOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAGRAD"
     NAME = "cpu_adagrad"
 
@@ -17,7 +17,7 @@ class CPUAdagradBuilder(SYCLAutoOpBuilder):
         return f'deepspeed.ops.adagrad.{self.NAME}_op'
 
     def sources(self):
-        return ['csrc/adagrad/cpu_adagrad.cpp', 'csrc/common/custom_cuda_kernel.cu']
+        return ['csrc/xpu/adagrad/cpu_adagrad.cpp', 'csrc/xpu/common/custom_cuda_kernel.dp.cpp']
 
     def include_paths(self):
-        return ['csrc/includes']
+        return ['csrc/xpu/includes']

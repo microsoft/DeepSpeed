@@ -10,11 +10,8 @@ This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
-#include <dpct/dpct.hpp>
-#include <sycl/sycl.hpp>
-// #include <ATen/cuda/CUDAContext.h>
-// #include <ATen/cuda/Exceptions.h>
 #include <ipex.h>
+#include <sycl/sycl.hpp>
 #include "compat.h"
 
 #include <assert.h>
@@ -23,7 +20,7 @@ This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 
 namespace at {
 namespace cuda {
-dpct::queue_ptr getCurrentCUDAStream()
+sycl::queue* getCurrentCUDAStream()
 {
     auto device_type = c10::DeviceType::XPU;
     c10::impl::VirtualGuardImpl impl(device_type);
@@ -32,7 +29,7 @@ dpct::queue_ptr getCurrentCUDAStream()
     return &queue;
 }
 
-dpct::queue_ptr getStreamFromPool(bool)
+sycl::queue* getStreamFromPool(bool)
 {
     // not implemented
     return nullptr;
@@ -173,11 +170,6 @@ void multi_tensor_apply(int block_size,
             bool last_chunk = (t == ntensors - 1 && chunk == chunks_this_tensor - 1);
             if (tensors_full || blocks_full || last_chunk) {
                 // using accscalar_t = acc_type<scalar_t, true>;
-                /*
-                DPCT1049:0: The work-group size passed to the SYCL kernel may exceed the limit. To
-                get the device limit, query info::device::max_work_group_size. Adjust the work-group
-                size if needed.
-                */
                 /* multi_tensor_apply_kernel<TensorListMetadata<depth>, T, ArgTypes...>
                  * fn(chunk_size, noop_flag.DATA_PTR<int>(), tl, callable, args...); */
                 if constexpr (sizeof(multi_tensor_apply_kernel(
@@ -205,10 +197,6 @@ void multi_tensor_apply(int block_size,
                                          [=](sycl::nd_item<3> item) { device_params[0](item); });
                     });
                 }
-                /*
-                DPCT1010:5: SYCL uses exceptions to report errors and does not use the error codes.
-                The call was replaced with 0. You need to rewrite this code.
-                */
                 0;
 
                 // Reset.  The control flow possibilities here make my brain hurt.

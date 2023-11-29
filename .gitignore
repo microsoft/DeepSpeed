@@ -21,7 +21,6 @@ __pycache__
 
 # Build + installation data
 build/                  # Build artifacts
-deepspeed/third-party/  # Third party
 dist/                   # Distribution files
 *.so                    # Compiled shared objects
 deepspeed.egg-info/     # Deepspeed package info
