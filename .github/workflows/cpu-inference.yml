@@ -102,6 +102,8 @@ jobs:
 
       - name: Unit tests
         run: |
+          # prep oneCCL for CCLBackend comm ops building
+          source oneCCL/build/_install/env/setvars.sh
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd  tests
           # LOCAL_SIZE=2 enforce CPU to report 2 devices, this helps run the test on github default runner
