@@ -2383,12 +2383,14 @@ class DeepSpeedEngine(Module):
         else:
             dp_group = groups._get_sequence_data_parallel_group()
 
-        for _, sparse_bucket in split_sparse_tensor_buckets:
-            if sparse_bucket:
+        for _, sparse_bucket_tuple in enumerate(split_sparse_tensor_buckets):
+            if sparse_bucket_tuple:
+                bucket_type, sparse_bucket = sparse_bucket_tuple
                 self.sparse_allreduce_no_retain(sparse_bucket, dp_group=dp_group)
 
-        for _, dense_bucket in split_dense_tensor_buckets:
-            if dense_bucket:
+        for _, dense_bucke_tuplet in enumerate(split_dense_tensor_buckets):
+            if dense_bucket_tuple:
+                bucket_type, dense_bucket = dense_bucket_tuple
                 self.allreduce_no_retain(dense_bucket, dp_group=dp_group, numel_per_bucket=elements_per_buffer)
 
     def _reduce_expert_gradients(self, expert_grads, elements_per_buffer):
@@ -2396,12 +2398,14 @@ class DeepSpeedEngine(Module):
             split_sparse_tensor_buckets, split_dense_tensor_buckets = split_half_float_double_sparse(
                 expert_grads_group)
 
-            for _, sparse_bucket in split_sparse_tensor_buckets:
-                if sparse_bucket:
+            for _, sparse_bucket_tuple in enumerate(split_sparse_tensor_buckets):
+                if sparse_bucket_tuple:
+                    bucket_type, sparse_bucket = sparse_bucket_tuple
                     self.sparse_allreduce_no_retain(sparse_bucket, groups._get_expert_data_parallel_group(ep_name))
 
-            for _, dense_bucket in split_dense_tensor_buckets:
-                if dense_bucket:
+            for _, dense_bucket_tuple in enumerate(split_dense_tensor_buckets):
+                if dense_bucket_tuple:
+                    bucket_type, dense_bucket = dense_bucket_tuple
                     # Separate between diff groups
                     self.allreduce_no_retain(dense_bucket,
                                              dp_group=groups._get_expert_data_parallel_group(ep_name),
