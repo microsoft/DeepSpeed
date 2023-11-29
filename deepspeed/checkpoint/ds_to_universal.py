@@ -15,7 +15,7 @@ import re
 import shutil
 import torch
 import tqdm
-# from pprint import pprint
+#from pprint import pprint
 
 from deepspeed.checkpoint import DeepSpeedCheckpoint
 from deepspeed.checkpoint import (
@@ -60,6 +60,9 @@ def parse_arguments():
                         dest='strict',
                         action='store_false',
                         help='Do not perform validity checks on converted checkpoint.')
+    parser.add_argument('--pipeline_parallel',
+                        action='store_false',
+                        help='Model checkpoint trained with/out pipeline parallelism.')
     args = parser.parse_args()
     print(f'args = {args}')
     return args
@@ -241,9 +244,9 @@ def _extract_zero_shard_files(args, ds_checkpoint, temp_dir):
     _3d_range_list = list(
         itertools.product(range(ds_checkpoint.pp_degree), range(ds_checkpoint.tp_degree),
                           range(ds_checkpoint.dp_degree)))
-    # pprint(f'{_3d_range_list=}')
+    #pprint(f'{_3d_range_list=}')
     work_chunks = list(_get_chunks(_3d_range_list, args.num_extract_workers))
-    # pprint(f'{work_chunks=}')
+    #pprint(f'{work_chunks=}')
 
     # extract_zero_shards(temp_dir, ds_checkpoint, _3d_range_list[0])
     do_work = partial(extract_zero_shards, temp_dir, ds_checkpoint)
@@ -289,7 +292,7 @@ def main():
     args = parse_arguments()
     print(f'Converting DeepSpeed checkpoint in {args.input_folder} to Universal checkpoint in {args.output_folder}')
 
-    ds_checkpoint = DeepSpeedCheckpoint(args.input_folder)
+    ds_checkpoint = DeepSpeedCheckpoint(args.input_folder,args.pipeline_parallel)
     _check_for_required_state(ds_checkpoint)
 
     iteration = ds_checkpoint.get_iteration()
@@ -309,7 +312,7 @@ def main():
     print('*** 1. Extracting ZeRO fragments')
     _extract_zero_shard_files(args, ds_checkpoint, temp_dir)
 
-    print('*** 2. Merging slices')
+    print('*** 2. Merging slices .....not done/needed ')
     _merge_tp_slice_files(args, ds_checkpoint, slice_shapes, temp_dir)
 
     print('*** 3. Saving common optimizer states')

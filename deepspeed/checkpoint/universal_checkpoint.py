@@ -9,12 +9,14 @@ import types
 from .constants import (FP32_WEIGHT_KEY, PARAM, VOCAB_TENSOR, CAT_DIM, PARAM_N_SUB_PARAMS)
 
 
+
 def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
     hp_mapping = self._hp_mapping
     optim_state_keys = hp_mapping.get_optim_state_keys()
     hp_keys = [FP32_WEIGHT_KEY] + optim_state_keys
+    #print(f'{hp_keys=}')
     checkpoint_files = {key: os.path.join(folder, f"{key}.pt") for key in hp_keys}
-
+    #print(f'{checkpoint_files=}')
     for file in checkpoint_files.values():
         assert os.path.isfile(file), f'{file} is not a valid file'
 
