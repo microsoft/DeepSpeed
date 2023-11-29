@@ -2275,7 +2275,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         for i, _ in enumerate(self.optimizer.param_groups):
             for lp in self.bit16_groups[i]:
                 if lp._hp_mapping is not None:
-                    print(f"Loading {self.param_names[lp]} {tp_rank=} {tp_world_size=}")
+                    #print(f"Loading {self.param_names[lp]} {tp_rank=} {tp_world_size=}")
                     lp.load_hp_checkpoint_state(os.path.join(checkpoint_dir, self.param_names[lp]), tp_rank,
                                                 tp_world_size)
 
