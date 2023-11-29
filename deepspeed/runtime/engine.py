@@ -2388,7 +2388,7 @@ class DeepSpeedEngine(Module):
                 bucket_type, sparse_bucket = sparse_bucket_tuple
                 self.sparse_allreduce_no_retain(sparse_bucket, dp_group=dp_group)
 
-        for _, dense_bucke_tuplet in enumerate(split_dense_tensor_buckets):
+        for _, dense_bucket_tuple in enumerate(split_dense_tensor_buckets):
             if dense_bucket_tuple:
                 bucket_type, dense_bucket = dense_bucket_tuple
                 self.allreduce_no_retain(dense_bucket, dp_group=dp_group, numel_per_bucket=elements_per_buffer)
