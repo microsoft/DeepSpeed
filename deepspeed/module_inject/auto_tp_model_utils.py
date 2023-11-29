@@ -60,6 +60,7 @@ def build_bloom_alibi_tensor(attention_mask: torch.Tensor, num_heads: int, dtype
     else:
         return alibi.reshape(batch_size * num_heads, 1, seq_length).to(dtype)
 
+
 def get_alibi_mask(self, tensor, seq_length_with_past):
     mask = self.get_alibi_mask_orig(tensor, seq_length_with_past)
     if not self.training and dist.is_initialized():
@@ -68,6 +69,7 @@ def get_alibi_mask(self, tensor, seq_length_with_past):
         mask = mask[offset:num_heads_per_rank + offset, :seq_length_with_past, :seq_length_with_past]
 
     return mask
+
 
 def build_mpt_atten_bias_tensor(self,
                                 device,
