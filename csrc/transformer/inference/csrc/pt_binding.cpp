@@ -148,12 +148,7 @@ at::Tensor einsum_sec_sm_ecm(at::Tensor& Q, at::Tensor& W)
     }
     */
 
-    auto O = at::from_blob(workspace,
-                           {Q.size(1), Q.size(2), W.size(1)},
-                           c10::TensorType::contiguousStridesOf({Q.size(1), Q.size(2), W.size(1)}),
-                           nullptr,
-                           options,
-                           Q.device());
+    auto O = at::from_blob(workspace, {Q.size(1), Q.size(2), W.size(1)}, options);
     unsigned m = W.size(1);
     unsigned n = Q.size(1) * Q.size(2);
     unsigned k = Q.size(0);
@@ -471,12 +466,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
 
     T* workspace = (T*)InferenceContext::Instance().GetWorkSpace();
     size_t buf_size = bsz * seq_len * hidden_dim;
-    auto output = at::from_blob(workspace + 4 * buf_size,
-                                {bsz, seq_len, hidden_dim},
-                                c10::TensorType::contiguousStridesOf({bsz, seq_len, hidden_dim}),
-                                nullptr,
-                                options,
-                                query_key_value.device());
+    auto output = torch::from_blob(workspace + 4 * buf_size, {bsz, seq_len, hidden_dim}, options);
 
     auto query_cont = workspace + 5 * buf_size;
     size_t offset =
@@ -546,25 +536,22 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                1);
 
     if (layer_id == num_layers - 1) InferenceContext::Instance().advance_tokens();
-    auto prev_key = at::from_blob(workspace + offset,
-                                  {bsz, heads, all_tokens, k},
-                                  {hidden_dim * InferenceContext::Instance().GetMaxTokenLength(),
-                                   k * InferenceContext::Instance().GetMaxTokenLength(),
-                                   k,
-                                   1},
-                                  nullptr,
-                                  options,
-                                  query_key_value.device());
+    auto prev_key = torch::from_blob(workspace + offset,
+                                     {bsz, heads, all_tokens, k},
+                                     {hidden_dim * InferenceContext::Instance().GetMaxTokenLength(),
+                                      k * InferenceContext::Instance().GetMaxTokenLength(),
+                                      k,
+                                      1},
+                                     options);
 
-    auto prev_value = at::from_blob(workspace + offset + value_offset,
-                                    {bsz, heads, all_tokens, k},
-                                    {hidden_dim * InferenceContext::Instance().GetMaxTokenLength(),
-                                     k * InferenceContext::Instance().GetMaxTokenLength(),
-                                     k,
-                                     1},
-                                    nullptr,
-                                    options,
-                                    query_key_value.device());
+    auto prev_value =
+        torch::from_blob(workspace + offset + value_offset,
+                         {bsz, heads, all_tokens, k},
+                         {hidden_dim * InferenceContext::Instance().GetMaxTokenLength(),
+                          k * InferenceContext::Instance().GetMaxTokenLength(),
+                          k,
+                          1},
+                         options);
 
     return {output, prev_key, prev_value};
 }
@@ -956,12 +943,7 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
                         (transposed_mode || q_int8) ? weight.size(0) : weight.size(1),
                         bsz,
                         InferenceContext::Instance().GetCurrentStream());
-    return at::from_blob(workspace,
-                         input.sizes(),
-                         c10::TensorType::contiguousStridesOf(input.sizes()),
-                         nullptr,
-                         input.options(),
-                         input.options().device());
+    return torch::from_blob(workspace, input.sizes(), input.options());
 }
 
 template <typename T>
@@ -983,19 +965,8 @@ std::vector<at::Tensor> ds_rms_qkv(at::Tensor& input,
                        .layout(at::kStrided)
                        .device(at::kCUDA)
                        .requires_grad(false);
-    auto rms_norm = at::from_blob(rms_norm_ptr,
-                                  input.sizes(),
-                                  c10::TensorType::contiguousStridesOf(input.sizes()),
-                                  nullptr,
-                                  options,
-                                  input.device());
-    auto output = at::from_blob(
-        workspace,
-        {input.size(0), input.size(1), out_size},
-        c10::TensorType::contiguousStridesOf({input.size(0), input.size(1), out_size}),
-        nullptr,
-        options,
-        input.device());
+    auto rms_norm = at::from_blob(rms_norm_ptr, input.sizes(), options);
+    auto output = at::from_blob(workspace, {input.size(0), input.size(1), out_size}, options);
 
     launch_rms_norm((T*)rms_norm.data_ptr(),
                     (T*)nullptr,
@@ -1064,13 +1035,7 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
                        .device(at::kCUDA)
                        .requires_grad(false);
 
-    auto output = at::from_blob(
-        workspace,
-        {input.size(0), input.size(1), out_size},
-        c10::TensorType::contiguousStridesOf({input.size(0), input.size(1), out_size}),
-        nullptr,
-        options,
-        input.device());
+    auto output = at::from_blob(workspace, {input.size(0), input.size(1), out_size}, options);
     auto inp_norm = qkv_unfused_cublas<T>(output,
                                           input,
                                           weight,
@@ -1152,13 +1117,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
     int bsz = input.size(0) * input.size(1);
     int out_size = transposed_mode ? weight.size(0) : weight.size(1);
     T* workspace = (T*)InferenceContext::Instance().GetWorkSpace();
-    auto output = at::from_blob(
-        workspace,
-        {input.size(0), input.size(1), out_size},
-        c10::TensorType::contiguousStridesOf({input.size(0), input.size(1), out_size}),
-        nullptr,
-        options,
-        input.device());
+    auto output = at::from_blob(workspace, {input.size(0), input.size(1), out_size}, options);
 
     float alpha = (T)1.0;
     float gemm_beta = (T)0.0;
@@ -1221,14 +1180,9 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                 3,
                 input.size(1),
                 rope_theta);
-            return at::from_blob(
-                final_output,
-                {3, input.size(0), num_heads, input.size(1), padded_head_size},
-                c10::TensorType::contiguousStridesOf(
-                    {3, input.size(0), num_heads, input.size(1), padded_head_size}),
-                nullptr,
-                options,
-                input.device());
+            return at::from_blob(final_output,
+                                 {3, input.size(0), num_heads, input.size(1), padded_head_size},
+                                 options);
             // return at::from_blob(padded_output, {input.size(0) * input.size(1), 3, num_heads,
             // padded_head_size}, options);
         } else {
@@ -1253,13 +1207,8 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                 3,
                 input.size(1),
                 rope_theta);
-            return at::from_blob(final_output,
-                                 {3, input.size(0), num_heads, input.size(1), head_size},
-                                 c10::TensorType::contiguousStridesOf(
-                                     {3, input.size(0), num_heads, input.size(1), head_size}),
-                                 nullptr,
-                                 options,
-                                 input.device());
+            return at::from_blob(
+                final_output, {3, input.size(0), num_heads, input.size(1), head_size}, options);
             // return at::from_blob(workspace, {input.size(0) * input.size(1), 3, num_heads,
             // head_size}, options);
         }
@@ -1300,27 +1249,14 @@ std::vector<at::Tensor> add_padding(at::Tensor& query, at::Tensor& key, at::Tens
                  head_size,
                  padded_head_size,
                  InferenceContext::Instance().GetCurrentStream());
-    return {at::from_blob(workspace,
-                          {query.size(0), query.size(1), query.size(2), padded_head_size},
-                          c10::TensorType::contiguousStridesOf(
-                              {query.size(0), query.size(1), query.size(2), padded_head_size}),
-                          nullptr,
-                          query.options(),
-                          query.options().device()),
-            at::from_blob(key_pad_ptr,
-                          {query.size(0), query.size(1), 128, padded_head_size},
-                          c10::TensorType::contiguousStridesOf(
-                              {query.size(0), query.size(1), 128, padded_head_size}),
-                          nullptr,
-                          query.options(),
-                          query.options().device()),
-            at::from_blob(value_pad_ptr,
-                          {query.size(0), query.size(1), 128, padded_head_size},
-                          c10::TensorType::contiguousStridesOf(
-                              {query.size(0), query.size(1), 128, padded_head_size}),
-                          nullptr,
-                          query.options(),
-                          query.options().device())};
+    return {
+        at::from_blob(workspace,
+                      {query.size(0), query.size(1), query.size(2), padded_head_size},
+                      query.options()),
+        at::from_blob(
+            key_pad_ptr, {query.size(0), query.size(1), 128, padded_head_size}, query.options()),
+        at::from_blob(
+            value_pad_ptr, {query.size(0), query.size(1), 128, padded_head_size}, query.options())};
 }
 
 template <typename T>
@@ -1364,27 +1300,15 @@ std::vector<at::Tensor> padd_add_transform(at::Tensor& query,
                                   heads,
                                   padded_head_size,
                                   InferenceContext::Instance().GetCurrentStream());
-    return {at::from_blob(workspace,
-                          {query.size(0), heads, query.size(1), padded_head_size},
-                          c10::TensorType::contiguousStridesOf(
-                              {query.size(0), heads, query.size(1), padded_head_size}),
-                          nullptr,
-                          query.options(),
-                          query.options().device()),
-            at::from_blob(key_pad_ptr,
-                          {query.size(0), heads, key_value_length, padded_head_size},
-                          c10::TensorType::contiguousStridesOf(
-                              {query.size(0), heads, key_value_length, padded_head_size}),
-                          nullptr,
-                          query.options(),
-                          query.options().device()),
-            at::from_blob(value_pad_ptr,
-                          {query.size(0), heads, key_value_length, padded_head_size},
-                          c10::TensorType::contiguousStridesOf(
-                              {query.size(0), heads, key_value_length, padded_head_size}),
-                          nullptr,
-                          query.options(),
-                          query.options().device())};
+    return {
+        at::from_blob(
+            workspace, {query.size(0), heads, query.size(1), padded_head_size}, query.options()),
+        at::from_blob(key_pad_ptr,
+                      {query.size(0), heads, key_value_length, padded_head_size},
+                      query.options()),
+        at::from_blob(value_pad_ptr,
+                      {query.size(0), heads, key_value_length, padded_head_size},
+                      query.options())};
 }
 
 template <typename T>
@@ -1404,13 +1328,7 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
     int bsz = input.size(0) * input.size(1);
 
     T* workspace = (T*)InferenceContext::Instance().GetWorkSpace();
-    auto output = at::from_blob(
-        workspace,
-        {input.size(0), input.size(1), out_size},
-        c10::TensorType::contiguousStridesOf({input.size(0), input.size(1), out_size}),
-        nullptr,
-        options,
-        input.device());
+    auto output = at::from_blob(workspace, {input.size(0), input.size(1), out_size}, options);
     if (q_int8) {
         quantized_gemm<T>(output.data_ptr(),
                           (T*)input.data_ptr(),
@@ -1572,12 +1490,7 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
 #endif
     }
 
-    return at::from_blob(inp_norm,
-                         input.sizes(),
-                         c10::TensorType::contiguousStridesOf(input.sizes()),
-                         nullptr,
-                         input.options(),
-                         input.options().device());
+    return torch::from_blob(inp_norm, input.sizes(), input.options());
 }
 
 template <typename T>
@@ -1605,13 +1518,10 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                        .requires_grad(false);
 
     int out_size = (q_int8 || transposed_mode) ? weight_out.size(0) : weight_out.size(1);
-    auto output = at::from_blob(
-        (T*)InferenceContext::Instance().GetWorkSpace() + torch::numel(input),
-        {input.size(0), input.size(1), out_size},
-        c10::TensorType::contiguousStridesOf({input.size(0), input.size(1), out_size}),
-        nullptr,
-        options,
-        input.device());
+    auto output =
+        at::from_blob((T*)InferenceContext::Instance().GetWorkSpace() + torch::numel(input),
+                      {input.size(0), input.size(1), out_size},
+                      options);
     int bsz = input.size(0) * input.size(1);
 
     auto act_func_type = static_cast<ActivationFuncType>(activation_type);
@@ -1665,25 +1575,10 @@ std::vector<at::Tensor> ds_rms_mlp_gemm(at::Tensor& input,
     T* inp_norm_ptr = output_ptr + torch::numel(input);
     T* intermediate_ptr = inp_norm_ptr + torch::numel(input);
 
-    auto output = at::from_blob(output_ptr,
-                                input.sizes(),
-                                c10::TensorType::contiguousStridesOf(input.sizes()),
-                                nullptr,
-                                options,
-                                input.device());
-    auto inp_norm = at::from_blob(inp_norm_ptr,
-                                  input.sizes(),
-                                  c10::TensorType::contiguousStridesOf(input.sizes()),
-                                  nullptr,
-                                  options,
-                                  input.device());
-    auto intermediate_gemm = at::from_blob(
-        intermediate_ptr,
-        {input.size(0), input.size(1), mlp_1_out_neurons},
-        c10::TensorType::contiguousStridesOf({input.size(0), input.size(1), mlp_1_out_neurons}),
-        nullptr,
-        options,
-        input.device());
+    auto output = at::from_blob(output_ptr, input.sizes(), options);
+    auto inp_norm = at::from_blob(inp_norm_ptr, input.sizes(), options);
+    auto intermediate_gemm =
+        at::from_blob(intermediate_ptr, {input.size(0), input.size(1), mlp_1_out_neurons}, options);
 
     auto act_func_type = static_cast<ActivationFuncType>(activation_type);
 
