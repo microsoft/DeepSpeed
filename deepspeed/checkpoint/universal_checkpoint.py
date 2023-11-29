@@ -16,7 +16,6 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
     hp_keys = [FP32_WEIGHT_KEY] + optim_state_keys
     #print(f'{hp_keys=}')
     checkpoint_files = {key: os.path.join(folder, f"{key}.pt") for key in hp_keys}
-    #print(f'{checkpoint_files=}')
     for file in checkpoint_files.values():
         assert os.path.isfile(file), f'{file} is not a valid file'
 

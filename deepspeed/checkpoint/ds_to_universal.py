@@ -312,7 +312,7 @@ def main():
     print('*** 1. Extracting ZeRO fragments')
     _extract_zero_shard_files(args, ds_checkpoint, temp_dir)
 
-    print('*** 2. Merging slices .....not done/needed ')
+    print('*** 2. Merging slices .....')
     _merge_tp_slice_files(args, ds_checkpoint, slice_shapes, temp_dir)
 
     print('*** 3. Saving common optimizer states')

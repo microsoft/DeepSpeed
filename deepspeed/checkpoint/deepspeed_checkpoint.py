@@ -281,11 +281,8 @@ class DeepSpeedCheckpoint(object):
 
         file_list = get_files(dir)
         file_prefix_list = [MODEL_FILE_PREFIX]
-        print(f'CKPT {self.__dict__=}')
         if pipeline_parallel:
-        #if self.pp_degree > 0:
             file_prefix_list.extend([LAYER_FILE_PREFIX, f'{LAYER_FILE_PREFIX}01'])
-        #for file_prefix in [MODEL_FILE_PREFIX, LAYER_FILE_PREFIX, f'{LAYER_FILE_PREFIX}01']:
         for file_prefix in file_prefix_list:
             ckpt_files = get_files_with_prefix(file_list, file_prefix)
             assert len(
