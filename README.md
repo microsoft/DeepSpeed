@@ -208,7 +208,7 @@ Type `set` in the command prompt to list the windows environment variables. Refe
 - `set DS_BUILD_SPARSE_ATTN=0`
 - `set DS_BUILD_EVOFORMER_ATTN=0`
 - `build_win.bat` (This will start building your wheel file and may take a while)
-11) After the wheel has finished compiling navigate inot your `dist` folder e.g. `cd dist` and you can now `pip install deepspeed-_YOURFILENAME_.whl`
+11) After the wheel has finished compiling navigate into your `dist` folder e.g. `cd dist` and you can now `pip install deepspeed-_YOURFILENAME_.whl`
 
 # Features
 
