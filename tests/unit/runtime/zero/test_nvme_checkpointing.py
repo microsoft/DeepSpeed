@@ -66,7 +66,7 @@ class TestNVMeCheckpointing(DistributedTest):
             }
         }
 
-        hidden_dim, nlayers = 2048 * 2, 5 * 4
+        hidden_dim, nlayers = 2048, 2
         with deepspeed.zero.Init(config_dict_or_path=config_dict):
             model = SimpleModel(hidden_dim, nlayers=nlayers, empty_grad=False)
 
