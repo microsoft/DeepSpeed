@@ -104,6 +104,7 @@ jobs:
         run: |
           # prep oneCCL for CCLBackend comm ops building
           source oneCCL/build/_install/env/setvars.sh
+          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd  tests
           # LOCAL_SIZE=2 enforce CPU to report 2 devices, this helps run the test on github default runner
