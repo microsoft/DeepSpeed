@@ -329,9 +329,6 @@ class PipelineModule(nn.Module):
             local_micro_offset = self.micro_offset + 1
 
             def exec_func(*inputs):
-                # Single tensor inputs need to be unwrapped
-                if len(inputs) == 1:
-                    inputs = inputs[0]
                 for idx, layer in enumerate(self.forward_funcs[start:end]):
                     self.curr_layer = idx + self._local_start
                     if self.seed_layers:
@@ -341,7 +338,10 @@ class PipelineModule(nn.Module):
                         else:
                             ds_utils.set_random_seed(new_seed)
 
-                    inputs = layer(inputs)
+                    # Single tensor and multi-variable input tensors need to be unwrapped
+                    while isinstance(inputs[0], tuple):
+                        inputs = inputs[0]
+                    inputs = layer(*inputs)
                 return inputs
 
             return exec_func
