@@ -40,4 +40,4 @@ class RaggedInferenceEngineConfig(DeepSpeedConfigModel):
     Configuration for managing persistent state
     """
 
-    quantiation: QuantizationConfig = Field({}, alias="quantization")
+    quantization: QuantizationConfig = Field({}, alias="quantization")
