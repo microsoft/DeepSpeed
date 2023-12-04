@@ -61,7 +61,7 @@ def is_env_set(key):
     """
     Checks if an environment variable is set and not "".
     """
-    return bool(os.environ.get(key, None))
+    return key in os.environ
 
 
 def get_env_if_set(key, default: typing.Any = ""):
@@ -70,7 +70,7 @@ def get_env_if_set(key, default: typing.Any = ""):
     otherwise returns a default value. In contrast, the fallback
     parameter of os.environ.get() is skipped if the variable is set to "".
     """
-    return os.environ.get(key, None) or default
+    return os.environ.get(key, default)
 
 
 install_requires = fetch_requirements('requirements/requirements.txt')
@@ -121,12 +121,9 @@ if torch_available:
     from accelerator import get_accelerator
     cmdclass['build_ext'] = get_accelerator().build_extension().with_options(use_ninja=False)
 
-if torch_available:
-    TORCH_MAJOR = torch.__version__.split('.')[0]
-    TORCH_MINOR = torch.__version__.split('.')[1]
-else:
-    TORCH_MAJOR = "0"
-    TORCH_MINOR = "0"
+# Extracting major and minor version components from the PyTorch library version
+TORCH_MAJOR, _, TORCH_MINOR = torch.__version__.partition('.')
+
 
 if torch_available and not torch.cuda.is_available():
     # Fix to allow docker builds, similar to https://github.com/NVIDIA/apex/issues/486.
