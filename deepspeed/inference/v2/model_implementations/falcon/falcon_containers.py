@@ -42,7 +42,7 @@ class FalconTransformerContainer(LayerContainer):
     """
     qkv_w: FusedQKVParameter
     attn_out_w: AttentionOutputParameter
-    mlp_1_w: MLP2Parameter
+    mlp_1_w: MLP1Parameter
     mlp_2_w: MLP2Parameter
     input_layernorm_gamma: NormParameter
     input_layernorm_beta: NormParameter

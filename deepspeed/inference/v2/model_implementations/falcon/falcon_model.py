@@ -129,48 +129,36 @@ class FalconInferenceModel(DSTransformerModelBase):
                 hidden states after pre normalization.
             ragged_batch_info (RaggedBatchWrapper): The batch metadata.
         """
-        # TODO(arashb):
-        assert not self.config.new_decoder_architecture, "new decoder architecture is not yet supported!"
-        assert self.config.parallel_attn, "only parallel attention implementation is supported"
-        assert self.tp_size == 1, "TP is not supported yet"
+        assert not self.config.new_decoder_architecture, "Falcon new decoder architecture is supported in separate model implementation!"
+        assert self.config.parallel_attn, "Only parallel attention implementation is supported"
 
         cur_params = self._transformer[layer_idx]
         kv_cache = self.state_manager.get_cache(layer_idx)
 
-        if self.config.new_decoder_architecture:
-            raise NotImplementedError("Falcon new decoder architecture is not implemented yet!")
-        else:
-            attention_layernorm_out = hidden_states
-
+        attention_layernorm_out = hidden_states
         attn_hidden_state = self.qkv(attention_layernorm_out, cur_params.qkv_w, b=None)
         attn_hidden_state = self.attn(attn_hidden_state, kv_cache, ragged_batch_info)
         attention_output = self.attn_out(attn_hidden_state, cur_params.attn_out_w, b=None)
 
-        if not self.config.new_decoder_architecture:
-            if self.config.parallel_attn:
-                mlp_layernorm_out = attention_layernorm_out
-            else:
-                raise NotImplementedError("Falcon new decoder architecture is not implemented yet!")
-
+        mlp_layernorm_out = hidden_states
         mlp_hidden_state = self.mlp_1(mlp_layernorm_out, cur_params.mlp_1_w, b=None)
         mlp_output = self.mlp_2(mlp_hidden_state, cur_params.mlp_2_w, b=None)
 
-        if self.config.new_decoder_architecture or self.config.parallel_attn:
-            mlp_output.add_(attention_output)
+        mlp_output.add_(attention_output)
 
-        if self.config.new_decoder_architecture:
-            raise NotImplementedError("Falcon new decoder architecture is not implemented yet!")
+        if self.tp_size > 1:
+            dist.all_reduce(mlp_output, group=self._base_mp_group)
+
+        if layer_idx != self.num_layers - 1:
+            next_params = self._transformer[layer_idx + 1]
+            residual, mlp_output = self.norm(residual,
+                                             mlp_output,
+                                             next_params.input_layernorm_gamma,
+                                             beta=next_params.input_layernorm_beta)
         else:
-            if layer_idx != self.num_layers - 1:
-                next_params = self._transformer[layer_idx + 1]
-                residual, mlp_output = self.norm(residual,
-                                                 mlp_output,
-                                                 next_params.input_layernorm_gamma,
-                                                 beta=next_params.input_layernorm_beta)
-            else:
-                # On last layer, we just need to perform the residual add. Adding into the residual
-                # here is safe.
-                residual.add_(mlp_output)
+            # On last layer, we just need to perform the residual add. Adding into the residual
+            # here is safe.
+            residual.add_(mlp_output)
 
         return residual, mlp_output
 
