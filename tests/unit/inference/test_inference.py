@@ -689,11 +689,12 @@ class TestLMCorrectness(DistributedTest):
 #    ]
 
 @pytest.mark.nightly
-@pytest.mark.parametrize("model_name", ["facebook/opt-1.3b", "facebook/opt-6.7b"])
+#@pytest.mark.parametrize("model_name", ["facebook/opt-1.3b", "facebook/opt-6.7b"])
+@pytest.mark.parametrize("model_name", ["facebook/opt-1.3b"])
 class TestHumanEval(DistributedTest):
     world_size = 1
 
-    def test(self):
+    def test(self, model_name):
         import mii
         from transformers import pipeline
         from human_eval.data import write_jsonl, read_problems
@@ -707,23 +708,24 @@ class TestHumanEval(DistributedTest):
             return mii_pipe(problem_prompt, max_new_tokens=256).generated_texts[0]
 
         def generate_samples(generation_function):
-            return samples = [
+            samples = [
                 dict(task_id=task_id, completion=generation_function(problems[task_id]["prompt"]))
                 for task_id in problems
                 for _ in range(num_samples_per_task)
             ]
+            return samples
 
         print("Initializing HuggingFace Pipeline")
         local_rank = os.getenv("LOCAL_RANK", "0")
         device = torch.device(get_accelerator().device_name(local_rank))
-        base_pipe = pipeline(model="EleutherAI/gpt-j-6b", device=torch.device(get_accelerator().device_name(local_rank)), max_length=256)
+        base_pipe = pipeline(model=model_name, device=torch.device(get_accelerator().device_name(local_rank)), max_length=256)
 
         print("Initializing DeepSpeed-MII Pipeline")
-        mii_pipe = mii.pipeline("facebook/opt-6.7b")
+        mii_pipe = mii.pipeline(model_name)
 
         print("Loading Problems")
         #problems = read_problems("HumanEvalTest.jsonl.gz")
-        problems = read_problems() #TODO (lekurile): Add path to human-eval prompt file
+        problems = read_problems("../../human-eval/data/HumanEvalTest.jsonl.gz") #TODO (lekurile): Add path to human-eval prompt file
 
         num_samples_per_task = 1
         #num_samples_per_task = 20
@@ -732,8 +734,9 @@ class TestHumanEval(DistributedTest):
         mii_samples = generate_samples(generate_mii_completion)
 
         # TODO (lekurile): Commented out json file writing
-        #print("Writing Samples")
-        #write_jsonl("samples.jsonl", samples)
+        print("Writing Samples")
+        write_jsonl("base_samples.jsonl", base_samples)
+        write_jsonl("mii_samples.jsonl", mii_samples)
 
         print("Evaluating Samples")
         # TODO: use human-eval evaluate_functional_correctness function
