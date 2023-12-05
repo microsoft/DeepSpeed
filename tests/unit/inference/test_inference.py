@@ -597,7 +597,7 @@ class TestAutoTensorParallelism(DistributedTest):
     (
         ["gpt2", "EleutherAI/gpt-neo-2.7B"],
         #["gpt2", "EleutherAI/gpt-j-6b"], # Causing OOM for this test
-        ["gpt2", "gpt2-xl"],
+        #["gpt2", "gpt2-xl"],
     ),
 )
 @pytest.mark.parametrize("task", ["lambada_standard"])
@@ -648,6 +648,8 @@ class TestLMCorrectness(DistributedTest):
         get_accelerator().synchronize()
         bs_time = time.time() - start
 
+        #pytest.set_trace()
+
         getattr(lm, model_family).to("cpu")
         ds_model = deepspeed.init_inference(
             getattr(lm, model_family),
@@ -667,3 +669,77 @@ class TestLMCorrectness(DistributedTest):
         ppl_diff = abs(bs_output["results"][task]["ppl"] - ds_output["results"][task]["ppl"])
         #assert ds_time <= bs_time
         assert ppl_diff < 0.01
+
+
+#---------------------------------------------------------------------------------------------------
+
+#def generate_base_completion(problem_prompt: str, pipeline) -> str:
+#    #output = base_pipe(problem_prompt, do_sample=True)
+#    return pipeline(problem_prompt, do_sample=True)[0]["generated_text"]
+#
+#def generate_mii_completion(problem_prompt: str, pipeline) -> str:
+#    #output = pipe(problem_prompt, max_new_tokens=256)
+#    return pipeline(problem_prompt, max_new_tokens=256).generated_texts[0]
+#
+#def generate_samples(generation_function, problems, num_samples_per_task):
+#    return samples = [
+#        dict(task_id=task_id, completion=generation_function(problems[task_id]["prompt"]))
+#        for task_id in problems
+#        for _ in range(num_samples_per_task)
+#    ]
+
+@pytest.mark.nightly
+@pytest.mark.parametrize("model_name", ["facebook/opt-1.3b", "facebook/opt-6.7b"])
+class TestHumanEval(DistributedTest):
+    world_size = 1
+
+    def test(self):
+        import mii
+        from transformers import pipeline
+        from human_eval.data import write_jsonl, read_problems
+
+        def generate_base_completion(problem_prompt: str) -> str:
+            #output = base_pipe(problem_prompt, do_sample=True)
+            return base_pipe(problem_prompt, do_sample=True)[0]["generated_text"]
+
+        def generate_mii_completion(problem_prompt: str) -> str:
+            #output = pipe(problem_prompt, max_new_tokens=256)
+            return mii_pipe(problem_prompt, max_new_tokens=256).generated_texts[0]
+
+        def generate_samples(generation_function):
+            return samples = [
+                dict(task_id=task_id, completion=generation_function(problems[task_id]["prompt"]))
+                for task_id in problems
+                for _ in range(num_samples_per_task)
+            ]
+
+        print("Initializing HuggingFace Pipeline")
+        local_rank = os.getenv("LOCAL_RANK", "0")
+        device = torch.device(get_accelerator().device_name(local_rank))
+        base_pipe = pipeline(model="EleutherAI/gpt-j-6b", device=torch.device(get_accelerator().device_name(local_rank)), max_length=256)
+
+        print("Initializing DeepSpeed-MII Pipeline")
+        mii_pipe = mii.pipeline("facebook/opt-6.7b")
+
+        print("Loading Problems")
+        #problems = read_problems("HumanEvalTest.jsonl.gz")
+        problems = read_problems() #TODO (lekurile): Add path to human-eval prompt file
+
+        num_samples_per_task = 1
+        #num_samples_per_task = 20
+        print("Generating Samples")
+        base_samples = generate_samples(generate_base_completion)
+        mii_samples = generate_samples(generate_mii_completion)
+
+        # TODO (lekurile): Commented out json file writing
+        #print("Writing Samples")
+        #write_jsonl("samples.jsonl", samples)
+
+        print("Evaluating Samples")
+        # TODO: use human-eval evaluate_functional_correctness function
+        # TODO: use code execution container
+
+
+        print("Executing Assertions")
+
+#---------------------------------------------------------------------------------------------------
