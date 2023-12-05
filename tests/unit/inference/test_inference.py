@@ -549,10 +549,6 @@ class TestAutoTensorParallelism(DistributedTest):
         if dtype not in get_accelerator().supported_dtypes():
             pytest.skip(f"Acceleraor {get_accelerator().device_name()} does not support {dtype}.")
 
-        # TODO: enable this test after torch 2.1 stable release
-        if dtype == torch.bfloat16 and model_w_task[0] == "Salesforce/codegen-350M-mono":
-            pytest.skip("Codegen model(bf16) need to use torch version > 2.0.")
-
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         world_size = int(os.getenv("WORLD_SIZE", "2"))
