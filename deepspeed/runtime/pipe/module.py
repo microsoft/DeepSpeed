@@ -339,9 +339,10 @@ class PipelineModule(nn.Module):
                             ds_utils.set_random_seed(new_seed)
 
                     # Single tensor and multi-variable input tensors need to be unwrapped
-                    while isinstance(inputs[0], tuple):
+                    while  isinstance(inputs[0], tuple) or isinstance(inputs[0], list):
                         inputs = inputs[0]
-                    inputs = layer(*inputs)
+                    assert torch.is_tensor(inputs) or isinstance(inputs, list) or isinstance(inputs, tuple)
+                    inputs = layer(inputs) if torch.is_tensor(inputs) else layer(*inputs)
                 return inputs
 
             return exec_func
