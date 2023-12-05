@@ -329,6 +329,10 @@ class PipelineModule(nn.Module):
             local_micro_offset = self.micro_offset + 1
 
             def exec_func(*inputs):
+                # Single tensor inputs need to be unwrapped
+                while len(inputs)==1 and isinstance(inputs, (list, tuple)):
+                    inputs = inputs[0]
+
                 for idx, layer in enumerate(self.forward_funcs[start:end]):
                     self.curr_layer = idx + self._local_start
                     if self.seed_layers:
@@ -338,10 +342,8 @@ class PipelineModule(nn.Module):
                         else:
                             ds_utils.set_random_seed(new_seed)
 
-                    # Single tensor and multi-variable input tensors need to be unwrapped
-                    while  isinstance(inputs[0], tuple) or isinstance(inputs[0], list):
-                        inputs = inputs[0]
-                    assert torch.is_tensor(inputs) or isinstance(inputs, list) or isinstance(inputs, tuple)
+                    # multi-variable input tensors need to be unwrapped on the forward() call
+                    assert torch.is_tensor(inputs) or isinstance(inputs, (list, tuple))
                     inputs = layer(inputs) if torch.is_tensor(inputs) else layer(*inputs)
                 return inputs
 
