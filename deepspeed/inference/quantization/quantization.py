@@ -85,8 +85,6 @@ def _init_group_wise_weight_quantization(model: nn.Module, ds_config: Dict) -> n
             if is_zero3_enabled:
                 module.weight.all_gather()
 
-            assert module.weight.dtype == torch.float16, 'Model weight is expected in half.'
-
             new_module = QUANTIZATION_LAYER_MAPPINGS[type(module)](matched_quantization_config, module)
 
             if is_zero3_enabled:
