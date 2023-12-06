@@ -23,7 +23,7 @@ jobs:
       image: nvcr.io/nvidia/pytorch:23.03-py3
       ports:
         - 80
-      options: --runtime=runsc --gpus all --shm-size "8G"
+      options: --gpus all --shm-size "8G"
 
     steps:
       - uses: actions/checkout@v3
