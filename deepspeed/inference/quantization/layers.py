@@ -135,7 +135,7 @@ class QuantizedLinearLayer(nn.Linear):
 class QuantizedLmHeadLinearAllreduce(nn.Linear):
 
     def __init__(self, config: Dict, pre_quant_layer: nn.Linear) -> None:
-        super(QuantizedLinearLayer, self).__init__(in_features=pre_quant_layer.weight.shape[1],
+        super(QuantizedLmHeadLinearAllreduce, self).__init__(in_features=pre_quant_layer.weight.shape[1],
                                                    out_features=pre_quant_layer.weight.shape[0],
                                                    bias=pre_quant_layer.bias is not None,
                                                    device=pre_quant_layer.weight.device,
