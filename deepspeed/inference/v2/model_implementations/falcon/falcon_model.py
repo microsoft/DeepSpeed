@@ -129,19 +129,25 @@ class FalconInferenceModel(DSTransformerModelBase):
                 hidden states after pre normalization.
             ragged_batch_info (RaggedBatchWrapper): The batch metadata.
         """
-        assert not self.config.new_decoder_architecture, "Falcon new decoder architecture is supported in separate model implementation!"
         assert self.config.parallel_attn, "Only parallel attention implementation is supported"
 
         cur_params = self._transformer[layer_idx]
         kv_cache = self.state_manager.get_cache(layer_idx)
 
-        attention_layernorm_out = hidden_states
-        attn_hidden_state = self.qkv(attention_layernorm_out, cur_params.qkv_w, b=None)
+        attn_ln_out = hidden_states
+        attn_hidden_state = self.qkv(attn_ln_out, cur_params.qkv_w, b=None)
         attn_hidden_state = self.attn(attn_hidden_state, kv_cache, ragged_batch_info)
         attention_output = self.attn_out(attn_hidden_state, cur_params.attn_out_w, b=None)
 
-        mlp_layernorm_out = hidden_states
-        mlp_hidden_state = self.mlp_1(mlp_layernorm_out, cur_params.mlp_1_w, b=None)
+        if self.config.new_decoder_architecture:
+            residual, mlp_ln_out = self.norm(residual,
+                                             None,
+                                             gamma=cur_params.ln_mlp_gamma,
+                                             beta=cur_params.ln_mlp_beta)
+        else:
+            mlp_ln_out = hidden_states
+
+        mlp_hidden_state = self.mlp_1(mlp_ln_out, cur_params.mlp_1_w, b=None)
         mlp_output = self.mlp_2(mlp_hidden_state, cur_params.mlp_2_w, b=None)
 
         mlp_output.add_(attention_output)
@@ -153,8 +159,8 @@ class FalconInferenceModel(DSTransformerModelBase):
             next_params = self._transformer[layer_idx + 1]
             residual, mlp_output = self.norm(residual,
                                              mlp_output,
-                                             next_params.input_layernorm_gamma,
-                                             beta=next_params.input_layernorm_beta)
+                                             next_params.ln_attn_gamma,
+                                             beta=next_params.ln_attn_beta)
         else:
             # On last layer, we just need to perform the residual add. Adding into the residual
             # here is safe.
@@ -190,8 +196,8 @@ class FalconInferenceModel(DSTransformerModelBase):
 
         residual, hidden_states = self.norm(residual,
                                             None,
-                                            gamma=self._transformer[0].input_layernorm_gamma,
-                                            beta=self._transformer[0].input_layernorm_beta)
+                                            gamma=self._transformer[0].ln_attn_gamma,
+                                            beta=self._transformer[0].ln_attn_beta)
 
         for layer_idx in range(self.num_layers):
             residual, hidden_states = self._forward_transformer_layer(layer_idx, residual, hidden_states,

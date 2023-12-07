@@ -8,6 +8,7 @@ from typing import Any
 from ...config_v2 import RaggedInferenceEngineConfig
 from ...model_implementations.inference_policy_base import ContainerMap, InferenceV2Policy
 from ...model_implementations.falcon.falcon_containers import FalconNonTransformerContainer, FalconTransformerContainer
+from ...model_implementations.falcon.falcon_containers import FalconNewArchTransformerContainer
 from ...model_implementations.falcon.falcon_model import FalconInferenceModel
 
 
@@ -19,7 +20,8 @@ class FalconPolicy(InferenceV2Policy):
     def build_container_map(self) -> ContainerMap:
         map = ContainerMap()
 
-        transformer_containers = [FalconTransformerContainer(self.model) for _ in range(self.model.num_layers)]
+        trans_container_cls = FalconNewArchTransformerContainer if self._model_config.new_decoder_architecture else FalconTransformerContainer
+        transformer_containers = [trans_container_cls(self.model) for _ in range(self.model.num_layers)]
 
         map.set_transformer_params(['transformer.h'], transformer_containers)
 
