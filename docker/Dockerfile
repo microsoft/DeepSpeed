@@ -41,7 +41,7 @@ RUN cp /etc/ssh/sshd_config ${STAGE_DIR}/sshd_config && \
 # Mellanox OFED
 ##############################################################################
 ENV MLNX_OFED_VERSION=4.9-7.1.0.0
-RUN apt-get install -y libnuma-dev 
+RUN apt-get install -y libnuma-dev
 RUN cd ${STAGE_DIR} && \
         wget -q -O - http://www.mellanox.com/downloads/ofed/MLNX_OFED-${MLNX_OFED_VERSION}/MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu20.04-x86_64.tgz | tar xzf - && \
         cd MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu20.04-x86_64 && \
@@ -52,7 +52,7 @@ RUN cd ${STAGE_DIR} && \
 ##############################################################################
 # nv_peer_mem
 ##############################################################################
-ENV NV_PEER_MEM_VERSION=1.2 
+ENV NV_PEER_MEM_VERSION=1.2
 ENV NV_PEER_MEM_TAG=${NV_PEER_MEM_VERSION}-0
 RUN mkdir -p ${STAGE_DIR} && \
         git clone https://github.com/Mellanox/nv_peer_memory.git --branch ${NV_PEER_MEM_TAG} ${STAGE_DIR}/nv_peer_memory && \
