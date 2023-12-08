@@ -237,6 +237,14 @@ def model_parallel_cuda_manual_seed(seed):
     _CUDA_RNG_STATE_TRACKER.add(_MODEL_PARALLEL_RNG_TRACKER_NAME, model_parallel_seed)
 
 
+def model_parallel_reconfigure_tp_seed(seed):
+    global mpu
+    tp_rank = bwc_tensor_model_parallel_rank(mpu)
+    model_parallel_seed = seed + 2718 + tp_rank
+    with _CUDA_RNG_STATE_TRACKER.fork():
+        get_accelerator().manual_seed(model_parallel_seed)
+
+
 def get_partition_start(item):
     global mp_rank, mp_size, mp_group
     size = item.numel()
@@ -270,6 +278,8 @@ def gather_partitioned_activations(tensors, device=None):
         # don't need to do all_gather if model parallel is not enabled
         if mp_group is None or mp_size == 1:
             item = item.view(list(size.numpy()))
+            if device is not None:
+                item = item.to(device)
             inputs.append(item)
             continue
 
@@ -279,13 +289,9 @@ def gather_partitioned_activations(tensors, device=None):
             flat_tensor = torch.zeros([tensor_size], dtype=item.dtype, device=device)
         else:
             flat_tensor = torch.zeros([tensor_size], dtype=item.dtype, device=item.device)
-        partitions = []
-        for i in range(mp_size):
-            part_i = flat_tensor.narrow(0, partition_size * i, partition_size)
-            if i == mp_rank:
-                part_i.copy_(item)
-            partitions.append(part_i)
-        dist.all_gather(partitions, partitions[mp_rank], group=mp_group)
+        part = flat_tensor.narrow(0, partition_size * mp_rank, partition_size)
+        part.copy_(item)
+        dist.all_gather_into_tensor(flat_tensor, part, group=mp_group)
         input_tensor = flat_tensor.view(list(size.numpy()))
         item.data = input_tensor.data
 

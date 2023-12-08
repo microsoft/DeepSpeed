@@ -66,7 +66,7 @@ class PDSHRunner(MultiNodeRunner):
     def get_cmd(self, environment, active_resources):
         environment['PDSH_RCMD_TYPE'] = 'ssh'
         if self.args.ssh_port is not None:  # only specify ssh port if it is specified
-            environment["PDSH_SSH_ARGS_APPEND"] = f" -p {self.args.ssh_port}"
+            environment["PDSH_SSH_ARGS_APPEND"] += f" -p {self.args.ssh_port}"
 
         active_workers = ",".join(active_resources.keys())
         logger.info("Running on the following workers: %s" % active_workers)
@@ -278,6 +278,9 @@ class IMPIRunner(MultiNodeRunner):
         export_cmd += ['-genv', 'MASTER_PORT', str(self.args.master_port)]
         export_cmd += ['-genv', 'WORLD_SIZE', str(total_process_count)]
         export_cmd += ['-genv', 'LOCAL_SIZE', str(process_per_node)]
+
+        # turn off IMPI core binding, use deepspeed's own core binding
+        export_cmd += ['-genv', 'I_MPI_PIN', '0']
 
         export_cmd += ['-hosts']
         hosts = ""

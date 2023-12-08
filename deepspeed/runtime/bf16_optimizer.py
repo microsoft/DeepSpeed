@@ -75,7 +75,6 @@ class BF16_Optimizer(ZeROOptimizer):
         self.fp32_groups_gradient_flat_partition = []
         self.fp32_groups_has_gradients = []
 
-        self.step_count = 0
         self.group_paddings = []
 
         if self.using_real_optimizer:
@@ -252,7 +251,6 @@ class BF16_Optimizer(ZeROOptimizer):
         self.update_lp_params()
 
         self.clear_hp_grads()
-        self.step_count += 1
 
     def backward(self, loss, update_hp_grads=True, clear_lp_grads=False, **bwd_kwargs):
         """Perform a backward pass and copy the low-precision gradients to the
@@ -322,7 +320,8 @@ class BF16_Optimizer(ZeROOptimizer):
             # if i == 0:
             #     print_rank_0(f'{fp32_partition[:10]=}', force=True)
 
-        all_gather_dp_groups(partitioned_param_groups=self.bf16_partitioned_groups,
+        all_gather_dp_groups(groups_flat=self.bf16_groups_flat,
+                             partitioned_param_groups=self.bf16_partitioned_groups,
                              dp_process_group=self.real_dp_process_group,
                              start_alignment_factor=self.nccl_start_alignment_factor,
                              allgather_bucket_size=self.allgather_bucket_size)
@@ -365,7 +364,8 @@ class BF16_Optimizer(ZeROOptimizer):
                         state_dict_list,
                         checkpoint_folder,
                         load_optimizer_states=True,
-                        load_from_fp32_weights=False):
+                        load_from_fp32_weights=False,
+                        load_serial=None):
         if checkpoint_folder:
             self._load_universal_checkpoint(checkpoint_folder, load_optimizer_states, load_from_fp32_weights)
         else:

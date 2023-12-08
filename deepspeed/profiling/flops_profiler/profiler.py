@@ -722,9 +722,9 @@ def _upsample_flops_compute(*args, **kwargs):
 
     flops = input.numel()
     if isinstance(scale_factor, tuple) and len(scale_factor) == len(input):
-        flops * int(_prod(scale_factor))
+        flops *= int(_prod(scale_factor))
     else:
-        flops * scale_factor**len(input)
+        flops *= scale_factor**len(input)
     return flops, 0
 
 
@@ -1139,7 +1139,7 @@ def get_module_duration(module):
     duration = module.__duration__
     if duration == 0:  # e.g. ModuleList
         for m in module.children():
-            duration += m.__duration__
+            duration += get_module_duration(m)
     return duration
 
 

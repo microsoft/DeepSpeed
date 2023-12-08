@@ -16,6 +16,7 @@ from .replace_policy import replace_policies, generic_policies
 from .auto_tp import AutoTP, ReplaceWithTensorSlicing, Loading
 
 from deepspeed import comm as dist
+from deepspeed.module_inject.tp_shard import set_num_kv_heads
 
 from .load_checkpoint import load_model_with_checkpoint
 import time
@@ -182,7 +183,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
-            e.g., transformers.modeling_bert.BertLayer.
+            e.g., transformers.models.bert.modeling_bert.BertLayer or transformers.BertLayer
         model (torch.nn.Module): user's nn.module representing their model
         checkpoint_dict: Dictionary for checkpoint passed from the Inference Engine
         config: top-level DS Inference config defined in inference/config.py
@@ -272,10 +273,18 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         # 2. Set the tensor parallelism config
         _autotp.set_tensor_parallel_config(config.tensor_parallel.tp_size, config.tensor_parallel.tp_group)
 
-        # 3. Set linear policies
+        # 3. Try to get num_key_heads from model_config.num_key_value_heads
+        num_kv_heads = _autotp.get_model_num_kv_heads(model_config)
+
+        # 4. When we have num_kv_heads defined, uneven division is possible, otherwise enforce even division
+        set_num_kv_heads(num_kv_heads)
+
+        # 5. Set linear policies
         _autotp.update_linear_policies()
 
-        # 4. Replace modules
+        # 6. Replace modules
+        if "lm_head" in all_reduce_linears or "embed_out" in all_reduce_linears:
+            return _autotp._replace_last_linear_module(module)
         return _autotp._replace_module(module)
 
     def replace_fn(child, _policy, layer_id=0, prefix="", state_dict=None):
@@ -297,18 +306,36 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         return new_module
 
+    def set_lm_head(module):
+        embedding_weight = None
+        for n, p in module.named_parameters():
+            if "word_embeddings." in n or "embed_tokens." in n or "wte." in n:
+                embedding_weight = p
+        if embedding_weight is not None and hasattr(module, "lm_head") and hasattr(
+                module.lm_head, "weight") and module.lm_head.weight.is_meta:
+            module.lm_head.weight = embedding_weight
+        # enable tensor parallel for the last linear
+        if hasattr(module, "lm_head") and hasattr(module.lm_head, "weight") and not module.lm_head.weight.is_meta:
+            module = replace_wo_policy(module, ("lm_head", ), 0, "lm_head")
+        elif hasattr(module, "embed_out") and hasattr(module.embed_out,
+                                                      "weight") and not module.embed_out.weight.is_meta:
+            module = replace_wo_policy(module, ("embed_out", ), 0, "embed_out")
+        return module
+
     if checkpoint_dict is not None and not config.replace_with_kernel_inject:
         # AutoTP shard loading
         checkpoint = checkpoint_dict["checkpoints"]
         pbar = tqdm.tqdm(total=len(checkpoint), desc=f"Loading {len(checkpoint)} checkpoint shards")
         for i in range(len(checkpoint)):
+            checkpoint_file = os.path.join(config.base_dir, checkpoint[i])
             replaced_module = replace_module(model=model,
                                              orig_class=orig_layer_impl,
                                              replace_fn=replace_fn,
                                              _replace_policy=config.injection_policy_tuple,
-                                             checkpoint=checkpoint[i])
+                                             checkpoint=checkpoint_file)
             pbar.update(1)
             gc.collect()
+        replaced_module = set_lm_head(replaced_module)
     else:
         replaced_module = replace_module(model=model,
                                          orig_class=orig_layer_impl,
@@ -386,6 +413,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                                container=container_g)
                     sds = [None for _ in sds]
                     gc.collect()
+        set_lm_head(replaced_module)
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
 
     if config.save_mp_checkpoint_path is not None:
@@ -459,7 +487,7 @@ def revert_transformer_layer(orig_layer_impl, model, config, preln=False):
     """ Revert DeepSpeed's transformer layer back to original bert-style transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation that was replaced,
-            e.g., transformers.modeling_bert.BertLayer.
+            e.g., transformers.models.bert.modeling_bert.BertLayer or transformers.BertLayer
         model (torch.nn.Module): user's nn.module representing their model
         config (dict): model config containing hidden size, attention heads, etc.
     Returns:
@@ -554,14 +582,6 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
         "You can find some samples here: https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/module_inject/replace_policy.py"
 
     replaced_module, _ = _replace_module(model, policy, state_dict=sd)
-    if checkpoint is not None:
-        embedding_weight = None
-        for n, p in replaced_module.named_parameters():
-            if "word_embeddings." in n or "embed_tokens." in n or "wte." in n:
-                embedding_weight = p
-        if embedding_weight is not None and hasattr(replaced_module, "lm_head") and hasattr(
-                replaced_module.lm_head, "weight") and replaced_module.lm_head.weight.is_meta:
-            replaced_module.lm_head.weight = embedding_weight
     return replaced_module
 
 
