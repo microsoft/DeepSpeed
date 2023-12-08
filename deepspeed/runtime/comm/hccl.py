@@ -13,7 +13,7 @@ class HcclBackend(object):
 
     def __init__(self, mpu=None):
         if mpu is None:
-            self.world_group = dist.new_group()
+            self.world_group = dist.new_group(ranks=range(dist.get_world_size()))
         else:
             self.mpu = mpu
             self.world_group = self.mpu.get_data_parallel_group()
