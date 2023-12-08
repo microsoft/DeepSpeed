@@ -385,7 +385,7 @@ class DeepSpeedHybridEngine(DeepSpeedEngine):
             self._total_latency = self._total_latency + latency
             self._iters = self._iters + 1
             if not dist.is_initialized() or dist.get_rank() == 0:
-                if len(self._inference_containers) > 0:
+                if self._total_batch_size is not None:
                     cur_samples_p_sec = f'|CurSamplesPerSec={(1 / latency * self._total_batch_size):.2f} '
                     avg_samples_p_sec = f'|AvgSamplesPerSec={(1 / (self._total_latency / self._iters) * self._total_batch_size):.2f}'
                 else:
