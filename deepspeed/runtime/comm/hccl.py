@@ -1,11 +1,16 @@
-import time
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import numpy as np
 import torch
 import torch_npu
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 
 class HcclBackend(object):
+
     def __init__(self, mpu=None):
         if mpu is None:
             self.world_group = dist.new_group()
@@ -56,28 +61,27 @@ class HcclBackend(object):
 
         sign_list_packed_tmp = torch_npu.npu_sign_bits_pack(buffer_m, self.size).type(torch.int8)
 
-        recvbuf_sign = torch.zeros(
-            [self.size, len(sign_list_packed_tmp[self.rank])],
-            dtype=sign_list_packed_tmp[0].dtype,
-            device=sign_list_packed_tmp.device
-        )
+        recvbuf_sign = torch.zeros([self.size, len(sign_list_packed_tmp[self.rank])],
+                                   dtype=sign_list_packed_tmp[0].dtype,
+                                   device=sign_list_packed_tmp.device)
 
         sign_list_packed = [sign_list_packed_tmp[idx] for idx in range(self.size)]
 
-        recvbuf_scale = [torch.zeros(1, dtype=worker_scale.dtype, device=torch.device(local_rank))
-                         for _ in range(self.size)]
+        recvbuf_scale = [
+            torch.zeros(1, dtype=worker_scale.dtype, device=torch.device(local_rank)) for _ in range(self.size)
+        ]
 
         # communication phase 1
         # all to all for sign
         dist.all_to_all_single(recvbuf_sign, torch.stack(sign_list_packed), group=self.world_group)
         # all gather for scale
-        dist.all_gather(recvbuf_scale, worker_error, group=self.world_group)
+        dist.all_gather(recvbuf_scale, worker_scale, group=self.world_group)
 
         flattened_recvbuf_sign = recvbuf_sign.type(torch.uint8).flatten()
         compensated_server_m = torch_npu.npu_sign_bits_unpack(flattened_recvbuf_sign, self.size, torch.float32) \
             .mul_(torch.stack(recvbuf_scale).mul_(1 / self.size)).sum(0)
 
-        compensated_server_m.add(server_error)
+        compensated_server_m.add_(server_error)
 
         server_scale = torch.norm(compensated_server_m) / np.sqrt(compensated_server_m.numel())
 
@@ -87,22 +91,18 @@ class HcclBackend(object):
         server_sign_packed = torch_npu.npu_sign_bits_pack(compensated_server_m, 1).type(torch.int8)
 
         # recvbuf_sign_server
-        recvbuf_sign_server_tmp = torch.zeros(
-            [self.size, len(server_sign_packed[0])],
-            dtype=recvbuf_sign.dtype,
-            device=server_sign_packed.device
-        )
+        recvbuf_sign_server_tmp = torch.zeros([self.size, len(server_sign_packed[0])],
+                                              dtype=recvbuf_sign.dtype,
+                                              device=server_sign_packed.device)
 
         recvbuf_sign_server = [recvbuf_sign_server_tmp[idx] for idx in range(self.size)]
 
         # recvbuf_scale_server
-        recvbuf_scale_server_tmp = torch.zeros(
-            [self.size, 1],
-            dtype=recvbuf_sign.dtype,
-            device=server_sign_packed.device
-        )
+        recvbuf_scale_server_tmp = torch.zeros([self.size, 1],
+                                               dtype=worker_scale.dtype,
+                                               device=server_sign_packed.device)
 
-        recvbuf_scale_server = [recvbuf_sign_server_tmp[idx] for idx in range(self.size)]
+        recvbuf_scale_server = [recvbuf_scale_server_tmp[idx] for idx in range(self.size)]
 
         # communication Phase 2
         dist.all_gather(recvbuf_sign_server, server_sign_packed[0], group=self.world_group)
@@ -112,8 +112,9 @@ class HcclBackend(object):
 
         flattened_recvbuf_sign_server = recvbuf_sign_server.type(torch.uint8).flatten()
 
-        buffer_m.data.copy_(torch_npu.npu_sign_bits_unpack(flattened_recvbuf_sign_server, self.size, torch.float32)
-                            .mul_(recvbuf_scale_server_tmp).flatten().data)
+        buffer_m.data.copy_(
+            torch_npu.npu_sign_bits_unpack(flattened_recvbuf_sign_server, self.size,
+                                           torch.float32).mul_(recvbuf_scale_server_tmp).flatten().data)
 
         if original_size != worker_error_size:
             buffer_m = buffer_m[0:original_size]

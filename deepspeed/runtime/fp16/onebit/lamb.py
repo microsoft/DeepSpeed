@@ -241,7 +241,7 @@ class OnebitLamb(torch.optim.Optimizer):
                                 lamb_coeff = min_coeff
                         if lamb_coeff != 1.0:
                             state['lamb_coeff_freeze'] = self.coeff_beta * state['lamb_coeff_freeze'] + (
-                                    1 - self.coeff_beta) * lamb_coeff
+                                1 - self.coeff_beta) * lamb_coeff
                         self.lamb_coeffs.append(lamb_coeff)
                         with torch.no_grad():
                             p.add_(-group['lr'] * lamb_coeff * update)
