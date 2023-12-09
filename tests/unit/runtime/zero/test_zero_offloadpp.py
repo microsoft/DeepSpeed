@@ -35,10 +35,17 @@ def test_zero_partial_offload_config():
 #Large sweep along hidden dim, num_layers of different sizes
 @pytest.mark.parametrize("h_dim", [1024])
 @pytest.mark.parametrize("n_layers", [4, 8])
+@pytest.mark.parametrize("zero_stage", [3, "mics"])
 class TestZeroPartialOffloadConfigSweep(DistributedTest):
     world_size = 4
 
-    def test(self, h_dim: int, n_layers: int) -> None:
+    def test(self, h_dim: int, n_layers: int, zero_stage) -> None:
+
+        mics_shard_size = -1
+        if isinstance(zero_stage, str):
+            zero_stage = 3
+            mics_shard_size = self.world_size // 2
+
         config_dict = {
             "train_batch_size": 256,
             "steps_per_print": 1,
@@ -53,7 +60,8 @@ class TestZeroPartialOffloadConfigSweep(DistributedTest):
                 "initial_scale_power": 15
             },
             "zero_optimization": {
-                "stage": 3,
+                "stage": zero_stage,
+                "mics_shard_size": mics_shard_size,
                 "sub_group_size": 8,
                 "reduce_bucket_size": 20,
                 "offload_optimizer": {
