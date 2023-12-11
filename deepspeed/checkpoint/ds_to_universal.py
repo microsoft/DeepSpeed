@@ -60,9 +60,6 @@ def parse_arguments():
                         dest='strict',
                         action='store_false',
                         help='Do not perform validity checks on converted checkpoint.')
-    parser.add_argument('--pipeline_parallel',
-                        action='store_false',
-                        help='Model checkpoint trained with/out pipeline parallelism.')
     args = parser.parse_args()
     print(f'args = {args}')
     return args
@@ -292,7 +289,7 @@ def main():
     args = parse_arguments()
     print(f'Converting DeepSpeed checkpoint in {args.input_folder} to Universal checkpoint in {args.output_folder}')
 
-    ds_checkpoint = DeepSpeedCheckpoint(args.input_folder,args.pipeline_parallel)
+    ds_checkpoint = DeepSpeedCheckpoint(args.input_folder)
     _check_for_required_state(ds_checkpoint)
 
     iteration = ds_checkpoint.get_iteration()

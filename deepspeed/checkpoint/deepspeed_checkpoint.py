@@ -32,8 +32,11 @@ LAYER_CONCAT_DIM = {'self_attention.dense.weight': 1, 'mlp.dense_4h_to_h.weight'
 
 class DeepSpeedCheckpoint(object):
 
-    def __init__(self, dir, tp_degree=None, pp_degree=None, dp_degree=None,pipeline_parallel=False):
+    def __init__(self, dir, tp_degree=None, pp_degree=None, dp_degree=None):
         self.dir = dir
+
+        pipeline_parallel = len(get_files_with_prefix(get_files(dir), LAYER_FILE_PREFIX)) > 0
+
         self._validate_folder(dir,pipeline_parallel)
 
         self.zero_checkpoint = ZeROCheckpoint(dir)
@@ -276,7 +279,7 @@ class DeepSpeedCheckpoint(object):
 
         return merged_sd
 
-    def _validate_folder(self, dir,pipeline_parallel=False):
+    def _validate_folder(self, dir,pipeline_parallel):
         basic_folder_validation(dir)
 
         file_list = get_files(dir)
