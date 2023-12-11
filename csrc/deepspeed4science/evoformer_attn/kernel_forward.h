@@ -531,7 +531,8 @@ struct AttentionKernel {
         typename MM1::Mma::FragmentC accum_o;
         accum_o.clear();
 
-        auto createOutputIter = [&](int col) -> typename MM1::OutputTileIterator {
+        auto createOutputIter = [&](int col) -> typename MM1::OutputTileIterator
+        {
             using OutputTileIterator = typename MM1::OutputTileIterator;
             return OutputTileIterator(
                 typename OutputTileIterator::Params{(int32_t)p.o_strideM},
@@ -541,7 +542,8 @@ struct AttentionKernel {
                 {0, col});
         };
 
-        auto createOutputAccumIter = [&](int col) -> typename MM1::OutputTileIteratorAccum {
+        auto createOutputAccumIter = [&](int col) -> typename MM1::OutputTileIteratorAccum
+        {
             using OutputTileIteratorAccum = typename MM1::OutputTileIteratorAccum;
             return OutputTileIteratorAccum(
                 typename OutputTileIteratorAccum::Params{(int32_t)(p.head_dim_value * p.num_heads)},

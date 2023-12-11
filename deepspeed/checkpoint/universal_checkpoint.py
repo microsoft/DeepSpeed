@@ -9,7 +9,6 @@ import types
 from .constants import (FP32_WEIGHT_KEY, PARAM, VOCAB_TENSOR, CAT_DIM, PARAM_N_SUB_PARAMS)
 
 
-
 def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
     hp_mapping = self._hp_mapping
     optim_state_keys = hp_mapping.get_optim_state_keys()

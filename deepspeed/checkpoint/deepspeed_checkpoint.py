@@ -37,7 +37,7 @@ class DeepSpeedCheckpoint(object):
 
         pipeline_parallel = len(get_files_with_prefix(get_files(dir), LAYER_FILE_PREFIX)) > 0
 
-        self._validate_folder(dir,pipeline_parallel)
+        self._validate_folder(dir, pipeline_parallel)
 
         self.zero_checkpoint = ZeROCheckpoint(dir)
 
@@ -216,7 +216,10 @@ class DeepSpeedCheckpoint(object):
         if self.pp_degree > 0:
             transformer_layers = self.layer_keys[1:-1]
             layers_per_pp = len(transformer_layers) // self.pp_degree
-            data_map = {i: transformer_layers[i * layers_per_pp:(i + 1) * layers_per_pp] for i in range(0, self.pp_degree)}
+            data_map = {
+                i: transformer_layers[i * layers_per_pp:(i + 1) * layers_per_pp]
+                for i in range(0, self.pp_degree)
+            }
         return data_map
 
     def _dump_mapping(self, data_map, map_tag=None):
@@ -279,7 +282,7 @@ class DeepSpeedCheckpoint(object):
 
         return merged_sd
 
-    def _validate_folder(self, dir,pipeline_parallel):
+    def _validate_folder(self, dir, pipeline_parallel):
         basic_folder_validation(dir)
 
         file_list = get_files(dir)
