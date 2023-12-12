@@ -690,59 +690,71 @@ class TestLMCorrectness(DistributedTest):
 
 @pytest.mark.nightly
 #@pytest.mark.parametrize("model_name", ["facebook/opt-1.3b", "facebook/opt-6.7b"])
-@pytest.mark.parametrize("model_name", ["facebook/opt-1.3b"])
-class TestHumanEval(DistributedTest):
-    world_size = 1
+#@pytest.mark.parametrize("model_name", ["facebook/opt-1.3b"])
+@pytest.mark.parametrize("model_name", ["codellama/CodeLlama-7b-Python-hf"])
+#def TestHumanEval():
+def test_human_eval(model_name):
+    import mii
+    import numpy
+    from transformers import pipeline
+    from human_eval.data import write_jsonl, read_problems
+    from human_eval.evaluation import evaluate_functional_correctness
 
-    def test(self, model_name):
-        import mii
-        from transformers import pipeline
-        from human_eval.data import write_jsonl, read_problems
+    def generate_base_completion(problem_prompt: str) -> str:
+        #output = base_pipe(problem_prompt, do_sample=True)
+        return base_pipe(problem_prompt, do_sample=True)[0]["generated_text"]
 
-        def generate_base_completion(problem_prompt: str) -> str:
-            #output = base_pipe(problem_prompt, do_sample=True)
-            return base_pipe(problem_prompt, do_sample=True)[0]["generated_text"]
+    def generate_mii_completion(problem_prompt: str) -> str:
+        #output = pipe(problem_prompt, max_new_tokens=256)
+        return mii_pipe(problem_prompt, max_new_tokens=256).generated_texts[0]
 
-        def generate_mii_completion(problem_prompt: str) -> str:
-            #output = pipe(problem_prompt, max_new_tokens=256)
-            return mii_pipe(problem_prompt, max_new_tokens=256).generated_texts[0]
+    def generate_samples(generation_function):
+        samples = [
+            dict(task_id=task_id, completion=generation_function(problems[task_id]["prompt"]))
+            for task_id in problems
+            for _ in range(num_samples_per_task)
+        ]
+        return samples
 
-        def generate_samples(generation_function):
-            samples = [
-                dict(task_id=task_id, completion=generation_function(problems[task_id]["prompt"]))
-                for task_id in problems
-                for _ in range(num_samples_per_task)
-            ]
-            return samples
+    print("Initializing HuggingFace Pipeline")
+    local_rank = os.getenv("LOCAL_RANK", "0")
+    device = torch.device(get_accelerator().device_name(local_rank))
+    base_pipe = pipeline(model=model_name, device=torch.device(get_accelerator().device_name(local_rank)), max_length=256)
 
-        print("Initializing HuggingFace Pipeline")
-        local_rank = os.getenv("LOCAL_RANK", "0")
-        device = torch.device(get_accelerator().device_name(local_rank))
-        base_pipe = pipeline(model=model_name, device=torch.device(get_accelerator().device_name(local_rank)), max_length=256)
+    print("Initializing DeepSpeed-MII Pipeline")
+    mii_pipe = mii.pipeline(model_name)
 
-        print("Initializing DeepSpeed-MII Pipeline")
-        mii_pipe = mii.pipeline(model_name)
+    print("Loading Problems")
+    #problems = read_problems("HumanEvalTest.jsonl.gz")
+    problems = read_problems("../../human-eval/data/HumanEvalTest.jsonl.gz") #TODO (lekurile): Add path to human-eval prompt file
 
-        print("Loading Problems")
-        #problems = read_problems("HumanEvalTest.jsonl.gz")
-        problems = read_problems("../../human-eval/data/HumanEvalTest.jsonl.gz") #TODO (lekurile): Add path to human-eval prompt file
+    num_samples_per_task = 1
+    #num_samples_per_task = 20
+    print("Generating Base Samples")
+    base_samples = generate_samples(generate_base_completion)
 
-        num_samples_per_task = 1
-        #num_samples_per_task = 20
-        print("Generating Samples")
-        base_samples = generate_samples(generate_base_completion)
-        mii_samples = generate_samples(generate_mii_completion)
+    print("Generating MII Samples")
+    mii_samples = generate_samples(generate_mii_completion)
 
-        # TODO (lekurile): Commented out json file writing
-        print("Writing Samples")
-        write_jsonl("base_samples.jsonl", base_samples)
-        write_jsonl("mii_samples.jsonl", mii_samples)
+    # TODO (lekurile): Remove out json file writing once test stood up
+    print("Writing Samples")
+    write_jsonl("base_samples.jsonl", base_samples)
+    write_jsonl("mii_samples.jsonl", mii_samples)
 
-        print("Evaluating Samples")
-        # TODO: use human-eval evaluate_functional_correctness function
-        # TODO: use code execution container
+    print("Evaluating Samples")
+    # TODO: use human-eval evaluate_functional_correctness function
+    # TODO: use code execution container
+    base_results = evaluate_functional_correctness("base_samples.jsonl")
+    mii_results = evaluate_functional_correctness("mii_samples.jsonl")
 
+    print(f"BASE RESULTS:\n{base_results}")
+    print(f"MII RESULTS:\n{mii_results}")
 
-        print("Executing Assertions")
+    print("Executing Assertions")
+    for key in base_results.keys():
+        assert numpy.allclose(base_results[key], mii_results[key], rtol=0.2), \
+            f"Base result: {base_results[key]}, MII result: {mii_results[key]}, outside of rtol."
+
+    print("Finishing Test")
 
 #---------------------------------------------------------------------------------------------------
