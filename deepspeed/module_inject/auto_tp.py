@@ -394,7 +394,8 @@ class AutoTP():
             return
         for param in [
                 "n_heads", "inner_dim", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads",
-                "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads", "num_kv_heads"
+                "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads", "num_kv_heads", "kv_n_heads",
+                "d_model"
         ]:
             if hasattr(child, param):
                 param_val = getattr(child, param)
@@ -459,7 +460,7 @@ class AutoTP():
         for name in kv_head_names:
             if hasattr(config, name):
                 num_kv_heads = getattr(config, name)
-                if num_kv_heads != None:
+                if num_kv_heads is not None:
                     break
         return num_kv_heads
 
