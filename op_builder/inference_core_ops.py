@@ -55,6 +55,9 @@ class InferenceCoreBuilder(CUDAOpBuilder):
     def get_prefix(self):
         ds_path = self.deepspeed_src_path("deepspeed")
         return "deepspeed" if os.path.isdir(ds_path) else ".."
+    
+    def nvcc_args(self):
+        return super().nvcc_args() + ["-DDEBUG_MODE"]
 
     def sources(self):
         sources = [

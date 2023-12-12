@@ -62,7 +62,14 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         self._linear_impl = CUDAWf6Af16Linear()
         self.M = self._config.out_channels
         self.K= self._config.max_tokens
+<<<<<<< HEAD
         self.group_size = 128
+=======
+        self.group_size = 128 
+        self.scale = torch.ones((self.M, self.K//self.group_size), dtype=torch.float16, device=get_accelerator().current_device())
+        self.weights_2bit = torch.empty((self.M * self.K * 2//8), dtype=torch.uint8, device=get_accelerator().current_device())
+        self.weights_4bit = torch.empty((self.M * self.K * 4//8), dtype=torch.uint8, device=get_accelerator().current_device())
+>>>>>>> kernel debug
 
         if is_gated(config.activation):
             self._is_gated = True
