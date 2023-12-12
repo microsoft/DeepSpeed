@@ -21,7 +21,10 @@ def move(tensor, device):
     if tensor.is_meta:
         return torch.empty_like(tensor, device=device)
     else:
-        return tensor.to(device)
+        # Using new tensors help in freeing memory (after split for example) was done before by calling clone().
+        # Using copy=True instead of clone() will help in case of cpu --> cpu.
+        # Otherwise to() will not create a new copy for the view of the full tensor, and it will not be de-referenced.
+        return tensor.to(device, copy=True)
 
 
 class ReplaceWithTensorSlicing:
@@ -323,7 +326,7 @@ class AutoTP():
             data = child.weight.data.split(get_shard_size_list(
                 weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size),
                                            dim=1)
-            data_dc = move(data[mp_replace.gpu_index], get_accelerator().current_device_name()).clone().detach()
+            data_dc = move(data[mp_replace.gpu_index], get_accelerator().current_device_name()).detach()
             del data
 
             setattr(child, "replaced", True)
@@ -356,7 +359,7 @@ class AutoTP():
             else:
                 data = child.weight.data.split(get_shard_size_list(weight_shape[0], self.mp_size),
                                                dim=1 if self.conv_linear_layer else 0)
-                data_dc = move(data[mp_replace.gpu_index], get_accelerator().current_device_name()).clone().detach()
+                data_dc = move(data[mp_replace.gpu_index], get_accelerator().current_device_name()).detach()
                 del data
 
                 if child.bias is not None:
