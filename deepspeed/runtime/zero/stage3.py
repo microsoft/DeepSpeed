@@ -1215,7 +1215,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     @instrument_w_nvtx
     def __avg_scatter_contiguous_grads(self, buffer_to_reduce: Tensor) -> List[Tensor]:
         dtype = buffer_to_reduce.dtype
-        if self.communication_data_type == self.dtype:
+        if self.communication_data_type != dtype:
             buffer_to_reduce = buffer_to_reduce.to(self.communication_data_type)
         if self.postscale_gradients and self.gradient_predivide_factor != 1.0:
             buffer_to_reduce = buffer_to_reduce.div_(self.gradient_predivide_factor)
@@ -1984,7 +1984,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # warn user about caching allocator flushes
         memory_stats = get_accelerator().memory_stats()
         alloc_retries = memory_stats.get("num_alloc_retries")
-        if alloc_retries == None:
+        if alloc_retries is None:
             alloc_retries = 0
         if alloc_retries > self.n_caching_allocator_flushes:
             if dist.get_rank() == 0:
@@ -2541,7 +2541,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # when use loading checkpoint serial, after finish loading, we need to
         # delete the temp state_dict_list variable to save memory, then trigger
         # the next rank's loading
-        if load_serial != None:
+        if load_serial is not None:
             load_serial += 1
             rank = dist.get_rank(group=self.dp_process_group)
             local_rank = dist.get_local_rank()
