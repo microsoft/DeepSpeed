@@ -1183,9 +1183,15 @@ class DeepSpeedEngine(Module):
         # data type checks
         elif model_dtype == grad_accum_dtype:
             if model_dtype == torch.bfloat16:
-                raise NotImplementedError(
-                    "Bfloat16 wrapper must use a gradient accumulation type of fp32, enable ZeRO to use Bfloat16 gradient accumulation"
-                )
+                if self.pipeline_parallelism:
+                    logger.warning(
+                        "**** BF16 gradient accumulation is not safe numerically with large number of accumulation steps, proceed with caution *****"
+                    )
+                    return BFLOAT16
+                else:
+                    raise NotImplementedError(
+                        "Bfloat16 wrapper must use a gradient accumulation type of fp32, enable ZeRO to use Bfloat16 gradient accumulation"
+                    )
             if model_dtype == torch.float16:
                 return FP16
             # else optimizer_wrapper = None
@@ -1448,6 +1454,7 @@ class DeepSpeedEngine(Module):
                                    allgather_bucket_size=self.zero_allgather_bucket_size(),
                                    dp_process_group=self.seq_data_parallel_group,
                                    timers=timers,
+                                   grad_acc_dtype=self.get_data_types()[1],                                   
                                    graph_harvesting=self.graph_harvesting())
 
         return optimizer
