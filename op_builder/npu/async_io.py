@@ -6,10 +6,15 @@
 import distutils.spawn
 import subprocess
 
-from .builder import OpBuilder
+from .builder import NPUOpBuilder
+
+try:
+    import torch_npu
+except ImportError as e:
+    pass
 
 
-class AsyncIOBuilder(OpBuilder):
+class AsyncIOBuilder(NPUOpBuilder):
     BUILD_VAR = "DS_BUILD_AIO"
     NAME = "async_io"
 
