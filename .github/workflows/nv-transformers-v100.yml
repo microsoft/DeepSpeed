@@ -29,7 +29,7 @@ jobs:
       - name: Install pytorch
         run: |
           # use the same pytorch version as transformers CI
-          pip install -U --cache-dir $TORCH_CACHE torch --index-url https://download.pytorch.org/whl/cu118
+          pip install -U --cache-dir $TORCH_CACHE torch torchvision --index-url https://download.pytorch.org/whl/cu118
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -38,9 +38,13 @@ jobs:
           git clone https://github.com/huggingface/transformers
           cd transformers
           # if needed switch to the last known good SHA until transformers@master is fixed
-          git checkout e7e9261a2
+          #git checkout e7e9261a2
           git rev-parse --short HEAD
-          pip install .
+          pip install .[testing]
+          # find reqs used in ds integration tests
+          find examples/pytorch -regextype posix-egrep -regex '.*(language-modeling|question-answering|summarization|image-classification|text-classification|translation).*/requirements.txt' -exec grep -v 'torch' {} \; | xargs -I {} pip install --upgrade {}
+          # force protobuf version due to issues
+          pip install "protobuf<4.21.0"
 
       - name: Install deepspeed
         run: |
@@ -55,10 +59,4 @@ jobs:
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd transformers
-          pip install .[testing]
-          # find reqs used in ds integration tests
-          find examples/pytorch -regextype posix-egrep -regex '.*(language-modeling|question-answering|summarization|image-classification|text-classification|translation).*/requirements.txt' -exec grep -v 'torch' {} \; | xargs -I {} pip install --upgrade {}
-          # force protobuf version due to issues
-          pip install "protobuf<4.21.0"
-          pip list
           WANDB_DISABLED=true RUN_SLOW=1 pytest $PYTEST_OPTS tests/deepspeed
