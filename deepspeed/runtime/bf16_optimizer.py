@@ -37,13 +37,18 @@ class BF16_Optimizer(ZeROOptimizer):
                  norm_type=2,
                  allgather_bucket_size=5000000000,
                  dp_process_group=None,
-                 timers=None):
+                 timers=None,
+                 grad_acc_dtype=None):
         super().__init__()
         see_memory_usage('begin bf16_optimizer', force=True)
         self.timers = timers
         self.optimizer = init_optimizer
         self.param_names = param_names
         self.using_real_optimizer = not isinstance(self.optimizer, DummyOptim)
+
+        assert grad_acc_dtype in [torch.float32, torch.bfloat16
+                                  ], f"BF16Optimizer: Unsupported gradient accumulation data type: {grad_acc_dtype}"
+        self.grad_acc_dtype = grad_acc_dtype
 
         self.clip_grad = clip_grad
         self.norm_type = norm_type
@@ -75,7 +80,6 @@ class BF16_Optimizer(ZeROOptimizer):
         self.fp32_groups_gradient_flat_partition = []
         self.fp32_groups_has_gradients = []
 
-        self.step_count = 0
         self.group_paddings = []
 
         if self.using_real_optimizer:
@@ -120,7 +124,8 @@ class BF16_Optimizer(ZeROOptimizer):
             num_elem_list = [t.numel() for t in self.bf16_groups[i]]
 
             # create fp32 gradients
-            self.fp32_groups_gradients_flat.append(torch.zeros_like(self.bf16_groups_flat[i], dtype=torch.float32))
+            self.fp32_groups_gradients_flat.append(
+                torch.zeros_like(self.bf16_groups_flat[i], dtype=self.grad_acc_dtype))
 
             # track individual fp32 gradients for entire model
             fp32_gradients = self._split_flat_tensor(flat_tensor=self.fp32_groups_gradients_flat[i],
@@ -205,9 +210,15 @@ class BF16_Optimizer(ZeROOptimizer):
         """
         for param_partition, grad_partition in zip(self.fp32_groups_flat_partition,
                                                    self.fp32_groups_gradient_flat_partition):
-            param_partition.grad = grad_partition
+            # In case of grad acc dtype different than FP32, need to cast to high precision.
+            param_partition.grad = grad_partition.to(
+                param_partition.dtype) if grad_partition.dtype != param_partition.dtype else grad_partition
 
         self.optimizer.step()
+
+        if self.grad_acc_dtype is not torch.float32:
+            for param_partition in self.fp32_groups_flat_partition:
+                param_partition.grad = None
 
         self.clear_hp_grads()
 
@@ -252,7 +263,6 @@ class BF16_Optimizer(ZeROOptimizer):
         self.update_lp_params()
 
         self.clear_hp_grads()
-        self.step_count += 1
 
     def backward(self, loss, update_hp_grads=True, clear_lp_grads=False, **bwd_kwargs):
         """Perform a backward pass and copy the low-precision gradients to the
@@ -322,7 +332,8 @@ class BF16_Optimizer(ZeROOptimizer):
             # if i == 0:
             #     print_rank_0(f'{fp32_partition[:10]=}', force=True)
 
-        all_gather_dp_groups(partitioned_param_groups=self.bf16_partitioned_groups,
+        all_gather_dp_groups(groups_flat=self.bf16_groups_flat,
+                             partitioned_param_groups=self.bf16_partitioned_groups,
                              dp_process_group=self.real_dp_process_group,
                              start_alignment_factor=self.nccl_start_alignment_factor,
                              allgather_bucket_size=self.allgather_bucket_size)

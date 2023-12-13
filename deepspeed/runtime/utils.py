@@ -14,7 +14,6 @@ import os
 import psutil
 import gc
 from math import sqrt
-from bisect import bisect_left
 from packaging import version as pkg_version
 
 import torch
@@ -570,67 +569,43 @@ def partition_uniform(num_items, num_parts):
     return parts
 
 
-def _lprobe(weights, num_parts, bottleneck):
-    num_items = len(weights)
-    total_weight = weights[-1]
+def partition_balanced(weights, num_parts):
+    """
+    use dynamic programming solve `The Linear Partition Problem`.
+    see https://www8.cs.umu.se/kurser/TDBAfl/VT06/algorithms/BOOK/BOOK2/NODE45.HTM
+    """
+    import numpy as np
+    n = len(weights)
+    m = num_parts
 
-    # initialize partitioning
-    parts = [0] * (num_parts + 1)
-    for p in range(1, num_parts + 1):
-        parts[p] = num_items
+    if n <= m:
+        return partition_uniform(n, m)
 
-    bsum = bottleneck  # running sum of target weight for pth partition
-    chunksize = num_items // num_parts
-    step = chunksize
-    for p in range(1, num_parts):
-        # Jump to the next bucket
-        while (step < num_items) and (weights[step] < bsum):
-            step += chunksize
+    dp_max = np.full((n + 1, m + 1), np.inf)
+    dp_min = np.full((n + 1, m + 1), np.inf)
+    dp_cost = np.full((n + 1, m + 1), np.inf)
+    position = np.zeros((n + 1, m + 1), dtype=int)
+    prefix_sum = np.zeros((n + 1))
+    prefix_sum[1:] = np.cumsum(weights)
 
-        # Find the end index of partition p
-        parts[p] = bisect_left(weights, bsum, lo=step - chunksize, hi=min(step, num_items))
-        # Nothing more to partition, return early
-        if parts[p] == num_items:
-            # See if the current partition is overweight.
-            part_size = weights[-1] - weights[parts[p - 1]]
-            return parts, part_size < bottleneck
+    dp_max[0, 0] = 0
+    dp_cost[0, 0] = 0
+    for i in range(1, n + 1):
+        for j in range(1, min(i, m) + 1):
+            for k in range(i):
+                max_sum = max(dp_max[k, j - 1], prefix_sum[i] - prefix_sum[k])
+                min_sum = min(dp_min[k, j - 1], prefix_sum[i] - prefix_sum[k])
+                cost = max_sum - min_sum
+                if dp_cost[i, j] >= cost:
+                    dp_cost[i, j] = cost
+                    dp_max[i, j] = max_sum
+                    dp_min[i, j] = min_sum
+                    position[i, j] = k
 
-        # Next partition target
-        bsum = weights[parts[p] - 1] + bottleneck
-
-    return parts, bsum >= total_weight
-
-
-def _rb_partition_balanced(weights, num_parts, eps):
-    total_weight = weights[-1]
-    lower = total_weight / num_parts  # best case heaviest partition
-    upper = total_weight  # worst case heaviest partition
-
-    # Do a binary search for the best partitioning
-    while upper > lower + eps:
-        mid = lower + ((upper - lower) / 2)
-        parts, success = _lprobe(weights, num_parts, mid)
-        if success:
-            upper = mid
-        else:
-            lower = mid + eps
-    return upper
-
-
-def partition_balanced(weights, num_parts, eps=1e-3):
-    num_items = len(weights)
-    # First check for the trivial edge case
-    if num_items <= num_parts:
-        return partition_uniform(num_items, num_parts)
-
-    weights_ = prefix_sum_inc(weights)
-
-    # Find the smallest bottleneck (weight of heaviest partition)
-    bottleneck = _rb_partition_balanced(weights_, num_parts, eps=eps)
-
-    # Now compute that partitioning
-    parts, success = _lprobe(weights_, num_parts, bottleneck)
-    assert success
+    parts = [n]
+    for i in reversed(range(1, m + 1)):
+        parts.append(position[parts[-1], i])
+    parts.reverse()
 
     return parts
 
@@ -643,10 +618,10 @@ class PartitionedTensor:
         self.group = group
         self.num_parts = dist.get_world_size(group=self.group)
         self.rank = dist.get_rank(group=self.group)
-
         self.orig_size = list(tensor.size())
         self.orig_device = tensor.device
         self.local_data, self.partition = self._partition_tensor(tensor)
+        self.even_split = tensor.numel() % self.num_parts == 0
 
     @classmethod
     def from_meta(cls, meta, local_part, group, device=get_accelerator().device_name()):
@@ -689,23 +664,16 @@ class PartitionedTensor:
         # Allocate the full tensor as a flat buffer.
         full_numel = prod(self.full_size())
         flat_tensor = torch.zeros([full_numel], dtype=self.local_data.dtype, device=device)
-
-        # Prepare all-gather buffer
-        partition_tensors = []
-        for part_id in range(self.num_parts):
-            part_size = self.partition[part_id + 1] - self.partition[part_id]
-            buf = flat_tensor.narrow(0, start=self.partition[part_id], length=part_size)
-            if part_id == self.rank:
-                buf.copy_(self.local_data)
-            partition_tensors.append(buf)
-
-        # Collect the full tensor
-        dist.all_gather(partition_tensors, partition_tensors[self.rank], group=self.group)
-
-        for i in range(len(partition_tensors)):
-            partition_tensors[i].data = torch.zeros(1)
-            partition_tensors[i] = None
-
+        if self.even_split:
+            # Collect the full tensor
+            dist.all_gather_into_tensor(flat_tensor, self.local_data, group=self.group)
+        else:
+            for part_id in range(self.num_parts):
+                part_size = self.partition[part_id + 1] - self.partition[part_id]
+                buf = flat_tensor.narrow(0, start=self.partition[part_id], length=part_size)
+                if part_id == self.rank:
+                    buf.copy_(self.local_data)
+                dist.broadcast(buf, part_id, self.group)
         return flat_tensor.view(self.full_size()).clone().detach()
 
     def to_meta(self):
@@ -937,7 +905,22 @@ def align_dense_tensors(tensor_list, alignment):
     return padded_tensor_list
 
 
-def all_gather_dp_groups(partitioned_param_groups, dp_process_group, start_alignment_factor, allgather_bucket_size):
+def all_gather_into_tensor_dp_groups(groups_flat, partitioned_param_groups, dp_process_group):
+    for group_id, (group_flat, partitioned_params) in enumerate(zip(groups_flat, partitioned_param_groups)):
+        partition_id = dist.get_rank(group=dp_process_group[group_id])
+        dp_world_size = dist.get_world_size(group=dp_process_group[group_id])
+        if dp_world_size == 1:
+            # no groups share optimizer states
+            # pipeline parallel with bf16 will default call this even if dp size = 1.
+            continue
+        dist.all_gather_into_tensor(group_flat, partitioned_params[partition_id], dp_process_group[group_id])
+
+
+def all_gather_dp_groups(groups_flat, partitioned_param_groups, dp_process_group, start_alignment_factor,
+                         allgather_bucket_size):
+    if dist.has_all_gather_into_tensor():
+        return all_gather_into_tensor_dp_groups(groups_flat, partitioned_param_groups, dp_process_group)
+
     for group_id, partitioned_params in enumerate(partitioned_param_groups):
         # Sequential AllGather Best of both worlds
         partition_id = dist.get_rank(group=dp_process_group[group_id])
