@@ -61,10 +61,14 @@ class QuantizedWf6Af16Linear(DSLinearBase):
 
         self._linear_impl = CUDAWf6Af16Linear()
         self.M = self._config.out_channels
+<<<<<<< HEAD
         self.K= self._config.max_tokens
 <<<<<<< HEAD
         self.group_size = 128
 =======
+=======
+        self.K= self._config.in_channels
+>>>>>>> Fix kernel error
         self.group_size = 128 
         self.scale = torch.ones((self.M, self.K//self.group_size), dtype=torch.float16, device=get_accelerator().current_device())
         self.weights_2bit = torch.empty((self.M * self.K * 2//8), dtype=torch.uint8, device=get_accelerator().current_device())
@@ -123,7 +127,6 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         output = empty_from(self._output, (hidden_states.shape[0], self._config.out_channels))
         N = hidden_states.shape[0]
         assert (N in [2**i for i in range(3,7)]) or N % 128 == 0, f"accumulated seq-len {N} is not supported"
-        assert self.group_size % 64 == 0, f"group size {self.group_size} is not supported"
 
         if self._is_gated:
             staging_output = empty_from(self._double_buffer, (hidden_states.shape[0], self._config.out_channels * 2))
