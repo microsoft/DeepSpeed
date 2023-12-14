@@ -17,13 +17,12 @@ class CUDAWf6Af16Linear(DSKernelBase):
 
     Performs z = x @ y
     """
-    supported_dtypes = [DtypeEnum.fp16]
 
     def __init__(self):
         self.inf_module = InferenceCoreBuilder().load()
         self.inf_module.create_handle()
         self.kernel = self.inf_module.cuda_wf6af16_linear
-    
+
 
     def __call__(self, output: torch.Tensor, hidden_states: torch.Tensor, weights: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
         """

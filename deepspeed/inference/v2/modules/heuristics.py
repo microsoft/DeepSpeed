@@ -91,6 +91,8 @@ def instantiate_linear(linear_config: DSLinearConfig, engine_config: RaggedInfer
     else:
         # Currently, we only support ``quantized_wf6af16_linear``.
         config = ConfigBundle(name="quantized_wf6af16_linear", config=linear_config)
+    # For debugging perpose, we force to use `quantized_wf6af16_linear`. It will be removed later.
+    config = ConfigBundle(name="quantized_wf6af16_linear", config=linear_config)
     return DSLinearRegistry.instantiate_config(config)
 
 

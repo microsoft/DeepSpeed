@@ -57,7 +57,7 @@ class QuantizedWf6Af16Linear(DSLinearBase):
     def __init__(self, config: DSLinearConfig, implementation_config: Dict[str, Any]) -> None:
         super().__init__(config, implementation_config)
 
-        self._linear_impl = CUDAWf6Af16Linear(self._config.input_dtype)
+        self._linear_impl = CUDAWf6Af16Linear()
         self.scale = 1.0 # TODO: how to get the scale of quantization?
 
         if is_gated(config.activation):
@@ -81,6 +81,10 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         Parameters:
             param (torch.Tensor): Weight or bias tensor.
         """
+        # TODO: extract the scale from the param, and split the param into 4-bit and 2-bit tensors.
+        # It expects that the scale is already an attribute attached to the param tensor when loading the checkpoint.
+        # This assumption requires the the customized quantization behavior that saves the scale as an attribute of the
+        # corresponding weight tensor.
         ...
 
     def forward(self, hidden_states: torch.Tensor, w: torch.Tensor, b: Optional[torch.Tensor] = None) -> torch.Tensor:

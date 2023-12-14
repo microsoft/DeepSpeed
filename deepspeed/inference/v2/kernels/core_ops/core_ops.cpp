@@ -8,6 +8,7 @@
 
 #include "bias_activation.h"
 #include "blas.h"
+#include "cuda_linear_kernels.h"
 #include "gated_activation_kernels.h"
 #include "layer_norm.h"
 #include "rms_norm.h"
