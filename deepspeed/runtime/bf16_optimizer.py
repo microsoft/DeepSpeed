@@ -38,7 +38,7 @@ class BF16_Optimizer(ZeROOptimizer):
                  allgather_bucket_size=5000000000,
                  dp_process_group=None,
                  timers=None,
-                 grad_acc_dtype=None,                 
+                 grad_acc_dtype=None,
                  graph_harvesting=False):
         super().__init__()
         see_memory_usage('begin bf16_optimizer', force=True)
