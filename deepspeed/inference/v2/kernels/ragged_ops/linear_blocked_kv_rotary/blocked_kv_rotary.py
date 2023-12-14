@@ -18,7 +18,7 @@ class BlockedRotaryEmbeddings(DSKernelBase):
     """
 
     supported_dtypes = [DtypeEnum.fp16, DtypeEnum.bf16]
-    supported_head_sizes = [64, 128]
+    supported_head_sizes = [64, 80, 128]
     supported_q_ratios = [1, 2, 4, 5, 8, 16, 29, 35, 36, 71]
 
     def __init__(self,

@@ -17,7 +17,7 @@ def test_single_sequence_single_block(n_tokens: int, history_size: int):
     """
     Validate that the copy works correctly
     """
-    head_size = 64
+    head_size = 80
     n_heads_q = 16
     n_heads_kv = 16
     kv_block_size = 64
