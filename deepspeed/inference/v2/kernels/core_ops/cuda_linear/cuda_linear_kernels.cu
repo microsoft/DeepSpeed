@@ -37,7 +37,6 @@ torch::Tensor Launch_QuantGEMM(torch::Tensor Weight1,  // 2bit
     auto Group_Size = K_Global / Scales.size(1);
 
     auto workspace_size = M_Global * N_Global * Split_K;
-    TORCH_CHECK(Split_K == 1, "Does not support Split_K != 1");
     // auto workspace = torch::empty({workspace_size}, torch::kFloat16);
 
     auto status = QuantGEMM_API(at::cuda::getCurrentCUDAStream(),
