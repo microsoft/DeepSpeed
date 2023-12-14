@@ -6,6 +6,11 @@
 import pytest
 import subprocess
 
+from deepspeed.accelerator import get_accelerator
+
+if not get_accelerator().is_available():
+    pytest.skip("only supported in accelerator environments.")
+
 user_arg_test_script = """import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--prompt", type=str)
