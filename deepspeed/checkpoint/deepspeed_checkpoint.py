@@ -235,8 +235,6 @@ class DeepSpeedCheckpoint(object):
         layers_per_pp = 1
         if self.pp_degree > 0:
             layers_per_pp = len(transformer_layer_keys) // self.pp_degree
-        #if layers_per_pp == 0:
-        #    layers_per_pp = 1
         #print(f"{transformer_layer_keys} {layers_per_pp}")
         for key_index, layer_key in enumerate(transformer_layer_keys):
             pp_index = key_index // layers_per_pp
@@ -252,7 +250,7 @@ class DeepSpeedCheckpoint(object):
 
     def _sanity_check(self):
         assert len(self.mp_rank_files) % self.tp_degree == 0
-        #assert self.zero_checkpoint.num_files % (self.pp_degree * self.tp_degree) == 0
+        assert self.zero_checkpoint.num_files % (self.pp_degree * self.tp_degree) == 0
         assert self.zero_checkpoint.num_files % (self.tp_degree) == 0
         # XXX: fix me - isn't always the case
         # only true with  --pp-partition-method 'type:transformer|embedding' \
