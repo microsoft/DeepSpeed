@@ -8,11 +8,6 @@ import subprocess
 
 from .builder import NPUOpBuilder
 
-try:
-    import torch_npu
-except ImportError as e:
-    pass
-
 
 class AsyncIOBuilder(NPUOpBuilder):
     BUILD_VAR = "DS_BUILD_AIO"
