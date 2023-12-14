@@ -17,6 +17,7 @@ from .model_implementations import (
     OPTPolicy,
     Llama2Policy,
     MistralPolicy,
+    FalconPolicy,
 )
 from .model_implementations.inference_policy_base import POLICIES, InferenceV2Policy
 from .model_implementations.flat_model_helpers import make_metadata_filename, ModelMetadata
@@ -91,6 +92,10 @@ def build_hf_engine(path: str,
         # get the policy
         # TODO: generalize this to other models
         if model_config.model_type == "opt":
+            if not model_config.do_layer_norm_before:
+                raise ValueError(
+                    "Detected OPT-350m model. This model is not currently supported. If this is not the 350m model, please open an issue: https://github.com/microsoft/DeepSpeed-MII/issues"
+                )
             policy = OPTPolicy(model_config, checkpoint_engine=checkpoint_engine)
         elif model_config.model_type == "llama":
             policy = Llama2Policy(model_config, checkpoint_engine=checkpoint_engine)
@@ -100,6 +105,8 @@ def build_hf_engine(path: str,
             assert version.parse(transformers.__version__) >= version.parse("4.34.0"), \
                 f"Mistral requires transformers >= 4.34.0, you have version {transformers.__version__}"
             policy = MistralPolicy(model_config, checkpoint_engine=checkpoint_engine)
+        elif model_config.model_type == "falcon":
+            policy = FalconPolicy(model_config, checkpoint_engine=checkpoint_engine)
         else:
             raise ValueError(f"Unsupported model type {model_config.model_type}")
 
