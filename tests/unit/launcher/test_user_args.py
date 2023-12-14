@@ -9,7 +9,7 @@ import subprocess
 from deepspeed.accelerator import get_accelerator
 
 if not get_accelerator().is_available():
-    pytest.skip("only supported in accelerator environments.")
+    pytest.skip("only supported in accelerator environments.", allow_module_level=True)
 
 user_arg_test_script = """import argparse
 parser = argparse.ArgumentParser()
