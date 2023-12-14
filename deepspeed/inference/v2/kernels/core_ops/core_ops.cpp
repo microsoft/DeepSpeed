@@ -12,6 +12,7 @@
 #include "gated_activation_kernels.h"
 #include "layer_norm.h"
 #include "rms_norm.h"
+#include "cuda_linear_kernels.h"
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
