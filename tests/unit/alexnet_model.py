@@ -10,7 +10,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import deepspeed
 import deepspeed.comm as dist
-import deepspeed.runtime.utils as ds_utils, required_torch_version
+import deepspeed.runtime.utils as ds_utils
+from deepspeed.runtime.utils import required_torch_version
 from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.pipe.module import PipelineModule, LayerSpec
 
