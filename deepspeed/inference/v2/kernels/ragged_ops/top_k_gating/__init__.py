@@ -3,4 +3,4 @@
 
 # DeepSpeed Team
 
-from .top_1_gating import RaggedTop1Gating
+from .top_k_gating import RaggedTopKGating

@@ -73,8 +73,8 @@ class RaggedOpsBuilder(CUDAOpBuilder):
             "inference/v2/kernels/ragged_ops/moe_gather/moe_gather.cpp",
             "inference/v2/kernels/ragged_ops/moe_gather/moe_gather.cu",
             "inference/v2/kernels/ragged_ops/ragged_helpers/ragged_kernel_helpers.cpp",
-            "inference/v2/kernels/ragged_ops/top_1_gating/top_1_gating.cpp",
-            "inference/v2/kernels/ragged_ops/top_1_gating/top_1_gating.cu",
+            "inference/v2/kernels/ragged_ops/top_k_gating/top_k_gating.cpp",
+            "inference/v2/kernels/ragged_ops/top_k_gating/top_k_gating.cu",
         ]
 
         prefix = self.get_prefix()
@@ -106,7 +106,7 @@ class RaggedOpsBuilder(CUDAOpBuilder):
             'inference/v2/kernels/ragged_ops/moe_gather',
             'inference/v2/kernels/ragged_ops/moe_scatter',
             'inference/v2/kernels/ragged_ops/ragged_helpers',
-            'inference/v2/kernels/ragged_ops/top_1_gating',
+            'inference/v2/kernels/ragged_ops/top_k_gating',
         ]
 
         prefix = self.get_prefix()
