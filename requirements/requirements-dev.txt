@@ -1,7 +1,7 @@
 accelerate
 clang-format==16.0.2
 coverage
-deepspeed-kernels
+deepspeed-kernels ; sys_platform == 'linux'
 docutils<0.18
 future
 importlib-metadata>=4
@@ -16,5 +16,5 @@ sphinx
 sphinx-rtd-theme
 tensorboard
 torchvision
-transformers
+transformers>=4.32.1
 wandb
