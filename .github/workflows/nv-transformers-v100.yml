@@ -59,4 +59,4 @@ jobs:
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd transformers
-          WANDB_DISABLED=true RUN_SLOW=1 pytest $PYTEST_OPTS tests/deepspeed -k "not zero_to_fp32_zero3_qa_mpnet and not zero_to_fp32_zero3_mlm_funnel and not zero_to_fp32_zero3_trans_m2m_100 and not zero_to_fp32_zero3_mlm_flaubert and not zero_to_fp32_zero3_trans_marian and not zero_to_fp32_zero3_clm_prophetnet and not zero_to_fp32_zero3_clas_bert and not zero_to_fp32_zero3_trans_fsmt"
+          CUDA_LAUNCH_BLOCKING=1 WANDB_DISABLED=true RUN_SLOW=1 pytest $PYTEST_OPTS tests/deepspeed -k "not zero_to_fp32_zero3_qa_mpnet and not zero_to_fp32_zero3_mlm_funnel and not zero_to_fp32_zero3_trans_m2m_100 and not zero_to_fp32_zero3_mlm_flaubert and not zero_to_fp32_zero3_trans_marian and not zero_to_fp32_zero3_clm_prophetnet and not zero_to_fp32_zero3_clas_bert and not zero_to_fp32_zero3_trans_fsmt"
