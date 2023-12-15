@@ -251,6 +251,7 @@ class PartitionedParameterCoordinator:
     Fetching, prefetching, and releasing parameters
     """
 
+    @torch.compiler.disable
     @instrument_w_nvtx
     @torch.no_grad()
     def fetch_sub_module(self, current_submodule: Module, forward: bool) -> None:
@@ -459,6 +460,7 @@ class PartitionedParameterCoordinator:
             if swap_persisted_params:
                 swap_persisted_params[0].nvme_swapper.remove_partition_and_release_buffers(swap_persisted_params)
 
+    @torch.compiler.disable
     @instrument_w_nvtx
     def __release_param(self, param: Parameter, backward: bool) -> None:
         if param.ds_status == ZeroParamStatus.AVAILABLE and not param.ds_active_sub_modules:

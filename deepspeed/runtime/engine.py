@@ -90,6 +90,7 @@ from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoin
 
 from .pipe.module import PipelineModule
 from .utils import get_ma_status
+from .compile_helper import CompiledModuleWrapper
 from ..ops.adam import FusedAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE
@@ -189,6 +190,7 @@ class DeepSpeedEngine(Module):
         config=None,
         config_class=None,
         dont_change_device=False,
+        compile=False,
     ):
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
@@ -358,6 +360,9 @@ class DeepSpeedEngine(Module):
         # Use torch (un)flatten ops
         self.flatten = _flatten_dense_tensors
         self.unflatten = _unflatten_dense_tensors
+
+        if compile:
+            self._set_client_model(CompiledModuleWrapper(self.module))
 
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
