@@ -26,7 +26,7 @@ class MixtralTransformerContainer(LayerContainer):
         "self_attn.k_proj.weight": "qkv_w.k_params",
         "self_attn.v_proj.weight": "qkv_w.v_params",
         "self_attn.o_proj.weight": "attn_out_w.params",
-        "moe_gate.weight": "moe_gate.params",
+        "block_sparse_moe.gate.weight": "moe_gate.params",
         "block_sparse_moe.experts.*.w1.weight": "moe_mlp_1.gating_experts",
         "block_sparse_moe.experts.*.w3.weight": "moe_mlp_1.up_experts",
         "block_sparse_moe.experts.*.w2.weight": "moe_mlp_2.experts",
