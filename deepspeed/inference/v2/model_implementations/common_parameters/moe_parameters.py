@@ -75,4 +75,4 @@ class UnfusedMoEGatedMLPParameter(ParameterBase):
             transposed_experts.append(fused_expert)
 
         stacked_experts = torch.stack(transposed_experts, dim=0)
-        return self.inference_model.transform_moe_mlp_2_param(stacked_experts)
+        return self.inference_model.transform_moe_mlp_1_param(stacked_experts)

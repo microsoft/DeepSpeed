@@ -36,7 +36,7 @@ class MixtralTransformerContainer(LayerContainer):
 class MixtralNonTransformerContainer(LayerContainer):
 
     word_emb: EmbeddingParameter
-    word_unembed: EmbeddingParameter
+    word_unembed: UnembedParameter
     final_norm: NormParameter
 
     PARAM_MAPPING = {
