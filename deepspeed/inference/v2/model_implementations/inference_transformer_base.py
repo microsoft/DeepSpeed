@@ -552,7 +552,7 @@ class DSMoETransformerModelBase(DSTransformerModelBase):
             model_dim=self.model_dim,
             intermediate_features=sharded_dim,
             activation=self.mlp_activation_fn,
-            n_experts=self.num_experts,
+            n_experts=self.n_experts,
             top_k=self.n_top_k,
             input_dtype=self.activation_dtype,
             output_dtype=self.activation_dtype,

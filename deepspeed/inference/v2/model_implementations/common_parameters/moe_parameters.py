@@ -33,7 +33,7 @@ class UnfusedMoEMLP1Parameter(ParameterBase):
     and need to be joined into a single group.
     """
 
-    experts: ParamList("num_experts")  # noqa: F821
+    experts: ParamList("n_experts")  # noqa: F821
 
     def finalize(self) -> torch.Tensor:
         stacked_experts = torch.stack([p for p in self.experts], dim=0)
@@ -46,7 +46,7 @@ class UnfusedMoEMLP2Parameter(ParameterBase):
     and need to be joined into a single group.
     """
 
-    experts: ParamList("num_experts")  # noqa: F821
+    experts: ParamList("n_experts")  # noqa: F821
 
     def finalize(self) -> torch.Tensor:
         stacked_experts = torch.stack([p for p in self.experts], dim=0)
@@ -62,9 +62,9 @@ class UnfusedMoEGatedMLPParameter(ParameterBase):
     documentation on the layout of the parameters.
     """
 
-    gating_experts: ParamList("num_experts")  # noqa: F821
+    gating_experts: ParamList("n_experts")  # noqa: F821
 
-    up_experts: ParamList("num_experts")  # noqa: F821
+    up_experts: ParamList("n_experts")  # noqa: F821
 
     def finalize(self) -> torch.Tensor:
         transposed_experts = []
