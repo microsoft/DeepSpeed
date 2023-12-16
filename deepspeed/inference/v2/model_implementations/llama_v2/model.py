@@ -112,7 +112,7 @@ class Llama2InferenceModel(DSTransformerModelBase):
         """
         softmax_scale = 1.0 / (self.head_size**0.5)
 
-        rotary_config = RotateHalfConfig(theta_base=self._config.theta_base)
+        rotary_config = RotateHalfConfig(theta_base=self._config.rope_theta)
 
         attn_config = DSSelfAttentionConfig(max_tokens=self._engine_config.state_manager.max_ragged_batch_size,
                                             n_heads_q=self.n_heads_q_local,
