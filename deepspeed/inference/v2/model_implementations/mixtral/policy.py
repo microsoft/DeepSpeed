@@ -7,7 +7,7 @@ from typing import Any
 
 from ...config_v2 import RaggedInferenceEngineConfig
 from ..inference_policy_base import ContainerMap, InferenceV2Policy
-from .container import MixtralLayerContainer, MixtralNonTransformerContainer
+from .container import MixtralTransformerContainer, MixtralNonTransformerContainer
 from .model import MixtralInferenceModel
 
 
@@ -20,7 +20,7 @@ class MixtralPolicy(InferenceV2Policy):
 
         map = ContainerMap()
 
-        transformer_containers = [MixtralLayerContainer(self.model) for _ in range(self.model.num_layers)]
+        transformer_containers = [MixtralTransformerContainer(self.model) for _ in range(self.model.num_layers)]
 
         map.set_transformer_params(['model.layers'], transformer_containers)
 

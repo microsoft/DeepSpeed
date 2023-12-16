@@ -9,19 +9,19 @@ from deepspeed.inference.v2.model_implementations.common_parameters import *
 from deepspeed.inference.v2.model_implementations.layer_container_base import LayerContainer
 
 
-class MixtralLayerContainer(LayerContainer):
+class MixtralTransformerContainer(LayerContainer):
 
     qkv_w: UnfusedQKVParameter
     attn_out_w: AttentionOutputParameter
     moe_gate: MoEGatingWeightParameter
     moe_mlp_1: UnfusedMoEGatedMLPParameter
     moe_mlp_2: UnfusedMoEMLP2Parameter
-    attn_norm_gamm: NormParameter
+    attn_norm_gamma: NormParameter
     mlp_norm_gamma: NormParameter
 
     PARAM_MAPPING = {
-        "input_layernorm.weight": "attn_norm_gamma.param",
-        "post_attention_layernorm.weight": "mlp_norm_gamma.param",
+        "input_layernorm.weight": "attn_norm_gamma.params",
+        "post_attention_layernorm.weight": "mlp_norm_gamma.params",
         "self_attn.q_proj.weight": "qkv_w.q_params",
         "self_attn.k_proj.weight": "qkv_w.k_params",
         "self_attn.v_proj.weight": "qkv_w.v_params",
