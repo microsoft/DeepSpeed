@@ -449,6 +449,8 @@ def get_pipeline_config(param_dict):
         "partition": "best",
         "seed_layers": False,
         "activation_checkpoint_interval": 0,
+        "pipe_partitioned": True,
+        "grad_partitioned": True,
     }
     config = default_pipeline
     for key, val in param_dict.get("pipeline", {}).items():
@@ -540,6 +542,10 @@ def get_hybrid_engine_config(param_dict):
     hybrid_engine_config_dict = param_dict.get("hybrid_engine", {})
     hybrid_engine_config = HybridEngineConfig(**hybrid_engine_config_dict)
     return hybrid_engine_config
+
+
+def get_expert_data_topo_config(param_dict):
+    return get_scalar_param(param_dict, USE_DATA_BEFORE_EXPERT_PARALLEL, USE_DATA_BEFORE_EXPERT_PARALLEL_DEFAULT)
 
 
 def get_eigenvalue_config(param_dict):
@@ -848,6 +854,7 @@ class DeepSpeedConfig(object):
             self.eigenvalue_layer_num,
         ) = get_eigenvalue_config(param_dict)
 
+        self.use_data_before_expert_parallel_ = get_expert_data_topo_config(param_dict)
         self.hybrid_engine = get_hybrid_engine_config(param_dict)
 
         self.sparse_attention = get_sparse_attention(param_dict)

@@ -12,7 +12,6 @@ per rank for training.
 import os
 import re
 import sys
-import shlex
 import json
 import base64
 import argparse
@@ -389,9 +388,6 @@ def parse_num_nodes(str_num_nodes: str, elastic_training: bool):
 def main(args=None):
     args = parse_args(args)
 
-    # For when argparse interprets remaining args as a single string
-    args.user_args = shlex.split(" ".join(list(map(lambda x: x if x.startswith("-") else f"'{x}'", args.user_args))))
-
     if args.elastic_training:
         assert args.master_addr != "", "Master Addr is required when elastic training is enabled"
 
@@ -447,7 +443,11 @@ def main(args=None):
     if not args.master_addr:
         assert multi_node_exec
         first_host = list(active_resources.keys())[0]
-        hostname_cmd = [f"ssh {first_host} hostname -I"]
+        ssh_check_cmd = "ssh "
+        if args.ssh_port is not None:
+            ssh_check_cmd += f" -p {args.ssh_port}"
+        ssh_check_cmd += f" {first_host} hostname -I"
+        hostname_cmd = [ssh_check_cmd]
         try:
             result = subprocess.check_output(hostname_cmd, shell=True)
         except subprocess.CalledProcessError as err:
