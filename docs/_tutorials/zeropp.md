@@ -12,7 +12,7 @@ We recommend that you read the tutorials on [Getting Started](/getting-started/)
 ZeRO++ consists of three key designs, namely quantized weights (*qwZ*), hiearchical partitioning ZeRO (*hpZ*), and quantized gradients (*qgZ*):
  - *qwZ* applies block-based quantization to reduce ZeRO parameter all-gather communication volume by half from FP16 to INT8.
  - *hpZ* eliminates inter-node backward parameter all-gather communication through data remapping and recomputation.
- - *qgZ* replaces gradients allreduce collective with a new communication efficient all-to-all based quantized gradient. averaging.
+ - *qgZ* replaces gradients allreduce collective with a new communication efficient all-to-all based quantized gradient averaging.
 
 Collectively, the three optimization reduces communication volume by 4x compared to ZeRO baseline. Each of the three. components can be enabled independent of each other and collectively as a group as described in the next section.
 
