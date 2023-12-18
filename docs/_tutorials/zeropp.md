@@ -14,7 +14,7 @@ ZeRO++ consists of three key designs, namely quantized weights (*qwZ*), hiearchi
  - *hpZ* eliminates inter-node backward parameter all-gather communication through data remapping and recomputation.
  - *qgZ* replaces gradients allreduce collective with a new communication efficient all-to-all based quantized gradient averaging.
 
-Collectively, the three optimization reduces communication volume by 4x compared to ZeRO baseline. Each of the three. components can be enabled independent of each other and collectively as a group as described in the next section.
+Collectively, the three optimization reduces communication volume by 4x compared to ZeRO baseline. Each of the three components can be enabled independent of each other and collectively as a group as described in the next section.
 
 ## Training Environment
 
