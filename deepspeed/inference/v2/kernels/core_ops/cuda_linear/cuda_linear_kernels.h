@@ -19,3 +19,7 @@ void cuda_wf6af16_linear(torch::Tensor& output,
                          int N,
                          int K,
                          int split_k);
+
+void get_4and2bit_weights(torch::Tensor& weights_4bit,
+                          torch::Tensor& weights_2bit,
+                          torch::Tensor& weights);
