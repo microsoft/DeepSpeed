@@ -11,7 +11,7 @@
 /azure/ @mrwyattii @awan-10
 /benchmarks/ @awan-10 @mrwyattii
 /bin/ @mrwyattii
-/csrc/ @RezaYazdaniAminabadi @awan-10 @mrwyattii @cmikeh2 @arashb
+/csrc/ @awan-10 @mrwyattii @cmikeh2 @arashb
 /deepspeed/ @mrwyattii
 /docker/ @mrwyattii @awan-10
 /docs/ @mrwyattii
@@ -26,7 +26,7 @@
 /deepspeed/autotuning/ @mrwyattii
 /deepspeed/checkpoint/ @tjruwase
 /deepspeed/comm/ @awan-10
-/deepspeed/compression/ @yaozhewei @minjiaz @xiaoxiawu-microsoft @conglongli
+/deepspeed/compression/ @minjiaz @xiaoxiawu-microsoft @conglongli
 /deepspeed/elasticity/ @mrwyattii @awan-10
 /deepspeed/launcher/ @mrwyattii @awan-10
 /deepspeed/module_inject/ @mrwyattii @awan-10 @cmikeh2 @arashb
