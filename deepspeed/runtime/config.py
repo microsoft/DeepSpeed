@@ -168,6 +168,13 @@ def get_bfloat16_enabled(param_dict):
     return False
 
 
+def get_bfloat16_accumulate_grads_via_hooks(param_dict):
+    for key in [BFLOAT16, BFLOAT16_OLD]:
+        if key in param_dict.keys():
+            return get_scalar_param(param_dict[key], BFLOAT16_GRAD_ACC_VIA_HOOKS, BFLOAT16_GRAD_ACC_VIA_HOOKS_DEFAULT)
+    return False
+
+
 def get_fp16_master_weights_and_grads_enabled(param_dict):
     if get_fp16_enabled(param_dict):
         return get_scalar_param(param_dict[FP16], FP16_MASTER_WEIGHTS_AND_GRADS, FP16_MASTER_WEIGHTS_AND_GRADS_DEFAULT)
@@ -813,6 +820,7 @@ class DeepSpeedConfig(object):
         self.fp16_enabled = get_fp16_enabled(param_dict)
         self.fp16_auto_cast = get_fp16_auto_cast(param_dict)
         self.bfloat16_enabled = get_bfloat16_enabled(param_dict)
+        self.bfloat16_accumulate_grads_via_hooks = get_bfloat16_accumulate_grads_via_hooks(param_dict)
         assert not (self.fp16_enabled
                     and self.bfloat16_enabled), 'bfloat16 and fp16 modes cannot be simultaneously enabled'
         self.fp16_master_weights_and_gradients = get_fp16_master_weights_and_grads_enabled(param_dict)

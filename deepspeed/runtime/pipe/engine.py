@@ -781,7 +781,8 @@ class PipelineEngine(DeepSpeedEngine):
 
         if self.using_bf16_optimizer and not self.is_last_stage():
             # manually call because we don't call optimizer.backward()
-            self.optimizer.update_hp_grads(clear_lp_grads=False)
+            if not self._config.bfloat16_accumulate_grads_via_hooks:
+                self.optimizer.update_hp_grads(clear_lp_grads=False)
 
         # Free up the memory from the output of forward()
         self.pipe_buffers['output_tensors'][buffer_id] = None

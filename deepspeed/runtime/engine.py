@@ -1451,7 +1451,8 @@ class DeepSpeedEngine(Module):
                                    allgather_bucket_size=self.zero_allgather_bucket_size(),
                                    dp_process_group=self.seq_data_parallel_group,
                                    timers=timers,
-                                   grad_acc_dtype=self.get_data_types()[1])
+                                   grad_acc_dtype=self.get_data_types()[1],
+                                   accumulate_grads_via_hooks=self._config.bfloat16_accumulate_grads_via_hooks)
 
         return optimizer
 
