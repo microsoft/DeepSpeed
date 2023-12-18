@@ -1452,7 +1452,7 @@ class DeepSpeedEngine(Module):
                                    dp_process_group=self.seq_data_parallel_group,
                                    timers=timers,
                                    grad_acc_dtype=self.get_data_types()[1],
-                                   accumulate_grads_via_hooks=self._config.bfloat16_accumulate_grads_via_hooks)
+                                   immediate_grad_update=self._config.bfloat16_immediate_grad_update)
 
         return optimizer
 

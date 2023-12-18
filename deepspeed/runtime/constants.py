@@ -126,9 +126,9 @@ BFLOAT16_OLD = "bfloat16"  # keeping for backwards compatibility
 BFLOAT16_ENABLED = "enabled"
 BFLOAT16_ENABLED_DEFAULT = False
 
-# BFLOAT16 optimizer gradient accumulation via hooks
-BFLOAT16_GRAD_ACC_VIA_HOOKS = "accumulate_grads_via_hooks"
-BFLOAT16_GRAD_ACC_VIA_HOOKS_DEFAULT = False
+# BFLOAT16 optimizer immediate gradient update via hooks
+BFLOAT16_IMMEDIATE_GRAD_UPDATE = "immediate_grad_update"
+BFLOAT16_IMMEDIATE_GRAD_UPDATE_DEFAULT = False
 
 #########################################
 # FP16 support

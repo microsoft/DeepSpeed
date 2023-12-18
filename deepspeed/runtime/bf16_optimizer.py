@@ -39,7 +39,7 @@ class BF16_Optimizer(ZeROOptimizer):
                  dp_process_group=None,
                  timers=None,
                  grad_acc_dtype=None,
-                 accumulate_grads_via_hooks=False):
+                 immediate_grad_update=False):
         super().__init__()
         see_memory_usage('begin bf16_optimizer', force=True)
         self.timers = timers
@@ -50,7 +50,7 @@ class BF16_Optimizer(ZeROOptimizer):
         assert grad_acc_dtype in [torch.float32, torch.bfloat16
                                   ], f"BF16Optimizer: Unsupported gradient accumulation data type: {grad_acc_dtype}"
         self.grad_acc_dtype = grad_acc_dtype
-        self.accumulate_grads_via_hooks = accumulate_grads_via_hooks
+        self.immediate_grad_update = immediate_grad_update
 
         self.clip_grad = clip_grad
         self.norm_type = norm_type
@@ -164,7 +164,7 @@ class BF16_Optimizer(ZeROOptimizer):
         self.initialize_optimizer_states()
         see_memory_usage('end initialize_optimizer', force=True)
 
-        if self.accumulate_grads_via_hooks:
+        if self.immediate_grad_update:
             self.create_grad_acc_hooks()
 
         # Need optimizer states initialized before linking lp to optimizer state
@@ -281,7 +281,7 @@ class BF16_Optimizer(ZeROOptimizer):
         self.clear_lp_grads()
         loss.backward(**bwd_kwargs)
 
-        if not self.accumulate_grads_via_hooks and update_hp_grads:
+        if not self.immediate_grad_update and update_hp_grads:
             self.update_hp_grads(clear_lp_grads=clear_lp_grads)
 
     @torch.no_grad()
@@ -303,7 +303,7 @@ class BF16_Optimizer(ZeROOptimizer):
 
     @torch.no_grad()
     def update_hp_grads(self, clear_lp_grads=False):
-        if self.accumulate_grads_via_hooks:
+        if self.immediate_grad_update:
             return
 
         for i, group in enumerate(self.bf16_groups):
@@ -439,7 +439,7 @@ class BF16_Optimizer(ZeROOptimizer):
                                                 tp_world_size)
 
     def accumulate_hp_grads_and_remove_lp(self, lp_param, group_idx, param_idx):
-        assert self.accumulate_grads_via_hooks
+        assert self.immediate_grad_update
         self.update_hp_grad(lp_param, group_idx, param_idx, clear_lp_grads=False)
 
     def create_grad_acc_hooks(self):
