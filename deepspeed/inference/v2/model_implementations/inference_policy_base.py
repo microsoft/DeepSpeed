@@ -153,7 +153,8 @@ class InferenceV2Policy(ABC, metaclass=PolicyMeta):
             DSInferenceModelBase: An implementation of the inference model abstraction that will be
                 run by the engine.
         """
-        self.model = self.instantiate_model(engine_config, mp_group)
+        self.model: DSInferenceModelBase = self.instantiate_model(engine_config, mp_group)
+        self.model.initialize_kernel_workspace()
         self.populate_model_parameters()
         return self.model
 

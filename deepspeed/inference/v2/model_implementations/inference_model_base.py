@@ -9,6 +9,8 @@ from typing import Iterable, Optional, Tuple, Type
 import torch
 
 import deepspeed.comm as dist
+from deepspeed.inference.v2.kernels.ds_kernel import DSKernelBase
+from deepspeed.inference.v2.modules.ds_module import DSModuleBase
 from ..ragged import DSStateManager, RaggedBatchWrapper
 from ..ragged.manager_configs import KVCacheConfig
 from ..ragged import DSSequenceDescriptor
@@ -266,3 +268,19 @@ class DSInferenceModelBase(torch.nn.Module, ABC):
         should not rely on the ability to use python control flow.
         """
         raise NotImplementedError()
+
+    def initialize_kernel_workspace(self) -> None:
+        """
+        Iterates over all kernels in the model and collects the requested workspace size. This
+        workspace is then allocated and stored in the kernel base class.
+        """
+        max_workspace_size = 0
+        for module in self.modules():
+            if not isinstance(module, DSModuleBase):
+                continue
+
+            for kernel in module.kernels():
+                max_workspace_size = max(max_workspace_size, kernel.requested_workspace_size())
+
+        if max_workspace_size > 0:
+            DSKernelBase.create_workspace(max_workspace_size)

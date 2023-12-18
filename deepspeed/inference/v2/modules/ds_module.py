@@ -4,11 +4,12 @@
 # DeepSpeed Team
 
 from abc import ABC, abstractstaticmethod
-from typing import Any, Dict, Type
+from typing import Any, Dict, Iterable, Type
 
 import torch
 
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
+from deepspeed.inference.v2.kernels import DSKernelBase
 
 
 class DSModuleConfig(DeepSpeedConfigModel):
@@ -60,3 +61,14 @@ class DSModuleBase(torch.nn.Module, ABC):
         super().__init__()
         self._config = config
         self._implementation_config = implementation_config
+
+    def kernels(self) -> Iterable[DSKernelBase]:
+        """
+        Return an iterable of all kernels used by this module.
+
+        This should be implemented by the children of functionality modules and should report
+        all kernels used by this module.
+        """
+        for attr in dir(self):
+            if isinstance(getattr(self, attr), DSKernelBase):
+                yield getattr(self, attr)
