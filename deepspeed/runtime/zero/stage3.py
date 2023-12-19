@@ -1339,7 +1339,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         norm_is_nan = total_norm.isnan()
         inf_or_nan = norm_is_nan.logical_or(norm_is_inf)
 
-        err = torch.tensor(-1.0, device=self.current_device, dtype=torch.float)
+        err = torch.tensor(-1.0, device=self.device, dtype=torch.float)
         total_norm = err.where(inf_or_nan,total_norm)
 
         return total_norm
