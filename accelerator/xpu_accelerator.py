@@ -266,3 +266,6 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         except ImportError:
             from intel_extension_for_pytorch.xpu.utils import DpcppBuildExtension
         return DpcppBuildExtension
+
+    def export_envs(self):
+        return []
