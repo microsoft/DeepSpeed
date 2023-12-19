@@ -33,9 +33,9 @@ io_op_desc_t::io_op_desc_t(const bool read_op,
 #if defined(__ENABLE_CANN__)
                    || torch_npu::utils::is_npu(_buffer)
 #endif
-                      )
-                     ? _buffer.to(torch::kCPU).pin_memory()
-                     : _buffer;
+                       )
+                      ? _buffer.to(torch::kCPU).pin_memory()
+                      : _buffer;
     _contiguous_buffer = _cpu_buffer.contiguous();
 }
 
