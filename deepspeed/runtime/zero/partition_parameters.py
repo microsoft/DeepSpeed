@@ -892,7 +892,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             self.num_ranks_in_param_group = groups._get_zero_param_intra_parallel_group_world_size()
             self.num_param_groups = int(self.dp_world_size / self.num_ranks_in_param_group)
             self.rank_in_group = groups._get_zero_param_intra_parallel_rank_in_mygroup()
-            print_rank_0(f"hpZeRO group size? {self.num_ranks_in_param_group}", force=True)
+            print_rank_0(f"hpZeRO group size: {self.num_ranks_in_param_group}", force=True)
 
             logger.debug(
                 "hpZeRO partition parameter my rank in world {} my rank in group {} ranks in my param partition group: {} "
@@ -1555,9 +1555,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         ##support for NVME secondary param offload
         #print_rank_0(f"SEC Param id {param.ds_id} status is {param.ds_status}", force=True)
         if param.ds_status is ZeroParamStatus.AVAILABLE:
-            if param.ds_secondary_tensor is not None and not has_been_updated:  ##param already partitioned
-
-                return
+            # if param.ds_secondary_tensor is not None and not has_been_updated:  ##param already partitioned
+            #     return
             #check padding
             tensor_size = self._aligned_size(param)
             partition_size = tensor_size // self.dp_world_size
