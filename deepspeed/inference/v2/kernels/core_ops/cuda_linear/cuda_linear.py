@@ -51,10 +51,7 @@ class CUDAWf6Af16Linear(DSKernelBase):
         weights_2bit = packed_weights.weights_2bit
         # TODO: determine the value of `split_k` based on the input size and GPU arch
         split_k = 1
-        workspace_size = split_k * M * N * hidden_states.element_size()
-        assert(workspace_size <= self.requested_workspace_size())
-        workspace = self.get_workspace(workspace_size)
-
+        workspace = self.get_workspace(M, N, K, split_k, torch.float, hidden_states.device)
         self.kernel(output, hidden_states, weights_4bit,
                     weights_2bit, packed_weights.scales, workspace, M, N, K, split_k)
         return output

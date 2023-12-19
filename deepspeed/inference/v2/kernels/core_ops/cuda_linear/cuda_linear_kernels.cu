@@ -20,15 +20,16 @@ cudaError_t QuantGEMM_API(
     float* Reduction_Workspace,  // Identical workspace for all QuantGEMM kernel launches
     int Split_K);
 
-torch::Tensor Launch_QuantGEMM( torch::Tensor C,
-                                torch::Tensor Weight1, // 2bit
-                                torch::Tensor Weight2, // 4bit
-                                torch::Tensor B,
-                                torch::Tensor Scales,
-                                const int M_Global,
-                                const int N_Global,
-                                const int K_Global,
-                                const int Split_K)
+void Launch_QuantGEMM( torch::Tensor C,
+                    torch::Tensor Weight1, // 2bit
+                    torch::Tensor Weight2, // 4bit
+                    torch::Tensor B,
+                    torch::Tensor Scales,
+                    const int M_Global,
+                    const int N_Global,
+                    const int K_Global,
+                    const int Split_K,
+                    torch::Tensor workspace)
 {
     auto C_ptr = C.data_ptr<at::Half>();
     auto B_ptr = B.data_ptr<at::Half>();
@@ -36,7 +37,7 @@ torch::Tensor Launch_QuantGEMM( torch::Tensor C,
     auto W2_ptr = Weight2.data_ptr<uint8_t>();
     auto Group_Size = K_Global / Scales.size(1);
 
-    auto workspace_size = M_Global * N_Global * Split_K;
+    // auto workspace_size = M_Global * N_Global * Split_K;
     // auto workspace = torch::empty({workspace_size}, torch::kFloat16);
 
     auto status = QuantGEMM_API(at::cuda::getCurrentCUDAStream(),
@@ -49,8 +50,7 @@ torch::Tensor Launch_QuantGEMM( torch::Tensor C,
                                 M_Global,
                                 N_Global,
                                 K_Global,
-                                // workspace.data_ptr<float>),
-                                nullptr,
+                                workspace.data_ptr<float>(),
                                 Split_K);
     if (status != cudaSuccess) {
         AT_ERROR("QuantGEMM_API failed with error: ", cudaGetErrorString(status));

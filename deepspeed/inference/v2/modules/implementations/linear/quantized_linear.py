@@ -96,16 +96,29 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         # assert(param.fp6_quant_scales is not None) # Comments out for early stage testing
         
         # Split the fake quantized fp6 weight into the 4-bit part and 2-bit part.
+        
+        if param.ndim == 1: # bias, do nothing
+            return InferenceParameter.initialize(param)
+
         device = get_accelerator().current_device()
 
         
-        weight = param.weight
-        
-        
+        # The below is the dummy one for early stage testing. It will be replaced by:
+        # weight = param.weight.cpu()
+        # scales = param.fp6_quant_scales.cpu()
+
+        weight = param.cpu()
+        scales = torch.ones((self.M, self.K // self.K), dtype=torch.float16) # dummy scales for early stage testing
+
         weights_2bit, weights_4bit = self.preprocess_weight(weight)
-        scales = torch.ones((self.M, self.K // self.K // 2), dtype=torch.float16) # dummy scales for early stage testing
-        scales = self.preprocess_scales(scales)
-        # The above is the dummy one for early stage testing. It will be replaced by:
+        
+        self.group_size = scales.size(1) // self.K
+        scales = self.preprocess_scales(scales, self.M, self.K)
+        assert self.group_size % 64 == 0, f"group size {self.group_size} is not supported"
+
+        weights_2bit = weights_2bit.to(device)
+        weights_4bit = weights_4bit.to(device)
+        scales = scales.to(device)
 
         # scales = param.fp6_quant_scales
         scales = torch.ones([dummy], dtype=torch.uint8, device=device) # dummy scales for early stage testing
@@ -115,17 +128,19 @@ class QuantizedWf6Af16Linear(DSLinearBase):
 
 
     def forward(self, hidden_states: torch.Tensor, w: torch.Tensor, b: Optional[torch.Tensor] = None) -> torch.Tensor:
-
+        weights_4bit = w 
+        weights_2bit = w.weights_2bit
+        scales = w.scales
         output = empty_from(self._output, (hidden_states.shape[0], self._config.out_channels))
         N = hidden_states.shape[0]
         assert (N in [2**i for i in range(3,7)]) or N % 128 == 0, f"accumulated seq-len {N} is not supported"
 
         if self._is_gated:
             staging_output = empty_from(self._double_buffer, (hidden_states.shape[0], self._config.out_channels * 2))
-            self._linear_impl(staging_output, hidden_states, w, self.M, N, self.K)
+            self._linear_impl(staging_output, hidden_states, weights_4bit, weights_2bit, scales, self.M, hidden_states.shape[0], self.K)
             self._act_fn(output, staging_output, b)
         else:
-            self._linear_impl(output, hidden_states, w, self.M, N, self.K)
+            self._linear_impl(output, hidden_states, weights_4bit, weights_2bit, scales, self.M, hidden_states.shape[0], self.K)
             self._act_fn(output, b)
 
         return output
