@@ -10,8 +10,8 @@ Functionality for swapping optimizer tensors to/from (NVMe) storage devices.
 #include "deepspeed_aio_thread.h"
 
 #if defined(__ENABLE_CANN__)
-#include "torch_npu/csrc/framework/utils/UtilForOpAdapter.h"
 #include "torch_npu/csrc/framework/utils/OpAdapter.h"
+#include "torch_npu/csrc/framework/utils/UtilForOpAdapter.h"
 #endif
 
 using namespace std;
@@ -30,10 +30,12 @@ io_op_desc_t::io_op_desc_t(const bool read_op,
       _validate(validate)
 {
     _cpu_buffer = (_buffer.is_cuda() || _buffer.is_xpu()
-#if defined (__ENABLE_CANN__)
-                          || torch_npu::utils::is_npu(_buffer)
+#if defined(__ENABLE_CANN__)
+                   || torch_npu::utils::is_npu(_buffer)
 #endif
-                  ) ? _buffer.to(torch::kCPU).pin_memory() : _buffer;
+                      )
+                     ? _buffer.to(torch::kCPU).pin_memory()
+                     : _buffer;
     _contiguous_buffer = _cpu_buffer.contiguous();
 }
 
@@ -43,8 +45,8 @@ void io_op_desc_t::fini()
 {
     if (_read_op && _buffer.is_cuda()) { _buffer.copy_(_cpu_buffer.to(torch::kCUDA)); }
     if (_read_op && _buffer.is_xpu()) { _buffer.copy_(_cpu_buffer.to(torch::kXPU)); }
-#if defined (__ENABLE_CANN__)
-    if(_read_op && torch_npu::utils::is_npu(_buffer)){
+#if defined(__ENABLE_CANN__)
+    if (_read_op && torch_npu::utils::is_npu(_buffer)) {
         auto device = at::Device("npu:0");
         _buffer.copy_(_cpu_buffer.to(device));
     }
