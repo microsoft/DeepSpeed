@@ -61,19 +61,7 @@ class QuantizedWf6Af16Linear(DSLinearBase):
 
         self._linear_impl = CUDAWf6Af16Linear()
         self.M = self._config.out_channels
-<<<<<<< HEAD
-        self.K= self._config.max_tokens
-<<<<<<< HEAD
-        self.group_size = 128
-=======
-=======
         self.K= self._config.in_channels
->>>>>>> Fix kernel error
-        self.group_size = 128 
-        self.scale = torch.ones((self.M, self.K//self.group_size), dtype=torch.float16, device=get_accelerator().current_device())
-        self.weights_2bit = torch.empty((self.M * self.K * 2//8), dtype=torch.uint8, device=get_accelerator().current_device())
-        self.weights_4bit = torch.empty((self.M * self.K * 4//8), dtype=torch.uint8, device=get_accelerator().current_device())
->>>>>>> kernel debug
 
         if is_gated(config.activation):
             self._is_gated = True
@@ -109,12 +97,16 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         
         # Split the fake quantized fp6 weight into the 4-bit part and 2-bit part.
         device = get_accelerator().current_device()
-        # TODO: get the correct shape of the weight tensor.
-        dummy = 128
-        weights_4bit = torch.zeros([dummy, dummy], dtype=torch.uint8, device=device)
-        weights_2bit = torch.zeros([dummy, dummy], dtype=torch.uint8, device=device)
-        self.get_4and2bit_weights(weights_4bit, weights_2bit, param)
-        # The following is the dummy one for early stage testing. It will be replaced by:
+
+        
+        weight = param.weight
+        
+        
+        weights_2bit, weights_4bit = self.preprocess_weight(weight)
+        scales = torch.ones((self.M, self.K // self.K // 2), dtype=torch.float16) # dummy scales for early stage testing
+        scales = self.preprocess_scales(scales)
+        # The above is the dummy one for early stage testing. It will be replaced by:
+
         # scales = param.fp6_quant_scales
         scales = torch.ones([dummy], dtype=torch.uint8, device=device) # dummy scales for early stage testing
         del param
