@@ -72,7 +72,8 @@ class InferenceCoreBuilder(CUDAOpBuilder):
             "inference/v2/kernels/core_ops/gated_activations/gated_activation_kernels.cu",
             "inference/v2/kernels/core_ops/cuda_linear/cuda_linear_kernels.cu",
             "inference/v2/kernels/core_ops/cuda_linear/cuda_linear_kernels.cpp",
-            "inference/v2/kernels/core_ops/cuda_linear/Launcher.cu"
+            "inference/v2/kernels/core_ops/cuda_linear/Launcher.cu",
+            "inference/v2/kernels/core_ops/cuda_linear/GenMatrix_QuantLLM.cpp",
         ]
 
         prefix = self.get_prefix()

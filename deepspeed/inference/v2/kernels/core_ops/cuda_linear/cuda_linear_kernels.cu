@@ -20,16 +20,16 @@ cudaError_t QuantGEMM_API(
     float* Reduction_Workspace,  // Identical workspace for all QuantGEMM kernel launches
     int Split_K);
 
-void Launch_QuantGEMM( torch::Tensor C,
-                    torch::Tensor Weight1, // 2bit
-                    torch::Tensor Weight2, // 4bit
-                    torch::Tensor B,
-                    torch::Tensor Scales,
-                    const int M_Global,
-                    const int N_Global,
-                    const int K_Global,
-                    const int Split_K,
-                    torch::Tensor workspace)
+void Launch_QuantGEMM(torch::Tensor C,
+                      torch::Tensor Weight1,  // 2bit
+                      torch::Tensor Weight2,  // 4bit
+                      torch::Tensor B,
+                      torch::Tensor Scales,
+                      const int M_Global,
+                      const int N_Global,
+                      const int K_Global,
+                      const int Split_K,
+                      torch::Tensor workspace)
 {
     auto C_ptr = C.data_ptr<at::Half>();
     auto B_ptr = B.data_ptr<at::Half>();
@@ -55,5 +55,4 @@ void Launch_QuantGEMM( torch::Tensor C,
     if (status != cudaSuccess) {
         AT_ERROR("QuantGEMM_API failed with error: ", cudaGetErrorString(status));
     }
-    return C;
 }

@@ -9,7 +9,7 @@ from ....inference_utils import DtypeEnum
 from deepspeed.ops.op_builder import InferenceCoreBuilder
 from typing import Tuple
 from ... import DSKernelBase
-
+ 
 
 class CUDAWf6Af16Linear(DSKernelBase):
     """
@@ -17,14 +17,15 @@ class CUDAWf6Af16Linear(DSKernelBase):
 
     Performs z = x @ y
     """
+    supported_dtypes = [DtypeEnum.fp16]
 
     def __init__(self):
         self.inf_module = InferenceCoreBuilder().load()
         self.inf_module.create_handle()
         self.kernel = self.inf_module.cuda_wf6af16_linear
+    
 
-
-    def __call__(self, output: torch.Tensor, hidden_states: torch.Tensor, packed_weights: torch.Tensor, M: int, N: int, K: int) -> torch.Tensor:
+    def __call__(self, output: torch.Tensor, hidden_states: torch.Tensor, weights_4bit: torch.Tensor, weights_2bit: torch.Tensor, scale: torch.Tensor, M, N, K) -> torch.Tensor:
         """
         Matmul kernel as implemented via CUDA directly. The input must be 2D or larger. If
         n-dimensional, the leading dimensions are folded into each other:
@@ -36,8 +37,8 @@ class CUDAWf6Af16Linear(DSKernelBase):
         Parameters:
             output (torch.Tensor): Output tensor. Shape is of [*, out_features]
             hidden_states (torch.Tensor): Input tensor. Shape is of [*, in_features]
-            packed_weights (torch.Tensor): Input tensor. Shape is of [?], it maintains the 4-bit and 2-bit weights, 
-                    and the quantization scales. The 2-bit weights and the scale are store in the attributes.
+            weights (torch.Tensor): Input tensor. Shape is of [out_features, in_features]
+            scale (torch.Tensor): Input tensor. Shape is of [1] or [out_features], since the scale is per output channel
 
         Returns:
             z (torch.Tensor): Output tensor. Shape is of [m, n]
@@ -46,25 +47,18 @@ class CUDAWf6Af16Linear(DSKernelBase):
         # TODO: deal with batched-matmul. As the current implementation only supports 2D input, we need to split the
         # batched-matmul into multiple 2D matmul.
 
-        # Workaround packed_weights becomes a tuple. No idea why..
-        weights_4bit = torch.stack(list(packed_weights.data), dim=0)
-        weights_2bit = packed_weights.weights_2bit
-        # TODO: determine the value of `split_k` based on the input size and GPU arch
         split_k = 1
         workspace = self.get_workspace(M, N, K, split_k, torch.float, hidden_states.device)
         self.kernel(output, hidden_states, weights_4bit,
-                    weights_2bit, packed_weights.scales, workspace, M, N, K, split_k)
-        return output
+                    weights_2bit, scale, workspace, M, N, K, split_k)
 
-    def requested_workspace_size(self) -> int:
+    def get_workspace(self, M: int, N: int, K: int, split_k: int, dtype, device) -> torch.Tensor:
         """
-        The workspace is for the split-K GEMM. The maximum num elements is: 
-            max-split-key * max-accumulated-seq * max-hidden
+        Allocate workspace for the kernel. The workspace is used to store the intermediate results of the matmul before
+        split-K. The split-K size is determined by the size of the matmul.
         """
-        max_split_k = 108 # This is the SM number of A100
-        max_accumulated_seq = 768 # This is a valued determined by the implementation of FastGen
-        max_hidden = 28672 # This is the `intermediate_size` of Llama-2-70b
-        
-        # Assumes fp16 data type, which occupies 2 bytes.
-        return max_split_k * max_accumulated_seq * max_hidden * 2
+        workspace = torch.empty((split_k, M, N), dtype=dtype, device=device)
+        # TODO: allocate workspace in advance to avoid memory allocation overhead
+
+        return workspace
 

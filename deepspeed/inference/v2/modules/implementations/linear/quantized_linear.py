@@ -79,7 +79,8 @@ class QuantizedWf6Af16Linear(DSLinearBase):
 
         self.inf_module = InferenceCoreBuilder().load()
         self.inf_module.create_handle()
-        self.get_4and2bit_weights = self.inf_module.get_4and2bit_weights
+        self.preprocess_weight = self.inf_module.preprocess_weight
+        self.preprocess_scales = self.inf_module.preprocess_scales
 
 
     def transform_param(self, param: torch.Tensor) -> InferenceParameter:
@@ -101,7 +102,6 @@ class QuantizedWf6Af16Linear(DSLinearBase):
             return InferenceParameter.initialize(param)
 
         device = get_accelerator().current_device()
-
         
         # The below is the dummy one for early stage testing. It will be replaced by:
         # weight = param.weight.cpu()
@@ -120,8 +120,6 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         weights_4bit = weights_4bit.to(device)
         scales = scales.to(device)
 
-        # scales = param.fp6_quant_scales
-        scales = torch.ones([dummy], dtype=torch.uint8, device=device) # dummy scales for early stage testing
         del param
         
         return InferenceParameter.initialize(weights_4bit, weights_2bit = weights_2bit, scales = scales)
@@ -133,8 +131,6 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         scales = w.scales
         output = empty_from(self._output, (hidden_states.shape[0], self._config.out_channels))
         N = hidden_states.shape[0]
-        assert (N in [2**i for i in range(3,7)]) or N % 128 == 0, f"accumulated seq-len {N} is not supported"
-
         if self._is_gated:
             staging_output = empty_from(self._double_buffer, (hidden_states.shape[0], self._config.out_channels * 2))
             self._linear_impl(staging_output, hidden_states, weights_4bit, weights_2bit, scales, self.M, hidden_states.shape[0], self.K)

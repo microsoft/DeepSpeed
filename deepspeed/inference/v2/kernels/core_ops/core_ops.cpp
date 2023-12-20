@@ -12,7 +12,6 @@
 #include "gated_activation_kernels.h"
 #include "layer_norm.h"
 #include "rms_norm.h"
-#include "cuda_linear_kernels.h"
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
@@ -38,7 +37,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 
     // cuda_linear_kernels.h
     m.def("cuda_wf6af16_linear", &cuda_wf6af16_linear, "DeepSpeed Wf6Af16 linear in CUDA");
-    m.def("get_4and2bit_weights",
-          &get_4and2bit_weights,
-          "Extract the 4+2 bit parts from the fake quantized weight");
+    m.def(
+        "preprocess_weight", &preprocess_weight, "preprocess the FP16 weight to be 2bit and 4 bit");
+    m.def("preprocess_scales", &preprocess_scales, "preprocess the FP16 scales");
 }
