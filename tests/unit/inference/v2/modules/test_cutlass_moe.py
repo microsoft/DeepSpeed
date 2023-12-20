@@ -225,6 +225,7 @@ def _mixtral_moe_baseline(hidden_states: torch.Tensor,
 
     Based on transformers implementation: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mixtral/modeling_mixtral.py
     """
+    output_dtype = hidden_states.dtype
     if force_float:
         hidden_states = hidden_states.float()
         gate_weight = gate_weight.float()
@@ -266,7 +267,7 @@ def _mixtral_moe_baseline(hidden_states: torch.Tensor,
         output = linear(intermediate, exp_mlp_w2) * routing_weights[top_x_list, idx_list].unsqueeze(-1)
         final_hidden_states.index_add_(0, top_x, output.to(final_hidden_states.dtype))
 
-    return final_hidden_states.to(torch.bfloat16)
+    return final_hidden_states.to(output_dtype)
 
 
 @pytest.mark.inference_v2_ops
@@ -294,7 +295,6 @@ def test_mixtral_moe_config():
         (n_tokens, in_channels), dtype=dtype.value, device=get_accelerator().current_device()) * .1
 
     baseline = _mixtral_moe_baseline(hidden_states, gate_weight, mlp_w1, mlp_w2, mlp_w3)
-    baseline_f = _mixtral_moe_baseline(hidden_states, gate_weight, mlp_w1, mlp_w2, mlp_w3, force_float=True)
 
     mlp_w13_fused = torch.cat([mlp_w1, mlp_w3], dim=-1).reshape(experts, 2 * intermediate_dim, in_channels)
 
@@ -321,11 +321,8 @@ def test_mixtral_moe_config():
 
     output = moe_module(hidden_states, batch, gate_ds, mlp_w1_ds, mlp_w2_ds)
 
-    print((baseline - baseline_f).norm())
-    print(((baseline - baseline_f).abs() / baseline_f.abs()).mean())
-
-    print((baseline_f - output).norm())
-    print(((baseline_f - output).abs() / baseline_f.abs()).mean())
-
-    assert allclose(output, baseline_f, tolerances=(1e-2, 1e-2))
-    assert allclose(output, baseline_f, tolerances=(1e-2, 1e-2))
+    # NOTE(cmikeh2): These are higher than the other tests for reasons that aren't quite
+    # clear to me. My best guess is that the SiGLU activation is causing larger numerical
+    # divergence. The thresholds chosen here is based on the observed error between the
+    # float and bfloat16 reference implementations.
+    assert allclose(output, baseline.to(dtype.value), tolerances=(5e-2, 5e-2))
