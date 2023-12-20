@@ -7,6 +7,7 @@
 #include "memory_access_utils.h"
 #include "reduction_utils.h"
 #include "top_k_gating.cuh"
+#include "top_k_utils.h"
 
 using ROp = reduce::ROpType;
 
@@ -100,13 +101,10 @@ void launch_top_k_gating(int32_t* expert_counts,
     const dim3 grid(n_tokens);
     const dim3 block(((n_experts + hw_warp_size - 1) / hw_warp_size) * hw_warp_size);
 
-    if (n_top_k == 1) {
-        top_k_gating_kernel<T, 1><<<grid, block, 0, stream>>>(
+    TOP_K_SWITCH(n_top_k, [&] {
+        top_k_gating_kernel<T, CONST_TOP_K><<<grid, block, 0, stream>>>(
             expert_counts, scores, assignments, offsets, logits, batch_metadata, n_experts);
-    } else if (n_top_k == 2) {
-        top_k_gating_kernel<T, 2><<<grid, block, 0, stream>>>(
-            expert_counts, scores, assignments, offsets, logits, batch_metadata, n_experts);
-    }
+    });
 }
 
 #define INSTANTIATE_top_k_KERNEL(T)                                                   \

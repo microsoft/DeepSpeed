@@ -101,6 +101,7 @@ class RaggedOpsBuilder(CUDAOpBuilder):
             'inference/v2/kernels/ragged_ops/atom_builder',
             'inference/v2/kernels/ragged_ops/blocked_flash',
             'inference/v2/kernels/ragged_ops/embed',
+            'inference/v2/kernels/ragged_ops/includes',
             'inference/v2/kernels/ragged_ops/linear_blocked_kv_rotary',
             'inference/v2/kernels/ragged_ops/logits_gather',
             'inference/v2/kernels/ragged_ops/moe_gather',

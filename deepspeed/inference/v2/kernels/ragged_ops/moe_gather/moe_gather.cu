@@ -8,6 +8,7 @@
 #include "moe_gather.cuh"
 #include "reduction_utils.h"
 #include "top_k_gating.cuh"
+#include "top_k_utils.h"
 
 namespace gather {
 
@@ -105,27 +106,16 @@ __global__ void moe_gather_kernel(T* layer_output,
     }
 }
 
-#define LAUNCH_FOR_UNROLL(COUNT)                                                          \
-    case COUNT:                                                                           \
-        if (n_top_k == 1) {                                                               \
-            moe_gather_kernel<T, COUNT, 1><<<grid, block, 0, stream>>>(layer_output,      \
-                                                                       moe_output,        \
-                                                                       scores,            \
-                                                                       mapped_slots,      \
-                                                                       expert_counts,     \
-                                                                       n_channels,        \
-                                                                       n_experts,         \
-                                                                       normalize_scales); \
-        } else if (n_top_k == 2) {                                                        \
-            moe_gather_kernel<T, COUNT, 2><<<grid, block, 0, stream>>>(layer_output,      \
-                                                                       moe_output,        \
-                                                                       scores,            \
-                                                                       mapped_slots,      \
-                                                                       expert_counts,     \
-                                                                       n_channels,        \
-                                                                       n_experts,         \
-                                                                       normalize_scales); \
-        }                                                                                 \
+#define LAUNCH_FOR_UNROLL(COUNT)                                                                \
+    case COUNT:                                                                                 \
+        moe_gather_kernel<T, COUNT, CONST_TOP_K><<<grid, block, 0, stream>>>(layer_output,      \
+                                                                             moe_output,        \
+                                                                             scores,            \
+                                                                             mapped_slots,      \
+                                                                             expert_counts,     \
+                                                                             n_channels,        \
+                                                                             n_experts,         \
+                                                                             normalize_scales); \
         break;
 
 template <typename T>
@@ -147,14 +137,16 @@ void launch_moe_gather(T* layer_output,
     const dim3 block(gather::threads);
     const dim3 grid(n_tokens);
 
-    switch (copy_unroll) {
-        LAUNCH_FOR_UNROLL(1)
-        LAUNCH_FOR_UNROLL(2)
-        LAUNCH_FOR_UNROLL(3)
-        LAUNCH_FOR_UNROLL(4)
-        LAUNCH_FOR_UNROLL(5)
-        LAUNCH_FOR_UNROLL(6)
-    }
+    TOP_K_SWITCH(n_top_k, [&] {
+        switch (copy_unroll) {
+            LAUNCH_FOR_UNROLL(1)
+            LAUNCH_FOR_UNROLL(2)
+            LAUNCH_FOR_UNROLL(3)
+            LAUNCH_FOR_UNROLL(4)
+            LAUNCH_FOR_UNROLL(5)
+            LAUNCH_FOR_UNROLL(6)
+        }
+    });
 }
 
 #define INSTANTIATE_GATHER_FOR_TYPE(TYPE)                              \

@@ -4,9 +4,9 @@
 // DeepSpeed Team
 
 #include "ds_kernel_utils.h"
-#include "moe_scatter.cuh"
 #include "reduction_utils.h"
 #include "top_k_gating.cuh"
+#include "top_k_utils.h"
 
 using ROp = reduce::ROpType;
 
@@ -149,29 +149,18 @@ __global__ void moe_scatter_kernel(T* moe_input,
     }
 }
 
-#define LAUNCH_FOR_UNROLL(COUNT)                                                              \
-    case COUNT:                                                                               \
-        if (n_top_k == 1) {                                                                   \
-            moe_scatter_kernel<T, COUNT, 1><<<grid, block, 0, stream>>>(moe_input,            \
-                                                                        expert_count_cumsums, \
-                                                                        mapped_slots,         \
-                                                                        activations,          \
-                                                                        assignments,          \
-                                                                        expert_counts,        \
-                                                                        offsets,              \
-                                                                        n_channels,           \
-                                                                        n_experts);           \
-        } else if (n_top_k == 2) {                                                            \
-            moe_scatter_kernel<T, COUNT, 2><<<grid, block, 0, stream>>>(moe_input,            \
-                                                                        expert_count_cumsums, \
-                                                                        mapped_slots,         \
-                                                                        activations,          \
-                                                                        assignments,          \
-                                                                        expert_counts,        \
-                                                                        offsets,              \
-                                                                        n_channels,           \
-                                                                        n_experts);           \
-        }                                                                                     \
+#define LAUNCH_FOR_UNROLL(COUNT)                               \
+    case COUNT:                                                \
+        moe_scatter_kernel<T, COUNT, CONST_TOP_K>              \
+            <<<grid, block, 0, stream>>>(moe_input,            \
+                                         expert_count_cumsums, \
+                                         mapped_slots,         \
+                                         activations,          \
+                                         assignments,          \
+                                         expert_counts,        \
+                                         offsets,              \
+                                         n_channels,           \
+                                         n_experts);           \
         break;
 
 template <typename T>
@@ -194,14 +183,16 @@ void launch_moe_scatter(T* moe_input,
     const dim3 block(scatter::threads);
     const dim3 grid(n_tokens);
 
-    switch (copy_unroll) {
-        LAUNCH_FOR_UNROLL(1);
-        LAUNCH_FOR_UNROLL(2);
-        LAUNCH_FOR_UNROLL(3);
-        LAUNCH_FOR_UNROLL(4);
-        LAUNCH_FOR_UNROLL(5);
-        LAUNCH_FOR_UNROLL(6);
-    }
+    TOP_K_SWITCH(n_top_k, [&] {
+        switch (copy_unroll) {
+            LAUNCH_FOR_UNROLL(1);
+            LAUNCH_FOR_UNROLL(2);
+            LAUNCH_FOR_UNROLL(3);
+            LAUNCH_FOR_UNROLL(4);
+            LAUNCH_FOR_UNROLL(5);
+            LAUNCH_FOR_UNROLL(6);
+        }
+    });
 }
 
 #define INSTANTIATE_SCATTER_FOR_TYPE(TYPE)                 \
