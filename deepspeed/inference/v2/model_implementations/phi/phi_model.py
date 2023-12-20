@@ -143,7 +143,7 @@ class PhiInferenceModel(DSTransformerModelBase):
         """
         softmax_scale = 1.0 / (self.head_size**0.5)
 
-        rotary_config = RotateHalfConfig()
+        rotary_config = RotateHalfConfig(rotate_dim=self._config.rotary_dim * 2)
 
         attn_config = DSSelfAttentionConfig(max_tokens=self._engine_config.state_manager.max_ragged_batch_size,
                                             n_heads_q=self.n_heads_q_local,

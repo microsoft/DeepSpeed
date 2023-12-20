@@ -27,6 +27,7 @@ __global__ void kv_rotary_pos_kernel(T* kv_cache,
                                      T* k,
                                      T* v,
                                      const T* inv_freq,
+                                     const int32_t rotary_dim,
                                      const float theta_base,
                                      const BatchWrapperCPP batch_desc,
                                      const int qkv_stride,
@@ -38,7 +39,6 @@ __global__ void kv_rotary_pos_kernel(T* kv_cache,
     constexpr int vector_T = kv_rot::granularity / sizeof(T);
     constexpr int real_threads_per_head = headSize / vector_T;
     constexpr int threads_per_head = paddedHeadSize / vector_T;
-    constexpr int half_head_size = headSize >> 1;
 
     constexpr int tokens_per_block = kv_rot::threads / threads_per_head;
 
@@ -52,8 +52,9 @@ __global__ void kv_rotary_pos_kernel(T* kv_cache,
 
     const int block_seq_idx = threadIdx.x / threads_per_head;
     const int base_neuron_idx = head_group.thread_rank() * vector_T;
-    const int half_idx = base_neuron_idx % half_head_size;
-    const int half_head_lanes = real_threads_per_head / 2;
+    const int half_rotary_size = rotary_dim / 2;
+    const int half_dim_lanes = half_rotary_size / vector_T;
+    const int half_idx = base_neuron_idx % half_rotary_size;
 
     // Multiple tokens processed by the same threadblock
     const int token_idx = blockIdx.y * tokens_per_block + block_seq_idx;
@@ -113,7 +114,7 @@ __global__ void kv_rotary_pos_kernel(T* kv_cache,
                     inv_freq_flt = conversion::to<float>(inv_freq_reg[i]) * (float)global_token_idx;
                 } else {
                     inv_freq_flt =
-                        (float)((head_neuron_idx % half_head_size) * 2) / (float)headSize;
+                        (float)((head_neuron_idx % half_rotary_size) * 2) / (float)rotary_dim;
                     // Conversion to T and back means that both branches of this if statement
                     // will produce the same results if using the same algo for producing the
                     // freqs.
@@ -121,23 +122,25 @@ __global__ void kv_rotary_pos_kernel(T* kv_cache,
                     inv_freq_flt = conversion::to<float>(trunc_freq) * (float)global_token_idx;
                 }
 
-                float rotary_sign = (head_neuron_idx >= half_head_size) ? -1.0f : 1.0f;
+                float rotary_sign = (head_neuron_idx >= half_rotary_size) ? -1.0f : 1.0f;
                 float q_f = conversion::to<float>(q_reg[i]);
                 float k_f = conversion::to<float>(k_reg[i]);
                 float q_rot = q_f * rotary_sign;
                 float k_rot = k_f * rotary_sign;
 
-                const int target_lane = (head_neuron_idx < half_head_size)
-                                            ? head_group.thread_rank() + half_head_lanes
-                                            : head_group.thread_rank() - half_head_lanes;
+                const int target_lane = (head_neuron_idx < half_rotary_size)
+                                            ? head_group.thread_rank() + half_dim_lanes
+                                            : head_group.thread_rank() - half_dim_lanes;
 
                 const float q_rot_temp = head_group.shfl(q_rot, target_lane);
                 const float k_rot_temp = head_group.shfl(k_rot, target_lane);
 
-                q_reg[i] =
-                    conversion::to<T>(q_f * cosf(inv_freq_flt) + q_rot_temp * sinf(inv_freq_flt));
-                k_reg[i] =
-                    conversion::to<T>(k_f * cosf(inv_freq_flt) + k_rot_temp * sinf(inv_freq_flt));
+                if (base_neuron_idx < rotary_dim) {
+                    q_reg[i] = conversion::to<T>(q_f * cosf(inv_freq_flt) +
+                                                 q_rot_temp * sinf(inv_freq_flt));
+                    k_reg[i] = conversion::to<T>(k_f * cosf(inv_freq_flt) +
+                                                 k_rot_temp * sinf(inv_freq_flt));
+                }
             }
         }
 
@@ -164,22 +167,22 @@ __global__ void kv_rotary_pos_kernel(T* kv_cache,
                     inv_freq_flt = conversion::to<float>(inv_freq_reg[i]) * (float)global_token_idx;
                 } else {
                     inv_freq_flt =
-                        (float)((head_neuron_idx % half_head_size) * 2) / (float)headSize;
+                        (float)((head_neuron_idx % half_rotary_size) * 2) / (float)rotary_dim;
                     inv_freq_flt = 1.0 / powf(theta_base, inv_freq_flt) * (float)global_token_idx;
                 }
 
-                float rotary_sign = (head_neuron_idx >= half_head_size) ? -1.0f : 1.0f;
+                float rotary_sign = (head_neuron_idx >= half_rotary_size) ? -1.0f : 1.0f;
                 float q_f = conversion::to<float>(q_reg[i]);
                 float q_rot = q_f * rotary_sign;
 
-                const int target_lane = (head_neuron_idx < half_head_size)
-                                            ? head_group.thread_rank() + half_head_lanes
-                                            : head_group.thread_rank() - half_head_lanes;
+                const int target_lane = (head_neuron_idx < half_rotary_size)
+                                            ? head_group.thread_rank() + half_dim_lanes
+                                            : head_group.thread_rank() - half_dim_lanes;
 
                 const float q_rot_temp = head_group.shfl(q_rot, target_lane);
-
-                q_reg[i] =
-                    conversion::to<T>(q_f * cosf(inv_freq_flt) + q_rot_temp * sinf(inv_freq_flt));
+                if (base_neuron_idx < rotary_dim)
+                    q_reg[i] = conversion::to<T>(q_f * cosf(inv_freq_flt) +
+                                                 q_rot_temp * sinf(inv_freq_flt));
             }
         }
     }
@@ -197,6 +200,7 @@ __global__ void kv_rotary_pos_kernel(T* kv_cache,
                                          k,                                 \
                                          v,                                 \
                                          inv_freq,                          \
+                                         rotary_dim,                        \
                                          theta_base,                        \
                                          batch_desc,                        \
                                          qkv_stride,                        \
@@ -230,6 +234,7 @@ void launch_kv_rotary_kernel(T* kv_cache,
                              T* k,
                              T* v,
                              T* inv_freq,
+                             const int32_t rotary_dim,
                              const float theta_base,
                              const BatchWrapperCPP batch_desc,
                              const int qkv_stride,
@@ -271,6 +276,7 @@ void launch_kv_rotary_kernel(T* kv_cache,
                                                 TYPE * k,                         \
                                                 TYPE * v,                         \
                                                 TYPE * inv_freq,                  \
+                                                const int32_t rotary_dim,         \
                                                 const float theta_base,           \
                                                 const BatchWrapperCPP batch_desc, \
                                                 const int qkv_stride,             \
@@ -297,6 +303,7 @@ INSTANTIATE_KV_ROTARY_KERNEL(__nv_bfloat16)
                                          k,                                  \
                                          v,                                  \
                                          nullptr,                            \
+                                         -1,                                 \
                                          0.f,                                \
                                          batch_desc,                         \
                                          qkv_stride,                         \

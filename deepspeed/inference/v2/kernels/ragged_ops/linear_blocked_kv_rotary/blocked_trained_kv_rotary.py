@@ -65,7 +65,7 @@ class BlockedTrainedRotaryEmbeddings(DSKernelBase):
             kv_cache (torch.Tensor): Pre-allocated KV cache of [num_blocks, block_size, 2, n_kv_heads, head_size]
             qkv: Input tensor of shape [num_tokens, head_size * (n_q_heads + 2 * n_kv_heads)]
             ragged_batch: Wrapper for the ragged batch.
-            inverse_freqs: Inverse frequencies for the rotary embeddings. Shape [max_seq_len, head_size // 2]
+            inverse_freqs: Inverse frequencies for the rotary embeddings. Shape [max_seq_len, rotary_dim // 2]
         """
 
         q = qkv[:, :self.head_size * self.n_q_heads]
