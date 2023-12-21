@@ -27,7 +27,7 @@ ds_report
 
 ## Pre-install DeepSpeed Ops
 
-**Note:** [PyTorch](https://pytorch.org/) must be installed _before_ pre-compiling any DeepSpeed c++/cuda ops. However, this is not required if using the default mode of JIT compilation of ops.
+**Note:** [PyTorch](https://pytorch.org/) must be installed _before_ pre-compiling any DeepSpeed C++/CUDA ops. However, this is not required if using the default mode of JIT compilation of ops.
 {: .notice--info}
 
 Sometimes we have found it useful to pre-install either some or all DeepSpeed
@@ -81,7 +81,7 @@ DS_BUILD_OPS=1 pip install deepspeed --global-option="build_ext" --global-option
 
 This should complete the full build 2-3 times faster. You can adjust `-j` to specify how many cpu-cores are to be used during the build. In the example it is set to 8 cores.
 
-You can also build a binary wheel and install it on multiple machines that have the same type of GPUs and the same software environment (CUDA toolkit, Pytorch, Python, etc.)
+You can also build a binary wheel and install it on multiple machines that have the same type of GPUs and the same software environment (CUDA toolkit, PyTorch, Python, etc.)
 
 ```bash
 DS_BUILD_OPS=1 python setup.py build_ext -j8 bdist_wheel
