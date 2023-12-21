@@ -490,6 +490,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.reset_partition_gradient_structures()
 
         # creates backward hooks for gradient partitioning
+        self._grad_acc_hooks = []
         if self.partition_gradients or self.overlap_comm:
             self.create_reduce_and_remove_grad_hooks()
 
@@ -522,6 +523,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self._enable_universal_checkpoint()
         self._param_slice_mappings = self._create_param_mapping()
 
+    def destroy(self):
+        for hook in self._grad_acc_hooks:
+            hook.remove()
+        self.print_rank_0("Removed grad acc hooks")
+    
     def _enable_universal_checkpoint(self):
         for lp_param_group in self.bit16_groups:
             enable_universal_checkpoint(param_list=lp_param_group)
@@ -864,7 +870,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                         def reduce_partition_and_remove_grads(*notneeded):
                             self.reduce_ready_partitions_and_remove_grads(param, i)
 
-                        grad_acc.register_hook(reduce_partition_and_remove_grads)
+                        self._grad_acc_hooks.append(
+                            grad_acc.register_hook(reduce_partition_and_remove_grads)
+                        )
                         self.grad_accs.append(grad_acc)
 
                     wrapper(param, i)
