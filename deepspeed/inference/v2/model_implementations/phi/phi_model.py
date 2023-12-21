@@ -92,8 +92,6 @@ class PhiInferenceModel(DSTransformerModelBase):
     @property
     def mlp_activation_fn(self) -> ActivationType:
         return ActivationType.GELU
-        # TODO: Add support for New GeLU  activation functions
-        # 0.5 * input * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (input + 0.044715 * torch.pow(input, 3.0))))
 
     @property
     def norm_type(self) -> NormTypeEnum:
@@ -143,7 +141,7 @@ class PhiInferenceModel(DSTransformerModelBase):
         """
         softmax_scale = 1.0 / (self.head_size**0.5)
 
-        rotary_config = RotateHalfConfig(rotate_dim=self._config.rotary_dim * 2)
+        rotary_config = RotateHalfConfig(rotate_dim=self._config.rotary_dim)
 
         attn_config = DSSelfAttentionConfig(max_tokens=self._engine_config.state_manager.max_ragged_batch_size,
                                             n_heads_q=self.n_heads_q_local,
