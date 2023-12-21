@@ -3,4 +3,4 @@
 
 # DeepSpeed Team
 
-from .phi_policy import PhiPolicy
+from .policy import PhiPolicy

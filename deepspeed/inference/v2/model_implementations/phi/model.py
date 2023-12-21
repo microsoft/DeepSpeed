@@ -22,7 +22,7 @@ from ..inference_model_base import (
     MPType,
 )
 
-from .phi_containers import PhiNonTransformerContainer, PhiTransformerContainer
+from .containers import PhiNonTransformerContainer, PhiTransformerContainer
 
 
 class PhiInferenceModel(DSTransformerModelBase):

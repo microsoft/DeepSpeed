@@ -7,8 +7,8 @@ from typing import Any
 
 from ...config_v2 import RaggedInferenceEngineConfig
 from ..inference_policy_base import ContainerMap, InferenceV2Policy
-from ..phi.phi_containers import PhiNonTransformerContainer, PhiTransformerContainer
-from ..phi.phi_model import PhiInferenceModel
+from ..phi.containers import PhiNonTransformerContainer, PhiTransformerContainer
+from ..phi.model import PhiInferenceModel
 
 
 class PhiPolicy(InferenceV2Policy):
