@@ -104,25 +104,16 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         device = get_accelerator().current_device()
         
         # The below is the dummy one for early stage testing. It will be replaced by:
-        # weight = param.weight.cpu()
-        # scales = param.fp6_quant_scales.cpu()
-
-        weight = param.cpu()
+        # scales = param.fp6_quant_scales
         scales = torch.ones((self.M, self.K // self.K), dtype=torch.float16) # dummy scales for early stage testing
-
-        weights_2bit, weights_4bit = self.preprocess_weight(weight)
+        weights_2bit, weights_4bit = self.preprocess_weight(param)
         
         self.group_size = scales.size(1) // self.K
         scales = self.preprocess_scales(scales, self.M, self.K)
         assert self.group_size % 64 == 0, f"group size {self.group_size} is not supported"
 
-        weights_2bit = weights_2bit.to(device)
-        weights_4bit = weights_4bit.to(device)
-        scales = scales.to(device)
-
-        del param
-        
-        return InferenceParameter.initialize(weights_4bit, weights_2bit = weights_2bit, scales = scales)
+        param = weights_4bit
+        return InferenceParameter.initialize(param, weights_2bit = weights_2bit, scales = scales)
 
 
     def forward(self, hidden_states: torch.Tensor, w: torch.Tensor, b: Optional[torch.Tensor] = None) -> torch.Tensor:
