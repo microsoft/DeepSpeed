@@ -11,7 +11,7 @@ module_names = {}
 param_names = {}
 
 
-def debug_clear_module_and_param_names(model):
+def debug_clear_module_and_param_names():
     global module_names
     global param_names
     module_names = {}
