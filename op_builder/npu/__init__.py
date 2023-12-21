@@ -9,3 +9,4 @@ from .no_impl import NotImplementedBuilder
 from .cpu_adam import CPUAdamBuilder
 from .cpu_adagrad import CPUAdagradBuilder
 from .cpu_lion import CPULionBuilder
+from .inference import InferenceBuilder
