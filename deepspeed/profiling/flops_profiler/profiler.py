@@ -826,6 +826,7 @@ def _elementwise_flops_compute(input, other):
         flops = _prod(final_shape)
         return flops, 0
 
+
 def _attn_flops_compute(q, k, v, *args, **kwargs):
     """
     Count flops for the scaled_dot_product_attention operation.
@@ -833,6 +834,7 @@ def _attn_flops_compute(q, k, v, *args, **kwargs):
     macs = _prod(q.shape) * k.shape[-2]
     macs += _prod(q.shape[:-1]) * k.shape[-2] * v.shape[-1]
     return 2 * macs, macs
+
 
 def wrapFunc(func, funcFlopCompute):
     oldFunc = func
