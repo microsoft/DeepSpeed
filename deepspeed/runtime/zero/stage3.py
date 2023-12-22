@@ -1122,9 +1122,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                         def reduce_partition_and_remove_grads(*notneeded):
                             self.reduce_ready_partitions_and_remove_grads(param)
 
-                        self._grad_acc_hooks.append(
-                            grad_acc.register_hook(reduce_partition_and_remove_grads)
-                        )
+                        self._grad_acc_hooks.append(grad_acc.register_hook(reduce_partition_and_remove_grads))
                         self.grad_accs.append(grad_acc)
 
                     #print(f"param grad fn {param.expand_as(param).grad_fn}")
