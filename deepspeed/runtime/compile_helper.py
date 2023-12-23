@@ -3,19 +3,19 @@ import torch
 class CompiledModuleWrapper(torch.nn.Module):
     def __init__(self, module):
         super().__init__()
-        self._wrapped = module
+        self.__dict__['_wrapped'] = module
         self.is_compiled = False
 
     def __getattr__(self, name):
         if name == 'compile':
             return self.compile
-
-        return super().__getattr__(name)
+        
+        return getattr(self._wrapped, name)
 
 
     def forward(self, *args, **kwargs):
         if not self.is_compiled:
-            self._wrapped = torch.compile(self._wrapped, backend="inductor")
+            self.__dict__['_wrapped'] = torch.compile(self._wrapped, backend="inductor")
             self.is_compiled = True
 
         return self._wrapped(*args, **kwargs)
