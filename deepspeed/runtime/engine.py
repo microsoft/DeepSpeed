@@ -770,6 +770,9 @@ class DeepSpeedEngine(Module):
     def zero_ignore_unused_parameters(self):
         return self._config.zero_config.ignore_unused_parameters
 
+    def graph_harvesting(self):
+        return self._config.graph_harvesting
+
     def fp16_enabled(self):
         return self._config.fp16_enabled
 
@@ -1454,7 +1457,8 @@ class DeepSpeedEngine(Module):
                                    allgather_bucket_size=self.zero_allgather_bucket_size(),
                                    dp_process_group=self.seq_data_parallel_group,
                                    timers=timers,
-                                   grad_acc_dtype=self.get_data_types()[1])
+                                   grad_acc_dtype=self.get_data_types()[1],
+                                   graph_harvesting=self.graph_harvesting())
 
         return optimizer
 
@@ -3211,7 +3215,6 @@ class DeepSpeedEngine(Module):
             state.update(client_state)
             logger.info(f'Saving model checkpoint: {save_path}')
             self.checkpoint_engine.save(state, save_path)
-        self._curr_save_path = None
 
     def _create_checkpoint_file(self, save_dir, tag, zero_checkpoint):
         name_function = (self._get_zero_ckpt_name if zero_checkpoint else self._get_ckpt_name)
