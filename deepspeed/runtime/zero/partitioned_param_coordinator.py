@@ -275,8 +275,6 @@ class PartitionedParameterCoordinator:
         fetch_numel = sum(
             [p.partition_numel() for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE])
 
-        print(f"fetch_sub_module starting forward={forward} module={current_submodule.__class__} fetch_numel={fetch_numel} ext={[current_submodule.ds_external_parameters()]}")
-
         if fetch_numel > 0:
             event_name = __class__.FORWARD_FETCH_SUBMIT if forward else __class__.BACKWARD_FETCH_SUBMIT
             self._dump_param_ids(event_name, current_submodule.id,
@@ -314,7 +312,6 @@ class PartitionedParameterCoordinator:
                         self.__ongoing_fetch_events.append(event)
 
             assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
-            print(f"fetch_sub_module module={current_submodule.__class__} param={param.shape} ds_id={param.ds_id} id={id(param)}")
         if not get_accelerator().is_synchronized_device():
             get_accelerator().current_stream().wait_stream(self.__allgather_stream)
         self.__profiler.stop_event(wait_event_name, wait_numel)
@@ -378,8 +375,6 @@ class PartitionedParameterCoordinator:
                         numel_prefetching += param_in_trace.param.ds_numel
 
                 if numel_prefetching > 0:
-                    print(f"fetch_sub_module prefetch module={current_submodule.__class__} params_to_prefetch={[id(p) for p in params_to_prefetch]}")
-
                     event_name = __class__.FORWARD_PREFETCH_SUBMIT if forward else __class__.BACKWARD_PREFETCH_SUBMIT
                     self.__profiler.start_event(event_name)
                     if logger.isEnabledFor(logging.DEBUG):
@@ -402,7 +397,6 @@ class PartitionedParameterCoordinator:
             p.ds_id for p in iter_params(submodule)))
         for param in iter_params(submodule):
             param.ds_active_sub_modules.discard(submodule.id)
-            print(f"release_sub_module in_params_to_release={param.ds_id in params_to_release} ext?={param.is_external_param}")
             if param.ds_id in params_to_release and not param.is_external_param:
                 self.__release_param(param, backward)
 
@@ -432,7 +426,6 @@ class PartitionedParameterCoordinator:
                 quantized_params.append(param)
             else:
                 nonquantized_params.append(param)
-        # print(f"__all_gather_params param_ids={[id(p) for p in params]}")
         if quantized_params:
             self.__all_gather_params_(quantized_params, forward, quantize=True)
         if nonquantized_params:
@@ -478,7 +471,6 @@ class PartitionedParameterCoordinator:
                 debug_rank0(f"-release: {param.ds_summary()}")
             param.partition(backward=backward)
             self.__n_available_params -= param.ds_numel
-            # print(f"__release_param param={param.shape} ds_id={param.ds_id} id={id(param)} ext?={param.is_external_param}")
 
     @instrument_w_nvtx
     @functools.lru_cache(maxsize=None)

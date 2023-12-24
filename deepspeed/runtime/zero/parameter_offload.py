@@ -122,6 +122,7 @@ class ZeROOrderedDict(OrderedDict):
         self._parent_module = parent_module
         self._in_forward = False
 
+    @torch.compiler.disable
     def __getitem__(self, key):
         param = super().__getitem__(key)
 
