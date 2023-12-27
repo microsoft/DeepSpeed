@@ -349,7 +349,6 @@ class DeepSpeedEngine(Module):
         self.engine_timers = EngineTimers(enable_micro_timers=self.wall_clock_breakdown(),
                                           enable_global_timers=self.wall_clock_breakdown()
                                           or self.flops_profiler_enabled())
-
         if self.global_rank == 0:
             self._config.print("DeepSpeedEngine configuration")
             if self.dump_state():
@@ -1592,6 +1591,7 @@ class DeepSpeedEngine(Module):
                     gradient_predivide_factor=self.gradient_predivide_factor(),
                     gradient_accumulation_steps=self.gradient_accumulation_steps(),
                     aio_config=self.aio_config(),
+                    fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(),
                     gradient_accumulation_dtype=gradient_accumulation_dtype,
                     communication_data_type=self.communication_data_type,
                     zero_hpz_partition_size=self.zero_hpz_partition_size(),

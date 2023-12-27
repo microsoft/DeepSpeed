@@ -26,6 +26,7 @@ from deepspeed.runtime.swap_tensor.partitioned_optimizer_swapper import Partitio
 from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedOptimizerSwapper
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUPS, PARTITION_COUNT, ZERO_STAGE, LOSS_SCALER
 from deepspeed.accelerator import get_accelerator
+from deepspeed.accelerator.cuda_accelerator import CUDA_Accelerator
 
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
@@ -46,6 +47,10 @@ def print_rank_0(message, debug=False, force=False):
     # printflock(f"[{rank}] {message}")
     # - print to log file per rank
     # log_rank_file(rank, message)
+
+
+def is_cuda_accelerator():
+    return isinstance(get_accelerator(), CUDA_Accelerator)
 
 
 def input(msg):
@@ -118,6 +123,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_hpz_partition_size=1,
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
+        fp16_master_weights_and_gradients=False,
     ):
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
@@ -139,12 +145,15 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             raise SystemError("Cannot use fp16 without accelerator.")
 
         self.optimizer = init_optimizer
+        self.fp16_master_weights_and_gradients = fp16_master_weights_and_gradients
 
         # Use torch (un)flatten ops
         self.flatten = _flatten_dense_tensors
         self.unflatten = _unflatten_dense_tensors
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
         self.gradient_accumulation_dtype = gradient_accumulation_dtype
+        self.fp32_dtype = torch.float16 if fp16_master_weights_and_gradients else torch.float32
+        
         self._global_grad_norm = 0.
 
         self.custom_loss_scaler = False
@@ -318,6 +327,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # Optimizer tensor swapping
         if self.swap_optimizer:
             self._configure_tensor_swapping(offload_optimizer_config, aio_config)
+            
+        if fp16_master_weights_and_gradients:
+            assert not self.swap_optimizer, "fp16_master_weights_and_gradients is not compatible with swap_optimizer now!"
 
         self.is_gradient_accumulation_boundary: bool = True
 
@@ -813,7 +825,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         for i, tensor in enumerate(self.fp16_partitioned_groups_flat):
             num_elements = self.fp16_partitioned_groups_flat_numel[i]
 
-            # a partition of the fp32 master weights that will be updated by this process
+           # a partition of the fp32 master weights that will be updated by this process
             if self._swappable_optimizer_subgroup(i):
                 self.fp32_partitioned_groups_flat.append(torch.Tensor())
                 nvme_memory_usage += (fp32_element_size * num_elements)
@@ -828,7 +840,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                         nvme_fp16_num_elems.append(num_elements)
                         nvme_fp32_dest_tensors.append(self.fp32_partitioned_groups_flat[i])
                     else:
-                        unpinned_fp32_buffer = torch.empty(num_elements, device=self.device, dtype=torch.float)
+                        unpinned_fp32_buffer = torch.empty(num_elements, device=self.device, dtype=self.fp32_dtype)
                         self._swap_in_sub_group_to_flat_buffer(unpinned_fp32_buffer, i)
                         self.optimizer_swapper.initialize_parameters(parameters=[self.fp32_partitioned_groups_flat[i]],
                                                                      src_tensors=[unpinned_fp32_buffer])
@@ -842,16 +854,16 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 cpu_memory_sub_groups += 1
 
                 if self.params_in_nvme_and_cpu and tensor is None:
-                    unpinned_fp32_buffer = torch.empty(num_elements, device=self.device, dtype=torch.float)
+                    unpinned_fp32_buffer = torch.empty(num_elements, device=self.device, dtype=self.fp32_dtype)
                     self._swap_in_sub_group_to_flat_buffer(unpinned_fp32_buffer, i)
                     self.fp32_partitioned_groups_flat.append(unpinned_fp32_buffer)
                 else:
                     if self.offload_optimizer:
                         self.fp32_partitioned_groups_flat.append(self.fp16_partitioned_groups_flat[i].to(
-                            self.subgroup_to_device[i]).clone().float().detach())
+                            self.subgroup_to_device[i]).clone().to(self.fp32_dtype).detach())
                     else:
                         self.fp32_partitioned_groups_flat.append(self.fp16_partitioned_groups_flat[i].to(
-                            self.device).clone().float().detach())
+                            self.device).clone().to(self.fp32_dtype).detach())
 
             self.fp32_partitioned_groups_flat[i].requires_grad = True  # keep this in case internal optimizer uses it
 
@@ -923,6 +935,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             cur_device = self.subgroup_to_device[sub_group_id]
             if cur_device == 'cpu':
                 self.optimizer.param_groups[param_group_id]['params'] = [fp32_param]
+                self.optimizer.sub_group_id = sub_group_id
                 cpu_loss = self.optimizer.step()
                 self.optimizer.param_groups[param_group_id]['params'] = []
             else:
@@ -967,7 +980,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         largest_numel = max([sum([p.ds_numel for p in psg]) for psg in self.fp16_partitioned_groups])
         gradient_dtype = self.fp32_partitioned_groups_flat[0].dtype
-        gradient_buffer = torch.zeros(int(largest_numel), dtype=gradient_dtype, device=self.device)
+        
+        no_swappable_optimizer = all([not self._swappable_optimizer_subgroup(i) for i in range(num_subgroups)])
+        require_grad_buffer = not (self.offload_optimizer and no_swappable_optimizer)
+        
+        if require_grad_buffer:
+            gradient_buffer = torch.zeros(int(largest_numel), dtype=gradient_dtype, device=self.device)
 
         timer_names = set()
 

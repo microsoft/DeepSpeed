@@ -1002,7 +1002,7 @@ class DeepSpeedConfig(object):
                         ZeroStageEnum.max_stage)
 
         if self.fp16_master_weights_and_gradients:
-            assert self.zero_enabled and self.zero_optimization_stage == ZeroStageEnum.gradients, "Fp16_master_weights_and_grads is only supported with ZeRO Stage 2 for now."
+            assert self.zero_enabled, "Fp16_master_weights_and_grads is only supported with ZeRO!"
 
     def _do_warning_check(self):
         fp16_enabled = self.fp16_enabled
