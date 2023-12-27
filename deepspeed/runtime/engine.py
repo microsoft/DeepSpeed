@@ -90,7 +90,7 @@ from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoin
 
 from .pipe.module import PipelineModule
 from .utils import get_ma_status
-from .compile_helper import CompiledModuleWrapper
+from .compile import CompiledModuleWrapper
 from ..ops.adam import FusedAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE
@@ -176,22 +176,19 @@ class EngineTimers(object):
 class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training."""
 
-    def __init__(
-        self,
-        args,
-        model,
-        optimizer=None,
-        model_parameters=None,
-        training_data=None,
-        lr_scheduler=None,
-        mpu=None,
-        dist_init_required=None,
-        collate_fn=None,
-        config=None,
-        config_class=None,
-        dont_change_device=False,
-        compile=False,
-    ):
+    def __init__(self,
+                 args,
+                 model,
+                 optimizer=None,
+                 model_parameters=None,
+                 training_data=None,
+                 lr_scheduler=None,
+                 mpu=None,
+                 dist_init_required=None,
+                 collate_fn=None,
+                 config=None,
+                 config_class=None,
+                 dont_change_device=False):
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
         self.client_optimizer = optimizer
@@ -361,8 +358,8 @@ class DeepSpeedEngine(Module):
         self.flatten = _flatten_dense_tensors
         self.unflatten = _unflatten_dense_tensors
 
-        if compile:
-            self._set_client_model(CompiledModuleWrapper(self.module))
+        if not self._config.compile_config.disable:
+            self._set_client_model(CompiledModuleWrapper(self.module, self._config.compile_config))
 
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):

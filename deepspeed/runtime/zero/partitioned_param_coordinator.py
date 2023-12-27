@@ -256,7 +256,6 @@ class PartitionedParameterCoordinator:
     @instrument_w_nvtx
     @torch.no_grad()
     def fetch_sub_module(self, current_submodule: Module, forward: bool) -> None:
-        
         """This method does the following (in order):
         1. kick off fetch for parameters in immediately required sub module
         2. kick off fetch for next few parameters we will need later (prefetch)

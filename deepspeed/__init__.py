@@ -71,8 +71,7 @@ def initialize(args=None,
                dist_init_required: Optional[bool] = None,
                collate_fn=None,
                config=None,
-               config_params=None,
-               compile=False):
+               config_params=None):
     """Initialize the DeepSpeed Engine.
 
     Arguments:
@@ -179,8 +178,7 @@ def initialize(args=None,
                                      dist_init_required=dist_init_required,
                                      collate_fn=collate_fn,
                                      config=config,
-                                     config_class=config_class,
-                                     compile=compile)
+                                     config_class=config_class)
     else:
         assert mpu is None, "mpu must be None with pipeline parallelism"
         mpu = model.mpu()
