@@ -109,10 +109,12 @@ class TestConfigLoad(DistributedCompileTest):
         y = torch.randn_like(x)
         engine(x, y)
 
+    @pytest.mark.skipif(not deepspeed.compiler.is_compile_supported(), reason="torch.compile is not supported")
     def test_compile(self, base_config):
         engine = self._init_engine(base_config)
         self._run_model(engine)
 
+    @pytest.mark.skipif(not deepspeed.compiler.is_compile_supported(), reason="torch.compile is not supported")
     def test_custom_backend(self, base_config):
         global custom_backend_called
         custom_backend_called = False
@@ -121,3 +123,8 @@ class TestConfigLoad(DistributedCompileTest):
         engine.set_backend(f"{__name__}.custom_backend")
         self._run_model(engine)
         assert custom_backend_called
+
+    def test_compile_disabled(self, base_config):
+        base_config["compile"]["disable"] = True
+        engine = self._init_engine(base_config)
+        self._run_model(engine)

@@ -6,10 +6,21 @@
 from typing import Optional, Union, Callable, Dict
 import importlib
 import torch
-from deepspeed.pydantic_v1 import validator
-from deepspeed.runtime.config_utils import DeepSpeedConfigModel
+from ..pydantic_v1 import validator
+from .config_utils import DeepSpeedConfigModel
 
 COMPILE_CONFIG = "compile"
+
+
+def is_compile_supported():
+    return hasattr(torch, "compile")
+
+
+def disable(func):
+
+    if is_compile_supported():
+        return torch.compiler.disable(func)
+    return func
 
 
 def get_compile_config(param_dict):
@@ -82,6 +93,8 @@ class CompiledModuleWrapper(torch.nn.Module):
 
     def __init__(self, module, compile_config: Union[CompileConfig, None] = None):
         super().__init__()
+
+        assert is_compile_supported(), "torch.compile is not supported on this version of PyTorch."
 
         modules = self.__dict__.get('_modules')
         modules['wrapped'] = module

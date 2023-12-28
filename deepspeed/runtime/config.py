@@ -31,7 +31,7 @@ from .activation_checkpointing.config import DeepSpeedActivationCheckpointingCon
 from ..comm.config import DeepSpeedCommsConfig
 from ..monitor.config import get_monitor_config
 from ..inference.config import WeightQuantConfig
-from .compile import get_compile_config
+from .compiler import get_compile_config
 
 from deepspeed import comm as dist
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
