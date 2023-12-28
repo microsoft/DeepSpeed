@@ -1,4 +1,5 @@
 import mii
+import os
 # It requires to install deepspeed_mii: pip install deepspeed-mii
 
 
@@ -17,6 +18,7 @@ def run_pipeline(deployment_name : str):
 
 
 if __name__ == "__main__":
-  deployment_name = "meta-llama/Llama-2-7b-hf"
+  # current directory: debug
+  deployment_name = f"{os.path.dirname(__file__)}/Sheared-LLaMA-1.3B"
   # deployment_name = "Qwen/Qwen-1_8B-Chat-Int4"
   run_pipeline(deployment_name)
