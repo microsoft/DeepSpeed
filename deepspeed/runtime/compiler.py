@@ -86,11 +86,12 @@ class CompileConfig(DeepSpeedConfigModel):
 
     @validator("backend")
     def validate_backend(cls, field_value, values):
-        if is_compile_supported() and isinstance(field_value, str):
-            if field_value not in torch._dynamo.list_backends():
-                return get_backend_fn(field_value)
-        elif not callable(field_value):
-            raise ValueError(f"backend for torch.compile must be a string or Callable: {field_value}")
+        if is_compile_supported():
+            if isinstance(field_value, str):
+                if field_value not in torch._dynamo.list_backends():
+                    return get_backend_fn(field_value)
+            elif not callable(field_value):
+                raise ValueError(f"backend for torch.compile must be a string or Callable: {field_value}")
 
         return field_value
 
