@@ -19,7 +19,7 @@ class TorchCheckpointEngine(CheckpointEngine):
 
     def save(self, state_dict, path: str):
         logger.info(f"[Torch] Saving {path}...")
-        torch.save(state_dict, path)
+        torch.save(state_dict, path, pickle_protocol=4)
         logger.info(f"[Torch] Saved {path}.")
         return None
 
