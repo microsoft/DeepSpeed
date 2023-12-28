@@ -41,11 +41,12 @@ def base_config():
 
 custom_backend_called = False
 
-
-def custom_backend(gm: torch.fx.GraphModule, example_inputs):
-    global custom_backend_called
-    custom_backend_called = True
-    return gm.forward
+if deepspeed.compiler.is_compile_supported():
+    # PyTorch v1 does not have torch.fx
+    def custom_backend(gm: torch.fx.GraphModule, example_inputs):
+        global custom_backend_called
+        custom_backend_called = True
+        return gm.forward
 
 
 class DistributedCompileTest(DistributedTest):
