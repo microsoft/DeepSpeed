@@ -46,6 +46,11 @@ def get_backend_fn(backend_name: str):
 
 class CompileConfig(DeepSpeedConfigModel):
 
+    disable: bool = False
+    """
+    Passed to `disable` argument of torch.compile.
+    """
+
     backend: Union[str, Callable] = "inductor"
     """
     Passed to `backend` argument of torch.compile.
@@ -73,10 +78,11 @@ class CompileConfig(DeepSpeedConfigModel):
     Passed to `options` argument of torch.compile.
     """
 
-    disable: bool = False
-    """
-    Passed to `disable` argument of torch.compile.
-    """
+    @validator("disable")
+    def validate_disable(cls, field_value, values):
+        if not field_value and not is_compile_supported():
+            raise ValueError("torch.compile is not supported on this version of PyTorch.")
+        return field_value
 
     @validator("backend")
     def validate_backend(cls, field_value, values):
