@@ -1148,11 +1148,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             if len(params) == 1:
                 # have an opportunity to avoid some intermediate memory allocations
                 param, = params
-                buffer_size = math.ceil(param.ds_numel / world_size) * world_size
-                if not forward and param.ds_secondary_tensor is not None:
-                    buffer_size = param.ds_secondary_tensor.shape[0] * world_size  #make sure out is appropriately sized
 
                 param_ds_tensor = param.ds_secondary_tensor if not forward and param.ds_secondary_tensor is not None else param.ds_tensor
+                buffer_size = param_ds_tensor.ds_numel * world_size
                 param_buffer = torch.empty(
                     buffer_size,
                     dtype=param_ds_tensor.dtype if not quantize else torch.int8,
@@ -1356,8 +1354,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         return param.ds_numel + self._padding_size(param)
 
     def _padding_size(self, param):
-        remainder = param.ds_numel % self.num_partitions
-        return (self.num_partitions - remainder) if remainder else 0
+        alignment = self.num_partitions * 8 if self.quantized_weights else self.num_partitions
+        remainder = param.ds_numel % alignment
+        return (alignment - remainder) if remainder else 0
 
     def _partition_numel(self, param):
         return param.ds_tensor.ds_numel
@@ -1586,19 +1585,14 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             secondary_end = secondary_start + secondary_partition_size
 
             one_dim_param = param.contiguous().view(-1)
-            start = partition_size * self.rank
-            end = start + partition_size
-            if start < param.ds_numel and end <= param.ds_numel:
-                if secondary_start < param.ds_numel and secondary_end <= param.ds_numel:
-                    sec_src_tensor = one_dim_param.narrow(0, secondary_start, secondary_partition_size)
-                    param.ds_secondary_tensor.copy_(sec_src_tensor)
-
+            if secondary_start < param.ds_numel and secondary_end <= param.ds_numel:
+                sec_src_tensor = one_dim_param.narrow(0, secondary_start, secondary_partition_size)
+                param.ds_secondary_tensor.copy_(sec_src_tensor)
             else:
-                if start < param.ds_numel:
-                    elements_to_copy = param.ds_numel - start
-                    elements_to_copy_sec = elements_to_copy * param.ds_secondary_tensor_num_of_groups
-                    param.ds_secondary_tensor.narrow(0, 0, elements_to_copy_sec).copy_(
-                        one_dim_param.narrow(0, secondary_start, elements_to_copy_sec))
+                if secondary_start < param.ds_numel:
+                    elements_to_copy = param.ds_numel - secondary_start
+                    param.ds_secondary_tensor.narrow(0, 0, elements_to_copy).copy_(
+                        one_dim_param.narrow(0, secondary_start, elements_to_copy))
 
             print_rank_0(f"{param.ds_id} partitioned type {param.dtype} dev {param.device} shape {param.shape}",
                          force=False)
