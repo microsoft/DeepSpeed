@@ -376,6 +376,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         #creates backward hooks for gradient partitioning
         ###Calls all gather param
+        self._grad_acc_hooks = []
         self.create_reduce_and_remove_grad_hooks()
 
         #exit(0)
@@ -396,6 +397,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def destroy(self):
         self.parameter_offload.destroy()
+        for hook in self._grad_acc_hooks:
+            hook.remove()
+        print_rank_0("Removed grad acc hooks", force=False)
         del self.__ipg_bucket_flat_buffer
 
     def initialize_ds_offload(
@@ -1124,7 +1128,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                         def reduce_partition_and_remove_grads(*notneeded):
                             self.reduce_ready_partitions_and_remove_grads(param)
 
-                        grad_acc.register_hook(reduce_partition_and_remove_grads)
+                        self._grad_acc_hooks.append(grad_acc.register_hook(reduce_partition_and_remove_grads))
                         self.grad_accs.append(grad_acc)
 
                     #print(f"param grad fn {param.expand_as(param).grad_fn}")
@@ -1220,7 +1224,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     @instrument_w_nvtx
     def __avg_scatter_contiguous_grads(self, buffer_to_reduce: Tensor) -> List[Tensor]:
         dtype = buffer_to_reduce.dtype
-        if self.communication_data_type == self.dtype:
+        if self.communication_data_type != dtype:
             buffer_to_reduce = buffer_to_reduce.to(self.communication_data_type)
         if self.postscale_gradients and self.gradient_predivide_factor != 1.0:
             buffer_to_reduce = buffer_to_reduce.div_(self.gradient_predivide_factor)
@@ -1989,7 +1993,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # warn user about caching allocator flushes
         memory_stats = get_accelerator().memory_stats()
         alloc_retries = memory_stats.get("num_alloc_retries")
-        if alloc_retries == None:
+        if alloc_retries is None:
             alloc_retries = 0
         if alloc_retries > self.n_caching_allocator_flushes:
             if dist.get_rank() == 0:
@@ -2555,7 +2559,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # when use loading checkpoint serial, after finish loading, we need to
         # delete the temp state_dict_list variable to save memory, then trigger
         # the next rank's loading
-        if load_serial != None:
+        if load_serial is not None:
             load_serial += 1
             rank = dist.get_rank(group=self.dp_process_group)
             local_rank = dist.get_local_rank()

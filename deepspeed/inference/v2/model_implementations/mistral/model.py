@@ -14,6 +14,7 @@ from ...inference_utils import ActivationType, DtypeEnum
 from ...model_implementations import *
 from ...modules.configs import *
 from ...modules.interfaces import *
+from ...modules import heuristics
 from ...ragged import RaggedBatchWrapper
 
 from .container import MistralNonTransformerContainer, MistralTransformerContainer
@@ -104,6 +105,27 @@ class MistralInferenceModel(DSTransformerModelBase):
     def positional_embedding_type(self) -> PositionalEmbeddingType:
         return PositionalEmbeddingType.rotate_half
 
+    def make_attn_layer(self) -> None:
+        """
+        Builds the attention layer for the model. This sets the `self.attn` attribute.
+        """
+        softmax_scale = 1.0 / (self.head_size**0.5)
+
+        rotary_config = RotateHalfConfig(theta_base=self._config.rope_theta)
+
+        attn_config = DSSelfAttentionConfig(max_tokens=self._engine_config.state_manager.max_ragged_batch_size,
+                                            n_heads_q=self.n_heads_q_local,
+                                            n_heads_kv=self.n_heads_kv_local,
+                                            head_size=self.head_size,
+                                            max_sequences=self._engine_config.state_manager.max_ragged_sequence_count,
+                                            scale_factor=softmax_scale,
+                                            input_dtype=self.activation_dtype,
+                                            output_dtype=self.activation_dtype,
+                                            positional_embedding_type=self.positional_embedding_type,
+                                            positional_embedding_config=rotary_config)
+
+        self.attn = heuristics.instantiate_attention(attn_config, self._engine_config)
+
     """
     Forward implementations
     """
@@ -144,8 +166,7 @@ class MistralInferenceModel(DSTransformerModelBase):
         kv_cache = self.state_manager.get_cache(layer_idx)
 
         hidden_states = self.qkv(hidden_states, cur_params.qkv_w, b=None)
-        hidden_states = self.attn(hidden_states, kv_cache,
-                                  ragged_batch_info)  #, inv_freqs=None) #cur_params.rotary_emb)
+        hidden_states = self.attn(hidden_states, kv_cache, ragged_batch_info)
         hidden_states = self.attn_out(hidden_states, cur_params.attn_out_w, b=None)
 
         if self.tp_size > 1:
