@@ -11,6 +11,7 @@ from deepspeed import comm as dist
 from deepspeed.utils import logger
 from deepspeed.utils.timer import ThroughputTimer
 from deepspeed.accelerator import get_accelerator
+from deepspeed.runtime.bf16_optimizer import BF16_Optimizer
 
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
 from deepspeed.utils.timer import FORWARD_MICRO_TIMER, FORWARD_GLOBAL_TIMER, BACKWARD_MICRO_TIMER, \
@@ -75,6 +76,8 @@ class PipelineEngine(DeepSpeedEngine):
         self.has_bool_tensors = has_bool_tensors
         self.eval_return_logits = False
         self.outputs = None
+        # BF16 Optimizer is hardcoded for fp32 gradient accumulation
+        self.using_bf16_optimizer = type(self.optimizer) == BF16_Optimizer
 
         # used to disable the pipeline all-reduce when used with 1-bit Adam/1-bit LAMB
         self.pipeline_enable_backward_allreduce = True
@@ -129,8 +132,12 @@ class PipelineEngine(DeepSpeedEngine):
 
         # Partition input/output buffers
         # XXX temporarily disable while I revert some partition hacks.
-        self.is_pipe_partitioned = self.is_model_parallel
-        self.is_grad_partitioned = self.is_model_parallel
+        assert isinstance(self._config.pipeline['pipe_partitioned'], bool)
+        assert isinstance(self._config.pipeline['grad_partitioned'], bool)
+        self.is_pipe_partitioned = self.is_model_parallel and self._config.pipeline['pipe_partitioned']
+        self.is_grad_partitioned = self.is_model_parallel and self._config.pipeline['grad_partitioned']
+        logger.info(f'is_pipe_partitioned= {self.is_pipe_partitioned} '
+                    f'is_grad_partitioned= {self.is_grad_partitioned}')
 
         model_parameters = filter(lambda p: p.requires_grad, self.module.parameters())
         num_params = sum([p.numel() for p in model_parameters])
@@ -175,6 +182,10 @@ class PipelineEngine(DeepSpeedEngine):
 
         self.first_output_send = True
         self.first_gradient_send = True
+        self.pipe_partition_input_meta_cache = None
+        self.pipe_partition_output_meta_cache = None
+        self.pipe_partition_grad_meta_cache = None
+        self.grad_partition_grad_layer_meta_cache = None
 
         #stores the loss for the current micro batch being processed
         self.loss = torch.tensor(0.0).to(self.device)
@@ -257,13 +268,13 @@ class PipelineEngine(DeepSpeedEngine):
 
         weight_group_list = self.module.get_tied_weights_and_groups()
         for weight, group in weight_group_list:
-            grad = weight._hp_grad if self.bfloat16_enabled() else weight.grad
+            grad = weight._hp_grad if self.using_bf16_optimizer else weight.grad
             dist.all_reduce(grad, group=group)
 
     def _exec_reduce_grads(self):
         self._force_grad_boundary = True
         if self.pipeline_enable_backward_allreduce:
-            if self.bfloat16_enabled():
+            if self.using_bf16_optimizer:
                 # PP+BF16 work for ZeRO Stage 1
                 self._bf16_reduce_grads()
             else:
@@ -301,6 +312,11 @@ class PipelineEngine(DeepSpeedEngine):
         self.pipe_recv_buf = None
         self.grad_layer = None
         self.meta_buffer = None
+
+        self.pipe_partition_input_meta_cache = None
+        self.pipe_partition_output_meta_cache = None
+        self.pipe_partition_grad_meta_cache = None
+        self.grad_partition_grad_layer_meta_cache = None
 
     def train_batch(self, data_iter=None):
         """Progress the pipeline to train the next batch of data. The engine will ingest
@@ -549,7 +565,7 @@ class PipelineEngine(DeepSpeedEngine):
                 agg_loss /= self.dp_world_size
 
             assert self.global_rank in self.grid.pp_group
-            losses = torch.Tensor([self.dp_group_loss, agg_loss]).to(self.device)
+            losses = torch.stack([self.dp_group_loss, agg_loss]).float()
             if self.is_pipe_parallel:
                 dist.broadcast(tensor=losses, src=self.global_rank, group=self.mpu.get_pipe_parallel_group())
         else:
@@ -634,7 +650,9 @@ class PipelineEngine(DeepSpeedEngine):
 
         # collect the partitioned input from the previous stage
         if self.is_pipe_partitioned and not self.is_first_stage():
-            part_input = PartitionedTensor.from_meta(meta=inputs[0],
+            if self.pipe_partition_input_meta_cache is None:
+                self.pipe_partition_input_meta_cache = inputs[0].to('cpu')
+            part_input = PartitionedTensor.from_meta(meta=self.pipe_partition_input_meta_cache,
                                                      local_part=inputs[1],
                                                      group=self.grid.get_slice_parallel_group())
 
@@ -725,7 +743,9 @@ class PipelineEngine(DeepSpeedEngine):
         # careful to also restore the computational graph of the tensors we partitioned.
         if self.is_pipe_partitioned:
             if self.is_grad_partitioned:
-                part_output = PartitionedTensor.from_meta(meta=outputs[0],
+                if self.pipe_partition_output_meta_cache is None:
+                    self.pipe_partition_output_meta_cache = outputs[0].to('cpu')
+                part_output = PartitionedTensor.from_meta(meta=self.pipe_partition_output_meta_cache,
                                                           local_part=outputs[1],
                                                           group=self.grid.get_slice_parallel_group())
                 self.pipe_buffers['output_tensors'][buffer_id].data = part_output.full()
@@ -738,14 +758,16 @@ class PipelineEngine(DeepSpeedEngine):
         grad_tensors = self.grad_layer
         if self.is_grad_partitioned:
             #print(f'RANK={self.global_rank} BEFORE-BWD restoring grad={self.grad_layer[0].size()} {self.grad_layer[1].size()}')
-            part_grad = PartitionedTensor.from_meta(meta=self.grad_layer[0],
+            if self.grad_partition_grad_layer_meta_cache is None:
+                self.grad_partition_grad_layer_meta_cache = self.grad_layer[0].to('cpu')
+            part_grad = PartitionedTensor.from_meta(meta=self.grad_partition_grad_layer_meta_cache,
                                                     local_part=self.grad_layer[1],
                                                     group=self.grid.get_slice_parallel_group())
             grad_tensors = (part_grad.full(), *grad_tensors[2:])
             part_grad = None
             #print(f'RANK={self.global_rank} BEFORE-BWD restored grad={self.grad_layer[0].size()} {self.grad_layer[1].size()}')
 
-        if self.bfloat16_enabled() and not self.is_last_stage():
+        if self.using_bf16_optimizer and not self.is_last_stage():
             # manually call because we don't call optimizer.backward()
             self.optimizer.clear_lp_grads()
 
@@ -757,7 +779,7 @@ class PipelineEngine(DeepSpeedEngine):
         else:
             torch.autograd.backward(tensors=(outputs, ), grad_tensors=(grad_tensors, ))
 
-        if self.bfloat16_enabled() and not self.is_last_stage():
+        if self.using_bf16_optimizer and not self.is_last_stage():
             # manually call because we don't call optimizer.backward()
             self.optimizer.update_hp_grads(clear_lp_grads=False)
 
@@ -985,7 +1007,7 @@ class PipelineEngine(DeepSpeedEngine):
             if isinstance(inputs, tuple):
                 first_input = inputs[0]
                 assert all([torch.is_tensor(elt) for elt in inputs[1:]])
-                inputs_grad_tail = [elt.grad for elt in inputs[1:] if elt.grad is not None]
+                inputs_grad_tail = [elt.grad for elt in inputs[1:]]
             elif torch.is_tensor(inputs):
                 first_input = inputs
                 inputs_grad_tail = []
@@ -1081,7 +1103,9 @@ class PipelineEngine(DeepSpeedEngine):
         # XXX these shapes are hardcoded for Megatron
         # Restore partitioned output if it was partitioned and we are sending full gradients
         if self.is_pipe_partitioned and not self.is_grad_partitioned:
-            part_output = PartitionedTensor.from_meta(meta=outputs[0],
+            if self.pipe_partition_grad_meta_cache is None:
+                self.pipe_partition_grad_meta_cache = outputs[0].to('cpu')
+            part_output = PartitionedTensor.from_meta(meta=self.pipe_partition_grad_meta_cache,
                                                       local_part=outputs[1],
                                                       group=self.grid.get_slice_parallel_group())
             outputs[0].data = part_output.full()

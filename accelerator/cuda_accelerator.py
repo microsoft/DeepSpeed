@@ -15,19 +15,36 @@ try:
 except ImportError:
     pass
 
+# Delay import pynvml to avoid import error when CUDA is not available
+pynvml = None
+
 
 class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def __init__(self):
         self._name = 'cuda'
         self._communication_backend_name = 'nccl'
+        if pynvml is None:
+            self._init_pynvml()
+
+    def _init_pynvml(self):
+        global pynvml
+        try:
+            import pynvml
+        except ImportError:
+            return
+        try:
+            pynvml.nvmlInit()
+        except pynvml.NVMLError:
+            pynvml = None
+            return
 
     def is_synchronized_device(self):
         return False
 
     # Device APIs
     def device_name(self, device_index=None):
-        if device_index == None:
+        if device_index is None:
             return 'cuda'
         return 'cuda:{}'.format(device_index)
 
@@ -136,6 +153,31 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def total_memory(self, device_index=None):
         return torch.cuda.get_device_properties(device_index).total_memory
 
+    def _get_nvml_gpu_id(self, torch_gpu_id):
+        """
+        credit: https://discuss.pytorch.org/t/making-pynvml-match-torch-device-ids-cuda-visible-devices/103020
+
+        Remap torch device id to nvml device id, respecting CUDA_VISIBLE_DEVICES.
+
+        If the latter isn't set return the same id
+        """
+        # if CUDA_VISIBLE_DEVICES is used automagically remap the id since pynvml ignores this env var
+        if "CUDA_VISIBLE_DEVICES" in os.environ:
+            ids = list(map(int, os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",")))
+            return ids[torch_gpu_id]  # remap
+        else:
+            return torch_gpu_id
+
+    def available_memory(self, device_index=None):
+        if pynvml:
+            if device_index is None:
+                device_index = self.current_device()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(self._get_nvml_gpu_id(device_index))
+            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            return info.free
+        else:
+            return self.total_memory(device_index) - self.memory_allocated(device_index)
+
     # Data types
     def is_bf16_supported(self):
         return torch.cuda.is_bf16_supported()
@@ -179,6 +221,17 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
             return True
         else:
             return False
+
+    # Graph operations
+    def create_graph(self):
+        return torch.cuda.CUDAGraph()
+
+    def capture_to_graph(self, graph, pool=None, stream=None):
+        return torch.cuda.graph(graph, pool, stream)
+
+    def replay_graph(self, graph):
+        graph.replay()
+        return
 
     # Tensor operations
 
@@ -238,7 +291,7 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     class_dict = None
 
     def _lazy_init_class_dict(self):
-        if self.class_dict != None:
+        if self.class_dict is not None:
             return
         else:
             self.class_dict = {}
@@ -280,3 +333,6 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def build_extension(self):
         from torch.utils.cpp_extension import BuildExtension
         return BuildExtension
+
+    def export_envs(self):
+        return ['NCCL']
