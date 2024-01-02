@@ -490,6 +490,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.reset_partition_gradient_structures()
 
         # creates backward hooks for gradient partitioning
+        self._grad_acc_hooks = []
         if self.partition_gradients or self.overlap_comm:
             self.create_reduce_and_remove_grad_hooks()
 
@@ -521,6 +522,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self._link_all_hp_params()
         self._enable_universal_checkpoint()
         self._param_slice_mappings = self._create_param_mapping()
+
+    def destroy(self):
+        for hook in self._grad_acc_hooks:
+            hook.remove()
+        self.print_rank_0("Removed grad acc hooks")
 
     def _enable_universal_checkpoint(self):
         for lp_param_group in self.bit16_groups:
@@ -864,7 +870,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                         def reduce_partition_and_remove_grads(*notneeded):
                             self.reduce_ready_partitions_and_remove_grads(param, i)
 
-                        grad_acc.register_hook(reduce_partition_and_remove_grads)
+                        self._grad_acc_hooks.append(grad_acc.register_hook(reduce_partition_and_remove_grads))
                         self.grad_accs.append(grad_acc)
 
                     wrapper(param, i)
@@ -2258,7 +2264,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self._load_global_state(optim_sd)
 
         tp_rank = bwc_tensor_model_parallel_rank(mpu=self.mpu)
-        tp_world_size = self.mpu.get_slice_parallel_world_size()
+        tp_world_size = self.mpu.get_slice_parallel_world_size() if hasattr(self.mpu, "get_slice_parallel_world_size") \
+                else self.mpu.get_tensor_model_parallel_world_size()
+
         for i, _ in enumerate(self.optimizer.param_groups):
             for lp in self.bit16_groups[i]:
                 if lp._hp_mapping is not None:
