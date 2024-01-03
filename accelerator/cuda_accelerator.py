@@ -222,6 +222,17 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         else:
             return False
 
+    # Graph operations
+    def create_graph(self):
+        return torch.cuda.CUDAGraph()
+
+    def capture_to_graph(self, graph, pool=None, stream=None):
+        return torch.cuda.graph(graph, pool, stream)
+
+    def replay_graph(self, graph):
+        graph.replay()
+        return
+
     # Tensor operations
 
     @property
@@ -322,3 +333,6 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def build_extension(self):
         from torch.utils.cpp_extension import BuildExtension
         return BuildExtension
+
+    def export_envs(self):
+        return ['NCCL']
