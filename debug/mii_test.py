@@ -19,6 +19,8 @@ def run_pipeline(deployment_name : str):
 
 if __name__ == "__main__":
   # current directory: debug
-  deployment_name = f"{os.path.dirname(__file__)}/Sheared-LLaMA-1.3B"
+  # deployment_name = f"{os.path.dirname(__file__)}/models--princeton-nlp--Sheared-LLaMA-1.3B"
+  # deployment_name = f"{os.path.dirname(__file__)}/priceton-nlp/Sheared-LLaMA-1.3B-processed"
   # deployment_name = "Qwen/Qwen-1_8B-Chat-Int4"
+  deployment_name = f"{os.path.dirname(__file__)}/models--princeton-nlp--Sheared-LLaMA-1.3B/snapshots/dbdd43e8018c14ec50f2f569564b328b28f254b9"
   run_pipeline(deployment_name)

@@ -80,7 +80,7 @@ def shard_param(param: Optional[torch.Tensor],
         # Trivial case of no sharding.
         return param
 
-    if shard_mode == ShardingType.OUTER_DIMENSION:
+    if shard_mode == ShardingType.OUTER_DIMENSION: # TODO: CSY: We need to duplicate the scales for each shard.
 
         def get_matrices(dim_idx: int) -> torch.Tensor:
             dim_size = param.size(dim_idx) // num_concatenated_matrices
@@ -97,7 +97,7 @@ def shard_param(param: Optional[torch.Tensor],
             matrices, start_channel_id, end_channel_id = get_matrices(dim_idx=-2)
             return torch.cat([mat[..., start_channel_id:end_channel_id, :] for mat in matrices], dim=-2)
 
-    elif shard_mode == ShardingType.INNER_DIMENSION:
+    elif shard_mode == ShardingType.INNER_DIMENSION: # TODO: CSY: We need to partition the scales for each shard.
         dim_size = param.size(-1) // num_concatenated_matrices
         start_channel_id, end_channel_id = get_shard_endpoints(dim_size, shard_rank, num_shards, granularity)
         matrices = torch.chunk(param, num_concatenated_matrices, dim=-1)

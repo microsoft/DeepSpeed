@@ -42,6 +42,8 @@ class UnfusedQKVParameter(ParameterBase):
 
     def finalize(self):
         fused_param = torch.cat([self.q_params, self.k_params, self.v_params], dim=0)
+        if hasattr(self.q_params, 'scales') and hasattr(self.k_params, 'scales') and hasattr(self.v_params, 'scales'):
+            fused_param.scales = torch.cat([self.q_params.scales, self.k_params.scales, self.v_params.scales], dim=0)
         return self.inference_model.transform_qkv_param(fused_param)
 
 

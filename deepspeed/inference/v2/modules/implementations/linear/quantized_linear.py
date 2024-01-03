@@ -104,8 +104,8 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         device = get_accelerator().current_device()
         
         # The below is the dummy one for early stage testing. It will be replaced by:
-        scales = param.fp6_quant_scales.cpu()
-        weight = param.fp6_quant_output.cpu()
+        scales = param.scales.cpu()
+        weight = param.cpu()
         # scales = torch.ones((self.M, self.K // self.K), dtype=torch.float16) # dummy scales for early stage testing
         weights_2bit, weights_4bit = self.preprocess_weight(weight)
         
