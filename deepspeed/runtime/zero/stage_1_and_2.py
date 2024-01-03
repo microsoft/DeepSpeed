@@ -240,8 +240,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.reduce_scatter:
             valid_reduce_scatter_dtypes = (torch.float16, torch.bfloat16, torch.float32)
             assert self.communication_data_type in valid_reduce_scatter_dtypes, f"{self.zero_stage_string} supports {valid_reduce_scatter_dtypes} communication_data_type with reduce scatter enabled. Got: '{self.communication_data_type}'"
-            assert self.gradient_predivide_factor == 1.0, "gradient_predivide_factor != 1.0 is not yet supported with {self.zero_stage_string} with reduce scatter enabled"
-            assert self.postscale_gradients, "pre-scale gradients is not yet supported with {self.zero_stage_string} with reduce scatter enabled"
+            assert self.gradient_predivide_factor == 1.0, f"gradient_predivide_factor != 1.0 is not yet supported with {self.zero_stage_string} with reduce scatter enabled"
+            assert self.postscale_gradients, f"pre-scale gradients is not yet supported with {self.zero_stage_string} with reduce scatter enabled"
 
         # param flattened by groups
         self.bit16_groups = []
@@ -490,6 +490,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.reset_partition_gradient_structures()
 
         # creates backward hooks for gradient partitioning
+        self._grad_acc_hooks = []
         if self.partition_gradients or self.overlap_comm:
             self.create_reduce_and_remove_grad_hooks()
 
@@ -521,6 +522,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self._link_all_hp_params()
         self._enable_universal_checkpoint()
         self._param_slice_mappings = self._create_param_mapping()
+
+    def destroy(self):
+        for hook in self._grad_acc_hooks:
+            hook.remove()
+        self.print_rank_0("Removed grad acc hooks")
 
     def _enable_universal_checkpoint(self):
         for lp_param_group in self.bit16_groups:
@@ -864,7 +870,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                         def reduce_partition_and_remove_grads(*notneeded):
                             self.reduce_ready_partitions_and_remove_grads(param, i)
 
-                        grad_acc.register_hook(reduce_partition_and_remove_grads)
+                        self._grad_acc_hooks.append(grad_acc.register_hook(reduce_partition_and_remove_grads))
                         self.grad_accs.append(grad_acc)
 
                     wrapper(param, i)
