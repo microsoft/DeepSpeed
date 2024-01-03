@@ -35,10 +35,19 @@ else:
     TORCH_MINOR = int(torch.__version__.split('.')[1])
 
 
+class MissingCUDAException(Exception):
+    pass
+
+
+class CUDAMismatchException(Exception):
+    pass
+
+
 def installed_cuda_version(name=""):
     import torch.utils.cpp_extension
     cuda_home = torch.utils.cpp_extension.CUDA_HOME
-    assert cuda_home is not None, "CUDA_HOME does not exist, unable to compile CUDA op(s)"
+    if cuda_home is None:
+        raise MissingCUDAException("CUDA_HOME does not exist, unable to compile CUDA op(s)")
     # Ensure there is not a cuda version mismatch between torch and nvcc compiler
     output = subprocess.check_output([cuda_home + "/bin/nvcc", "-V"], universal_newlines=True)
     output_split = output.split()
@@ -64,13 +73,9 @@ def get_default_compute_capabilities():
 # list compatible minor CUDA versions - so that for example pytorch built with cuda-11.0 can be used
 # to build deepspeed and system-wide installed cuda 11.2
 cuda_minor_mismatch_ok = {
-    10: [
-        "10.0",
-        "10.1",
-        "10.2",
-    ],
+    10: ["10.0", "10.1", "10.2"],
     11: ["11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8"],
-    12: ["12.0", "12.1"],
+    12: ["12.0", "12.1", "12.2", "12.3"],
 }
 
 
@@ -93,15 +98,17 @@ def assert_no_cuda_mismatch(name=""):
                 "Detected `DS_SKIP_CUDA_CHECK=1`: Allowing this combination of CUDA, but it may result in unexpected behavior."
             )
             return True
-        raise Exception(f">- DeepSpeed Op Builder: Installed CUDA version {sys_cuda_version} does not match the "
-                        f"version torch was compiled with {torch.version.cuda}, unable to compile "
-                        "cuda/cpp extensions without a matching cuda version.")
+        raise CUDAMismatchException(
+            f">- DeepSpeed Op Builder: Installed CUDA version {sys_cuda_version} does not match the "
+            f"version torch was compiled with {torch.version.cuda}, unable to compile "
+            "cuda/cpp extensions without a matching cuda version.")
     return True
 
 
 class OpBuilder(ABC):
     _rocm_version = None
     _is_rocm_pytorch = None
+    _loaded_ops = {}
 
     def __init__(self, name):
         self.name = name
@@ -342,7 +349,7 @@ class OpBuilder(ABC):
         try:
             assert_no_cuda_mismatch(self.name)
             return '-D__ENABLE_CUDA__'
-        except BaseException:
+        except MissingCUDAException:
             print(f"{WARNING} {self.name} cuda is missing or is incompatible with installed torch, "
                   "only cpu ops can be compiled!")
             return '-D__DISABLE_CUDA__'
@@ -433,6 +440,9 @@ class OpBuilder(ABC):
                             extra_link_args=self.strip_empty_entries(self.extra_ldflags()))
 
     def load(self, verbose=True):
+        if self.name in __class__._loaded_ops:
+            return __class__._loaded_ops[self.name]
+
         from deepspeed.git_version_info import installed_ops, torch_info
         if installed_ops.get(self.name, False):
             # Ensure the op we're about to load was compiled with the same
@@ -441,7 +451,9 @@ class OpBuilder(ABC):
             if torch.cuda.is_available() and isinstance(self, CUDAOpBuilder):
                 self.validate_torch_op_version(torch_info)
 
-            return importlib.import_module(self.absolute_name())
+            op_module = importlib.import_module(self.absolute_name())
+            __class__._loaded_ops[self.name] = op_module
+            return op_module
         else:
             return self.jit_load(verbose)
 
@@ -456,18 +468,14 @@ class OpBuilder(ABC):
             raise RuntimeError(f"Unable to JIT load the {self.name} op due to ninja not being installed.")
 
         if isinstance(self, CUDAOpBuilder) and not self.is_rocm_pytorch():
-            try:
-                assert_no_cuda_mismatch(self.name)
-                self.build_for_cpu = False
-            except BaseException:
-                self.build_for_cpu = True
+            self.build_for_cpu = not torch.cuda.is_available()
 
         self.jit_mode = True
         from torch.utils.cpp_extension import load
 
         start_build = time.time()
-        sources = [self.deepspeed_src_path(path) for path in self.sources()]
-        extra_include_paths = [self.deepspeed_src_path(path) for path in self.include_paths()]
+        sources = [os.path.abspath(self.deepspeed_src_path(path)) for path in self.sources()]
+        extra_include_paths = [os.path.abspath(self.deepspeed_src_path(path)) for path in self.include_paths()]
 
         # Torch will try and apply whatever CCs are in the arch list at compile time,
         # we have already set the intended targets ourselves we know that will be
@@ -485,6 +493,11 @@ class OpBuilder(ABC):
             if not self.build_for_cpu and self.enable_bf16:
                 cxx_args.append("-DBF16_AVAILABLE")
                 nvcc_args.append("-DBF16_AVAILABLE")
+                nvcc_args.append("-U__CUDA_NO_BFLOAT16_OPERATORS__")
+                nvcc_args.append("-U__CUDA_NO_BFLOAT162_OPERATORS__")
+
+        if self.is_rocm_pytorch():
+            cxx_args.append("-D__HIP_PLATFORM_AMD__=1")
 
         op_module = load(name=self.name,
                          sources=self.strip_empty_entries(sources),
@@ -501,6 +514,8 @@ class OpBuilder(ABC):
         # Reset arch list so we are not silently removing it for other possible use cases
         if torch_arch_list:
             os.environ["TORCH_CUDA_ARCH_LIST"] = torch_arch_list
+
+        __class__._loaded_ops[self.name] = op_module
 
         return op_module
 
@@ -596,7 +611,7 @@ class CUDAOpBuilder(OpBuilder):
             if not self.is_rocm_pytorch():
                 assert_no_cuda_mismatch(self.name)
             self.build_for_cpu = False
-        except BaseException:
+        except MissingCUDAException:
             self.build_for_cpu = True
 
         if self.build_for_cpu:
@@ -606,10 +621,13 @@ class CUDAOpBuilder(OpBuilder):
 
         compile_args = {'cxx': self.strip_empty_entries(self.cxx_args())} if self.build_for_cpu else \
                        {'cxx': self.strip_empty_entries(self.cxx_args()), \
-                           'nvcc': self.strip_empty_entries(self.nvcc_args())}
+                        'nvcc': self.strip_empty_entries(self.nvcc_args())}
 
         if not self.build_for_cpu and self.enable_bf16:
             compile_args['cxx'].append("-DBF16_AVAILABLE")
+
+        if self.is_rocm_pytorch():
+            compile_args['cxx'].append("-D__HIP_PLATFORM_AMD__=1")
 
         cuda_ext = ExtensionBuilder(name=self.absolute_name(),
                                     sources=self.strip_empty_entries(self.sources()),

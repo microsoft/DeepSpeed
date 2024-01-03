@@ -21,6 +21,7 @@ PARTITION_COUNT = 'partition_count'
 ZERO_STAGE = 'zero_stage'
 CLIP_GRAD = 'clip_grad'
 FP32_WEIGHT_KEY = "fp32"
+LOSS_SCALER = 'loss_scaler'
 
 #########################################
 # Module checkpoint keys
@@ -56,16 +57,26 @@ UNIVERSAL_CHECKPOINT_VERSION_KEY = 'universal_checkpoint_version'
 UNIVERSAL_CHECKPOINT_VERSION_VALUE = 0.2
 
 # Vocabulary padding
-VOCAB_DIVISIBILITY_PADDING_TENSOR = 'vocab_divisibility_padding_tensor'
+VOCAB_TENSOR = 'vocab_tensor'
 PADDED_VOCAB_SIZE = 'padded_vocab_size'
 ORIGINAL_VOCAB_SIZE = 'original_vocab_size'
 
 # Parameter splitting/merging
 PARAM_SLICE_MAPPINGS = 'param_slice_mappings'
 CAT_DIM = "cat_dim"
+# Following is a special case where a parameter effectively contains sub parameters.
+# As an example, consider Megatron-DeepSpeed GPT SWIGLU implementation (mlp.h_to_4h).
+# In this case, a single parameter ia allocated contiguously, but used as separate parameters.
+# When using universal checkpoint, we have to normalize the representation of the full parameter.
+# We normalize it by concatenating all slices of the sub params and then concatenating the sub params.
+# All concat operations are done on CAT_DIM (currently, no support for different concat dims sub params and TP slicing).
+# Similarly, load_hp_checkpoint_state has to take the needed actions when loading from universal.
+PARAM_N_SUB_PARAMS = "param_n_sub_params"
 
 # Regex list of parameters that require special handling
 VOCABULARY_PARAMETER_PATTERNS = 'vocabulary_parameter_patterns'
 PIPELINE_REPLICATED_PARAMETER_PATTERNS = 'pipeline_replicated_parameter_patterns'
 PARAMETER_TO_AVERAGE_PATTERNS = 'parameter_to_average_patterns'
 PARAMETER_WITH_ROW_PARALLELISM_PATTERNS = 'parameter_with_row_parallelism_patterns'
+TP_REPLICATED_PARAMETER_PATTERNS = 'tp_replicated_parameter_patterns'
+PARAMETER_WITH_2_SUB_PARAMS_CAT_DIM_0 = 'parameter_with_2_sub_params_cat_dim_0'
