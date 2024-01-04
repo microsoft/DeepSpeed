@@ -69,7 +69,7 @@ from deepspeed.utils.timer import NoopTimer, ThroughputTimer, SynchronizedWallCl
     STEP_MICRO_TIMER, \
     FORWARD_GLOBAL_TIMER, BACKWARD_GLOBAL_TIMER, BACKWARD_INNER_GLOBAL_TIMER, BACKWARD_REDUCE_GLOBAL_TIMER, \
     STEP_GLOBAL_TIMER
-from deepspeed.utils.debug import debug_extract_module_and_param_names
+from deepspeed.utils.debug import debug_extract_module_and_param_names, debug_clear_module_and_param_names
 from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.utils import clip_grad_norm_
@@ -362,6 +362,7 @@ class DeepSpeedEngine(Module):
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
             self.optimizer.destroy()
+        debug_clear_module_and_param_names()
 
     def _get_model_parameters(self):
         if self.autotuning_profile_model_info():
@@ -1017,6 +1018,9 @@ class DeepSpeedEngine(Module):
 
     # Validate configuration based on command line arguments
     def _do_sanity_check(self):
+        if self.fp16_enabled() and not get_accelerator().is_fp16_supported():
+            raise ValueError("Type fp16 is not supported.")
+
         expected_optim_types = self._supported_optims()
         expected_optim_types += [type(None), Callable]
         assert isinstance(self.client_optimizer, tuple(expected_optim_types)), \
@@ -1750,14 +1754,17 @@ class DeepSpeedEngine(Module):
         self.warn_unscaled_loss = True
         self.module.train(False)
 
-    def _scale_loss_by_gas(self, prescaled_loss):
+    def _scale_loss_by_gas(self, prescaled_loss, eval_micro_batches=None):
+        # In pipeline evaluation, there is an option to use different micro-bs, which creates different number of
+        # micro batches, thus the training gas, is not valid in this case. need to use the number of eval_micro_batches
+        scaling_factor = self.gradient_accumulation_steps() if eval_micro_batches is None else eval_micro_batches
         if isinstance(prescaled_loss, torch.Tensor):
-            scaled_loss = prescaled_loss / self.gradient_accumulation_steps()
+            scaled_loss = prescaled_loss / scaling_factor
         elif isinstance(prescaled_loss, tuple) or isinstance(prescaled_loss, list):
             scaled_loss = []
             for l in prescaled_loss:
                 if isinstance(l, torch.Tensor):
-                    scaled_loss.append(l / self.gradient_accumulation_steps())
+                    scaled_loss.append(l / scaling_factor)
                 else:
                     scaled_loss.append(l)
         else:
