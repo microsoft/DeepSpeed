@@ -37,6 +37,7 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
         'GLMBlock': 'glmtype',
         "MPTBlock": 'glmtype',
         "MptBlock": 'glmtype',
+        "FalconDecoderLayer": 'bloomtype',
         "BaichuanLayer": 'glmtype',
         "DecoderLayer": 'glmtype',
         "GPTBigCodeBlock": 'bigcodetype'  # starcoder
