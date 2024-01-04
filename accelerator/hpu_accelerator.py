@@ -21,7 +21,8 @@ class HPU_Accelerator(DeepSpeedAccelerator):
             hpu.setDeterministic(True)
             self.hpu = hpu
         except ImportError as e:
-            print(f"failed importing habana_frameworks.torch.hpu with ImportError: {e=}")
+            raise ValueError(
+                    f"HPU_Accelerator requires habana_frameworks.torch.hpu, which is not installed on this system.")
 
         self.fp16_supported = None
 
