@@ -314,10 +314,13 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 module.lm_head, "weight") and module.lm_head.weight.is_meta:
             module.lm_head.weight = embedding_weight
         # enable tensor parallel for the last linear
-        if hasattr(module, "lm_head") and hasattr(module.lm_head, "weight") and not module.lm_head.weight.is_meta:
+        if hasattr(module, "lm_head") and hasattr(module.lm_head,
+                                                  "weight") and not module.lm_head.weight.is_meta and isinstance(
+                                                      module.lm_head, torch.nn.Linear):
             module = replace_wo_policy(module, ("lm_head", ), 0, "lm_head")
         elif hasattr(module, "embed_out") and hasattr(module.embed_out,
-                                                      "weight") and not module.embed_out.weight.is_meta:
+                                                      "weight") and not module.embed_out.weight.is_meta and isinstance(
+                                                          module.embed_out, torch.nn.Linear):
             module = replace_wo_policy(module, ("embed_out", ), 0, "embed_out")
         return module
 
@@ -563,7 +566,12 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
     """
     sd = None
     if checkpoint is not None:
-        sd = torch.load(checkpoint, map_location='cpu')
+        if checkpoint.endswith(".safetensors"):
+            from safetensors.torch import load_file
+            sd = load_file(checkpoint)
+        else:
+            sd = torch.load(checkpoint, map_location='cpu')
+
     policy = {}
     if orig_class is not None:
         policy.update({orig_class: (replace_fn, _replace_policy)})
@@ -597,7 +605,7 @@ def skip_level_0_prefix(model, state_dict):
     if key is None:
         key = re.match(r"(.*?)Model", model)
     # if keys start with 'model.', don't skip level 0 prefix
-    if state_dict != None:
+    if state_dict is not None:
         for item in state_dict.keys():
             if re.match("^model[.]", item):
                 return False
