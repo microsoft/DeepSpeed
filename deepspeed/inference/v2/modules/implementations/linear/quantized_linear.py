@@ -110,7 +110,11 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         weights_2bit, weights_4bit = self.preprocess_weight(weight)
         
         self.group_size = scales.size(1) // self.K
-        scales = self.preprocess_scales(scales, self.M, self.K)
+        if self._is_gated:
+            assert weight.shape[0] == self.M * 2
+            scales = self.preprocess_scales(scales, self.M * 2, self.K)
+        else:
+            scales = self.preprocess_scales(scales, self.M, self.K)
         assert self.group_size % 64 == 0, f"group size {self.group_size} is not supported"
 
         param = weights_4bit
@@ -125,7 +129,7 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         N = hidden_states.shape[0]
         if self._is_gated:
             staging_output = empty_from(self._double_buffer, (hidden_states.shape[0], self._config.out_channels * 2))
-            self._linear_impl(staging_output, hidden_states, weights_4bit, weights_2bit, scales, self.M, hidden_states.shape[0], self.K)
+            self._linear_impl(staging_output, hidden_states, weights_4bit, weights_2bit, scales, self.M * 2, hidden_states.shape[0], self.K)
             self._act_fn(output, staging_output, b)
         else:
             self._linear_impl(output, hidden_states, weights_4bit, weights_2bit, scales, self.M, hidden_states.shape[0], self.K)

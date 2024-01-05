@@ -80,7 +80,7 @@ def shard_param(param: Optional[torch.Tensor],
         # Trivial case of no sharding.
         return param
 
-    if shard_mode == ShardingType.OUTER_DIMENSION: # TODO: CSY: We need to duplicate the scales for each shard.
+    if shard_mode == ShardingType.OUTER_DIMENSION: # CSY: We need to partition the scales for each shard.
 
         def get_matrices(dim_idx: int) -> torch.Tensor:
             dim_size = param.size(dim_idx) // num_concatenated_matrices
@@ -95,10 +95,20 @@ def shard_param(param: Optional[torch.Tensor],
             # General case for weight parameters. This assumes MoE parameters are stored in the format of
             # [num_experts, out_features, in_features]
             matrices, start_channel_id, end_channel_id = get_matrices(dim_idx=-2)
-            return torch.cat([mat[..., start_channel_id:end_channel_id, :] for mat in matrices], dim=-2)
+            w = torch.cat([mat[..., start_channel_id:end_channel_id, :] for mat in matrices], dim=-2)
+            scales = torch.chunk(param.scales, num_concatenated_matrices, dim=-2)
+            scales = torch.cat([scales[start_channel_id:end_channel_id] for mat in matrices], dim=-2)
+            assert scales.size(-2) == w.size(-2)
+            w.scales = scales
+            return w
 
-    elif shard_mode == ShardingType.INNER_DIMENSION: # TODO: CSY: We need to partition the scales for each shard.
+    elif shard_mode == ShardingType.INNER_DIMENSION: # CSY: We need to duplicate the scales for each shard.
         dim_size = param.size(-1) // num_concatenated_matrices
         start_channel_id, end_channel_id = get_shard_endpoints(dim_size, shard_rank, num_shards, granularity)
         matrices = torch.chunk(param, num_concatenated_matrices, dim=-1)
-        return torch.cat([mat[..., start_channel_id:end_channel_id] for mat in matrices], dim=-1)
+        # TODO (CSY): Here we assume there is only one scale for INNER_DIMENSION. 
+        # If there are multiple scales, we need to distribute them based on the group size.
+        assert param.scales.size(-1) == 1
+        weight = torch.cat([mat[..., start_channel_id:end_channel_id] for mat in matrices], dim=-1)
+        weight.scales = param.scales
+        return weight

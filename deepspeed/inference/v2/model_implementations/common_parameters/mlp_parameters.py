@@ -63,6 +63,8 @@ class GatedMLPParameter(ParameterBase):
         # flip the order if even with the correct tokenizer we get wrong output
         #fused_param = torch.cat([self.up_params, self.gate_params], dim=-1).reshape(total_neurons, -1)
         fused_param = torch.cat([self.gate_params, self.up_params], dim=-1).reshape(total_neurons, -1)
+        if hasattr(self.gate_params, "scales") and hasattr(self.up_params, "scales"):
+            fused_param.scales = torch.cat([self.gate_params.scales, self.up_params.scales], dim=-1).reshape(total_neurons, -1)
         return self.inference_model.transform_mlp_1_param(fused_param)
 
 

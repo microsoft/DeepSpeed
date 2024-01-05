@@ -6,10 +6,11 @@ from transformers import LlamaForCausalLM
 
 PATH = "debug/priceton-nlp/Sheared-LLaMA-1.3B"
 
-
+from transformers import AutoTokenizer
 if __name__ == '__main__':
     model = LlamaForCausalLM.from_pretrained(
         "princeton-nlp/Sheared-LLaMA-1.3B").half()
+    tokenizer = AutoTokenizer.from_pretrained("princeton-nlp/Sheared-LLaMA-1.3B")
     state_dict = model.cpu().state_dict()
     for key in state_dict.keys():
         if 'proj' in key:
