@@ -69,7 +69,7 @@ from deepspeed.utils.timer import NoopTimer, ThroughputTimer, SynchronizedWallCl
     STEP_MICRO_TIMER, \
     FORWARD_GLOBAL_TIMER, BACKWARD_GLOBAL_TIMER, BACKWARD_INNER_GLOBAL_TIMER, BACKWARD_REDUCE_GLOBAL_TIMER, \
     STEP_GLOBAL_TIMER
-from deepspeed.utils.debug import debug_extract_module_and_param_names
+from deepspeed.utils.debug import debug_extract_module_and_param_names, debug_clear_module_and_param_names
 from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.utils import clip_grad_norm_
@@ -232,9 +232,6 @@ class DeepSpeedEngine(Module):
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
 
-        # needed for zero_to_fp32 weights reconstruction to remap nameless data to state_dict
-        self.param_names = {param: name for name, param in model.named_parameters()}
-
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
         self._do_sanity_check()
@@ -260,6 +257,9 @@ class DeepSpeedEngine(Module):
 
         # Configure distributed model
         self._configure_distributed_model(model)
+
+        # needed for zero_to_fp32 weights reconstruction to remap nameless data to state_dict
+        self.param_names = {param: name for name, param in model.named_parameters()}
 
         self._get_model_parameters()
 
@@ -362,6 +362,7 @@ class DeepSpeedEngine(Module):
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
             self.optimizer.destroy()
+        debug_clear_module_and_param_names()
 
     def _get_model_parameters(self):
         if self.autotuning_profile_model_info():
@@ -715,6 +716,9 @@ class DeepSpeedEngine(Module):
     def zero_reduce_bucket_size(self):
         return self._config.zero_config.reduce_bucket_size
 
+    def zero_multi_rank_bucket_allreduce(self):
+        return self._config.zero_config.use_multi_rank_bucket_allreduce
+
     def zero_allgather_bucket_size(self):
         return self._config.zero_config.allgather_bucket_size
 
@@ -766,6 +770,9 @@ class DeepSpeedEngine(Module):
 
     def zero_ignore_unused_parameters(self):
         return self._config.zero_config.ignore_unused_parameters
+
+    def graph_harvesting(self):
+        return self._config.graph_harvesting
 
     def fp16_enabled(self):
         return self._config.fp16_enabled
@@ -1011,6 +1018,9 @@ class DeepSpeedEngine(Module):
 
     # Validate configuration based on command line arguments
     def _do_sanity_check(self):
+        if self.fp16_enabled() and not get_accelerator().is_fp16_supported():
+            raise ValueError("Type fp16 is not supported.")
+
         expected_optim_types = self._supported_optims()
         expected_optim_types += [type(None), Callable]
         assert isinstance(self.client_optimizer, tuple(expected_optim_types)), \
@@ -1107,7 +1117,7 @@ class DeepSpeedEngine(Module):
         # Set deepspeed parallelism spec. for the model including expert parallelism
         for _, module in self.module.named_modules():
             if hasattr(module, 'set_deepspeed_parallelism'):
-                module.set_deepspeed_parallelism()
+                module.set_deepspeed_parallelism(self._config.use_data_before_expert_parallel_)
 
         # Query the groups module to get information about various parallel groups
         self.local_all_to_all_group = None
@@ -1177,9 +1187,15 @@ class DeepSpeedEngine(Module):
         # data type checks
         elif model_dtype == grad_accum_dtype:
             if model_dtype == torch.bfloat16:
-                raise NotImplementedError(
-                    "Bfloat16 wrapper must use a gradient accumulation type of fp32, enable ZeRO to use Bfloat16 gradient accumulation"
-                )
+                if self.pipeline_parallelism:
+                    logger.warning(
+                        "**** BF16 gradient accumulation is not safe numerically with large number of accumulation steps, proceed with caution *****"
+                    )
+                    return BFLOAT16
+                else:
+                    raise NotImplementedError(
+                        "Bfloat16 wrapper must use a gradient accumulation type of fp32, enable ZeRO to use Bfloat16 gradient accumulation"
+                    )
             if model_dtype == torch.float16:
                 return FP16
             # else optimizer_wrapper = None
@@ -1441,7 +1457,9 @@ class DeepSpeedEngine(Module):
                                    clip_grad=clip_grad,
                                    allgather_bucket_size=self.zero_allgather_bucket_size(),
                                    dp_process_group=self.seq_data_parallel_group,
-                                   timers=timers)
+                                   timers=timers,
+                                   grad_acc_dtype=self.get_data_types()[1],
+                                   graph_harvesting=self.graph_harvesting())
 
         return optimizer
 
@@ -1490,6 +1508,7 @@ class DeepSpeedEngine(Module):
                 clip_grad=self.gradient_clipping(),
                 contiguous_gradients=contiguous_gradients,
                 reduce_bucket_size=self.zero_reduce_bucket_size(),
+                use_multi_rank_bucket_allreduce=self.zero_multi_rank_bucket_allreduce(),
                 allgather_bucket_size=self.zero_allgather_bucket_size(),
                 dp_process_group=self.seq_data_parallel_group,
                 expert_parallel_group=self.expert_parallel_group if self.has_moe_layers else None,
@@ -1735,14 +1754,17 @@ class DeepSpeedEngine(Module):
         self.warn_unscaled_loss = True
         self.module.train(False)
 
-    def _scale_loss_by_gas(self, prescaled_loss):
+    def _scale_loss_by_gas(self, prescaled_loss, eval_micro_batches=None):
+        # In pipeline evaluation, there is an option to use different micro-bs, which creates different number of
+        # micro batches, thus the training gas, is not valid in this case. need to use the number of eval_micro_batches
+        scaling_factor = self.gradient_accumulation_steps() if eval_micro_batches is None else eval_micro_batches
         if isinstance(prescaled_loss, torch.Tensor):
-            scaled_loss = prescaled_loss / self.gradient_accumulation_steps()
+            scaled_loss = prescaled_loss / scaling_factor
         elif isinstance(prescaled_loss, tuple) or isinstance(prescaled_loss, list):
             scaled_loss = []
             for l in prescaled_loss:
                 if isinstance(l, torch.Tensor):
-                    scaled_loss.append(l / self.gradient_accumulation_steps())
+                    scaled_loss.append(l / scaling_factor)
                 else:
                     scaled_loss.append(l)
         else:
@@ -3197,7 +3219,6 @@ class DeepSpeedEngine(Module):
             state.update(client_state)
             logger.info(f'Saving model checkpoint: {save_path}')
             self.checkpoint_engine.save(state, save_path)
-        self._curr_save_path = None
 
     def _create_checkpoint_file(self, save_dir, tag, zero_checkpoint):
         name_function = (self._get_zero_ckpt_name if zero_checkpoint else self._get_ckpt_name)

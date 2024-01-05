@@ -211,6 +211,18 @@ GRADIENT_CLIPPING = 'gradient_clipping'
 GRADIENT_CLIPPING_DEFAULT = 0.
 
 #########################################
+# Capture graph for short kernels sequences
+#########################################
+# Graph harvesting. By default, this feature is not enabled.
+# Users can configure in ds_config.json as below example:
+GRAPH_HARVESTING_FORMAT = '''
+Graph harvesting should be enabled as:
+"graph_harvesting": true
+'''
+GRAPH_HARVESTING = 'graph_harvesting'
+GRAPH_HARVESTING_DEFAULT = False
+
+#########################################
 # Communication data type
 #########################################
 # Supported types: ['none', 'fp16', 'fp32']
@@ -433,3 +445,9 @@ PIPE_REPLICATED = 'ds_pipe_replicated'
 #########################################
 DATA_PARALLEL_GROUP = "data_parallel_group"
 GLOBAL_RANK = "global_rank"
+
+#########################################
+# EXPERT-DATA PARALLELISM TOPO Config
+#########################################
+USE_DATA_BEFORE_EXPERT_PARALLEL = "use_data_before_expert_parallelism"
+USE_DATA_BEFORE_EXPERT_PARALLEL_DEFAULT = False

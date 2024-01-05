@@ -289,13 +289,9 @@ def gather_partitioned_activations(tensors, device=None):
             flat_tensor = torch.zeros([tensor_size], dtype=item.dtype, device=device)
         else:
             flat_tensor = torch.zeros([tensor_size], dtype=item.dtype, device=item.device)
-        partitions = []
-        for i in range(mp_size):
-            part_i = flat_tensor.narrow(0, partition_size * i, partition_size)
-            if i == mp_rank:
-                part_i.copy_(item)
-            partitions.append(part_i)
-        dist.all_gather(partitions, partitions[mp_rank], group=mp_group)
+        part = flat_tensor.narrow(0, partition_size * mp_rank, partition_size)
+        part.copy_(item)
+        dist.all_gather_into_tensor(flat_tensor, part, group=mp_group)
         input_tensor = flat_tensor.view(list(size.numpy()))
         item.data = input_tensor.data
 
@@ -443,7 +439,9 @@ def get_partitioned_activations_for_backward(args, inputs, contiguous_checkpoint
             num_non_fp_tensors += 1
             continue
 
-        arg.data = inp.data
+        arg.data = torch.empty([], device=arg.device).data
+        arg.saved_data = inp.data
+
         new_args.append(arg)
         i = arg_index - num_non_fp_tensors
 
@@ -476,7 +474,8 @@ def get_cpu_activations_for_backward(args, inputs):
             new_args.append(arg)
             continue
 
-        arg.data = inp.data
+        arg.data = torch.empty([], device=arg.device).data
+        arg.saved_data = inp.data
         new_args.append(arg)
 
     return new_args
@@ -631,6 +630,12 @@ class CheckpointFunction(torch.autograd.Function):
                                "please use .backward() if possible")
 
         global cuda_device, transport_stream, PARTITION_ACTIVATIONS
+
+        # Rebuild deepspeed_saved_tensors
+        for t in ctx.deepspeed_saved_tensors:
+            if t is not None and hasattr(t, 'saved_data') and t.saved_data is not None:
+                t.data = t.saved_data.to(t.device)
+                t.saved_data = None
 
         if PARTITION_ACTIVATIONS:
             # with get_accelerator().stream(transport_stream):

@@ -279,6 +279,10 @@ def get_gradient_clipping(param_dict):
     return get_scalar_param(param_dict, GRADIENT_CLIPPING, GRADIENT_CLIPPING_DEFAULT)
 
 
+def get_graph_harvesting(param_dict):
+    return get_scalar_param(param_dict, GRAPH_HARVESTING, GRAPH_HARVESTING_DEFAULT)
+
+
 def get_sparse_attention(param_dict):
     if SPARSE_ATTENTION in param_dict.keys():
         sparsity = param_dict[SPARSE_ATTENTION]
@@ -542,6 +546,10 @@ def get_hybrid_engine_config(param_dict):
     hybrid_engine_config_dict = param_dict.get("hybrid_engine", {})
     hybrid_engine_config = HybridEngineConfig(**hybrid_engine_config_dict)
     return hybrid_engine_config
+
+
+def get_expert_data_topo_config(param_dict):
+    return get_scalar_param(param_dict, USE_DATA_BEFORE_EXPERT_PARALLEL, USE_DATA_BEFORE_EXPERT_PARALLEL_DEFAULT)
 
 
 def get_eigenvalue_config(param_dict):
@@ -819,6 +827,7 @@ class DeepSpeedConfig(object):
         self.dynamic_loss_scale_args = get_dynamic_loss_scale_args(param_dict)
 
         self.compression_config = get_compression_config(param_dict)
+        self.graph_harvesting = get_graph_harvesting(param_dict)
 
         self.optimizer_name = get_optimizer_name(param_dict)
         if (self.optimizer_name is not None and self.optimizer_name.lower() in DEEPSPEED_OPTIMIZERS):
@@ -850,6 +859,7 @@ class DeepSpeedConfig(object):
             self.eigenvalue_layer_num,
         ) = get_eigenvalue_config(param_dict)
 
+        self.use_data_before_expert_parallel_ = get_expert_data_topo_config(param_dict)
         self.hybrid_engine = get_hybrid_engine_config(param_dict)
 
         self.sparse_attention = get_sparse_attention(param_dict)
