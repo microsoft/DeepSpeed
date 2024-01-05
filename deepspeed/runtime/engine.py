@@ -1495,7 +1495,7 @@ class DeepSpeedEngine(Module):
                 overlap_comm = False
                 round_robin_gradients = False
                 # Non-MoE requires contiguous grads to be disabled w. stage 1
-                if not self.has_moe_layers:
+                if not self.has_moe_layers and not contiguous_gradients:
                     contiguous_gradients = False
 
             if isinstance(self.module, PipelineModule):
