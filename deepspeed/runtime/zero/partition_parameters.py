@@ -598,7 +598,6 @@ class AllGatherCoalescedHandle:
         partitions: List[Tensor],
         world_size: int,
         use_secondary_tensor=False,
-        forward=False,
         quantization=None,
     ) -> None:
         self.allgather_handle = allgather_handle
@@ -606,7 +605,6 @@ class AllGatherCoalescedHandle:
         self.partitions = partitions
         self.world_size = world_size
         self.use_secondary_tensor = use_secondary_tensor
-        self.forward = forward
         self.complete = False
         self.quantization = quantization
 
@@ -637,7 +635,7 @@ class AllGatherCoalescedHandle:
             assert param.ds_status == ZeroParamStatus.INFLIGHT, f"expected param {param.ds_summary()} to be inflight"
             partitions: List[Tensor] = []
             ds_tensor_numel = param.ds_tensor.ds_numel
-            if self.use_secondary_tensor and not self.forward:
+            if self.use_secondary_tensor:
                 ds_tensor_numel *= param.ds_secondary_tensor_num_of_groups
             for rank in range(self.world_size):
                 param_start = rank * ds_tensor_numel
@@ -1061,10 +1059,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 param_list = [cls]
             return self._all_gather(param_list, async_op=async_op, hierarchy=hierarchy)
 
-        def _all_gather_dtype(dtype, params, forward, world_size, rank_in_group, ds_process_group):
+        def _all_gather_dtype(dtype, params, world_size, rank_in_group, ds_process_group):
             partition_sz = sum(p.ds_tensor.ds_numel for p in params)
 
-            if params[0].ds_secondary_tensor is not None and not forward:
+            if params[0].ds_secondary_tensor is not None:
                 partition_sz = sum(p.ds_tensor.ds_numel * p.ds_secondary_tensor_num_of_groups for p in params)
 
             flat_tensor = torch.empty(partition_sz * world_size,
@@ -1076,7 +1074,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             for i in range(world_size):
                 partitions.append(flat_tensor.narrow(0, partition_sz * i, partition_sz))
 
-            if params[0].ds_secondary_tensor is not None and not forward:
+            if params[0].ds_secondary_tensor is not None:
                 use_secondary_tensor = True
                 instrument_w_nvtx(
                     torch.cat)([p.ds_secondary_tensor.to(get_accelerator().current_device_name()) for p in params],
@@ -1094,12 +1092,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 partitions=partitions,
                 world_size=world_size,
                 use_secondary_tensor=use_secondary_tensor,
-                forward=forward,
             )
 
         @instrument_w_nvtx
         def all_gather_coalesced(params: Iterable[Parameter],
-                                 forward: bool = True,
                                  safe_mode: bool = False,
                                  quantize: bool = False) -> AllGatherCoalescedHandle:
 
@@ -1119,7 +1115,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             rank_in_group = self.rank
             world_size = self.dp_world_size
             use_secondary_tensor = False
-            if self.zero_param_process_group and not forward:
+            if self.zero_param_process_group and params[0].ds_secondary_tensor is not None:
                 ds_process_group = self.zero_param_process_group  #intragroup
                 rank_in_group = self.rank_in_group
                 world_size = self.num_ranks_in_param_group
@@ -1149,10 +1145,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 # have an opportunity to avoid some intermediate memory allocations
                 param, = params
                 buffer_size = math.ceil(param.ds_numel / world_size) * world_size
-                if not forward and param.ds_secondary_tensor is not None:
+                if param.ds_secondary_tensor is not None:
                     buffer_size = param.ds_secondary_tensor.shape[0] * world_size  #make sure out is appropriately sized
 
-                param_ds_tensor = param.ds_secondary_tensor if not forward and param.ds_secondary_tensor is not None else param.ds_tensor
+                param_ds_tensor = param.ds_secondary_tensor if param.ds_secondary_tensor is not None else param.ds_tensor
                 param_buffer = torch.empty(
                     buffer_size,
                     dtype=param_ds_tensor.dtype if not quantize else torch.int8,
@@ -1200,14 +1196,14 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     handles = []
                     for dtype, params in dtype_params.items():
                         handles.append(
-                            _all_gather_dtype(dtype, params, forward, world_size, rank_in_group, ds_process_group))
+                            _all_gather_dtype(dtype, params, world_size, rank_in_group, ds_process_group))
 
                     return MultipleAllGatherHandles(handles)
 
                 else:
                     partition_sz = sum(p.ds_tensor.ds_numel for p in params)
 
-                    if params[0].ds_secondary_tensor is not None and not forward:
+                    if params[0].ds_secondary_tensor is not None:
                         partition_sz = sum(p.ds_tensor.ds_numel * p.ds_secondary_tensor_num_of_groups for p in params)
 
                     flat_tensor = torch.empty(partition_sz * world_size,
@@ -1215,7 +1211,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                               device=get_accelerator().current_device_name(),
                                               requires_grad=False)
 
-                    if params[0].ds_secondary_tensor is not None and not forward:
+                    if params[0].ds_secondary_tensor is not None:
                         use_secondary_tensor = True
                         if hasattr(params[0].ds_secondary_tensor, "ds_quant_scale"):
                             quantized_param = instrument_w_nvtx(torch.cat)([
@@ -1262,11 +1258,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         partitions=None,
                         world_size=world_size,
                         use_secondary_tensor=use_secondary_tensor,
-                        forward=forward,
                         quantization=quant_info,
                     )
 
-        def partition(param_list=None, backward=False, hierarchy=0, has_been_updated=False):
+        def partition(param_list=None, hierarchy=0, has_been_updated=False):
             cls = param
             print_rank_0(f"{'--'*hierarchy}----Partitioning param {debug_param2name_id_shape_device(cls)}",
                          force=False)
@@ -1420,7 +1415,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         for param in param_list:
             print_rank_0(f"Before Partitioning Param {param.ds_id}", force=False)
             if self.zero_param_process_group is not None:
-                self._partition_param_sec(param, has_been_updated=has_been_updated)
+                self._partition_param_sec(param)
             self._partition_param(param, has_been_updated=has_been_updated)
 
             param.ds_status = ZeroParamStatus.NOT_AVAILABLE
@@ -1555,29 +1550,28 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         ##support for NVME secondary param offload
         #print_rank_0(f"SEC Param id {param.ds_id} status is {param.ds_status}", force=True)
         if param.ds_status is ZeroParamStatus.AVAILABLE:
-            # if param.ds_secondary_tensor is not None and not has_been_updated:  ##param already partitioned
-            #     return
             #check padding
             tensor_size = self._aligned_size(param)
             partition_size = tensor_size // self.dp_world_size
 
             secondary_partition_size = int(tensor_size // self.num_ranks_in_param_group)
-            final_location = None
-            secondary_partitioned_tensor = torch.empty(secondary_partition_size,
-                                                       dtype=param.dtype,
-                                                       device=self.remote_device)
+            if param.ds_secondary_tensor is None:
+                final_location = None
+                secondary_partitioned_tensor = torch.empty(secondary_partition_size,
+                                                        dtype=param.dtype,
+                                                        device=self.remote_device)
 
-            if self.pin_memory:
-                secondary_partitioned_tensor = secondary_partitioned_tensor.pin_memory()
-            # quantize the tensor if it's not trainable
-            if not param.requires_grad and self.quantized_nontrainable_weights:
-                secondary_partitioned_tensor, secondary_partitioned_tensor.ds_quant_scale = self.quantizer_module.quantize(
-                    secondary_partitioned_tensor)
-            secondary_partitioned_tensor.requires_grad = False
-            param.ds_secondary_tensor = secondary_partitioned_tensor
-            param.ds_secondary_tensor.ds_numel = secondary_partition_size
-            param.ds_secondary_tensor.status = PartitionedParamStatus.AVAILABLE
-            param.ds_secondary_tensor.final_location = final_location
+                if self.pin_memory:
+                    secondary_partitioned_tensor = secondary_partitioned_tensor.pin_memory()
+                # quantize the tensor if it's not trainable
+                if not param.requires_grad and self.quantized_nontrainable_weights:
+                    secondary_partitioned_tensor, secondary_partitioned_tensor.ds_quant_scale = self.quantizer_module.quantize(
+                        secondary_partitioned_tensor)
+                secondary_partitioned_tensor.requires_grad = False
+                param.ds_secondary_tensor = secondary_partitioned_tensor
+                param.ds_secondary_tensor.ds_numel = secondary_partition_size
+                param.ds_secondary_tensor.status = PartitionedParamStatus.AVAILABLE
+                param.ds_secondary_tensor.final_location = final_location
 
             #use rank in group for secondary tensor
             secondary_start = secondary_partition_size * self.rank_in_group
