@@ -1195,8 +1195,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         dtype_params[p.ds_tensor.dtype].append(p)
                     handles = []
                     for dtype, params in dtype_params.items():
-                        handles.append(
-                            _all_gather_dtype(dtype, params, world_size, rank_in_group, ds_process_group))
+                        handles.append(_all_gather_dtype(dtype, params, world_size, rank_in_group, ds_process_group))
 
                     return MultipleAllGatherHandles(handles)
 
@@ -1557,8 +1556,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             if param.ds_secondary_tensor is None:
                 final_location = None
                 secondary_partitioned_tensor = torch.empty(secondary_partition_size,
-                                                        dtype=param.dtype,
-                                                        device=self.remote_device)
+                                                           dtype=param.dtype,
+                                                           device=self.remote_device)
 
                 if self.pin_memory:
                     secondary_partitioned_tensor = secondary_partitioned_tensor.pin_memory()

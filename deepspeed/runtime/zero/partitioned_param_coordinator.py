@@ -422,8 +422,7 @@ class PartitionedParameterCoordinator:
             partitioned_params
             self.__n_available_params += all_gather_numel
             with get_accelerator().stream(self.__allgather_stream):
-                handle = partitioned_params[0].all_gather_coalesced(partitioned_params,
-                                                                    quantize=quantize)
+                handle = partitioned_params[0].all_gather_coalesced(partitioned_params, quantize=quantize)
 
             for param in partitioned_params:
                 assert param.ds_status == ZeroParamStatus.INFLIGHT, param.ds_summary()
