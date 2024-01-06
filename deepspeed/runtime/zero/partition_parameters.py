@@ -1062,7 +1062,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         def _all_gather_dtype(dtype, params, world_size, rank_in_group, ds_process_group):
             partition_sz = sum(p.ds_tensor.ds_numel for p in params)
 
-            if params[0].ds_secondary_tensor is not None:
+            use_secondary_tensor = params[0].ds_secondary_tensor is not None
+
+            if use_secondary_tensor:
                 partition_sz = sum(p.ds_tensor.ds_numel * p.ds_secondary_tensor_num_of_groups for p in params)
 
             flat_tensor = torch.empty(partition_sz * world_size,
@@ -1074,13 +1076,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             for i in range(world_size):
                 partitions.append(flat_tensor.narrow(0, partition_sz * i, partition_sz))
 
-            if params[0].ds_secondary_tensor is not None:
-                use_secondary_tensor = True
+            if use_secondary_tensor:
                 instrument_w_nvtx(
                     torch.cat)([p.ds_secondary_tensor.to(get_accelerator().current_device_name()) for p in params],
                                out=partitions[rank_in_group])
             else:
-                use_secondary_tensor = False
                 instrument_w_nvtx(torch.cat)([p.ds_tensor.to(get_accelerator().current_device_name()) for p in params],
                                              out=partitions[rank_in_group])
             handle = _dist_allgather_fn(partitions[rank_in_group], flat_tensor, ds_process_group)
@@ -1114,8 +1114,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             ds_process_group = self.ds_process_group
             rank_in_group = self.rank
             world_size = self.dp_world_size
-            use_secondary_tensor = False
-            if self.zero_param_process_group and params[0].ds_secondary_tensor is not None:
+            use_secondary_tensor = params[0].ds_secondary_tensor is not None
+            if self.zero_param_process_group and use_secondary_tensor:
                 ds_process_group = self.zero_param_process_group  #intragroup
                 rank_in_group = self.rank_in_group
                 world_size = self.num_ranks_in_param_group
@@ -1145,10 +1145,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 # have an opportunity to avoid some intermediate memory allocations
                 param, = params
                 buffer_size = math.ceil(param.ds_numel / world_size) * world_size
-                if param.ds_secondary_tensor is not None:
+                if use_secondary_tensor:
                     buffer_size = param.ds_secondary_tensor.shape[0] * world_size  #make sure out is appropriately sized
 
-                param_ds_tensor = param.ds_secondary_tensor if param.ds_secondary_tensor is not None else param.ds_tensor
+                param_ds_tensor = param.ds_secondary_tensor if use_secondary_tensor else param.ds_tensor
                 param_buffer = torch.empty(
                     buffer_size,
                     dtype=param_ds_tensor.dtype if not quantize else torch.int8,
@@ -1203,7 +1203,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 else:
                     partition_sz = sum(p.ds_tensor.ds_numel for p in params)
 
-                    if params[0].ds_secondary_tensor is not None:
+                    if use_secondary_tensor:
                         partition_sz = sum(p.ds_tensor.ds_numel * p.ds_secondary_tensor_num_of_groups for p in params)
 
                     flat_tensor = torch.empty(partition_sz * world_size,
@@ -1211,8 +1211,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                               device=get_accelerator().current_device_name(),
                                               requires_grad=False)
 
-                    if params[0].ds_secondary_tensor is not None:
-                        use_secondary_tensor = True
+                    if use_secondary_tensor:
                         if hasattr(params[0].ds_secondary_tensor, "ds_quant_scale"):
                             quantized_param = instrument_w_nvtx(torch.cat)([
                                 p.ds_secondary_tensor.data.to(get_accelerator().current_device_name()) for p in params
