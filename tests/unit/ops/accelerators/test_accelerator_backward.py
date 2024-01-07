@@ -12,9 +12,11 @@ import os
 from torch import nn
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from deepspeed.accelerator import get_accelerator
-from unit.modeling import BertConfig, BertLayerNorm, BertEncoder as BertEncoderPostln
-from unit.modelingpreln import BertEncoder as BertEncoderPreln
+from transformers.models.bert.configuration_bert import BertConfig
+from transformers.models.bert.modeling_bert import BertEncoder
 from unit.common import DistributedTest, is_rocm_pytorch
+
+BertLayerNorm = torch.nn.LayerNorm
 
 #if not deepspeed.ops.__installed_ops__['transformer']:
 #pytest.skip(
@@ -148,9 +150,6 @@ class DSEncoder(nn.Module):
             all_encoder_layers.append(hidden_states)
         return all_encoder_layers
 
-    def get_grads(self):
-        return self.grads
-
 
 def create_models(ds_config):
     bert_config = BertConfig(vocab_size_or_config_json_file=119547,
@@ -194,9 +193,9 @@ def create_models(ds_config):
     biases[7].data.zero_()
 
     if (ds_config.pre_layer_norm):
-        bert_encoder = BertEncoderPreln(bert_config, weights, biases)
+        bert_encoder = BertEncoder(bert_config)
     else:
-        bert_encoder = BertEncoderPostln(bert_config, weights, biases)
+        bert_encoder = BertEncoder(bert_config)
     ds_encoder = DSEncoder(ds_config, weights, biases)
 
     if ds_config.fp16:
@@ -226,24 +225,13 @@ def run_backward(ds_config, seq_len, atol=1e-2, verbose=False):
     Y = torch.randn(ds_config.batch_size, seq_len, ds_config.hidden_size, **kwargs)
 
     # run baseline
-    base_results = bert_encoder(hidden_states,
-                                input_mask,
-                                output_all_encoded_layers=False,
-                                checkpoint_activations=False)
-
-    loss = (Y - base_results[0]).pow(2).sum() / 64
-    loss.backward()
-    base_grads = bert_encoder.get_grads()
+    base_results = bert_encoder(hidden_states, input_mask)
 
     # run ds
     ds_results = ds_encoder(hidden_states, input_mask, output_all_encoded_layers=False, checkpoint_activations=False)
 
-    loss = (Y - ds_results[0]).pow(2).sum() / 64
-    loss.backward()
-    ds_grads = ds_encoder.get_grads()
-
     # check grads
-    check_equal(base_grads, ds_grads, atol=atol, verbose=verbose)
+    check_equal(base_results, ds_results, atol=atol, verbose=verbose)
 
 
 # NOTE: Keep these different params as they have helped find divergence in behavior between AMD and NVIDIA.
