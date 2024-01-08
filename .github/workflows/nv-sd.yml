@@ -10,6 +10,8 @@ on:
       - "tests/unit/inference/test_stable_diffusion.py"
       - "deepspeed/model_implementations/diffusers/unet.py"
       - "deepspeed/model_implementations/diffusers/vae.py"
+      - "deepspeed/module_inject/containers/vae.py"
+      - "deepspeed/module_inject/containers/unet.py"
       - ".github/workflows/nv-sd.yml"
       - "requirements/requirements-sd.txt"
 
