@@ -15,7 +15,6 @@ from ...inference_utils import ActivationType, DtypeEnum
 from ...model_implementations import *
 from ...modules.configs import *
 from ...modules.interfaces import *
-from ...modules import heuristics
 from ...ragged import RaggedBatchWrapper
 from ..inference_model_base import (
     DSModelImplementationConfig,

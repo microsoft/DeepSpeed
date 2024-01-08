@@ -10,17 +10,11 @@ import torch
 import deepspeed.comm as dist
 
 from ...allocator import empty_from
-from ...config_v2 import RaggedInferenceEngineConfig
 from ...inference_utils import ActivationType, DtypeEnum
 from .. import *
 from ...modules.configs import *
 from ...modules.interfaces import *
-from ...modules import heuristics
 from ...ragged import RaggedBatchWrapper
-from ..inference_model_base import (
-    DSModelImplementationConfig,
-    MPType,
-)
 
 from .containers import PhiNonTransformerContainer, PhiTransformerContainer
 

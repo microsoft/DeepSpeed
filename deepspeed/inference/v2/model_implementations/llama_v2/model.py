@@ -14,7 +14,6 @@ from ...inference_utils import ActivationType, DtypeEnum
 from .. import *
 from ...modules.configs import *
 from ...modules.interfaces import *
-from ...modules import heuristics
 from ...ragged import RaggedBatchWrapper
 
 from .container import Llama2NonTransformerContainer, Llama2TransformerContainer
