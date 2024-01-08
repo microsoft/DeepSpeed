@@ -4,7 +4,7 @@
 # DeepSpeed Team
 import torch
 from deepspeed.utils.logging import warning_once
-from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list, get_num_kv_heads
+from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list, get_num_kv_heads, get_n_embd
 import re
 
 
@@ -40,7 +40,8 @@ def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
         "MptBlock": 'glmtype',
         "BaichuanLayer": 'glmtype',
         "DecoderLayer": 'glmtype',
-        "QWenBlock": 'qwentype'
+        "QWenBlock": 'qwentype',
+        "GPTBigCodeBlock": 'bigcodetype'
     }
 
     def _codegen_type_transpose(input, mp_size, codegen_mp_num=4):
@@ -84,6 +85,14 @@ def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
             module.attn.split_size = module.attn.split_size // mp_size
         return _glm_type_transpose(input, mp_size)
 
+    def _bigcode_type_transpose(input, mp_size):
+        n_embd = get_n_embd()
+        q = input[:n_embd]
+        kv = input[n_embd:]
+        shape = q.shape
+        split_q = q.split(get_shard_size_list(shape[0], mp_size), dim=0)
+        return torch.cat((split_q[gpu_index], kv), dim=0)
+
     def _transpose_fused_qkvw(src, mp_size, fused_qkv_type=None, module=None):
 
         # suppose num_heads=n, q(n)_w means the n-th q head linear weight, the weight format are as following
@@ -99,6 +108,8 @@ def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
             return _glm_type_transpose(src, mp_size)
         elif fused_qkv_type == 'qwentype':
             return _qwen_type_transpose(src, mp_size, module)
+        elif fused_qkv_type == 'bigcodetype':
+            return _bigcode_type_transpose(src, mp_size)
 
         raise ValueError("unknown fused_qkv_type")
 
