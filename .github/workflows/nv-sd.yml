@@ -11,6 +11,7 @@ on:
       - "deepspeed/model_implementations/diffusers/unet.py"
       - "deepspeed/model_implementations/diffusers/vae.py"
       - ".github/workflows/nv-sd.yml"
+      - "requirements/requirements-sd.txt"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
