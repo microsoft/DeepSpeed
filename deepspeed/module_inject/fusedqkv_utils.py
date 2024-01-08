@@ -29,7 +29,7 @@ def require_tp_fused_qkvw(name, mp_size):
 
 def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
 
-    module_str = module._get_name()
+    module_str = str(module).strip()
     if src is None:
         return
     fused_type_dict = {
