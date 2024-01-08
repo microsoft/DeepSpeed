@@ -56,6 +56,10 @@ class InflightParamRegistry(UserDict):
 
 
 class PartitionedParameterCoordinator:
+    FETCH_SUBMIT = 'fetch_submit'
+    FETCH_WAIT = 'fetch_wait'
+    PREFETCH_SUBMIT = 'prefetch_submit'
+    ALL_GATHER = 'all_gather'
     """Handles partitioning and gathering of parameters."""
 
     @dataclass
@@ -264,14 +268,21 @@ class PartitionedParameterCoordinator:
         fetch_numel = sum(
             [p.partition_numel() for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE])
         if fetch_numel > 0:
+            event_name = __class__.FETCH_SUBMIT
+            self._dump_param_ids(event_name, current_submodule.id,
+                                 [p.ds_id for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE])
+            self.__profiler.start_event(event_name)
             # kick off all gather for params in the immediately required submodule
             #for param in params_to_fetch:
             if logger.isEnabledFor(logging.DEBUG):
                 for param in params_to_fetch:
                     debug_rank0(f"-fetch: {param.ds_summary()}")
             self.__all_gather_params(params_to_fetch)
+            self.__profiler.stop_event(event_name, fetch_numel)
 
         wait_numel = 0
+        wait_event_name = __class__.FETCH_WAIT
+        self.__profiler.start_event(wait_event_name)
         # wait for parameters in the immediately needed submodule to become available
         for param in params_to_fetch:
             param.ds_active_sub_modules.add(current_submodule.id)
@@ -295,6 +306,7 @@ class PartitionedParameterCoordinator:
             assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
         if not get_accelerator().is_synchronized_device():
             get_accelerator().current_stream().wait_stream(self.__allgather_stream)
+        self.__profiler.stop_event(wait_event_name, wait_numel)
 
         # kick off parameter prefetches for upcoming modules
         # don't prefetch if we dont have a completed model trace
@@ -355,10 +367,13 @@ class PartitionedParameterCoordinator:
                         numel_prefetching += param_in_trace.param.ds_numel
 
                 if numel_prefetching > 0:
+                    event_name = __class__.PREFETCH_SUBMIT
+                    self.__profiler.start_event(event_name)
                     if logger.isEnabledFor(logging.DEBUG):
                         for param in params_to_prefetch:
                             debug_rank0(f"-prefetch: {param.ds_summary()}")
                     self.__all_gather_params(params_to_prefetch)
+                    self.__profiler.stop_event(event_name, numel_prefetching)
 
                 if self.__prefetch_nvme:
                     self.__prefetch_nvme_param_partitions()
@@ -433,7 +448,10 @@ class PartitionedParameterCoordinator:
                 if not param_group:
                     continue
                 with get_accelerator().stream(self.__allgather_stream):
+                    event_name = __class__.ALL_GATHER
+                    self.__profiler.start_event(event_name)
                     handle = param_group[0].all_gather_coalesced(param_group, quantize=quantize)
+                    self.__profiler.stop_event(event_name, all_gather_numel)
                 for param in param_group:
                     assert param.ds_status == ZeroParamStatus.INFLIGHT, param.ds_summary()
                     self.__inflight_param_registry[param] = handle
