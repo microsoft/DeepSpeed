@@ -419,14 +419,24 @@ class PartitionedParameterCoordinator:
                 all_gather_numel += param.ds_numel
 
         if partitioned_params:
-            partitioned_params
             self.__n_available_params += all_gather_numel
-            with get_accelerator().stream(self.__allgather_stream):
-                handle = partitioned_params[0].all_gather_coalesced(partitioned_params, quantize=quantize)
-
-            for param in partitioned_params:
-                assert param.ds_status == ZeroParamStatus.INFLIGHT, param.ds_summary()
-                self.__inflight_param_registry[param] = handle
+            # here we need to handle a special case where some of the parameters have a valid hpz secondary tensor (e.g. they are not trainable so their secondary tensor never expire) but others do not.
+            partitioned_params_with_secondary_tensors = [
+                p for p in partitioned_params if p.ds_secondary_tensor is not None
+            ]
+            partitioned_params_without_secondary_tensors = [
+                p for p in partitioned_params if p.ds_secondary_tensor is None
+            ]
+            for param_group in [
+                    partitioned_params_with_secondary_tensors, partitioned_params_without_secondary_tensors
+            ]:
+                if not param_group:
+                    continue
+                with get_accelerator().stream(self.__allgather_stream):
+                    handle = param_group[0].all_gather_coalesced(param_group, quantize=quantize)
+                for param in param_group:
+                    assert param.ds_status == ZeroParamStatus.INFLIGHT, param.ds_summary()
+                    self.__inflight_param_registry[param] = handle
 
             # Release swap buffers for persisted params on nvme since they will never be partitioned or evicted from GPU
             swap_persisted_params = [
