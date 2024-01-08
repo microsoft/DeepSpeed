@@ -450,7 +450,7 @@ class PartitionedParameterCoordinator:
         if param.ds_status == ZeroParamStatus.AVAILABLE and not param.ds_active_sub_modules:
             if logger.isEnabledFor(logging.DEBUG):
                 debug_rank0(f"-release: {param.ds_summary()}")
-            param.partition(has_been_updated=True)
+            param.partition()
             self.__n_available_params -= param.ds_numel
 
     @instrument_w_nvtx
