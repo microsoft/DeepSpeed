@@ -12,6 +12,11 @@ def set_num_kv_heads(num):
     num_kv_heads = num
 
 
+def set_n_embd(num):
+    global n_embd
+    n_embd = num
+
+
 def get_num_kv_heads():
     global num_kv_heads
     return num_kv_heads
@@ -35,7 +40,12 @@ def get_shard_size(total_size, mp_size, name=None, rank=None):
             return total_size // mp_size + (1 if rank < (total_size % mp_size) else 0)
 
 
-def get_shard_size_list(total_size, mp_size, name=None):
+def get_n_embd():
+    global n_embd
+    return n_embd
+
+
+def get_shard_size_list(total_size, mp_size):
     shard_sizes = []
     for i in range(mp_size):
         shard_sizes.append(get_shard_size(total_size, mp_size, name, i))
