@@ -82,7 +82,7 @@ def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
         if not hasattr(module, "_ds_fusedqkv_entered"):
             # Adjust splitting absolute value variables
             setattr(module, "_ds_fusedqkv_entered", True)
-            module.attn.split_size = module.attn.split_size // mp_size
+            module.attn.split_size = get_shard_size(module.attn.split_size, mp_size)
         return _glm_type_transpose(input, mp_size)
 
     def _bigcode_type_transpose(input, mp_size):
