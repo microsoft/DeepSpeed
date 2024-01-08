@@ -9,7 +9,7 @@ from ....inference_utils import DtypeEnum
 from deepspeed.ops.op_builder import InferenceCoreBuilder
 from typing import Tuple
 from ... import DSKernelBase
- 
+
 
 class CUDAWf6Af16Linear(DSKernelBase):
     """
@@ -23,7 +23,6 @@ class CUDAWf6Af16Linear(DSKernelBase):
         self.inf_module = InferenceCoreBuilder().load()
         self.inf_module.create_handle()
         self.kernel = self.inf_module.cuda_wf6af16_linear
-    
 
     def __call__(self, output: torch.Tensor, hidden_states: torch.Tensor, weights_4bit: torch.Tensor, weights_2bit: torch.Tensor, scale: torch.Tensor, M, N, K) -> torch.Tensor:
         """
@@ -47,8 +46,14 @@ class CUDAWf6Af16Linear(DSKernelBase):
         # TODO: deal with batched-matmul. As the current implementation only supports 2D input, we need to split the
         # batched-matmul into multiple 2D matmul.
 
+        # TODO: optimize the heuristic of split k selection.
+        split_k_dict = {15360: 3, 27648: 2, 5120: 10, 10240: 5,
+                        57344: 7, 8192: 6, 21504: 5, 7168: 7, 28672: 7}
         split_k = 1
-        workspace = self.get_workspace(M, N, K, split_k, torch.float, hidden_states.device)
+        if not N > 128 and M in split_k_dict:
+            split_k = split_k_dict[M]
+        workspace = self.get_workspace(
+            M, N, K, split_k, torch.float, hidden_states.device)
         self.kernel(output, hidden_states, weights_4bit,
                     weights_2bit, scale, workspace, M, N, K, split_k)
 
@@ -61,4 +66,3 @@ class CUDAWf6Af16Linear(DSKernelBase):
         # TODO: allocate workspace in advance to avoid memory allocation overhead
 
         return workspace
-
