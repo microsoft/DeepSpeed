@@ -45,7 +45,7 @@ def get_n_embd():
     return n_embd
 
 
-def get_shard_size_list(total_size, mp_size):
+def get_shard_size_list(total_size, mp_size, name=None):
     shard_sizes = []
     for i in range(mp_size):
         shard_sizes.append(get_shard_size(total_size, mp_size, name, i))
