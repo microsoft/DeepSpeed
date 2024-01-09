@@ -2,13 +2,15 @@ name: cpu-inference
 
 on:
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - 'blogs/**'
+    paths:
+      - '.github/workflows/cpu-inference.yml'
+      - 'requirements/**'
+      - 'deepspeed/inference/**'
   workflow_dispatch:
   merge_group:
     branches: [ master ]
-
+  schedule:
+        - cron: "0 0 * * 0"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
