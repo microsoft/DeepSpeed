@@ -6,8 +6,9 @@ on:
       - '.github/workflows/cpu-inference.yml'
       - 'requirements/**'
       - 'deepspeed/inference/**'
-      - 'deepspeed/__init__.py`
+      - 'deepspeed/__init__.py'
       - '!deepspeed/inference/v2/**' # exclude v2 dir
+      - 'tests/unit/inference/v2/**' # exclude v2 tests dir
   workflow_dispatch:
   merge_group:
     branches: [ master ]
