@@ -5,10 +5,11 @@ on:
     paths:
       - '.github/workflows/nv-inference.yml'
       - 'requirements/**'
-      - 'deepspeed/inference/**'
       - 'deepspeed/__init__.py'
+      - 'deepspeed/inference/**'
       - '!deepspeed/inference/v2/**' # exclude v2 dir
-      - '!tests/unit/inference/v2/**' # exclude v2 tests dir
+      - 'tests/unit/inference/**'
+      - 'tests/unit/inference/v2/**' # exclude v2 tests dir
   merge_group:
     branches: [ master ]
   schedule:
