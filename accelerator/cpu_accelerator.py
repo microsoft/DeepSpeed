@@ -63,7 +63,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return torch.random
 
     def set_rng_state(self, new_state, device_index=None):
-        if device_index == None:
+        if device_index is None:
             return torch.set_rng_state(new_state)
         return torch.set_rng_state(new_state, device_index)
 
@@ -198,8 +198,18 @@ class CPU_Accelerator(DeepSpeedAccelerator):
     def supported_dtypes(self):
         return [torch.float, torch.bfloat16]
 
-    # Tensor operations
+    # Graph operations
+    def create_graph(self):
+        return None
 
+    def capture_to_graph(self, graph, pool=None, stream=None):
+        from deepspeed.runtime.utils import noop_context
+        return noop_context()
+
+    def replay_graph(self, graph):
+        return
+
+    # Tensor operations
     @property
     def BFloat16Tensor(self):
         return torch.BFloat16Tensor
@@ -253,7 +263,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
     # create an instance of op builder and return, name specified by class_name
     def create_op_builder(self, op_name):
         builder_class = self.get_op_builder(op_name)
-        if builder_class != None:
+        if builder_class is not None:
             return builder_class()
         return None
 
@@ -280,3 +290,6 @@ class CPU_Accelerator(DeepSpeedAccelerator):
     def build_extension(self):
         from torch.utils.cpp_extension import BuildExtension
         return BuildExtension
+
+    def export_envs(self):
+        return []

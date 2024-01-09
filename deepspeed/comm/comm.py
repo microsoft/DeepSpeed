@@ -416,7 +416,7 @@ def monitored_barrier(group=None,
                       log_name='monitored_barrier',
                       debug=get_caller_func()):
     global cdb
-    return cdb.barrier(group=group, timeout=timeout, wait_all_ranks=wait_all_ranks)
+    return cdb.monitored_barrier(group=group, timeout=timeout, wait_all_ranks=wait_all_ranks)
 
 
 def log_summary(show_straggler=False):
@@ -595,7 +595,7 @@ def get_all_ranks_from_group(group=None):
         while True:
             group_ranks.append(cdb.get_global_rank(group, rank))
             rank += 1
-    except RuntimeError:
+    except (RuntimeError, ValueError):
         pass
     return group_ranks
 

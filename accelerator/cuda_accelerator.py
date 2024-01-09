@@ -44,7 +44,7 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     # Device APIs
     def device_name(self, device_index=None):
-        if device_index == None:
+        if device_index is None:
             return 'cuda'
         return 'cuda:{}'.format(device_index)
 
@@ -153,9 +153,26 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def total_memory(self, device_index=None):
         return torch.cuda.get_device_properties(device_index).total_memory
 
+    def _get_nvml_gpu_id(self, torch_gpu_id):
+        """
+        credit: https://discuss.pytorch.org/t/making-pynvml-match-torch-device-ids-cuda-visible-devices/103020
+
+        Remap torch device id to nvml device id, respecting CUDA_VISIBLE_DEVICES.
+
+        If the latter isn't set return the same id
+        """
+        # if CUDA_VISIBLE_DEVICES is used automagically remap the id since pynvml ignores this env var
+        if "CUDA_VISIBLE_DEVICES" in os.environ:
+            ids = list(map(int, os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",")))
+            return ids[torch_gpu_id]  # remap
+        else:
+            return torch_gpu_id
+
     def available_memory(self, device_index=None):
         if pynvml:
-            handle = pynvml.nvmlDeviceGetHandleByIndex(device_index)
+            if device_index is None:
+                device_index = self.current_device()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(self._get_nvml_gpu_id(device_index))
             info = pynvml.nvmlDeviceGetMemoryInfo(handle)
             return info.free
         else:
@@ -204,6 +221,17 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
             return True
         else:
             return False
+
+    # Graph operations
+    def create_graph(self):
+        return torch.cuda.CUDAGraph()
+
+    def capture_to_graph(self, graph, pool=None, stream=None):
+        return torch.cuda.graph(graph, pool, stream)
+
+    def replay_graph(self, graph):
+        graph.replay()
+        return
 
     # Tensor operations
 
@@ -263,7 +291,7 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     class_dict = None
 
     def _lazy_init_class_dict(self):
-        if self.class_dict != None:
+        if self.class_dict is not None:
             return
         else:
             self.class_dict = {}
@@ -305,3 +333,6 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def build_extension(self):
         from torch.utils.cpp_extension import BuildExtension
         return BuildExtension
+
+    def export_envs(self):
+        return ['NCCL']

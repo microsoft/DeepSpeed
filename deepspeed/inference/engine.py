@@ -26,7 +26,7 @@ from ..module_inject.policy import TransformerPolicy
 from ..module_inject.auto_tp import AutoTP
 
 from ..module_inject.replace_policy import generic_policies
-from ..module_inject.auto_tp_model_utils import build_bloom_alibi_tensor, build_mpt_atten_bias_tensor, build_mpt_alibi_tensor
+from ..module_inject.auto_tp_model_utils import build_bloom_alibi_tensor, build_mpt_atten_bias_tensor, build_mpt_alibi_tensor, get_alibi_mask
 from ..ops.transformer.inference.ds_attention import DeepSpeedSelfAttention
 from ..model_implementations.transformers.ds_transformer import DeepSpeedTransformerInference
 
@@ -71,6 +71,9 @@ class InferenceEngine(Module):
         if hasattr(self.module, "config"):
             TransformerPolicy.hf_model_config = self.module.config
 
+        if config.dtype == torch.half and not get_accelerator().is_fp16_supported():
+            raise ValueError("Type fp16 is not supported.")
+
         # todo: keep this self.injection_dict because we don't use to change config.injection_policy API
         # todo: this will get changed when Molly's PR on auto injection dict is merged
         self.injection_dict = config.injection_policy
@@ -108,11 +111,6 @@ class InferenceEngine(Module):
         if get_accelerator().device_name() == 'cuda' and config.enable_cuda_graph:
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
                 "If you want to use cuda graph, please upgrade torch to at least v1.10"
-
-        # Check if model passed to engine is loaded w/ meta tensors, in which case
-        # kernel injection must be enabled.
-        # NOTE: This check assumes a Hugging Face hierarchy for the device type i.e. module.device.type
-        self.model_meta_device = self.module.device.type == 'meta' if hasattr(self.module, "device") else False
 
         # convert model to intended dtype
         if config.dtype:
@@ -170,7 +168,12 @@ class InferenceEngine(Module):
                     self._apply_injection_policy(config, client_module)
 
         device = get_accelerator().current_device_name()
-        self.module.to(device)
+        # NOTE: This check assumes a Hugging Face hierarchy for the device type i.e. module.device.type
+        is_meta_device = hasattr(self.module, "device") and self.module.device.type == 'meta'
+        if is_meta_device:
+            self.module.to_empty(device=device)
+        else:
+            self.module.to(device)
 
         if config.tensor_parallel.tp_size > 1:
             _rng_state = get_accelerator().get_rng_state().to(get_accelerator().current_device_name())
@@ -220,6 +223,10 @@ class InferenceEngine(Module):
             if hasattr(self.module.transformer, 'build_mpt_alibi_tensor'):
                 self.module.transformer.build_mpt_alibi_tensor_orig = self.module.transformer.build_mpt_alibi_tensor
                 self.module.transformer.__class__.build_mpt_alibi_tensor = build_mpt_alibi_tensor
+        if hasattr(self.module, 'model'):
+            if hasattr(self.module.model, 'get_alibi_mask'):
+                self.module.model.get_alibi_mask_orig = self.module.model.get_alibi_mask
+                self.module.model.__class__.get_alibi_mask = get_alibi_mask
 
     def build_attn_bias(self):
         if hasattr(self.module, 'transformer'):
@@ -524,11 +531,11 @@ class InferenceEngine(Module):
         get_accelerator().current_stream().wait_stream(cuda_stream)
 
         # create cuda_graph and assign static_inputs and static_outputs
-        self._cuda_graphs = torch.cuda.CUDAGraph()
+        self._cuda_graphs = get_accelerator().create_graph()
         self.static_inputs = inputs
         self.static_kwargs = kwargs
 
-        with torch.cuda.graph(self._cuda_graphs):
+        with get_accelerator().capture_to_graph(self._cuda_graphs):
             self.static_output = self.module(*self.static_inputs, **self.static_kwargs)
 
         self.cuda_graph_created = True
@@ -540,7 +547,7 @@ class InferenceEngine(Module):
         for k in kwargs:
             if torch.is_tensor(kwargs[k]):
                 self.static_kwargs[k].copy_(kwargs[k])
-        self._cuda_graphs.replay()
+        get_accelerator().replay_graph(self._cuda_graphs)
         return self.static_output
 
     def model_times(self):
