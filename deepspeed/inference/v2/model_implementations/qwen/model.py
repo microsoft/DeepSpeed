@@ -82,6 +82,8 @@ class QwenInferenceModel(DSTransformerModelBase):
         if self._config.fp16:
             return DtypeEnum.fp16
         elif self._config.bf16:
+            # TODO(ZonePG): bf16 inference results may be different from huggingface bf16,
+            # because in rms_norm, Qwen still use float() instead of bf16
             return DtypeEnum.bf16
         else:
             raise NotImplementedError("Only fp16 and bf16 are supported")
