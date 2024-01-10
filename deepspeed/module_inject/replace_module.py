@@ -16,7 +16,7 @@ from .replace_policy import replace_policies, generic_policies
 from .auto_tp import AutoTP, ReplaceWithTensorSlicing, Loading
 
 from deepspeed import comm as dist
-from deepspeed.module_inject.tp_shard import set_num_kv_heads
+from deepspeed.module_inject.tp_shard import set_num_kv_heads, set_n_embd
 
 from .load_checkpoint import load_model_with_checkpoint
 import time
@@ -278,6 +278,18 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         # 4. When we have num_kv_heads defined, uneven division is possible, otherwise enforce even division
         set_num_kv_heads(num_kv_heads)
 
+        # 4.1 Get n_embd
+        n_embd = None
+        multi_query_n_embd_names = ['n_embd']
+        for name in multi_query_n_embd_names:
+            if hasattr(model_config, name):
+                n_embd = getattr(model_config, name)
+            if n_embd != None:
+                break
+
+        # 4.2 set n_embd
+        set_n_embd(n_embd)
+
         # 5. Set linear policies
         _autotp.update_linear_policies()
 
@@ -314,10 +326,13 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 module.lm_head, "weight") and module.lm_head.weight.is_meta:
             module.lm_head.weight = embedding_weight
         # enable tensor parallel for the last linear
-        if hasattr(module, "lm_head") and hasattr(module.lm_head, "weight") and not module.lm_head.weight.is_meta:
+        if hasattr(module, "lm_head") and hasattr(module.lm_head,
+                                                  "weight") and not module.lm_head.weight.is_meta and isinstance(
+                                                      module.lm_head, torch.nn.Linear):
             module = replace_wo_policy(module, ("lm_head", ), 0, "lm_head")
         elif hasattr(module, "embed_out") and hasattr(module.embed_out,
-                                                      "weight") and not module.embed_out.weight.is_meta:
+                                                      "weight") and not module.embed_out.weight.is_meta and isinstance(
+                                                          module.embed_out, torch.nn.Linear):
             module = replace_wo_policy(module, ("embed_out", ), 0, "embed_out")
         return module
 
@@ -563,7 +578,12 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
     """
     sd = None
     if checkpoint is not None:
-        sd = torch.load(checkpoint, map_location='cpu')
+        if checkpoint.endswith(".safetensors"):
+            from safetensors.torch import load_file
+            sd = load_file(checkpoint)
+        else:
+            sd = torch.load(checkpoint, map_location='cpu')
+
     policy = {}
     if orig_class is not None:
         policy.update({orig_class: (replace_fn, _replace_policy)})
@@ -597,7 +617,7 @@ def skip_level_0_prefix(model, state_dict):
     if key is None:
         key = re.match(r"(.*?)Model", model)
     # if keys start with 'model.', don't skip level 0 prefix
-    if state_dict != None:
+    if state_dict is not None:
         for item in state_dict.keys():
             if re.match("^model[.]", item):
                 return False
