@@ -41,7 +41,8 @@ def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
         "BaichuanLayer": 'glmtype',
         "DecoderLayer": 'glmtype',
         "QWenBlock": 'qwentype',
-        "GPTBigCodeBlock": 'bigcodetype'
+        "FalconDecoderLayer": 'bloomtype',
+        "GPTBigCodeBlock": 'bigcodetype',
     }
 
     def _codegen_type_transpose(input, mp_size, codegen_mp_num=4):
