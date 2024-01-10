@@ -316,9 +316,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             # Create temp CPU param copies, free accelerator tensors
             orig_group_numel = 0
             for param in self.bit16_groups[i]:
+                orig_group_numel += param.numel()
                 param.cpu_data = param.data.cpu()
                 param.data = torch.empty(1).to(param.device)
-                orig_group_numel += param.numel()
 
             empty_cache()
             see_memory_usage(f"After moving param group {i} to CPU", force=False)
