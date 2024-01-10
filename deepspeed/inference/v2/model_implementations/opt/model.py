@@ -12,7 +12,11 @@ import deepspeed.comm as dist
 from ...allocator import empty_from
 from ...inference_utils import ActivationType, DtypeEnum
 from ...model_implementations import *
-from ...modules.configs import *
+from ...modules.configs import (
+    DSEmbeddingsConfig,
+    NormTypeEnum,
+    PositionalEmbeddingType,
+)
 from ...ragged import RaggedBatchWrapper
 from .container import OPTNonTransformerContainer, OPTTransformerContainer
 
@@ -89,10 +93,6 @@ class OPTInferenceModel(DSTransformerModelBase):
     @property
     def positional_embedding_type(self) -> PositionalEmbeddingType:
         return PositionalEmbeddingType.none
-
-    @property
-    def positional_embedding_config(self) -> Optional[RotateHalfConfig]:
-        return None
 
     """
     Overrides of ``DSTransformerModelBase`` methods
