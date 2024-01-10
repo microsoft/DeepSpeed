@@ -358,7 +358,7 @@ class DeepSpeedEngine(Module):
         self.flatten = _flatten_dense_tensors
         self.unflatten = _unflatten_dense_tensors
 
-        if not self._config.compile_config.disable:
+        if self._config.compile_config.enabled:
             self._set_client_model(CompiledModuleWrapper(self.module, self._config.compile_config))
 
     def destroy(self):

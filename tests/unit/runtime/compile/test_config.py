@@ -33,6 +33,7 @@ def base_config():
             "enabled": True
         },
         "compile": {
+            "enabled": True,
             "backend": "inductor"
         }
     }
@@ -114,6 +115,7 @@ class TestConfigLoad(DistributedCompileTest):
     def test_compile(self, base_config):
         engine = self._init_engine(base_config)
         self._run_model(engine)
+        assert engine.is_compiled
 
     @pytest.mark.skipif(not deepspeed.compiler.is_compile_supported(), reason="torch.compile is not supported")
     def test_custom_backend(self, base_config):
@@ -126,6 +128,13 @@ class TestConfigLoad(DistributedCompileTest):
         assert custom_backend_called
 
     def test_compile_disabled(self, base_config):
-        base_config["compile"]["disable"] = True
+        base_config["compile"]["enabled"] = False
         engine = self._init_engine(base_config)
         self._run_model(engine)
+
+    @pytest.mark.skipif(not deepspeed.compiler.is_compile_supported(), reason="torch.compile is not supported")
+    def test_compile_kwargs(self, base_config):
+        base_config["compile"]["kwargs"] = {"mode": "default"}
+        engine = self._init_engine(base_config)
+        self._run_model(engine)
+        assert "mode" in engine.torch_compile_kwargs
