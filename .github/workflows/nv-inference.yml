@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - '.github/workflows/nv-inference.yml'
-      - 'requirements/**'
       - 'deepspeed/__init__.py'
       - 'deepspeed/inference/**'
       - '!deepspeed/inference/v2/**' # exclude v2 dir
