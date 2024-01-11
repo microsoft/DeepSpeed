@@ -3,7 +3,7 @@ name: nv-mii
 on:
   pull_request:
     paths:
-      - '.github/workflows/nv-inference.yml'
+      - '.github/workflows/nv-mii.yml'
       - 'requirements/**'
       - 'setup.py'
       - 'deepspeed/__init__.py'
