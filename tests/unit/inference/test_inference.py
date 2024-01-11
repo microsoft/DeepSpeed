@@ -3,27 +3,33 @@
 
 # DeepSpeed Team
 
+import pytest
+
+import itertools
+import pickle
 import os
 import time
-import pickle
-import torch
-import pytest
-import itertools
+
+from dataclasses import dataclass
+from typing import List
+
 import deepspeed
-from deepspeed.git_version_info import torch_info
-from unit.common import DistributedTest
+import torch
+
+from huggingface_hub import HfApi
 from packaging import version as pkg_version
-from deepspeed.ops.op_builder import OpBuilder
+from torch import nn
 from transformers import pipeline, AutoTokenizer
 from transformers.models.t5.modeling_t5 import T5Block
 from transformers.models.roberta.modeling_roberta import RobertaLayer
-from huggingface_hub import HfApi
-from deepspeed.model_implementations import DeepSpeedTransformerInference
-from torch import nn
+
 from deepspeed.accelerator import get_accelerator
+from deepspeed.git_version_info import torch_info
+from deepspeed.model_implementations import DeepSpeedTransformerInference
 from deepspeed.ops.op_builder import InferenceBuilder
-from typing import List
-from dataclasses import dataclass
+from deepspeed.ops.op_builder import OpBuilder
+
+from unit.common import DistributedTest
 
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
