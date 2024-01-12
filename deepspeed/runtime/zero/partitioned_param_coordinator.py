@@ -56,10 +56,14 @@ class InflightParamRegistry(UserDict):
 
 
 class PartitionedParameterCoordinator:
-    FETCH_SUBMIT = 'fetch_submit'
-    FETCH_WAIT = 'fetch_wait'
-    PREFETCH_SUBMIT = 'prefetch_submit'
-    ALL_GATHER = 'all_gather'
+    FORWARD_FETCH_SUBMIT = 'forward_fetch_submit'
+    FORWARD_FETCH_WAIT = 'forward_fetch_wait'
+    FORWARD_PREFETCH_SUBMIT = 'forward_prefetch_submit'
+    BACKWARD_FETCH_SUBMIT = 'backward_fetch_submit'
+    BACKWARD_FETCH_WAIT = 'backward_fetch_wait'
+    BACKWARD_PREFETCH_SUBMIT = 'backward_prefetch_wait'
+    FORWARD_ALL_GATHER = 'forward_all_gather'
+    BACKWARD_ALL_GATHER = 'backward_all_gather'
     """Handles partitioning and gathering of parameters."""
 
     @dataclass
@@ -249,7 +253,7 @@ class PartitionedParameterCoordinator:
 
     @instrument_w_nvtx
     @torch.no_grad()
-    def fetch_sub_module(self, current_submodule: Module) -> None:
+    def fetch_sub_module(self, current_submodule: Module, forward: bool) -> None:
         """This method does the following (in order):
         1. kick off fetch for parameters in immediately required sub module
         2. kick off fetch for next few parameters we will need later (prefetch)
@@ -268,7 +272,7 @@ class PartitionedParameterCoordinator:
         fetch_numel = sum(
             [p.partition_numel() for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE])
         if fetch_numel > 0:
-            event_name = __class__.FETCH_SUBMIT
+            event_name = __class__.FORWARD_FETCH_SUBMIT if forward else __class__.BACKWARD_FETCH_SUBMIT
             self._dump_param_ids(event_name, current_submodule.id,
                                  [p.ds_id for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE])
             self.__profiler.start_event(event_name)
@@ -277,11 +281,11 @@ class PartitionedParameterCoordinator:
             if logger.isEnabledFor(logging.DEBUG):
                 for param in params_to_fetch:
                     debug_rank0(f"-fetch: {param.ds_summary()}")
-            self.__all_gather_params(params_to_fetch)
+            self.__all_gather_params(params_to_fetch, forward)
             self.__profiler.stop_event(event_name, fetch_numel)
 
         wait_numel = 0
-        wait_event_name = __class__.FETCH_WAIT
+        wait_event_name = __class__.FORWARD_FETCH_WAIT if forward else __class__.BACKWARD_FETCH_WAIT
         self.__profiler.start_event(wait_event_name)
         # wait for parameters in the immediately needed submodule to become available
         for param in params_to_fetch:
@@ -367,12 +371,12 @@ class PartitionedParameterCoordinator:
                         numel_prefetching += param_in_trace.param.ds_numel
 
                 if numel_prefetching > 0:
-                    event_name = __class__.PREFETCH_SUBMIT
+                    event_name = __class__.FORWARD_PREFETCH_SUBMIT if forward else __class__.BACKWARD_PREFETCH_SUBMIT
                     self.__profiler.start_event(event_name)
                     if logger.isEnabledFor(logging.DEBUG):
                         for param in params_to_prefetch:
                             debug_rank0(f"-prefetch: {param.ds_summary()}")
-                    self.__all_gather_params(params_to_prefetch)
+                    self.__all_gather_params(params_to_prefetch, forward)
                     self.__profiler.stop_event(event_name, numel_prefetching)
 
                 if self.__prefetch_nvme:
@@ -410,7 +414,7 @@ class PartitionedParameterCoordinator:
                 raise RuntimeError(f"{param.ds_summary()} expected to be released")
 
     @instrument_w_nvtx
-    def __all_gather_params(self, params: Set[Parameter]) -> None:
+    def __all_gather_params(self, params: Set[Parameter], forward: bool) -> None:
         quantized_params = []
         nonquantized_params = []
         for param in params:
@@ -419,11 +423,11 @@ class PartitionedParameterCoordinator:
             else:
                 nonquantized_params.append(param)
         if quantized_params:
-            self.__all_gather_params_(quantized_params, quantize=True)
+            self.__all_gather_params_(quantized_params, forward, quantize=True)
         if nonquantized_params:
-            self.__all_gather_params_(nonquantized_params, quantize=self.zero_quantized_weights)
+            self.__all_gather_params_(nonquantized_params, forward, quantize=self.zero_quantized_weights)
 
-    def __all_gather_params_(self, params: Set[Parameter], quantize: bool = False) -> None:
+    def __all_gather_params_(self, params: Set[Parameter], forward: bool, quantize: bool = False) -> None:
         """for each partitioned parameter, kick off an async allgather and store
         the work handle for the in flight parameters."""
         partitioned_params = []
@@ -448,7 +452,7 @@ class PartitionedParameterCoordinator:
                 if not param_group:
                     continue
                 with get_accelerator().stream(self.__allgather_stream):
-                    event_name = __class__.ALL_GATHER
+                    event_name = __class__.FORWARD_ALL_GATHER if forward else __class__.BACKWARD_ALL_GATHER
                     self.__profiler.start_event(event_name)
                     handle = param_group[0].all_gather_coalesced(param_group, quantize=quantize)
                     self.__profiler.stop_event(event_name, all_gather_numel)

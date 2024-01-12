@@ -501,7 +501,7 @@ class DeepSpeedZeRoOffload(object):
         param_coordinator.trace_prologue(sub_module)
         if param_coordinator.is_record_trace():
             param_coordinator.record_module(sub_module)
-        param_coordinator.fetch_sub_module(sub_module)
+        param_coordinator.fetch_sub_module(sub_module, forward=True)
 
         see_memory_usage(f"Before sub module function {sub_module.__class__.__name__} after fetch", force=False)
 
@@ -523,7 +523,7 @@ class DeepSpeedZeRoOffload(object):
         param_coordinator.trace_prologue(sub_module)
         if param_coordinator.is_record_trace():
             param_coordinator.record_module(sub_module)
-        param_coordinator.fetch_sub_module(sub_module)
+        param_coordinator.fetch_sub_module(sub_module, forward=False)
 
     @torch.no_grad()
     def post_sub_module_backward_function(self, sub_module):
