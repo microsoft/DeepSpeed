@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 
+from deepspeed.monitor.aim import AimMonitor
 from deepspeed.monitor.tensorboard import TensorBoardMonitor
 from deepspeed.monitor.wandb import WandbMonitor
 from deepspeed.monitor.csv_monitor import csvMonitor
@@ -10,6 +11,39 @@ from deepspeed.monitor.config import DeepSpeedMonitorConfig
 
 from unit.common import DistributedTest
 from deepspeed.runtime.config import DeepSpeedConfig
+
+
+
+class TestAim(DistributedTest):
+    world_size = 2
+
+    def test_aim(self):
+        config_dict = {
+            "train_batch_size": 2,
+            "aim": {
+                "enabled": True,
+                "repo": "./",
+                "experiment_name": "test_experiment",
+                "log_system_params": False
+            }
+        }
+        ds_config = DeepSpeedConfig(config_dict)
+        aim_monitor = AimMonitor(ds_config.monitor_config.aim)
+
+        assert aim_monitor.enabled == True
+        assert aim_monitor.repo == "./"
+        assert aim_monitor.experiment_name == "test_experiment"
+        assert aim_monitor.log_system_params == False
+
+    def test_empty_aim(self):
+        config_dict = {"train_batch_size": 2, "aim": {}}
+        ds_config = DeepSpeedConfig(config_dict)
+        aim_monitor = AimMonitor(ds_config.monitor_config.aim)
+        defaults = DeepSpeedMonitorConfig().aim
+        assert aim_monitor.enabled == defaults.enabled
+        assert aim_monitor.repo == defaults.repo
+        assert aim_monitor.experiment_name == defaults.experiment_name
+        assert aim_monitor.log_system_params == defaults.log_system_params
 
 
 class TestTensorBoard(DistributedTest):

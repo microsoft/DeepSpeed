@@ -3,6 +3,15 @@
 
 # DeepSpeed Team
 
+def check_aim_availability():
+    try:
+        import aim  # noqa: F401 # type: ignore
+    except ImportError:
+        print(
+            'If you want to use aim logging, please `pip install aim`'
+        )
+        raise
+
 
 def check_tb_availability():
     try:
