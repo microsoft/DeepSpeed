@@ -74,7 +74,7 @@ TODO Which plots to show?
 
 ### Qwen
 
-Run benchmarks?
+TODO Run benchmarks?
 
 # 4. Stability and Software Enhancements <a name="stability-and-software-enhancements"></a>
 
