@@ -151,6 +151,11 @@ class RaggedBatchWrapper:
         if do_checks and self.current_tokens + seq_tokens > self._config.max_ragged_batch_size:
             raise RuntimeError(f"Ragged batch is full due to capacity limit: {self._config.max_ragged_batch_size})")
 
+        # The values in _inflight_seq_descriptors_shadow_buf, _token_to_seq_storage_shadow_buf, _kv_blocks_ptr_buf, etc.,
+        # are ultimately stored in PyTorch tensors: _inflight_seq_descriptors_shadow, _token_to_seq_storage_shadow, _kv_ptrs_shadow, etc.
+        # However, we found it inefficient to iterate over and substitute values into tensor slices or to use copy/fill calls for this purpose.
+        # Therefore, we initially store the values in Python lists or primitive data types and then copy them collectively in the finalize() method,
+        # instead of updating the tensors directly in each iteration.
         self._batch_tokens.append(tokens)
         self._inflight_seq_descriptors_shadow_buf.append(self.current_tokens)
         self._inflight_seq_descriptors_shadow_buf.append(seq_tokens)
@@ -182,6 +187,7 @@ class RaggedBatchWrapper:
         """
         cur_toks = self.current_tokens
 
+        # Batch-copy the values recorded in insert_sequence() into PyTorch tensors to enhance efficiency.
         self._inflight_seq_descriptors_shadow.flatten()[:len(self._inflight_seq_descriptors_shadow_buf)].copy_(
             torch.tensor(self._inflight_seq_descriptors_shadow_buf))
         self._input_ids_shadow[:self.current_tokens].copy_(torch.cat(self._batch_tokens, dim=0))
