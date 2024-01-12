@@ -1139,7 +1139,10 @@ DeepSpeed Data Efficiency Library includes two techniques: curriculum learning a
 | ---------------------------------------------------------------------------------------------------------------------------- | ------- |
 | List of which step to change difficulty level. One of the `schedule_config` when the `fixed_discrete` schedule_type is used. | N/A     |
 
-### Monitoring Module (TensorBoard, WandB, CSV)
+### Monitoring Module (Aim, TensorBoard, WandB, CSV)
+
+**Note:** Logging to Aim requires that the `aim` package is installed (read more in the [Aim documentation](https://aimstack.readthedocs.io/en/latest/)).
+{: .notice--warning}
 
 **Note:** Deepspeed logs to TensorBoard through PyTorch. Logging to TensorBoard requires that the `tensorboard` package is installed (read more in the [PyTorch documentation](https://pytorch.org/docs/1.8.0/tensorboard.html)).
 {: .notice--warning}
@@ -1147,7 +1150,7 @@ DeepSpeed Data Efficiency Library includes two techniques: curriculum learning a
 {: .notice--warning}
 
 
-Deepspeed's Monitor module can log training details into a [Tensorboard](https://www.tensorflow.org/tensorboard)-compatible file, to [WandB](https://wandb.ai/site), or to simple CSV files. Below is an overview of what DeepSpeed will log automatically.
+Deepspeed's Monitor module can log training details into a [Aim](https://aimstack.readthedocs.io/en/latest/), [Tensorboard](https://www.tensorflow.org/tensorboard)-compatible file, to [WandB](https://wandb.ai/site), or to simple CSV files. Below is an overview of what DeepSpeed will log automatically.
 
 | Field | Description                                                                                                                                                                                                                                                                                               |Conditions |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- |
@@ -1160,6 +1163,33 @@ Deepspeed's Monitor module can log training details into a [Tensorboard](https:/
 | `Train/Samples/elapsed_time_ms_backward_inner`   | The backward time that does not include the gradient reduction time. Only in cases where the gradient reduction is not overlapped, if it is overlapped then the inner time should be about the same as the entire backward time. | `flops_profiler.enabled` or `wall_clock_breakdown`.  |
 | `Train/Samples/elapsed_time_ms_backward_allreduce`   | The global duration of the allreduce operation. | `flops_profiler.enabled` or `wall_clock_breakdown`.  |
 | `Train/Samples/elapsed_time_ms_step`   | The optimizer step time | `flops_profiler.enabled` or `wall_clock_breakdown`.  |
+
+
+
+<i>**aim**</i>: [dictionary]
+
+| Fields | Value                                                                                                                                                                                                                                                                                                        |Default |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- |
+| enabled   | Whether logging to [Aim](https://aimstack.readthedocs.io/en/latest/) is enabled. | `false` |
+| repo | Path or the url of the Aim repo. If None, the output path is set under the current directory.     | `None` |
+| experiment_name  | Name for the experiment. | `None` |
+| log_system_params  | Wether or not log system parameters. | `true` |
+| run_name  | Aim run name, for reusing the specified run. | `None` |
+| run_hash  | Aim run hash, for reusing the specified run. | `None` |
+
+
+Example of <i>**aim**</i> configuration:
+
+```json
+"aim": {
+    "enabled": True,
+    "repo": "./",
+    "experiment_name": "test_experiment",
+    "log_system_params": False
+}
+```
+
+
 
 <i>**tensorboard**</i>: [dictionary]
 

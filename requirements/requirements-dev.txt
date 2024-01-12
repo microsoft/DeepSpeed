@@ -17,4 +17,5 @@ sphinx-rtd-theme
 tensorboard
 torchvision
 transformers>=4.32.1
+aim
 wandb

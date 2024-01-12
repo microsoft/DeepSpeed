@@ -11,7 +11,12 @@ In this tutorial, we introduce the DeepSpeed Monitor and provide examples of its
 
 ## Overview
 
-Monitoring model and system metrics during training is vital to ensure hardware resources are fully utilized. The DeepSpeed Monitor enables live logging of metrics through one or more monitoring backends such as PyTorch's [TensorBoard](https://pytorch.org/docs/1.8.0/tensorboard.html), [WandB](https://docs.wandb.ai/quickstart), and simple CSV files.
+Monitoring model and system metrics during training is vital to ensure hardware resources are fully utilized. The DeepSpeed Monitor enables live logging of metrics through one or more monitoring backends such as [Aim](https://aimstack.readthedocs.io/en/latest/), PyTorch's [TensorBoard](https://pytorch.org/docs/1.8.0/tensorboard.html), [WandB](https://docs.wandb.ai/quickstart), and simple CSV files.
+
+Below is a live monitoring view for Aim:
+
+<!-- TODO add the aim_monitor.PNG file  -->
+![Aim Example Output](/assets/images/aim_monitor.PNG){: .align-center}
 
 Below is a live monitoring view for TensorBoard:
 
@@ -23,17 +28,23 @@ Below is a live monitoring view for WandB:
 
 ## Usage
 
-The DeepSpeed Monitor is configured within the deepspeed [configuration file](/docs/config-json/#monitoring-module-tensorboard-wandb-csv). DeepSpeed will automatically monitor key training metrics, including those tracked with the `wall_clock_breakdown` configuration option. In addition, users can log their own custom events and metrics.
+The DeepSpeed Monitor is configured within the deepspeed [configuration file](/docs/config-json/#monitoring-module-aim-tensorboard-wandb-csv). DeepSpeed will automatically monitor key training metrics, including those tracked with the `wall_clock_breakdown` configuration option. In addition, users can log their own custom events and metrics.
 
   - [Automatic Monitoring](#automatic-monitoring)
   - [Custom Monitoring](#custom-monitoring)
 
 ### Automatic Monitoring
 
-When using DeepSpeed for model training, the Monitor can be configured in the DeepSpeed [configuration file](/docs/config-json/#monitoring-module-tensorboard-wandb-csv). No explicit API calls are needed to use the Monitor. The Monitor can be enabled by adding the following field to DeepSpeed's configuration json file. Refer to [Monitoring](/docs/config-json/#monitoring-module-tensorboard-wandb-csv) for details.
+When using DeepSpeed for model training, the Monitor can be configured in the DeepSpeed [configuration file](/docs/config-json/#monitoring-module-aim-tensorboard-wandb-csv). No explicit API calls are needed to use the Monitor. The Monitor can be enabled by adding the following field to DeepSpeed's configuration json file. Refer to [Monitoring](/docs/config-json/#monitoring-module-aim-tensorboard-wandb-csv) for details.
 
 ```json
 {
+  "aim": {
+    "enabled": true,
+    "repo": "./",
+    "experiment_name": "test_experiment",
+    "log_system_params": false
+  }
   "tensorboard": {
     "enabled": true,
     "output_path": "output/ds_logs/",
@@ -60,7 +71,7 @@ DeepSpeed will automatically log to all available and enabled monitoring backend
 In addition to automatic monitoring, users can log their own custom metrics in client scripts. Currently, there are two ways to initialize Monitor objects:
 
 1. (Recommended) - Create a `MonitorMaster(ds_config.monitor_config)` object, which automatically initializes all monitor backends present in the DeepSpeed configuration
-2. Create a specific `TensorBoardMonitor(ds_config.monitor_config)`, `WandbMonitor(ds_config.monitor_config)`, `csvMonitor(ds_config.monitor_config)` object which will only initialize a specific monitor backend present in the DeepSpeed configuration
+2. Create a specific `AimMonitor(ds_config.monitor_config)` `TensorBoardMonitor(ds_config.monitor_config)`, `WandbMonitor(ds_config.monitor_config)`, `csvMonitor(ds_config.monitor_config)` object which will only initialize a specific monitor backend present in the DeepSpeed configuration
 
 
 The steps to create a custom monitor are as follows:

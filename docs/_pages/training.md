@@ -513,10 +513,16 @@ The flops profiler can also be used as a standalone package. Please refer to the
 
 ### Monitor
 
-The DeepSpeed Monitor logs live training metrics to one or more monitoring backends, including PyTorch's [TensorBoard](https://pytorch.org/docs/1.8.0/tensorboard.html), [WandB](https://docs.wandb.ai/quickstart), or simply to CSV files. The Monitor can be configured with one or more backends in the `deepspeed_config` file as follows:
+The DeepSpeed Monitor logs live training metrics to one or more monitoring backends, including [Aim](https://aimstack.readthedocs.io/en/latest/), PyTorch's [TensorBoard](https://pytorch.org/docs/1.8.0/tensorboard.html), [WandB](https://docs.wandb.ai/quickstart), or simply to CSV files. The Monitor can be configured with one or more backends in the `deepspeed_config` file as follows:
 
 ```json
 {
+  "aim": {
+    "enabled": true,
+    "repo": "./",
+    "experiment_name": "test_experiment",
+    "log_system_params": false
+  }
   "tensorboard": {
     "enabled": true,
     "output_path": "output/ds_logs/",
