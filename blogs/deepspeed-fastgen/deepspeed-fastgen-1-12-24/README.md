@@ -13,6 +13,7 @@
 1. [Introduction](#introduction)
 2. [Added Model Support](#added-model-support)
 3. [Performance Optimizations](#performance-optimizations)
+    - [Performance Evaluation](#performance-evaluation)
 4. [Stability and Software Enhancements](#stability-and-software-enhancements)
 5. [Try Out DeepSpeed-FastGen](#try-out-deepspeed-fastgen)
 
