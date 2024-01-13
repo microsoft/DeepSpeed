@@ -37,7 +37,16 @@ from .inference_model_base import (
 )
 from ..inference_parameter import InferenceParameter
 
-from functools import lru_cache
+try:
+    from functools import lru_cache
+    kv_requirements_decorator = lru_cache
+except ImportError:
+
+    def noop_decorator(func):
+        return func
+
+    kv_requirements_decorator = noop_decorator
+
 try:
     from functools import cached_property
 except ImportError:
@@ -46,7 +55,7 @@ except ImportError:
         return property(func)
 
 
-@lru_cache
+@kv_requirements_decorator
 def _get_kv_requirements_cached(seen_tokens: int, cur_allocated_blocks: int, max_new_tokens: int, max_new_blocks: int,
                                 kv_block_size: int) -> Tuple[int, int]:
     """
