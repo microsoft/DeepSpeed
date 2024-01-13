@@ -168,7 +168,13 @@ class DSSequenceDescriptor(BaseSequenceDescriptor):
         Arguments:
             cache_group (int): The cache group to query.
         """
-        return self._blocks_per_allocation_group[cache_group].sum()
+        # Currently we only support a single group though sum() is a bit expensive.
+        # Thus we make a shortcut for the single group case.
+        group = self._blocks_per_allocation_group[cache_group]
+        if group.numel() == 1:
+            return group.item()
+
+        return self._blocks_per_allocation_group[cache_group].sum().item()
 
     def kv_cache_ids(self, cache_group: int = 0, on_device: bool = False) -> torch.Tensor:
         """

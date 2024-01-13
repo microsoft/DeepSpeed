@@ -37,12 +37,33 @@ from .inference_model_base import (
 )
 from ..inference_parameter import InferenceParameter
 
+from functools import lru_cache
 try:
     from functools import cached_property
 except ImportError:
 
     def cached_property(func):
         return property(func)
+
+
+@lru_cache
+def _get_kv_requirements_cached(seen_tokens: int, cur_allocated_blocks: int, max_new_tokens: int, max_new_blocks: int,
+                                kv_block_size: int) -> Tuple[int, int]:
+    """
+    See ``DSInferenceModelBase.get_kv_requirements`` for documentation.
+
+    This method assumes an autoregressive dense attention pattern. Override this method
+    if this does not match the model's attention pattern.
+    """
+    total_tokens = seen_tokens + max_new_tokens
+    req_blocks = ceil_div(total_tokens, kv_block_size)
+    block_lim = req_blocks - cur_allocated_blocks
+
+    if block_lim <= max_new_blocks:
+        return max_new_tokens, block_lim
+
+    token_capacity = (max_new_blocks + cur_allocated_blocks) * kv_block_size - seen_tokens
+    return token_capacity, max_new_blocks
 
 
 class DSTransformerModelBase(DSInferenceModelBase):
@@ -341,15 +362,16 @@ class DSTransformerModelBase(DSInferenceModelBase):
         This method assumes an autoregressive dense attention pattern. Override this method
         if this does not match the model's attention pattern.
         """
-        total_tokens = sequence.seen_tokens + max_new_tokens
-        req_blocks = ceil_div(total_tokens, self.attn.kv_block_size)
-        block_lim = req_blocks - sequence.cur_allocated_blocks
+        # can_schedule() in the inference engine passes max_new_blocks as a tensor for a future feature.
+        # We assume that this tensor is a scalar.
+        if not isinstance(max_new_blocks, int):
+            assert isinstance(max_new_blocks, torch.Tensor)
+            assert max_new_blocks.numel() == 1
+            max_new_blocks = max_new_blocks.item()
 
-        if block_lim <= max_new_blocks:
-            return max_new_tokens, block_lim
-
-        token_capacity = (max_new_blocks +
-                          sequence.cur_allocated_blocks) * self.attn.kv_block_size - sequence.seen_tokens
+        token_capacity, max_new_blocks = _get_kv_requirements_cached(sequence.seen_tokens,
+                                                                     sequence.cur_allocated_blocks, max_new_tokens,
+                                                                     max_new_blocks, self.attn.kv_block_size)
 
         return token_capacity, torch.tensor([max_new_blocks])
 
