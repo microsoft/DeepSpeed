@@ -115,7 +115,7 @@ class InferenceEngineV2:
             batch_tokens: Iterable of token tensors for the batch on the host
         """
 
-        if not skip_check:
+        if do_checks:
             token_lens = [len(tokens) for tokens in batch_tokens]
             schedule_check = self.can_schedule(batch_uids, token_lens)
             if schedule_check != SchedulingResult.Success:
