@@ -104,7 +104,7 @@ class InferenceEngineV2:
         ranks = list(range(self._config.tensor_parallel.tp_size))
         return dist.new_group(ranks=ranks)
 
-    def put(self, batch_uids: Iterable[int], batch_tokens: Iterable[torch.Tensor], skip_check=False) -> torch.Tensor:
+    def put(self, batch_uids: Iterable[int], batch_tokens: Iterable[torch.Tensor], do_checks=True) -> torch.Tensor:
         """
         Put a ragged batch onto the inference engine. This will perform one forward and return
         a Tensor of the shape [len(batch_uids), *output_shape]. Logits for the non-final tokens
@@ -129,7 +129,7 @@ class InferenceEngineV2:
             host_seq_desc.pre_forward(tokens.numel())
 
             # We can disable checks since we already validated schedulability.
-            self._batch.insert_sequence(host_seq_desc, tokens, do_checks=False)
+            self._batch.insert_sequence(host_seq_desc, tokens, do_checks=do_checks)
 
         # Send all metadata to the device
         self._batch.finalize()
