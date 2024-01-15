@@ -23,7 +23,7 @@ This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 #define BLOCK_SIZE 512
 #define ILP 4
 
-typedef enum {
+typedef enum : int {
     ADAM_MODE_0 = 0,  // L2 regularization mode
     ADAM_MODE_1 = 1   // Decoupled weight decay mode(AdamW)
 } adamMode_t;

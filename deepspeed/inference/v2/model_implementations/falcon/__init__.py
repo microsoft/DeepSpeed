@@ -3,4 +3,4 @@
 
 # DeepSpeed Team
 
-from .falcon_policy import FalconPolicy
+from .policy import FalconPolicy
