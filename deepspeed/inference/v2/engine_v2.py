@@ -225,6 +225,15 @@ class InferenceEngineV2:
 
         return SchedulingResult.Success
 
+    def get_remaining_block_capacity(self, uid: int) -> int:
+        """
+        Get the remaining capacity of the last block already allocated.
+        """
+        seq_desc = self._state_manager.get_sequence(uid)
+        if seq_desc is None:
+            return 0
+        return self._model.get_remaining_block_capacity(seq_desc)
+
     def flush(self, uid: int) -> None:
         """
         Remove all state associated with a sequence from the inference engine.

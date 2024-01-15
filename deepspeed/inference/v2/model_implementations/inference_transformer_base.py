@@ -353,6 +353,9 @@ class DSTransformerModelBase(DSInferenceModelBase):
 
         return token_capacity, torch.tensor([max_new_blocks])
 
+    def get_remaining_block_capacity(self, sequence: DSSequenceDescriptor) -> int:
+        return sequence.seen_tokens % self.attn.kv_block_size
+
     def maybe_allocate_kv(self, sequence: DSSequenceDescriptor, n_new_tokens: int) -> None:
         """
         See ``DSInferenceModelBase.maybe_allocate_kv`` for documentation.
