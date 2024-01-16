@@ -121,6 +121,7 @@ The following results were collected using V100 SXM2 32GB GPUs.
 The following model families have been successfully tested with automatic tensor parallelism. Other models may work but have not been tested yet.
 
 - albert
+- baichuan
 - bert
 - bigbird_pegasus
 - bloom
@@ -130,6 +131,7 @@ The following model families have been successfully tested with automatic tensor
 - electra
 - ernie
 - esm
+- falcon
 - glm
 - gpt-j
 - gpt-neo
@@ -137,6 +139,7 @@ The following model families have been successfully tested with automatic tensor
 - longt5
 - luke
 - llama
+- llama2
 - m2m_100
 - marian
 - mpt
@@ -147,10 +150,12 @@ The following model families have been successfully tested with automatic tensor
 - pegasus
 - perceiver
 - plbart
+- qwen
 - reformer
 - roberta
 - roformer
 - splinter
+- starcode
 - t5
 - xglm
 - xlm_roberta
