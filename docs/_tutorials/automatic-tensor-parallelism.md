@@ -127,6 +127,7 @@ The following model families have been successfully tested with automatic tensor
 - bloom
 - camembert
 - codegen
+- codellama
 - deberta_v2
 - electra
 - ernie
@@ -142,6 +143,7 @@ The following model families have been successfully tested with automatic tensor
 - llama2
 - m2m_100
 - marian
+- mistral
 - mpt
 - mvp
 - nezha
