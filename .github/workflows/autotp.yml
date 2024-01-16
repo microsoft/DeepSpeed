@@ -114,8 +114,8 @@ jobs:
           # modify MODEL to change the model name, other lines are the same
           export MODEL=facebook/opt-1.3b
           cd DeepSpeedExamples/inference/huggingface/text-generation
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype float32 --use_meta_tensor
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype float32 --num_inputs 1 --use_kernel False
+          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1 --use_kernel False
 
       - name: AutoTP test (bigscience/bloom-3b)
         run: |
@@ -124,5 +124,5 @@ jobs:
           # modify MODEL to change the model name, other lines are the same
           export MODEL=bigscience/bloom-3b
           cd DeepSpeedExamples/inference/huggingface/text-generation
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype float32 --use_meta_tensor
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype float32 --num_inputs 1 --use_kernel False
+          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1 --use_kernel False
