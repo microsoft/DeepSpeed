@@ -16,6 +16,12 @@ from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 import torch.nn as nn
 import torch
 
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from datasets import load_dataset
+from torch.utils.data import DataLoader
+
+import numpy as np
+
 
 class NNModel(nn.Module):
 
@@ -46,6 +52,7 @@ def _check_secondary_tensor_existence(model: Module) -> None:
         if param.ds_secondary_tensor is not None:
             return True
     return False
+
 
 def _assert_secondary_tensor_size(model: Module) -> None:
     for name, param in model.named_parameters():
@@ -137,8 +144,6 @@ class TestZeroPPConfigSweep(DistributedTest):
             with torch.no_grad():
                 loss = model(batch[0], batch[1])
 
-
-
     def test_gradient_accumulation(self, h_dim: int, n_layers: int, zpg: int) -> None:
         # in this test case, we are testing that hpz should be enabled for the intermediate gradient accumulation steps
         # In this test, we should disable loss_scale
@@ -175,9 +180,95 @@ class TestZeroPPConfigSweep(DistributedTest):
             if n == 0 and zpg != 1:
                 _assert_secondary_tensor_size(model)
             # here we cannot assert that secondary tensor does not exist because the gradient is likely overflowed as we use random data
-            if n>0 and n % 3 != 0 and zpg != 1:
+            if n > 0 and n % 3 != 0 and zpg != 1:
                 # if the previous iteration does not update the model, then the hpz should be enabled
                 assert _check_secondary_tensor_existence(model), f"n={n}"
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
+
+
+@pytest.mark.parametrize("model_name", ["gpt2"])
+class TestZeroPPConvergence(DistributedTest):
+    world_size = 4
+
+    def load_and_prepare_data(self, model_name):
+        """Load model, tokenizer and dataset, and prepare data loader."""
+        # Load model and tokenizer
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        tokenizer.pad_token = tokenizer.eos_token
+
+        # Load and tokenize dataset
+        dataset = load_dataset("wikitext", 'wikitext-103-raw-v1', split='train[:1%]')
+
+        def tokenize_function(examples):
+            # Tokenize and ensure 'labels' are the same as 'input_ids'
+            tokenized_output = tokenizer(examples["text"], padding="max_length", truncation=True, return_tensors='pt')
+            tokenized_output["labels"] = tokenized_output["input_ids"].clone()
+            return tokenized_output
+
+        tokenized_dataset = dataset.map(tokenize_function, batched=True)
+        tokenized_dataset.set_format('torch', columns=['input_ids', 'attention_mask', 'labels'])
+
+        # Create data loader
+        data_loader = DataLoader(tokenized_dataset, batch_size=1, shuffle=False)
+        return model, data_loader
+
+    def get_loss(self, model, data_loader, config_dict, step=500):
+        """Train the model and calculate average loss."""
+        # Initialize DeepSpeed
+        model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
+        dist.barrier()
+        model.train()
+
+        # Training loop
+        losses = []
+        for n, batch in enumerate(data_loader):
+            if n >= step:
+                break
+            batch = {k: v.to(model.device) for k, v in batch.items()}
+            outputs = model(**batch)
+            loss = outputs.loss
+            model.backward(loss)
+            model.step()
+            losses.append(loss.item())
+
+        return np.nanmean(losses[-100:])
+
+    def get_config_dict(self, use_quantized_weights=False, use_hpz=False):
+        """Generate the configuration dictionary for DeepSpeed."""
+        config = {
+            "train_micro_batch_size_per_gpu": 1,
+            "zero_optimization": {
+                "stage": 3,
+                "stage3_max_reuse_distance": 0,
+                "contiguous_gradients": True,
+                "overlap_comm": True,
+            },
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 1e-5
+                }
+            },
+            "fp16": {
+                "enabled": True
+            }
+        }
+        if use_quantized_weights:
+            config["zero_optimization"]["zero_quantized_weights"] = True
+        if use_hpz:
+            config["zero_optimization"]["zero_hpz_partition_size"] = self.world_size // 2
+        return config
+
+    def test(self, model_name):
+        torch.manual_seed(0)
+        model, data_loader = self.load_and_prepare_data(model_name)
+        zeropp_loss = self.get_loss(model, data_loader, self.get_config_dict(use_quantized_weights=True, use_hpz=True))
+        model, data_loader = self.load_and_prepare_data(model_name)
+        baseline_loss = self.get_loss(model, data_loader, self.get_config_dict())
+
+        # Output and assert
+        print(f"zeropp_loss={zeropp_loss}, baseline_loss={baseline_loss}")
+        assert zeropp_loss < baseline_loss * 1.1, f"zeropp_loss={zeropp_loss}, baseline_loss={baseline_loss}"
