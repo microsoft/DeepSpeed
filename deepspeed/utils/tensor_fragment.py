@@ -6,7 +6,7 @@
 import torch
 from dataclasses import dataclass
 from deepspeed import comm as dist
-from typing import Dict
+from typing import Dict, List
 
 
 @dataclass
@@ -247,6 +247,19 @@ def safe_set_local_fp32_param(param, value):
     # ZeRO stage 3 param
     if hasattr(param, 'ds_id'):
         param._z3_optimizer.set_local_hp_param(value, param)
+
+
+def set_no_break_for_param_fetch(model: torch.nn.Module, modules_do_not_break: List[str]) -> None:
+
+    def set_do_not_break(model):
+        if model.__class__.__name__ in modules_do_not_break:
+            model._z3_do_not_break = True
+
+    model.apply(set_do_not_break)
+
+
+def no_break_for_param_fetch(model: torch.nn.Module) -> bool:
+    return hasattr(model, '_z3_do_not_break') and model._z3_do_not_break
 
 
 ### Local API  END ###

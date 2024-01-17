@@ -6,6 +6,7 @@
 import sys
 import torch
 from collections import OrderedDict
+from deepspeed.utils import no_break_for_param_fetch
 from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.partition_parameters import _init_external_params
@@ -383,9 +384,10 @@ class DeepSpeedZeRoOffload(object):
 
         #print(f"{module.__class__} : {module.id}")
 
-        for child in module.children():
-            count[0] = count[0] + 1
-            self._register_hooks_recursively(child, count=count)
+        if not no_break_for_param_fetch(module):
+            for child in module.children():
+                count[0] = count[0] + 1
+                self._register_hooks_recursively(child, count=count)
 
         @instrument_w_nvtx
         def _pre_forward_module_hook(module, *args):
