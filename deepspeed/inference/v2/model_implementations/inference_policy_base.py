@@ -46,7 +46,8 @@ class ContainerMap:
                 f"The transformer containers should be a list, of one container per layer, but got {type(containers)} instead."
             )
 
-        self._transformer_prefixes = prefixes if isinstance(prefixes, list) else [prefixes]
+        self._transformer_prefixes = prefixes if isinstance(prefixes, list) else [
+            prefixes]
         self._transformer_params = containers
 
     def set_non_transformer_params(self, container: LayerContainer) -> None:
@@ -58,7 +59,8 @@ class ContainerMap:
     def map_param(self, name, parameter) -> None:
         for unmapped_prefix in self._unmapped_prefixes:
             if name.startswith(unmapped_prefix):
-                inference_logger().debug(f"Ignoring: {name} for {unmapped_prefix}")
+                inference_logger().debug(
+                    f"Ignoring: {name} for {unmapped_prefix}")
                 return
 
         for transformer_prefix in self._transformer_prefixes:
@@ -70,7 +72,8 @@ class ContainerMap:
                 layer_idx = int(layer_idx)
                 inference_logger().debug(
                     f"Setting: {'.'.join(popped_name.split('.')[1:])} for layer-idx={layer_idx} to {parameter.shape}")
-                self._transformer_params[layer_idx].set_dependency(".".join(popped_name.split(".")[1:]), parameter)
+                self._transformer_params[layer_idx].set_dependency(
+                    ".".join(popped_name.split(".")[1:]), parameter)
                 return
 
         try:
@@ -80,11 +83,13 @@ class ContainerMap:
             # Catch the ValueError here from the non_transformer_params because we are knowingly
             # calling it with something that may not match. This should allow us to raise a slightly more
             # informative error message.
-            raise ValueError(f"Cannot find container for {name}, please double check the Containers/ContainerMap")
+            raise ValueError(
+                f"Cannot find container for {name}, please double check the Containers/ContainerMap")
 
     def validate(self) -> None:
         if not self._non_transformer_params.is_initialized:
-            raise RuntimeError("Non-transformer parameters not fully initialized after checkpoint load.")
+            raise RuntimeError(
+                "Non-transformer parameters not fully initialized after checkpoint load.")
 
         for layer_idx, container in enumerate(self._transformer_params):
             if not container.is_initialized:
@@ -128,10 +133,12 @@ class InferenceV2Policy(ABC, metaclass=PolicyMeta):
         TODO(cmikeh2): Enforce this in code
         """
         if checkpoint_engine is None and inf_checkpoint_path is None:
-            raise ValueError("Either checkpoint_engine or ds_checkpoint_path must be provided.")
+            raise ValueError(
+                "Either checkpoint_engine or ds_checkpoint_path must be provided.")
 
         if checkpoint_engine is not None and inf_checkpoint_path is not None:
-            raise ValueError("Only one of checkpoint_engine or ds_checkpoint_path can be provided.")
+            raise ValueError(
+                "Only one of checkpoint_engine or ds_checkpoint_path can be provided.")
 
         self._checkpoint_engine = checkpoint_engine
         self._inf_checkpoint_path = inf_checkpoint_path
@@ -153,7 +160,8 @@ class InferenceV2Policy(ABC, metaclass=PolicyMeta):
             DSInferenceModelBase: An implementation of the inference model abstraction that will be
                 run by the engine.
         """
-        self.model: DSInferenceModelBase = self.instantiate_model(engine_config, mp_group)
+        self.model: DSInferenceModelBase = self.instantiate_model(
+            engine_config, mp_group)
         self.model.initialize_kernel_workspace()
         self.populate_model_parameters()
         return self.model
@@ -203,8 +211,10 @@ class InferenceV2Policy(ABC, metaclass=PolicyMeta):
                                                        container_map.non_transformer_params, self.__class__.__name__)
         else:
 
-            buffer_path = make_param_filename(self._inf_checkpoint_path, self.model.tp_rank, self.model.tp_size)
-            metadata_path = make_metadata_filename(self._inf_checkpoint_path, self.model.tp_rank, self.model.tp_size)
+            buffer_path = make_param_filename(
+                self._inf_checkpoint_path, self.model.tp_rank, self.model.tp_size)
+            metadata_path = make_metadata_filename(
+                self._inf_checkpoint_path, self.model.tp_rank, self.model.tp_size)
 
             buffer = torch.load(buffer_path)
             metadata = json.load(open(metadata_path, "r"))

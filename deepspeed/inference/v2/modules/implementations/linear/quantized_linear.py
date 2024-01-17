@@ -44,34 +44,37 @@ class QuantizedWf6Af16Linear(DSLinearBase):
 
         if is_gated(config.activation):
             try:
-                _ = CUDAGatedActivation(config.out_channels, config.output_dtype, config.activation)
+                _ = CUDAGatedActivation(
+                    config.out_channels, config.output_dtype, config.activation)
             except ValueError:
                 return False
         else:
             try:
-                _ = CUDABiasActivation(config.out_channels, config.output_dtype, config.activation)
+                _ = CUDABiasActivation(
+                    config.out_channels, config.output_dtype, config.activation)
             except ValueError:
                 return False
 
         return True
-
 
     def __init__(self, config: DSLinearConfig, implementation_config: Dict[str, Any]) -> None:
         super().__init__(config, implementation_config)
 
         self._linear_impl = CUDAWf6Af16Linear()
         self.M = self._config.out_channels
-        self.K= self._config.in_channels
+        self.K = self._config.in_channels
 
         if is_gated(config.activation):
             self._is_gated = True
-            self._act_fn = CUDAGatedActivation(config.out_channels, config.output_dtype, config.activation)
+            self._act_fn = CUDAGatedActivation(
+                config.out_channels, config.output_dtype, config.activation)
             self._double_buffer = torch.empty((config.max_tokens, config.out_channels * 2),
                                               dtype=config.output_dtype,
                                               device=get_accelerator().current_device())
         else:
             self._is_gated = False
-            self._act_fn = CUDABiasActivation(config.out_channels, config.output_dtype, config.activation)
+            self._act_fn = CUDABiasActivation(
+                config.out_channels, config.output_dtype, config.activation)
 
         self._output = torch.empty((config.max_tokens, config.out_channels),
                                    dtype=config.output_dtype,
@@ -82,7 +85,6 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         self.preprocess_weight = self.inf_module.preprocess_weight
         self.preprocess_scales = self.inf_module.preprocess_scales
 
-
     def transform_param(self, param: torch.Tensor) -> InferenceParameter:
         """
         Converts param to same data type as input and output.
@@ -90,25 +92,31 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         Parameters:
             param (torch.Tensor): Weight or bias tensor.
         """
-        # It expects that the quantization scales are store in the attribute `fp6_quant_scales`.
-        # TODO: use builtin attribute/function `q_per_channel_scales` instead in the future, which cannot be
-        # used directly as it is not supported by the "CPU" or "GPU" backend currently.
-        
-        # assert(param.fp6_quant_scales is not None) # Comments out for early stage testing
-        
-        # Split the fake quantized fp6 weight into the 4-bit part and 2-bit part.
-        
-        if param.ndim == 1: # bias, do nothing
+        # It expects that the quantization scales are store in the attribute `scales`.
+
+        if param.ndim == 1:  # bias, do nothing
             return InferenceParameter.initialize(param)
 
         device = get_accelerator().current_device()
-        
-        # The below is the dummy one for early stage testing. It will be replaced by:
+
+        if not hasattr(param, "scales"):
+            raise ValueError(
+                f"param {param.name} does not have attribute `scales`")
+        if param.scales is None:
+            raise ValueError(f"scales is None")
         scales = param.scales.cpu()
+        # if self._is_gated:
+        #     # dummy scales for early stage testing
+        #     scales = torch.ones(
+        #         (self.M * 2, self.K // self.K), dtype=torch.float16)
+        # else:
+        #     # dummy scales for early stage testing
+        #     scales = torch.ones((self.M, self.K // self.K),
+        #                         dtype=torch.float16)
         weight = param.cpu()
-        # scales = torch.ones((self.M, self.K // self.K), dtype=torch.float16) # dummy scales for early stage testing
+        # Split the fake quantized fp6 weight into the 4-bit part and 2-bit part.
         weights_2bit, weights_4bit = self.preprocess_weight(weight)
-        
+
         self.group_size = scales.size(1) // self.K
         if self._is_gated:
             assert weight.shape[0] == self.M * 2
@@ -118,25 +126,27 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         assert self.group_size % 64 == 0, f"group size {self.group_size} is not supported"
 
         param = weights_4bit
-        return InferenceParameter.initialize(param, weights_2bit = weights_2bit, scales = scales)
-
+        return InferenceParameter.initialize(param, weights_2bit=weights_2bit, scales=scales)
 
     def forward(self, hidden_states: torch.Tensor, w: torch.Tensor, b: Optional[torch.Tensor] = None) -> torch.Tensor:
-        weights_4bit = w 
+        weights_4bit = w
         weights_2bit = w.weights_2bit
         scales = w.scales
-        output = empty_from(self._output, (hidden_states.shape[0], self._config.out_channels))
+        output = empty_from(
+            self._output, (hidden_states.shape[0], self._config.out_channels))
         N = hidden_states.shape[0]
         if self._is_gated:
-            staging_output = empty_from(self._double_buffer, (hidden_states.shape[0], self._config.out_channels * 2))
-            self._linear_impl(staging_output, hidden_states, weights_4bit, weights_2bit, scales, self.M * 2, hidden_states.shape[0], self.K)
+            staging_output = empty_from(
+                self._double_buffer, (hidden_states.shape[0], self._config.out_channels * 2))
+            self._linear_impl(staging_output, hidden_states, weights_4bit,
+                              weights_2bit, scales, self.M * 2, hidden_states.shape[0], self.K)
             self._act_fn(output, staging_output, b)
         else:
-            self._linear_impl(output, hidden_states, weights_4bit, weights_2bit, scales, self.M, hidden_states.shape[0], self.K)
+            self._linear_impl(output, hidden_states, weights_4bit,
+                              weights_2bit, scales, self.M, hidden_states.shape[0], self.K)
             self._act_fn(output, b)
 
         return output
-
 
     @property
     def output(self) -> torch.Tensor:

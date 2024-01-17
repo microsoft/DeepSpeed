@@ -22,7 +22,12 @@ class FusedQKVParameter(ParameterBase):
 
     params: torch.Tensor
 
+    scales: torch.Tensor
+
     def finalize(self) -> torch.Tensor:
+        if self.scales is not None:
+            raise NotImplementedError(
+                "FusedQKVParameter does not support scales. Please concat us to support.")
         return self.inference_model.transform_qkv_param(self.params)
 
 
@@ -40,10 +45,21 @@ class UnfusedQKVParameter(ParameterBase):
 
     v_params: torch.Tensor
 
+    q_scales: torch.Tensor
+
+    k_scales: torch.Tensor
+
+    v_scales: torch.Tensor
+
     def finalize(self):
-        fused_param = torch.cat([self.q_params, self.k_params, self.v_params], dim=0)
-        if hasattr(self.q_params, 'scales') and hasattr(self.k_params, 'scales') and hasattr(self.v_params, 'scales'):
-            fused_param.scales = torch.cat([self.q_params.scales, self.k_params.scales, self.v_params.scales], dim=0)
+        fused_param = torch.cat(
+            [self.q_params, self.k_params, self.v_params], dim=0)
+        if self.q_scales is not None and self.k_scales is not None and self.v_scales is not None:
+            fused_param.scales = torch.cat(
+                [self.q_scales, self.k_scales, self.v_scales], dim=0)
+        # if hasattr(self.q_params, 'scales') and hasattr(self.k_params, 'scales') and hasattr(self.v_params, 'scales'):
+        #     fused_param.scales = torch.cat(
+        #         [self.q_params.scales, self.k_params.scales, self.v_params.scales], dim=0)
         return self.inference_model.transform_qkv_param(fused_param)
 
 
@@ -76,7 +92,8 @@ class MegatronQKVParameter(ParameterBase):
         head_size = self.inference_model.head_size
         n_heads = self.inference_model.n_heads
 
-        transposed_param = megatron_qkv_reshape(self.params, head_size, n_heads)
+        transposed_param = megatron_qkv_reshape(
+            self.params, head_size, n_heads)
         return self.inference_model.transform_qkv_param(transposed_param)
 
 
@@ -86,10 +103,14 @@ def transform_gqa_megatron(src_param: torch.Tensor, head_size: int, n_q_heads: i
     head_ratio = n_q_heads // n_kv_heads
 
     # Reshape to get the groups as the leading dimension
-    groups_leading_view = src_param.reshape(n_kv_heads, 2 + head_ratio, head_size, -1)
-    q_heads = groups_leading_view[:, :head_ratio, :, :].reshape(-1, groups_leading_view.shape[-1])
-    k_heads = groups_leading_view[:, head_ratio, :, :].reshape(-1, groups_leading_view.shape[-1])
-    v_heads = groups_leading_view[:, head_ratio + 1, :, :].reshape(-1, groups_leading_view.shape[-1])
+    groups_leading_view = src_param.reshape(
+        n_kv_heads, 2 + head_ratio, head_size, -1)
+    q_heads = groups_leading_view[:, :head_ratio, :,
+                                  :].reshape(-1, groups_leading_view.shape[-1])
+    k_heads = groups_leading_view[:, head_ratio, :,
+                                  :].reshape(-1, groups_leading_view.shape[-1])
+    v_heads = groups_leading_view[:, head_ratio + 1,
+                                  :, :].reshape(-1, groups_leading_view.shape[-1])
     # Squeeze will remove extra dimension for bias
     return torch.cat([q_heads, k_heads, v_heads], dim=0).squeeze()
 
@@ -113,5 +134,6 @@ class GQAMegatronQKVParameter(ParameterBase):
         head_size = self.inference_model.head_size
         n_q_heads = self.inference_model.n_heads_q
         n_kv_heads = self.inference_model.n_heads_kv
-        transposed_param = transform_gqa_megatron(self.params, head_size, n_q_heads, n_kv_heads)
+        transposed_param = transform_gqa_megatron(
+            self.params, head_size, n_q_heads, n_kv_heads)
         return self.inference_model.transform_qkv_param(transposed_param)

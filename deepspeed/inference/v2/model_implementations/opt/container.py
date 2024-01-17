@@ -73,6 +73,14 @@ class OPTTransformerContainer(LayerContainer):
         "self_attn_layer_norm.bias": "attn_norm_beta.params",
         "final_layer_norm.weight": "mlp_norm_gamma.params",
         "final_layer_norm.bias": "mlp_norm_beta.params",
+
+        # # for quantization
+        # "self_attn.q_proj.scales": "qkv_w.q_scales",
+        # "self_attn.k_proj.scales": "qkv_w.k_scales",
+        # "self_attn.v_proj.scales": "qkv_w.v_scales",
+        # "self_attn.out_proj.scales": "attn_out_w.scales",
+        # "fc1.scales": "mlp_1_w.scales",
+        # "fc2.scales": "mlp_2_w.scales",
     }
 
 

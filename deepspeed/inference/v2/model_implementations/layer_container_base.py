@@ -64,7 +64,8 @@ class LayerMetaclass(type):
                     attrs[MAPPING_KEY] = {}
                 attrs[MAPPING_KEY].update(getattr(base, MAPPING_KEY))
 
-        all_names = [name for name, annotation in annotations.items() if issubclass(annotation, ParameterBase)]
+        all_names = [name for name, annotation in annotations.items(
+        ) if issubclass(annotation, ParameterBase)]
 
         if MAPPING_KEY in attrs:
             # If we have a mapping key at all, then we will enter the validation mode for building
@@ -108,11 +109,13 @@ class LayerMetaclass(type):
                             "Target dependency \"{}\" was targeted with multiple mapping rules.".format(target_name))
 
                     # If we've made it this far, the dependency definitely exists.
-                    actual_targets.append(annotations[base_dependency].__annotations__[dependency_attr])
+                    actual_targets.append(
+                        annotations[base_dependency].__annotations__[dependency_attr])
 
                     all_deps.remove(target_name)
 
-                are_plists = [issubclass(target, ParametrizedList) for target in actual_targets]
+                are_plists = [issubclass(target, ParametrizedList)
+                              for target in actual_targets]
                 if all(are_plists):
                     # We can do direct sets on everything but ParametrizedLists, so we'll only explicitly
                     # handle these here.
@@ -128,9 +131,15 @@ class LayerMetaclass(type):
                     wildcard_idx = src_name.find("*")
                     prefix = src_name[:wildcard_idx]
                     suffix = src_name[wildcard_idx + 1:]
-                    attrs[PLIST_HELPERS].append((prefix, suffix, target_or_targets))
+                    attrs[PLIST_HELPERS].append(
+                        (prefix, suffix, target_or_targets))
                 elif any(are_plists):
-                    raise ValueError("Cannot mix ParametrizedLists and Tensors in a single mapping rule.")
+                    raise ValueError(
+                        "Cannot mix ParametrizedLists and Tensors in a single mapping rule.")
+
+            # remove false dependency of scales
+            all_deps = [
+                dep for dep in all_deps if ".scales" not in dep and "_scales" not in dep]
 
             if len(all_deps) > 0:
                 raise ValueError(
@@ -156,7 +165,8 @@ class LayerMetaclass(type):
                 # It might also make sense to do this in the base class __init__
                 # but since it is tied with the changes made in __new__ it feels
                 # to me like it should be here.
-                setattr(instance, name, annotation(instance.inference_model, instance))
+                setattr(instance, name, annotation(
+                    instance.inference_model, instance))
 
         return instance
 
@@ -263,7 +273,8 @@ class LayerContainer(metaclass=LayerMetaclass):
     def direct_injection(self, name: str, tensor: InferenceParameter) -> None:
 
         if name not in self._annotation_attrs:
-            raise ValueError(f"Cannot directly inject {name}, not a valid parameter.")
+            raise ValueError(
+                f"Cannot directly inject {name}, not a valid parameter.")
 
         setattr(self, name, tensor)
         self._finalized_params += 1
@@ -297,7 +308,8 @@ class LayerContainer(metaclass=LayerMetaclass):
                 if re.match(regex_key, dep_name):
                     matched_targets.append(target)
             if len(matched_targets) > 1:
-                raise ValueError(f"Multiple targets matched for dependency {dep_name}: {matched_targets}")
+                raise ValueError(
+                    f"Multiple targets matched for dependency {dep_name}: {matched_targets}")
             if matched_targets:
                 return matched_targets[0]
             return ""
@@ -313,7 +325,8 @@ class LayerContainer(metaclass=LayerMetaclass):
 
             for target_name in target:
                 # Double setting doesn't set the attribute correctly, so we do a getattr then setattr
-                target_param_name, target_dependency_name = target_name.split(".")
+                target_param_name, target_dependency_name = target_name.split(
+                    ".")
                 target_param = getattr(self, target_param_name)
                 setattr(target_param, target_dependency_name, dep_value)
             return
@@ -331,7 +344,8 @@ class LayerContainer(metaclass=LayerMetaclass):
                 for dest in dests:
                     target_param_name, target_dependency_name = dest.split(".")
                     target_param = getattr(self, target_param_name)
-                    target_dependency = getattr(target_param, target_dependency_name)
+                    target_dependency = getattr(
+                        target_param, target_dependency_name)
                     target_dependency[target_idx] = dep_value
                 return
 
@@ -345,7 +359,8 @@ class LayerContainer(metaclass=LayerMetaclass):
 
             for target_name in target:
                 # Double setting doesn't set the attribute correctly, so we do a getattr then setattr
-                target_param_name, target_dependency_name = target_name.split(".")
+                target_param_name, target_dependency_name = target_name.split(
+                    ".")
                 target_param = getattr(self, target_param_name)
                 setattr(target_param, target_dependency_name, dep_value)
             return

@@ -80,7 +80,8 @@ class InferenceEngineV2:
 
         # Build model from policy
         inference_logger().info("Building model...")
-        self._model = self._policy.build_model(self._config, self._base_mp_group)
+        self._model = self._policy.build_model(
+            self._config, self._base_mp_group)
         inference_logger().info("Model built.")
 
         # Create state manager
@@ -99,7 +100,8 @@ class InferenceEngineV2:
         get_accelerator().set_device(local_rank)
 
         if local_rank >= self._config.tensor_parallel.tp_size:
-            raise RuntimeError("Local rank is greater than TP size, ensure that the TP config is correct.")
+            raise RuntimeError(
+                "Local rank is greater than TP size, ensure that the TP config is correct.")
 
         ranks = list(range(self._config.tensor_parallel.tp_size))
         return dist.new_group(ranks=ranks)
@@ -172,7 +174,8 @@ class InferenceEngineV2:
                 return (0, 0)
             seq_desc = PlaceholderSequenceDescriptor()
 
-        req_tokens, req_blocks = self._model.get_kv_requirements(seq_desc, max_request_tokens, max_request_blocks)
+        req_tokens, req_blocks = self._model.get_kv_requirements(
+            seq_desc, max_request_tokens, max_request_blocks)
 
         return (req_tokens, req_blocks)
 
@@ -206,7 +209,8 @@ class InferenceEngineV2:
                 cur_seqs += 1
                 seq_desc = PlaceholderSequenceDescriptor()
 
-            sched_len, sched_blocks = self._model.get_kv_requirements(seq_desc, length, free_blocks)
+            sched_len, sched_blocks = self._model.get_kv_requirements(
+                seq_desc, length, free_blocks)
 
             if sched_len != length:
                 # We ran out of KV cache
@@ -241,14 +245,18 @@ class InferenceEngineV2:
         Arguments:
             path (str): Path to the file to serialize to.
         """
-        param_file_name = make_param_filename(save_path, self._model.tp_rank, self._model.tp_size)
-        metadata_file_name = make_metadata_filename(save_path, self._model.tp_rank, self._model.tp_size)
+        param_file_name = make_param_filename(
+            save_path, self._model.tp_rank, self._model.tp_size)
+        metadata_file_name = make_metadata_filename(
+            save_path, self._model.tp_rank, self._model.tp_size)
 
         # Save the flattened parameters
 
         torch.save(self._model.flattened_params, param_file_name)
 
-        json.dump(self._model.flattened_param_metadata.json(), open(metadata_file_name, "w"))
+        json.dump(self._model.flattened_param_metadata.json(),
+                  open(metadata_file_name, "w"))
 
         if self._model.tp_rank == 0:
-            pickle.dump(self._model._config, open(os.path.join(save_path, "ds_model_config.pkl"), "wb"))
+            pickle.dump(self._model._config, open(
+                os.path.join(save_path, "ds_model_config.pkl"), "wb"))

@@ -225,7 +225,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
             embedding_dim=self.model_dim,
         )
 
-        self.embed = heuristics.instantiate_embed(embed_config, self._engine_config)
+        self.embed = heuristics.instantiate_embed(
+            embed_config, self._engine_config)
 
     def transform_embedding_param(self, param: torch.Tensor) -> InferenceParameter:
         """
@@ -242,7 +243,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
         normalization prior to the LM head projection. If this does not match the model's
         implementation, override this method. This will set the ``self.unembed`` attribute.
         """
-        unembed_dim = sharded_unembed_dim(self.vocab_size, self.tp_rank, self.tp_size)
+        unembed_dim = sharded_unembed_dim(
+            self.vocab_size, self.tp_rank, self.tp_size)
 
         unembed_config = DSUnembedConfig(
             max_tokens=self._engine_config.state_manager.max_ragged_batch_size,
@@ -253,7 +255,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
             norm_type=self.norm_type,
         )
 
-        self.unembed = heuristics.instantiate_unembed(unembed_config, self._engine_config)
+        self.unembed = heuristics.instantiate_unembed(
+            unembed_config, self._engine_config)
 
         if self.tp_size > 1:
             self._comm_logits = torch.empty(self.tp_size,
@@ -270,7 +273,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
         """
         Performs sharding along the vocab dimension.
         """
-        param = shard_unembed_param(param, self.tp_rank, self.tp_size).to(self.activation_dtype.value)
+        param = shard_unembed_param(param, self.tp_rank, self.tp_size).to(
+            self.activation_dtype.value)
         return InferenceParameter.initialize(param)
 
     ######### QKV #########
@@ -290,7 +294,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
             output_dtype=self.activation_dtype,
         )
 
-        self.qkv = heuristics.instantiate_linear(linear_config, self._engine_config)
+        self.qkv = heuristics.instantiate_linear(
+            linear_config, self._engine_config)
 
     def transform_qkv_param(self, param: torch.Tensor) -> InferenceParameter:
         """
@@ -301,7 +306,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
             param (torch.Tensor): The parameter to transform. This may be either a bias or weight and should have
                 the shape (out_neurons, in_neurons)
         """
-        param = shard_qkv_param(param, self.tp_rank, self.tp_size, self.head_size, self.n_heads_q, self.n_heads_kv)
+        param = shard_qkv_param(param, self.tp_rank, self.tp_size,
+                                self.head_size, self.n_heads_q, self.n_heads_kv)
         return self.qkv.transform_param(param)
 
     ######### Attention #########
@@ -321,7 +327,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
                                             output_dtype=self.activation_dtype,
                                             positional_embedding_type=self.positional_embedding_type)
 
-        self.attn = heuristics.instantiate_attention(attn_config, self._engine_config)
+        self.attn = heuristics.instantiate_attention(
+            attn_config, self._engine_config)
 
     def get_kv_requirements(self, sequence: DSSequenceDescriptor, max_new_tokens: int,
                             max_new_blocks: int) -> Tuple[int, torch.Tensor]:
@@ -350,7 +357,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
         This method assumes an autoregressive dense attention pattern. Override this method
         if this does not match the model's attention pattern.
         """
-        _, n_needed_blocks = self.get_kv_requirements(sequence, n_new_tokens, self.state_manager.free_blocks)
+        _, n_needed_blocks = self.get_kv_requirements(
+            sequence, n_new_tokens, self.state_manager.free_blocks)
 
         if n_needed_blocks > 0:
             new_blocks = self.state_manager.allocate_blocks(n_needed_blocks)
@@ -364,8 +372,10 @@ class DSTransformerModelBase(DSInferenceModelBase):
         if this does not match the model's attention pattern.
         """
         if self._kv_cache_config is None:
-            cache_shape = (self.num_layers, self.n_heads_kv_local, self.head_size)
-            max_blocks = ceil_div(self.max_sequence_length, self.attn.kv_block_size)
+            cache_shape = (self.num_layers,
+                           self.n_heads_kv_local, self.head_size)
+            max_blocks = ceil_div(self.max_sequence_length,
+                                  self.attn.kv_block_size)
             self._kv_cache_config = KVCacheConfig(block_size=self.attn.kv_block_size,
                                                   cache_shape=cache_shape,
                                                   cache_dtype=self.activation_dtype,
@@ -398,7 +408,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
             output_dtype=self.activation_dtype,
         )
 
-        self.attn_out = heuristics.instantiate_linear(linear_config, self._engine_config)
+        self.attn_out = heuristics.instantiate_linear(
+            linear_config, self._engine_config)
 
     def transform_attn_out_param(self, param: torch.Tensor) -> Optional[InferenceParameter]:
         """
@@ -424,7 +435,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
         Instantiates the linear projection layer for the first MLP in the feedforward network.
         This sets the `self.mlp_1` attribute.
         """
-        shard_size = sharded_intermediate_dim(self.intermediate_dim, self.tp_size, self.tp_rank)
+        shard_size = sharded_intermediate_dim(
+            self.intermediate_dim, self.tp_size, self.tp_rank)
 
         linear_config = DSLinearConfig(
             max_tokens=self._engine_config.state_manager.max_ragged_batch_size,
@@ -435,7 +447,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
             output_dtype=self.activation_dtype,
         )
 
-        self.mlp_1 = heuristics.instantiate_linear(linear_config, self._engine_config)
+        self.mlp_1 = heuristics.instantiate_linear(
+            linear_config, self._engine_config)
 
     def transform_mlp_1_param(self, param: torch.Tensor) -> InferenceParameter:
         """
@@ -446,7 +459,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
             param (torch.Tensor): The parameter to transform. This may be either a bias or weight and should have
                 the shape (out_neurons, in_neurons).
         """
-        param = shard_mlp_1_param(param, self.tp_rank, self.tp_size, gated=self.gated_mlp)
+        param = shard_mlp_1_param(
+            param, self.tp_rank, self.tp_size, gated=self.gated_mlp)
 
         return self.mlp_1.transform_param(param)
 
@@ -455,7 +469,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
         Instantiates the linear projection layer for the second MLP in the feedforward network.
         This sets the `self.mlp_2` attribute.
         """
-        shard_size = sharded_intermediate_dim(self.intermediate_dim, self.tp_size, self.tp_rank)
+        shard_size = sharded_intermediate_dim(
+            self.intermediate_dim, self.tp_size, self.tp_rank)
 
         linear_config = DSLinearConfig(
             max_tokens=self._engine_config.state_manager.max_ragged_batch_size,
@@ -465,7 +480,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
             output_dtype=self.activation_dtype,
         )
 
-        self.mlp_2 = heuristics.instantiate_linear(linear_config, self._engine_config)
+        self.mlp_2 = heuristics.instantiate_linear(
+            linear_config, self._engine_config)
 
     def transform_mlp_2_param(self, param: torch.Tensor) -> Optional[InferenceParameter]:
         """
@@ -501,7 +517,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
             output_dtype=self.activation_dtype,
         )
 
-        self.norm = heuristics.instantiate_pre_norm(norm_config, self._engine_config)
+        self.norm = heuristics.instantiate_pre_norm(
+            norm_config, self._engine_config)
 
     def transform_norm_param(self, param: torch.Tensor) -> InferenceParameter:
         """
@@ -525,13 +542,15 @@ class DSMoETransformerModelBase(DSTransformerModelBase):
         """
         Return the number of experts in the model.
         """
-        raise NotImplementedError("Attempted to access an unimplemented number of experts")
+        raise NotImplementedError(
+            "Attempted to access an unimplemented number of experts")
 
     def make_moe_layer(self) -> None:
         """
         Instantiates the MoE layer for the model. This sets the `self.moe` attribute.
         """
-        sharded_dim = sharded_intermediate_dim(self.intermediate_dim, self.tp_size, self.tp_rank)
+        sharded_dim = sharded_intermediate_dim(
+            self.intermediate_dim, self.tp_size, self.tp_rank)
 
         moe_config = DSMoEConfig(
             max_tokens=self._engine_config.state_manager.max_ragged_batch_size,
@@ -564,7 +583,8 @@ class DSMoETransformerModelBase(DSTransformerModelBase):
         Args:
             param (torch.Tensor): The parameter to transform. This should have shape (n_experts, out_neurons, in_neurons).
         """
-        param = shard_mlp_1_param(param, self.tp_rank, self.tp_size, gated=self.gated_mlp, is_moe=True)
+        param = shard_mlp_1_param(
+            param, self.tp_rank, self.tp_size, gated=self.gated_mlp, is_moe=True)
 
         return self.moe.transform_moe_mlp_1_param(param)
 
@@ -579,7 +599,8 @@ class DSMoETransformerModelBase(DSTransformerModelBase):
         Args:
             param (torch.Tensor): The parameter to transform. This should have shape (n_experts, out_neurons, in_neurons).
         """
-        param = shard_mlp_2_param(param, self.tp_rank, self.tp_size, is_moe=True)
+        param = shard_mlp_2_param(
+            param, self.tp_rank, self.tp_size, is_moe=True)
 
         if param is not None:
             param = self.moe.transform_moe_mlp_2_param(param)

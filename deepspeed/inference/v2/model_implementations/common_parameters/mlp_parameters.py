@@ -18,10 +18,13 @@ class MLP1Parameter(ParameterBase):
     """
     params: torch.Tensor
 
+    scales: torch.Tensor
+
     def finalize(self) -> torch.Tensor:
         # NOTE(cmikeh2): If we are gated but not in the format specified below, we should trigger a permutation here.
         # I am not currently aware of any models that use this format (or how we should even detect it; probably should
         # just be a different param entirely, but until then we'll just assume the format is correct).
+        self.params.scales = self.scales
         return self.inference_model.transform_mlp_1_param(self.params)
 
 
@@ -31,11 +34,15 @@ class GatedMLPParameter(ParameterBase):
     """
 
     gate_params: torch.Tensor
+
+    gate_scales: torch.Tensor
     """
     Weight parameter for the gating matrix.
     """
 
     up_params: torch.Tensor
+
+    up_scales: torch.Tensor
     """
     For lack of a better name, the non-gating weight parameters.
     """
@@ -61,10 +68,14 @@ class GatedMLPParameter(ParameterBase):
         total_neurons = self.gate_params.shape[0] + self.up_params.shape[0]
 
         # flip the order if even with the correct tokenizer we get wrong output
-        #fused_param = torch.cat([self.up_params, self.gate_params], dim=-1).reshape(total_neurons, -1)
-        fused_param = torch.cat([self.gate_params, self.up_params], dim=-1).reshape(total_neurons, -1)
-        if hasattr(self.gate_params, "scales") and hasattr(self.up_params, "scales"):
-            fused_param.scales = torch.cat([self.gate_params.scales, self.up_params.scales], dim=-1).reshape(total_neurons, -1)
+        # fused_param = torch.cat([self.up_params, self.gate_params], dim=-1).reshape(total_neurons, -1)
+        fused_param = torch.cat(
+            [self.gate_params, self.up_params], dim=-1).reshape(total_neurons, -1)
+        if self.gate_scales is not None and self.up_scales is not None:
+            fused_param.scales = torch.cat(
+                [self.gate_scales, self.up_scales], dim=-1).reshape(total_neurons, -1)
+        # if hasattr(self.gate_params, "scales") and hasattr(self.up_params, "scales"):
+        #     fused_param.scales = torch.cat([self.gate_params.scales, self.up_params.scales], dim=-1).reshape(total_neurons, -1)
         return self.inference_model.transform_mlp_1_param(fused_param)
 
 
@@ -75,9 +86,12 @@ class MLP2Parameter(ParameterBase):
     """
 
     params: torch.Tensor
+
+    scales: torch.Tensor
     """
     Full weight parameter.
     """
 
     def finalize(self) -> torch.Tensor:
+        self.params.scales = self.scales
         return self.inference_model.transform_mlp_2_param(self.params)

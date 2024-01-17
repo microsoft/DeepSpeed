@@ -60,6 +60,15 @@ class Llama2TransformerContainer(LayerContainer):
         "mlp.down_proj.weight": "mlp_2_w.params",
         "input_layernorm.weight": "attn_norm_gamma.params",
         "post_attention_layernorm.weight": "mlp_norm_gamma.params",
+
+        # for quantization
+        "self_attn.q_proj.scales": "qkv_w.q_scales",
+        "self_attn.k_proj.scales": "qkv_w.k_scales",
+        "self_attn.v_proj.scales": "qkv_w.v_scales",
+        "self_attn.o_proj.scales": "attn_out_w.scales",
+        "mlp.gate_proj.scales": "mlp_1_w.gate_scales",
+        "mlp.up_proj.scales": "mlp_1_w.up_scales",
+        "mlp.down_proj.scales": "mlp_2_w.scales",
     }
 
 

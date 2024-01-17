@@ -22,7 +22,8 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
         self.model_name_or_path = model_name_or_path
         self.auth_token = auth_token
         self.model_config = AutoConfig.from_pretrained(self.model_name_or_path)
-        self.generation_config = GenerationConfig.from_pretrained(self.model_name_or_path)
+        self.generation_config = GenerationConfig.from_pretrained(
+            self.model_name_or_path)
         # Define this property here so we can use it in the model implementation
         if not hasattr(self.model_config, "max_seq_length"):
             self.model_config.max_seq_length = self.model_config.max_position_embeddings
@@ -49,7 +50,8 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
             if os.path.isdir(model_name_or_path):
                 file_list = os.listdir(model_name_or_path)
             else:
-                file_list = [rf.rfilename for rf in list_files_info(model_name_or_path)]
+                file_list = [rf.rfilename for rf in list_files_info(
+                    model_name_or_path)]
             for f in file_list:
                 if f.endswith(".safetensors"):
                     return True
@@ -85,11 +87,13 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
             model_file_fname = "pytorch_model.bin"
             self._checkpoint_load_fn = partial(torch.load, map_location="cpu")
 
-        model_param_json = os.path.join(self._local_checkpoint_dir, model_param_json_fname)
+        model_param_json = os.path.join(
+            self._local_checkpoint_dir, model_param_json_fname)
 
         if not os.path.isfile(model_param_json):
             # We don't need any json as all such HF models will have pytorch_model.bin
-            all_checkpoint_files = [os.path.join(self._local_checkpoint_dir, model_file_fname)]
+            all_checkpoint_files = [os.path.join(
+                self._local_checkpoint_dir, model_file_fname)]
         else:
             param_map = json.load(open(model_param_json, "r"))
 
@@ -100,7 +104,8 @@ class HuggingFaceCheckpointEngine(CheckpointEngineBase):
             all_checkpoint_files = set(weight_map.values())
 
             # get absolute path of all unique checkpoint files
-            all_checkpoint_files = [os.path.join(self._local_checkpoint_dir, f) for f in all_checkpoint_files]
+            all_checkpoint_files = [os.path.join(
+                self._local_checkpoint_dir, f) for f in all_checkpoint_files]
 
         return all_checkpoint_files
 

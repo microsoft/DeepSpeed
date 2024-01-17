@@ -21,9 +21,12 @@ class AttentionOutputParameter(ParameterBase):
     """
 
     params: torch.Tensor
+
+    scales: torch.Tensor
     """
     Unsharded attention output parameter of shape [model_dim, model_dim]
     """
 
     def finalize(self) -> torch.Tensor:
+        self.params.scales = self.scales
         return self.inference_model.transform_attn_out_param(self.params)
