@@ -22,6 +22,7 @@ from ..modules.configs import (
     DSUnembedConfig,
     NormTypeEnum,
     PositionalEmbeddingType,
+    RotateHalfConfig,
 )
 from ..modules import heuristics
 from ..ragged import (
@@ -149,6 +150,14 @@ class DSTransformerModelBase(DSInferenceModelBase):
     def norm_type(self) -> NormTypeEnum:
         """
         The type of normalization used in the model.
+        """
+        ...
+
+    @property
+    @abstractmethod
+    def positional_embedding_config(self) -> Optional[RotateHalfConfig]:
+        """
+        The positional embedding configuration for the model.
         """
         ...
 
@@ -319,7 +328,8 @@ class DSTransformerModelBase(DSInferenceModelBase):
                                             scale_factor=softmax_scale,
                                             input_dtype=self.activation_dtype,
                                             output_dtype=self.activation_dtype,
-                                            positional_embedding_type=self.positional_embedding_type)
+                                            positional_embedding_type=self.positional_embedding_type,
+                                            positional_embedding_config=self.positional_embedding_config)
 
         self.attn = heuristics.instantiate_attention(attn_config, self._engine_config)
 
@@ -521,11 +531,25 @@ class DSTransformerModelBase(DSInferenceModelBase):
 class DSMoETransformerModelBase(DSTransformerModelBase):
 
     @property
-    def num_experts(self) -> int:
+    def n_experts(self) -> int:
         """
         Return the number of experts in the model.
         """
         raise NotImplementedError("Attempted to access an unimplemented number of experts")
+
+    @property
+    def n_top_k(self) -> int:
+        """
+        Number of experts per token.
+        """
+        raise NotImplementedError("Attempted to access an unimplemented number of experts per token")
+
+    @property
+    def normalize_expert_scores(self) -> bool:
+        """
+        Whether to normalize expert scores. If true, sum(expert_scores) = 1.
+        """
+        raise NotImplementedError("Attempted to access an unimplemented normalization flag")
 
     def make_moe_layer(self) -> None:
         """
@@ -538,9 +562,11 @@ class DSMoETransformerModelBase(DSTransformerModelBase):
             model_dim=self.model_dim,
             intermediate_features=sharded_dim,
             activation=self.mlp_activation_fn,
-            n_experts=self.num_experts,
+            n_experts=self.n_experts,
+            top_k=self.n_top_k,
             input_dtype=self.activation_dtype,
             output_dtype=self.activation_dtype,
+            normalize_scores=self.normalize_expert_scores,
         )
 
         self.moe = heuristics.instantiate_moe(moe_config, self._engine_config)

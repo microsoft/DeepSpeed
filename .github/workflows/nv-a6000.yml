@@ -3,17 +3,21 @@ name: nv-a6000
 on:
   pull_request:
     paths:
-      - "deepspeed/inference/v2/**"
-      - "tests/unit/inference/v2/**"
+      - 'accelerator/cuda_accelerator.py'
+      - 'deepspeed/inference/v2/**'
+      - 'tests/unit/inference/v2/**'
+      - '.github/workflows/nv-a6000.yml'
   workflow_dispatch:
+    inputs:
+      mii_branch:
+        description: 'DeepSpeed-MII Branch'
+        required: false
+        default: 'main'
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-permissions:
-  contents: read
-  issues: write
 
 jobs:
   unit-tests:
@@ -56,7 +60,12 @@ jobs:
           python -m pytest --color=yes --durations=0 --verbose -rF -m 'inference_v2_ops' unit/ --torch_ver="2.0" --cuda_ver="12"
       - name: MII unit tests
         run: |
-          git clone --depth=1 https://github.com/microsoft/DeepSpeed-MII.git
+          BRANCH="main"
+          if [[ ! -z "${{ github.event.inputs.mii_branch }}" ]]; then
+              BRANCH="${{ github.event.inputs.mii_branch }}"
+          fi
+          echo "Cloning DeepSpeed-MII branch: $BRANCH"
+          git clone -b $BRANCH --depth=1 https://github.com/microsoft/DeepSpeed-MII.git
           cd DeepSpeed-MII
           pip install .[dev]
           cd tests
