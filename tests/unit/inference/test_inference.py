@@ -744,7 +744,7 @@ class TestLMCorrectness(DistributedTest):
 @pytest.mark.nightly
 #@pytest.mark.parametrize("model_name", ["facebook/opt-1.3b", "facebook/opt-6.7b"])
 #@pytest.mark.parametrize("model_name", ["facebook/opt-1.3b"])
-@pytest.mark.parametrize("model_name", ["codellama/CodeLlama-7b-Python-hf"])
+@pytest.mark.parametrize("model_name", ["cloudyu/Mixtral_11Bx2_MoE_19B"])
 #def TestHumanEval():
 def test_human_eval(model_name):
     import mii
@@ -779,10 +779,10 @@ def test_human_eval(model_name):
 
     print("Loading Problems")
     #problems = read_problems("HumanEvalTest.jsonl.gz")
-    problems = read_problems("../../human-eval/data/HumanEvalTest.jsonl.gz") #TODO (lekurile): Add path to human-eval prompt file
+    problems = read_problems("../../human-eval/data/HumanEval.jsonl.gz") #TODO (lekurile): Add path to human-eval prompt file
 
-    num_samples_per_task = 1
-    #num_samples_per_task = 20
+    #num_samples_per_task = 1
+    num_samples_per_task = 20
     print("Generating Base Samples")
     base_samples = generate_samples(generate_base_completion)
 
