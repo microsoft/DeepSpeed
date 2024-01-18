@@ -53,6 +53,11 @@ Owing to its compact size, Phi-2 emerges as an ideal model for both researchers 
 
 ## Falcon
 
+Falcon is a family of large language models (LLMs) developed by the Technology Innovation Institute (TII). The Falcon models include Falcon 7B, Falcon-40B and its larger counterpart, Falcon-180B, the largest openly available language model to date. The Falcon models are optimized for inference and can be used for various applications such as chatbots, question answering systems, and more.
+
+A closer examination of the architectural nuances within the Falcon series reveals notable distinctions. Specifically, the Falcon 7B model diverges slightly from Falcon-40B; notably, Falcon-40B incorporates an additional layer norm preceding the parallel MLP layer, a feature absent in the Falcon 7B model. In contrast, Falcon-180B adheres to the same architecture as Falcon-40B but stands out as a scaled-up version.
+In this DeepSpeed-FastGen release, we are pleased to announce the addition of support for all Falcon model sizes.
+
 ## Qwen
 
 # 3. Performance Optimizations <a name="performance-optimizations"></a>
