@@ -1,6 +1,10 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 import torch
 from typing import List, Type
-
 
 default_z3_leaf_module_classes = []
 
