@@ -1,6 +1,6 @@
 <div align="center">
 
-# DeepSpeed-FastGen: New model support, improved performance, and stability and software enhancements (TODO: Placeholder title)
+# DeepSpeed-FastGen: Introducing Mixtral and Phi-2 support, performance boost, and stability and software enhancements (TODO: Placeholder title)
 
 </div>
 
@@ -60,11 +60,16 @@ Falcon is a family of large language models (LLMs) developed by the Technology I
 A closer examination of the architectural nuances within the Falcon series reveals notable distinctions. Specifically, the Falcon 7B model diverges slightly from Falcon-40B; notably, Falcon-40B incorporates an additional layer norm preceding the parallel MLP layer, a feature absent in the Falcon 7B model. In contrast, Falcon-180B adheres to the same architecture as Falcon-40B but stands out as a scaled-up version.
 In this DeepSpeed-FastGen release, we are pleased to announce the addition of support for all Falcon model sizes.
 
-## Qwen
-
 # 3. Performance Optimizations <a name="performance-optimizations"></a>
 
-We address [TODO Masahiro should add here]
+[TODO Rework this section]
+
+Comparison for several model architectures: 
+  - **For general:** For long prompts and short sequence generation, we can fully utilize the benefits of SplitFuse, which combines prompt processing and decoding (token generation) in a single forward pass. This provides a significant advantage over vLLM in these scenarios. For short prompts and long sequence generation, where most forward passes run purely for decoding, our highly optimized engine and the efficient scheduler for ragged batching demonstrate impressive performance. 
+  - **Falcon:** Given the model's substantial size, the majority of computations are dedicated to forward passes, while the overhead of scheduling and token sampling is relatively minor. The performance difference is primarily attributed to our highly optimized engine designed for inference. 
+  - **Mixtral:** We developed a new MoE module, which contains kernels optimized for our inference engine. The enhancements in the decoding phase, included in this release, significantly improve throughput and efficiency in generating long sequences. 
+
+System optimization in this release: SplitFuse effectively enhances utilization by simultaneously computing prompts and decoding (generating tokens). However, we observed a significant overhead for scheduling ragged batching, especially when generating long sequences from numerous concurrent requests. In this release, we've minimized this scheduling overhead for querying KV cache states. As a result, there's a notable improvement in the performance of long sequence generation. 
 
 ## Performance Evaluation
 
@@ -84,9 +89,33 @@ TODO Which plots to show?
 
 TODO Which plots to show?
 
-### Qwen
+<div align="center">
+  <img src="assets/images/th_lat_curve_phi-2_tp1_p1200g60.png" width="640">
 
-TODO Run benchmarks?
+  *Figure X:*
+
+</div>
+
+<div align="center">
+  <img src="assets/images/th_lat_curve_phi-2_tp1_p1200g128.png" width="640">
+
+  *Figure X:*
+
+</div>
+
+<div align="center">
+  <img src="assets/images/th_lat_curve_phi-2_tp1_p1900g60.png" width="640">
+
+  *Figure X:*
+
+</div>
+
+<div align="center">
+  <img src="assets/images/th_lat_curve_phi-2_tp1_p1900g128.png" width="640">
+
+  *Figure X:*
+
+</div>
 
 # 4. Stability and Software Enhancements <a name="stability-and-software-enhancements"></a>
 
