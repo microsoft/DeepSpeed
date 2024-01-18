@@ -43,6 +43,8 @@ Support for the following models has been added to DeepSpeed-FastGen.
 
 ## Mixtral
 
+Mixtral model, a language model based on sparse mixture of experts, has demonstrated promising performance across multiple benchmarks. The Mixtral model operates by applying a router network at each layer for every token, selecting two distinct experts for processing the current state and combine their outputs. This process is dynamic, with the possibility of different experts being chosen at each timestep. This architecture ensures that while each token is exposed to a broad spectrum of parameters, it actively utilizes only a specific subset during inference.
+
 In this release, we are pleased to announce the support for Mixtral model. We've enhanced our FastGen codebase by the integration of the Mixtral model implementation, refinements to our high-performance kernel set for efficient top-k gating, and updates to Rotary Positional Encoding (RoPE) implementation. These advancements ensure that users can fully exploit the capabilities of DeepSpeed-FastGen for executing Mixtral model inference, thereby achieving heightened performance and efficiency.
 
 ## Phi-2
