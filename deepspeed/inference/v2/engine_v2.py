@@ -104,7 +104,10 @@ class InferenceEngineV2:
         ranks = list(range(self._config.tensor_parallel.tp_size))
         return dist.new_group(ranks=ranks)
 
-    def put(self, batch_uids: Iterable[int], batch_tokens: Iterable[torch.Tensor], do_checks=True) -> torch.Tensor:
+    def put(self,
+            batch_uids: Iterable[int],
+            batch_tokens: Iterable[torch.Tensor],
+            do_checks: bool = True) -> torch.Tensor:
         """
         Put a ragged batch onto the inference engine. This will perform one forward and return
         a Tensor of the shape [len(batch_uids), *output_shape]. Logits for the non-final tokens
@@ -113,6 +116,7 @@ class InferenceEngineV2:
         Arguments:
             batch_uids: Iterable of uids for the batch on the host
             batch_tokens: Iterable of token tensors for the batch on the host
+            do_checks: Check schedulability when it is set to True. You can skip this check for better performance when it has already been completed.
         """
 
         if do_checks:
