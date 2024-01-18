@@ -6,7 +6,7 @@
 import torch
 from dataclasses import dataclass
 from deepspeed import comm as dist
-from typing import Dict, List
+from typing import Dict, List, Type
 
 
 @dataclass
@@ -249,17 +249,45 @@ def safe_set_local_fp32_param(param, value):
         param._z3_optimizer.set_local_hp_param(value, param)
 
 
-def set_no_break_for_param_fetch(model: torch.nn.Module, modules_do_not_break: List[str]) -> None:
+def _do_set_z3_leaf_module(model: torch.nn.Module, leaf_module_classes: List[Type], flag: bool) -> None:
+    assert all(isinstance(module_class, type) for module_class in leaf_module_classes), \
+        f'leaf_module_classes must be a list of types, got {leaf_module_classes}'
 
-    def set_do_not_break(model):
-        if model.__class__.__name__ in modules_do_not_break:
-            model._z3_do_not_break = True
+    def _set_z3_leaf_flag(model: torch.nn.Module):
+        if model.__class__ in leaf_module_classes:
+            model._z3_leaf = flag
 
-    model.apply(set_do_not_break)
+    model.apply(_set_z3_leaf_flag)
 
 
-def no_break_for_param_fetch(model: torch.nn.Module) -> bool:
-    return hasattr(model, '_z3_do_not_break') and model._z3_do_not_break
+def set_z3_leaf_module(model: torch.nn.Module, leaf_module_classes: List[Type]) -> None:
+    """Sets a flag within a module in `model` to instruct ZeRO3 to stop setting hooks recursively when it encounters a module class listed in `leaf_module_classes`.
+       This is particularly useful in the context of Mixture of Experts (MoE) models. In MoE models, the computation order of experts varies across forward passes. This variability can disrupt ZeRO3's functionality, as ZeRO3 relies on tracking the computation order of modules to prefetch parameters efficiently. By designating a module as a 'leaf' node, ZeRO3 will prefetch parameters for all child modules upon entering the module.
+       Another scenario where this functionality is beneficial is in models with excessively fine-grained nested modules, where it helps to avoid the overhead associated with hooks.
+        Args:
+            model (torch.nn.Module): The model to which the leaf module flag will be applied.
+            leaf_module_classes (List[Type]): A list of module classes that should be flagged as 'leaf' modules.
+    """
+    _do_set_z3_leaf_module(model, leaf_module_classes, True)
+
+
+def unset_z3_leaf_module(model: torch.nn.Module, leaf_module_classes: List[Type]) -> None:
+    """Unsets a flag within a module in `model` to instruct ZeRO3 to resume setting hooks recursively when it encounters a module class listed in `leaf_module_classes`.
+        See `set_z3_leaf_module` for more details.
+        Args:
+            model (torch.nn.Module): The model to which the leaf module flag will be applied.
+            leaf_module_classes (List[Type]): A list of module classes that should be flagged as 'leaf' modules.
+    """
+    _do_set_z3_leaf_module(model, leaf_module_classes, False)
+
+
+def z3_leaf_module(model: torch.nn.Module) -> bool:
+    """Returns whether a module in `model` has been flagged as a 'leaf' module.
+        See `set_z3_leaf_module` for more details.
+        Args:
+            model (torch.nn.Module): The model to which the leaf module flag will be applied.
+    """
+    return hasattr(model, '_z3_leaf') and model._z3_leaf
 
 
 ### Local API  END ###
