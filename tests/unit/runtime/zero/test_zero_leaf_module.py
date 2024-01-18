@@ -10,7 +10,7 @@ from unit.common import DistributedTest
 from unit.simple_model import random_dataloader
 
 import deepspeed
-from deepspeed.utils import set_z3_leaf_module, z3_leaf_module
+from deepspeed.utils import set_z3_leaf_modules, z3_leaf_module
 
 
 class MyModel(torch.nn.Module):
@@ -26,7 +26,7 @@ class MyModel(torch.nn.Module):
 
     def forward(self, x, y):
         # This fails without setting this module as a leaf module.
-        # See the comment in `set_z3_leaf_module()`.
+        # See the comment in `set_z3_leaf_modules()`.
         x = self.linears[self.counter % len(self.linears)](x)
         x = self.act(x)
         loss = self.cel(x, y)
@@ -57,7 +57,7 @@ class TestSetZ3LeafModule(DistributedTest):
     world_size = 2
     reuse_dist_env = True
 
-    def test_set_z3_leaf_module(self):
+    def test_set_z3_leaf_modules(self):
         hidden_dim = 128
 
         # `stage3_max_reuse_distance` is set to 0 to cause an error if the module is not set as a leaf module
@@ -84,7 +84,7 @@ class TestSetZ3LeafModule(DistributedTest):
         model = MyModel(hidden_dim)
 
         assert not z3_leaf_module(model)
-        set_z3_leaf_module(model, [MyModel])
+        set_z3_leaf_modules(model, [MyModel])
         assert z3_leaf_module(model)
 
         run_model(model, config_dict, hidden_dim, torch.float16)
