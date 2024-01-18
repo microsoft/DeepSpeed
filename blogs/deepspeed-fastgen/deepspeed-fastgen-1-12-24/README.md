@@ -77,9 +77,23 @@ NOTE: DO NOT USE PIPELINE FOR BENCHMARKS - address vLLM benchmarks
 
 ### Mixtral
 
-DeepSpeed requires less memory than vLLM, able to run on 2xA6000
+DeepSpeed requires less memory than vLLM, able to run on 2xA6000 (Mike?)
 
-TODO Which plots to show?
+We show the throughput-latency of Mixtral-8x7B-v0.1 running on A100 with tensor parallelism of 4. First, we show the scenarios where the prompt length are longer than generation, which is typical of popular use cases like chatbots. From the figure, FastGen stands an advantage of xxx in terms of throughput and xxx in latency.
+
+<div align="center">
+  <img src="assets/images/th_lat_curve_mistralai-Mixtral-8x7B-v0.1_tp4_1.png" alt="" width="600"/><br>
+
+  *Figure 8: Throughput-latency curve of Mixtral using A100. A normal distribution was applied to prompt and generation lengths with averages of (1200, 2600) and (60, 128), respectively, and a 30% variance*<br>
+</div>
+
+Then we further extend our evaluation to scenarios where the prompt is relatively short and generation is longer. Our performance advantage still holds.
+
+<div align="center">
+  <img src="assets/images/th_lat_curve_mistralai-Mixtral-8x7B-v0.1_tp4_2.png" alt="" width="800"/><br>
+
+  *Figure 8: Throughput-latency curve of Mixtral using A100. A normal distribution was applied to prompt and generation lengths with averages of 500 and (150, 500, 1024), respectively, and a 30% variance*<br>
+</div>
 
 ### Falcon
 
@@ -87,35 +101,14 @@ TODO Which plots to show?
 
 ### Phi-2
 
-TODO Which plots to show?
-
 <div align="center">
-  <img src="assets/images/th_lat_curve_phi-2_tp1_p1200g60.png" width="640">
+  <img src="assets/images/th_lat_curve_phi-2_tp1.png" alt="" width="600"/><br>
 
-  *Figure X:*
-
+  *Figure 8: Throughput-latency curve of Phi-2 using A100. A normal distribution was applied to prompt and generation lengths with averages of (1200, 1900) and (60, 128), respectively, and a 30% variance*<br>
 </div>
 
-<div align="center">
-  <img src="assets/images/th_lat_curve_phi-2_tp1_p1200g128.png" width="640">
+Our throughput-latency evaluation of Phi-2 model on A100 demenstrate similar pattern as previous evaluations, with FastGen providing equivalent latency with greater throughput or more responsive latency and the same throughput.
 
-  *Figure X:*
-
-</div>
-
-<div align="center">
-  <img src="assets/images/th_lat_curve_phi-2_tp1_p1900g60.png" width="640">
-
-  *Figure X:*
-
-</div>
-
-<div align="center">
-  <img src="assets/images/th_lat_curve_phi-2_tp1_p1900g128.png" width="640">
-
-  *Figure X:*
-
-</div>
 
 # 4. Stability and Software Enhancements <a name="stability-and-software-enhancements"></a>
 
