@@ -49,7 +49,8 @@ def instantiate_attention(attention_config: DSSelfAttentionConfig,
     """
 
     # Currently, we only have one implementation, so we just return it.
-    config = ConfigBundle(name="dense_blocked_attention", config=attention_config)
+    config = ConfigBundle(name="dense_blocked_attention",
+                          config=attention_config)
     return DSSelfAttentionRegistry.instantiate_config(config)
 
 
@@ -86,13 +87,17 @@ def instantiate_linear(linear_config: DSLinearConfig, engine_config: RaggedInfer
         A linear module implementing the given configuration.
     """
 
-    if engine_config.quantization.quantization_mode is None:
+    quantization_mode = engine_config.quantization.quantization_mode
+    if quantization_mode is None:
         config = ConfigBundle(name="blas_fp_linear", config=linear_config)
     else:
         # Currently, we only support ``quantized_wf6af16_linear``.
-        config = ConfigBundle(name="quantized_wf6af16_linear", config=linear_config)
-    # For debugging perpose, we force to use `quantized_wf6af16_linear`. It will be removed later.
-    config = ConfigBundle(name="quantized_wf6af16_linear", config=linear_config)
+        if quantization_mode == "wf6af16":
+            config = ConfigBundle(
+                name="quantized_wf6af16_linear", config=linear_config)
+        else:
+            raise ValueError(
+                f"Unsupported quantization mode: {quantization_mode}")
     return DSLinearRegistry.instantiate_config(config)
 
 

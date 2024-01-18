@@ -32,8 +32,8 @@ __device__ __forceinline__ u_int32_t MultScale(u_int32_t PackedFP16Pair, half Sc
 
     // Only for testing. Note that the scales should be multiplied by e12 accoring to the Quant-LLM
     // optimization.
-    output_half_ptr[0] = *FP16_1 * e12;
-    output_half_ptr[1] = *FP16_2 * e12;
+    output_half_ptr[0] = *FP16_1 * 1e12;
+    output_half_ptr[1] = *FP16_2 * 1e12;
 
     return output;
 }

@@ -5,6 +5,7 @@ from qtorch.quant import float_quantize
 from transformers import LlamaForCausalLM, AutoTokenizer, AutoConfig, AutoModel
 from safetensors.torch import save_file, load_file
 import mii
+import deepspeed
 
 
 def recursive_getattr(model, module_name):
@@ -169,7 +170,8 @@ def fake_request_texts(batch_size: int):
 
 
 def run_pipeline(deployment_name: str, prompts: list):
-    pipe = mii.pipeline(model_name_or_path=deployment_name)
+    pipe = mii.pipeline(model_name_or_path=deployment_name,
+                        quantization_mode='wf6af16')
     response = pipe(prompts, max_new_tokens=2)
     print(f"{len(response)} responses.")
     # print(f"Response: {response}.")
@@ -178,29 +180,31 @@ def run_pipeline(deployment_name: str, prompts: list):
 if __name__ == '__main__':
     model_id = "meta-llama/Llama-2-7b-hf"
     # model_id = "princeton-nlp/Sheared-LLaMA-1.3B"
+    save_path = f"quant/{model_id}"
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     batch_size = 32
     prompts = fake_request_texts(batch_size)
 
-    # Quantize the model.
-    print(f"\nQuantizing model {model_id}... It may take a while.")
-    quantized_model = quantize_model_rtn(model_id)
+    quantize = False
+    if quantize:
+        # Quantize the model.
+        print(f"\nQuantizing model {model_id}... It may take a while.")
+        quantized_model = quantize_model_rtn(model_id)
 
-    # Run the quantized model. This can help to check the correctness of the FP6 integration.
-    print(f"\nRunning the quantized model...")
-    run_ground_truth(quantized_model, tokenizer, prompts)
-    # model(torch.randint(
-    #     0, 20000, (1, model.config.max_position_embeddings//2)).long().cuda())
+        # Run the quantized model. This can help to check the correctness of the FP6 integration.
+        print(f"\nRunning the quantized model...")
+        run_ground_truth(quantized_model, tokenizer, prompts)
+        # model(torch.randint(
+        #     0, 20000, (1, model.config.max_position_embeddings//2)).long().cuda())
 
-    # Save the quantized model.
-    save_path = f"quant/{model_id}"
-    print(f"\nSaving the quantized model to {save_path}...")
-    quantized_model.cpu().save_pretrained(save_path)
-    tokenizer.save_pretrained(save_path)
-    # torch.save(model.cpu().state_dict(), "./pytorch_model.bin")
-    # state_dict = model.state_dict()
-    # print(f"generated state_dict: {model.state_dict().keys()}")
+        # Save the quantized model.
+        print(f"\nSaving the quantized model to {save_path}...")
+        quantized_model.cpu().save_pretrained(save_path)
+        tokenizer.save_pretrained(save_path)
+        # torch.save(model.cpu().state_dict(), "./pytorch_model.bin")
+        # state_dict = model.state_dict()
+        # print(f"generated state_dict: {model.state_dict().keys()}")
 
     # Run MII.
     print(f"\nRunning MII given the quantized model checkpoint...")
