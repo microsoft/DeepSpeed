@@ -1,6 +1,6 @@
 <div align="center">
 
-# DeepSpeed-FastGen: Introducing Mixtral and Phi-2 support, performance boost, and stability and software enhancements (TODO: Placeholder title)
+# DeepSpeed-FastGen: Introducing Mixtral, Phi-2, and Falcon support, performance boost, and stability and software enhancements (TODO: Placeholder title)
 
 </div>
 
