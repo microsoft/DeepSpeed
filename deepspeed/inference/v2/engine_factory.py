@@ -17,6 +17,10 @@ from .model_implementations import (
     OPTPolicy,
     Llama2Policy,
     MistralPolicy,
+    MixtralPolicy,
+    FalconPolicy,
+    PhiPolicy,
+    QwenPolicy,
 )
 from .model_implementations.inference_policy_base import POLICIES, InferenceV2Policy
 from .model_implementations.flat_model_helpers import make_metadata_filename, ModelMetadata
@@ -104,6 +108,18 @@ def build_hf_engine(path: str,
             assert version.parse(transformers.__version__) >= version.parse("4.34.0"), \
                 f"Mistral requires transformers >= 4.34.0, you have version {transformers.__version__}"
             policy = MistralPolicy(model_config, checkpoint_engine=checkpoint_engine)
+        elif model_config.model_type == "mixtral":
+            # Ensure we're using the correct version of transformers for mistral
+            import transformers
+            assert version.parse(transformers.__version__) >= version.parse("4.36.1"), \
+                f"Mistral requires transformers >= 4.36.1, you have version {transformers.__version__}"
+            policy = MixtralPolicy(model_config, checkpoint_engine=checkpoint_engine)
+        elif model_config.model_type == "falcon":
+            policy = FalconPolicy(model_config, checkpoint_engine=checkpoint_engine)
+        elif model_config.model_type == "phi":
+            policy = PhiPolicy(model_config, checkpoint_engine=checkpoint_engine)
+        elif model_config.model_type == "qwen":
+            policy = QwenPolicy(model_config, checkpoint_engine=checkpoint_engine)
         else:
             raise ValueError(f"Unsupported model type {model_config.model_type}")
 

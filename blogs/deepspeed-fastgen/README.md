@@ -228,6 +228,10 @@ We currently support the following model architectures in this alpha release of 
 * [LLaMA](https://huggingface.co/models?other=llama) and [LLaMA-2](https://huggingface.co/models?other=llama-2)
 * [Mistral](https://huggingface.co/models?other=mistral)
 * [OPT](https://huggingface.co/models?other=opt)
+* [Falcon](https://huggingface.co/models?other=falcon)
+* [Mixtral](https://huggingface.co/models?other=mixtral)
+* [Phi-2](https://huggingface.co/models?other=phi-msft)
+* [Qwen](https://huggingface.co/models?other=qwen)
 
 All current models leverage [HuggingFace](https://github.com/huggingface) APIs in our backend to provide both the model weights and the model's corresponding tokenizer.
 
