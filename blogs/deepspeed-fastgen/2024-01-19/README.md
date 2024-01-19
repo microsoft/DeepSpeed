@@ -184,4 +184,4 @@ The following items are on our roadmap and we plan to engage with our community 
 * Quantization support
 * New hardware backends through collaboration with partners
 
-**"Star" our [DeepSpeed GitHub](https://github.com/microsoft/DeepSpeed/) and [DeepSpeedMII GitHub](https://github.com/microsoft/DeepSpeed-MII/) repositories if you like our work!**
+**"Star" our [DeepSpeed GitHub](https://github.com/microsoft/DeepSpeed/) and [DeepSpeed-MII GitHub](https://github.com/microsoft/DeepSpeed-MII/) repositories if you like our work!**
