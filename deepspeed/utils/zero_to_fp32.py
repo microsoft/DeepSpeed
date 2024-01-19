@@ -191,7 +191,7 @@ def parse_optim_states(files, ds_checkpoint_dir):
     return zero_stage, world_size, fp32_flat_groups
 
 
-def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
+def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir, only_trainable_params):
     """
     Returns fp32 state_dict reconstructed from ds checkpoint
 
@@ -211,9 +211,9 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
     print(f'Parsing checkpoint created by deepspeed=={zero_model_states[0].ds_version}')
 
     if zero_stage <= 2:
-        return _get_fp32_state_dict_from_zero2_checkpoint(world_size, fp32_flat_groups, zero_model_states)
+        return _get_fp32_state_dict_from_zero2_checkpoint(world_size, fp32_flat_groups, zero_model_states, only_trainable_params)
     elif zero_stage == 3:
-        return _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zero_model_states)
+        return _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zero_model_states, only_trainable_params)
 
 
 def _zero2_merge_frozen_params(state_dict, zero_model_states):
@@ -326,7 +326,7 @@ def _zero2_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero
     print(f"Reconstructed fp32 state dict with {total_params} params {total_numel} elements")
 
 
-def _get_fp32_state_dict_from_zero2_checkpoint(world_size, fp32_flat_groups, zero_model_states):
+def _get_fp32_state_dict_from_zero2_checkpoint(world_size, fp32_flat_groups, zero_model_states, only_trainable_params):
     state_dict = OrderedDict()
 
     # buffers
@@ -335,7 +335,8 @@ def _get_fp32_state_dict_from_zero2_checkpoint(world_size, fp32_flat_groups, zer
     if debug:
         print(f"added {len(buffers)} buffers")
 
-    _zero2_merge_frozen_params(state_dict, zero_model_states)
+    if not only_trainable_params:
+        _zero2_merge_frozen_params(state_dict, zero_model_states)
 
     _zero2_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero_model_states)
 
@@ -444,7 +445,7 @@ def _zero3_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero
     print(f"Reconstructed Trainable fp32 state dict with {total_params} params {total_numel} elements")
 
 
-def _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zero_model_states):
+def _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zero_model_states, only_trainable_params):
     state_dict = OrderedDict()
 
     # buffers
@@ -453,7 +454,8 @@ def _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zer
     if debug:
         print(f"added {len(buffers)} buffers")
 
-    _zero3_merge_frozen_params(state_dict, world_size, zero_model_states)
+    if not only_trainable_params:
+      _zero3_merge_frozen_params(state_dict, world_size, zero_model_states)
 
     _zero3_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero_model_states)
 
@@ -465,7 +467,7 @@ def _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zer
     return state_dict
 
 
-def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None):
+def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None, only_trainable_params=False):
     """
     Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated state_dict that can be loaded with
     ``load_state_dict()`` and used for training without DeepSpeed or shared with others, for example
@@ -474,6 +476,7 @@ def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None):
     Args:
         - ``checkpoint_dir``: path to the desired checkpoint folder
         - ``tag``: checkpoint tag used as a unique identifier for checkpoint. If not provided will attempt to load tag in 'latest' file. e.g., ``global_step14``
+        - ``only_trainable_params``: only merge trainable parameters
 
     Returns:
         - pytorch ``state_dict``
@@ -511,10 +514,10 @@ def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None):
     if not os.path.isdir(ds_checkpoint_dir):
         raise FileNotFoundError(f"Directory '{ds_checkpoint_dir}' doesn't exist")
 
-    return _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir)
+    return _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir, only_trainable_params)
 
 
-def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir, output_file, tag=None):
+def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir, output_file, tag=None, only_trainable_params=False):
     """
     Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated ``state_dict`` file that can be
     loaded with ``torch.load(file)`` + ``load_state_dict()`` and used for training without DeepSpeed.
@@ -523,9 +526,10 @@ def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir, output_file, tag=
         - ``checkpoint_dir``: path to the desired checkpoint folder. (one that contains the tag-folder, like ``global_step14``)
         - ``output_file``: path to the pytorch fp32 state_dict output file (e.g. path/pytorch_model.bin)
         - ``tag``: checkpoint tag used as a unique identifier for checkpoint. If not provided will attempt to load tag in the file named ``latest`` in the checkpoint folder, e.g., ``global_step14``
+        - ``only_trainable_params``: only merge trainable parameters
     """
 
-    state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag)
+    state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag, only_trainable_params)
     print(f"Saving fp32 state dict to {output_file}")
     torch.save(state_dict, output_file)
 
@@ -584,9 +588,10 @@ if __name__ == "__main__":
                         type=str,
                         default=None,
                         help="checkpoint tag used as a unique identifier for checkpoint. e.g., global_step1")
+    parser.add_argument("--only_trainable_params", action='store_true', help="only merge trainable parameters")
     parser.add_argument("-d", "--debug", action='store_true', help="enable debug")
     args = parser.parse_args()
 
     debug = args.debug
 
-    convert_zero_checkpoint_to_fp32_state_dict(args.checkpoint_dir, args.output_file, tag=args.tag)
+    convert_zero_checkpoint_to_fp32_state_dict(args.checkpoint_dir, args.output_file, tag=args.tag, only_trainable_params=args.only_trainable_params)
