@@ -89,36 +89,37 @@ We show the throughput-latency of Mixtral-8x7B-v0.1 running on A100 with tensor 
 
 As we can see in *Figure 2*, DeepSpeed-FastGen is showing higher throughput and lower latency thanks to the scheduling performance improvements presented in this blog.
 
-### Falcon
-
-<div align="center">
-  <img src="assets/images/th_lat_curve_falcon-40b_tp2.png" alt="" width="600"/><br>
-
-  *Figure 8: Throughput-latency curve of Falcon 40B using A100. A normal distribution was applied to prompt and generation lengths with averages of (1200, 1900) and (60, 128), respectively, and a 30% variance*<br>
-</div>
-
-<div align="center">
-  <img src="assets/images/th_lat_curve_falcon-180B_tp8.png" alt="" width="600"/><br>
-
-  *Figure 8: Throughput-latency curve of Falcon 180B using A100. A normal distribution was applied to prompt and generation lengths with averages of (1200, 1900) and (60, 128), respectively, and a 30% variance*<br>
-</div>
-
-  - **Falcon:** Given the model's substantial size, the majority of computations are dedicated to forward passes, while the overhead of scheduling and token sampling is relatively minor. The performance difference is primarily attributed to our highly optimized engine designed for inference. 
-
 ### Phi-2
 
 <div align="center">
   <img src="assets/images/th_lat_curve_phi-2_tp1.png" alt="" width="600"/><br>
 
-  *Figure 8: Throughput-latency curve of Phi-2 using A100. A normal distribution was applied to prompt and generation lengths with averages of (1200, 1900) and (60, 128), respectively, and a 30% variance*<br>
+  *Figure 3: Throughput-latency curve of Phi-2 using A100. A normal distribution was applied to prompt and generation lengths with averages of (1200, 1900) and (60, 128), respectively, and a 30% variance*<br>
 </div>
 
-Our throughput-latency evaluation of Phi-2 model on A100 demenstrate similar pattern as previous evaluations, with FastGen providing equivalent latency with greater throughput or more responsive latency and the same throughput.
+From *Figure 3*, DeepSpeed-FastGen provides 1.5X higher throughput for a prompt length of 1900 and 60 generation steps. For other scenarios our throughput-latency evaluation of the Phi-2 model show a similar pattern, with DeepSpeed-FastGen providing equivalent latency with greater throughput or lower latency for the same throughput.
 
+### Falcon
+
+Given the substantial size of the Falcon-40B and Falcon-180B models, the majority of computations are dedicated to forward passes, while the overhead of scheduling and token sampling is relatively minor.
+
+<div align="center">
+  <img src="assets/images/th_lat_curve_falcon-40b_tp2.png" alt="" width="600"/><br>
+
+  *Figure 4: Throughput-latency curve of Falcon 40B using A100. A normal distribution was applied to prompt and generation lengths with averages of (1200, 1900) and (60, 128), respectively, and a 30% variance*<br>
+</div>
+
+<div align="center">
+  <img src="assets/images/th_lat_curve_falcon-180B_tp8.png" alt="" width="600"/><br>
+
+  *Figure 5: Throughput-latency curve of Falcon 180B using A100. A normal distribution was applied to prompt and generation lengths with averages of (1200, 1900) and (60, 128), respectively, and a 30% variance*<br>
+</div>
+
+As seen in *Figure 4* and *Figure 5*, DeepSpeed-FastGen is able to provide higher throughput and lower latency compared to vLLM for Falcon-40B and Falcon-180B.
 
 # 4. Stability and Software Enhancements <a name="stability-and-software-enhancements"></a>
 
-TODO: Should we convert this into a bulleted list?
+In this section we introduce several stability and software enhancements that have been released since we first introduced DeepSpeed-FastGen.
 
 ## Support for safetensor checkpoints
 Some HuggingFace-hosted model checkpoint weights are provided only in the safetensor format. We extend our HuggingFace checkpoint engine to work with the safetensor format to support even more models!
