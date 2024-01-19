@@ -1,6 +1,6 @@
 <div align="center">
 
-# DeepSpeed-FastGen: Introducting Mixtral, Phi-2, and Falcon support with major performance and feature enhancements. 
+# DeepSpeed-FastGen: Introducting Mixtral, Phi-2, and Falcon support with major performance and feature enhancements.
 
 </div>
 
@@ -35,7 +35,7 @@ Today, we are happy to share that we are improving DeepSpeed-FastGen along three
 
   DeepSpeed-FastGen contains a rich set of features for running inference with many different model families and over 20,000 HuggingFace hosted models. We extend this feature set for all models to include a RESTful API, more generation options, and support for models using the safetensor checkpoint format. Additionally, we improve on overall stability and address bugs in our original DeepSpeed-FastGen release.
 
-We now dive into the details of the new model families, performance optimizations, and software improvements. If you would like to get started right away please see [Try Out DeepSpeed-FastGen](#try-out-deepspeed-fastgen). This new release is available in [DeepSpeed versions >= 0.13.0](https://github.com/microsoft/DeepSpeed/tree/v0.13.0) and [DeepSpeed-MII verions >= 0.2.0](https://github.com/microsoft/DeepSpeed-MII/tree/v0.2.0). 
+We now dive into the details of the new model families, performance optimizations, and software improvements. If you would like to get started right away please see [Try Out DeepSpeed-FastGen](#try-out-deepspeed-fastgen). This new release is available in [DeepSpeed versions >= 0.13.0](https://github.com/microsoft/DeepSpeed/tree/v0.13.0) and [DeepSpeed-MII versions >= 0.2.0](https://github.com/microsoft/DeepSpeed-MII/tree/v0.2.0).
 
 # 2. New Model Families <a name="new-model-families"></a>
 
@@ -51,7 +51,7 @@ In this release, we are pleased to announce the support for Mixtral models. We'v
 
 Microsoft Research has introduced a suite of small language models (SLMs) named "Phi," notable for their exceptional performance across a spectrum of benchmarks. The latest addition to this suite, [Phi-2](https://www.microsoft.com/en-us/research/blog/phi-2-the-surprising-power-of-small-language-models/), is a language model boasting 2.7 billion parameters. It stands out as a testament to outstanding reasoning and language understanding capabilities, exemplifying state-of-the-art performance within the realm of base language models featuring fewer than 13 billion parameters. Notably, Phi-2 achieves parity with or surpasses models up to 25 times its size on complex benchmarks, a feat attributed to pioneering innovations in model scaling and meticulous training data curation.
 
-Owing to its compact size, Phi-2 emerges as an ideal model for both researchers and deployment scenarios, promising a reduction in inference costs. To efficiently support the Phi-2 model family, we introduce partial RoPE support in our DeepSpeed-FastGen kernels. 
+Owing to its compact size, Phi-2 emerges as an ideal model for both researchers and deployment scenarios, promising a reduction in inference costs. To efficiently support the Phi-2 model family, we introduce partial RoPE support in our DeepSpeed-FastGen kernels.
 
 ## Falcon
 
