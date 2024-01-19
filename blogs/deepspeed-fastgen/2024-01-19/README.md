@@ -63,9 +63,9 @@ A closer examination of the architectural nuances within the Falcon series revea
 
 SplitFuse effectively enhances utilization by simultaneously computing prompts and decoding (generating tokens). However, we observed a significant overhead for scheduling ragged batching, especially when generating a large number of tokens from numerous concurrent requests. In this release, we've minimized this scheduling overhead for querying KV cache states. As a result, there's a notable improvement in the performance for scenarios with a large number of generation steps.
 
-In general for long prompts and a smaller number of generated tokens, we can fully utilize the benefits of SplitFuse, which combines prompt processing and decoding (token generation) in a single forward pass. This provides a significant advantage over vLLM in these scenarios as shown in our [previous blog](). For short prompts and a larger number of generated tokens, where most forward passes run purely for decoding, our highly optimized engine and the efficient scheduler for ragged batching demonstrate impressive performance.
+In general for long prompts and a smaller number of generated tokens, we can fully utilize the benefits of SplitFuse, which combines prompt processing and decoding (token generation) in a single forward pass. This provides a significant advantage over vLLM in these scenarios as shown in our [previous blog](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen). For short prompts and a larger number of generated tokens, where most forward passes run purely for decoding, our highly optimized engine and the efficient scheduler for ragged batching demonstrate impressive performance.
 
-We follow the benchmarking methodology we presented in our [previous blog](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen#a-benchmarking-methodology)
+We follow the benchmarking methodology we presented in our [previous blog](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen#a-benchmarking-methodology).
 
 *NOTE: All the benchmarks in this blog use the recommended DeepSpeed-FastGen persistent deployment mode.*
 
@@ -161,7 +161,13 @@ We include many bug fixes and stability improvements to DeepSpeed-FastGen. This 
 
 See [PR-4938](https://github.com/microsoft/DeepSpeed/pull/4938), [PR-4920](https://github.com/microsoft/DeepSpeed/pull/4920), [PR-4739](https://github.com/microsoft/DeepSpeed/pull/4739), [PR-4694](https://github.com/microsoft/DeepSpeed/pull/4694), [PR-4634](https://github.com/microsoft/DeepSpeed/pull/4634), [PR-367](https://github.com/microsoft/DeepSpeed-MII/pull/367), [PR-350](https://github.com/microsoft/DeepSpeed-MII/pull/350), for more details.
 
-# 5. Try Out DeepSpeed-FastGen <a name="try-out-deepspeed-fastgen"></a>
+# 5. Community Engagement <a name="community-engagement"></a>
+
+DeepSpeed welcomes your contributions! We encourage you to report issues, contribute PRs, and join discussions on the [DeepSpeed GitHub](https://github.com/microsoft/DeepSpeed/) page. Please see our [contributing guide](https://github.com/microsoft/DeepSpeed/blob/master/CONTRIBUTING.md) for more details. We are open to collaborations with universities, research labs, and companies, such as those working together on deep learning research, applying DeepSpeed to empower real-world AI models and applications, and so on. For such requests (and other requests unsuitable for GitHub), please directly email to deepspeed-info@microsoft.com.
+
+*We would like to recognize the contribution from our user community in adding support for the [Qwen](https://arxiv.org/abs/2309.16609) model family to DeepSpeed-FastGen in [PR-4913](https://github.com/microsoft/DeepSpeed/pull/4913).*
+
+# 6. Try Out DeepSpeed-FastGen <a name="try-out-deepspeed-fastgen"></a>
 
 We are very excited to share this DeepSpeed-FastGen release.
 
@@ -172,10 +178,10 @@ DeepSpeed-FastGen is part of the bigger DeepSpeed ecosystem comprising a multitu
 * Please visit our [website](https://www.deepspeed.ai/) for detailed blog posts, tutorials, and helpful documentation.
 * You can also follow us on our [English Twitter](https://twitter.com/MSFTDeepSpeed), [Japanese Twitter](https://twitter.com/MSFTDeepSpeedJP), and [Chinese Zhihu](https://www.zhihu.com/people/deepspeed) for latest news on DeepSpeed.
 
-DeepSpeed welcomes your contributions! We encourage you to report issues, contribute PRs, and join discussions on the [DeepSpeed GitHub](https://github.com/microsoft/DeepSpeed/) page. Please see our [contributing guide](https://github.com/microsoft/DeepSpeed/blob/master/CONTRIBUTING.md) for more details. We are open to collaborations with universities, research labs, and companies, such as those working together on deep learning research, applying DeepSpeed to empower real-world AI models and applications, and so on. For such requests (and other requests unsuitable for GitHub), please directly email to deepspeed-info@microsoft.com.
-
 The following items are on our roadmap and we plan to engage with our community on these through our GitHub issues and PRs:
 
-TODO Update roadmap items
+* Performance improvements
+* Quantization support
+* New hardware backends through collaboration with partners
 
 **"Star" our [DeepSpeed GitHub](https://github.com/microsoft/DeepSpeed/) and [DeepSpeedMII GitHub](https://github.com/microsoft/DeepSpeed-MII/) repositories if you like our work!**
