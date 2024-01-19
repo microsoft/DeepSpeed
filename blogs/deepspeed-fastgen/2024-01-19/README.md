@@ -121,7 +121,7 @@ As seen in *Figure 4* and *Figure 5*, DeepSpeed-FastGen is able to provide highe
 
 In this section we introduce several feature enhancements that have been released since we first introduced DeepSpeed-FastGen.
 
-## Performance Optimizations
+## Performance improvements
 We achieve a notable improvement in performance by minimizing the scheduling overhead for querying KV cache states as discussed in [Performance Optimizations](#performance-optimizations).
 
 See [PR-4965](https://github.com/microsoft/DeepSpeed/pull/4965), [PR-377](https://github.com/microsoft/DeepSpeed-MII/pull/377) for more details.
