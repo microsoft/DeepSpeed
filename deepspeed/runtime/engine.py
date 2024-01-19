@@ -64,7 +64,6 @@ from deepspeed.runtime.sparse_tensor import SparseTensor
 from deepspeed.runtime import lr_schedules
 from deepspeed.utils import groups
 from deepspeed.utils import logger, log_dist, instrument_w_nvtx
-from deepspeed.utils import set_z3_leaf_modules, get_default_z3_leaf_module_classes
 from deepspeed.utils.timer import NoopTimer, ThroughputTimer, SynchronizedWallClockTimer, \
     FORWARD_MICRO_TIMER, BACKWARD_MICRO_TIMER, BACKWARD_INNER_MICRO_TIMER, BACKWARD_REDUCE_MICRO_TIMER, \
     STEP_MICRO_TIMER, \
@@ -1534,8 +1533,6 @@ class DeepSpeedEngine(Module):
 
         elif zero_stage == ZeroStageEnum.weights:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
-            set_z3_leaf_modules(self.module, get_default_z3_leaf_module_classes())
-
             if isinstance(optimizer, DummyOptim):
                 log_dist("Creating ZeRO Offload", ranks=[0])
                 zero_param_parallel_group = groups._get_zero_param_intra_parallel_group()

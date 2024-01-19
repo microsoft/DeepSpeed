@@ -6,14 +6,6 @@
 import torch
 from typing import List, Type
 
-default_z3_leaf_module_classes = []
-
-try:
-    from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock
-    default_z3_leaf_module_classes.append(MixtralSparseMoeBlock)
-except ImportError:
-    pass
-
 
 def _do_set_z3_leaf_modules(model: torch.nn.Module, leaf_module_classes: List[Type], flag: bool) -> None:
     assert all(isinstance(module_class, type) for module_class in leaf_module_classes), \
@@ -54,10 +46,3 @@ def z3_leaf_module(model: torch.nn.Module) -> bool:
             model (torch.nn.Module): The model to which the leaf module flag will be applied.
     """
     return hasattr(model, '_z3_leaf') and model._z3_leaf
-
-
-def get_default_z3_leaf_module_classes() -> List[Type]:
-    """Returns a list of module classes that are flagged as 'leaf' modules by default.
-        See `set_z3_leaf_modules` for more details.
-    """
-    return default_z3_leaf_module_classes
