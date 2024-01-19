@@ -13,7 +13,7 @@
 1. [Introduction](#introduction)
 2. [New Model Families](#new-model-families)
 3. [Performance Optimizations](#performance-optimizations)
-4. [Stability and Software Enhancements](#stability-and-software-enhancements)
+4. [Feature Enhancements](#stability-and-software-enhancements)
 5. [Community Engagement](#community-engagement)
 6. [Try Out DeepSpeed-FastGen](#try-out-deepspeed-fastgen)
 
@@ -22,7 +22,7 @@
 
 [DeepSpeed-FastGen](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen) is an inference system framework that enables easy, fast, and affordable inference for large language models (LLMs). From general chat models to document summarization, and from autonomous driving to copilots at every layer of the software stack, the demand to deploy and serve these models at scale has skyrocketed. DeepSpeed-FastGen utilizes the Dynamic SplitFuse technique to tackle the unique challenges of serving these applications and offer higher effective throughput than other state-of-the-art systems like vLLM.
 
-Today, we are happy to share that we are improving DeepSpeed-FastGen along three areas: i) three new model families, ii) performance optimizations, and iii) stability and software enhancements:
+Today, we are happy to share that we are improving DeepSpeed-FastGen along three areas: i) three new model families, ii) performance optimizations, and iii) feature enhancements:
 - **New Model Families**
 
   We introduce support for Mixtral (MoE), Falcon, and Phi-2 model families in DeepSpeed-FastGen. Our inference optimizations for these models provide up to a.bX improvement in latency and a.bX improvement in effective throughput over other state-of-the-art frameworks like vLLM.
@@ -31,7 +31,7 @@ Today, we are happy to share that we are improving DeepSpeed-FastGen along three
 
   We drastically reduced the scheduling overhead of Dynamic SplitFuse and increased the efficiency of token sampling. As a result, we see higher throughput and lower latency, particularly when handling concurrent requests from many clients. We demonstrate the performance optimizations with benchmarks and evaluation of DeepSpeed-FastGen against vLLM for the newly added model families. The benchmark results can be seen in [Performance Evaluation](#performance-evaluation) and the benchmark code is available at [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples/tree/master/benchmarks/inference/mii).
 
-- **Stability and Software Enhancements**
+- **Feature Enhancements**
 
   DeepSpeed-FastGen contains a rich set of features for running inference with many different model families and over 20,000 HuggingFace hosted models. We extend this feature set for all models to include a RESTful API, more generation options, and support for models using the safetensor checkpoint format. Additionally, we improve on overall stability and address bugs in our original DeepSpeed-FastGen release.
 
@@ -117,9 +117,9 @@ Given the substantial size of the Falcon-40B and Falcon-180B models, the majorit
 
 As seen in *Figure 4* and *Figure 5*, DeepSpeed-FastGen is able to provide higher throughput and lower latency compared to vLLM for Falcon-40B and Falcon-180B.
 
-# 4. Stability and Software Enhancements <a name="stability-and-software-enhancements"></a>
+# 4. Feature Enhancements <a name="stability-and-software-enhancements"></a>
 
-In this section we introduce several stability and software enhancements that have been released since we first introduced DeepSpeed-FastGen.
+In this section we introduce several feature enhancements that have been released since we first introduced DeepSpeed-FastGen.
 
 ## Performance Optimizations
 We achieve a notable improvement in performance by minimizing the scheduling overhead for querying KV cache states as discussed in [Performance Optimizations](#performance-optimizations).
