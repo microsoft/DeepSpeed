@@ -13,7 +13,6 @@
 1. [Introduction](#introduction)
 2. [New Model Families](#new-model-families)
 3. [Performance Optimizations](#performance-optimizations)
-    - [Performance Evaluation](#performance-evaluation)
 4. [Stability and Software Enhancements](#stability-and-software-enhancements)
 5. [Community Engagement](#community-engagement)
 6. [Try Out DeepSpeed-FastGen](#try-out-deepspeed-fastgen)
@@ -40,7 +39,7 @@ We now dive into the details of the new model families, performance optimization
 
 # 2. New Model Families <a name="new-model-families"></a>
 
-Today we introduce support for three new model families: i) [Mixtral (MoE)](), ii) [Phi-2](https://www.microsoft.com/en-us/research/blog/phi-2-the-surprising-power-of-small-language-models/), and iii) [Falcon]()
+Today we introduce support for three new model families: i) [Mixtral (MoE)](https://arxiv.org/pdf/2401.04088.pdf), ii) [Phi-2](https://www.microsoft.com/en-us/research/blog/phi-2-the-surprising-power-of-small-language-models/), and iii) [Falcon](https://arxiv.org/pdf/2311.16867v1.pdf)
 
 ## Mixtral
 
@@ -60,40 +59,35 @@ Falcon is a family of large language models (LLMs) developed by the Technology I
 
 A closer examination of the architectural nuances within the Falcon series reveals notable distinctions. Specifically, the Falcon 7B model diverges slightly from Falcon-40B; notably, Falcon-40B incorporates an additional layer norm preceding the parallel MLP layer, a feature absent in the Falcon 7B model. In contrast, Falcon-180B adheres to the same architecture as Falcon-40B but stands out as a scaled-up version.
 
-# 3. Performance Optimizations <a name="performance-optimizations"></a>
+# 3. Performance Optimizations and Evaluation <a name="performance-optimizations"></a>
 
-[TODO Rework this section]
+SplitFuse effectively enhances utilization by simultaneously computing prompts and decoding (generating tokens). However, we observed a significant overhead for scheduling ragged batching, especially when generating a large number of tokens from numerous concurrent requests. In this release, we've minimized this scheduling overhead for querying KV cache states. As a result, there's a notable improvement in the performance for scenarios with a large number of generation steps.
 
-Comparison for several model architectures: 
-  - **For general:** For long prompts and short sequence generation, we can fully utilize the benefits of SplitFuse, which combines prompt processing and decoding (token generation) in a single forward pass. This provides a significant advantage over vLLM in these scenarios. For short prompts and long sequence generation, where most forward passes run purely for decoding, our highly optimized engine and the efficient scheduler for ragged batching demonstrate impressive performance. 
-  - **Falcon:** Given the model's substantial size, the majority of computations are dedicated to forward passes, while the overhead of scheduling and token sampling is relatively minor. The performance difference is primarily attributed to our highly optimized engine designed for inference. 
-  - **Mixtral:** We developed a new MoE module, which contains kernels optimized for our inference engine. The enhancements in the decoding phase, included in this release, significantly improve throughput and efficiency in generating long sequences. 
+In general for long prompts and a smaller number of generated tokens, we can fully utilize the benefits of SplitFuse, which combines prompt processing and decoding (token generation) in a single forward pass. This provides a significant advantage over vLLM in these scenarios as shown in our [previous blog](). For short prompts and a larger number of generated tokens, where most forward passes run purely for decoding, our highly optimized engine and the efficient scheduler for ragged batching demonstrate impressive performance.
 
-System optimization in this release: SplitFuse effectively enhances utilization by simultaneously computing prompts and decoding (generating tokens). However, we observed a significant overhead for scheduling ragged batching, especially when generating long sequences from numerous concurrent requests. In this release, we've minimized this scheduling overhead for querying KV cache states. As a result, there's a notable improvement in the performance of long sequence generation. 
+We follow the benchmarking methodology we presented in our [previous blog](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen#a-benchmarking-methodology)
 
-## Performance Evaluation
-
-NOTE: DO NOT USE PIPELINE FOR BENCHMARKS - address vLLM benchmarks
+*NOTE: All the benchmarks in this blog use the recommended DeepSpeed-FastGen persistent deployment mode.*
 
 ### Mixtral
 
-DeepSpeed requires less memory than vLLM, able to run on 2xA6000 (Mike?)
-
-We show the throughput-latency of Mixtral-8x7B-v0.1 running on A100 with tensor parallelism of 4. First, we show the scenarios where the prompt length are longer than generation, which is typical of popular use cases like chatbots. From the figure, FastGen stands an advantage of xxx in terms of throughput and xxx in latency.
+We developed a new MoE module, which contains kernels optimized for our inference engine. The enhancements in the decoding phase, included in this release, significantly improve throughput and efficiency in generating a large number of tokens as shown in *Figure 1*.
 
 <div align="center">
   <img src="assets/images/th_lat_curve_mistralai-Mixtral-8x7B-v0.1_tp4_1.png" alt="" width="600"/><br>
 
-  *Figure 8: Throughput-latency curve of Mixtral using A100. A normal distribution was applied to prompt and generation lengths with averages of (1200, 2600) and (60, 128), respectively, and a 30% variance*<br>
+  *Figure 1: Throughput-latency curve of Mixtral using A100. A normal distribution was applied to prompt and generation lengths with averages of (1200, 2600) and (60, 128), respectively, and a 30% variance*<br>
 </div>
 
-Then we further extend our evaluation to scenarios where the prompt is relatively short and generation is longer. Our performance advantage still holds.
+We show the throughput-latency of Mixtral-8x7B-v0.1 running on A100 with tensor parallelism degree of 4. First, we show the scenarios where the prompt lengths are longer than the number of generation steps (i.e., tokens), which is typical of popular use cases like chatbots. From *Figure 1*, DeepSpeed-FastGen provides 2.4X higher throughput for a prompt length of 1200 and 60 generation steps. In addition to the performance for the long prompt scenarios, we present new results for shorter prompts and larger number of generation steps in *Figure 2*. Our performance advantage still holds.
 
 <div align="center">
   <img src="assets/images/th_lat_curve_mistralai-Mixtral-8x7B-v0.1_tp4_2.png" alt="" width="800"/><br>
 
-  *Figure 8: Throughput-latency curve of Mixtral using A100. A normal distribution was applied to prompt and generation lengths with averages of 500 and (150, 500, 1024), respectively, and a 30% variance*<br>
+  *Figure 2: Throughput-latency curve of Mixtral using A100. A normal distribution was applied to prompt and generation lengths with averages of 500 and (150, 500, 1024), respectively, and a 30% variance*<br>
 </div>
+
+As we can see in *Figure 2*, DeepSpeed-FastGen is showing higher throughput and lower latency thanks to the scheduling performance improvements presented in this blog.
 
 ### Falcon
 
@@ -108,6 +102,8 @@ Then we further extend our evaluation to scenarios where the prompt is relativel
 
   *Figure 8: Throughput-latency curve of Falcon 180B using A100. A normal distribution was applied to prompt and generation lengths with averages of (1200, 1900) and (60, 128), respectively, and a 30% variance*<br>
 </div>
+
+  - **Falcon:** Given the model's substantial size, the majority of computations are dedicated to forward passes, while the overhead of scheduling and token sampling is relatively minor. The performance difference is primarily attributed to our highly optimized engine designed for inference. 
 
 ### Phi-2
 
