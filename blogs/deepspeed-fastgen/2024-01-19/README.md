@@ -121,6 +121,11 @@ As seen in *Figure 4* and *Figure 5*, DeepSpeed-FastGen is able to provide highe
 
 In this section we introduce several stability and software enhancements that have been released since we first introduced DeepSpeed-FastGen.
 
+## Performance Optimizations
+We achieve a notable improvement in performance by minimizing the scheduling overhead for querying KV cache states as discussed in [Performance Optimizations](#performance-optimizations).
+
+See [PR-4965](https://github.com/microsoft/DeepSpeed/pull/4965), [PR-377](https://github.com/microsoft/DeepSpeed-MII/pull/377) for more details.
+
 ## Support for safetensor checkpoints
 Some HuggingFace-hosted model checkpoint weights are provided only in the safetensor format. We extend our HuggingFace checkpoint engine to work with the safetensor format to support even more models!
 
@@ -128,13 +133,13 @@ See [PR-4659](https://github.com/microsoft/DeepSpeed/pull/4659), [PR-296](https:
 
 ## Added RESTful API
 
-We add the option to automatically stand up a RESTful API when creating DeepSpeed-FastGen persistent deployments in DeepSpeed-MII. This API provides a way for users to send prompts to their deployments and receive responses using HTTP POST methods and tools like `curl` or python's `request` package. The RESTful API provides the same high throughput and low latency performance as our python APIs. For more information, please see [TODO Add link to MII RESTful API README section].
+We add the option to automatically stand up a RESTful API when creating DeepSpeed-FastGen persistent deployments in DeepSpeed-MII. This API provides a way for users to send prompts to their deployments and receive responses using HTTP POST methods and tools like `curl` or python's `request` package. The RESTful API provides the same high throughput and low latency performance as our python APIs. For more information, please see [MII RESTful API](https://github.com/microsoft/DeepSpeed-MII#restful-api).
 
 See [PR-348](https://github.com/microsoft/DeepSpeed-MII/pull/348), [PR-328](https://github.com/microsoft/DeepSpeed-MII/pull/328), [PR-294](https://github.com/microsoft/DeepSpeed-MII/pull/294) for more details.
 
 ## Added deployment and generate options
 
-We extend the customizability of DeepSpeed-FastGen deployments and text-generation. Users can now specify a `device_map` when creating non-persistent pipelines and persistent deployments that controls which GPUs to use for hosting a model. Additionally, the interfaces between pipelines and deployments now match and include options for setting top-p, top-k, and temperature values. For additional information about the user-exposed options, please see [TODO links to pipeline and deployment sections in MII README].
+We extend the customizability of DeepSpeed-FastGen deployments and text-generation. Users can now specify a `device_map` when creating non-persistent pipelines and persistent deployments that controls which GPUs to use for hosting a model. Additionally, the interfaces between pipelines and deployments now match and include options for setting top-p, top-k, and temperature values. For additional information about the user-exposed options, please see [MII Pipeline](https://github.com/microsoft/DeepSpeed-MII#non-persistent-pipeline) and [MII Deployment](https://github.com/microsoft/DeepSpeed-MII#persistent-deployment).
 
 See [PR-331](https://github.com/microsoft/DeepSpeed-MII/pull/331), [PR-280](https://github.com/microsoft/DeepSpeed-MII/pull/280), [PR-275](https://github.com/microsoft/DeepSpeed-MII/pull/275), [PR-268](https://github.com/microsoft/DeepSpeed-MII/pull/268), [PR-295](https://github.com/microsoft/DeepSpeed-MII/pull/295), for more details.
 
