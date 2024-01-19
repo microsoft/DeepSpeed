@@ -35,7 +35,7 @@ Today, we are happy to share that we are improving DeepSpeed-FastGen along three
 
   DeepSpeed-FastGen contains a rich set of features for running inference with many different model families and over 20,000 HuggingFace hosted models. We extend this feature set for all models to include a RESTful API, more generation options, and support for models using the safetensor checkpoint format. Additionally, we improve on overall stability and address bugs in our original DeepSpeed-FastGen release.
 
-We now dive into the details of the new model families, performance optimizations, and software improvements. If you would like to get started right away please see [Try Out DeepSpeed-FastGen](#try-out-deepspeed-fastgen).
+We now dive into the details of the new model families, performance optimizations, and software improvements. If you would like to get started right away please see [Try Out DeepSpeed-FastGen](#try-out-deepspeed-fastgen). This new release is available in [DeepSpeed versions >= 0.13.0](https://github.com/microsoft/DeepSpeed/tree/v0.13.0) and [DeepSpeed-MII verions >= 0.2.0](https://github.com/microsoft/DeepSpeed-MII/tree/v0.2.0). 
 
 # 2. New Model Families <a name="new-model-families"></a>
 
