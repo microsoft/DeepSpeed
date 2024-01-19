@@ -4,9 +4,9 @@
 
 </div>
 
-# TODO: Add image here
 <div align="center">
-  <img src="" alt="" width="850"/>
+ <img src="assets/images/fastgen-hero-light.png#gh-light-mode-only" width="850px">
+ <img src="assets/images/fastgen-hero-dark.png#gh-dark-mode-only" width="850px">
 </div>
 
 # Table of Contents
