@@ -22,7 +22,7 @@
 
 [DeepSpeed-FastGen](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen) is an inference system framework that enables easy, fast, and affordable inference for large language models (LLMs). From general chat models to document summarization, and from autonomous driving to copilots at every layer of the software stack, the demand to deploy and serve these models at scale has skyrocketed. DeepSpeed-FastGen utilizes the Dynamic SplitFuse technique to tackle the unique challenges of serving these applications and offer higher effective throughput than other state-of-the-art systems like vLLM.
 
-Today, we are happy to share that we are improving DeepSpeed-FastGen along three areas: i) 3 new model families, ii) performance optimizations, and iii) stability and software enhancements:
+Today, we are happy to share that we are improving DeepSpeed-FastGen along three areas: i) three new model families, ii) performance optimizations, and iii) stability and software enhancements:
 - **New Model Families**
 
   We introduce support for Mixtral (MoE), Falcon, and Phi-2 model families in DeepSpeed-FastGen. Our inference optimizations for these models provide up to a.bX improvement in latency and a.bX improvement in effective throughput over other state-of-the-art frameworks like vLLM.
