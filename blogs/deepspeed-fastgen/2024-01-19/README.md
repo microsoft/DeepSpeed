@@ -40,26 +40,25 @@ We now dive into the details of the new model families, performance optimization
 
 # 2. New Model Families <a name="new-model-families"></a>
 
-Support for the following models has been added to DeepSpeed-FastGen.
+Today we introduce support for three new model families: i) [Mixtral (MoE)](), ii) [Phi-2](https://www.microsoft.com/en-us/research/blog/phi-2-the-surprising-power-of-small-language-models/), and iii) [Falcon]()
 
 ## Mixtral
 
-Mixtral model, a language model based on sparse mixture of experts, has demonstrated promising performance across multiple benchmarks. The Mixtral model operates by applying a router network at each layer for every token, selecting two distinct experts for processing the current state and combine their outputs. This process is dynamic, with the possibility of different experts being chosen at each timestep. This architecture ensures that while each token is exposed to a broad spectrum of parameters, it actively utilizes only a specific subset during inference.
+Mixtral model, a language model based on sparse mixture of experts (MoE), has demonstrated promising performance across multiple benchmarks. The Mixtral model operates by applying a router network at each layer for every token, selecting two distinct experts for processing the current state and combine their outputs. This process is dynamic, with the possibility of different experts being chosen at each timestep. This architecture ensures that while each token is exposed to a broad spectrum of parameters, it actively utilizes only a subset during inference.
 
-In this release, we are pleased to announce the support for Mixtral model. We've enhanced our FastGen codebase by the integration of the Mixtral model implementation, refinements to our high-performance kernel set for efficient top-k gating, and updates to Rotary Positional Encoding (RoPE) implementation. These advancements ensure that users can fully exploit the capabilities of DeepSpeed-FastGen for executing Mixtral model inference, thereby achieving heightened performance and efficiency.
+In this release, we are pleased to announce the support for Mixtral models. We've enhanced our FastGen codebase by the integration of the Mixtral model implementation, refinements to our high-performance kernels for efficient top-k gating, and updates to Rotary Positional Encoding (RoPE) implementation. These advancements ensure that users can fully exploit the capabilities of DeepSpeed-FastGen for executing Mixtral model inference, thereby achieving heightened performance and efficiency.
 
 ## Phi-2
 
 Microsoft Research has introduced a suite of small language models (SLMs) named "Phi," notable for their exceptional performance across a spectrum of benchmarks. The latest addition to this suite, [Phi-2](https://www.microsoft.com/en-us/research/blog/phi-2-the-surprising-power-of-small-language-models/), is a language model boasting 2.7 billion parameters. It stands out as a testament to outstanding reasoning and language understanding capabilities, exemplifying state-of-the-art performance within the realm of base language models featuring fewer than 13 billion parameters. Notably, Phi-2 achieves parity with or surpasses models up to 25 times its size on complex benchmarks, a feat attributed to pioneering innovations in model scaling and meticulous training data curation.
 
-Owing to its compact size, Phi-2 emerges as an ideal model for both researchers and deployment scenarios, promising a reduction in inference costs. In this DeepSpeed-FastGen release, the incorporation of partial RoPE support into our kernels signifies a noteworthy advancement. We are pleased to announce that this enhancement facilitates Phi-2 inference with DeepSpeed-FastGen.
+Owing to its compact size, Phi-2 emerges as an ideal model for both researchers and deployment scenarios, promising a reduction in inference costs. To efficiently support the Phi-2 model family, we introduce partial RoPE support in our DeepSpeed-FastGen kernels. 
 
 ## Falcon
 
-Falcon is a family of large language models (LLMs) developed by the Technology Innovation Institute (TII). The Falcon models include Falcon 7B, Falcon-40B and its larger counterpart, Falcon-180B, the largest openly available language model to date. The Falcon models are optimized for inference and can be used for various applications such as chatbots, question answering systems, and more.
+Falcon is a family of large language models (LLMs) developed by the Technology Innovation Institute (TII). The Falcon models include Falcon 7B, Falcon-40B and its larger counterpart, Falcon-180B, the largest openly available language model to date.
 
 A closer examination of the architectural nuances within the Falcon series reveals notable distinctions. Specifically, the Falcon 7B model diverges slightly from Falcon-40B; notably, Falcon-40B incorporates an additional layer norm preceding the parallel MLP layer, a feature absent in the Falcon 7B model. In contrast, Falcon-180B adheres to the same architecture as Falcon-40B but stands out as a scaled-up version.
-In this DeepSpeed-FastGen release, we are pleased to announce the addition of support for all Falcon model sizes.
 
 # 3. Performance Optimizations <a name="performance-optimizations"></a>
 
