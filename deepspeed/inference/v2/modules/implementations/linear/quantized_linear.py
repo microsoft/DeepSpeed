@@ -61,10 +61,12 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         super().__init__(config, implementation_config)
 
         self._linear_impl = CUDAWf6Af16Linear()
-        self.M = self._config.out_channels
-        self.K = self._config.in_channels
 
         if is_gated(config.activation):
+            # In the FP6 kernel implementation, the MatMul is W * A, where W is the weight and A is activation.
+            # M is the output channel size.
+            self.M = self._config.out_channels * 2
+            self.K = self._config.in_channels
             self._is_gated = True
             self._act_fn = CUDAGatedActivation(
                 config.out_channels, config.output_dtype, config.activation)
@@ -72,6 +74,8 @@ class QuantizedWf6Af16Linear(DSLinearBase):
                                               dtype=config.output_dtype,
                                               device=get_accelerator().current_device())
         else:
+            self.M = self._config.out_channels
+            self.K = self._config.in_channels
             self._is_gated = False
             self._act_fn = CUDABiasActivation(
                 config.out_channels, config.output_dtype, config.activation)
@@ -84,6 +88,8 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         self.inf_module.create_handle()
         self.preprocess_weight = self.inf_module.preprocess_weight
         self.preprocess_scales = self.inf_module.preprocess_scales
+
+        self.DEBUG = True
 
     def transform_param(self, param: torch.Tensor) -> InferenceParameter:
         """
@@ -113,16 +119,22 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         #     # dummy scales for early stage testing
         #     scales = torch.ones((self.M, self.K // self.K),
         #                         dtype=torch.float16)
+        if self.DEBUG:
+            self.weight = param.clone().cpu()
         weight = param.cpu()
         # Split the fake quantized fp6 weight into the 4-bit part and 2-bit part.
         weights_2bit, weights_4bit = self.preprocess_weight(weight)
 
         self.group_size = scales.size(1) // self.K
-        if self._is_gated:
-            assert weight.shape[0] == self.M * 2
-            scales = self.preprocess_scales(scales, self.M * 2, self.K)
-        else:
-            scales = self.preprocess_scales(scales, self.M, self.K)
+        # if self._is_gated:
+        #     assert weight.shape[0] == self.M * 2
+        #     scales = self.preprocess_scales(scales, self.M * 2, self.K)
+        # else:
+
+        # This is for debugging, will delete after release.
+        assert weight.shape[0] == self.M
+
+        scales = self.preprocess_scales(scales, self.M, self.K)
         assert self.group_size % 64 == 0, f"group size {self.group_size} is not supported"
 
         param = weights_4bit
@@ -134,17 +146,34 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         scales = w.scales
         output = empty_from(
             self._output, (hidden_states.shape[0], self._config.out_channels))
-        N = hidden_states.shape[0]
+        # N = hidden_states.shape[0]
         if self._is_gated:
             staging_output = empty_from(
-                self._double_buffer, (hidden_states.shape[0], self._config.out_channels * 2))
+                self._double_buffer, (hidden_states.shape[0], self.M))
             self._linear_impl(staging_output, hidden_states, weights_4bit,
-                              weights_2bit, scales, self.M * 2, hidden_states.shape[0], self.K)
+                              weights_2bit, scales, self.M, hidden_states.shape[0], self.K)
             self._act_fn(output, staging_output, b)
         else:
             self._linear_impl(output, hidden_states, weights_4bit,
                               weights_2bit, scales, self.M, hidden_states.shape[0], self.K)
             self._act_fn(output, b)
+
+        if self.DEBUG:
+            orig_device = self.weight.device
+            self.weight = self.weight.to(output.device)
+            ground_truth = torch.nn.functional.linear(
+                hidden_states, self.weight, b)
+            self.weight = self.weight.to(orig_device)
+            shape = (hidden_states.shape[0], self.M, self.K)
+            if self._is_gated:
+                ismatch = torch.allclose(
+                    ground_truth, staging_output, rtol=1e-3)
+                print(f"Linear shape: {shape}:\n\tIs correct: {ismatch}. "
+                      f"Max diff: {torch.max(torch.abs(ground_truth - staging_output))}")
+            else:
+                ismatch = torch.allclose(ground_truth, output, rtol=1e-3)
+                print(f"Linear shape: {shape}:\n\tIs correct: {ismatch}. "
+                      f"Max diff: {torch.max(torch.abs(ground_truth - output))}")
 
         return output
 

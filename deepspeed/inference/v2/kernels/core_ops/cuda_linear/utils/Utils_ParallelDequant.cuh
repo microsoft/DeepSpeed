@@ -4,6 +4,7 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
+#include <stdio.h>
 
 /*
  * Input:   R1
@@ -32,8 +33,23 @@ __device__ __forceinline__ u_int32_t MultScale(u_int32_t PackedFP16Pair, half Sc
 
     // Only for testing. Note that the scales should be multiplied by e12 accoring to the Quant-LLM
     // optimization.
-    output_half_ptr[0] = *FP16_1 * 1e12;
-    output_half_ptr[1] = *FP16_2 * 1e12;
+    bool apply_e12 = true;
+    if (apply_e12) {
+        // TODO: this will still lead to NaN. Need to fix it.
+        output_half_ptr[0] = __hmul(*FP16_1, half(1.e12));
+        output_half_ptr[1] = __hmul(*FP16_2, half(1.e12));
+    } else {
+        output_half_ptr[0] = *FP16_1;
+        output_half_ptr[1] = *FP16_2;
+    }
+#if 0
+    auto res1 = output_half_ptr[0];
+    auto res2 = output_half_ptr[1];
+    // printf("FP16_1: %f\n", __half2float(*FP16_1));
+    // The following two lines do not show NaN.
+    if (res1 != res1) { printf("res1 is NaN: %f\n", __half2float(res1)); }
+    if (res2 != res2) { printf("res2 is NaN: %f\n", __half2float(res2)); }
+#endif
 
     return output;
 }
