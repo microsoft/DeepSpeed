@@ -314,11 +314,11 @@ class BF16_Optimizer(ZeROOptimizer):
     def update_hp_grads(self, clear_lp_grads=False):
         if self.immediate_grad_update:
             return
-   
+
         if self.graph_harvesting:
-            graph_process(False, _update_hp_grads_func, clear_lp_grads)
+            graph_process(False, self._update_hp_grads_func, clear_lp_grads)
         else:
-            _update_hp_grads_func(clear_lp_grads)
+            self._update_hp_grads_func(clear_lp_grads)
         #cpu op
         for i, group in enumerate(self.bf16_groups):
             for j, lp in enumerate(group):
