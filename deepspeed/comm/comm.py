@@ -675,19 +675,21 @@ def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True)
     Discovery MPI environment via mpi4py and map to relevant dist state
     '''
     from mpi4py import MPI
-    import subprocess
+    import socket
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     world_size = comm.Get_size()
-
     master_addr = None
     if rank == 0:
-        hostname_cmd = ["hostname -I"]
-        result = subprocess.check_output(hostname_cmd, shell=True)
-        master_addr = result.decode('utf-8').split()[0]
+        try:
+            master_addr = (
+                    socket.gethostbyaddr(socket.gethostname())[0].rstrip('\n')
+            )
+        except Exception:
+            master_addr = 'localhost'
     master_addr = comm.bcast(master_addr, root=0)
 
-    # Determine local rank by assuming hostnames are unique
+    # Determine local rank by assuming processor names are unique
     proc_name = MPI.Get_processor_name()
     all_procs = comm.allgather(proc_name)
     local_rank = sum([i == proc_name for i in all_procs[:rank]])
