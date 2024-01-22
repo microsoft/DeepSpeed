@@ -62,7 +62,7 @@ To address these shortcomings, we propose a novel prompt and generation composit
 
 ## 3. Dynamic SplitFuse: A Novel Prompt and Generation Composition Strategy<a name="technical-approach"></a>
 
-DeepSpeed-FastGen is built to leverage continuous batching and non-contiguous KV caches to enable increased occupancy and higher responsivity for serving LLMs in the data center, similar to existing frameworks such as TRT-LLM, TGI, and vLLM. In order to achieve a new level of performance, DeepSpeed-FastGen introduces SplitFuse which leverages dynamic prompt and generation decomposition and unification to further improve continuous batching and system throughput.
+DeepSpeed-FastGen is built to leverage continuous batching and non-contiguous KV caches to enable increased occupancy and higher responsively for serving LLMs in the data center, similar to existing frameworks such as TRT-LLM, TGI, and vLLM. In order to achieve a new level of performance, DeepSpeed-FastGen introduces SplitFuse which leverages dynamic prompt and generation decomposition and unification to further improve continuous batching and system throughput.
 
 ### A. Three Performance Insights
 Before describing  Dynamic SplitFuse, we answer three key performance questions that together motivate its design.
