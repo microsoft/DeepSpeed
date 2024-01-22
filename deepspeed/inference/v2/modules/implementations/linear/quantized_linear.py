@@ -134,6 +134,8 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         # This is for debugging, will delete after release.
         assert weight.shape[0] == self.M
 
+        # According to the optimization in Quant-LLM, the scales need to be multiplied by 1e12.
+        scales = scales * 1e12
         scales = self.preprocess_scales(scales, self.M, self.K)
         assert self.group_size % 64 == 0, f"group size {self.group_size} is not supported"
 
