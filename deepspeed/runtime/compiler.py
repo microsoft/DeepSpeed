@@ -64,7 +64,7 @@ class CompileConfig(DeepSpeedConfigModel):
 
     @validator("enabled")
     def validate_enabled(cls, field_value, values):
-        if not field_value and not is_compile_supported():
+        if field_value and not is_compile_supported():
             raise ValueError("torch.compile is not supported on this version of PyTorch.")
         return field_value
 
