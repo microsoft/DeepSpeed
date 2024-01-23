@@ -88,3 +88,10 @@ class TestConfigLoad(DistributedCompileTest):
         engine = self._init_engine(base_config)
         self._run_model(engine)
         assert "mode" in engine.torch_compile_kwargs
+
+    @pytest.mark.skipif(not deepspeed.compiler.is_compile_supported(), reason="torch.compile is not supported")
+    def test_set_compile_kwargs(self, base_config):
+        engine = self._init_engine(base_config)
+        engine.set_torch_compile_kwargs({"mode": "default"})
+        self._run_model(engine)
+        assert "mode" in engine.torch_compile_kwargs
