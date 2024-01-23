@@ -171,7 +171,8 @@ def get_bfloat16_enabled(param_dict):
 def get_bfloat16_immediate_grad_update(param_dict):
     for key in [BFLOAT16, BFLOAT16_OLD]:
         if key in param_dict.keys():
-            return get_scalar_param(param_dict[key], BFLOAT16_IMMEDIATE_GRAD_UPDATE, BFLOAT16_IMMEDIATE_GRAD_UPDATE_DEFAULT)
+            return get_scalar_param(param_dict[key], BFLOAT16_IMMEDIATE_GRAD_UPDATE,
+                                    BFLOAT16_IMMEDIATE_GRAD_UPDATE_DEFAULT)
     return False
 
 
