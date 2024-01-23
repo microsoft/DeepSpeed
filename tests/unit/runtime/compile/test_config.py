@@ -4,19 +4,22 @@
 # DeepSpeed Team
 
 import pytest
+import torch
 
+from unit.simple_model import SimpleModel
+import deepspeed
 from deepspeed.accelerator import get_accelerator
 
-from unit.common import DistributedTest, get_master_port
-from unit.simple_model import SimpleModel
+from utils import DistributedCompileTest
 
-import torch
-import torch.multiprocessing as mp
+custom_backend_called = False
 
-# A test on its own
-import deepspeed
-
-TIMEOUT = 600
+if deepspeed.compiler.is_compile_supported():
+    # PyTorch v1 does not have torch.fx
+    def custom_backend(gm: torch.fx.GraphModule, example_inputs):
+        global custom_backend_called
+        custom_backend_called = True
+        return gm.forward
 
 
 @pytest.fixture
@@ -38,59 +41,6 @@ def base_config():
         }
     }
     return config_dict
-
-
-custom_backend_called = False
-
-if deepspeed.compiler.is_compile_supported():
-    # PyTorch v1 does not have torch.fx
-    def custom_backend(gm: torch.fx.GraphModule, example_inputs):
-        global custom_backend_called
-        custom_backend_called = True
-        return gm.forward
-
-
-class DistributedCompileTest(DistributedTest):
-    """
-    This class runs tests with non-daemonic processes while DistributedTest launches daemon processes.
-    torch.compile creates a new process to compile the model, but daemonic processes is not allowed to create new processes.
-    """
-
-    def _dist_run_queue(self, local_rank, num_procs, master_port, queue):
-        queue.put(self._dist_run(local_rank, num_procs, master_port))
-
-    def _launch_procs(self, num_procs):
-        # Verify we have enough accelerator devices to run this test
-        if get_accelerator().is_available() and get_accelerator().device_count() < num_procs:
-            pytest.skip(
-                f"Skipping test because not enough GPUs are available: {num_procs} required, {get_accelerator().device_count()} available"
-            )
-
-        # Set start method to `forkserver` (or `fork`)
-        mp.set_start_method('forkserver', force=True)
-
-        master_port = get_master_port()
-
-        # Run the test
-        queue = mp.Queue()
-        procs = [
-            mp.Process(target=self._dist_run_queue, args=(local_rank, num_procs, master_port, queue))
-            for local_rank in range(num_procs)
-        ]
-        for p in procs:
-            p.start()
-        for p in procs:
-            p.join()
-
-        try:
-            skip_msgs = [queue.get(timeout=TIMEOUT) for _ in range(num_procs)]
-        except mp.Empty:
-            pytest.exit("Test hanged, exiting", returncode=0)
-
-        # If we skipped a test, propagate that to this process
-        if any(skip_msgs):
-            assert len(set(skip_msgs)) == 1, "Multiple different skip messages received"
-            pytest.skip(skip_msgs[0])
 
 
 class TestConfigLoad(DistributedCompileTest):
