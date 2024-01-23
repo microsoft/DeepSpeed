@@ -3571,7 +3571,8 @@ class DeepSpeedEngine(Module):
         if self.zero_optimization_partition_weights():
             if self.zero_gather_16bit_weights_on_model_save():
                 # consolidation is expensive in time and memory and therefore isn't a default
-                state_dict = self._zero3_consolidated_16bit_state_dict(exclude_frozen_parameters=exclude_frozen_parameters)
+                state_dict = self._zero3_consolidated_16bit_state_dict(
+                    exclude_frozen_parameters=exclude_frozen_parameters)
             else:
                 # the model will be bogus if not consolidated so don't confuse the user by saving it
                 logger.info(
