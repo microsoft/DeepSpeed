@@ -682,9 +682,7 @@ def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True)
     master_addr = None
     if rank == 0:
         try:
-            master_addr = (
-                    socket.gethostbyaddr(socket.gethostname())[0].rstrip('\n')
-            )
+            master_addr = (socket.gethostbyaddr(socket.gethostname())[0].rstrip('\n'))
         except Exception:
             master_addr = 'localhost'
     master_addr = comm.bcast(master_addr, root=0)
