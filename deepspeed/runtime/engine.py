@@ -3476,7 +3476,7 @@ class DeepSpeedEngine(Module):
         ckpt_type = 'zero' if self.zero_optimization() else 'bf16_zero'
         logger.info(f'{ckpt_type} checkpoint saved {zero_checkpoint_name}')
 
-    def _zero3_consolidated_16bit_state_dict(self):
+    def _zero3_consolidated_16bit_state_dict(self, exclude_frozen_parameters=False):
         """
         Get a full non-partitioned state_dict with fp16 weights on cpu.
         Important: this function must be called on all ranks and not just rank 0.
@@ -3502,7 +3502,7 @@ class DeepSpeedEngine(Module):
                 if dist.get_rank() == 0:
                     # handle params
                     for name, param in module.named_parameters(recurse=False):
-                        if param is None:
+                        if param is None or (exclude_frozen_parameters and not param.requires_grad):
                             continue
                         key = prefix + name
                         # can't rely on param.data_ptr() as it will be reused as weights gets
