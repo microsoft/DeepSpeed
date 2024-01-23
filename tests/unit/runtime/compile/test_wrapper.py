@@ -9,7 +9,7 @@ import torch
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 
-from tests.unit.runtime.compile.common import DistributedCompileTest
+from unit.runtime.compile.common import DistributedCompileTest
 
 
 @pytest.fixture
