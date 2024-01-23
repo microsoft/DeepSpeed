@@ -74,7 +74,7 @@ def parse_args(args=None):
                         type=str,
                         default="",
                         help='''Specify hardware resources to NOT use during execution.
-                        Mutually exclusive with --include. Resource formatting
+                        Mutually exclusive with --exclude. Resource formatting
                         is the same as --include.
                         Example: -e "worker-1:0" will use all available
                         resources except slot 0 on worker-1.
