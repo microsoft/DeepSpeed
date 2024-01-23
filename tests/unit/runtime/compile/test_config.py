@@ -10,7 +10,7 @@ from unit.simple_model import SimpleModel
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 
-from utils import DistributedCompileTest
+from tests.unit.runtime.compile.common import DistributedCompileTest
 
 custom_backend_called = False
 
