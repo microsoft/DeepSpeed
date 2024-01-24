@@ -232,7 +232,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             f"Currently only supported using ZeRO-Offload with DeepSpeedCPUAdam. But current setting is ZeRO-Offload:{self.cpu_offload} and optimizer type {type(self.optimizer)}." \
             f"Either disable fp16_master_weights_and_gradients or enable {self.zero_stage_string} Offload with DeepSpeedCPUAdam."
 
-        if self.reduce_scatter:
+        if self.reduce_scatter and self.partition_gradients:
             valid_reduce_scatter_dtypes = (torch.float16, torch.bfloat16, torch.float32)
             assert self.communication_data_type in valid_reduce_scatter_dtypes, f"{self.zero_stage_string} supports {valid_reduce_scatter_dtypes} communication_data_type with reduce scatter enabled. Got: '{self.communication_data_type}'"
             assert self.gradient_predivide_factor == 1.0, f"gradient_predivide_factor != 1.0 is not yet supported with {self.zero_stage_string} with reduce scatter enabled"
@@ -1109,14 +1109,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 if self.use_multi_rank_bucket_allreduce:
                     self.allreduce_and_scatter(buckets[bucket_key],
                                                numel_per_bucket=self.reduce_bucket_size,
-                                               divide=self.ipg_bucket_has_moe_params,
+                                               divide=False,
                                                process_group=bucket_key)
                 else:
                     dst, process_group = bucket_key
                     self.allreduce_no_retain(buckets[bucket_key],
                                              numel_per_bucket=self.reduce_bucket_size,
                                              rank=dst,
-                                             divide=self.ipg_bucket_has_moe_params,
+                                             divide=False,
                                              process_group=process_group)
 
     ##############################################################################
@@ -1461,7 +1461,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
     ######################Reduction Related Methods##############################
     def allreduce_bucket(self, bucket, rank=None, log=None, divide=True, process_group=None):
-        rank = None
         tensor = self.flatten(bucket)
 
         process_group = self.dp_process_group if process_group is None else process_group
