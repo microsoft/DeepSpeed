@@ -872,10 +872,7 @@ struct AttentionBackwardKernel {
         };
 // ===========================================
 #define FIELD(INSIDE_STRUCT, FIELDNAME) \
-    CUTLASS_DEVICE auto& FIELDNAME()    \
-    {                                   \
-        return INSIDE_STRUCT.FIELDNAME; \
-    }
+    CUTLASS_DEVICE auto& FIELDNAME() { return INSIDE_STRUCT.FIELDNAME; }
 
         FIELD(persistent, di)
         FIELD(persistent, mm_qk_k)
@@ -979,10 +976,7 @@ struct AttentionBackwardKernel {
         };
 // ===========================================
 #define FIELD(INSIDE_STRUCT, FIELDNAME) \
-    CUTLASS_DEVICE auto& FIELDNAME()    \
-    {                                   \
-        return INSIDE_STRUCT.FIELDNAME; \
-    }
+    CUTLASS_DEVICE auto& FIELDNAME() { return INSIDE_STRUCT.FIELDNAME; }
 
         FIELD(persistent, di)
         FIELD(part1, mm_qk_k)
