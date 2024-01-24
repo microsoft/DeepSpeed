@@ -40,7 +40,7 @@ jobs:
           # git checkout 1cc453d33
           git rev-parse --short HEAD
           pip install .
-            
+
       - name: Install deepspeed
         run: |
           pip install .[dev,1bit,autotuning]
