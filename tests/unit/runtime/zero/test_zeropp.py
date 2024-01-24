@@ -17,7 +17,6 @@ import torch.nn as nn
 import torch
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from datasets import load_dataset
 from torch.utils.data import DataLoader
 
 import numpy as np
@@ -196,6 +195,12 @@ class TestZeroPPConvergence(DistributedTest):
 
     def load_and_prepare_data(self, model_name):
         """Load model, tokenizer and dataset, and prepare data loader."""
+        
+        try:
+            from datasets import load_dataset
+        except ImportError:
+            pytest.skip("Skipping test because datasets is not installed", allow_module_level=True)
+            
         # Load model and tokenizer
         model = AutoModelForCausalLM.from_pretrained(model_name)
         tokenizer = AutoTokenizer.from_pretrained(model_name)
