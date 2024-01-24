@@ -34,7 +34,7 @@ class LoggerFactory:
         if name is None:
             raise ValueError("name for logger cannot be None")
 
-        formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] "
+        formatter = logging.Formatter("[PID %(process)d] [%(asctime)s] [%(levelname)s] "
                                       "[%(filename)s:%(lineno)d:%(funcName)s] %(message)s")
 
         logger_ = logging.getLogger(name)
