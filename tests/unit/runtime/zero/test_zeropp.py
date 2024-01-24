@@ -187,7 +187,7 @@ class TestZeroPPConfigSweep(DistributedTest):
             model.backward(loss)
             model.step()
 
-
+@pytest.mark.nightly
 @pytest.mark.parametrize("model_name", ["gpt2"])
 class TestZeroPPConvergence(DistributedTest):
     world_size = 4
