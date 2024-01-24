@@ -40,10 +40,6 @@ jobs:
           # git checkout 1cc453d33
           git rev-parse --short HEAD
           pip install .
-
-      - name: Install datasets
-        run: |
-          pip install datasets
             
       - name: Install deepspeed
         run: |
