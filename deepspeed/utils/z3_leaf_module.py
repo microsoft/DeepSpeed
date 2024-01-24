@@ -46,3 +46,12 @@ def z3_leaf_module(model: torch.nn.Module) -> bool:
             model (torch.nn.Module): The model to which the leaf module flag will be applied.
     """
     return hasattr(model, '_z3_leaf') and model._z3_leaf
+
+
+def z3_leaf_parameter(model: torch.nn.Parameter) -> bool:
+    """Returns whether a parameter belongs to a leaf module.
+        See `set_z3_leaf_modules` for more details.
+        Args:
+            model (torch.nn.Parameter): The parameter to which the leaf module flag will be applied.
+    """
+    return hasattr(model, 'ds_z3_leaf_module')
