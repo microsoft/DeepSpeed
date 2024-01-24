@@ -744,7 +744,8 @@ class TestLMCorrectness(DistributedTest):
 @pytest.mark.nightly
 #@pytest.mark.parametrize("model_name", ["facebook/opt-1.3b", "facebook/opt-6.7b"])
 #@pytest.mark.parametrize("model_name", ["facebook/opt-1.3b"])
-@pytest.mark.parametrize("model_name", ["cloudyu/Mixtral_11Bx2_MoE_19B"])
+#@pytest.mark.parametrize("model_name", ["facebook/opt-6.7b"])
+@pytest.mark.parametrize("model_name", ["microsoft/phi-2"])
 #def TestHumanEval():
 def test_human_eval(model_name):
     import mii
@@ -754,12 +755,15 @@ def test_human_eval(model_name):
     from human_eval.evaluation import evaluate_functional_correctness
 
     def generate_base_completion(problem_prompt: str) -> str:
-        #output = base_pipe(problem_prompt, do_sample=True)
+        #test = base_pipe(problem_prompt, max_new_tokens=256, do_sample=True)[0]["generated_text"]
+        #import pdb; pdb.set_trace()
         return base_pipe(problem_prompt, do_sample=True)[0]["generated_text"]
 
     def generate_mii_completion(problem_prompt: str) -> str:
-        #output = pipe(problem_prompt, max_new_tokens=256)
-        return mii_pipe(problem_prompt, max_new_tokens=256).generated_texts[0]
+        #test = mii_pipe(problem_prompt, max_new_tokens=256)[0]
+        #import pdb; pdb.set_trace()
+        #return mii_pipe(problem_prompt, max_new_tokens=256).generated_texts[0]
+        return mii_pipe(problem_prompt, max_new_tokens=256)[0].generated_text
 
     def generate_samples(generation_function):
         samples = [
@@ -772,30 +776,31 @@ def test_human_eval(model_name):
     print("Initializing HuggingFace Pipeline")
     local_rank = os.getenv("LOCAL_RANK", "0")
     device = torch.device(get_accelerator().device_name(local_rank))
-    base_pipe = pipeline(model=model_name, device=torch.device(get_accelerator().device_name(local_rank)), max_length=256)
+    #base_pipe = pipeline(model=model_name, device=torch.device(get_accelerator().device_name(local_rank)), max_length=256)
+    base_pipe = pipeline(model=model_name, device=torch.device(get_accelerator().device_name(local_rank)), max_length=256, return_full_text=False)
+    #base_pipe = pipeline(model=model_name, device=torch.device(get_accelerator().device_name(local_rank)), return_full_text=False)
 
     print("Initializing DeepSpeed-MII Pipeline")
     mii_pipe = mii.pipeline(model_name)
 
     print("Loading Problems")
-    #problems = read_problems("HumanEvalTest.jsonl.gz")
     problems = read_problems("../../human-eval/data/HumanEval.jsonl.gz") #TODO (lekurile): Add path to human-eval prompt file
+    #problems = read_problems("../../human-eval/data/HumanEvalTest.jsonl.gz") #TODO (lekurile): Add path to human-eval prompt file
 
     #num_samples_per_task = 1
     num_samples_per_task = 20
+    #num_samples_per_task = 10
     print("Generating Base Samples")
     base_samples = generate_samples(generate_base_completion)
 
     print("Generating MII Samples")
     mii_samples = generate_samples(generate_mii_completion)
 
-    # TODO (lekurile): Remove out json file writing once test stood up
     print("Writing Samples")
     write_jsonl("base_samples.jsonl", base_samples)
     write_jsonl("mii_samples.jsonl", mii_samples)
 
     print("Evaluating Samples")
-    # TODO: use human-eval evaluate_functional_correctness function
     # TODO: use code execution container
     base_results = evaluate_functional_correctness("base_samples.jsonl")
     mii_results = evaluate_functional_correctness("mii_samples.jsonl")
@@ -809,5 +814,4 @@ def test_human_eval(model_name):
             f"Base result: {base_results[key]}, MII result: {mii_results[key]}, outside of rtol."
 
     print("Finishing Test")
-
 #---------------------------------------------------------------------------------------------------
