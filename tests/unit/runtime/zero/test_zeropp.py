@@ -191,6 +191,7 @@ class TestZeroPPConfigSweep(DistributedTest):
 @pytest.mark.parametrize("model_name", ["gpt2"])
 class TestZeroPPConvergence(DistributedTest):
     world_size = 4
+    exec_timeout = DistributedTest.exec_timeout * 6 # let's allow 1 hour for this test
 
     def load_and_prepare_data(self, model_name):
         """Load model, tokenizer and dataset, and prepare data loader."""
