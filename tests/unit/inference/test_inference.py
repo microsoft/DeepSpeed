@@ -722,7 +722,7 @@ class TestLMCorrectness(DistributedTest):
         assert ppl_diff < 0.01
 
 
-@pytest.mark.nightly
+@pytest.mark.evaluation
 @pytest.mark.parametrize("model_name", ["facebook/opt-6.7b"])
 def test_human_eval(model_name):
     import mii
@@ -778,3 +778,6 @@ def test_human_eval(model_name):
     for key in base_results.keys():
         assert numpy.allclose(base_results[key], mii_results[key], rtol=0.2), \
             f"Base result: {base_results[key]}, MII result: {mii_results[key]}, outside of rtol."
+
+    # Teardown MII Pipeline
+    mii_pipe.destroy()
