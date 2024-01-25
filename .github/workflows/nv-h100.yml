@@ -1,6 +1,10 @@
 name: nv-h100
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/nv-h100.yml'
+      - 'requirements/**'
   schedule:
     - cron: "0 0 * * *"
   workflow_dispatch:
