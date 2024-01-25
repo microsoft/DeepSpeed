@@ -125,14 +125,6 @@ void BitInterleaving_4bit(unsigned char* PTR_4Bytes)
     *PTR_UINT = output;
 }
 
-short GetShort(unsigned char* Scale_In, size_t row, size_t col, size_t BytesPerRow)
-{
-    unsigned char* PTR_8bit = Scale_In;
-    PTR_8bit += row * BytesPerRow + col * 2;
-    short* PTR_16bit = reinterpret_cast<short*>(PTR_8bit);
-    return (*PTR_16bit);
-}
-
 /*
  * Inputs:
  * (1) unsigned char Weight_6bit [M*K*6/8]
@@ -210,45 +202,6 @@ void GenMatrix_Weight_FP6(unsigned char* Weight_6bit,
         BitInterleaving_4bit(Weight_4bit + 4 * i);
 }
 
-/*
- * Inputs:
- * (1) unsigned char Scale_In[M*K/GroupSize*16/8]
- * Outputs:
- * (1) unsigned char Scale_Out[M*K/GroupSize*16/8]
- */
-void GenMatrix_Scale_FP16(unsigned char* Scale_Out,
-                          unsigned char* Scale_In,
-                          size_t M,
-                          size_t K,
-                          int GroupSize)
-{
-    short* Out_PTR = reinterpret_cast<short*>(Scale_Out);
-    //
-    assert(K % GroupSize == 0);
-    size_t BytesPerRow = K / GroupSize * 2;
-    //
-    for (size_t i = 0; i < M / 64; i++)
-        for (size_t j = 0; j < K / GroupSize; j++)
-            for (int l = 0; l < 8; l++) {
-                *Out_PTR = GetShort(Scale_In, 0 + 64 * i + l, j, BytesPerRow);
-                Out_PTR += 1;
-                *Out_PTR = GetShort(Scale_In, 8 + 64 * i + l, j, BytesPerRow);
-                Out_PTR += 1;
-                *Out_PTR = GetShort(Scale_In, 16 + 64 * i + l, j, BytesPerRow);
-                Out_PTR += 1;
-                *Out_PTR = GetShort(Scale_In, 24 + 64 * i + l, j, BytesPerRow);
-                Out_PTR += 1;
-                *Out_PTR = GetShort(Scale_In, 32 + 64 * i + l, j, BytesPerRow);
-                Out_PTR += 1;
-                *Out_PTR = GetShort(Scale_In, 40 + 64 * i + l, j, BytesPerRow);
-                Out_PTR += 1;
-                *Out_PTR = GetShort(Scale_In, 48 + 64 * i + l, j, BytesPerRow);
-                Out_PTR += 1;
-                *Out_PTR = GetShort(Scale_In, 56 + 64 * i + l, j, BytesPerRow);
-                Out_PTR += 1;
-            }
-    return;
-}
 
 void Cast_FP16_FP6(uint16_t* FP16x4, uint8_t* FP6x4)
 {

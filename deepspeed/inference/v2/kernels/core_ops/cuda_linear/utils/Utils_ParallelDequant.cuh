@@ -36,8 +36,8 @@ __device__ __forceinline__ u_int32_t MultScale(u_int32_t PackedFP16Pair, half Sc
     bool apply_e12 = true;
     if (apply_e12) {
         // TODO: this will still lead to NaN. Need to fix it.
-        output_half_ptr[0] = __hmul(*FP16_1, half(1.e12));
-        output_half_ptr[1] = __hmul(*FP16_2, half(1.e12));
+        output_half_ptr[0] = __hmul(*FP16_1, half(1 << 12));
+        output_half_ptr[1] = __hmul(*FP16_2, half(1 << 12));
     } else {
         output_half_ptr[0] = *FP16_1;
         output_half_ptr[1] = *FP16_2;

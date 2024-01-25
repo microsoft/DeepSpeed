@@ -11,7 +11,6 @@ cudaError_t QuantGEMM_API(
     const uint4* Weight1,
     const uint4* Weight2,
     const half* Scales,
-    const int QUANT_GROUP_SIZE_DIVIDED_BY_64,
     const half* B,
     half* C,
     const size_t M_Global,
@@ -35,7 +34,6 @@ void Launch_QuantGEMM(torch::Tensor C,
     auto B_ptr = B.data_ptr<at::Half>();
     auto W1_ptr = Weight1.data_ptr<uint8_t>();
     auto W2_ptr = Weight2.data_ptr<uint8_t>();
-    auto Group_Size = K_Global / Scales.size(1);
 
     // auto workspace_size = M_Global * N_Global * Split_K;
     // auto workspace = torch::empty({workspace_size}, torch::kFloat16);
@@ -44,7 +42,6 @@ void Launch_QuantGEMM(torch::Tensor C,
                                 (uint4*)W1_ptr,
                                 (uint4*)W2_ptr,
                                 (half*)Scales.data_ptr<at::Half>(),
-                                Group_Size / 64,
                                 (half*)B_ptr,
                                 (half*)C_ptr,
                                 M_Global,

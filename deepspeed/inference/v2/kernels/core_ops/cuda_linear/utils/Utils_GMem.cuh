@@ -56,12 +56,13 @@ __device__ __forceinline__ void CopyFromGlobalToShared_A(uint32_t* SPTR,
  * Copying 64 Quant Scales (FP16) from global memory to shared memory.
  */
 __device__ __forceinline__ void CopyFromGlobalToShared_Scales(half* SPTR_QuantScales,
-                                                              const half* GPTR_A_Scales,
-                                                              bool pred_guard = true) {
+                                                              const half* GPTR_A_Scales) {
     int lane_id         = threadIdx.x % WARP_SIZE;
-    GPTR_A_Scales      += lane_id * 8; // 8 FP16 (16 Bytes) per thread
-    SPTR_QuantScales   += lane_id * 8; // 8 FP16 (16 Bytes) per thread
-    cp_async<16>( SPTR_QuantScales, GPTR_A_Scales, pred_guard && (lane_id<8));
+    int Offset_Shared   = lane_id * 2; 
+    int Offset_Global   = lane_id / 4 + (lane_id % 4) * 16;
+    for (int i = 0; i < 2; i++) {
+        SPTR_QuantScales[Offset_Shared + i] = GPTR_A_Scales[Offset_Global + i * 8];
+    }
 }
 
 /* 

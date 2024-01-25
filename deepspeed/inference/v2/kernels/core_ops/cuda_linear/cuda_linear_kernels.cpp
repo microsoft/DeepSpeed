@@ -68,27 +68,3 @@ std::vector<torch::Tensor> preprocess_weight(torch::Tensor& Weight)
 
     return {Weight_2bit, Weight_4bit};
 }
-
-/*
- * Inputs:
- * (1) torch::Tensor Scale_In[M, K/GroupSize] in FP16
- * Outputs:
- * (1) torch::Tensor Scale_Out[M, K/GroupSize] in FP16
- */
-
-torch::Tensor preprocess_scales(torch::Tensor& Scale, int M, int K)
-{
-    // Preprocess scales
-    TORCH_CHECK(Scale.dim() == 2, "scale must be 2-dimensional");
-    TORCH_CHECK(Scale.size(0) == M, "scale must have same M as weight");
-    TORCH_CHECK(Scale.is_contiguous(), "scale must be contiguous");
-    TORCH_CHECK(Scale.device().type() == torch::kCPU, "scale must be on CPU");
-    TORCH_CHECK(Scale.scalar_type() == torch::kFloat16, "scale must be FP16");
-    auto GroupSize = K / Scale.size(1);
-    TORCH_CHECK(GroupSize % 64 == 0, "GroupSize must be multiple of 64");
-    auto New_Scale = torch::empty_like(Scale);
-    auto Scale_out = New_Scale.data_ptr<at::Half>();
-    auto Scale_in = New_Scale.data_ptr<at::Half>();
-    GenMatrix_Scale_FP16((uint8_t*)Scale_out, (uint8_t*)Scale_in, M, K, GroupSize);
-    return New_Scale;
-}

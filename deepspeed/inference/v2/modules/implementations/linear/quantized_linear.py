@@ -87,7 +87,6 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         self.inf_module = InferenceCoreBuilder().load()
         self.inf_module.create_handle()
         self.preprocess_weight = self.inf_module.preprocess_weight
-        self.preprocess_scales = self.inf_module.preprocess_scales
 
         self.DEBUG = True
 
@@ -128,15 +127,13 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         self.group_size = scales.size(1) // self.K
         # if self._is_gated:
         #     assert weight.shape[0] == self.M * 2
-        #     scales = self.preprocess_scales(scales, self.M * 2, self.K)
         # else:
 
         # This is for debugging, will delete after release.
         assert weight.shape[0] == self.M
 
         # According to the optimization in Quant-LLM, the scales need to be multiplied by 1e12.
-        scales = scales * 1e12
-        scales = self.preprocess_scales(scales, self.M, self.K)
+        scales = scales * (1 << 12)
         assert self.group_size % 64 == 0, f"group size {self.group_size} is not supported"
 
         param = weights_4bit

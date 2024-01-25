@@ -55,7 +55,6 @@ struct TilingConfig {
 #define WEIGHT_FRAG1_BIT_WIDTH 2
 #define WEIGHT_FRAG2_BIT_WIDTH 4
 #define WEIGHT_BIT_WIDTH (WEIGHT_FRAG1_BIT_WIDTH + WEIGHT_FRAG2_BIT_WIDTH)  // 6
-//#define QUANT_GROUP_SIZE_DIVIDED_BY_64  4                                                   //
 // QuantGroupSize: 4*64 = 256
 /*************************** 64*64 Weghts of A WARP *************************/
 #define WEIGHT_PER_UNIT (WARP_M * WARP_K)  // 64*64

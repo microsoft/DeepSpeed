@@ -20,17 +20,6 @@ void GenMatrix_Weight_FP6(unsigned char* Weight_6bit,
                           size_t M,
                           size_t K);
 
-/*
- * Inputs:
- * (1) unsigned char Scale_In[M*K/GroupSize*16/8]
- * Outputs:
- * (1) unsigned char Scale_Out[M*K/GroupSize*16/8]
- */
-void GenMatrix_Scale_FP16(unsigned char* Scale_Out,
-                          unsigned char* Scale_In,
-                          size_t M,
-                          size_t K,
-                          int GroupSize);
 
 /*
  * Inputs:
