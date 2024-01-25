@@ -724,7 +724,6 @@ class TestLMCorrectness(DistributedTest):
 
 @pytest.mark.nightly
 @pytest.mark.parametrize("model_name", ["facebook/opt-6.7b"])
-#def TestHumanEval(model_name):
 def test_human_eval(model_name):
     import mii
     import numpy
