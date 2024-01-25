@@ -195,6 +195,7 @@ class TestZeroPPConvergence(DistributedTest):
 
     def load_and_prepare_data(self, model_name):
         """Load model, tokenizer and dataset, and prepare data loader."""
+        from datasets import load_dataset
 
         # Load model and tokenizer
         model = AutoModelForCausalLM.from_pretrained(model_name)
