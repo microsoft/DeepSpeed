@@ -432,14 +432,13 @@ class PartitionedParameterCoordinator:
         """for each partitioned parameter, kick off an async allgather and store
         the work handle for the in flight parameters."""
         partitioned_params = []
-        all_gather_numel = 0
+        all_gather_numel = 0 # numel = num of elements
         for param in params:
             if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
                 partitioned_params.append(param)
                 all_gather_numel += param.ds_numel
 
         if partitioned_params:
-            partitioned_params
             self.__n_available_params += all_gather_numel
             with get_accelerator().stream(self.__allgather_stream):
                 event_name = __class__.FORWARD_ALL_GATHER if forward else __class__.BACKWARD_ALL_GATHER
