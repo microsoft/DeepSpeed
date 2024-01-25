@@ -2,9 +2,14 @@ name: nv-inference
 
 on:
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - 'blogs/**'
+    paths:
+      - '.github/workflows/nv-inference.yml'
+      - 'requirements/**'
+      - 'deepspeed/__init__.py'
+      - 'deepspeed/inference/**'
+      - '!deepspeed/inference/v2/**' # exclude v2 dir
+      - 'tests/unit/inference/**'
+      - '!tests/unit/inference/v2/**' # exclude v2 tests dir
   merge_group:
     branches: [ master ]
   schedule:
@@ -34,6 +39,7 @@ jobs:
         run: |
           git clone https://github.com/huggingface/transformers
           cd transformers
+          git checkout f370bebdc
           git rev-parse --short HEAD
           pip install .
 

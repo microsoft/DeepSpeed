@@ -77,9 +77,10 @@ ONEBIT_LAMB_OPTIMIZER = 'onebitlamb'
 MUADAM_OPTIMIZER = 'muadam'
 MUADAMW_OPTIMIZER = 'muadamw'
 MUSGD_OPTIMIZER = 'musgd'
+LION_OPTIMIZER = 'lion'
 DEEPSPEED_OPTIMIZERS = [
     ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER,
-    ZERO_ONE_ADAM_OPTIMIZER, MUADAM_OPTIMIZER, MUADAMW_OPTIMIZER, MUSGD_OPTIMIZER
+    ZERO_ONE_ADAM_OPTIMIZER, MUADAM_OPTIMIZER, MUADAMW_OPTIMIZER, MUSGD_OPTIMIZER, LION_OPTIMIZER
 ]
 
 # extra optimizer parameters for adam/adamw
@@ -237,8 +238,10 @@ def get_sparse_gradients_enabled(param_dict):
     return get_scalar_param(param_dict, SPARSE_GRADIENTS, SPARSE_GRADIENTS_DEFAULT)
 
 
-def get_communication_data_type(param_dict):
-    val = get_scalar_param(param_dict, COMMUNICATION_DATA_TYPE, COMMUNICATION_DATA_TYPE_DEFAULT)
+def get_communication_data_type(param_dict,
+                                comm_type=COMMUNICATION_DATA_TYPE,
+                                comm_data_type_default=COMMUNICATION_DATA_TYPE_DEFAULT):
+    val = get_scalar_param(param_dict, comm_type, comm_data_type_default)
     val = val.lower() if val is not None else val
     if val is None:
         return val  # we must determine it by other parameters
@@ -274,6 +277,10 @@ def get_dump_state(param_dict):
 
 def get_gradient_clipping(param_dict):
     return get_scalar_param(param_dict, GRADIENT_CLIPPING, GRADIENT_CLIPPING_DEFAULT)
+
+
+def get_graph_harvesting(param_dict):
+    return get_scalar_param(param_dict, GRAPH_HARVESTING, GRAPH_HARVESTING_DEFAULT)
 
 
 def get_sparse_attention(param_dict):
@@ -446,6 +453,8 @@ def get_pipeline_config(param_dict):
         "partition": "best",
         "seed_layers": False,
         "activation_checkpoint_interval": 0,
+        "pipe_partitioned": True,
+        "grad_partitioned": True,
     }
     config = default_pipeline
     for key, val in param_dict.get("pipeline", {}).items():
@@ -537,6 +546,10 @@ def get_hybrid_engine_config(param_dict):
     hybrid_engine_config_dict = param_dict.get("hybrid_engine", {})
     hybrid_engine_config = HybridEngineConfig(**hybrid_engine_config_dict)
     return hybrid_engine_config
+
+
+def get_expert_data_topo_config(param_dict):
+    return get_scalar_param(param_dict, USE_DATA_BEFORE_EXPERT_PARALLEL, USE_DATA_BEFORE_EXPERT_PARALLEL_DEFAULT)
 
 
 def get_eigenvalue_config(param_dict):
@@ -783,6 +796,8 @@ class DeepSpeedConfig(object):
 
         self.disable_allgather = get_disable_allgather(param_dict)
         self.communication_data_type = get_communication_data_type(param_dict)
+        self.seq_parallel_communication_data_type = get_communication_data_type(
+            param_dict, SEQ_PARALLEL_COMMUNICATION_DATA_TYPE, SEQ_PARALLEL_COMMUNICATION_DATA_TYPE_DEFAULT)
         self.prescale_gradients = get_prescale_gradients(param_dict)
         self.gradient_predivide_factor = get_gradient_predivide_factor(param_dict)
         self.sparse_gradients_enabled = get_sparse_gradients_enabled(param_dict)
@@ -812,6 +827,7 @@ class DeepSpeedConfig(object):
         self.dynamic_loss_scale_args = get_dynamic_loss_scale_args(param_dict)
 
         self.compression_config = get_compression_config(param_dict)
+        self.graph_harvesting = get_graph_harvesting(param_dict)
 
         self.optimizer_name = get_optimizer_name(param_dict)
         if (self.optimizer_name is not None and self.optimizer_name.lower() in DEEPSPEED_OPTIMIZERS):
@@ -843,6 +859,7 @@ class DeepSpeedConfig(object):
             self.eigenvalue_layer_num,
         ) = get_eigenvalue_config(param_dict)
 
+        self.use_data_before_expert_parallel_ = get_expert_data_topo_config(param_dict)
         self.hybrid_engine = get_hybrid_engine_config(param_dict)
 
         self.sparse_attention = get_sparse_attention(param_dict)

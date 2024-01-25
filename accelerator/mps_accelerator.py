@@ -26,7 +26,7 @@ class MPS_Accelerator(DeepSpeedAccelerator):
 
     # Device APIs
     def device_name(self, device_index=None):
-        if device_index == None:
+        if device_index is None:
             return "mps"
         return "mps:{}".format(device_index)
 
@@ -131,12 +131,18 @@ class MPS_Accelerator(DeepSpeedAccelerator):
     def total_memory(self, device_index=None):
         return
 
+    def available_memory(self, device_index=None):
+        return
+
     # Data types
     def is_bf16_supported(self):
         return False
 
     def is_fp16_supported(self):
         return False
+
+    def supported_dtypes(self):
+        return [torch.float]
 
     # Misc
     def amp(self):
@@ -156,6 +162,20 @@ class MPS_Accelerator(DeepSpeedAccelerator):
 
     def communication_backend_name(self):
         return self._communication_backend_name
+
+    def is_triton_supported(self):
+        return False
+
+    # Graph operations
+    def create_graph(self):
+        return None
+
+    def capture_to_graph(self, graph, pool=None, stream=None):
+        from deepspeed.runtime.utils import noop_context
+        return noop_context()
+
+    def replay_graph(self, graph):
+        return
 
     # Tensor operations
     @property
@@ -186,8 +206,11 @@ class MPS_Accelerator(DeepSpeedAccelerator):
     def LongTensor(self):
         return
 
-    def pin_memory(self, tensor):
+    def pin_memory(self, tensor, align_bytes=1):
         return tensor.pin_memory()
+
+    def is_pinned(self, tensor):
+        return tensor.is_pinned()
 
     def on_accelerator(self, tensor):
         device_str = str(tensor.device)
@@ -209,7 +232,7 @@ class MPS_Accelerator(DeepSpeedAccelerator):
     # create an instance of op builder, specified by class_name
     def create_op_builder(self, op_name):
         builder_class = self.get_op_builder(op_name)
-        if builder_class != None:
+        if builder_class is not None:
             return builder_class()
         return None
 
@@ -223,3 +246,6 @@ class MPS_Accelerator(DeepSpeedAccelerator):
         from torch.utils.cpp_extension import BuildExtension
 
         return BuildExtension
+
+    def export_envs(self):
+        return []

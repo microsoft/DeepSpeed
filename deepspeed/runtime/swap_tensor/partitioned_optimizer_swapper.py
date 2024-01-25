@@ -17,6 +17,7 @@ from deepspeed.runtime.swap_tensor.utils import swap_in_tensors, swap_out_tensor
     get_sized_buffers
 from deepspeed.runtime.swap_tensor.async_swapper import AsyncTensorSwapper
 from deepspeed.runtime.swap_tensor.optimizer_utils import OptimizerSwapper
+from deepspeed.accelerator import get_accelerator
 
 DEBUG_MODE = False
 
@@ -174,7 +175,7 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
         unpinned_paths = []
 
         for tensor, path in zip(swap_info.tensors, swap_info.swap_paths):
-            if tensor.is_pinned():
+            if get_accelerator().is_pinned(tensor):
                 pinned_tensors.append(tensor)
                 pinned_paths.append(path)
             else:
@@ -184,7 +185,7 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
         return pinned_tensors, pinned_paths, unpinned_tensors, unpinned_paths
 
     def _swap_in_pinned_gradients(self, aio_handle, parameter, gradient_tensor):
-        swap_info = self.swap_params_info[id(parameter)]
+        swap_info = self.swap_params_info[OptimizerSwapper.parameter_id(parameter)]
         param_gradients = swap_info.swapped_gradients.values()
         swap_buffers = [gradient_tensor.narrow(0, grad.offset, grad.length) for grad in param_gradients]
         swap_paths = [grad.path for grad in param_gradients]
@@ -202,11 +203,11 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
         self._log_timers([SWAP_READ_GRADIENTS, SWAP_WAIT_GRADIENTS])
 
     def _swap_in_gradients(self, aio_handle, parameter, dest_buffer):
-        swap_info = self.swap_params_info.get(id(parameter), None)
+        swap_info = self.swap_params_info.get(OptimizerSwapper.parameter_id(parameter), None)
         if not (swap_info and swap_info.has_gradients()):
             return
 
-        assert dest_buffer.is_pinned()
+        assert get_accelerator().is_pinned(dest_buffer)
         assert parameter.numel() <= dest_buffer.numel()
 
         parameter.grad = dest_buffer.narrow(0, 0, parameter.numel())

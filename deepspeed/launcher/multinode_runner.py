@@ -56,17 +56,25 @@ class PDSHRunner(MultiNodeRunner):
     def backend_exists(self):
         return shutil.which('pdsh')
 
+    def parse_user_args(self):
+        processed_args = []
+        for arg in self.args.user_args:
+            # With pdsh, if we are passing a string as an argument, it will get
+            # split on whitespace. To avoid this and support strings that
+            # contain '"', we do this extra processing step:
+            if " " in arg:
+                arg = '"{}"'.format(arg.replace('"', '\\"'))
+            processed_args.append(arg)
+        return processed_args
+
     @property
     def name(self):
         return "pdsh"
 
-    def parse_user_args(self):
-        return list(map(lambda x: x if x.startswith("-") else f"'{x}'", self.args.user_args))
-
     def get_cmd(self, environment, active_resources):
         environment['PDSH_RCMD_TYPE'] = 'ssh'
         if self.args.ssh_port is not None:  # only specify ssh port if it is specified
-            environment["PDSH_SSH_ARGS_APPEND"] = f" -p {self.args.ssh_port}"
+            environment["PDSH_SSH_ARGS_APPEND"] += f" -p {self.args.ssh_port}"
 
         active_workers = ",".join(active_resources.keys())
         logger.info("Running on the following workers: %s" % active_workers)
@@ -278,6 +286,9 @@ class IMPIRunner(MultiNodeRunner):
         export_cmd += ['-genv', 'MASTER_PORT', str(self.args.master_port)]
         export_cmd += ['-genv', 'WORLD_SIZE', str(total_process_count)]
         export_cmd += ['-genv', 'LOCAL_SIZE', str(process_per_node)]
+
+        # turn off IMPI core binding, use deepspeed's own core binding
+        export_cmd += ['-genv', 'I_MPI_PIN', '0']
 
         export_cmd += ['-hosts']
         hosts = ""

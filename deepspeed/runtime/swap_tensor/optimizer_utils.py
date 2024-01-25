@@ -15,6 +15,7 @@ from deepspeed.runtime.swap_tensor.constants import *
 from deepspeed.runtime.swap_tensor.utils import swap_in_tensors, swap_out_tensors, \
     MIN_AIO_BYTES, AIO_ALIGNED_BYTES, get_sized_buffers
 from deepspeed.runtime.swap_tensor.utils import SwapBufferManager, SwapBufferPool
+from deepspeed.accelerator import get_accelerator
 
 
 class FlattenedTensorSwapInfo(object):
@@ -29,7 +30,7 @@ class OptimizerStateSwapInfo(object):
 
     def __init__(self, parameter, numel, base_folder):
         self.tensors = []
-        self.param_id = id(parameter)
+        self.param_id = OptimizerSwapper.parameter_id(parameter)
         self.swap_folder = base_folder
         self.swap_paths = []
         self.swapped_gradients = {}
@@ -49,7 +50,7 @@ class OptimizerStateSwapInfo(object):
     def _add_tensors(self, tensor_list):
         for t in tensor_list:
             self.tensors.append(t)
-            self.swap_paths.append(os.path.join(self.swap_folder, f'{id(t)}.tensor.swp'))
+            self.swap_paths.append(os.path.join(self.swap_folder, f'{OptimizerSwapper.parameter_id(t)}.tensor.swp'))
 
     def add_state_tensors(self, tensor_list):
         self.has_state_tensors = True
@@ -90,7 +91,7 @@ class OptimizerStateSwapInfo(object):
         return [grad.path for grad in self.swapped_gradients.values()]
 
     def get_unpinned_state_tensors(self):
-        return [t for t in self.tensors if not t.is_pinned()]
+        return [t for t in self.tensors if not get_accelerator().is_pinned(t)]
 
     def read_unswapped_gradients(self, dest_buffer):
         num_elem_count = 0
@@ -110,6 +111,10 @@ SWAP_OUT_GRADIENT_TIMER = 'swap_out_gradient'
 
 
 class OptimizerSwapper(object):
+
+    @staticmethod
+    def parameter_id(param):
+        return param.ds_id
 
     def __init__(self, swap_config, aio_config, base_folder, optimizer, largest_numel, device, dtype, timers):
         self.swap_config = swap_config
@@ -177,10 +182,10 @@ class OptimizerSwapper(object):
             self.timer_names.update(gradient_swapper.get_timer_names())
 
     def _swap_out_gradients(self, parameter, gradient_offsets, gradient_tensors, gradient_swapper):
-        if not id(parameter) in self.swap_params_info.keys():
+        if not OptimizerSwapper.parameter_id(parameter) in self.swap_params_info.keys():
             return
 
-        swap_info = self.swap_params_info[id(parameter)]
+        swap_info = self.swap_params_info[OptimizerSwapper.parameter_id(parameter)]
 
         swappable_tensors = []
         swappable_offsets = []
@@ -216,7 +221,7 @@ class OptimizerSwapper(object):
                                              fp16_pinned_buffers, fp32_parameters):
         assert len(fp32_parameters) == len(fp16_partitions_info)
         assert len(fp32_parameters) == len(fp16_num_elems)
-        assert all([buffer.is_pinned() for buffer in fp16_pinned_buffers])
+        assert all([get_accelerator().is_pinned(buffer) for buffer in fp16_pinned_buffers])
 
         fp32_swap_paths = self._get_swap_paths(parameters=fp32_parameters, num_elems=fp16_num_elems)
 
@@ -240,7 +245,7 @@ class OptimizerSwapper(object):
                 for i, tensor in enumerate(fp16_pinned_tensors):
                     true_index = curr_index + i
                     logger.info(
-                        f'swap_in_fp16_param: fp32_id = {id(fp32_parameters[true_index])} index = {true_index} orig_num_elem = {fp16_num_elems[true_index]}, swap_num_elem = {fp16_pinned_tensors[i].numel()}'
+                        f'swap_in_fp16_param: fp32_id = {OptimizerSwapper.parameter_id(fp32_parameters[true_index])} index = {true_index} orig_num_elem = {fp16_num_elems[true_index]}, swap_num_elem = {fp16_pinned_tensors[i].numel()}'
                     )
 
             swap_out_count = self._swap_out_fp16_params(aio_handle=aio_handle,
@@ -329,7 +334,7 @@ class OptimizerSwapper(object):
         if dist.get_rank() == 0 and SWAPPER_DEBUG_MODE:
             for i, tensor in enumerate(src_tensors):
                 logger.info(
-                    f'copy_in_fp16_param: fp32_id = {id(parameters[i])} index = {i}, swap_num_elem = {src_tensors[i].numel()}'
+                    f'copy_in_fp16_param: fp32_id = {OptimizerSwapper.parameter_id(parameters[i])} index = {i}, swap_num_elem = {src_tensors[i].numel()}'
                 )
 
         self.swap_buffer_manager.free(pinned_buffers)
@@ -419,8 +424,9 @@ class OptimizerSwapper(object):
             return []
 
         tensor_list = []
-        for value in self.optimizer.state[parameter].values():
+        for state_name, value in self.optimizer.state[parameter].items():
             if torch.is_tensor(value):
+                value.ds_id = state_name + '-' + parameter.ds_id
                 tensor_list.append(value)
 
         return tensor_list
@@ -432,7 +438,7 @@ class OptimizerSwapper(object):
                 swap_info.add_state_tensors(state_tensors)
 
     def _create_param_swap_info(self, parameter, numel):
-        param_id = id(parameter)
+        param_id = OptimizerSwapper.parameter_id(parameter)
         assert not param_id in self.swap_params_info
 
         self.swap_params_info[param_id] = OptimizerStateSwapInfo(parameter=parameter,
@@ -445,7 +451,7 @@ class OptimizerSwapper(object):
         return swap_info
 
     def _get_param_swap_info(self, parameter):
-        param_id = id(parameter)
+        param_id = OptimizerSwapper.parameter_id(parameter)
         swap_info = self.swap_params_info.get(param_id, None)
 
         if swap_info is not None:

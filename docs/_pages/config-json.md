@@ -427,6 +427,12 @@ Enabling and configuring ZeRO memory optimizations
 | ------------------------------------------------------------------------------------------------------------------- | ------- |
 | Copies the gradients to a contiguous buffer as they are produced. Avoids memory fragmentation during backward pass. | `True`  |
 
+<i>**load_from_fp32_weights**</i>: [boolean]
+
+| Description                                                                                                                                                                                                                          | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| Initialize fp32 master weights from fp32 copies in checkpoint (no precision loss) or from model's fp16 copies (with precision loss). This can be used to initialize optimizer state even when checkpoint is missing optimizer state. | `True`  |
+
 <i>**grad_hooks**</i>: [boolean]
 
 | Description                                                                                                                               | Default |
@@ -570,6 +576,7 @@ Note that if the value of "device" is not specified or not supported, an asserti
     "device": "[cpu|nvme]",
     "nvme_path": "/local_nvme",
     "pin_memory": [true|false],
+    "ratio": 0.3,
     "buffer_count": 4,
     "fast_init": false
   }
@@ -591,6 +598,12 @@ Note that if the value of "device" is not specified or not supported, an asserti
 | Description                                                                                          | Default |
 | ---------------------------------------------------------------------------------------------------- | ------- |
 | Offload to page-locked CPU memory. This could boost throughput at the cost of extra memory overhead. | `false` |
+
+***ratio***: [float]
+
+| Description                                                         | Default |
+| ------------------------------------------------------------------- | ------- |
+| the ratio of parameters updating (i.e. optimizer step) on CPU side. | 1       |
 
 ***buffer_count***: [integer]
 
@@ -650,7 +663,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 | Description                                                                                                                                                                                                                                                                                                                                                     | Default |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Unused parameters in modules may be unexpected in static networks, but could be normal in dynamic networks. This controls whether or not training should terminate with an error message when unused parameters are detected. This is set to `False` by default, which means unused parameters are ignored and training continues. Now is just used in stage 2. | `True`  |
+| Unused parameters in modules may be unexpected in static networks, but could be normal in dynamic networks. This controls whether or not training should terminate with an error message when unused parameters are detected. This is set to `True` by default, which means unused parameters are ignored and training continues. Now is just used in stage 2. | `True`  |
 
 ### Logging
 

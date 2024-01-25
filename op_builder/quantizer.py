@@ -22,7 +22,7 @@ class QuantizerBuilder(CUDAOpBuilder):
             'csrc/quantization/pt_binding.cpp',
             'csrc/quantization/fake_quantizer.cu',
             'csrc/quantization/quantize.cu',
-            'csrc/quantization/quantize_int4.cu',
+            'csrc/quantization/quantize_intX.cu',
             'csrc/quantization/dequantize.cu',
             'csrc/quantization/swizzled_quantize.cu',
             'csrc/quantization/quant_reduce.cu',
@@ -32,4 +32,7 @@ class QuantizerBuilder(CUDAOpBuilder):
         return ['csrc/includes']
 
     def extra_ldflags(self):
-        return ['-lcurand']
+        if not self.is_rocm_pytorch():
+            return ['-lcurand']
+        else:
+            return []

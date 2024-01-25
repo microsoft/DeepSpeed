@@ -3,9 +3,9 @@
 
 # DeepSpeed Team
 
-from pydantic import Field, validator
 from enum import Enum
 from pathlib import Path
+from deepspeed.pydantic_v1 import Field, validator
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel, pp_int
 
 
@@ -92,3 +92,6 @@ class DeepSpeedZeroOffloadOptimizerConfig(DeepSpeedConfigModel):
     def set_pipeline(cls, field_value, values):
         values["pipeline"] = field_value or values.get("pipeline", False)
         return field_value
+
+    ratio: float = Field(1.0, ge=0.0, le=1.0)
+    """ Percentage of offloaded optimizer states to CPU Adam. Only valid with ZeRO Stage 3."""
