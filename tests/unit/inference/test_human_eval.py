@@ -8,6 +8,7 @@ import os
 import torch
 from deepspeed.accelerator import get_accelerator
 
+
 @pytest.mark.evaluation
 @pytest.mark.parametrize("model_name", ["facebook/opt-6.7b"])
 def test_human_eval(model_name):
