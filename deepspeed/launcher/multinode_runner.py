@@ -234,9 +234,9 @@ class MPICHRunner(MultiNodeRunner):
             helper_args.append("--no_python")
 
         helper_cmd = str(os.path.dirname(os.path.realpath(__file__))) + '/launcher_helper.py'
-        herlper_cmd = [helper_cmd] + helper_args + [self.user_script] + self.user_arguments
+        helper_cmd = [helper_cmd] + helper_args + [self.user_script] + self.user_arguments
 
-        return mpirun_cmd + export_cmd + python_exec + herlper_cmd
+        return mpirun_cmd + export_cmd + python_exec + helper_cmd
 
 
 class IMPIRunner(MultiNodeRunner):
