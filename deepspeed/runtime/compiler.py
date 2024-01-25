@@ -44,6 +44,10 @@ def get_backend_fn(backend_name: str):
 
 
 class CompileConfig(DeepSpeedConfigModel):
+    """
+    [EXPERIMENTAL] This configuration enables users to activate `torch.compile` within DeepSpeed and customize its settings.
+    Please be aware that these features and API designs are experimental and subject to change.
+    """
 
     enabled: bool = False
     """
