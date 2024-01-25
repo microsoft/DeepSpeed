@@ -35,7 +35,7 @@ jobs:
       - name: Clone Human Eval
         run: |
           git clone --depth=1 https://github.com/openai/human-eval.git
-          sed -i 's/.*#                         exec(check_program, exec_globals).*/                        exec(check_program, exec_globals)/' human-eval/execution.py
+          sed -i 's/.*#                         exec(check_program, exec_globals).*/                        exec(check_program, exec_globals)/' human-eval/human_eval/execution.py
           cd human-eval
           git rev-parse --short HEAD
           python -m pip install .
