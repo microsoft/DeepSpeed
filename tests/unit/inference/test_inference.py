@@ -739,8 +739,7 @@ def test_human_eval(model_name):
 
     def generate_samples(generation_function):
         samples = [
-            dict(task_id=task_id, completion=generation_function(problems[task_id]["prompt"]))
-            for task_id in problems
+            dict(task_id=task_id, completion=generation_function(problems[task_id]["prompt"])) for task_id in problems
             for _ in range(num_samples_per_task)
         ]
         return samples
@@ -748,7 +747,10 @@ def test_human_eval(model_name):
     # Initializing HuggingFace Pipeline
     local_rank = os.getenv("LOCAL_RANK", "0")
     device = torch.device(get_accelerator().device_name(local_rank))
-    base_pipe = pipeline(model=model_name, device=torch.device(get_accelerator().device_name(local_rank)), max_length=256, return_full_text=False)
+    base_pipe = pipeline(model=model_name,
+                         device=torch.device(get_accelerator().device_name(local_rank)),
+                         max_length=256,
+                         return_full_text=False)
 
     # Initializing DeepSpeed-MII Pipeline
     mii_pipe = mii.pipeline(model_name)
