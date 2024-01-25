@@ -650,7 +650,7 @@ class TestAutoTensorParallelism(DistributedTest):
     (
         ["gpt2", "EleutherAI/gpt-neo-2.7B"],
         #["gpt2", "EleutherAI/gpt-j-6b"], # Causing OOM for this test
-        #["gpt2", "gpt2-xl"],
+        ["gpt2", "gpt2-xl"],
     ),
 )
 @pytest.mark.parametrize("task", ["lambada_standard"])
@@ -700,8 +700,6 @@ class TestLMCorrectness(DistributedTest):
         bs_output = lm_eval.evaluator.evaluate(lm=lm, task_dict=task_dict)
         get_accelerator().synchronize()
         bs_time = time.time() - start
-
-        #pytest.set_trace()
 
         getattr(lm, model_family).to("cpu")
         ds_model = deepspeed.init_inference(
