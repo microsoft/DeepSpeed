@@ -10,12 +10,15 @@
 namespace {
 
 // Utils to prepack FP16 weights into continuous FP6 values.
-// TODO: debug it.
 
+// TODO: debug according to the qtorch float_quantize funcion:
+// https://github.com/Tiiiger/QPyTorch/blob/f58bba72113e696099ef3e15e06cf421a06ff289/qtorch/quant/quant_cuda/float_kernel.cu#L41
 void Cast_FP16_FP6(uint16_t* FP16x4, uint8_t* FP6x4)
 {
+    // Constants for FP6
     constexpr int exponent_bits_fp6 = 3;
     constexpr int mantissa_bits_fp6 = 2;
+    constexpr int exp_bias_fp6 = (1 << (exponent_bits_fp6 - 1)) - 1;
     // Constants for FP16
     constexpr int exponent_bits_fp16 = 5;
     constexpr int mantissa_bits_fp16 = 10;
@@ -25,11 +28,13 @@ void Cast_FP16_FP6(uint16_t* FP16x4, uint8_t* FP6x4)
 
     for (int i = 0; i < 4; ++i) {
         int sign = (FP16x4[i] >> 15);
-        int exp = (FP16x4[i] >> mantissa_bits_fp16) &
-                  ((1 << exponent_bits_fp16) - 1);               // Extracting exponent
-        int mant = FP16x4[i] & ((1 << mantissa_bits_fp16) - 1);  // Extracting mantissa
+        // Extracting exponent represented in FP16
+        int exp = (FP16x4[i] << 1 >> (mantissa_bits_fp16 + 1)) & ((1 << exponent_bits_fp16) - 1);
+        // Extracting mantissa represented in FP16
+        int mant = FP16x4[i] & ((1 << mantissa_bits_fp16) - 1);
 
-        int new_exp = exp - exp_bias_fp16;
+        int new_exp = exp - exp_bias_fp16 + exp_bias_fp6;
+        new_exp &= ((1 << exponent_bits_fp6) - 1);  // To double check.
         int new_mant = mant >> (mantissa_bits_fp16 - mantissa_bits_fp6);
 
         fp6_temp[i] = (sign << (exponent_bits_fp6 + mantissa_bits_fp6)) |

@@ -87,6 +87,8 @@ def fp_quantize(
     scales = scales.to(torch.float16).to(orig_device)
     # Now the dequantized value is quantized_fake_fp6 * scales
 
+    # TODO: the conversion between float and half may make the fp6 value not accurate. To test and debug.
+
     return quantized_fake_fp6, scales
 
 
@@ -173,11 +175,11 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         if param.ndim == 1:  # bias, do nothing
             return InferenceParameter.initialize(param)
 
-        if self.DEBUG:
-            self.weight = param.clone().cpu()
-
         quantized_fake_fp6, scales = self.quantizer(
             param, num_bits=6, exp_bits=3)
+
+        if self.DEBUG:
+            self.weight_dequantized = quantized_fake_fp6 * scales
 
         # This is for debugging, will delete after release.
         assert (quantized_fake_fp6.dtype == torch.float16)
@@ -210,21 +212,27 @@ class QuantizedWf6Af16Linear(DSLinearBase):
             self._act_fn(output, b)
 
         if self.DEBUG:
-            orig_device = self.weight.device
-            self.weight = self.weight.to(output.device)
+            orig_device = self.weight_dequantized.device
+            self.weight_dequantized = self.weight_dequantized.to(output.device)
             ground_truth = torch.nn.functional.linear(
-                hidden_states, self.weight, b)
-            self.weight = self.weight.to(orig_device)
+                hidden_states, self.weight_dequantized, b)
+            self.weight_dequantized = self.weight_dequantized.to(orig_device)
             shape = (hidden_states.shape[0], self.M, self.K)
             if self._is_gated:
                 ismatch = torch.allclose(
                     ground_truth, staging_output, rtol=1e-3)
+                abs_diff = torch.max(torch.abs(ground_truth - staging_output))
+                rel_diff = torch.max(
+                    torch.abs((ground_truth - staging_output) / ground_truth))
                 print(f"Linear shape: {shape}:\n\tIs correct: {ismatch}. "
-                      f"Max diff: {torch.max(torch.abs(ground_truth - staging_output))}")
+                      f"Max diff (abs, rel): ({abs_diff}, {rel_diff})")
             else:
                 ismatch = torch.allclose(ground_truth, output, rtol=1e-3)
+                abs_diff = torch.max(torch.abs(ground_truth - output))
+                rel_diff = torch.max(
+                    torch.abs((ground_truth - output) / ground_truth))
                 print(f"Linear shape: {shape}:\n\tIs correct: {ismatch}. "
-                      f"Max diff: {torch.max(torch.abs(ground_truth - output))}")
+                      f"Max diff (abs, rel): ({abs_diff}, {rel_diff})")
 
         return output
 
