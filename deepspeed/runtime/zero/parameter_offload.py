@@ -6,6 +6,7 @@
 import sys
 import torch
 from collections import OrderedDict
+from deepspeed.utils import z3_leaf_module
 from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.partition_parameters import _init_external_params
@@ -383,9 +384,10 @@ class DeepSpeedZeRoOffload(object):
 
         #print(f"{module.__class__} : {module.id}")
 
-        for child in module.children():
-            count[0] = count[0] + 1
-            self._register_hooks_recursively(child, count=count)
+        if not z3_leaf_module(module):
+            for child in module.children():
+                count[0] = count[0] + 1
+                self._register_hooks_recursively(child, count=count)
 
         @instrument_w_nvtx
         def _pre_forward_module_hook(module, *args):
@@ -490,11 +492,10 @@ class DeepSpeedZeRoOffload(object):
         # post backward hook
         self.backward_hooks.append(module.register_forward_pre_hook(_post_backward_module_hook))
 
+    @torch.no_grad()
     def pre_sub_module_forward_function(self, sub_module):
         see_memory_usage(f"Before sub module function {sub_module.__class__.__name__}", force=False)
-        prev_grad_state = torch.is_grad_enabled(
-        )  # we don't want to enable grad for sub modules fetching, yet the subfunction need to know if grad is enabled
-        torch.set_grad_enabled(False)
+
         global FWD_MODULE_STACK
         FWD_MODULE_STACK.append(sub_module)
 
@@ -502,8 +503,8 @@ class DeepSpeedZeRoOffload(object):
         param_coordinator.trace_prologue(sub_module)
         if param_coordinator.is_record_trace():
             param_coordinator.record_module(sub_module)
-        param_coordinator.fetch_sub_module(sub_module, forward=prev_grad_state)
-        torch.set_grad_enabled(prev_grad_state)
+        param_coordinator.fetch_sub_module(sub_module, forward=True)
+
         see_memory_usage(f"Before sub module function {sub_module.__class__.__name__} after fetch", force=False)
 
     @torch.no_grad()
@@ -512,7 +513,7 @@ class DeepSpeedZeRoOffload(object):
                          force=False)
 
         param_coordinator = self.get_param_coordinator(training=sub_module.training)
-        param_coordinator.release_sub_module(sub_module, backward=False)
+        param_coordinator.release_sub_module(sub_module)
 
         see_memory_usage(f"After sub module function {sub_module.__class__.__name__}  {sub_module.id} after release",
                          force=False)
@@ -533,7 +534,7 @@ class DeepSpeedZeRoOffload(object):
             f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} before release",
             force=False)
 
-        self.get_param_coordinator(training=True).release_sub_module(sub_module, backward=True)
+        self.get_param_coordinator(training=True).release_sub_module(sub_module)
 
         see_memory_usage(
             f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} after release",
