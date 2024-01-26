@@ -50,10 +50,9 @@ def fp_quantize(
         min_value is not None and max_value is not None)
 
     assert input.dtype == torch.float16
-    
-    print(f"device of input: {input.device}")
 
-    input = input.to(torch.float32)
+    orig_device = input.device
+    input = input.to(torch.float32).cuda()
     if num_bits == 6:
         if exp_bits == 3:  # this is defulat
             q_range = 28
@@ -84,8 +83,8 @@ def fp_quantize(
     quantized_fake_fp6 = float_quantize(
         scaled_input, exp_bits, man_bits, rounding="nearest")
     quantized_fake_fp6 = quantized_fake_fp6.reshape(
-        input_shape).contiguous().to(torch.float16)
-    scales = scales.to(torch.float16)
+        input_shape).contiguous().to(torch.float16).to(orig_device)
+    scales = scales.to(torch.float16).to(orig_device)
     # Now the dequantized value is quantized_fake_fp6 * scales
 
     return quantized_fake_fp6, scales
@@ -159,6 +158,7 @@ class QuantizedWf6Af16Linear(DSLinearBase):
 
         self.quantizer = fp_quantize
 
+        # This is for debugging, will delete after release.
         self.DEBUG = True
 
     def transform_param(self, param: torch.Tensor) -> InferenceParameter:
