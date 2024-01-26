@@ -10,7 +10,7 @@ from unit.common import DistributedTest
 from unit.simple_model import random_dataloader
 
 import deepspeed
-from deepspeed.utils import set_z3_leaf_modules, z3_leaf_module
+from deepspeed.utils import set_z3_leaf_modules, unset_z3_leaf_modules, get_z3_leaf_modules, z3_leaf_module
 
 
 class ChooseModuleByCounter(torch.nn.Module):
@@ -120,4 +120,24 @@ class TestSetZ3LeafModule(DistributedTest):
             raise AssertionError(
                 "Expected RuntimeError: inputs with requires_grad=False is not supported for a leaf module")
         except RuntimeError as e:
+            pass
+
+    def test_set_unset_leaf_modules(self):
+        hidden_dim = 128
+        model = ChooseModuleByCounter(hidden_dim)
+        assert len(set_z3_leaf_modules(model, [torch.nn.ModuleList])) == 1, \
+            "Expected only one module to be set as a leaf module"
+        assert len(get_z3_leaf_modules(model)) == 1, "Expected there is only one leaf module"
+
+        assert len(unset_z3_leaf_modules(model, [torch.nn.ModuleList])) == 1, \
+            "Expected only one module to be unset as a leaf module"
+        assert len(get_z3_leaf_modules(model)) == 0, "Expected there is no leaf module"
+
+    def test_set_no_match_class(self):
+        hidden_dim = 128
+        model = ChooseModuleByCounter(hidden_dim)
+        try:
+            set_z3_leaf_modules(model, [torch.nn.Conv2d])
+            raise AssertionError("Expected error that no module is set as a leaf module")
+        except ValueError as e:
             pass
