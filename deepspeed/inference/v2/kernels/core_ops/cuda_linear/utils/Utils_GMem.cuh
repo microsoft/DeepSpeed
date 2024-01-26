@@ -5,27 +5,6 @@
 #include "Configs.h"
 #include "PTX_cp.async.cuh"
 
-template<int NUM_INT4>
-__device__ __forceinline__ void CopyFromGlobalToReg_ByPassL1
-                                (uint32_t* RegArray, 
-                                 const uint4* SourceGlobalAddr, 
-                                 bool pred_guard = true) {
-    // Setting GMem pointer
-    int lane_id = threadIdx.x % WARP_SIZE;
-    SourceGlobalAddr += lane_id;
-    #pragma unroll
-    for(int i=0; i<NUM_INT4/WARP_SIZE; i++) {
-        asm volatile( "{\n"
-                      "  .reg .pred p;\n"
-                      "  setp.ne.b32 p, %5, 0;\n"
-                      "  @p ld.global.cg.v4.u32 {%0, %1, %2, %3}, [%4];\n"
-                      "}\n"
-                      : "=r"(RegArray[0+i*4]), "=r"(RegArray[1+i*4]), "=r"(RegArray[2+i*4]), "=r"(RegArray[3+i*4])
-                      : "l"(SourceGlobalAddr), "r"((int)pred_guard) ); 
-        SourceGlobalAddr += WARP_SIZE;
-    }                                
-}
-
 /* 
  * Copying A1/A2 from global memory to shared memory.
  * Usually 1024 or 2048 Bytes
@@ -51,17 +30,15 @@ __device__ __forceinline__ void CopyFromGlobalToShared_A(uint32_t* SPTR,
 
 }
 
-
 /* 
  * Copying 64 Quant Scales (FP16) from global memory to shared memory.
  */
 __device__ __forceinline__ void CopyFromGlobalToShared_Scales(half* SPTR_QuantScales,
-                                                              const half* GPTR_A_Scales,
-                                                              bool pred_guard = true) {
+                                                              const half* GPTR_A_Scales) {
     int lane_id         = threadIdx.x % WARP_SIZE;
-    GPTR_A_Scales      += lane_id * 8; // 8 FP16 (16 Bytes) per thread
-    SPTR_QuantScales   += lane_id * 8; // 8 FP16 (16 Bytes) per thread
-    cp_async<16>( SPTR_QuantScales, GPTR_A_Scales, pred_guard && (lane_id<8));
+    int Offset_Shared   = lane_id*2; 
+    int Offset_Global   = lane_id/4 + (lane_id%4)*16;
+    for(int i=0; i<2; i++)  SPTR_QuantScales[Offset_Shared+i] = GPTR_A_Scales[Offset_Global+i*8];
 }
 
 /* 
@@ -69,15 +46,16 @@ __device__ __forceinline__ void CopyFromGlobalToShared_Scales(half* SPTR_QuantSc
  * (2) Copying 64 rows * X  columns of FP16 values, originally in column major
  * 16 Bytes per thread -> 512 Bytes per WARP = 4 line per WARP = 1 line per 8 Threads
  */
-template<int NumOfLinesToCopy, int BLOCK_WARPS>
+template<int MaxNumOfLinesToCopy, int BLOCK_WARPS>
 __device__ __forceinline__ void CopyFromGlobalToShared(half __restrict__ (*SharedPTR)[WARP_K+PADDING_SHARED_MEM_FOR_B_8],
                                                        const half*       GlobalPTR,
                                                        const int         GlobalStride,
+                                                       const int         NumOfLinesLeft,        // To support arbitrary N dimensions.
                                                        bool              Pred = true) {
     // static parameters: 1 Group (8 Threads) can copy 1 line (64 FP16) each time
     const int NumOfThreads  = BLOCK_WARPS * WARP_SIZE;
     const int NumOfGroups   = NumOfThreads / 8; 
-    const int MaxIteration  = (NumOfLinesToCopy-1) / NumOfGroups + 1;
+    const int MaxIteration  = (MaxNumOfLinesToCopy-1) / NumOfGroups + 1;
     // runtime variables   
     const int line_id       = threadIdx.x / 8;
     const int line_offset   = (threadIdx.x%8) * 8;
@@ -86,7 +64,7 @@ __device__ __forceinline__ void CopyFromGlobalToShared(half __restrict__ (*Share
     SharedPTR += line_id;
     #pragma unroll
     for (int i = 0; i < MaxIteration; i++) {
-        bool AsyncCopyPred = (line_id+i*NumOfGroups) < NumOfLinesToCopy && Pred;
+        bool AsyncCopyPred = (line_id+i*NumOfGroups) < NumOfLinesLeft && Pred;
         cp_async<16>( &(*SharedPTR)[line_offset], GlobalPTR, AsyncCopyPred);
         //
         GlobalPTR += NumOfGroups * GlobalStride;

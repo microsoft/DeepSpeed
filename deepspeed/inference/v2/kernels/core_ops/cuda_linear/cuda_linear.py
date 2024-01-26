@@ -24,7 +24,7 @@ class CUDAWf6Af16Linear(DSKernelBase):
         self.inf_module.create_handle()
         self.kernel = self.inf_module.cuda_wf6af16_linear
 
-    def __call__(self, output: torch.Tensor, hidden_states: torch.Tensor, weights_4bit: torch.Tensor, weights_2bit: torch.Tensor, scale: torch.Tensor, M, N, K) -> torch.Tensor:
+    def __call__(self, output: torch.Tensor, hidden_states: torch.Tensor, weights_2bit: torch.Tensor, weights_4bit: torch.Tensor, scale: torch.Tensor, M, N, K) -> torch.Tensor:
         """
         Matmul kernel as implemented via CUDA directly. The input must be 2D or larger. If
         n-dimensional, the leading dimensions are folded into each other:
@@ -54,8 +54,8 @@ class CUDAWf6Af16Linear(DSKernelBase):
             split_k = split_k_dict[M]
         workspace = self.get_workspace(
             M, N, K, split_k, torch.float, hidden_states.device)
-        self.kernel(output, hidden_states, weights_4bit,
-                    weights_2bit, scale, workspace, M, N, K, split_k)
+        self.kernel(output, hidden_states, weights_2bit,
+                    weights_4bit, scale, workspace, M, N, K, split_k)
 
     def get_workspace(self, M: int, N: int, K: int, split_k: int, dtype, device) -> torch.Tensor:
         """

@@ -14,12 +14,6 @@
 #include "utils/Utils_GMem.cuh"
 #include "utils/Utils_Core.cuh"
 
-__device__ __forceinline__ void ExchangePTRs(void** PTR1, void** PTR2) {
-  void* tmp_PTR = *PTR1;
-  *PTR1          = *PTR2;
-  *PTR2          = tmp_PTR;
-}
-
 /*
  * C = A*B
  * A: row major with ahead-of-time layout transformation, FP6
@@ -27,7 +21,7 @@ __device__ __forceinline__ void ExchangePTRs(void** PTR1, void** PTR2) {
  * C: col major, FP16
  */ 
  template<typename TilingConfig, typename OutputDataType>
-__global__ void QUANT_GEMM_Kernel(const uint4* Weight1, const uint4* Weight2, const half* Scales, const int QUANT_GROUP_SIZE_DIVIDED_BY_64,
+__global__ void QUANT_GEMM_Kernel(const uint4* Weight1, const uint4* Weight2, const half* Scales,
                                   const half *B,
                                   OutputDataType* C,
                                   const size_t M_Global, const size_t N_Global, const size_t K_Global,
@@ -40,13 +34,14 @@ __global__ void QUANT_GEMM_Kernel(const uint4* Weight1, const uint4* Weight2, co
   #endif
   extern __shared__ __align__(128) half smem[];   // Dynamic shared memory for FP16 A tiles， 128 Bytes aligned
   half (*smem_array)[WARP_K+PADDING_SHARED_MEM_FOR_B_8] = reinterpret_cast<half (*)[WARP_K+PADDING_SHARED_MEM_FOR_B_8]> ( smem + (SMEM_SIZE_A1_TILE+SMEM_SIZE_A2_TILE)/2 ); // Dynamic shared memory for FP16 B tiles
-  __shared__ half QuantScales[64*TilingConfig::BLOCK_WARPS*2];  // static shared memory for quantization scales, 64 row per warp * 4 warps * 2 double buffer = 1 KB
+  __shared__ half QuantScales[64*TilingConfig::BLOCK_WARPS];  // static shared memory for quantization scales, 64 row per warp * 4 warps = 512 Bytes
   // Thread Block Mapping, considering SplitK
   const size_t BatchID = blockIdx.y / (M_Global/TilingConfig::TILE_M);
   const size_t x = blockIdx.x;                                     // Output Block ID: (BlockID_Row = y; BlockID_Col = x )
   const size_t y = blockIdx.y % (M_Global/TilingConfig::TILE_M);   // Output Block ID: (BlockID_Row = y; BlockID_Col = x )
   const size_t Tile_Start_M = y * TilingConfig::TILE_M;
   const size_t Tile_Start_N = x * TilingConfig::TILE_N;
+  const size_t NumColumnToCopy = (N_Global-Tile_Start_N) < TilingConfig::TILE_N ? (N_Global-Tile_Start_N) : TilingConfig::TILE_N;
   const size_t NumBlock_K = K_Global/TilingConfig::TILE_K;
   const size_t AverageNumBlock_K = NumBlock_K/Split_K;
   const size_t ExtraNumBlock_K   = NumBlock_K - AverageNumBlock_K * Split_K;
@@ -85,18 +80,13 @@ __global__ void QUANT_GEMM_Kernel(const uint4* Weight1, const uint4* Weight2, co
     WARP_StartGPTR_A2 += SMEM_SIZE_IN_BYTES_PER_WARP_A2/16;
   }
   // Global Memory Address for Matrix A (QuantScale) /////////////////////////////////////////////////////////////////////
-  #ifdef DEBUG_MODE
-    assert(NumBlock_K%QUANT_GROUP_SIZE_DIVIDED_BY_64==0);
-  #endif
-  const half* TB_StartGPTR_A_Scale    = Scales + (y*TilingConfig::BLOCK_ROW_WARPS)* (NumBlock_K/QUANT_GROUP_SIZE_DIVIDED_BY_64) * 64;
-  const half* WARP_StartGPTR_A_Scales = TB_StartGPTR_A_Scale + WARP_i * (NumBlock_K/QUANT_GROUP_SIZE_DIVIDED_BY_64) * 64;
-  size_t      UnitID_K                = WARP_Start_UnitID_K;
-  size_t      QuantGroup_K            = UnitID_K / QUANT_GROUP_SIZE_DIVIDED_BY_64;
-  CopyFromGlobalToShared_Scales(QuantScales+WARP_i*64, WARP_StartGPTR_A_Scales + QuantGroup_K*64);
+  const half* TB_StartGPTR_A_Scale    = Scales + (y*TilingConfig::BLOCK_ROW_WARPS) * 64;
+  const half* WARP_StartGPTR_A_Scales = TB_StartGPTR_A_Scale + WARP_i * 64;
+  CopyFromGlobalToShared_Scales(QuantScales+WARP_i*64, WARP_StartGPTR_A_Scales);
   // Copying B tile from Global to Shared, considering SplitK /////////////////////////////////////////////////////////////
   const half *BTile_GPTR = B + Tile_Start_N * K_Global + StartBlockID_K * TilingConfig::TILE_K;
   for(int i=0; i<PIPELINE_LEVEL_GMEM-1; i++) {
-    CopyFromGlobalToShared<TilingConfig::TILE_N, TilingConfig::BLOCK_WARPS> (smem_array+i*TilingConfig::TILE_N, BTile_GPTR, K_Global);
+    CopyFromGlobalToShared<TilingConfig::TILE_N, TilingConfig::BLOCK_WARPS> (smem_array+i*TilingConfig::TILE_N, BTile_GPTR, K_Global, NumColumnToCopy);
     BTile_GPTR += TilingConfig::TILE_K;    
   }
   // Register Allocation for A,B, and C, Initilazed to Zeros /////////////////////////////////////////////////////////////////////
@@ -115,13 +105,8 @@ __global__ void QUANT_GEMM_Kernel(const uint4* Weight1, const uint4* Weight2, co
   __syncthreads();
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // For Quantization Scales
-  half *read_WARP_SPTR_Scales  = QuantScales + WARP_i*64;
-  half *write_WARP_SPTR_Scales = read_WARP_SPTR_Scales + 64*TilingConfig::BLOCK_WARPS;
-  // 4 Registers per thread for Quantization Scales, Preparing Scales for the first loop even it is not the start of a new quant group (SplitK) ///////////
-  uint32_t Scales_RPTR[4];
-  ExtractFromSharedToReg_Scales(Scales_RPTR, read_WARP_SPTR_Scales);
-
+  uint32_t Scales_RPTR[4]; // 4 Registers per thread for Quantization Scales
+  ExtractFromSharedToReg_Scales(Scales_RPTR, QuantScales + WARP_i*64);
 #ifdef PIPELINE_LEVEL_SMEM
   // Initializing the Software Pipeline: writing registers. ////////////////////////////////////////////////////////////////////////////////////////////////
   initialize_mma_slice<TilingConfig>(a, b, AFrag_2BIT_SPTR, AFrag_4BIT_SPTR, smem_array, Scales_RPTR);
@@ -147,25 +132,11 @@ __global__ void QUANT_GEMM_Kernel(const uint4* Weight1, const uint4* Weight2, co
     half __restrict__ (*write_SPTR)[WARP_K+PADDING_SHARED_MEM_FOR_B_8] = smem_array + ((tile_id_k+(PIPELINE_LEVEL_GMEM-1))  % PIPELINE_LEVEL_GMEM) * TilingConfig::TILE_N;
     //
     bool GlobalCopy = (tile_id_k+PIPELINE_LEVEL_GMEM-1) < NumIter;
-    /*
-    // Optionally Updating QuantScale for A Tile
-    UnitID_K                = WARP_Start_UnitID_K + tile_id_k;
-    QuantGroup_K            = UnitID_K / QUANT_GROUP_SIZE_DIVIDED_BY_64;
-    //bool SwitchQuantGroup   = (UnitID_K % QUANT_GROUP_SIZE_DIVIDED_BY_64 == (QUANT_GROUP_SIZE_DIVIDED_BY_64-1));
-    bool SwitchQuantGroup = false;
-    if(SwitchQuantGroup)    CopyFromGlobalToShared_Scales(write_WARP_SPTR_Scales, WARP_StartGPTR_A_Scales + (QuantGroup_K+1)*64, GlobalCopy); // If the next loop need the new scales, load the scales from global to shared.
-    //bool IsNewQuantGroup    = (UnitID_K % QUANT_GROUP_SIZE_DIVIDED_BY_64 == 0); 
-    bool IsNewQuantGroup = false;
-    if(IsNewQuantGroup)     ExtractFromSharedToReg_Scales(Scales_RPTR, read_WARP_SPTR_Scales); // If the curent loop need the new scales, load the scales from shared to registers.
-    // Exchanging the PTRs for double buffers
-    if(SwitchQuantGroup)  ExchangePTRs((void**)&read_WARP_SPTR_Scales, (void**)&write_WARP_SPTR_Scales);  // SPTRs for Scales
-    */
-
     // Copying A tile from Global to Register, Bypassing L1, using double-buffer  
     CopyFromGlobalToShared_A<SMEM_SIZE_IN_BYTES_PER_WARP_A1>(write_SPTR_Frag1, WARP_StartGPTR_A1, GlobalCopy);
     CopyFromGlobalToShared_A<SMEM_SIZE_IN_BYTES_PER_WARP_A2>(write_SPTR_Frag2, WARP_StartGPTR_A2, GlobalCopy);
     // copying B tile from GlobalMemory to SharedMemory
-    CopyFromGlobalToShared<TilingConfig::TILE_N, TilingConfig::BLOCK_WARPS> (write_SPTR, BTile_GPTR, K_Global, GlobalCopy);
+    CopyFromGlobalToShared<TilingConfig::TILE_N, TilingConfig::BLOCK_WARPS> (write_SPTR, BTile_GPTR, K_Global, NumColumnToCopy, GlobalCopy);
     cp_async_group_commit();
   #ifdef PIPELINE_LEVEL_SMEM
     core_mma_slice<TilingConfig>(c, a, b, read_SPTR_Frag1, read_SPTR_Frag2, read_SPTR, Scales_RPTR, 1); // read_SPTR_Frag1, read_SPTR_Frag2 are different for each WARP; read_SPTR is shared among WARPs
@@ -199,8 +170,6 @@ __global__ void QUANT_GEMM_Kernel(const uint4* Weight1, const uint4* Weight2, co
   __syncthreads();
   // Now that shared memory contains all the D tiles, stream them to global memory.
   OutputDataType* BlockGlobalPTR = C + BatchID*(M_Global*N_Global) + Tile_Start_M + Tile_Start_N*M_Global;
-
-  size_t NumColumnToCopy = (N_Global-Tile_Start_N) < TilingConfig::TILE_N ? (N_Global-Tile_Start_N) : TilingConfig::TILE_N;
   for(size_t i=warpId; i<NumColumnToCopy; i+=TilingConfig::BLOCK_WARPS)    // i-th column
     #pragma unroll
     for(size_t j=threadIdx.x%WARP_SIZE; j<TilingConfig::TILE_M; j+=WARP_SIZE) // j-th row

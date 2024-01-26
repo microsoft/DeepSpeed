@@ -11,8 +11,8 @@
 
 void cuda_wf6af16_linear(torch::Tensor& output,
                          torch::Tensor& hidden_states,
-                         torch::Tensor& weights_4bit,
                          torch::Tensor& weights_2bit,
+                         torch::Tensor& weights_4bit,
                          torch::Tensor& scale,
                          torch::Tensor& workspace,
                          int M,
@@ -21,5 +21,3 @@ void cuda_wf6af16_linear(torch::Tensor& output,
                          int split_k);
 
 std::vector<torch::Tensor> preprocess_weight(torch::Tensor& Weight);
-
-torch::Tensor preprocess_scales(torch::Tensor& Scale, int M, int K);

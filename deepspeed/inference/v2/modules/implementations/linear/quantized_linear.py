@@ -50,6 +50,8 @@ def fp_quantize(
         min_value is not None and max_value is not None)
 
     assert input.dtype == torch.float16
+    
+    print(f"device of input: {input.device}")
 
     input = input.to(torch.float32)
     if num_bits == 6:
@@ -154,7 +156,6 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         self.inf_module = InferenceCoreBuilder().load()
         self.inf_module.create_handle()
         self.preprocess_weight = self.inf_module.preprocess_weight
-        self.preprocess_scales = self.inf_module.preprocess_scales
 
         self.quantizer = fp_quantize
 
@@ -187,13 +188,12 @@ class QuantizedWf6Af16Linear(DSLinearBase):
 
         # According to the optimization in Quant-LLM, the scales need to be multiplied by 2^12.
         scales = scales * (2 ** 12)
-        scales = self.preprocess_scales(scales, self.M, self.K)
 
-        return InferenceParameter.initialize(weights_4bit, weights_2bit=weights_2bit, scales=scales)
+        return InferenceParameter.initialize(weights_2bit, weights_4bit=weights_4bit, scales=scales)
 
     def forward(self, hidden_states: torch.Tensor, w: torch.Tensor, b: Optional[torch.Tensor] = None) -> torch.Tensor:
-        weights_4bit = w
-        weights_2bit = w.weights_2bit
+        weights_2bit = w
+        weights_4bit = w.weights_4bit
         scales = w.scales
         output = empty_from(
             self._output, (hidden_states.shape[0], self._config.out_channels))
@@ -201,12 +201,12 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         if self._is_gated:
             staging_output = empty_from(
                 self._double_buffer, (hidden_states.shape[0], self.M))
-            self._linear_impl(staging_output, hidden_states, weights_4bit,
-                              weights_2bit, scales, self.M, hidden_states.shape[0], self.K)
+            self._linear_impl(staging_output, hidden_states, weights_2bit,
+                              weights_4bit, scales, self.M, hidden_states.shape[0], self.K)
             self._act_fn(output, staging_output, b)
         else:
-            self._linear_impl(output, hidden_states, weights_4bit,
-                              weights_2bit, scales, self.M, hidden_states.shape[0], self.K)
+            self._linear_impl(output, hidden_states, weights_2bit,
+                              weights_4bit, scales, self.M, hidden_states.shape[0], self.K)
             self._act_fn(output, b)
 
         if self.DEBUG:

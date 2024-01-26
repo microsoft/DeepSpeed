@@ -10,7 +10,6 @@ static void Kernel_QuantGEMM_Ex(cudaStream_t stream,
                                 const uint4* Weight1,
                                 const uint4* Weight2,
                                 const half* Scales,
-                                const int QUANT_GROUP_SIZE_DIVIDED_BY_64,
                                 const half* B,
                                 OutputDataType* C,
                                 const size_t M_Global,
@@ -21,19 +20,11 @@ static void Kernel_QuantGEMM_Ex(cudaStream_t stream,
 #ifdef DEBUG_MODE
     printf("\n");
     printf("Launcher.cu->Kernel_QuantGEMM_Ex():\n");
-    printf("M: %d, N: %d, K: %d, SplitK: %d, QUANT_GROUP_SIZE_DIVIDED_BY_64: %d\n",
-           M_Global,
-           N_Global,
-           K_Global,
-           Split_K,
-           QUANT_GROUP_SIZE_DIVIDED_BY_64);
+    printf("M: %d, N: %d, K: %d, SplitK: %d\n", M_Global, N_Global, K_Global, Split_K);
     printf("TILE_M: %d, TILE_K: %d, TILE_N: %d\n",
            TilingConfig::TILE_M,
            TilingConfig::TILE_K,
            TilingConfig::TILE_N);
-    // assert(N_Global % TilingConfig::TILE_N          == 0);
-    // assert(M_Global*Split_K % TilingConfig::TILE_M  == 0);
-    // assert(K_Global % TilingConfig::TILE_K          == 0);
 #endif
     static size_t SHMEM_SZ =
         max(TilingConfig::SMEM_SIZE_B_TILE + SMEM_SIZE_A1_TILE + SMEM_SIZE_A2_TILE,
@@ -59,17 +50,8 @@ static void Kernel_QuantGEMM_Ex(cudaStream_t stream,
         SHMEM_SZ);
     printf("\n");
 #endif
-    QUANT_GEMM_Kernel<TilingConfig, OutputDataType>
-        <<<GridDim, BlockDim, SHMEM_SZ, stream>>>(Weight1,
-                                                  Weight2,
-                                                  Scales,
-                                                  QUANT_GROUP_SIZE_DIVIDED_BY_64,
-                                                  B,
-                                                  C,
-                                                  M_Global,
-                                                  N_Global,
-                                                  K_Global,
-                                                  Split_K);
+    QUANT_GEMM_Kernel<TilingConfig, OutputDataType><<<GridDim, BlockDim, SHMEM_SZ, stream>>>(
+        Weight1, Weight2, Scales, B, C, M_Global, N_Global, K_Global, Split_K);
 }
 
 /*
@@ -83,7 +65,6 @@ cudaError_t QuantGEMM_API(
     const uint4* Weight1,
     const uint4* Weight2,
     const half* Scales,
-    const int QUANT_GROUP_SIZE_DIVIDED_BY_64,
     const half* B,
     half* C,
     const size_t M_Global,
@@ -92,10 +73,9 @@ cudaError_t QuantGEMM_API(
     float* Reduction_Workspace,  // Identical workspace for all QuantGEMM kernel launches
     int Split_K)
 {
-    if (N_Global <= 0) {
-        printf("QuantLLM_API Error: Unsupported N dimension %ld!\n", N_Global);
-        return cudaErrorUnknown;
-    }
+    // assert(M_Global % TilingConfig::TILE_M == 0);
+    // assert(K_Global % TilingConfig::TILE_K == 0);
+    assert(N_Global > 0);
 
     // Work around to support more N shapes: Pretending that the input is 2^n
     size_t N_PowerOf2;
@@ -110,86 +90,32 @@ cudaError_t QuantGEMM_API(
     if (Split_K == 1) {
         switch (N_PowerOf2) {
             case 8:
-                Kernel_QuantGEMM_Ex<TilingConfig<4, 1, 1>, half>(stream,
-                                                                 Weight1,
-                                                                 Weight2,
-                                                                 Scales,
-                                                                 QUANT_GROUP_SIZE_DIVIDED_BY_64,
-                                                                 B,
-                                                                 C,
-                                                                 M_Global,
-                                                                 N_Global,
-                                                                 K_Global,
-                                                                 Split_K);
+                Kernel_QuantGEMM_Ex<TilingConfig<4, 1, 1>, half>(
+                    stream, Weight1, Weight2, Scales, B, C, M_Global, N_Global, K_Global, Split_K);
                 break;
             case 16:
-                Kernel_QuantGEMM_Ex<TilingConfig<4, 1, 2>, half>(stream,
-                                                                 Weight1,
-                                                                 Weight2,
-                                                                 Scales,
-                                                                 QUANT_GROUP_SIZE_DIVIDED_BY_64,
-                                                                 B,
-                                                                 C,
-                                                                 M_Global,
-                                                                 N_Global,
-                                                                 K_Global,
-                                                                 Split_K);
+                Kernel_QuantGEMM_Ex<TilingConfig<4, 1, 2>, half>(
+                    stream, Weight1, Weight2, Scales, B, C, M_Global, N_Global, K_Global, Split_K);
                 break;
             case 32:
-                Kernel_QuantGEMM_Ex<TilingConfig<4, 1, 4>, half>(stream,
-                                                                 Weight1,
-                                                                 Weight2,
-                                                                 Scales,
-                                                                 QUANT_GROUP_SIZE_DIVIDED_BY_64,
-                                                                 B,
-                                                                 C,
-                                                                 M_Global,
-                                                                 N_Global,
-                                                                 K_Global,
-                                                                 Split_K);
+                Kernel_QuantGEMM_Ex<TilingConfig<4, 1, 4>, half>(
+                    stream, Weight1, Weight2, Scales, B, C, M_Global, N_Global, K_Global, Split_K);
                 break;
             case 64:
-                Kernel_QuantGEMM_Ex<TilingConfig<4, 1, 8>, half>(stream,
-                                                                 Weight1,
-                                                                 Weight2,
-                                                                 Scales,
-                                                                 QUANT_GROUP_SIZE_DIVIDED_BY_64,
-                                                                 B,
-                                                                 C,
-                                                                 M_Global,
-                                                                 N_Global,
-                                                                 K_Global,
-                                                                 Split_K);
+                Kernel_QuantGEMM_Ex<TilingConfig<4, 1, 8>, half>(
+                    stream, Weight1, Weight2, Scales, B, C, M_Global, N_Global, K_Global, Split_K);
                 break;
             case 128:
-                Kernel_QuantGEMM_Ex<TilingConfig<4, 1, 8>, half>(stream,
-                                                                 Weight1,
-                                                                 Weight2,
-                                                                 Scales,
-                                                                 QUANT_GROUP_SIZE_DIVIDED_BY_64,
-                                                                 B,
-                                                                 C,
-                                                                 M_Global,
-                                                                 N_Global,
-                                                                 K_Global,
-                                                                 Split_K);
+                Kernel_QuantGEMM_Ex<TilingConfig<4, 1, 8>, half>(
+                    stream, Weight1, Weight2, Scales, B, C, M_Global, N_Global, K_Global, Split_K);
                 break;
             default:
                 if (N_PowerOf2 % 128 != 0) {
-                    printf("QuantLLM_API Error: Unsupported N dimension %ld!\n", N_PowerOf2);
+                    printf("QuantLLM_API Error: Unsupported N dimension %d!\n", N_PowerOf2);
                     return cudaErrorUnknown;
                 }
-                Kernel_QuantGEMM_Ex<TilingConfig<4, 1, 8>, half>(stream,
-                                                                 Weight1,
-                                                                 Weight2,
-                                                                 Scales,
-                                                                 QUANT_GROUP_SIZE_DIVIDED_BY_64,
-                                                                 B,
-                                                                 C,
-                                                                 M_Global,
-                                                                 N_Global,
-                                                                 K_Global,
-                                                                 Split_K);
+                Kernel_QuantGEMM_Ex<TilingConfig<4, 1, 8>, half>(
+                    stream, Weight1, Weight2, Scales, B, C, M_Global, N_Global, K_Global, Split_K);
                 break;
         }
     } else {
@@ -199,7 +125,6 @@ cudaError_t QuantGEMM_API(
                                                                   Weight1,
                                                                   Weight2,
                                                                   Scales,
-                                                                  QUANT_GROUP_SIZE_DIVIDED_BY_64,
                                                                   B,
                                                                   Reduction_Workspace,
                                                                   M_Global,
@@ -212,7 +137,6 @@ cudaError_t QuantGEMM_API(
                                                                   Weight1,
                                                                   Weight2,
                                                                   Scales,
-                                                                  QUANT_GROUP_SIZE_DIVIDED_BY_64,
                                                                   B,
                                                                   Reduction_Workspace,
                                                                   M_Global,
@@ -225,7 +149,6 @@ cudaError_t QuantGEMM_API(
                                                                   Weight1,
                                                                   Weight2,
                                                                   Scales,
-                                                                  QUANT_GROUP_SIZE_DIVIDED_BY_64,
                                                                   B,
                                                                   Reduction_Workspace,
                                                                   M_Global,
@@ -238,7 +161,6 @@ cudaError_t QuantGEMM_API(
                                                                   Weight1,
                                                                   Weight2,
                                                                   Scales,
-                                                                  QUANT_GROUP_SIZE_DIVIDED_BY_64,
                                                                   B,
                                                                   Reduction_Workspace,
                                                                   M_Global,
@@ -251,7 +173,6 @@ cudaError_t QuantGEMM_API(
                                                                   Weight1,
                                                                   Weight2,
                                                                   Scales,
-                                                                  QUANT_GROUP_SIZE_DIVIDED_BY_64,
                                                                   B,
                                                                   Reduction_Workspace,
                                                                   M_Global,
@@ -261,14 +182,13 @@ cudaError_t QuantGEMM_API(
                 break;
             default:
                 if (N_PowerOf2 % 128 != 0) {
-                    printf("QuantLLM_API Error: Unsupported N dimension %ld!\n", N_PowerOf2);
+                    printf("QuantLLM_API Error: Unsupported N dimension %d!\n", N_PowerOf2);
                     return cudaErrorUnknown;
                 }
                 Kernel_QuantGEMM_Ex<TilingConfig<4, 1, 8>, float>(stream,
                                                                   Weight1,
                                                                   Weight2,
                                                                   Scales,
-                                                                  QUANT_GROUP_SIZE_DIVIDED_BY_64,
                                                                   B,
                                                                   Reduction_Workspace,
                                                                   M_Global,

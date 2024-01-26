@@ -3,25 +3,84 @@
 
 // DeepSpeed Team
 
-#include "cuda_linear_kernels.h"
-#include "GenMatrix_QuantLLM.h"
+#include <ATen/cuda/CUDAContext.h>
 
-void Launch_QuantGEMM(torch::Tensor output,
-                      torch::Tensor Weight1,  // 2bit
-                      torch::Tensor Weight2,  // 4bit
-                      torch::Tensor B,
-                      torch::Tensor Scales,
-                      const int M_Global,
-                      const int N_Global,
-                      const int K_Global,
-                      const int Split_K,
-                      torch::Tensor workspace);
+#include "cuda_linear_kernels.h"
+
+namespace {
+
+// Utils to prepack FP16 weights into continuous FP6 values.
+// TODO: debug it.
+
+void Cast_FP16_FP6(uint16_t* FP16x4, uint8_t* FP6x4)
+{
+    constexpr int exponent_bits_fp6 = 3;
+    constexpr int mantissa_bits_fp6 = 2;
+    // Constants for FP16
+    constexpr int exponent_bits_fp16 = 5;
+    constexpr int mantissa_bits_fp16 = 10;
+    constexpr int exp_bias_fp16 = (1 << (exponent_bits_fp16 - 1)) - 1;
+
+    uint8_t fp6_temp[4];
+
+    for (int i = 0; i < 4; ++i) {
+        int sign = (FP16x4[i] >> 15);
+        int exp = (FP16x4[i] >> mantissa_bits_fp16) &
+                  ((1 << exponent_bits_fp16) - 1);               // Extracting exponent
+        int mant = FP16x4[i] & ((1 << mantissa_bits_fp16) - 1);  // Extracting mantissa
+
+        int new_exp = exp - exp_bias_fp16;
+        int new_mant = mant >> (mantissa_bits_fp16 - mantissa_bits_fp6);
+
+        fp6_temp[i] = (sign << (exponent_bits_fp6 + mantissa_bits_fp6)) |
+                      (new_exp << mantissa_bits_fp6) | new_mant;
+    }
+    // Pack the values
+    FP6x4[0] = fp6_temp[0] << 2 | (fp6_temp[1] >> 4);
+    FP6x4[1] = (fp6_temp[1] & 0x0F) << 4 | (fp6_temp[2] >> 2);
+    FP6x4[2] = (fp6_temp[2] & 0x03) << 6 | fp6_temp[3];
+}
+
+/*
+ * Inputs:
+ * (1) uint16_t Weight_16bit[M*K]
+ * Outputs:
+ * (1) unsigned char Weight_6bit[M*K*6/8]
+ */
+void PackMatrix_Weight_FP6(uint16_t* Weight_16bit, uint8_t* Weight_6bit, size_t M, size_t K)
+{
+#pragma omp parallel for
+    for (auto m = 0; m < M; m++) {
+        uint8_t* ptr_6bit = Weight_6bit + m * K * 6 / 8;
+        uint16_t* ptr_16bit = Weight_16bit + m * K;
+        for (auto k = 0; k < K; k += 4) {
+            Cast_FP16_FP6(ptr_16bit, ptr_6bit);
+            ptr_16bit += 4;
+            ptr_6bit += 3;
+        }
+    }
+}
+
+}  // namespace
+
+cudaError_t QuantGEMM_API(
+    cudaStream_t stream,
+    const uint4* Weight1,
+    const uint4* Weight2,
+    const half* Scales,
+    const half* B,
+    half* C,
+    const size_t M_Global,
+    const size_t N_Global,
+    const size_t K_Global,
+    float* Reduction_Workspace,  // Identical workspace for all QuantGEMM kernel launches
+    int Split_K);
 
 void cuda_wf6af16_linear(torch::Tensor& output,
                          torch::Tensor& hidden_states,
-                         torch::Tensor& weights_4bit,
                          torch::Tensor& weights_2bit,
-                         torch::Tensor& scale,
+                         torch::Tensor& weights_4bit,
+                         torch::Tensor& scales,
                          torch::Tensor& workspace,
                          int M,
                          int N,
@@ -31,10 +90,29 @@ void cuda_wf6af16_linear(torch::Tensor& output,
     TORCH_CHECK(weights_2bit.device().type() == torch::kCUDA, "weight_2bit must be on CUDA");
     TORCH_CHECK(weights_4bit.device().type() == torch::kCUDA, "weight_4bit must be on CUDA");
     TORCH_CHECK(hidden_states.device().type() == torch::kCUDA, "X must be on CUDA");
-    TORCH_CHECK(scale.device().type() == torch::kCUDA, "scale must be on CUDA");
-    Launch_QuantGEMM(
-        output, weights_2bit, weights_4bit, hidden_states, scale, M, N, K, split_k, workspace);
+    TORCH_CHECK(scales.device().type() == torch::kCUDA, "scales must be on CUDA");
+
+    auto status = QuantGEMM_API(at::cuda::getCurrentCUDAStream(),
+                                (uint4*)(weights_2bit.data_ptr<uint8_t>()),
+                                (uint4*)(weights_4bit.data_ptr<uint8_t>()),
+                                (half*)(scales.data_ptr<at::Half>()),
+                                (half*)(hidden_states.data_ptr<at::Half>()),
+                                (half*)(output.data_ptr<at::Half>()),
+                                M,
+                                N,
+                                K,
+                                workspace.data_ptr<float>(),
+                                split_k);
+    if (status != cudaSuccess) {
+        AT_ERROR("QuantGEMM_API failed with error: ", cudaGetErrorString(status));
+    }
 }
+
+void GenMatrix_Weight_FP6(unsigned char* Weight_6bit,
+                          unsigned char* Weight_2bit,
+                          unsigned char* Weight_4bit,
+                          size_t M,
+                          size_t K);
 
 /*
  * Inputs:
@@ -67,28 +145,4 @@ std::vector<torch::Tensor> preprocess_weight(torch::Tensor& Weight)
                          K);
 
     return {Weight_2bit, Weight_4bit};
-}
-
-/*
- * Inputs:
- * (1) torch::Tensor Scale_In[M, K/GroupSize] in FP16
- * Outputs:
- * (1) torch::Tensor Scale_Out[M, K/GroupSize] in FP16
- */
-
-torch::Tensor preprocess_scales(torch::Tensor& Scale, int M, int K)
-{
-    // Preprocess scales
-    TORCH_CHECK(Scale.dim() == 2, "scale must be 2-dimensional");
-    TORCH_CHECK(Scale.size(0) == M, "scale must have same M as weight");
-    TORCH_CHECK(Scale.is_contiguous(), "scale must be contiguous");
-    TORCH_CHECK(Scale.device().type() == torch::kCPU, "scale must be on CPU");
-    TORCH_CHECK(Scale.scalar_type() == torch::kFloat16, "scale must be FP16");
-    auto GroupSize = K / Scale.size(1);
-    TORCH_CHECK(GroupSize % 64 == 0, "GroupSize must be multiple of 64");
-    auto New_Scale = torch::empty_like(Scale);
-    auto Scale_out = New_Scale.data_ptr<at::Half>();
-    auto Scale_in = New_Scale.data_ptr<at::Half>();
-    GenMatrix_Scale_FP16((uint8_t*)Scale_out, (uint8_t*)Scale_in, M, K, GroupSize);
-    return New_Scale;
 }
