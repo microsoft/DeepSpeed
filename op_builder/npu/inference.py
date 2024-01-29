@@ -4,10 +4,10 @@
 # DeepSpeed Team
 
 from enum import IntEnum
-import torch
 from .builder import NPUOpBuilder
 
 try:
+    import torch
     import torch_npu
 except ImportError as e:
     pass
