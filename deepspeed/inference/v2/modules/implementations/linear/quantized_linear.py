@@ -82,12 +82,12 @@ def fp_quantize(
 
     quantized_fake_fp6 = float_quantize(
         scaled_input, exp_bits, man_bits, rounding="nearest")
+    # TODO: it seems the `float_quantize` will not clamp the value into the range of FP6 correctly.
+    # To double check it. If it is true, we need to clamp it manually.
     quantized_fake_fp6 = quantized_fake_fp6.reshape(
         input_shape).contiguous().to(torch.float16).to(orig_device)
     scales = scales.to(torch.float16).to(orig_device)
     # Now the dequantized value is quantized_fake_fp6 * scales
-
-    # TODO: the conversion between float and half may make the fp6 value not accurate. To test and debug.
 
     return quantized_fake_fp6, scales
 
@@ -199,7 +199,6 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         scales = w.scales
         output = empty_from(
             self._output, (hidden_states.shape[0], self._config.out_channels))
-        # N = hidden_states.shape[0]
         if self._is_gated:
             staging_output = empty_from(
                 self._double_buffer, (hidden_states.shape[0], self.M))

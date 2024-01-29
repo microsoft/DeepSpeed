@@ -9,36 +9,112 @@
 
 namespace {
 
+// For bit-level debugging.
+template <typename T>
+void printBits(T num)
+{
+    char bits[sizeof(T) * 8 + 1] = {'\0'};
+    for (int bit = 0; bit < (sizeof(T) * 8); bit++) {
+        bits[sizeof(T) * 8 - 1 - bit] = '0' + (num & 0x01);
+        num = num >> 1;
+    }
+    printf("%s\n", bits);
+}
+
+void printBits(half num)
+{
+    char bits[sizeof(half) * 8 + 1] = {'\0'};
+    auto int_num = *reinterpret_cast<uint16_t*>(&num);
+    for (int bit = 0; bit < (sizeof(half) * 8); bit++) {
+        bits[sizeof(half) * 8 - 1 - bit] = '0' + (int_num & 0x01);
+        int_num = int_num >> 1;
+    }
+    printf("%s\n", bits);
+}
+
 // Utils to prepack FP16 weights into continuous FP6 values.
 
-// TODO: debug according to the qtorch float_quantize funcion:
+// TODO: the following cast seems not the same with that in qtorch:
 // https://github.com/Tiiiger/QPyTorch/blob/f58bba72113e696099ef3e15e06cf421a06ff289/qtorch/quant/quant_cuda/float_kernel.cu#L41
 void Cast_FP16_FP6(uint16_t* FP16x4, uint8_t* FP6x4)
 {
     // Constants for FP6
-    constexpr int exponent_bits_fp6 = 3;
-    constexpr int mantissa_bits_fp6 = 2;
-    constexpr int exp_bias_fp6 = (1 << (exponent_bits_fp6 - 1)) - 1;
+    constexpr int exponent_nbits_fp6 = 3;
+    constexpr int mantissa_nbits_fp6 = 2;
+    constexpr int exp_bias_fp6 = (1 << (exponent_nbits_fp6 - 1)) - 1;
+    // constexpr int max_exponent_fp6 = (1 << exponent_nbits_fp6) - 2;
     // Constants for FP16
-    constexpr int exponent_bits_fp16 = 5;
-    constexpr int mantissa_bits_fp16 = 10;
-    constexpr int exp_bias_fp16 = (1 << (exponent_bits_fp16 - 1)) - 1;
+    constexpr int exponent_nbits_fp16 = 5;
+    constexpr int mantissa_nbits_fp16 = 10;
+    constexpr int exp_bias_fp16 = (1 << (exponent_nbits_fp16 - 1)) - 1;
 
-    uint8_t fp6_temp[4];
+    int fp6_temp[4];
 
     for (int i = 0; i < 4; ++i) {
-        int sign = (FP16x4[i] >> 15);
-        // Extracting exponent represented in FP16
-        int exp = (FP16x4[i] << 1 >> (mantissa_bits_fp16 + 1)) & ((1 << exponent_bits_fp16) - 1);
+        uint16_t source = FP16x4[i];
+        // It is not safe to do shift operation on uint16_t. So we promote it to int.
+        int source_promote = int(source);
+
+        int sign = (source_promote >> 15);
+        // Extracting exponent represented in FP16. The sign mask 0x7FFF is '0111 1111 1111 1111'
+        int exp = (source_promote & 0x7FFF) >> mantissa_nbits_fp16;
         // Extracting mantissa represented in FP16
-        int mant = FP16x4[i] & ((1 << mantissa_bits_fp16) - 1);
+        int mant = source_promote & ((1 << mantissa_nbits_fp16) - 1);
 
-        int new_exp = exp - exp_bias_fp16 + exp_bias_fp6;
-        new_exp &= ((1 << exponent_bits_fp6) - 1);  // To double check.
-        int new_mant = mant >> (mantissa_bits_fp16 - mantissa_bits_fp6);
+        int new_exp;
+        int new_mant;
+        if (exp == 0 || exp == ((1 << exponent_nbits_fp16) - 1)) {
+            // When all bits of exponent are zero, the calculation of the float value will not
+            // include the spacific value of the exponent. Thus we can just copy the value to the
+            // new variable after bit cutting.
+            // TODO: a problem here is that the mantissa actually affects the results when all bits
+            // of exponent are one. We need to consider this case in the next version if it matters
+            // in practice.
+            new_exp = exp >> (exponent_nbits_fp16 - exponent_nbits_fp6);
+            new_mant = mant >> (mantissa_nbits_fp16 - mantissa_nbits_fp6);
+        } else {
+            int target_exp = int(exp) - int(exp_bias_fp16);
+            constexpr int min_exp_fp6 = -((1 << (exponent_nbits_fp6 - 1)) - 2);
+            constexpr int max_exp_fp6 = (1 << (exponent_nbits_fp6 - 1)) - 1;
+            if (target_exp < min_exp_fp6) {
+                // The exponent is too small to be represented in FP6. We need to round it to zero.
+                // Keep the sign.
+                // TODO: do we round it to zero or the smallest FP6 value?
+                new_exp = 0;
+                new_mant = 0;
+            } else if (target_exp > max_exp_fp6) {
+                // The exponent is too large to be represented in FP6. We need to round it to the
+                // largest value. Keep the sign.
+                new_exp = max_exp_fp6 + exp_bias_fp6;
+                new_mant = (1 << mantissa_nbits_fp6) - 1;
+            } else {
+                new_exp = target_exp + exp_bias_fp6;
+                new_mant = mant >> (mantissa_nbits_fp16 - mantissa_nbits_fp6);
+            }
 
-        fp6_temp[i] = (sign << (exponent_bits_fp6 + mantissa_bits_fp6)) |
-                      (new_exp << mantissa_bits_fp6) | new_mant;
+#if 0
+            if (target_exp < min_exp_fp6) {
+                uint16_t casted = (sign << (exponent_nbits_fp6 + mantissa_nbits_fp6)) |
+                                (new_exp << mantissa_nbits_fp6) | new_mant;
+                printf("%f exp too small, new value is: %f\n",
+                    __half2float(*((half*)(&source))),
+                    __half2float(*((half*)(&casted))));
+                printBits(source);
+                printBits(casted);
+            } else if (target_exp > max_exp_fp6) {
+                uint16_t casted = (sign << (exponent_nbits_fp6 + mantissa_nbits_fp6)) |
+                                (new_exp << mantissa_nbits_fp6) | new_mant;
+                printf("%f exp too large, new value is: %f\n",
+                    __half2float(*((half*)(&source))),
+                    __half2float(*((half*)(&casted))));
+                printBits(source);
+                printBits(casted);
+            }
+#endif
+        }
+
+        fp6_temp[i] = (sign << (exponent_nbits_fp6 + mantissa_nbits_fp6)) |
+                      (new_exp << mantissa_nbits_fp6) | new_mant;
     }
     // Pack the values
     FP6x4[0] = fp6_temp[0] << 2 | (fp6_temp[1] >> 4);
