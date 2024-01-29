@@ -42,6 +42,15 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def is_synchronized_device(self):
         return False
 
+    def use_host_timers(self):
+        return self.is_synchronized_device()
+
+    def has_data_dependency_resolving(self):
+        return self.is_synchronized_device()
+
+    def has_memory_backpressure_handling(self):
+        return self.is_synchronized_device()
+
     # Device APIs
     def device_name(self, device_index=None):
         if device_index is None:

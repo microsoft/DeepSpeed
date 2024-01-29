@@ -303,13 +303,13 @@ class PartitionedParameterCoordinator:
 
                     self.__inflight_param_registry.pop(param).wait()
 
-                    if not get_accelerator().is_synchronized_device():
+                    if not get_accelerator().has_memory_backpressure_handling():
                         event = get_accelerator().Event()
                         event.record()
                         self.__ongoing_fetch_events.append(event)
 
             assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
-        if not get_accelerator().is_synchronized_device():
+        if not get_accelerator().has_data_dependency_resolving():
             get_accelerator().current_stream().wait_stream(self.__allgather_stream)
         self.__profiler.stop_event(wait_event_name, wait_numel)
 
