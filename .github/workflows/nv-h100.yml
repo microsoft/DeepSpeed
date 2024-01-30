@@ -37,6 +37,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          apt-get update
           apt-get install -y libaio-dev
           apt-get install -y pdsh
 
