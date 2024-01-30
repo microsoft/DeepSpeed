@@ -30,6 +30,7 @@ jobs:
           nvidia-smi
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+          apt-get install -y libaio-dev
 
       - name: Install transformers
         run: |
