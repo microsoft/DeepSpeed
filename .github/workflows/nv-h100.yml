@@ -37,8 +37,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get install -y libaio-dev
-          sudo apt-get install -y pdsh
+          apt-get install -y libaio-dev
+          apt-get install -y pdsh
 
       - name: Install transformers
         run: |
