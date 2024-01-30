@@ -13,6 +13,7 @@ from deepspeed.accelerator import get_accelerator
 from unit.runtime.compile.common import DistributedCompileTest
 
 custom_backend_called = False
+custom_compler_fn_called = False
 
 if deepspeed.compiler.is_compile_supported():
     # PyTorch v1 does not have torch.fx
@@ -20,6 +21,11 @@ if deepspeed.compiler.is_compile_supported():
         global custom_backend_called
         custom_backend_called = True
         return gm.forward
+
+    def custom_compiler_fn(module: torch.nn.Module):
+        global custom_compler_fn_called
+        custom_compler_fn_called = True
+        return torch.compile(module)
 
 
 @pytest.fixture
@@ -95,3 +101,13 @@ class TestConfigLoad(DistributedCompileTest):
         engine.set_torch_compile_kwargs({"mode": "default"})
         self._run_model(engine)
         assert "mode" in engine.torch_compile_kwargs
+
+    @pytest.mark.skipif(not deepspeed.compiler.is_compile_supported(), reason="torch.compile is not supported")
+    def test_set_compiler_fn(self, base_config):
+        global custom_compler_fn_called
+        custom_compler_fn_called = False
+
+        engine = self._init_engine(base_config)
+        engine.set_compiler_fn(custom_compiler_fn)
+        self._run_model(engine)
+        assert custom_compler_fn_called
