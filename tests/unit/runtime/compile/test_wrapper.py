@@ -65,7 +65,7 @@ class TestCustomMethod(DistributedCompileTest):
         x = torch.rand(train_batch_size, hidden_dim, device=device, dtype=dtype)
         engine(x)
 
-    @pytest.mark.skipif(not deepspeed.compiler.is_compile_supported(), reason="torch.compile is not supported")
+    @pytest.mark.skipif(not deepspeed.is_compile_supported(), reason="torch.compile is not supported")
     def test_custom_function(self, base_config):
         test_value = 10
 
