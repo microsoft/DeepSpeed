@@ -82,13 +82,6 @@ class CompileConfig(DeepSpeedConfigModel):
             raise ValueError("torch.compile is not supported on this version of PyTorch.")
         return field_value
 
-    @validator("backend")
-    def validate_backend(cls, field_value, values):
-        if is_compile_supported():
-            return get_backend_fn(field_value)
-
-        return field_value
-
 
 class CompiledModuleWrapper(torch.nn.Module):
 
@@ -101,7 +94,7 @@ class CompiledModuleWrapper(torch.nn.Module):
         modules['wrapped'] = module
         self.__dict__['wrapped'] = module
         self._is_compiled = False
-        self._backend = compile_config.backend
+        self._backend = get_backend_fn(compile_config.backend)
         self._compile_kwargs = compile_config.kwargs
         self._compiler_fn = None
 
@@ -116,12 +109,7 @@ class CompiledModuleWrapper(torch.nn.Module):
             You can directly pass a function that works as a backend.
             See also `backend` field in `CompileConfig` for more details.
         """
-        if isinstance(backend, str):
-            self._backend = get_backend_fn(backend)
-        elif callable(backend):
-            self._backend = backend
-        else:
-            raise ValueError(f"backend for torch.compile must be a string or Callable: {backend}")
+        self._backend = get_backend_fn(backend)
 
     def set_torch_compile_kwargs(self, kwargs: Dict[str, Union[str, Any]]) -> None:
         """Set kwargs for torch.compile. Kwargs that are set in DeepSpeed config will be overwritten.
