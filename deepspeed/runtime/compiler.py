@@ -30,17 +30,27 @@ def get_compile_config(param_dict):
     return CompileConfig(**compile_config_dict)
 
 
-def get_backend_fn(backend_name: str):
-    # Get module name from backend name
-    module_name = '.'.join(backend_name.split('.')[:-1])
-    fn_name = backend_name.split('.')[-1]
+def get_backend_fn(backend: Union[str, Callable]) -> Union[str, Callable]:
+    if isinstance(backend, Callable):
+        return backend
 
-    try:
-        module = importlib.import_module(module_name)
-        backend_fn = getattr(module, fn_name)
-    except ImportError:
-        raise ValueError(f"Could not import module {module_name} for torch.compile backend.")
-    return backend_fn
+    elif isinstance(backend, str):
+        if backend in torch._dynamo.list_backends():
+            return backend
+
+        # Get module name from backend name
+        module_name = '.'.join(backend.split('.')[:-1])
+        fn_name = backend.split('.')[-1]
+
+        try:
+            module = importlib.import_module(module_name)
+            backend_fn = getattr(module, fn_name)
+        except ImportError:
+            raise ValueError(
+                f"The backend {backend} is not in the list of available backends and could not be imported.")
+        return backend_fn
+
+    raise ValueError(f"backend for torch.compile must be a string or Callable: {backend}")
 
 
 class CompileConfig(DeepSpeedConfigModel):
@@ -75,11 +85,7 @@ class CompileConfig(DeepSpeedConfigModel):
     @validator("backend")
     def validate_backend(cls, field_value, values):
         if is_compile_supported():
-            if isinstance(field_value, str):
-                if field_value not in torch._dynamo.list_backends():
-                    return get_backend_fn(field_value)
-            elif not callable(field_value):
-                raise ValueError(f"backend for torch.compile must be a string or Callable: {field_value}")
+            return get_backend_fn(field_value)
 
         return field_value
 
@@ -126,8 +132,7 @@ class CompiledModuleWrapper(torch.nn.Module):
         """
 
         if "backend" in kwargs:
-            self.set_backend(kwargs["backend"])
-            del kwargs["backend"]
+            raise ValueError("backend cannot be set as compile kwargs. Use set_backend instead.")
         self._compile_kwargs.update(kwargs)
 
     def set_compiler_fn(self, compiler_fn: Callable) -> None:
