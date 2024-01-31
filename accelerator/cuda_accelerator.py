@@ -196,10 +196,6 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def supported_dtypes(self):
         supported_dtypes = [torch.float, torch.half, torch.bfloat16]
-        if self.is_fp16_supported():
-            supported_dtypes.append(torch.half)
-        if self.is_bf16_supported():
-            supported_dtypes.append(torch.bfloat16)
         return supported_dtypes
 
     # Misc
