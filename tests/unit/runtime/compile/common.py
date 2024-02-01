@@ -4,13 +4,90 @@
 # DeepSpeed Team
 
 import pytest
+import random
+import os
+import numpy as np
+from copy import deepcopy
 
+import torch
 import torch.multiprocessing as mp
-from deepspeed.accelerator import get_accelerator
+from torch.nn.parallel import DistributedDataParallel as DDP
 
+import deepspeed
+from deepspeed.accelerator import get_accelerator
+from deepspeed.runtime.zero import GatheredParameters
+
+from unit.simple_model import SimpleModel
 from unit.common import DistributedTest, get_master_port
 
 TIMEOUT = 600
+
+
+def enable_determinism(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    get_accelerator().manual_seed(seed)
+    get_accelerator().manual_seed_all(seed)
+
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+    torch.use_deterministic_algorithms(True)
+
+
+def write_to_file(msg):
+    with open("debug_msg.txt", "a") as f:
+        f.write(f"{msg}\n")
+
+
+def compare_with_ddp(self, config, dtype):
+    iteration = 5
+    hidden_dim = 10
+    RTOL = 1e-1
+    ATOL = 1e-3
+
+    enable_determinism(123)
+
+    device = torch.device(get_accelerator().current_device_name())
+    model = SimpleModel(hidden_dim)
+
+    i = get_accelerator().current_device()
+    ddp_model = DDP(deepcopy(model).to(device=device, dtype=torch.float), device_ids=[i], output_device=i)
+    ddp_optimizer = torch.optim.Adam(ddp_model.parameters(), lr=config["optimizer"]["params"]["lr"])
+
+    if config["zero_optimization"]["stage"] == 3:
+        with deepspeed.zero.Init(config_dict_or_path=config):
+            ds_model = SimpleModel(hidden_dim)
+        with GatheredParameters(ds_model.parameters(), modifier_rank=0):
+            for p1, p2 in zip(ds_model.parameters(), model.parameters()):
+                p1.data.copy_(p2.data)
+    else:
+        ds_model = deepcopy(model)
+
+    ds_engine, ds_optimizer, _, _ = deepspeed.initialize(config=config,
+                                                         model=ds_model,
+                                                         model_parameters=ds_model.parameters())
+
+    train_batch_size = config["train_micro_batch_size_per_gpu"]
+
+    xs = [torch.randn(train_batch_size, hidden_dim, device=device, dtype=dtype) for _ in range(iteration)]
+    ys = [torch.randn_like(x) for x in xs]
+
+    for x, y in zip(xs, ys):
+        ddp_loss = ddp_model(x.float(), y.float())
+        ds_loss = ds_engine(x, y)
+
+        write_to_file(f"ddp_loss: {ddp_loss} ds_loss: {ds_loss}")
+        assert torch.allclose(ddp_loss.to(dtype), ds_loss, rtol=RTOL, atol=ATOL)
+
+        ddp_loss.backward()
+        ds_engine.backward(ds_loss)
+
+        ddp_optimizer.step()
+        ds_optimizer.step()
+
+        with GatheredParameters(ds_model.parameters()):
+            for p1, p2 in zip(ddp_model.parameters(), ds_model.parameters()):
+                assert torch.allclose(p1.to(dtype), p2, rtol=RTOL, atol=ATOL)
 
 
 class DistributedCompileTest(DistributedTest):
