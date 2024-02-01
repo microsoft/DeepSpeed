@@ -3,12 +3,9 @@
 
 # DeepSpeed Team
 
-from copy import deepcopy
 import pytest
 import torch
 
-import deepspeed
-from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 
 from unit.runtime.compile.common import DistributedCompileTest, compare_with_ddp

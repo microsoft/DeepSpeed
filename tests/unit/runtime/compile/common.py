@@ -14,6 +14,7 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 import deepspeed
+import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.zero import GatheredParameters
 
@@ -24,6 +25,12 @@ TIMEOUT = 600
 
 
 def enable_determinism(seed):
+    """Set random seeds and enable deterministic algorithms.
+       Note that this affect all tests in the same test class.
+
+    Args:
+        seed (int): Random seed.
+    """
     random.seed(seed)
     np.random.seed(seed)
     get_accelerator().manual_seed(seed)
@@ -45,7 +52,7 @@ def compare_with_ddp(self, config, dtype):
     RTOL = 1e-1
     ATOL = 1e-3
 
-    enable_determinism(123)
+    enable_determinism(123 + dist.get_rank())
 
     device = torch.device(get_accelerator().current_device_name())
     model = SimpleModel(hidden_dim)
