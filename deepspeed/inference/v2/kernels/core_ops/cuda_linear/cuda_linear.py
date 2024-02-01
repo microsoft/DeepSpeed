@@ -43,18 +43,16 @@ class CUDAWf6Af16Linear(DSKernelBase):
 
         if M % 256 != 0 or K % 64 != 0:
             raise ValueError(
-                "The out and in channel of the FP6 weight-only quantized linear should be multiple of 256 and 64 respectively.")
+                "The out and in channel of the FP6 weight-only quantized linear should be multiple of 256 and 64 respectively."
+            )
 
         # TODO: optimize the heuristic of split k selection.
-        split_k_dict = {15360: 3, 27648: 2, 5120: 10, 10240: 5,
-                        57344: 7, 8192: 6, 21504: 5, 7168: 7, 28672: 7}
+        split_k_dict = {15360: 3, 27648: 2, 5120: 10, 10240: 5, 57344: 7, 8192: 6, 21504: 5, 7168: 7, 28672: 7}
         split_k = 1
         if not N > 128 and M in split_k_dict:
             split_k = split_k_dict[M]
-        workspace = self.get_workspace(
-            M, N, K, split_k, torch.float, hidden_states.device)
-        self.kernel(output, hidden_states, weights_2bit,
-                    weights_4bit, scale, workspace, M, N, K, split_k)
+        workspace = self.get_workspace(M, N, K, split_k, torch.float, hidden_states.device)
+        self.kernel(output, hidden_states, weights_2bit, weights_4bit, scale, workspace, M, N, K, split_k)
 
     def get_workspace(self, M: int, N: int, K: int, split_k: int, dtype, device) -> torch.Tensor:
         """

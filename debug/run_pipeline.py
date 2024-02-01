@@ -12,7 +12,6 @@ if __name__ == '__main__':
     batch_size = 32
     prompts = fake_request_texts(batch_size)
 
-    pipe = mii.pipeline(model_name_or_path=model_id,
-                        quantization_mode='wf6af16')
+    pipe = mii.pipeline(model_name_or_path=model_id, quantization_mode='wf6af16')
     response = pipe(prompts, max_new_tokens=2)
     print(f"{len(response)} responses.")

@@ -23,10 +23,12 @@ from ...configs import DSLinearConfig
 from ....inference_parameter import InferenceParameter
 
 
-def fp_quantize(
-        input: torch.FloatTensor, num_bits: int = 6, exp_bits: int = 3,
-        min_value: torch.FloatTensor = None, max_value: torch.FloatTensor = None,
-        group_size: int = -1):
+def fp_quantize(input: torch.FloatTensor,
+                num_bits: int = 6,
+                exp_bits: int = 3,
+                min_value: torch.FloatTensor = None,
+                max_value: torch.FloatTensor = None,
+                group_size: int = -1):
     """
     Args:
         inputs (`torch.FloatTensor`)
@@ -39,20 +41,19 @@ def fp_quantize(
             Used for static activation quantization
         group_size (int) N
             The quantization block size, each N numbers has its own scaling factor and off-site
-            -1 means use the last dim as the group_size 
+            -1 means use the last dim as the group_size
     Returns:
         quantized_fake_fp6
             The quantized weights, in fp16 format and contains fp6 value.
         scales
             Quantization scales
     """
-    assert (min_value is None and max_value is None) or (
-        min_value is not None and max_value is not None)
+    assert (min_value is None and max_value is None) or (min_value is not None and max_value is not None)
 
     assert input.dtype == torch.float16
 
     orig_device = input.device
-    input = input.to(torch.float32).cuda()
+    input = input.to(torch.float32).to(get_accelerator().current_device())
     if num_bits == 6:
         if exp_bits == 3:  # this is defulat
             q_range = 28
@@ -71,8 +72,7 @@ def fp_quantize(
     input = input.reshape(num_groups, -1)
 
     if min_value is None:
-        max_input = torch.amax(
-            torch.abs(input), dim=-1).view(num_groups, -1)
+        max_input = torch.amax(torch.abs(input), dim=-1).view(num_groups, -1)
     else:
         max_input = torch.max(min_value.abs(), max_value)  # .view(-1)
     scales = max_input / q_range  # q_range + 1
@@ -80,13 +80,11 @@ def fp_quantize(
     scaled_input = input / scales
     # torch.cuda.synchronize() # for some reason this is needed to avoid the output being 0
 
-    quantized_fake_fp6 = float_quantize(
-        scaled_input, exp_bits, man_bits, rounding="nearest")
+    quantized_fake_fp6 = float_quantize(scaled_input, exp_bits, man_bits, rounding="nearest")
     # TODO: it seems the `float_quantize` will not clamp the value into the range of FP6 correctly.
     # To double check it. If it is true, we need to clamp it manually.
 
-    quantized_fake_fp6 = quantized_fake_fp6.reshape(
-        input_shape).contiguous().to(torch.float16).to(orig_device)
+    quantized_fake_fp6 = quantized_fake_fp6.reshape(input_shape).contiguous().to(torch.float16).to(orig_device)
     scales = scales.to(torch.float16).to(orig_device)
     # Now the dequantized value is quantized_fake_fp6 * scales
 
@@ -115,14 +113,12 @@ class QuantizedWf6Af16Linear(DSLinearBase):
 
         if is_gated(config.activation):
             try:
-                _ = CUDAGatedActivation(
-                    config.out_channels, config.output_dtype, config.activation)
+                _ = CUDAGatedActivation(config.out_channels, config.output_dtype, config.activation)
             except ValueError:
                 return False
         else:
             try:
-                _ = CUDABiasActivation(
-                    config.out_channels, config.output_dtype, config.activation)
+                _ = CUDABiasActivation(config.out_channels, config.output_dtype, config.activation)
             except ValueError:
                 return False
 
@@ -139,8 +135,7 @@ class QuantizedWf6Af16Linear(DSLinearBase):
             self.M = self._config.out_channels * 2
             self.K = self._config.in_channels
             self._is_gated = True
-            self._act_fn = CUDAGatedActivation(
-                config.out_channels, config.output_dtype, config.activation)
+            self._act_fn = CUDAGatedActivation(config.out_channels, config.output_dtype, config.activation)
             self._double_buffer = torch.empty((config.max_tokens, config.out_channels * 2),
                                               dtype=config.output_dtype,
                                               device=get_accelerator().current_device())
@@ -148,8 +143,7 @@ class QuantizedWf6Af16Linear(DSLinearBase):
             self.M = self._config.out_channels
             self.K = self._config.in_channels
             self._is_gated = False
-            self._act_fn = CUDABiasActivation(
-                config.out_channels, config.output_dtype, config.activation)
+            self._act_fn = CUDABiasActivation(config.out_channels, config.output_dtype, config.activation)
 
         self._output = torch.empty((config.max_tokens, config.out_channels),
                                    dtype=config.output_dtype,
@@ -176,8 +170,7 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         if param.ndim == 1:  # bias, do nothing
             return InferenceParameter.initialize(param)
 
-        quantized_fake_fp6, scales = self.quantizer(
-            param, num_bits=6, exp_bits=3)
+        quantized_fake_fp6, scales = self.quantizer(param, num_bits=6, exp_bits=3)
 
         if self.DEBUG:
             self.weight_dequantized = quantized_fake_fp6 * scales
@@ -196,39 +189,33 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         weights_2bit = w
         weights_4bit = w.weights_4bit
         scales = w.scales
-        output = empty_from(
-            self._output, (hidden_states.shape[0], self._config.out_channels))
+        output = empty_from(self._output, (hidden_states.shape[0], self._config.out_channels))
         if self._is_gated:
-            staging_output = empty_from(
-                self._double_buffer, (hidden_states.shape[0], self.M))
-            self._linear_impl(staging_output, hidden_states, weights_2bit,
-                              weights_4bit, scales, self.M, hidden_states.shape[0], self.K)
+            staging_output = empty_from(self._double_buffer, (hidden_states.shape[0], self.M))
+            self._linear_impl(staging_output, hidden_states, weights_2bit, weights_4bit, scales, self.M,
+                              hidden_states.shape[0], self.K)
             self._act_fn(output, staging_output, b)
         else:
-            self._linear_impl(output, hidden_states, weights_2bit,
-                              weights_4bit, scales, self.M, hidden_states.shape[0], self.K)
+            self._linear_impl(output, hidden_states, weights_2bit, weights_4bit, scales, self.M,
+                              hidden_states.shape[0], self.K)
             self._act_fn(output, b)
 
         if self.DEBUG:
             orig_device = self.weight_dequantized.device
             self.weight_dequantized = self.weight_dequantized.to(output.device)
-            ground_truth = torch.nn.functional.linear(
-                hidden_states, self.weight_dequantized, b)
+            ground_truth = torch.nn.functional.linear(hidden_states, self.weight_dequantized, b)
             self.weight_dequantized = self.weight_dequantized.to(orig_device)
             shape = (hidden_states.shape[0], self.M, self.K)
             if self._is_gated:
-                ismatch = torch.allclose(
-                    ground_truth, staging_output, rtol=1e-3)
+                ismatch = torch.allclose(ground_truth, staging_output, rtol=1e-3)
                 abs_diff = torch.max(torch.abs(ground_truth - staging_output))
-                rel_diff = torch.max(
-                    torch.abs((ground_truth - staging_output) / ground_truth))
+                rel_diff = torch.max(torch.abs((ground_truth - staging_output) / ground_truth))
                 print(f"Linear shape: {shape}:\n\tIs correct: {ismatch}. "
                       f"Max diff (abs, rel): ({abs_diff}, {rel_diff})")
             else:
                 ismatch = torch.allclose(ground_truth, output, rtol=1e-3)
                 abs_diff = torch.max(torch.abs(ground_truth - output))
-                rel_diff = torch.max(
-                    torch.abs((ground_truth - output) / ground_truth))
+                rel_diff = torch.max(torch.abs((ground_truth - output) / ground_truth))
                 print(f"Linear shape: {shape}:\n\tIs correct: {ismatch}. "
                       f"Max diff (abs, rel): ({abs_diff}, {rel_diff})")
 
