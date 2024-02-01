@@ -135,14 +135,14 @@ void BitInterleaving_4bit(unsigned char* PTR_4Bytes)
  * 8 FP4 = 4 Bytes
  * 8 FP2 = 2 Bytes
  */
-void GenMatrix_Weight_FP6(unsigned char* Weight_6bit,
-                          unsigned char* Weight_2bit,
-                          unsigned char* Weight_4bit,
-                          size_t M,
-                          size_t K)
+void weight_matrix_prepacking(int* FP6Weights, size_t M, size_t K)
 {
     assert(M % 64 == 0);
     assert(K % 64 == 0);
+    //
+    unsigned char* Weight_6bit = reinterpret_cast<unsigned char*>(FP6Weights);
+    unsigned char* Weight_2bit = Weight_6bit;
+    unsigned char* Weight_4bit = Weight_6bit + M * K * 2 / 8;
     //
     vector<unsigned char> A_Segment_2bit[32];
     vector<unsigned char> A_Segment_4bit[32];

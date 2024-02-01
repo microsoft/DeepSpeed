@@ -52,8 +52,8 @@ __device__ __forceinline__ u_int32_t MultScale(u_int32_t PackedFP16Pair, half Sc
     half* FP16_2 = FP16_1 + 1;
     uint32_t output;
     half* output_half_ptr = reinterpret_cast<half*>(&output);
-    output_half_ptr[0] = *FP16_1 * Scale;
-    output_half_ptr[1] = *FP16_2 * Scale;   
+    output_half_ptr[0] = __hmul( __hmul(*FP16_1,__float2half(4096.0f)), Scale);
+    output_half_ptr[1] = __hmul( __hmul(*FP16_2,__float2half(4096.0f)), Scale);   
     return output;
 }
 

@@ -23,20 +23,24 @@ class InferenceCoreBuilder(CUDAOpBuilder):
         try:
             import torch
         except ImportError:
-            self.warning("Please install torch if trying to pre-compile inference kernels")
+            self.warning(
+                "Please install torch if trying to pre-compile inference kernels")
             return False
 
         cuda_okay = True
-        if not self.is_rocm_pytorch() and torch.cuda.is_available():  #ignore-cuda
+        if not self.is_rocm_pytorch() and torch.cuda.is_available():  # ignore-cuda
             sys_cuda_major, _ = installed_cuda_version()
             torch_cuda_major = int(torch.version.cuda.split('.')[0])
-            cuda_capability = torch.cuda.get_device_properties(0).major  #ignore-cuda
+            cuda_capability = torch.cuda.get_device_properties(
+                0).major  # ignore-cuda
             if cuda_capability < 6:
-                self.warning("NVIDIA Inference is only supported on Pascal and newer architectures")
+                self.warning(
+                    "NVIDIA Inference is only supported on Pascal and newer architectures")
                 cuda_okay = False
             if cuda_capability >= 8:
                 if torch_cuda_major < 11 or sys_cuda_major < 11:
-                    self.warning("On Ampere and higher architectures please use CUDA 11+")
+                    self.warning(
+                        "On Ampere and higher architectures please use CUDA 11+")
                     cuda_okay = False
         return super().is_compatible(verbose) and cuda_okay
 
@@ -67,8 +71,8 @@ class InferenceCoreBuilder(CUDAOpBuilder):
             "inference/v2/kernels/core_ops/cuda_rms_norm/rms_norm_cuda.cu",
             "inference/v2/kernels/core_ops/gated_activations/gated_activation_kernels.cpp",
             "inference/v2/kernels/core_ops/gated_activations/gated_activation_kernels_cuda.cu",
+            "inference/v2/kernels/core_ops/cuda_linear/fp6_linear.cu",
             "inference/v2/kernels/core_ops/cuda_linear/cuda_linear_kernels.cpp",
-            "inference/v2/kernels/core_ops/cuda_linear/Launcher.cu",
         ]
 
         prefix = self.get_prefix()

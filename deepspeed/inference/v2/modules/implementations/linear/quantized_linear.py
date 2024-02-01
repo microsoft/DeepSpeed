@@ -84,10 +84,39 @@ def fp_quantize(
         scaled_input, exp_bits, man_bits, rounding="nearest")
     # TODO: it seems the `float_quantize` will not clamp the value into the range of FP6 correctly.
     # To double check it. If it is true, we need to clamp it manually.
+
+    if False:
+        abs_quantized = torch.abs(quantized_fake_fp6)
+        max_fp6 = 14
+        min_fp6 = 0.0625
+        non_zero = abs_quantized[abs_quantized != 0]
+        larger_than_max = non_zero[non_zero > max_fp6]
+        smaller_than_min = non_zero[non_zero < min_fp6]
+        print(
+            f"FP32. value too large: {larger_than_max}, largest: {larger_than_max.max()}")
+        print(
+            f"FP32. value too small: {smaller_than_min}")
+        print(f"FP32. min: {non_zero.min()}")
+        # exit(0)
+
     quantized_fake_fp6 = quantized_fake_fp6.reshape(
         input_shape).contiguous().to(torch.float16).to(orig_device)
     scales = scales.to(torch.float16).to(orig_device)
     # Now the dequantized value is quantized_fake_fp6 * scales
+
+    if False:
+        abs_quantized = torch.abs(quantized_fake_fp6)
+        max_fp6 = 14
+        min_fp6 = 0.0625
+        non_zero = abs_quantized[abs_quantized != 0]
+        larger_than_max = non_zero[non_zero > max_fp6]
+        smaller_than_min = non_zero[non_zero < min_fp6]
+        print(
+            f"FP16. value too large: {larger_than_max}, largest: {larger_than_max.max()}")
+        print(
+            f"FP16. value too small: {smaller_than_min}")
+        print(f"FP16. min: {non_zero.min()}")
+        # exit(0)
 
     return quantized_fake_fp6, scales
 
@@ -161,7 +190,7 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         self.quantizer = fp_quantize
 
         # This is for debugging, will delete after release.
-        self.DEBUG = True
+        self.DEBUG = False
 
     def transform_param(self, param: torch.Tensor) -> InferenceParameter:
         """
@@ -186,10 +215,12 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         assert quantized_fake_fp6.shape[0] == self.M
         assert scales.numel() == self.M
 
+        # Do not delete `quantized_fake_fp6` as the `preprocess_weight` is in-place operation.
         weights_2bit, weights_4bit = self.preprocess_weight(quantized_fake_fp6)
 
         # According to the optimization in Quant-LLM, the scales need to be multiplied by 2^12.
-        scales = scales * (2 ** 12)
+        # scales = scales * (2 ** 12)
+        # scales = torch.full_like(scales, 1)
 
         return InferenceParameter.initialize(weights_2bit, weights_4bit=weights_4bit, scales=scales)
 

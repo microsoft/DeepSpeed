@@ -10,9 +10,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  ***************************************************************************/
-#include "utils/Configs.h"
-#include "utils/Utils_GMem.cuh"
-#include "utils/Utils_Core.cuh"
+#include "Configs.h"
+#include "Utils_GMem.cuh"
+#include "Utils_Core.cuh"
 
 /*
  * C = A*B
@@ -174,7 +174,7 @@ __global__ void QUANT_GEMM_Kernel(const uint4* Weight1, const uint4* Weight2, co
     #pragma unroll
     for(size_t j=threadIdx.x%WARP_SIZE; j<TilingConfig::TILE_M; j+=WARP_SIZE) // j-th row
     {
-      if(std::is_same<OutputDataType, half>::value)   BlockGlobalPTR[j+i*M_Global] = __float2half_rn(smem_CFrag[i][j]);
+      if constexpr (std::is_same<OutputDataType, half>::value)   BlockGlobalPTR[j+i*M_Global] = __float2half_rn(smem_CFrag[i][j]);
       else                                            BlockGlobalPTR[j+i*M_Global] = smem_CFrag[i][j];
     }
 }

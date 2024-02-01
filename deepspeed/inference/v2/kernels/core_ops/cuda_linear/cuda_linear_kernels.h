@@ -9,6 +9,8 @@
 #include <torch/extension.h>
 #include "ds_kernel_utils.h"
 
+#include "fp6_linear.cuh"
+
 void cuda_wf6af16_linear(torch::Tensor& output,
                          torch::Tensor& hidden_states,
                          torch::Tensor& weights_2bit,
