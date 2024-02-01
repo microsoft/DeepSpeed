@@ -42,8 +42,9 @@ class MiCS_AllGatherCoalescedHandle(AllGatherCoalescedHandle):
         """
         # let the current stream to op
         try:
+            print("HANDLE", self.allgather_handle)
             instrument_w_nvtx(self.allgather_handle.wait)()
-        except RuntimeError as e:
+        except (ValueError, RuntimeError) as e:
             log_dist(
                 f"WARNING: Runtime Error while waiting the collective all-gather, possibly due to the _IllegalWork",
                 ranks=[0])
@@ -64,6 +65,7 @@ class MiCS_Init(Init):
     def __init__(self,
                  module=None,
                  data_parallel_group=None,
+                 sequence_data_parallel_group=None,
                  mem_efficient_linear=True,
                  remote_device=None,
                  pin_memory=False,
@@ -145,9 +147,21 @@ class MiCS_Init(Init):
         if not dist.is_initialized():
             dist.init_distributed()
             assert dist.is_initialized(), "Parameters cannot be scattered without initializing deepspeed.comm"
+
+        if data_parallel_group is None and sequence_data_parallel_group is None:
+            ds_process_group = dist.get_world_group()
+        elif sequence_data_parallel_group is not None:
+            ds_process_group = sequence_data_parallel_group
+        elif data_parallel_group is not None:
+            ds_process_group = data_parallel_group
+        else:  # both given
+            raise ValueError(
+                "Both 'data_parallel_group' and 'sequence_data_parallel_group' were specified. Please provide only one of these arguments."
+            )
+
         self.mics_comm_groups = create_mics_comm_groups(
             _ds_config.mics_shard_size,
-            data_parallel_group,
+            ds_process_group,
             hierarchical_allgather=_ds_config.mics_hierarchial_params_gather,
             mpu=mpu)
 
