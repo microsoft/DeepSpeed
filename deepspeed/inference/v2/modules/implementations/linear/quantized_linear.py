@@ -85,38 +85,10 @@ def fp_quantize(
     # TODO: it seems the `float_quantize` will not clamp the value into the range of FP6 correctly.
     # To double check it. If it is true, we need to clamp it manually.
 
-    if False:
-        abs_quantized = torch.abs(quantized_fake_fp6)
-        max_fp6 = 14
-        min_fp6 = 0.0625
-        non_zero = abs_quantized[abs_quantized != 0]
-        larger_than_max = non_zero[non_zero > max_fp6]
-        smaller_than_min = non_zero[non_zero < min_fp6]
-        print(
-            f"FP32. value too large: {larger_than_max}, largest: {larger_than_max.max()}")
-        print(
-            f"FP32. value too small: {smaller_than_min}")
-        print(f"FP32. min: {non_zero.min()}")
-        # exit(0)
-
     quantized_fake_fp6 = quantized_fake_fp6.reshape(
         input_shape).contiguous().to(torch.float16).to(orig_device)
     scales = scales.to(torch.float16).to(orig_device)
     # Now the dequantized value is quantized_fake_fp6 * scales
-
-    if False:
-        abs_quantized = torch.abs(quantized_fake_fp6)
-        max_fp6 = 14
-        min_fp6 = 0.0625
-        non_zero = abs_quantized[abs_quantized != 0]
-        larger_than_max = non_zero[non_zero > max_fp6]
-        smaller_than_min = non_zero[non_zero < min_fp6]
-        print(
-            f"FP16. value too large: {larger_than_max}, largest: {larger_than_max.max()}")
-        print(
-            f"FP16. value too small: {smaller_than_min}")
-        print(f"FP16. min: {non_zero.min()}")
-        # exit(0)
 
     return quantized_fake_fp6, scales
 
@@ -190,7 +162,7 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         self.quantizer = fp_quantize
 
         # This is for debugging, will delete after release.
-        self.DEBUG = True
+        self.DEBUG = False
 
     def transform_param(self, param: torch.Tensor) -> InferenceParameter:
         """
@@ -218,22 +190,11 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         # Do not delete `quantized_fake_fp6` as the `preprocess_weight` is in-place operation.
         weights_2bit, weights_4bit = self.preprocess_weight(quantized_fake_fp6)
 
-        # print(f"weights_2bit: {weights_2bit}")
-        # print(f"weights_4bit: {weights_4bit}")
-
         return InferenceParameter.initialize(weights_2bit, weights_4bit=weights_4bit, scales=scales)
 
     def forward(self, hidden_states: torch.Tensor, w: torch.Tensor, b: Optional[torch.Tensor] = None) -> torch.Tensor:
         weights_2bit = w
         weights_4bit = w.weights_4bit
-        # print(f"shape of weights_2bit: {weights_2bit.shape}")
-        # print(f"shape of weights_4bit: {weights_4bit.shape}")
-        if False:
-            b2 = weights_2bit.cpu().numpy()
-            b4 = weights_4bit.cpu().numpy()
-            import numpy as np
-            np.savetxt("e2e-2b.txt", b2, fmt='%s', delimiter=',', newline=',')
-            np.savetxt("e2e-4b.txt", b4, fmt='%s', delimiter=',', newline=',')
         scales = w.scales
         output = empty_from(
             self._output, (hidden_states.shape[0], self._config.out_channels))

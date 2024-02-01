@@ -24,27 +24,26 @@ class CUDAWf6Af16Linear(DSKernelBase):
         self.inf_module.create_handle()
         self.kernel = self.inf_module.cuda_wf6af16_linear
 
-    def __call__(self, output: torch.Tensor, hidden_states: torch.Tensor, weights_2bit: torch.Tensor, weights_4bit: torch.Tensor, scale: torch.Tensor, M, N, K) -> torch.Tensor:
+    def __call__(self, output: torch.Tensor, hidden_states: torch.Tensor, weights_2bit: torch.Tensor,
+                 weights_4bit: torch.Tensor, scale: torch.Tensor, M, N, K) -> torch.Tensor:
         """
-        Matmul kernel as implemented via CUDA directly. The input must be 2D or larger. If
-        n-dimensional, the leading dimensions are folded into each other:
-            2D: m = x.size(0)
-            3D: m = x.size(0) * x.size(1)
-            4D: m = x.size(0) * x.size(1) * x.size(2) (etc...)
-        All inputs should be contiguous.
+        Matmul kernel of FP6 weight-only quantized linear. All inputs should be contiguous.
+        It does not support batched-matmul.
 
         Parameters:
-            output (torch.Tensor): Output tensor. Shape is of [*, out_features]
-            hidden_states (torch.Tensor): Input tensor. Shape is of [*, in_features]
-            weights (torch.Tensor): Input tensor. Shape is of [out_features, in_features]
-            scale (torch.Tensor): Input tensor. Shape is of [1] or [out_features], since the scale is per output channel
-
-        Returns:
-            z (torch.Tensor): Output tensor. Shape is of [m, n]
+            output (torch.Tensor): Output tensor. Shape is of [token_number, out_features]
+            hidden_states (torch.Tensor): Input tensor. Shape is of [token_number, in_features]
+            weights_2bit (torch.Tensor): Input tensor of the 2-bit slice. Shape is of [out_features*2/8, in_features]
+            weights_4bit (torch.Tensor): Input tensor of the 4-bit slice. Shape is of [out_features*4/8, in_features]
+            scale (torch.Tensor): Input tensor. Shape is of [out_features], since the scale is per output channel
+            M (int): The number of output channels
+            N (int): The number of tokens
+            K (int): The number of input channels
         """
 
-        # TODO: deal with batched-matmul. As the current implementation only supports 2D input, we need to split the
-        # batched-matmul into multiple 2D matmul.
+        if M % 256 != 0 or K % 64 != 0:
+            raise ValueError(
+                "The out and in channel of the FP6 weight-only quantized linear should be multiple of 256 and 64 respectively.")
 
         # TODO: optimize the heuristic of split k selection.
         split_k_dict = {15360: 3, 27648: 2, 5120: 10, 10240: 5,
@@ -63,6 +62,5 @@ class CUDAWf6Af16Linear(DSKernelBase):
         split-K. The split-K size is determined by the size of the matmul.
         """
         workspace = torch.empty((split_k, M, N), dtype=dtype, device=device)
-        # TODO: allocate workspace in advance to avoid memory allocation overhead
 
         return workspace
