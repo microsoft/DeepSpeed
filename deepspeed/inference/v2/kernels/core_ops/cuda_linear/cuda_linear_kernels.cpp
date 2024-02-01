@@ -32,8 +32,9 @@ void print_bits(half num)
     printf("%s\n", bits);
 }
 
-// Utils to prepack FP16 weights into continuous FP6 values.
-
+/*
+ * Function to pack 4 fake quantized FP16 value into continuously stored 4 FP6 values.
+ */
 void cast_fp16_fp6(uint16_t* FP16x4, uint8_t* FP6x4)
 {
     // Constants for FP6
@@ -69,7 +70,12 @@ void cast_fp16_fp6(uint16_t* FP16x4, uint8_t* FP6x4)
         // Extracting mantissa represented in FP16
         int mant = source_promote & ((1 << mantissa_nbits_fp16) - 1);
 
-        int new_exp = exp == 0 ? 0 : exp - exp_bias_fp16 + exp_bias_fp6;
+        int new_exp = exp - exp_bias_fp16 + exp_bias_fp6;
+        if (exp == 0) {
+            // SUbnormal FP6 number. But the value is a normal FP16 number. Thus it needs a special
+            // treatment.
+            new_exp += 1;
+        }
         int new_mant = mant >> (mantissa_nbits_fp16 - mantissa_nbits_fp6);
 
         fp6_temp[i] = (sign << (exponent_nbits_fp6 + mantissa_nbits_fp6)) |
@@ -82,20 +88,25 @@ void cast_fp16_fp6(uint16_t* FP16x4, uint8_t* FP6x4)
 }
 
 /*
- * Inputs:
- * (1) uint16_t Weight_16bit[M*K]
- * Outputs:
- * (1) unsigned char Weight_6bit[M*K*6/8]
+ *  Function to prepack FP16 weights into continuous FP6 values.
+ *
+ *  Parameters:
+ *     weight_16bit: input weight in FP16, size M*K
+ *     weight_6bit: output weight in packed FP6, continuously stored, size M*K*6/8
+ *     M, K: the shape of the weight
  */
-void weight_prepacing_fp16_to_fp6(uint16_t* Weight_16bit, uint8_t* Weight_6bit, size_t M, size_t K)
+void weight_prepacing_fp16_to_fp6(uint16_t* weight_16bit,
+                                  uint8_t* weight_6bit_packed,
+                                  size_t M,
+                                  size_t K)
 {
     // Every four 16-bit elements are packed into three 6-bit values (4*6bit == 3*8bit).
     if (K * 6 % 8 != 0) { throw std::invalid_argument("(K * 6 % 8) should be 0"); }
     size_t K_fp6_packed = K * 6 / 8;
-#pragma omp parallel for
+    // #pragma omp parallel for
     for (auto m = 0; m < M; m++) {
-        uint8_t* ptr_6bit = Weight_6bit + m * K_fp6_packed;
-        uint16_t* ptr_16bit = Weight_16bit + m * K;
+        uint8_t* ptr_6bit = weight_6bit_packed + m * K_fp6_packed;
+        uint16_t* ptr_16bit = weight_16bit + m * K;
         for (auto k = 0; k < K; k += 4) {
             cast_fp16_fp6(ptr_16bit, ptr_6bit);
             ptr_16bit += 4;
@@ -106,19 +117,21 @@ void weight_prepacing_fp16_to_fp6(uint16_t* Weight_16bit, uint8_t* Weight_6bit, 
 
 }  // namespace
 
-// cudaError_t QuantGEMM_API(
-//     cudaStream_t stream,
-//     const uint4* Weight1,
-//     const uint4* Weight2,
-//     const half* Scales,
-//     const half* B,
-//     half* C,
-//     const size_t M_Global,
-//     const size_t N_Global,
-//     const size_t K_Global,
-//     float* Reduction_Workspace,  // Identical workspace for all QuantGEMM kernel launches
-//     int Split_K);
-
+/*
+ * Function to execute the FP6 linear kernel.
+ *
+ * Parameters:
+ *    output: output tensor, size M*N
+ *    hidden_states: input activation tensor, size N*K
+ *    weights_2bit: packed 2bit weights, size M*K*2/8
+ *    weights_4bit: packed 4bit weights, size M*K*4/8
+ *    scales: scale tensor, size M
+ *    workspace: workspace tensor, size M*N*split_k
+ *    M: the output channel size of the weight
+ *    N: the token number of the activation
+ *    K: the input channel size of the weight
+ *    split_k: the split size of the GEMM calculation
+ */
 void cuda_wf6af16_linear(torch::Tensor& output,
                          torch::Tensor& hidden_states,
                          torch::Tensor& weights_2bit,
@@ -151,17 +164,14 @@ void cuda_wf6af16_linear(torch::Tensor& output,
     }
 }
 
-// void GenMatrix_Weight_FP6(unsigned char* Weight_6bit,
-//                           unsigned char* Weight_2bit,
-//                           unsigned char* Weight_4bit,
-//                           size_t M,
-//                           size_t K);
-
 /*
- * Inputs:
- * (1) torch::Tensor weight[M, K] in FP16
- * Outputs:
- * (1) torch::Tensor weight_2bit and weight_4bit
+ * Function to prepack the fake 6-bit-quantized FP16 weights into 2bit and 4bit.
+ *
+ * Parameters:
+ *    weight: input weight in FP16 (containing the quantized FP6-ranged value), size M*K
+ * Returns:
+ *   weight_2bit: output weight in 2bit, size M*K*2/8
+ *   weight_4bit: output weight in 4bit, size M*K*4/8
  */
 std::vector<torch::Tensor> preprocess_weight(torch::Tensor& weight)
 {
@@ -182,9 +192,15 @@ std::vector<torch::Tensor> preprocess_weight(torch::Tensor& weight)
     // Split weight into 2bit and 4bit.
     weight_matrix_prepacking(reinterpret_cast<int*>(weight_6bit_ptr), M, K);
     uint8_t* weight_2bit_ptr = weight_6bit_ptr;
-    auto weight_2bit = torch::from_blob(weight_2bit_ptr, {M * K * 2 / 8}, torch::kUInt8);
+
+    // Make sure that the new split tensor does not share the underlying memory with the original
+    // one. Otherwise it will incure some problems when the original tensor is deleted. It also
+    // makes the memory flattern risky.
+    auto weight_2bit =
+        torch::from_blob(weight_2bit_ptr, {M * K * 2 / 8}, torch::kUInt8).clone().detach();
     uint8_t* weight_4bit_ptr = weight_2bit_ptr + M * K * 2 / 8;
-    auto weight_4bit = torch::from_blob(weight_4bit_ptr, {M * K * 4 / 8}, torch::kUInt8);
+    auto weight_4bit =
+        torch::from_blob(weight_4bit_ptr, {M * K * 4 / 8}, torch::kUInt8).clone().detach();
 
     return {weight_2bit, weight_4bit};
 }

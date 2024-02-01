@@ -190,7 +190,7 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         self.quantizer = fp_quantize
 
         # This is for debugging, will delete after release.
-        self.DEBUG = False
+        self.DEBUG = True
 
     def transform_param(self, param: torch.Tensor) -> InferenceParameter:
         """
@@ -218,15 +218,22 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         # Do not delete `quantized_fake_fp6` as the `preprocess_weight` is in-place operation.
         weights_2bit, weights_4bit = self.preprocess_weight(quantized_fake_fp6)
 
-        # According to the optimization in Quant-LLM, the scales need to be multiplied by 2^12.
-        # scales = scales * (2 ** 12)
-        # scales = torch.full_like(scales, 1)
+        # print(f"weights_2bit: {weights_2bit}")
+        # print(f"weights_4bit: {weights_4bit}")
 
         return InferenceParameter.initialize(weights_2bit, weights_4bit=weights_4bit, scales=scales)
 
     def forward(self, hidden_states: torch.Tensor, w: torch.Tensor, b: Optional[torch.Tensor] = None) -> torch.Tensor:
         weights_2bit = w
         weights_4bit = w.weights_4bit
+        # print(f"shape of weights_2bit: {weights_2bit.shape}")
+        # print(f"shape of weights_4bit: {weights_4bit.shape}")
+        if False:
+            b2 = weights_2bit.cpu().numpy()
+            b4 = weights_4bit.cpu().numpy()
+            import numpy as np
+            np.savetxt("e2e-2b.txt", b2, fmt='%s', delimiter=',', newline=',')
+            np.savetxt("e2e-4b.txt", b4, fmt='%s', delimiter=',', newline=',')
         scales = w.scales
         output = empty_from(
             self._output, (hidden_states.shape[0], self._config.out_channels))
