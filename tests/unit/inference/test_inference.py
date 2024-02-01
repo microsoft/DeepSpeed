@@ -294,13 +294,13 @@ def validate_test(model_w_task, dtype, enable_cuda_graph, enable_triton):
         msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
     elif ("bloom" in model) and (dtype != torch.half):
         msg = f"Bloom models only support half precision, cannot use dtype {dtype}"
-    elif ("bert" not in model.lower()) and enable_cuda_graph:
+    elif (model not in _bert_models + _roberta_models) and enable_cuda_graph:
         msg = "Non bert/roberta models do no support CUDA Graph"
     elif enable_triton and not (dtype in [torch.half]):
         msg = "Triton is for fp16"
     elif enable_triton and not deepspeed.HAS_TRITON:
         msg = "triton needs to be installed for the test"
-    elif ("bert" not in model.lower()) and enable_triton:
+    elif (model not in _bert_models + _roberta_models) and enable_triton:
         msg = "Triton kernels do not support Non bert/roberta models yet"
 
     # These should be removed once we fix several inference tests failing
