@@ -1,7 +1,7 @@
 HIP_PATH?= $(wildcard /opt/rocm)
 HIPCC=$(HIP_PATH)/bin/hipcc
 
-SOURCES = bias_activations.cpp 
+SOURCES = bias_activations_cu_hip.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
 
 EXECUTABLE=./bias_activations.exe
@@ -11,13 +11,13 @@ EXECUTABLE=./bias_activations.exe
 
 all: $(EXECUTABLE) test
 
-CXXFLAGS =-g -I ./includes
+CXXFLAGS =-g
 
 CXX=$(HIPCC)
 
 
 $(EXECUTABLE): $(OBJECTS) 
-	$(HIPCC) -I ../../../includes $(OBJECTS) -o $@
+	$(HIPCC) $(OBJECTS) -o $@
 
 
 test: $(EXECUTABLE)

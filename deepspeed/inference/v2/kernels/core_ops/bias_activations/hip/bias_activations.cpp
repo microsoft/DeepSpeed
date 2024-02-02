@@ -25,9 +25,10 @@ THE SOFTWARE.
 #include <stdlib.h>
 #include<iostream>
 #include "hip/hip_runtime.h"
-#include "" // TODO: Add mem_access utilities here
-#include "activation_type.h" // TODO: Add source file 
-
+#include "memory_access_utils.h"
+#include "activation_type.h"
+#include "conversion_utils.h"
+#include "ds_kernel_utils.h"
 
 #ifdef NDEBUG
 #define HIP_ASSERT(x) x
@@ -44,6 +45,37 @@ THE SOFTWARE.
 #define THREADS_PER_BLOCK_X  16
 #define THREADS_PER_BLOCK_Y  16
 #define THREADS_PER_BLOCK_Z  1
+
+// Default activation function will error out
+template <ActivationType ActType>
+DS_D_INLINE float act_fn(float val);
+
+template <>
+DS_D_INLINE float act_fn<ActivationType::IDENTITY>(float val)
+{
+    return val;
+}
+
+template <>
+DS_D_INLINE float act_fn<ActivationType::RELU>(float val)
+{
+    return val > 0.0f ? val : 0.0f;
+}
+
+template <>
+DS_D_INLINE float act_fn<ActivationType::GELU>(float val)
+{
+    constexpr float sqrt_param = 0.79788456080286535587989211986876f;
+    constexpr float mul_param = 0.044715f;
+    return val * 0.5f * (1.0f + tanhf(sqrt_param * (val + mul_param * val * val * val)));
+}
+
+template <>
+DS_D_INLINE float act_fn<ActivationType::SILU>(float val)
+{
+    return val / (1.0f + expf(-val));
+}
+
 
 // __global__ void 
 // vectoradd_float(float* __restrict__ a, const float* __restrict__ b, const float* __restrict__ c, int width, int height) 
@@ -133,8 +165,7 @@ __global__ void bias_activation_kernel(T* activation,
 
 #pragma unroll
             for (int j = 0; j < vector_T; j++) {
-                float val =
-                    conversion::to<float>(buffer[j]) + conversion::to<float>(bias_buffer[j]);
+                float val = conversion::to<float>(buffer[j]) + conversion::to<float>(bias_buffer[j]);
                 buffer[j] = conversion::to<T>(act_fn<ActType>(val));
             }
 
@@ -147,63 +178,50 @@ using namespace std;
 
 int main() {
   
-  float* hostA;
-  float* hostB;
-  float* hostC;
+    float* hostActivations;
 
-  float* deviceA;
-  float* deviceB;
-  float* deviceC;
+    float* deviceA;
 
-  hipDeviceProp_t devProp;
-  hipGetDeviceProperties(&devProp, 0);
-  cout << " System minor " << devProp.minor << endl;
-  cout << " System major " << devProp.major << endl;
-  cout << " agent prop name " << devProp.name << endl;
+    hipDeviceProp_t devProp;
+    hipGetDeviceProperties(&devProp, 0);
+    cout << " System minor " << devProp.minor << endl;
+    cout << " System major " << devProp.major << endl;
+    cout << " agent prop name " << devProp.name << endl;
 
-  cout << "hip Device prop succeeded " << endl ;
+    cout << "hip Device prop succeeded " << endl ;
 
-  int i;
-  int errors;
-
-  hostA = (float*)malloc(NUM * sizeof(float));
-  hostB = (float*)malloc(NUM * sizeof(float));
-  hostC = (float*)malloc(NUM * sizeof(float));
-  
-  // initialize the input data
-  for (i = 0; i < NUM; i++) {
-    hostB[i] = (float)i;
-    hostC[i] = (float)i*100.0f;
-  }
-  
-  HIP_ASSERT(hipMalloc((void**)&deviceA, NUM * sizeof(float)));
-  HIP_ASSERT(hipMalloc((void**)&deviceB, NUM * sizeof(float)));
-  HIP_ASSERT(hipMalloc((void**)&deviceC, NUM * sizeof(float)));
-  
-  HIP_ASSERT(hipMemcpy(deviceB, hostB, NUM*sizeof(float), hipMemcpyHostToDevice));
-  HIP_ASSERT(hipMemcpy(deviceC, hostC, NUM*sizeof(float), hipMemcpyHostToDevice));
+    int i;
+    int errors;
 
     const int32_t n_rows = 128;
     const int32_t n_cols = 128;
 
-  constexpr int32_t elems_per_block =
-      bias_act::threads * bias_act::unroll * bias_act::access_size / sizeof(T);
-  const int32_t total_elems = n_rows * n_cols;
+    constexpr int32_t elems_per_block =
+        bias_act::threads * bias_act::unroll * bias_act::access_size / sizeof(float);
+    const int32_t total_elems = n_rows * n_cols;
+    
+    const int32_t blocks = (total_elems + elems_per_block - 1) / elems_per_block;
   
-  const int32_t blocks = (total_elems + elems_per_block - 1) / elems_per_block;
-  
-  // const dim3 grid(blocks);
-  // const dim3 block(bias_act::threads);
-  
-  // ACT_TYPE_SWITCH(activation_type, [&] {
-  //     bias_activation_kernel<T, act_fn_t>
-  //         <<<grid, block, 0, stream>>>(activation, bias, n_rows, n_cols);
-  // });
+    hostActivations = (float*)malloc(total_elems * sizeof(float));
+    
+    // initialize the input data
+    for (i = 0; i < total_elems * n_cols; i++) {
+        hostActivations[i] = (float)i*1.15f;
+    }
+    
+    HIP_ASSERT(hipMalloc((void**)&deviceA, total_elems * sizeof(float)));
+    
+    HIP_ASSERT(hipMemcpy(hostActivations, deviceA, total_elems*sizeof(float), hipMemcpyDeviceToHost));
 
-  // __global__ void bias_activation_kernel(T* activation,
-  //                                        const T* bias,
-  //                                        const int32_t rows,
-  //                                        const int32_t cols)
+	constexpr ActivationType activation_type = ActivationType::IDENTITY;
+
+    // const dim3 grid(blocks);
+    // const dim3 block(bias_act::threads);
+
+    // __global__ void bias_activation_kernel(T* activation,
+    //                                        const T* bias,
+    //                                        const int32_t rows,
+    //                                        const int32_t cols)
     ACT_TYPE_SWITCH(activation_type, [&] {
         //hipLaunchKernelGGL(bias_activation_kernel<float, act_fn_t>,
         //                dim3(blocks),            // TODO: Update
@@ -212,40 +230,41 @@ int main() {
         //                activation, bias, n_rows, n_cols);
         //
         bias_activation_kernel<float, act_fn_t>
-            <<<dim3(blocks), dim3(bias_act::threads), 0, 0>>>(activation, bias, n_rows, n_cols);
+            <<<dim3(blocks), dim3(bias_act::threads), 0, 0>>>(deviceA, nullptr, n_rows, n_cols);
+            //<<<dim3(blocks), dim3(bias_act::threads), 0, 0>>>(activation, bias, n_rows, n_cols);
     });
 
-  // hipLaunchKernelGGL(vectoradd_float, 
-  //                 dim3(WIDTH/THREADS_PER_BLOCK_X, HEIGHT/THREADS_PER_BLOCK_Y),
-  //                 dim3(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y),
-  //                 0, 0,
-  //                 deviceA ,deviceB ,deviceC ,WIDTH ,HEIGHT);
+    // hipLaunchKernelGGL(vectoradd_float, 
+    //                 dim3(WIDTH/THREADS_PER_BLOCK_X, HEIGHT/THREADS_PER_BLOCK_Y),
+    //                 dim3(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y),
+    //                 0, 0,
+    //                 deviceA ,deviceB ,deviceC ,WIDTH ,HEIGHT);
 
-  HIP_ASSERT(hipMemcpy(hostA, deviceA, NUM*sizeof(float), hipMemcpyDeviceToHost));
+    HIP_ASSERT(hipMemcpy(hostActivations, deviceA, total_elems*sizeof(float), hipMemcpyDeviceToHost));
 
-  // verify the results
-  errors = 0;
-  for (i = 0; i < NUM; i++) {
-    if (hostA[i] != (hostB[i] + hostC[i])) {
-      errors++;
-    }
-  }
-  if (errors!=0) {
-    printf("FAILED: %d errors\n",errors);
-  } else {
-      printf ("PASSED!\n");
-  }
+    // verify the results
+    // errors = 0;
+    // for (i = 0; i < NUM; i++) {
+    //     if (hostA[i] != (hostB[i] + hostC[i])) {
+    //         errors++;
+    //     }
+    // }
+    // if (errors!=0) {
+    //     printf("FAILED: %d errors\n",errors);
+    // } else {
+    //     printf ("PASSED!\n");
+    // }
 
-  HIP_ASSERT(hipFree(deviceA));
-  HIP_ASSERT(hipFree(deviceB));
-  HIP_ASSERT(hipFree(deviceC));
+    HIP_ASSERT(hipFree(deviceA));
+    // HIP_ASSERT(hipFree(deviceB));
+    // HIP_ASSERT(hipFree(deviceC));
 
-  free(hostA);
-  free(hostB);
-  free(hostC);
+    free(hostActivations);
+    // free(hostB);
+    // free(hostC);
 
-  //hipResetDefaultAccelerator();
+    //hipResetDefaultAccelerator();
 
-  return errors;
+    // return errors;
+    return 0;
 }
-
