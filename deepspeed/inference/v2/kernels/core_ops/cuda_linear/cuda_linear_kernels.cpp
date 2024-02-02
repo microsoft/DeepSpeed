@@ -58,28 +58,46 @@ void cast_fp16_fp6(uint16_t* FP16x4, uint8_t* FP6x4)
         float fp6_value_abs = std::abs(__half2float(*((half*)(&source))));
         if ((fp6_value_abs != 0 && fp6_value_abs < absmin_nonzero_fp6) ||
             fp6_value_abs > absmax_fp6) {
+            // TODO(zhen): a better way may be rounding it to the nearest FP6 value.
             throw std::invalid_argument("Input value out of range for FP6.");
         }
 
         // It is not safe to do shift operation on uint16_t. So we promote it to int.
         int source_promote = int(source);
 
-        int sign = (source_promote >> 15);
+        int sign_bit = (source_promote >> 15);
         // Extracting exponent represented in FP16. The sign mask 0x7FFF is '0111 1111 1111 1111'
-        int exp = (source_promote & 0x7FFF) >> mantissa_nbits_fp16;
+        int exp_bit = (source_promote & 0x7FFF) >> mantissa_nbits_fp16;
         // Extracting mantissa represented in FP16
-        int mant = source_promote & ((1 << mantissa_nbits_fp16) - 1);
+        int mant_bit = source_promote & ((1 << mantissa_nbits_fp16) - 1);
 
-        int new_exp = exp - exp_bias_fp16 + exp_bias_fp6;
-        if (exp == 0) {
-            // SUbnormal FP6 number. But the value is a normal FP16 number. Thus it needs a special
-            // treatment.
-            new_exp += 1;
+        int new_exp_bit;
+        int new_mant_bit;
+
+        if (exp_bit == 0) {
+            // Subnormal FP16 number. Too small for FP6.
+            new_exp_bit = 0;
+            new_mant_bit = 0;
+        } else {
+            new_mant_bit = mant_bit >> (mantissa_nbits_fp16 - mantissa_nbits_fp6);
+            new_exp_bit = exp_bit - exp_bias_fp16 + exp_bias_fp6;
+
+            // Deal with subnormal FP6 values.
+            int target_exp_val = exp_bit - exp_bias_fp16;
+            int min_fp6_exp_val = -exp_bias_fp6 + 1;
+            bool subnormal_fp6 = target_exp_val < min_fp6_exp_val;
+            if (subnormal_fp6) {
+                // TODO(zhen): add the rounding logic.
+                new_exp_bit = 0;
+                // The implicit 1 in the mantissa of FP16 is not present in subnormal FP6. Thus we
+                // need to add it
+                new_mant_bit = (new_mant_bit | (1 << mantissa_nbits_fp6)) >>
+                               (min_fp6_exp_val - target_exp_val);
+            }
         }
-        int new_mant = mant >> (mantissa_nbits_fp16 - mantissa_nbits_fp6);
 
-        fp6_temp[i] = (sign << (exponent_nbits_fp6 + mantissa_nbits_fp6)) |
-                      (new_exp << mantissa_nbits_fp6) | new_mant;
+        fp6_temp[i] = (sign_bit << (exponent_nbits_fp6 + mantissa_nbits_fp6)) |
+                      (new_exp_bit << mantissa_nbits_fp6) | new_mant_bit;
     }
     // Pack the values
     FP6x4[0] = fp6_temp[0] << 2 | (fp6_temp[1] >> 4);

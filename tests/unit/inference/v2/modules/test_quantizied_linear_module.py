@@ -7,6 +7,7 @@ from typing import Optional
 
 import pytest
 import torch
+import warnings
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.inference_utils import ActivationType, DtypeEnum, is_gated
@@ -115,21 +116,24 @@ def _fp6_quantized_linear_helper(tokens: int,
     bundle = ConfigBundle(name='quantized_wf6af16_linear', config=linear_config)
     fp6_linear_module = DSLinearRegistry.instantiate_config(bundle)
     weight_fp6 = fp6_linear_module.transform_param(weight.clone().cpu()).to(get_accelerator().current_device_name())
-    ds_output = fp6_linear_module(hidden_states, weight_fp6, bias)
+    try:
+        ds_output = fp6_linear_module(hidden_states, weight_fp6, bias)
+    except ValueError as e:
+        if str(e) != "The out and in channel should be multiple of 256 and 64 respectively.":
+            raise
+        else:
+            warnings.warn("The out and in channel should be multiple of 256 and 64 respectively. Skipping the test. "
+                          f"tokens: {tokens}, in_channels: {in_channels}, out_channels: {out_channels}")
+    else:
+        # The current FP6 kernel uses FP16 Tensor Core.
+        tolerances = (3e-2, 2e-3)  # tolerances for fp16
 
-    # tolerances = (4.8e-1, 3.2e-2)  # tolerances for bf16
-    # The current FP6 kernel uses FP16 Tensor Core.
-    tolerances = (3e-2, 2e-3)  # tolerances for fp16
-
-    # Check DeepSpeed implementation
-    assert allclose(ds_output, ref_quant_dequant_output, tolerances=tolerances)
-
-    # # Check reference implementation
-    # ref_output = reference_implementation(hidden_states, weight, bias, act_fn)
-    # assert allclose(ds_output, ref_output, tolerances=tolerances)
+        # Check DeepSpeed implementation
+        assert allclose(ds_output, ref_quant_dequant_output, tolerances=tolerances)
 
 
 all_acts = [
+    ActivationType.IDENTITY,
     ActivationType.RELU,
     ActivationType.GELU,
     ActivationType.SILU,

@@ -42,9 +42,7 @@ class CUDAWf6Af16Linear(DSKernelBase):
         """
 
         if M % 256 != 0 or K % 64 != 0:
-            raise ValueError(
-                "The out and in channel of the FP6 weight-only quantized linear should be multiple of 256 and 64 respectively."
-            )
+            raise ValueError("The out and in channel should be multiple of 256 and 64 respectively.")
 
         # TODO: optimize the heuristic of split k selection.
         split_k_dict = {15360: 3, 27648: 2, 5120: 10, 10240: 5, 57344: 7, 8192: 6, 21504: 5, 7168: 7, 28672: 7}
