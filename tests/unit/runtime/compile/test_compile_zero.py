@@ -17,7 +17,7 @@ class TestZeRO(DistributedCompileTest):
     @pytest.mark.parametrize('dtype', [torch.bfloat16, torch.float16, torch.float32])
     @pytest.mark.parametrize('zero_stage', [1, 2, 3])
     @pytest.mark.parametrize('offload_device', [OffloadDeviceEnum.none, OffloadDeviceEnum.cpu, OffloadDeviceEnum.nvme])
-    def test_zero_fragments(self, tmpdir, zero_stage, dtype, offload_device):
+    def test_compile_zero(self, tmpdir, zero_stage, dtype, offload_device):
         if offload_device == OffloadDeviceEnum.nvme:
             if zero_stage != 3:
                 pytest.skip(f"Nvme offload not supported for zero stage {zero_stage}")

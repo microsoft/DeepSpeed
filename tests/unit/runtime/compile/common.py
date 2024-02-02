@@ -8,6 +8,7 @@ import random
 import os
 import numpy as np
 from copy import deepcopy
+import queue
 
 import torch
 import torch.multiprocessing as mp
@@ -151,9 +152,9 @@ class DistributedCompileTest(DistributedTest):
         master_port = get_master_port()
 
         # Run the test
-        queue = mp.Queue()
+        result_queue = mp.Queue()
         procs = [
-            mp.Process(target=self._dist_run_queue, args=(local_rank, num_procs, master_port, queue))
+            mp.Process(target=self._dist_run_queue, args=(local_rank, num_procs, master_port, result_queue))
             for local_rank in range(num_procs)
         ]
         for p in procs:
@@ -162,8 +163,8 @@ class DistributedCompileTest(DistributedTest):
             p.join()
 
         try:
-            skip_msgs = [queue.get(timeout=TIMEOUT) for _ in range(num_procs)]
-        except mp.Empty:
+            skip_msgs = [result_queue.get(timeout=TIMEOUT) for _ in range(num_procs)]
+        except queue.Empty:
             pytest.exit("Test hanged, exiting", returncode=0)
 
         # If we skipped a test, propagate that to this process
