@@ -8,7 +8,7 @@ import torch
 
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 
-from unit.runtime.compile.common import DistributedCompileTest, compare_with_ddp
+from unit.runtime.compile.common import DistributedCompileTest, compare_loss
 
 
 class TestZeRO(DistributedCompileTest):
@@ -52,4 +52,4 @@ class TestZeRO(DistributedCompileTest):
         elif dtype == torch.bfloat16:
             config_dict["bf16"] = {"enabled": True}
 
-        compare_with_ddp(self, config_dict, dtype)
+        compare_loss(self, config_dict, dtype)
