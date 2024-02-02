@@ -43,13 +43,13 @@ def all_to_all_quant_reduce(tensors: List[Tensor], groups: {}) -> List[Tensor]:
     for idx, tensor in enumerate(tensors):
         if tensor.dim() == 1:
             logger.info(
-                f"zgq falls back to reduce_scatter for 1D tensor because all_to_all is not beneficial for small size.")
+                f"qgz falls back to reduce_scatter for 1D tensor because all_to_all is not beneficial for small size.")
             output_lst[idx] = reduce_scatter_coalesced([tensor])[0]
         elif tensor.numel() % global_world_size != 0:
             # Due to the constraint of 2-stage all-to-all, the input tensor must be divisible by global_world_size
             # Otherwise, all-to-all cannot be performed because of shape mismatch.
             logger.warning(
-                f"zqg falls back to reduce_scatter because tensor size {tensor.numel()} is not divisible by global_world_size {global_world_size}. Please consider allocating a new world whose size can divide tensor size."
+                f"qgz falls back to reduce_scatter because tensor size {tensor.numel()} is not divisible by global_world_size {global_world_size}. Please consider allocating a new world whose size can divide tensor size."
             )
             output_lst[idx] = reduce_scatter_coalesced([tensor])[0]
         else:
