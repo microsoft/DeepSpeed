@@ -46,7 +46,7 @@ class MoE(nn.Module):
                  use_residual: bool = False,
                  noisy_gate_policy: Optional[str] = None,
                  drop_tokens: bool = True,
-                 use_rts=True,
+                 use_rts: bool =True,
                  use_tutel: bool = False,
                  enable_expert_tensor_parallelism: bool = False) -> None:
 
