@@ -248,7 +248,7 @@ def load_model_with_checkpoint(r_module,
                     if child.__class__ is nn.LayerNorm:
                         child = Normalize(dim=ds_shape[-1], dtype=child.weight.dtype, eps=child.eps)
                         setattr(module, name, child)
-                    elif child.__class__ is [nn.Linear, ColumnParallelLinear, RowParallelLinear]:
+                    elif child.__class__ in [nn.Linear, ColumnParallelLinear, RowParallelLinear]:
                         child = LinearLayer(weight_shape=child.weight.shape, dtype=child.weight.dtype, bias=child.bias)
                         setattr(module, name, child)
                     elif child.__class__ is OPTLearnedPositionalEmbedding:
