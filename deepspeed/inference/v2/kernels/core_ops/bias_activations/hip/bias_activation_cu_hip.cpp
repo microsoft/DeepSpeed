@@ -1,10 +1,11 @@
+#include "hip/hip_runtime.h"
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0
 
 // DeepSpeed Team
 
 #include <cassert>
-#include <cuda_runtime.h>
+#include <hip/hip_runtime.h>
 #include "activation_type.h"
 #include "conversion_utils.h"
 #include "ds_kernel_utils.h"
@@ -113,7 +114,7 @@ void launch_bias_activation(T* activation,
                             const int32_t n_rows,
                             const int32_t n_cols,
                             const ActivationType activation_type,
-                            cudaStream_t stream)
+                            hipStream_t stream)
 {
     constexpr int32_t elems_per_block =
         bias_act::threads * bias_act::unroll * bias_act::access_size / sizeof(T);
@@ -132,10 +133,10 @@ void launch_bias_activation(T* activation,
 
 #define INSTANTIATE_FOR_T(T)                 \
     template void launch_bias_activation<T>( \
-        T*, const T*, const int32_t, const int32_t, const ActivationType, cudaStream_t);
+        T*, const T*, const int32_t, const int32_t, const ActivationType, hipStream_t);
 
 INSTANTIATE_FOR_T(__half);
 
 #ifdef BF16_AVAILABLE
-INSTANTIATE_FOR_T(__nv_bfloat16);
+INSTANTIATE_FOR_T(hip_bfloat16);
 #endif
