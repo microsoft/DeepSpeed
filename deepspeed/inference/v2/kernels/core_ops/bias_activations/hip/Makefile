@@ -11,7 +11,7 @@ EXECUTABLE=./bias_activations.exe
 
 all: $(EXECUTABLE) test
 
-CXXFLAGS =-g -I ./includes
+CXXFLAGS =-g -I ./includes -std=c++17
 
 CXX=$(HIPCC)
 

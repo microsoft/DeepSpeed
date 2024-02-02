@@ -205,7 +205,7 @@ int main() {
     hostActivations = (float*)malloc(total_elems * sizeof(float));
     
     // initialize the input data
-    for (i = 0; i < total_elems * n_cols; i++) {
+    for (i = 0; i < total_elems; i++) {
         hostActivations[i] = (float)i*1.15f;
     }
     
@@ -222,17 +222,10 @@ int main() {
     //                                        const T* bias,
     //                                        const int32_t rows,
     //                                        const int32_t cols)
-    ACT_TYPE_SWITCH(activation_type, [&] {
-        //hipLaunchKernelGGL(bias_activation_kernel<float, act_fn_t>,
-        //                dim3(blocks),            // TODO: Update
-        //                dim3(bias_act::threads), // TODO: Update
-        //                0, 0,
-        //                activation, bias, n_rows, n_cols);
-        //
-        bias_activation_kernel<float, act_fn_t>
-            <<<dim3(blocks), dim3(bias_act::threads), 0, 0>>>(deviceA, nullptr, n_rows, n_cols);
+    //ACT_TYPE_SWITCH(activation_type, [&] {
+        bias_activation_kernel<float, activation_type><<<dim3(blocks), dim3(bias_act::threads), 0, 0>>>(deviceA, nullptr, n_rows, n_cols);
+    //});
             //<<<dim3(blocks), dim3(bias_act::threads), 0, 0>>>(activation, bias, n_rows, n_cols);
-    });
 
     // hipLaunchKernelGGL(vectoradd_float, 
     //                 dim3(WIDTH/THREADS_PER_BLOCK_X, HEIGHT/THREADS_PER_BLOCK_Y),
