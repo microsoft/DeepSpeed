@@ -211,7 +211,7 @@ int main() {
     
     HIP_ASSERT(hipMalloc((void**)&deviceA, total_elems * sizeof(float)));
     
-    HIP_ASSERT(hipMemcpy(hostActivations, deviceA, total_elems*sizeof(float), hipMemcpyDeviceToHost));
+    HIP_ASSERT(hipMemcpy(deviceA, hostActivations, total_elems*sizeof(float), hipMemcpyHostToDevice));
 
 	constexpr ActivationType activation_type = ActivationType::IDENTITY;
 
