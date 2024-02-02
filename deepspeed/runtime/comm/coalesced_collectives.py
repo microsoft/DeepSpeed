@@ -42,15 +42,13 @@ def all_to_all_quant_reduce(tensors: List[Tensor], groups: {}) -> List[Tensor]:
     output_lst: List[Tensor] = [None] * len(tensors)
     for idx, tensor in enumerate(tensors):
         if tensor.dim() == 1:
-            logger.info(
-                f"gqZ falls back to reduce_scatter for 1D tensor because all_to_all is not beneficial for small size.")
             output_lst[idx] = reduce_scatter_coalesced([tensor])[0]
         elif tensor.numel() % (2 * global_world_size) != 0:
             # Due to the constraint of 2-stage all-to-all, the input tensor must be divisible by 2 * global_world_size
             # Otherwise, all-to-all cannot be performed because of shape mismatch.
             # See more at https://github.com/microsoft/DeepSpeed/pull/5056
             logger.warning(
-                f"gqZ falls back to reduce_scatter because tensor size = {tensor.numel()} is not divisible by (2 * global_world_size) = {2 * global_world_size}. Please consider allocating a new world to enable gqZ"
+                f"qgZ falls back to reduce_scatter because tensor size = {tensor.numel()} is not divisible by (2 * global_world_size) = {2 * global_world_size}. Please consider allocating a new world to enable qgZ"
             )
             output_lst[idx] = reduce_scatter_coalesced([tensor])[0]
         else:
