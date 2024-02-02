@@ -8,88 +8,17 @@ import torch
 from collections import OrderedDict
 from deepspeed.utils import z3_leaf_module
 from deepspeed.runtime.utils import see_memory_usage
+from deepspeed.runtime.zero.utils import apply_to_tensors_only, is_zero_param
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.partition_parameters import _init_external_params
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.partitioned_param_coordinator import PartitionedParameterCoordinator, InflightParamRegistry, iter_params
-from deepspeed import comm as dist
 from deepspeed.accelerator import get_accelerator
 
 FWD_MODULE_STACK = list()
 
-
-def is_builtin_type(obj):
-    # https://stackoverflow.com/a/17795199
-    return obj.__class__.__module__ == '__builtin__' or obj.__class__.__module__ == "builtins"
-
-
-def isinstance_namedtuple(obj: object) -> bool:
-    """
-    Is this an instance of namedtuple/NamedTuple?
-    From: https://stackoverflow.com/a/62692640
-
-    Args:
-        obj (object): An object.
-
-    Returns:
-        bool: True if namedtuple/NamedTuple else False.
-    """
-    return isinstance(obj, tuple) and hasattr(obj, '_asdict') and hasattr(obj, '_fields')
-
-
 # ensure we only warn once, otherwise every iteration will trigger a warning
 warned = False
-
-
-def _apply_to_tensors_only(functional, outputs):
-    """
-    Apply a torch.autograd.Function that calls a `backward_function` to every Tensor in `outputs`.
-
-    Args:
-        module (torch.nn.Module):  A torch module
-        functional (Type[torch.autograd.Function]): The function class to apply.
-        backward_function (Callable[[torch.nn.Module], None]): A backward_function to pass to
-            `functional.apply`.
-        outputs (Any): The output of `module`.
-
-    Returns:
-        Any: The output of `module`.
-    """
-    if isinstance(outputs, (tuple, list)):
-        touched_outputs = []
-        for output in outputs:
-            touched_output = _apply_to_tensors_only(functional, output)
-            touched_outputs.append(touched_output)
-
-        if isinstance_namedtuple(outputs):
-            # namedtuples require a slightly different syntax.
-            return outputs.__class__(*touched_outputs)
-
-        return outputs.__class__(touched_outputs)
-    elif isinstance(outputs, dict):
-        # apply inplace to avoid recreating dict inherited objects
-        for key in outputs.keys():
-            outputs[key] = _apply_to_tensors_only(outputs[key])
-        return outputs
-
-    elif isinstance(outputs, torch.Tensor):
-        # this also applies to torch.Tensor's subclasses like torch.nn.parameter.Parameter
-        touched_outputs = functional.apply(outputs)
-
-        # restore zero param attributes if those get stripped by `backward_function`
-        if not is_zero_param(touched_outputs) and is_zero_param(outputs):
-            touched_outputs.ds_param_alias = outputs
-        return touched_outputs
-    else:
-        if not is_builtin_type(outputs):
-            global warned
-            if not warned and dist.get_rank() == 0:
-                logger.warning(
-                    f"A module has unknown inputs or outputs type ({type(outputs)}) and the tensors embedded in it cannot be detected. "
-                    "The ZeRO-3 hooks designed to trigger before or after backward pass of the module relies on knowing the input and "
-                    "output tensors and therefore may not get triggered properly.")
-                warned = True
-        return outputs
 
 
 #for each tensor in outputs run the forward_function and register backward_function as hook
@@ -336,7 +265,10 @@ class DeepSpeedZeRoOffload(object):
 
         #print(f"{module.__class__} : {module.id}")
 
-        if not z3_leaf_module(module):
+        if z3_leaf_module(module):
+            for param in module.parameters():
+                param.ds_z3_leaf_module = module
+        else:
             for child in module.children():
                 count[0] = count[0] + 1
                 self._register_hooks_recursively(child, count=count)
@@ -347,6 +279,7 @@ class DeepSpeedZeRoOffload(object):
 
         @instrument_w_nvtx
         def _post_forward_module_hook(module, input, output):
+
             global FWD_MODULE_STACK
             FWD_MODULE_STACK.pop()
             if output is None:
@@ -387,6 +320,11 @@ class DeepSpeedZeRoOffload(object):
 
             self.post_sub_module_forward_function(module)
 
+        def _bwd_hook_unexpected_inputs_msg(value):
+            return f"A module has unknown inputs or outputs type ({type(value)}) and the tensors embedded in it cannot be detected. " \
+                "The ZeRO-3 hooks designed to trigger before or after backward pass of the module relies on knowing the input and " \
+                "output tensors and therefore may not get triggered properly."
+
         def _pre_backward_module_hook(module, inputs, output):
 
             if not hasattr(module, "pre_bwd_fn"):
@@ -412,19 +350,19 @@ class DeepSpeedZeRoOffload(object):
                         if not hasattr(ctx.module, "applied_pre_backward_ref_cnt"):
                             ctx.module.applied_pre_backward_ref_cnt = 0
                         ctx.module.applied_pre_backward_ref_cnt += 1
-                        #print(f"After Forward: {ctx.module.__class__.__name__}")
                         outputs = outputs.detach()
                         return outputs
 
                     @staticmethod
                     def backward(ctx, *args):
-                        #print(f"Before Backward: {ctx.module.__class__.__name__}")
                         ctx.pre_backward_function(ctx.module)
                         return args
 
                 module.pre_bwd_fn = PreBackwardFunctionForModule
 
-            return _apply_to_tensors_only(module.pre_bwd_fn, output)
+            return apply_to_tensors_only(module.pre_bwd_fn.apply,
+                                         output,
+                                         warning_msg_fn=_bwd_hook_unexpected_inputs_msg)
 
         #This is an alternate to doing _post_backward_module_hook
         #it uses tensor.register_hook instead of using torch.autograd.Function
@@ -480,12 +418,13 @@ class DeepSpeedZeRoOffload(object):
                         ctx.module.ds_grads_remaining = ctx.module.ds_grads_remaining - 1
                         if ctx.module.ds_grads_remaining == 0:
                             ctx.post_backward_function(ctx.module)
-                            #print(f"After Backward: {ctx.module.__class__.__name__}")
                         return args
 
                 module.post_bwd_fn = PostBackwardFunctionModule
 
-            return _apply_to_tensors_only(module.post_bwd_fn, inputs)
+            return apply_to_tensors_only(module.post_bwd_fn.apply,
+                                         inputs,
+                                         warning_msg_fn=_bwd_hook_unexpected_inputs_msg)
 
         # Pre forward hook
         self.forward_hooks.append(module.register_forward_pre_hook(_pre_forward_module_hook))

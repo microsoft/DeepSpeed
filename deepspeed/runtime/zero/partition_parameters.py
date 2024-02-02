@@ -25,7 +25,7 @@ from deepspeed.utils import groups
 import deepspeed
 from ..utils import see_memory_usage
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
-from deepspeed.runtime.zero.utils import assert_ints_same_as_other_ranks
+from deepspeed.runtime.zero.utils import assert_ints_same_as_other_ranks, is_zero_param
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.config_utils import get_config_default
 from deepspeed.utils import instrument_w_nvtx, logger
@@ -107,12 +107,6 @@ def print_rank_0(message, debug=False, force=False):
 def debug_rank0(msg: str) -> None:
     if dist.get_rank() == 0:
         logger.debug(msg)
-
-
-def is_zero_param(parameter):
-    if not torch.is_tensor(parameter):
-        return False
-    return hasattr(parameter, 'ds_id')
 
 
 def _init_external_params(module):

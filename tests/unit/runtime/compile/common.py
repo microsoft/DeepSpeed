@@ -26,7 +26,9 @@ TIMEOUT = 600
 class EnableDeterminism:
 
     def __init__(self, seed: int):
-        self.seed = seed
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+
+        self.seed = seed + local_rank
         self.saved_random_state = None
         self.saved_np_random_state = None
         self.saved_cuda_launch_blocking = None
