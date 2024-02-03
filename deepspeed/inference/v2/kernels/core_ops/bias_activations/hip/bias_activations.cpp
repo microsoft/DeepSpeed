@@ -50,6 +50,9 @@ THE SOFTWARE.
 template <ActivationType ActType>
 DS_D_INLINE float act_fn(float val);
 
+template <ActivationType ActType>
+float act_fn_cpu(float val);
+
 template <>
 DS_D_INLINE float act_fn<ActivationType::IDENTITY>(float val)
 {
@@ -76,37 +79,32 @@ DS_D_INLINE float act_fn<ActivationType::SILU>(float val)
     return val / (1.0f + expf(-val));
 }
 
+// CPU checker functions
+template <>
+float act_fn_cpu<ActivationType::IDENTITY>(float val)
+{
+    return val;
+}
 
-// __global__ void 
-// vectoradd_float(float* __restrict__ a, const float* __restrict__ b, const float* __restrict__ c, int width, int height) 
-// 
-//   {
-//  
-//       int x = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
-//       int y = hipBlockDim_y * hipBlockIdx_y + hipThreadIdx_y;
-// 
-//       int i = y * width + x;
-//       if ( i < (width * height)) {
-//         a[i] = b[i] + c[i];
-//       }
-// 
-// 
-// 
-//   }
-// 
-// #if 0
-// __kernel__ void vectoradd_float(float* a, const float* b, const float* c, int width, int height) {
-// 
-//   
-//   int x = blockDimX * blockIdx.x + threadIdx.x;
-//   int y = blockDimY * blockIdy.y + threadIdx.y;
-// 
-//   int i = y * width + x;
-//   if ( i < (width * height)) {
-//     a[i] = b[i] + c[i];
-//   }
-// }
-// #endif
+template <>
+float act_fn_cpu<ActivationType::RELU>(float val)
+{
+    return val > 0.0f ? val : 0.0f;
+}
+
+template <>
+float act_fn_cpu<ActivationType::GELU>(float val)
+{
+    constexpr float sqrt_param = 0.79788456080286535587989211986876f;
+    constexpr float mul_param = 0.044715f;
+    return val * 0.5f * (1.0f + tanhf(sqrt_param * (val + mul_param * val * val * val)));
+}
+
+template <>
+float act_fn_cpu<ActivationType::SILU>(float val)
+{
+    return val / (1.0f + expf(-val));
+}
 
 #define ACT_TYPE_SWITCH(ACT_TYPE, ...)                                \
     if (ACT_TYPE == ActivationType::IDENTITY) {                       \
@@ -177,7 +175,8 @@ __global__ void bias_activation_kernel(T* activation,
 using namespace std;
 
 int main() {
-  
+
+    float* hostOrigVals;
     float* hostActivations;
 
     float* deviceA;
@@ -199,21 +198,28 @@ int main() {
     constexpr int32_t elems_per_block =
         bias_act::threads * bias_act::unroll * bias_act::access_size / sizeof(float);
     const int32_t total_elems = n_rows * n_cols;
-    
+
     const int32_t blocks = (total_elems + elems_per_block - 1) / elems_per_block;
-  
+
+    hostOrigVals = (float*)malloc(total_elems * sizeof(float));
     hostActivations = (float*)malloc(total_elems * sizeof(float));
-    
+
     // initialize the input data
     for (i = 0; i < total_elems; i++) {
+        hostOrigVals[i] = (float)i*1.15f;
         hostActivations[i] = (float)i*1.15f;
+        printf("before kernel [%i], %.6f\n", i, hostActivations[i]);
     }
-    
+
     HIP_ASSERT(hipMalloc((void**)&deviceA, total_elems * sizeof(float)));
-    
+
     HIP_ASSERT(hipMemcpy(deviceA, hostActivations, total_elems*sizeof(float), hipMemcpyHostToDevice));
 
-	constexpr ActivationType activation_type = ActivationType::IDENTITY;
+    // IDENTITY - passes
+    // RELU - passes
+    // GELU - passes
+    // SILU - passes
+	constexpr ActivationType activation_type = ActivationType::GELU;
 
     // const dim3 grid(blocks);
     // const dim3 block(bias_act::threads);
@@ -235,29 +241,29 @@ int main() {
 
     HIP_ASSERT(hipMemcpy(hostActivations, deviceA, total_elems*sizeof(float), hipMemcpyDeviceToHost));
 
+    for (i = 0; i < total_elems; i++) {
+        printf("after kernel [%i], %.6f\n", i, hostActivations[i]);
+    }
+
     // verify the results
-    // errors = 0;
-    // for (i = 0; i < NUM; i++) {
-    //     if (hostA[i] != (hostB[i] + hostC[i])) {
-    //         errors++;
-    //     }
-    // }
-    // if (errors!=0) {
-    //     printf("FAILED: %d errors\n",errors);
-    // } else {
-    //     printf ("PASSED!\n");
-    // }
+    errors = 0;
+    for (i = 0; i < total_elems; i++) {
+        if (hostActivations[i] != act_fn_cpu<activation_type>(hostOrigVals[i])) {
+            errors++;
+        }
+    }
+    if (errors!=0) {
+        printf("FAILED: %d errors\n",errors);
+    } else {
+        printf ("PASSED!\n");
+    }
 
     HIP_ASSERT(hipFree(deviceA));
-    // HIP_ASSERT(hipFree(deviceB));
-    // HIP_ASSERT(hipFree(deviceC));
 
+    free(hostOrigVals);
     free(hostActivations);
-    // free(hostB);
-    // free(hostC);
 
     //hipResetDefaultAccelerator();
 
-    // return errors;
-    return 0;
+    return errors;
 }
