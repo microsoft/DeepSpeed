@@ -19,7 +19,7 @@ class TestZeRO(DistributedCompileTest):
     @pytest.mark.parametrize('zero_stage', [1, 2, 3])
     @pytest.mark.parametrize('offload_device', [OffloadDeviceEnum.none, OffloadDeviceEnum.cpu, OffloadDeviceEnum.nvme])
     def test_compile_zero(self, tmpdir, zero_stage, dtype, offload_device):
-        if dtype == torch.bfloat16 and not bf16_required_version_check(accelerator_check=False):
+        if dtype == torch.bfloat16 and not bf16_required_version_check():
             pytest.skip(
                 " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
             )
