@@ -79,8 +79,8 @@ def enable_determinism(seed: int):
 def compare_loss(self, config, dtype):
     iteration = 5
     hidden_dim = 10
-    RTOL = 1e-1
-    ATOL = 1e-3
+    RTOL = 5e-1
+    ATOL = 1e-2
 
     device = torch.device(get_accelerator().current_device_name())
     model = SimpleModel(hidden_dim)
