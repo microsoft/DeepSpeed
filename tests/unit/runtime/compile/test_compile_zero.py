@@ -9,6 +9,7 @@ import torch
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 
 from unit.runtime.compile.common import DistributedCompileTest, compare_loss
+from unit.util import bf16_required_version_check
 
 
 class TestZeRO(DistributedCompileTest):
@@ -18,6 +19,11 @@ class TestZeRO(DistributedCompileTest):
     @pytest.mark.parametrize('zero_stage', [1, 2, 3])
     @pytest.mark.parametrize('offload_device', [OffloadDeviceEnum.none, OffloadDeviceEnum.cpu, OffloadDeviceEnum.nvme])
     def test_compile_zero(self, tmpdir, zero_stage, dtype, offload_device):
+        if dtype == torch.bfloat16 and not bf16_required_version_check(accelerator_check=False):
+            pytest.skip(
+                " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
+            )
+
         if offload_device == OffloadDeviceEnum.nvme:
             if zero_stage != 3:
                 pytest.skip(f"Nvme offload not supported for zero stage {zero_stage}")
