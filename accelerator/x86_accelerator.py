@@ -11,30 +11,15 @@ from .abstract_accelerator import DeepSpeedAccelerator
 # During setup stage torch may not be installed, pass on no torch will
 # allow op builder related API to be executed.
 try:
-    import torch.cuda
+    import torch.cpu
 except ImportError:
     pass
 
 
-class CUDA_Accelerator(DeepSpeedAccelerator):
+class x86_Accelerator(DeepSpeedAccelerator):
 
     def __init__(self):
-        self._name = 'cuda'
-        self._communication_backend_name = 'nccl'
-        if pynvml is None:
-            self._init_pynvml()
-
-    def _init_pynvml(self):
-        global pynvml
-        try:
-            import pynvml
-        except ImportError:
-            return
-        try:
-            pynvml.nvmlInit()
-        except pynvml.NVMLError:
-            pynvml = None
-            return
+        self._name = 'x86'
 
     def is_synchronized_device(self):
         return False
@@ -42,26 +27,26 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     # Device APIs
     def device_name(self, device_index=None):
         if device_index is None:
-            return 'cuda'
-        return 'cuda:{}'.format(device_index)
+            return 'x86'
+        return 'x86:{}'.format(device_index)
 
     def device(self, device_index=None):
-        return torch.cuda.device(device_index)
+        return torch.device(device_index)
 
     def set_device(self, device_index):
-        torch.cuda.set_device(device_index)
+        torch.cpu.set_device(device_index)
 
     def current_device(self):
-        return torch.cuda.current_device()
+        return torch.cpu.current_device()
 
     def current_device_name(self):
-        return 'cuda:{}'.format(torch.cuda.current_device())
+        return 'x86:{}'.format(torch.cpu.current_device())
 
     def device_count(self):
-        return torch.cuda.device_count()
+        return torch.cpu.device_count()
 
     def synchronize(self, device_index=None):
-        return torch.cuda.synchronize(device_index)
+        return torch.cpu.synchronize(device_index)
 
     # RNG APIs
     def random(self):
@@ -69,49 +54,49 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def set_rng_state(self, new_state, device_index=None):
         if device_index is None:
-            return torch.cuda.set_rng_state(new_state)
+            return torch.set_rng_state(new_state)
 
-        return torch.cuda.set_rng_state(new_state, device_index)
+        return torch.set_rng_state(new_state, device_index)
 
     def get_rng_state(self, device_index=None):
         if device_index is None:
-            return torch.cuda.get_rng_state()
+            return torch.get_rng_state()
 
-        return torch.cuda.get_rng_state(device_index)
+        return torch.get_rng_state(device_index)
 
     def manual_seed(self, seed):
-        return torch.cuda.manual_seed(seed)
+        return torch.manual_seed(seed)
 
     def manual_seed_all(self, seed):
-        return torch.cuda.manual_seed_all(seed)
+        return torch.manual_seed_all(seed)
 
     def initial_seed(self, seed):
-        return torch.cuda.initial_seed(seed)
+        return torch.initial_seed(seed)
 
     def default_generator(self, device_index):
-        return torch.cuda.default_generators[device_index]
+        return torch.default_generators[device_index]
 
     # Streams/Events
     @property
     def Stream(self):
-        return torch.cuda.Stream
+        return torch.cpu.Stream
 
     def stream(self, stream):
-        return torch.cuda.stream(stream)
+        return torch.cpu.stream(stream)
 
     def current_stream(self, device_index=None):
-        return torch.cuda.current_stream(device_index)
+        return None
 
     def default_stream(self, device_index=None):
-        return torch.cuda.default_stream(device_index)
+        return None
 
     @property
     def Event(self):
-        return torch.cuda.Event
+        return None
 
     # Memory management
     def empty_cache(self):
-        return torch.cuda.empty_cache()
+        return
 
     def memory_allocated(self, device_index=None):
         return torch.cuda.memory_allocated(device_index)
@@ -150,20 +135,6 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def total_memory(self, device_index=None):
         return torch.cuda.get_device_properties(device_index).total_memory
 
-    def _get_nvml_gpu_id(self, torch_gpu_id):
-        """
-        credit: https://discuss.pytorch.org/t/making-pynvml-match-torch-device-ids-cuda-visible-devices/103020
-
-        Remap torch device id to nvml device id, respecting CUDA_VISIBLE_DEVICES.
-
-        If the latter isn't set return the same id
-        """
-        # if CUDA_VISIBLE_DEVICES is used automagically remap the id since pynvml ignores this env var
-        if "CUDA_VISIBLE_DEVICES" in os.environ:
-            ids = list(map(int, os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",")))
-            return ids[torch_gpu_id]  # remap
-        else:
-            return torch_gpu_id
 
     def available_memory(self, device_index=None):
         if pynvml:
@@ -177,23 +148,10 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     # Data types
     def is_bf16_supported(self):
-        if not torch.cuda.is_available():
-            return True
-        return torch.cuda.is_bf16_supported()
+        return True
 
     def is_fp16_supported(self):
-        if not torch.cuda.is_available():
-            return True
-        # See https://docs.nvidia.com/deeplearning/tensorrt/support-matrix/index.html#hardware-precision-matrix
-        # FP16 on compute capability 6.x is deprecated
-        allow_deprecated_fp16 = os.environ.get('DS_ALLOW_DEPRECATED_FP16', '0') == '1'
-        major, _ = torch.cuda.get_device_capability()
-        if major >= 7:
-            return True
-        elif major == 6 and allow_deprecated_fp16:
-            return True
-        else:
-            return False
+        return True
 
     def supported_dtypes(self):
         supported_dtypes = [torch.float]
@@ -205,74 +163,65 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     # Misc
     def amp(self):
-        if hasattr(torch.cuda, 'amp'):
-            return torch.cuda.amp
-        return None
+        return torch.cpu.amp
 
     def is_available(self):
-        return torch.cuda.is_available()
+        return torch.cpu.is_available()
 
     def range_push(self, msg):
-        if hasattr(torch.cuda.nvtx, 'range_push'):
-            return torch.cuda.nvtx.range_push(msg)
+        return
 
     def range_pop(self):
-        if hasattr(torch.cuda.nvtx, 'range_pop'):
-            return torch.cuda.nvtx.range_pop()
+        return
 
     def lazy_call(self, callback):
-        return torch.cuda._lazy_call(callback)
+        return callback()
 
     def communication_backend_name(self):
         return self._communication_backend_name
 
     def is_triton_supported(self):
-        major, _ = torch.cuda.get_device_capability()
-        if major >= 8:
-            return True
-        else:
-            return False
+        return False
 
     # Graph operations
     def create_graph(self):
-        return torch.cuda.CUDAGraph()
+        return None
 
     def capture_to_graph(self, graph, pool=None, stream=None):
-        return torch.cuda.graph(graph, pool, stream)
+        from deepspeed.runtime.utils import noop_context
+        return noop_context()
 
     def replay_graph(self, graph):
-        graph.replay()
         return
 
     # Tensor operations
-
     @property
     def BFloat16Tensor(self):
-        return torch.cuda.BFloat16Tensor
+        return torch.BFloat16Tensor
 
     @property
     def ByteTensor(self):
-        return torch.cuda.ByteTensor
+        return torch.ByteTensor
 
     @property
     def DoubleTensor(self):
-        return torch.cuda.DoubleTensor
+        return torch.DoubleTensor
 
     @property
     def FloatTensor(self):
-        return torch.cuda.FloatTensor
+        return torch.FloatTensor
 
     @property
     def HalfTensor(self):
-        return torch.cuda.HalfTensor
+        return torch.HalfTensor
 
     @property
     def IntTensor(self):
-        return torch.cuda.IntTensor
+        return torch.IntTensor
 
     @property
     def LongTensor(self):
-        return torch.cuda.LongTensor
+        return torch.LongTensor
 
     def pin_memory(self, tensor, align_bytes=1):
         return tensor.pin_memory()
@@ -282,7 +231,7 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def on_accelerator(self, tensor):
         device_str = str(tensor.device)
-        if device_str.startswith('cuda:'):
+        if device_str.startswith('x86:'):
             return True
         else:
             return False
@@ -346,4 +295,4 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         return BuildExtension
 
     def export_envs(self):
-        return ['NCCL']
+        return []
