@@ -565,28 +565,30 @@ static void parallel_memcpy(void* to, void* from, size_t n_bytes)
     }
 }
 
-size_t ring_slice_size(size_t chunk_el, int el_eize, int slice_idx)
+size_t ring_slice_size(size_t chunk_el, int el_size, int slice_idx)
 {
+    slice_idx = ((slice_idx%world_size)+world_size)%world_size;
     size_t slice_size = chunk_el / world_size;
     return el_size * (slice_idx == world_size-1 ? slice_size+(chunk_el%world_size) : slice_size);
 }
 
 char* ring_slice_data(char* data_ptr, size_t chunk_el, int el_size, int slice_idx)
 {
+    slice_idx = ((slice_idx%world_size)+world_size)%world_size;
     size_t slice_size = chunk_el / world_size;
     size_t el_offset = slice_size * slice_idx;
     return data_ptr + el_offset*el_size;
 }
 
-void ring_all_reduce(char* data_ptr, int scalar_type, size_t chunk_size, size_t chunk_el)
+void ring_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_size, size_t chunk_el)
 {
     int data_size = chunk_size/chunk_el;
     parallel_memcpy(ring_slice_data(workspace[world_rank].buffer, chunk_el, data_size, world_rank),
                     ring_slice_data(data_ptr, chunk_el, data_size, world_rank),
                     ring_slice_size(chunk_el, data_size, world_rank));
 
-    prev_rank = (world_rank+world_size-1) % world_size;
-    next_rank = (world_rank+1) % world_size;
+    int prev_rank = (world_rank+world_size-1) % world_size;
+    int next_rank = (world_rank+1) % world_size;
 
     int step;
 
@@ -597,14 +599,14 @@ void ring_all_reduce(char* data_ptr, int scalar_type, size_t chunk_size, size_t 
                                   ring_slice_data(workspace[world_rank].buffer, chunk_el, data_size, world_rank-1-step));
     }
 
-    for (step=0, step<world_size; step++) {
-        parallel_memcpy(ring_slice_data(data_ptr, chunk_el, data_size, (world_rank+step)%world_size),
-                        ring_slice_data(workspace[(world_rank+step-1+world_size)%world_size], chunk_el, data_size, (world_rank+step)%world_size),
-                        ring_slice_size(chunk_el, data_size, (world_rank+step)%world_size));
+    for (step=0; step<world_size; step++) {
+        parallel_memcpy(ring_slice_data(data_ptr, chunk_el, data_size, world_rank+step),
+                        ring_slice_data(workspace[(world_rank+step-1+world_size)%world_size].buffer, chunk_el, data_size, world_rank+step),
+                        ring_slice_size(chunk_el, data_size, world_rank+step));
     }
 }
 
-void naive_all_reduce(char* data_ptr, int scalar_type, size_t chunk_size, size_t chunk_el)
+void naive_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_size, size_t chunk_el)
 {
     parallel_memcpy(workspace[world_rank].buffer, data_ptr, chunk_size);
     std::atomic_thread_fence(std::memory_order_release);
