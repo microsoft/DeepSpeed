@@ -40,8 +40,8 @@ def fp_quantize(input: torch.FloatTensor,
         min_value/max_vlue (torch.FloatTensor)
             Used for static activation quantization
         group_size (int) N
-            The quantization block size, each N numbers has its own scaling factor and off-site
-            -1 means use the last dim as the group_size
+            The quantization block size, each N numbers has its own scaling
+            factor and off-site. -1 means use the last dim as the group_size
     Returns:
         quantized_fake_fp6
             The quantized weights, in fp16 format and contains fp6 value.
@@ -78,11 +78,8 @@ def fp_quantize(input: torch.FloatTensor,
     scales = max_input / q_range  # q_range + 1
     scales[scales == 0] = 1  # avoid zero scales
     scaled_input = input / scales
-    # torch.cuda.synchronize() # for some reason this is needed to avoid the output being 0
 
     quantized_fake_fp6 = float_quantize(scaled_input, exp_bits, man_bits, rounding="nearest")
-    # TODO: it seems the `float_quantize` will not clamp the value into the range of FP6 correctly.
-    # To double check it. If it is true, we need to clamp it manually.
 
     quantized_fake_fp6 = quantized_fake_fp6.reshape(input_shape).contiguous().to(torch.float16).to(orig_device)
     scales = scales.to(torch.float16).to(orig_device)
@@ -94,7 +91,8 @@ def fp_quantize(input: torch.FloatTensor,
 @DSLinearRegistry.register_module
 class QuantizedWf6Af16Linear(DSLinearBase):
     """
-    Linear DSModule for FP6 weight-only quantization kernel, where weight is FP6 and activation is FP16.
+    Linear DSModule for FP6 weight-only quantization kernel, where weight is FP6
+    and activation is FP16.
     """
 
     @staticmethod
@@ -106,8 +104,8 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         if config.input_dtype != config.output_dtype:
             return False
 
-        # As for fp6 data items, they are packed and stored in a set of fp16 tensors. E.g., 8 fp6 data items are stored
-        # in 3 fp16 tensor.
+        # As for fp6 data items, they are packed and stored in a set of fp16
+        # tensors. E.g., 8 fp6 data items are stored in 3 fp16 tensor.
         if config.input_dtype != torch.float16:
             return False
 
@@ -130,18 +128,18 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         self._linear_impl = CUDAWf6Af16Linear()
 
         if is_gated(config.activation):
-            # In the FP6 kernel implementation, the MatMul is W * A, where W is the weight and A is activation.
-            # M is the output channel size.
-            self.M = self._config.out_channels * 2
-            self.K = self._config.in_channels
+            # In the FP6 kernel implementation, the MatMul is W * A, where W is
+            # the weight and A is activation. M is the output channel size.
+            self.out_channels = self._config.out_channels * 2
+            self.in_channels = self._config.in_channels
             self._is_gated = True
             self._act_fn = CUDAGatedActivation(config.out_channels, config.output_dtype, config.activation)
             self._double_buffer = torch.empty((config.max_tokens, config.out_channels * 2),
                                               dtype=config.output_dtype,
                                               device=get_accelerator().current_device())
         else:
-            self.M = self._config.out_channels
-            self.K = self._config.in_channels
+            self.out_channels = self._config.out_channels
+            self.in_channels = self._config.in_channels
             self._is_gated = False
             self._act_fn = CUDABiasActivation(config.out_channels, config.output_dtype, config.activation)
 
@@ -172,15 +170,15 @@ class QuantizedWf6Af16Linear(DSLinearBase):
 
         quantized_fake_fp6, scales = self.quantizer(param, num_bits=6, exp_bits=3)
 
+        # This is for debugging, will delete before release.
         if self.DEBUG:
             self.weight_dequantized = quantized_fake_fp6 * scales
 
-        # This is for debugging, will delete after release.
+        # This is for debugging, will delete before release.
         assert (quantized_fake_fp6.dtype == torch.float16)
-        assert quantized_fake_fp6.shape[0] == self.M
-        assert scales.numel() == self.M
+        assert quantized_fake_fp6.shape[0] == self.out_channels
+        assert scales.numel() == self.out_channels
 
-        # Do not delete `quantized_fake_fp6` as the `preprocess_weight` is in-place operation.
         weights_2bit, weights_4bit = self.preprocess_weight(quantized_fake_fp6)
 
         return InferenceParameter.initialize(weights_2bit, weights_4bit=weights_4bit, scales=scales)
@@ -191,13 +189,13 @@ class QuantizedWf6Af16Linear(DSLinearBase):
         scales = w.scales
         output = empty_from(self._output, (hidden_states.shape[0], self._config.out_channels))
         if self._is_gated:
-            staging_output = empty_from(self._double_buffer, (hidden_states.shape[0], self.M))
-            self._linear_impl(staging_output, hidden_states, weights_2bit, weights_4bit, scales, self.M,
-                              hidden_states.shape[0], self.K)
+            staging_output = empty_from(self._double_buffer, (hidden_states.shape[0], self.out_channels))
+            self._linear_impl(staging_output, hidden_states, weights_2bit, weights_4bit, scales, self.out_channels,
+                              hidden_states.shape[0], self.in_channels)
             self._act_fn(output, staging_output, b)
         else:
-            self._linear_impl(output, hidden_states, weights_2bit, weights_4bit, scales, self.M,
-                              hidden_states.shape[0], self.K)
+            self._linear_impl(output, hidden_states, weights_2bit, weights_4bit, scales, self.out_channels,
+                              hidden_states.shape[0], self.in_channels)
             self._act_fn(output, b)
 
         if self.DEBUG:
@@ -205,7 +203,7 @@ class QuantizedWf6Af16Linear(DSLinearBase):
             self.weight_dequantized = self.weight_dequantized.to(output.device)
             ground_truth = torch.nn.functional.linear(hidden_states, self.weight_dequantized, b)
             self.weight_dequantized = self.weight_dequantized.to(orig_device)
-            shape = (hidden_states.shape[0], self.M, self.K)
+            shape = (hidden_states.shape[0], self.out_channels, self.in_channels)
             if self._is_gated:
                 ismatch = torch.allclose(ground_truth, staging_output, rtol=1e-3)
                 abs_diff = torch.max(torch.abs(ground_truth - staging_output))

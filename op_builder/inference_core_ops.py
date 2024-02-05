@@ -27,10 +27,10 @@ class InferenceCoreBuilder(CUDAOpBuilder):
             return False
 
         cuda_okay = True
-        if not self.is_rocm_pytorch() and torch.cuda.is_available():  # ignore-cuda
+        if not self.is_rocm_pytorch() and torch.cuda.is_available():  #ignore-cuda
             sys_cuda_major, _ = installed_cuda_version()
             torch_cuda_major = int(torch.version.cuda.split('.')[0])
-            cuda_capability = torch.cuda.get_device_properties(0).major  # ignore-cuda
+            cuda_capability = torch.cuda.get_device_properties(0).major  #ignore-cuda
             if cuda_capability < 6:
                 self.warning("NVIDIA Inference is only supported on Pascal and newer architectures")
                 cuda_okay = False

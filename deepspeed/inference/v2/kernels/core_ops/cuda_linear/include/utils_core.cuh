@@ -1,23 +1,18 @@
-/***************************************************************************
- * Copyright 2023 The FLash-LLM Authors. All rights reserved.
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- ***************************************************************************/
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
+// This is a copy of FP6-LLM kernel code: https://arxiv.org/abs/2401.14112
+
 #ifndef UTILS_CORE_CUH
 #define UTILS_CORE_CUH
 
 #include <assert.h>
 
-#include "Configs.h"
-#include "PTX_mma.cuh"
-#include "Utils_ParallelDequant.cuh"
+#include "configs.h"
+#include "ptx_mma.cuh"
+#include "utils_paralleldequant.cuh"
 
 #ifdef PIPELINE_LEVEL_SMEM
 template <int NUM_INT_PER_THREAD>
@@ -77,7 +72,7 @@ __device__ __forceinline__ void core_mma_slice(
                                        2;  // 1 set = 4 registers, containing a 16*16 MMA block
     uint32_t(*c_uint_ptr)[REG_PER_THREAD_C_TENSOR_16_16] =
         reinterpret_cast<uint32_t(*)[REG_PER_THREAD_C_TENSOR_16_16]>(
-            c);  // Reigsters for accumulated FP32 results
+            c);  // Registers for accumulated FP32 results
 
     // Setting RPTRs for double buffers
     uint32_t(*a_read)[4] = a;
@@ -153,7 +148,7 @@ __device__ __forceinline__ void PipelinedCoreLoop(
                                  : TilingConfig::WARP_COL_MMA_TENSORS /
                                        2;  // 1 set = 4 registers, containing a 16*16 MMA block
 
-    // Reigsters to store FP32 results
+    // Registers to store FP32 results
     uint32_t(*c_uint_ptr)[REG_PER_THREAD_C_TENSOR_16_16] =
         reinterpret_cast<uint32_t(*)[REG_PER_THREAD_C_TENSOR_16_16]>(c);
     // Registers to store FP6 fragments for a slice (64*16) of A matrix => 32 FP6 per thread => 6

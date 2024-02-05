@@ -90,6 +90,13 @@ def _fp6_quantized_linear_helper(tokens: int,
                                  dtype: DtypeEnum,
                                  act_fn: ActivationType,
                                  use_bias: bool = True) -> None:
+    # The current FP6 kernel only supports NVIDIA Ampere GPUs.
+    if not 'cuda' in get_accelerator().current_device_name():
+        return
+    major, _ = torch.cuda.get_device_capability()  #ignore-cuda
+    if major != 8:
+        return
+
     # Input vals
     hidden_states = torch.randn(
         (tokens, in_channels), dtype=dtype.value, device=get_accelerator().current_device_name()) * .01
@@ -142,9 +149,19 @@ all_acts = [
     ActivationType.SiGLU,
 ]
 all_tokens = [1, 37, 1280]
-# TODO: some of the shapes are not supported. The output channels should be a multiple of 256.
-# The input channel should be a multiple of 64.
-all_in_out_channels = [(4608, 1728), (8192, 4096), (3072, 6144)]
+all_in_out_channels = [
+    # Llama 2 7B shapes
+    (4096, 4096),
+    (4096, 11008),
+    (11008, 4096),
+    # Llama 2 70B shapes
+    (8192, 8192),
+    (8192, 28672),
+    (28672, 8192),
+    # Other shapes, not supported by FP6 kernels. Will raise ValueError.
+    (4608, 1728),
+    (3072, 6144)
+]
 
 
 @pytest.mark.inference_v2_ops

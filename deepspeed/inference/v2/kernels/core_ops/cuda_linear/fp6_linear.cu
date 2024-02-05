@@ -1,3 +1,10 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
+// This is a copy of FP6-LLM kernel code: https://arxiv.org/abs/2401.14112
+
 #include "include/kernel_matmul.cuh"
 #include "include/kernel_reduction.cuh"
 #include "include/weight_prepacking.h"
@@ -207,7 +214,7 @@ cudaError_t fp6_linear_kernel(cudaStream_t stream,
 /*
 Computes FP6-FP16 GEMM (PyTorch interface).
 
-[Mathmatical Formula]
+[Mathematical Formula]
 Standard definition of linear layer:    Out = In * trans(W), where In, Out, and W are stored in
 row-major. After Equivalent transformation    :    trans(Out) = W * trans(In). Note that we do not
 perform "transpose" during runtime, we instead interpret the In/Out as column-major matrices when
@@ -217,7 +224,7 @@ calling our CUDA kernel.
   _in_feats:  tensor of shape [B, IC];                  // half
   _weights:   int tensor of shape [OC, IC // 16 * 3];   // 3 INT32 words contains 16 FP6 weights.
   _scales:    tensor of shape [OC];                     // half
-  splitK:     spliting the MatMul problem along K dimension for higher GPU utilization, default 1.
+  splitK:     splitting the MatMul problem along K dimension for higher GPU utilization, default 1.
 [Outputs]
   _out_feats: tensor of shape [B, OC];                  // half
 */

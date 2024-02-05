@@ -145,9 +145,9 @@ void weight_prepacing_fp16_to_fp6(uint16_t* weight_16bit,
  *    weights_4bit: packed 4bit weights, size M*K*4/8
  *    scales: scale tensor, size M
  *    workspace: workspace tensor, size M*N*split_k
- *    M: the output channel size of the weight
+ *    M: the output channel number of the weight
  *    N: the token number of the activation
- *    K: the input channel size of the weight
+ *    K: the input channel number of the weight
  *    split_k: the split size of the GEMM calculation
  */
 void cuda_wf6af16_linear(torch::Tensor& output,
@@ -212,7 +212,7 @@ std::vector<torch::Tensor> preprocess_weight(torch::Tensor& weight)
     uint8_t* weight_2bit_ptr = weight_6bit_ptr;
 
     // Make sure that the new split tensor does not share the underlying memory with the original
-    // one. Otherwise it will incure some problems when the original tensor is deleted. It also
+    // one. Otherwise it will incur some problems when the original tensor is deleted. It also
     // makes the memory flattern risky.
     auto weight_2bit =
         torch::from_blob(weight_2bit_ptr, {M * K * 2 / 8}, torch::kUInt8).clone().detach();

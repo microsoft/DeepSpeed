@@ -1,3 +1,10 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
+// This is a copy of FP6-LLM kernel code: https://arxiv.org/abs/2401.14112
+
 #ifndef UTILS_PARALLELDEQUANT_CUH
 #define UTILS_PARALLELDEQUANT_CUH
 
