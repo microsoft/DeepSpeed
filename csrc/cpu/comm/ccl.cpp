@@ -537,36 +537,8 @@ static void parallel_memcpy(void* to, void* from, size_t n_bytes)
     }
 }
 
-void inference_all_reduce(torch::Tensor& data, py::object op, bool async_op)
+void naive_all_reduce(torch::Tensor& data, size_t numel, int data_size)
 {
-    static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
-    static auto ReduceOpSum = (int)py::int_(ReduceOp.attr("SUM").attr("value"));
-
-    assert(py::int_(op.attr("value")) == ReduceOpSum);
-
-    auto numel = data.numel();
-
-    int data_size = 0;
-    bool data_type_fallback = false;
-
-    switch (data.scalar_type()) {
-        case c10::ScalarType::BFloat16: data_size = numel * 2; break;
-        case c10::ScalarType::Float: data_size = numel * 4; break;
-        default: data_type_fallback = true;
-    }
-
-    if (data_type_fallback || (data_size % VECTOR_LENGTH_IN_BYTES) != 0 || !all_ranks_local_p) {
-        // fallback to oneccl allreduce
-        CCLCHECK(ccl::allreduce(data.data_ptr(),
-                                data.data_ptr(),
-                                data.numel(),
-                                get_ccl_datatype(data.scalar_type()),
-                                get_ccl_reduce_op(op, data),
-                                _get_comm_from_group())
-                     .wait());
-        return;
-    }
-
     for (int offset = 0; offset < data_size; offset += MAX_BUF_SIZE) {
         auto data_ptr = ((char*)(data.data_ptr()) + offset);
         size_t chunk_size = data_size - offset > MAX_BUF_SIZE ? MAX_BUF_SIZE : data_size - offset;
@@ -608,6 +580,39 @@ void inference_all_reduce(torch::Tensor& data, py::object op, bool async_op)
             workspace[world_rank].state = coll_begin;
         }
     }
+}
+
+void inference_all_reduce(torch::Tensor& data, py::object op, bool async_op)
+{
+    static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
+    static auto ReduceOpSum = (int)py::int_(ReduceOp.attr("SUM").attr("value"));
+
+    assert(py::int_(op.attr("value")) == ReduceOpSum);
+
+    auto numel = data.numel();
+
+    int data_size = 0;
+    bool data_type_fallback = false;
+
+    switch (data.scalar_type()) {
+        case c10::ScalarType::BFloat16: data_size = numel * 2; break;
+        case c10::ScalarType::Float: data_size = numel * 4; break;
+        default: data_type_fallback = true;
+    }
+
+    if (data_type_fallback || (data_size % VECTOR_LENGTH_IN_BYTES) != 0 || !all_ranks_local_p) {
+        // fallback to oneccl allreduce
+        CCLCHECK(ccl::allreduce(data.data_ptr(),
+                                data.data_ptr(),
+                                data.numel(),
+                                get_ccl_datatype(data.scalar_type()),
+                                get_ccl_reduce_op(op, data),
+                                _get_comm_from_group())
+                     .wait());
+        return;
+    }
+
+    naive_all_reduce(data, numel, data_size);
 }
 
 void barrier(std::vector<int> group, bool async_op)
