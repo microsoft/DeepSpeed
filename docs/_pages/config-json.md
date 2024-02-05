@@ -6,7 +6,7 @@ toc_label: "Contents"
 
 ### Batch Size Related Parameters
 
-**Note:** <i>**train_batch_size**</i> must be equal to  <i>**train_micro_batch_size_per_gpu**</i> * <i>**gradient_accumulation**</i> * number of GPUs. For simplicity, you can choose to only specify two of the three parameters, the last one will be inferred automatically by DeepSpeed.
+**Note:** <i>**train_batch_size**</i> must be equal to  <i>**train_micro_batch_size_per_gpu**</i> * <i>**gradient_accumulation_steps**</i> * number of GPUs. For simplicity, you can choose to only specify two of the three parameters, the last one will be inferred automatically by DeepSpeed.
 {: .notice--warning}
 
 <i>**train_batch_size**</i>: [integer]
@@ -480,7 +480,7 @@ Enabling and configuring ZeRO memory optimizations
 
 | Description                                                                                                                                                          | Default |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Do not partition parameters smaller than this threshold. Smaller values use less memory, but can greatly increase communication (especially latency-bound messages). | `1e6`   |
+| Do not partition parameters smaller than this threshold. Smaller values use less memory, but can greatly increase communication (especially latency-bound messages). | `1e5`   |
 
 
 ***stage3_gather_16bit_weights_on_model_save***: [boolean]
