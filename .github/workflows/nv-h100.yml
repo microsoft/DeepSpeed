@@ -31,12 +31,6 @@ jobs:
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
-      - name: Install dependencies
-        run: |
-          apt-get update
-          apt-get install -y libaio-dev
-          apt-get install -y pdsh
-
       - name: Install transformers
         run: |
           git clone https://github.com/huggingface/transformers
