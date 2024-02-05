@@ -8,12 +8,14 @@ import torch
 
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 
-from unit.runtime.compile.common import DistributedCompileTest, compare_loss
+from unit.runtime.compile.util import compare_loss
+from unit.common import DistributedTest
 from unit.util import bf16_required_version_check
 
 
-class TestZeRO(DistributedCompileTest):
+class TestZeRO(DistributedTest):
     world_size = 2
+    non_daemonic_procs = True
 
     @pytest.mark.parametrize('dtype', [torch.bfloat16, torch.float16, torch.float32])
     @pytest.mark.parametrize('zero_stage', [1, 2, 3])

@@ -3,22 +3,18 @@
 
 # DeepSpeed Team
 
-import pytest
 import random
 import os
 import numpy as np
 from copy import deepcopy
-import queue
 
 import torch
-import torch.multiprocessing as mp
 
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.zero import GatheredParameters
 
 from unit.simple_model import SimpleModel
-from unit.common import DistributedTest, get_master_port
 from typing import Callable, Any
 
 TIMEOUT = 600
@@ -128,46 +124,3 @@ def compare_loss(self, config, dtype):
         with GatheredParameters(target_engine.parameters()):
             for p1, p2 in zip(baseline_engine.parameters(), target_engine.parameters()):
                 assert torch.allclose(p1.to(dtype), p2, rtol=RTOL, atol=ATOL)
-
-
-class DistributedCompileTest(DistributedTest):
-    """
-    This class runs tests with non-daemonic processes while DistributedTest launches daemon processes.
-    torch.compile creates a new process to compile the model, but daemonic processes is not allowed to create new processes.
-    """
-
-    def _dist_run_queue(self, local_rank, num_procs, master_port, queue):
-        queue.put(self._dist_run(local_rank, num_procs, master_port))
-
-    def _launch_procs(self, num_procs):
-        # Verify we have enough accelerator devices to run this test
-        if get_accelerator().is_available() and get_accelerator().device_count() < num_procs:
-            pytest.skip(
-                f"Skipping test because not enough GPUs are available: {num_procs} required, {get_accelerator().device_count()} available"
-            )
-
-        # Set start method to `forkserver` (or `fork`)
-        mp.set_start_method('forkserver', force=True)
-
-        master_port = get_master_port()
-
-        # Run the test
-        result_queue = mp.Queue()
-        procs = [
-            mp.Process(target=self._dist_run_queue, args=(local_rank, num_procs, master_port, result_queue))
-            for local_rank in range(num_procs)
-        ]
-        for p in procs:
-            p.start()
-        for p in procs:
-            p.join()
-
-        try:
-            skip_msgs = [result_queue.get(timeout=TIMEOUT) for _ in range(num_procs)]
-        except queue.Empty:
-            pytest.exit("Test hanged, exiting", returncode=0)
-
-        # If we skipped a test, propagate that to this process
-        if any(skip_msgs):
-            assert len(set(skip_msgs)) == 1, "Multiple different skip messages received"
-            pytest.skip(skip_msgs[0])

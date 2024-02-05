@@ -10,7 +10,7 @@ from unit.simple_model import SimpleModel
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 
-from unit.runtime.compile.common import DistributedCompileTest
+from unit.common import DistributedTest
 
 custom_backend_called = False
 custom_compler_fn_called = False
@@ -49,8 +49,9 @@ def base_config():
     return config_dict
 
 
-class TestConfigLoad(DistributedCompileTest):
+class TestConfigLoad(DistributedTest):
     world_size = 1
+    non_daemonic_procs = True
 
     def _init_engine(self, config):
         hidden_dim = 10

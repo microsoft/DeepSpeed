@@ -9,7 +9,7 @@ import torch
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 
-from unit.runtime.compile.common import DistributedCompileTest
+from unit.common import DistributedTest
 
 
 @pytest.fixture
@@ -48,8 +48,9 @@ class SmallModelWithCustomMethod(torch.nn.Module):
         return self.v
 
 
-class TestCustomMethod(DistributedCompileTest):
+class TestCustomMethod(DistributedTest):
     world_size = 1
+    non_daemonic_procs = True
 
     def _init_engine(self, config, test_value):
         hidden_dim = 10
