@@ -135,7 +135,6 @@ class x86_Accelerator(DeepSpeedAccelerator):
     def total_memory(self, device_index=None):
         return torch.cuda.get_device_properties(device_index).total_memory
 
-
     def available_memory(self, device_index=None):
         if pynvml:
             if device_index is None:
