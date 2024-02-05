@@ -537,7 +537,7 @@ static void parallel_memcpy(void* to, void* from, size_t n_bytes)
     }
 }
 
-void ring_all_reduce(torch::Tensor& data, char* data_ptr, size_t chunk_size, size_t chunk_el)
+void ring_all_reduce(char* data_ptr, int scalar_type, size_t chunk_size, size_t chunk_el)
 {
     parallel_memcpy(workspace[world_rank].buffer, data_ptr, chunk_size);
     std::atomic_thread_fence(std::memory_order_release);
@@ -549,7 +549,7 @@ void ring_all_reduce(torch::Tensor& data, char* data_ptr, size_t chunk_size, siz
             // wait until the other rank copy the buffer
             wait_buffer_state_until(i, coll_allreduce_naive__copy_in_done);
         }
-        reduce_all_buffers(workspace, chunk_el, data.scalar_type(), world_size);
+        reduce_all_buffers(workspace, chunk_el, scalar_type, world_size);
         std::atomic_thread_fence(std::memory_order_release);
         workspace[world_rank].state = coll_allreduce_naive__reduce_done;
         parallel_memcpy(data_ptr, workspace[0].buffer, chunk_size);
@@ -576,7 +576,7 @@ void ring_all_reduce(torch::Tensor& data, char* data_ptr, size_t chunk_size, siz
     }
 }
 
-void naive_all_reduce(torch::Tensor& data, char* data_ptr, size_t chunk_size, size_t chunk_el)
+void naive_all_reduce(char* data_ptr, int scalar_type, size_t chunk_size, size_t chunk_el)
 {
     parallel_memcpy(workspace[world_rank].buffer, data_ptr, chunk_size);
     std::atomic_thread_fence(std::memory_order_release);
@@ -588,7 +588,7 @@ void naive_all_reduce(torch::Tensor& data, char* data_ptr, size_t chunk_size, si
             // wait until the other rank copy the buffer
             wait_buffer_state_until(i, coll_allreduce_naive__copy_in_done);
         }
-        reduce_all_buffers(workspace, chunk_el, data.scalar_type(), world_size);
+        reduce_all_buffers(workspace, chunk_el, scalar_type, world_size);
         std::atomic_thread_fence(std::memory_order_release);
         workspace[world_rank].state = coll_allreduce_naive__reduce_done;
         parallel_memcpy(data_ptr, workspace[0].buffer, chunk_size);
@@ -621,8 +621,8 @@ void all_reduce_outer_loop(torch::Tensor& data, size_t numel, int data_size)
         auto data_ptr = ((char*)(data.data_ptr()) + offset);
         size_t chunk_size = data_size - offset > MAX_BUF_SIZE ? MAX_BUF_SIZE : data_size - offset;
         size_t chunk_el = chunk_size / (data_size / numel);
-        //naive_all_reduce(data, data_ptr, chunk_size, chunk_el);
-        ring_all_reduce(data, data_ptr, chunk_size, chunk_el);
+        // naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
+        ring_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
     }
 }
 
