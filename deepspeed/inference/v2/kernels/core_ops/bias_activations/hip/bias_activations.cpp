@@ -24,6 +24,7 @@ THE SOFTWARE.
 #include <algorithm>
 #include <stdlib.h>
 #include<iostream>
+#include <math.h>
 #include "hip/hip_runtime.h"
 #include "memory_access_utils.h"
 #include "activation_type.h"
@@ -208,6 +209,8 @@ int main() {
     for (i = 0; i < total_elems; i++) {
         hostOrigVals[i] = (float)i*1.15f;
         hostActivations[i] = (float)i*1.15f;
+        //hostOrigVals[i] = (float)pow(-1, i % 2)*(float)i*1.15f;
+        //hostActivations[i] = (float)pow(-1, i % 2)*(float)i*1.15f;
         printf("before kernel [%i], %.6f\n", i, hostActivations[i]);
     }
 
