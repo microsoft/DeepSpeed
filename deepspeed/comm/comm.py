@@ -160,7 +160,7 @@ def init_deepspeed_backend(ds_backend, timeout, init_method):
         ccl_backend = CCLBackend(rank=rank, world_size=size, timeout=timeout, init_method=init_method)
         utils.logger.info(f"Initialize {ds_backend} backend")
     elif ds_backend == HCCL_BACKEND:
-        utils.logger.warn("HCCL backend in DeepSpeed not yet implemented")
+        utils.logger.debug("HCCL backend in DeepSpeed not yet implemented")
     else:
         utils.logger.debug(f"DeepSpeed does not support {ds_backend} backend")
 
@@ -614,7 +614,7 @@ def init_distributed(dist_backend=None,
     ''' Initialize dist backend, potentially performing MPI discovery if needed
 
     Arguments:
-        dist_backend: Optional (str). torch distributed backend, e.g., nccl, mpi, gloo
+        dist_backend: Optional (str). torch distributed backend, e.g., nccl, mpi, gloo, hccl
         auto_mpi_discovery Optional (bool). if distributed environment variables are not set, attempt to discover them from MPI
         distributed_port: Optional (int). torch distributed backend port
         verbose: Optional (bool). verbose logging
