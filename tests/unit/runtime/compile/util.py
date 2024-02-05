@@ -17,8 +17,6 @@ from deepspeed.runtime.zero import GatheredParameters
 from unit.simple_model import SimpleModel
 from typing import Callable, Any
 
-TIMEOUT = 600
-
 
 class EnableDeterminism:
 
