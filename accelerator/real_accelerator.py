@@ -20,7 +20,7 @@ try:
 except ImportError as e:
     dsa2 = None
 
-SUPPORTED_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'xpu.external', 'npu', 'mps', 'hpu']
+SUPPORTED_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'xpu.external', 'npu', 'mps', 'hpu', 'x86']
 
 ds_accelerator = None
 
@@ -154,38 +154,46 @@ def get_accelerator():
             except ImportError as e:
                 pass
         if accelerator_name is None:
-            accelerator_name = "cuda"
+            try:
+                import torch
 
+                # Determine if we are on a GPU or x86 CPU with torch.
+                if torch.cuda.is_available():
+                    accelerator_name = "cuda"
+                else:
+                    accelerator_name = "x86"
+            except (RuntimeError, ImportError) as e:
+                pass
+
+        # What do we want to default to here?
+        #accelerator_name = "cuda"
         ds_set_method = "auto detect"
 
     # 3. Set ds_accelerator accordingly
     if accelerator_name == "cuda":
         from .cuda_accelerator import CUDA_Accelerator
-
         ds_accelerator = CUDA_Accelerator()
     elif accelerator_name == "cpu":
         from .cpu_accelerator import CPU_Accelerator
-
         ds_accelerator = CPU_Accelerator()
     elif accelerator_name == "xpu.external":
         # XPU_Accelerator is already imported in detection stage
         ds_accelerator = XPU_Accelerator()
     elif accelerator_name == "xpu":
         from .xpu_accelerator import XPU_Accelerator
-
         ds_accelerator = XPU_Accelerator()
     elif accelerator_name == "npu":
         from .npu_accelerator import NPU_Accelerator
-
         ds_accelerator = NPU_Accelerator()
     elif accelerator_name == "mps":
         from .mps_accelerator import MPS_Accelerator
-
         ds_accelerator = MPS_Accelerator()
     elif accelerator_name == 'hpu':
         from .hpu_accelerator import HPU_Accelerator
-
         ds_accelerator = HPU_Accelerator()
+    elif accelerator_name == 'x86':
+        from .x86_accelerator import x86_Accelerator
+        ds_accelerator = x86_Accelerator()
     _validate_accelerator(ds_accelerator)
     if accel_logger is not None:
         accel_logger.info(f"Setting ds_accelerator to {ds_accelerator._name} ({ds_set_method})")
