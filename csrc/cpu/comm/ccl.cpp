@@ -123,13 +123,19 @@ inline __m256i cvt_fp32_to_bf16(const __m512 src)
     return _mm512_cvtusepi32_epi16(t_value);
 }
 
-void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in)
+void reduce_2_bf16_buffers_io(int num_elements, void* in_out, void* in)
+    __attribute__((target("avx512bw")));
+
+void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out)
     __attribute__((target("avx512bw")));
 
 void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
     __attribute__((target("avx512bw")));
 
-void reduce_2_fp32_buffers(int num_elements, void* in_out, void* in)
+void reduce_2_fp32_buffers_io(int num_elements, void* in_out, void* in)
+    __attribute__((target("avx512bw")));
+
+void reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out)
     __attribute__((target("avx512bw")));
 
 void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
@@ -154,7 +160,7 @@ void reduce_all_buffers(struct allreduce_workspace* workspace,
                 reduce_bf16_buffers(num_elements, num_buffers, workspace);
             } else {
                 for (int i = 1; i < num_buffers; i++) {
-                    reduce_2_bf16_buffers(num_elements, workspace[0].buffer, workspace[i].buffer);
+                    reduce_2_bf16_buffers_io(num_elements, workspace[0].buffer, workspace[i].buffer);
                 }
             }
             break;
@@ -163,7 +169,7 @@ void reduce_all_buffers(struct allreduce_workspace* workspace,
                 reduce_fp32_buffers(num_elements, num_buffers, workspace);
             } else {
                 for (int i = 1; i < num_buffers; i++) {
-                    reduce_2_fp32_buffers(num_elements, workspace[0].buffer, workspace[i].buffer);
+                    reduce_2_fp32_buffers_io(num_elements, workspace[0].buffer, workspace[i].buffer);
                 }
             }
             break;
@@ -201,7 +207,7 @@ void reduce_all_buffers(struct allreduce_workspace* workspace,
 
 // Reduce functions down below use vectorized algorithm, the number of bytes processed each
 // iteration depends on vector length.  256bit vector ==> 32 bytes, 512bit vector ==> 64 bytes
-// If you change implementation of reduce_2_bf16_buffers or reduce_2_fp32_buffers, check
+// If you change implementation of reduce_2_bf16_buffers_io or reduce_2_fp32_buffers_io, check
 // whether this number needs to be changed
 #define VECTOR_LENGTH_IN_BYTES 32
 
@@ -224,7 +230,7 @@ void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_wor
     }
 }
 
-void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
+void reduce_2_bf16_buffers_io(int num_elements, void* in_out, void* in1)
 {
 #pragma omp parallel for
     for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
@@ -232,6 +238,17 @@ void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
         auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
         inout_val = _mm512_add_ps(inout_val, in1_val);
         _mm256_storeu_si256((__m256i*)((char*)in_out + i), cvt_fp32_to_bf16(inout_val));
+    }
+}
+
+void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out)
+{
+#pragma omp parallel for
+    for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
+        auto in0_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in0 + i)));
+        auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
+        auto out_val = _mm512_add_ps(in0_val, in1_val);
+        _mm256_storeu_si256((__m256i*)((char*)out + i), cvt_fp32_to_bf16(out_val));
     }
 }
 
@@ -260,7 +277,7 @@ void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_wor
     }
 }
 
-void reduce_2_fp32_buffers(int num_elements, void* in_out, void* in1)
+void reduce_2_fp32_buffers_io(int num_elements, void* in_out, void* in1)
 {
 #pragma omp parallel for
     for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
@@ -268,6 +285,17 @@ void reduce_2_fp32_buffers(int num_elements, void* in_out, void* in1)
         auto in1_val = _mm256_loadu_ps((float*)((char*)in1 + i));
         inout_val = _mm256_add_ps(inout_val, in1_val);
         _mm256_storeu_ps((float*)((char*)in_out + i), inout_val);
+    }
+}
+
+void reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out)
+{
+#pragma omp parallel for
+    for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
+        auto in0_val = _mm256_loadu_ps((float*)((char*)in0 + i));
+        auto in1_val = _mm256_loadu_ps((float*)((char*)in1 + i));
+        auto out_val = _mm256_add_ps(in0_val, in1_val);
+        _mm256_storeu_ps((float*)((char*)out + i), out_val);
     }
 }
 
@@ -537,42 +565,42 @@ static void parallel_memcpy(void* to, void* from, size_t n_bytes)
     }
 }
 
+size_t ring_slice_size(size_t chunk_el, int el_eize, int slice_idx)
+{
+    size_t slice_size = chunk_el / world_size;
+    return el_size * (slice_idx == world_size-1 ? slice_size+(chunk_el%world_size) : slice_size);
+}
+
+char* ring_slice_data(char* data_ptr, size_t chunk_el, int el_size, int slice_idx)
+{
+    size_t slice_size = chunk_el / world_size;
+    size_t el_offset = slice_size * slice_idx;
+    return data_ptr + el_offset*el_size;
+}
+
 void ring_all_reduce(char* data_ptr, int scalar_type, size_t chunk_size, size_t chunk_el)
 {
-    parallel_memcpy(workspace[world_rank].buffer, data_ptr, chunk_size);
-    std::atomic_thread_fence(std::memory_order_release);
-    workspace[world_rank].state = coll_allreduce_naive__copy_in_done;
+    int data_size = chunk_size/chunk_el;
+    parallel_memcpy(ring_slice_data(workspace[world_rank].buffer, chunk_el, data_size, world_rank),
+                    ring_slice_data(data_ptr, chunk_el, data_size, world_rank),
+                    ring_slice_size(chunk_el, data_size, world_rank));
 
-    if (world_rank == 0) {
-        // compute allreduce result on rank 0
-        for (int i = 1; i < world_size; i++) {
-            // wait until the other rank copy the buffer
-            wait_buffer_state_until(i, coll_allreduce_naive__copy_in_done);
-        }
-        reduce_all_buffers(workspace, chunk_el, scalar_type, world_size);
-        std::atomic_thread_fence(std::memory_order_release);
-        workspace[world_rank].state = coll_allreduce_naive__reduce_done;
-        parallel_memcpy(data_ptr, workspace[0].buffer, chunk_size);
+    prev_rank = (world_rank+world_size-1) % world_size;
+    next_rank = (world_rank+1) % world_size;
+
+    int step;
+
+    for (step=0; step<world_size-1; step++) {
+        reduce_2_bf16_buffers_iio(ring_slice_size(chunk_el, data_size, world_rank-1-step)/data_size,
+                                  ring_slice_data(workspace[prev_rank].buffer, chunk_el, data_size, world_rank-1-step),
+                                  ring_slice_data(data_ptr, chunk_el, data_size, world_rank-1-step),
+                                  ring_slice_data(workspace[world_rank].buffer, chunk_el, data_size, world_rank-1-step));
     }
-    if (world_rank != 0) {
-        wait_buffer_state_until(0, coll_allreduce_naive__reduce_done);
-        parallel_memcpy(data_ptr, workspace[0].buffer, chunk_size);
-        std::atomic_thread_fence(std::memory_order_release);
-        workspace[world_rank].state = coll_allreduce_naive__copy_out_done;
-    }
-    if (world_rank == 0) {
-        for (int i = 1; i < world_size; i++) {
-            wait_buffer_state_until(i, coll_allreduce_naive__copy_out_done);
-        }
-        std::atomic_thread_fence(std::memory_order_release);
-        workspace[world_rank].state = coll_begin;
-    }
-    if (world_rank != 0) {
-        // if rank 0 spin too fast it could be in state 1 of next allreduce
-        // in this case wait_buffer_state_until(0, 0) may cause deadlock
-        // what we are certain is when rank 0 finishes the state won't be 2
-        wait_buffer_state_until_not(0, coll_allreduce_naive__reduce_done);
-        workspace[world_rank].state = coll_begin;
+
+    for (step=0, step<world_size; step++) {
+        parallel_memcpy(ring_slice_data(data_ptr, chunk_el, data_size, (world_rank+step)%world_size),
+                        ring_slice_data(workspace[(world_rank+step-1+world_size)%world_size], chunk_el, data_size, (world_rank+step)%world_size),
+                        ring_slice_size(chunk_el, data_size, (world_rank+step)%world_size));
     }
 }
 
