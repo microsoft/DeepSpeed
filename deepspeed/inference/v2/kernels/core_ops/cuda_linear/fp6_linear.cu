@@ -5,14 +5,19 @@
 
 // This is a copy of FP6-LLM kernel code: https://arxiv.org/abs/2401.14112
 
+// clang-format off
+// Put the torch headers at the front to avoid conflict with other headers on
+// `at::nullopt` and `at::optional`.
+#include <torch/extension.h>
+#include <ATen/ATen.h>
+// clang-format on
+
 #include "include/kernel_matmul.cuh"
 #include "include/kernel_reduction.cuh"
 #include "include/weight_prepacking.h"
 
-#include <ATen/ATen.h>
 #include <assert.h>
 #include <stdio.h>
-#include <torch/extension.h>
 
 template <typename TilingConfig, typename OutputDataType>
 static void Kernel_Ex(cudaStream_t stream,
