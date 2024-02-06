@@ -14,16 +14,16 @@ class VAEPolicy(DSPolicy):
         try:
             import diffusers
             if hasattr(diffusers.models, "autoencoders"):
-                # Diffusers >= 0.25.0 changes location to 'autoencoders' directory
-                if hasattr(diffusers.models.autoencoders.vae, "AutoencoderKL"):
-                    self._orig_layer_class = diffusers.models.autoencoders.vae.AutoencoderKL
-                else:
-                    self._orig_layer_class = diffusers.models.autoencoders.autoencoder_kl.AutoencoderKL
+                # Diffusers >= 0.25.0
+                # Changes location to 'autoencoders' directory
+                self._orig_layer_class = diffusers.models.autoencoders.autoencoder_kl.AutoencoderKL
             else:
                 if hasattr(diffusers.models.vae, "AutoencoderKL"):
+                    # Diffusers < 0.12.0
                     self._orig_layer_class = diffusers.models.vae.AutoencoderKL
                 else:
-                    # Diffusers >= 0.12.0 changes location of AutoencoderKL
+                    # Diffusers >= 0.12.0 & < 0.25.0
+                    # Changes location of AutoencoderKL
                     self._orig_layer_class = diffusers.models.autoencoder_kl.AutoencoderKL
         except ImportError:
             self._orig_layer_class = None
