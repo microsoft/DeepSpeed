@@ -24,7 +24,7 @@ inference_module = None
 torch_minor_version = None
 
 
-def run_bias_act_reference(activations, bias, act):
+def run_fused_bias_act_reference(activations, bias, act):
     # Expected behavior is that of casting to float32 internally
     if act == 'gelu':
         act_fn = torch.nn.GELU()
@@ -35,7 +35,7 @@ def run_bias_act_reference(activations, bias, act):
     return act_fn(activations + bias)
 
 
-def run_bias_act_ds(activations, bias, act):
+def run_fused_bias_act_ds(activations, bias, act):
     return fused_bias_act(activations, bias, act)
 
 @pytest.mark.inference_ops
@@ -44,13 +44,13 @@ def run_bias_act_ds(activations, bias, act):
 @pytest.mark.parametrize("channels", [4096])
 @pytest.mark.parametrize("act", ["gelu", "relu", "silu"])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_bias_act(batch, sequence, channels, act, dtype):
+def test_fused_bias_act(batch, sequence, channels, act, dtype):
     activations_ds = torch.randn((batch, sequence, channels), dtype=dtype, device=get_accelerator().device_name())
     bias_ds = torch.randn((channels), dtype=dtype, device=get_accelerator().device_name())
 
     activations_ref = activations_ds.clone().detach()
     bias_ref = bias_ds.clone().detach()
 
-    ds_out = run_bias_act_ds(activations_ds, bias_ds, act)
-    ref_out = run_bias_act_reference(activations_ref, bias_ref, act)
+    ds_out = run_fused_bias_act_ds(activations_ds, bias_ds, act)
+    ref_out = run_fused_bias_act_reference(activations_ref, bias_ref, act)
     assert (allclose(ds_out, ref_out))
