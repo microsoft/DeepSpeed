@@ -120,28 +120,30 @@ def _bias_add_gelu(Mataddr,  # *Pointer* to first input vector.
         x = tl.load(Mataddr + off*stride_mat + cols, mask= mask)
         y = tl.load(biasaddr + cols)
         val = x + y
-        sqrt_param = tl.load(sqrt_addr)
-        mul_param = tl.load(mul_addr)
-        square = val * val
-        cube = square * val
-        mul_cubed = mul_param * cube
-        valaddmul = val + mul_cubed
-        tanh_param = sqrt_param * valaddmul
-        tanh_param = tl.math.tanh(tanh_param)
-        add2 = 1.0 + tanh_param
+        #sqrt_param = tl.load(sqrt_addr)
+        #mul_param = tl.load(mul_addr)
+        #square = val * val
+        #cube = square * val
+        #mul_cubed = mul_param * cube
+        #valaddmul = val + mul_cubed
+        #tanh_param = 1/sqrt_param * valaddmul
+        erf = tl.math.erf(val/1.41421356237)
+        add2 = 1.0 + erf
         mul2 = add2 * val
         output = 0.5 * mul2        
         # Write x + y back to DRAM.
         tl.store(output_ptr +off*stride_mat + cols, output, mask= mask)
 
 
-def bias_add_act(x: torch.Tensor, y: torch.Tensor, act: str)-> torch.Tensor:
+def bias_act(x: torch.Tensor, y: torch.Tensor, act: str)-> torch.Tensor:
     assert x.is_contiguous(), "Matrix x must be contiguous"
     assert y.is_contiguous(), "Matrix y must be contiguous"
-    M, N = x.shape
-    assert x .shape[1] == y.shape[0], "Incompatible dimensions"
-    # We need to preallocate the output.
     output = torch.empty_like(x)
+    x = x.view(-1, x.shape[-1])
+
+    M, N = x.shape
+    assert x.shape[1] == y.shape[0], "Incompatible dimensions"
+    # We need to preallocate the output.
     #print("x.shape: ", x.shape, "y.shape", y.shape, M, N)
     assert x.is_cuda and y.is_cuda and output.is_cuda
     
