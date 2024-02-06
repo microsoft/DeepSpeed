@@ -24,6 +24,9 @@ enum coll_state {
     coll_allreduce_naive__copy_in_done,   // this state is for rank != 0
     coll_allreduce_naive__reduce_done,    // this state is for rank == 0
     coll_allreduce_naive__copy_out_done,  // this state is for rank != 0
+    coll_allreduce_ring__copy_in_done,
+    coll_allreduce_ring__copy_out_done,
+    coll_allreduce_ring__reduce_step_start,
 };
 
 // SHM building blocks
@@ -586,7 +589,10 @@ void ring_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_s
     parallel_memcpy(ring_slice_data(workspace[world_rank].buffer, chunk_el, data_size, world_rank),
                     ring_slice_data(data_ptr, chunk_el, data_size, world_rank),
                     ring_slice_size(chunk_el, data_size, world_rank));
+    std::atomic_thread_fence(std::memory_order_release);
 
+    workspace[world_rank].state = coll_allreduce_ring__copy_in_done;
+    wait_buffer_state_until((world_rank-1+world_size)%world_size, coll_allreduce_ring__copy_in_done);
     int prev_rank = (world_rank+world_size-1) % world_size;
     int next_rank = (world_rank+1) % world_size;
 
@@ -597,12 +603,20 @@ void ring_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_s
                                   ring_slice_data(workspace[prev_rank].buffer, chunk_el, data_size, world_rank-1-step),
                                   ring_slice_data(data_ptr, chunk_el, data_size, world_rank-1-step),
                                   ring_slice_data(workspace[world_rank].buffer, chunk_el, data_size, world_rank-1-step));
+        std::atomic_thread_fence(std::memory_order_release);
+        workspace[world_rank].state = (enum coll_state)(coll_allreduce_ring__reduce_step_start+step);
+        wait_buffer_state_until((world_rank-1+world_size)%world_size, (enum coll_state)(coll_allreduce_ring__reduce_step_start+step));
     }
 
     for (step=0; step<world_size; step++) {
         parallel_memcpy(ring_slice_data(data_ptr, chunk_el, data_size, world_rank+step),
                         ring_slice_data(workspace[(world_rank+step-1+world_size)%world_size].buffer, chunk_el, data_size, world_rank+step),
                         ring_slice_size(chunk_el, data_size, world_rank+step));
+    }
+    std::atomic_thread_fence(std::memory_order_release);
+    workspace[world_rank].state = coll_allreduce_ring__copy_out_done;
+    for (int rank=0; rank<world_size; rank++) {
+        wait_buffer_state_until(rank, coll_allreduce_ring__copy_out_done);
     }
 }
 
@@ -651,7 +665,7 @@ void all_reduce_outer_loop(torch::Tensor& data, size_t numel, int data_size)
         auto data_ptr = ((char*)(data.data_ptr()) + offset);
         size_t chunk_size = data_size - offset > MAX_BUF_SIZE ? MAX_BUF_SIZE : data_size - offset;
         size_t chunk_el = chunk_size / (data_size / numel);
-        // naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
+        //naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
         ring_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
     }
 }
