@@ -17,12 +17,12 @@ class CPUOpBuilder(OpBuilder):
 
     def builder(self):
         from torch.utils.cpp_extension import CppExtension as ExtensionBuilder
-
+        include_dirs = [os.path.abspath(x) for x in self.strip_empty_entries(self.include_paths())]
         compile_args = {'cxx': self.strip_empty_entries(self.cxx_args())}
 
         cpp_ext = ExtensionBuilder(name=self.absolute_name(),
                                    sources=self.strip_empty_entries(self.sources()),
-                                   include_dirs=self.strip_empty_entries(self.include_paths()),
+                                   include_dirs=include_dirs,
                                    libraries=self.strip_empty_entries(self.libraries_args()),
                                    extra_compile_args=compile_args)
 

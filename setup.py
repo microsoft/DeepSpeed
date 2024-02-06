@@ -119,7 +119,7 @@ cmdclass = {}
 # For any pre-installed ops force disable ninja.
 if torch_available:
     from accelerator import get_accelerator
-    cmdclass['build_ext'] = get_accelerator().build_extension().with_options(use_ninja=False)
+    cmdclass['build_ext'] = get_accelerator().build_extension().with_options()
 
 if torch_available:
     TORCH_MAJOR = torch.__version__.split('.')[0]
