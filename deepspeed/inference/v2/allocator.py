@@ -10,8 +10,10 @@ import torch
 
 from deepspeed.accelerator import get_accelerator
 
+
 class Allocator:
     cache = defaultdict(dict)
+
     def empty_from(tensor: torch.Tensor, shape: Iterable[int]) -> torch.Tensor:
         try:
             return Allocator.cache[tensor][shape]
@@ -19,9 +21,10 @@ class Allocator:
             shape_size = reduce(lambda x, y: x * y, shape)
             if shape_size == 0:
                 raise ValueError("Cannot create empty tensor with size 0")
-            Allocator.cache[tensor][shape]=tensor.flatten()[:shape_size].view(shape)
+            Allocator.cache[tensor][shape] = tensor.flatten()[:shape_size].view(shape)
             return Allocator.cache[tensor][shape]
-        
+
+
 empty_from = Allocator.empty_from
 
 
