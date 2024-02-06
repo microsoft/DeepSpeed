@@ -33,10 +33,10 @@ class HPU_Accelerator(DeepSpeedAccelerator):
     def use_host_timers(self):
         return False
 
-    def has_data_dependency_resolving(self):
+    def resolves_data_dependency(self):
         return True
 
-    def has_memory_backpressure_handling(self):
+    def handles_memory_backpressure(self):
         return True
 
     def device_name(self, device_index=None):

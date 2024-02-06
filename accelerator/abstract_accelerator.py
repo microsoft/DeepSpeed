@@ -22,11 +22,11 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     @abc.abstractmethod
-    def has_data_dependency_resolving(self):
+    def resolves_data_dependency(self):
         ...
 
     @abc.abstractmethod
-    def has_memory_backpressure_handling(self):
+    def handles_memory_backpressure(self):
         ...
 
     # Device APIs

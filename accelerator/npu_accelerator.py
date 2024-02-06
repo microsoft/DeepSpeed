@@ -31,10 +31,10 @@ class NPU_Accelerator(DeepSpeedAccelerator):
     def use_host_timers(self):
         return self.is_synchronized_device()
 
-    def has_data_dependency_resolving(self):
+    def resolves_data_dependency(self):
         return self.is_synchronized_device()
 
-    def has_memory_backpressure_handling(self):
+    def handles_memory_backpressure(self):
         return self.is_synchronized_device()
 
     # Device APIs
