@@ -113,10 +113,10 @@ void cast_fp16_fp6(uint16_t* FP16x4, uint8_t* FP6x4)
  *     weight_6bit: output weight in packed FP6, continuously stored, size M*K*6/8
  *     M, K: the shape of the weight
  */
-void weight_prepacing_fp16_to_fp6(uint16_t* weight_16bit,
-                                  uint8_t* weight_6bit_packed,
-                                  size_t M,
-                                  size_t K)
+void weight_prepacking_fp16_to_fp6(uint16_t* weight_16bit,
+                                   uint8_t* weight_6bit_packed,
+                                   size_t M,
+                                   size_t K)
 {
     // Every four 16-bit elements are packed into three 6-bit values (4*6bit == 3*8bit).
     if (K * 6 % 8 != 0) { throw std::invalid_argument("(K * 6 % 8) should be 0"); }
@@ -205,7 +205,7 @@ std::vector<torch::Tensor> preprocess_weight(torch::Tensor& weight)
     uint16_t* weight_16bit_ptr = reinterpret_cast<uint16_t*>(weight.data_ptr<at::Half>());
     std::vector<uint8_t> weight_6bit_packed(M * K * 6 / 8);
     uint8_t* weight_6bit_ptr = weight_6bit_packed.data();
-    weight_prepacing_fp16_to_fp6(weight_16bit_ptr, weight_6bit_ptr, M, K);
+    weight_prepacking_fp16_to_fp6(weight_16bit_ptr, weight_6bit_ptr, M, K);
 
     // Split weight into 2bit and 4bit.
     weight_matrix_prepacking(reinterpret_cast<int*>(weight_6bit_ptr), M, K);

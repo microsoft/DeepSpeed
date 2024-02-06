@@ -3,7 +3,6 @@
 
 # DeepSpeed Team
 
-from qtorch.quant import float_quantize
 from typing import Any, Dict, Optional
 
 import torch
@@ -48,6 +47,12 @@ def fp_quantize(input: torch.FloatTensor,
         scales
             Quantization scales
     """
+
+    try:
+        from qtorch.quant import float_quantize
+    except ImportError:
+        raise ImportError("Please install qtorch to use this function")
+
     assert (min_value is None and max_value is None) or (min_value is not None and max_value is not None)
 
     assert input.dtype == torch.float16
