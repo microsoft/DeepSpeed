@@ -60,7 +60,7 @@ jobs:
 
       - name: Install oneCCL Bindings for PyTorch
         run: |
-          pip install torch
+          pip install torch==2.1.2
           python -m pip install intel_extension_for_pytorch
           # the curl line is for troubleshooting
           curl -L https://pytorch-extension.intel.com/release-whl/stable/cpu/us/
