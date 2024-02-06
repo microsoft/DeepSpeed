@@ -165,8 +165,9 @@ def get_accelerator():
             except (RuntimeError, ImportError) as e:
                 pass
 
-        # What do we want to default to here?
-        #accelerator_name = "cuda"
+        # Default to x86 if we cannot detect anything else
+        # TODO: Add a warning noting that we are default to x86 because we cannot detect anything.
+        accelerator_name = "x86"
         ds_set_method = "auto detect"
 
     # 3. Set ds_accelerator accordingly

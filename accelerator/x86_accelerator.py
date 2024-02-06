@@ -22,7 +22,7 @@ class x86_Accelerator(DeepSpeedAccelerator):
         self._name = 'x86'
 
     def is_synchronized_device(self):
-        return False
+        return True
 
     # Device APIs
     def device_name(self, device_index=None):
@@ -98,52 +98,62 @@ class x86_Accelerator(DeepSpeedAccelerator):
     def empty_cache(self):
         return
 
+    def get_rss(self):
+        mem = psutil.Process().memory_info().rss
+        if mem > self.max_mem:
+            self.max_mem = mem
+        return mem
+
+    def reset_rss(self):
+        mem = psutil.Process().memory_info().rss
+        self.max_mem = mem
+        return mem
+
     def memory_allocated(self, device_index=None):
-        return torch.cuda.memory_allocated(device_index)
+        return self.get_rss()
 
     def max_memory_allocated(self, device_index=None):
-        return torch.cuda.max_memory_allocated(device_index)
+        self.get_rss()
+        return self.max_mem
 
     def reset_max_memory_allocated(self, device_index=None):
-        return torch.cuda.reset_max_memory_allocated(device_index)
+        self.reset_rss()
+        return
 
     def memory_cached(self, device_index=None):
-        return torch.cuda.memory_cached(device_index)
+        return self.get_rss()
 
     def max_memory_cached(self, device_index=None):
-        return torch.cuda.max_memory_cached(device_index)
+        self.get_rss()
+        return self.max_mem
 
     def reset_max_memory_cached(self, device_index=None):
-        return torch.cuda.reset_max_memory_cached(device_index)
+        self.reset_rss()
+        return
 
     def memory_stats(self, device_index=None):
-        if hasattr(torch.cuda, 'memory_stats'):
-            return torch.cuda.memory_stats(device_index)
+        mem = self.get_rss()
+        mem_stat = {}
+        mem_stat['allocated_bytes.all.current'] = mem
+        mem_stat['allocated_bytes.all.peak'] = self.max_mem
+        return mem_stat
 
     def reset_peak_memory_stats(self, device_index=None):
-        if hasattr(torch.cuda, 'reset_peak_memory_stats'):
-            return torch.cuda.reset_peak_memory_stats(device_index)
+        self.reset_rss()
+        return
 
     def memory_reserved(self, device_index=None):
-        if hasattr(torch.cuda, 'memory_reserved'):
-            return torch.cuda.memory_reserved(device_index)
+        return self.get_rss()
 
     def max_memory_reserved(self, device_index=None):
-        if hasattr(torch.cuda, 'max_memory_reserved'):
-            return torch.cuda.max_memory_reserved(device_index)
+        self.get_rss()
+        return self.max_mem
 
     def total_memory(self, device_index=None):
-        return torch.cuda.get_device_properties(device_index).total_memory
+        return psutil.virtual_memory().total
 
     def available_memory(self, device_index=None):
-        if pynvml:
-            if device_index is None:
-                device_index = self.current_device()
-            handle = pynvml.nvmlDeviceGetHandleByIndex(self._get_nvml_gpu_id(device_index))
-            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            return info.free
-        else:
-            return self.total_memory(device_index) - self.memory_allocated(device_index)
+        return psutil.virtual_memory().available
 
     # Data types
     def is_bf16_supported(self):
