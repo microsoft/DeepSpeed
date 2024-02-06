@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 
+import psutil
 import os
 import pkgutil
 import importlib
