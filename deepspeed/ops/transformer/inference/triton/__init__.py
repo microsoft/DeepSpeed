@@ -5,7 +5,7 @@
 
 from .residual_add import residual_add_bias
 from .layer_norm import layer_norm, layer_norm_residual
-from .bias_act import bias_act
+from .fused_bias_act import fused_bias_act
 from .gelu import gelu
 from .softmax import softmax
 from .ops import *

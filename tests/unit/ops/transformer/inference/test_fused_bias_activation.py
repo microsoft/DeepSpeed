@@ -13,7 +13,7 @@ from .inference_test_utils import allclose, get_dtypes
 try:
     import triton  # noqa: F401 # type: ignore
     from deepspeed.ops.transformer.inference.triton import (
-        bias_act,
+        fused_bias_act,
     )
 except ImportError:
     print("triton import failed")
@@ -36,7 +36,7 @@ def run_bias_act_reference(activations, bias, act):
 
 
 def run_bias_act_ds(activations, bias, act):
-    return bias_act(activations, bias, act)
+    return fused_bias_act(activations, bias, act)
 
 @pytest.mark.inference_ops
 @pytest.mark.parametrize("batch", [1, 2])
