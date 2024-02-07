@@ -624,7 +624,7 @@ void ring_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_s
 
     for (step=0; step<world_size; step++) {
         parallel_memcpy(ring_slice_data(data_ptr, chunk_el, data_size, world_rank+step),
-                        ring_slice_data(workspace[prev_rank]->buffer, chunk_el, data_size, world_rank+step),
+                        ring_slice_data(workspace[(world_rank+step-1+world_size)%world_size]->buffer, chunk_el, data_size, world_rank+step),
                         ring_slice_size(chunk_el, data_size, world_rank+step));
     }
     std::atomic_thread_fence(std::memory_order_release);
