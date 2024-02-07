@@ -377,7 +377,7 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
              port_string);
     // create shared workspace for SHM based allreduce
     if (all_ranks_local_p) {
-        struct allreduce_workspace workspace_buf;
+        struct allreduce_workspace *workspace_buf;
         if (rank == 0) {
             workspace_buf =
                 (struct allreduce_workspace*)malloc(size * sizeof(struct allreduce_workspace));
