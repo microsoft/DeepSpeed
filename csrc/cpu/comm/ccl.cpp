@@ -24,9 +24,9 @@ enum coll_state {
     coll_allreduce_naive__copy_in_done,   // this state is for rank != 0
     coll_allreduce_naive__reduce_done,    // this state is for rank == 0
     coll_allreduce_naive__copy_out_done,  // this state is for rank != 0
-    coll_allreduce_ring__copy_in_done,
-    coll_allreduce_ring__copy_out_done,
-    coll_allreduce_ring__reduce_step_start,
+    //coll_allreduce_ring__copy_in_done,
+    //coll_allreduce_ring__copy_out_done,
+    //coll_allreduce_ring__reduce_step_start,
 };
 
 // SHM building blocks
@@ -87,6 +87,14 @@ void wait_buffer_state_until(int index, enum coll_state state)
     volatile enum coll_state* state_ptr = &(workspace[index]->state);
 
     while (*state_ptr != state)
+        ;
+}
+
+void wait_buffer_state_until_lteq(int index, enum coll_state state)
+{
+    volatile enum coll_state* state_ptr = &(workspace[index]->state);
+
+    while (*state_ptr < state)
         ;
 }
 
@@ -599,8 +607,8 @@ void ring_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_s
     int prev_rank = (world_rank+world_size-1) % world_size;
     int next_rank = (world_rank+1) % world_size;
 
-    workspace[world_rank]->state = coll_allreduce_ring__copy_in_done;
-    wait_buffer_state_until(prev_rank, coll_allreduce_ring__copy_in_done);
+    workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state+1);
+    wait_buffer_state_until_lteq(prev_rank, workspace[world_rank]->state);
 
     int step;
 
@@ -610,8 +618,8 @@ void ring_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_s
                                   ring_slice_data(data_ptr, chunk_el, data_size, world_rank-1-step),
                                   ring_slice_data(workspace[world_rank]->buffer, chunk_el, data_size, world_rank-1-step));
         std::atomic_thread_fence(std::memory_order_release);
-        workspace[world_rank]->state = (enum coll_state)(coll_allreduce_ring__reduce_step_start+step);
-        wait_buffer_state_until((world_rank-1+world_size)%world_size, (enum coll_state)(coll_allreduce_ring__reduce_step_start+step));
+        workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state+1);
+        wait_buffer_state_until_lteq(prev_rank, workspace[world_rank]->state);
     }
 
     for (step=0; step<world_size; step++) {
@@ -620,9 +628,9 @@ void ring_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_s
                         ring_slice_size(chunk_el, data_size, world_rank+step));
     }
     std::atomic_thread_fence(std::memory_order_release);
-    workspace[world_rank]->state = coll_allreduce_ring__copy_out_done;
+    workspace[world_rank]->state = coll_begin;
     for (int rank=0; rank<world_size; rank++) {
-        wait_buffer_state_until(rank, coll_allreduce_ring__copy_out_done);
+        wait_buffer_state_until(rank, coll_begin);
     }
 }
 
