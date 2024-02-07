@@ -99,8 +99,7 @@ jobs:
 
       - name: Download DeepSpeedExamples
         run: |
-          #git clone https://github.com/delock/DeepSpeedExamples --branch gma/hf_compare
-          git clone https://github.com/foin6/DeepSpeedExamples --branch dev
+          git clone https://github.com/Microsoft/DeepSpeedExamples
 
       - name: Sanity check minimal
         run: |
@@ -116,7 +115,7 @@ jobs:
           export MODEL=facebook/opt-1.3b
           cd DeepSpeedExamples/inference/huggingface/text-generation
           deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
-          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1 --use_kernel False
+          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
 
       - name: AutoTP test (bigscience/bloom-3b)
         run: |
@@ -126,4 +125,4 @@ jobs:
           export MODEL=bigscience/bloom-3b
           cd DeepSpeedExamples/inference/huggingface/text-generation
           deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
-          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1 --use_kernel False
+          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
