@@ -4,6 +4,8 @@
 
 # DeepSpeed Team
 
+import os
+
 try:
     # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
     # if successful this also means we're doing a local install and not JIT compile path
