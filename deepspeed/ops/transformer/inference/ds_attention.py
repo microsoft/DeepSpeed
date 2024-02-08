@@ -255,7 +255,7 @@ class BloomSelfAttention(DeepSpeedSelfAttention):
             input_mask = input_mask.long()
 
         attention_probs = self.softmax_func(attn_scores=attention_scores,
-                                            attn_mask=((1 - input_mask).to(target_dtype) * minus_inf),
+                                            attn_mask=input_mask.to(target_dtype) * minus_inf,
                                             alibi=alibi,
                                             triangular=(self.config.triangular_masking
                                                         and (attention_scores.shape[-2] > 1)),

@@ -23,6 +23,7 @@ class DS_BloomContainer(MetaTensorContainer, HybridEngineContainer, BaseTransfor
 
         # All model specific things should be defined here instead of the base class.
         self.bigscience_bloom = True
+        self.triangular_masking = False
 
     def create_module(self, config=None):
         _config = config if config is not None else self.ds_model_config
