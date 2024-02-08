@@ -28,7 +28,7 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.checkpoint.constants import (DS_VERSION, GROUP_PADDINGS, PARTITION_COUNT, LOSS_SCALER,
                                             SINGLE_PARTITION_OF_FP32_GROUPS, BASE_OPTIMIZER_STATE,
                                             BASE_OPTIMIZER_STATE_STEP, CLIP_GRAD, ZERO_STAGE, PARAM_SLICE_MAPPINGS)
-from deepspeed.utils import link_hp_params
+from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state
 from deepspeed.checkpoint import enable_universal_checkpoint
 
 from deepspeed.utils import groups
@@ -536,6 +536,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             see_memory_usage(f"After initializing ZeRO optimizer", force=True)
 
         self._link_all_hp_params()
+        self._hp_optimizer_states_linked = False
+
         self._enable_universal_checkpoint()
         self._param_slice_mappings = self._create_param_mapping()
 
@@ -578,8 +580,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                            param_group_index=i,
                            partition_start=partition_id * partition_size,
                            partition_size=partition_size,
-                           partition_optimizer_state=self.optimizer.state[flat_hp_partition],
                            dp_group=self.real_dp_process_group[i])
+
+    def _lazy_init_hp_params_optimizer_state(self):
+        if not self._hp_optimizer_states_linked:
+            for i, _ in enumerate(self.optimizer.param_groups):
+                lazy_init_hp_params_optimizer_state(self.bit16_groups[i], self.single_partition_of_fp32_groups[i],
+                                                    self.optimizer.state)
+            self._hp_optimizer_states_linked = True
 
     def is_moe_group(self, group):
         return 'moe' in group and group['moe']
@@ -664,8 +672,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # which do lazy initialization of the state at the first call to step.
         if isinstance(self.optimizer, torch.optim.Adagrad):
             self.optimizer = torch.optim.Adagrad(self.single_partition_of_fp32_groups, **self.optimizer.defaults)
-        else:
-            self.optimizer.step()
 
         if not self.cpu_offload:
             for group in self.single_partition_of_fp32_groups:
@@ -1790,6 +1796,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         #    self.optimizer.step()
         self.optimizer.step()
         self.optimizer.param_groups = original_param_groups
+
+        # We need to link optimizer state after the first step() call
+        self._lazy_init_hp_params_optimizer_state()
 
     def step(self, closure=None):
         """
