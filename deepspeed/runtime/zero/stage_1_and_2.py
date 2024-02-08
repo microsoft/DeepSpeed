@@ -750,7 +750,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.params_already_reduced[i] = False
 
         if self.overlap_comm:
-            get_accelerator().synchronize()
+            if not get_accelerator().resolves_data_dependency():
+                get_accelerator().synchronize()
             # It is safe to clear previously reduced grads of other partitions
             self._clear_previous_reduced_grads()
 
@@ -1026,7 +1027,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def average_tensor(self, tensor):
         if self.overlap_comm:
             stream = self.reduction_stream
-            if not get_accelerator().is_synchronized_device():
+            if not get_accelerator().resolves_data_dependency():
                 stream.wait_stream(get_accelerator().current_stream())
         else:
             stream = get_accelerator().current_stream()
@@ -1507,7 +1508,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def allreduce_and_copy(self, small_bucket, rank=None, log=None, divide=True, process_group=None):
         process_group = self.dp_process_group if process_group is None else process_group
         if self.overlap_comm:
-            get_accelerator().synchronize()
+            if not get_accelerator().resolves_data_dependency():
+                get_accelerator().synchronize()
             # It is safe to clear the previously reduced grads of other partitions
             self._clear_previous_reduced_grads()
             stream = self.reduction_stream
