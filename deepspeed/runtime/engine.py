@@ -90,6 +90,7 @@ from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoin
 
 from .pipe.module import PipelineModule
 from .utils import get_ma_status
+from .compiler import CompiledModuleWrapper
 from ..ops.adam import FusedAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE
@@ -179,21 +180,19 @@ class EngineTimers(object):
 class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training."""
 
-    def __init__(
-        self,
-        args,
-        model,
-        optimizer=None,
-        model_parameters=None,
-        training_data=None,
-        lr_scheduler=None,
-        mpu=None,
-        dist_init_required=None,
-        collate_fn=None,
-        config=None,
-        config_class=None,
-        dont_change_device=False,
-    ):
+    def __init__(self,
+                 args,
+                 model,
+                 optimizer=None,
+                 model_parameters=None,
+                 training_data=None,
+                 lr_scheduler=None,
+                 mpu=None,
+                 dist_init_required=None,
+                 collate_fn=None,
+                 config=None,
+                 config_class=None,
+                 dont_change_device=False):
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
         self.client_optimizer = optimizer
@@ -363,6 +362,9 @@ class DeepSpeedEngine(Module):
         self.flatten = _flatten_dense_tensors
         self.unflatten = _unflatten_dense_tensors
 
+        if self._config.compile_config.enabled:
+            self._set_client_model(CompiledModuleWrapper(self.module, self._config.compile_config))
+
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
             self.optimizer.destroy()
@@ -467,6 +469,13 @@ class DeepSpeedEngine(Module):
             return getattr(self, name)
         elif name in dir(_module):
             return getattr(_module, name)
+        elif isinstance(_module, CompiledModuleWrapper):
+            try:
+                return getattr(_module, name)
+            except AttributeError:
+                raise AttributeError(
+                    f"None of {type(self).__name__}, CompiledModuleWrapper, or the wrapped model has the attribute '{name}'"
+                )
         else:
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
@@ -1056,16 +1065,17 @@ class DeepSpeedEngine(Module):
                 return False
             return True
 
-        for p in self.module.parameters():
-            # Broadcast the model for different parameters
-            if is_moe_param(p):
-                if torch.is_tensor(p) and is_replicated(p):
-                    dist.broadcast(p,
-                                   groups._get_expert_broadcast_src_rank(p.group_name),
-                                   group=self.expert_data_parallel_group[p.group_name])
-            else:
-                if torch.is_tensor(p) and is_replicated(p):
-                    dist.broadcast(p, groups._get_broadcast_src_rank(), group=self.seq_data_parallel_group)
+        with torch.no_grad():
+            for p in self.module.parameters():
+                # Broadcast the model for different parameters
+                if is_moe_param(p):
+                    if torch.is_tensor(p) and is_replicated(p):
+                        dist.broadcast(p,
+                                       groups._get_expert_broadcast_src_rank(p.group_name),
+                                       group=self.expert_data_parallel_group[p.group_name])
+                else:
+                    if torch.is_tensor(p) and is_replicated(p):
+                        dist.broadcast(p, groups._get_broadcast_src_rank(), group=self.seq_data_parallel_group)
 
     @staticmethod
     def __check_params(model: Module, dtype: torch.dtype) -> None:
@@ -2745,10 +2755,12 @@ class DeepSpeedEngine(Module):
                                                          load_module_only=load_module_only,
                                                          custom_load_fn=custom_load_fn)
 
-        load_zero_checkpoint = load_optimizer_states and load_path is not None and (self.zero_optimization()
-                                                                                    or self.bfloat16_enabled())
+        load_zero_checkpoint = load_path is not None and (self.zero_optimization() or self.bfloat16_enabled())
         if load_zero_checkpoint:
-            success = self._load_zero_checkpoint(load_dir, tag, load_optimizer_states=load_optimizer_states)
+            if load_optimizer_states and not load_module_only:
+                success = self._load_zero_checkpoint(load_dir, tag, load_optimizer_states=load_optimizer_states)
+            else:
+                success = False
             if not success:
                 self.optimizer._restore_from_bit16_weights()
 
@@ -2830,7 +2842,7 @@ class DeepSpeedEngine(Module):
         optim_checkpoint = None
         if load_module_only:
             deepspeed_states = ['module']
-            if self.optimizer is not None and self.fp16_enabled():
+            if self.optimizer is not None:
                 self.optimizer.refresh_fp32_params()
         else:
             has_zero_optimizer_state = self.zero_optimization() or self.bfloat16_enabled()
@@ -3474,7 +3486,7 @@ class DeepSpeedEngine(Module):
         ckpt_type = 'zero' if self.zero_optimization() else 'bf16_zero'
         logger.info(f'{ckpt_type} checkpoint saved {zero_checkpoint_name}')
 
-    def _zero3_consolidated_16bit_state_dict(self):
+    def _zero3_consolidated_16bit_state_dict(self, exclude_frozen_parameters=False):
         """
         Get a full non-partitioned state_dict with fp16 weights on cpu.
         Important: this function must be called on all ranks and not just rank 0.
@@ -3500,7 +3512,7 @@ class DeepSpeedEngine(Module):
                 if dist.get_rank() == 0:
                     # handle params
                     for name, param in module.named_parameters(recurse=False):
-                        if param is None:
+                        if param is None or (exclude_frozen_parameters and not param.requires_grad):
                             continue
                         key = prefix + name
                         # can't rely on param.data_ptr() as it will be reused as weights gets
@@ -3543,7 +3555,7 @@ class DeepSpeedEngine(Module):
         compatibility"""
         return self.save_16bit_model(save_dir, save_filename)
 
-    def save_16bit_model(self, save_dir, save_filename="pytorch_model.bin"):
+    def save_16bit_model(self, save_dir, save_filename="pytorch_model.bin", exclude_frozen_parameters=False):
         """
         Save 16bit model weights
 
@@ -3552,6 +3564,7 @@ class DeepSpeedEngine(Module):
         Arguments:
             save_dir: Required. Directory for saving the model
             save_filename: Optional. Filename to save to. Defaults to ``pytorch_model.bin``
+            exclude_frozen_parameters: Optional. Exclude frozen parameters from checkpointed state.
 
         Returns:
             ``True`` when a model has been saved, ``False`` otherwise. It will not be saved if
@@ -3568,14 +3581,15 @@ class DeepSpeedEngine(Module):
         if self.zero_optimization_partition_weights():
             if self.zero_gather_16bit_weights_on_model_save():
                 # consolidation is expensive in time and memory and therefore isn't a default
-                state_dict = self._zero3_consolidated_16bit_state_dict()
+                state_dict = self._zero3_consolidated_16bit_state_dict(
+                    exclude_frozen_parameters=exclude_frozen_parameters)
             else:
                 # the model will be bogus if not consolidated so don't confuse the user by saving it
                 logger.info(
                     f"Did not save the model {path} because `stage3_gather_16bit_weights_on_model_save` is False")
                 return False
         else:
-            state_dict = self.module.state_dict()
+            state_dict = self.module_state_dict(exclude_frozen_parameters=exclude_frozen_parameters)
 
         tag = f"global_step{self.global_steps}"
         tag = str(tag)

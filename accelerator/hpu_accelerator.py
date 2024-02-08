@@ -108,28 +108,28 @@ class HPU_Accelerator(DeepSpeedAccelerator):
         return self.hpu.reset_max_memory_allocated()
 
     def memory_cached(self, device_index=None):
-        return 0
+        return self.hpu.memory_cached(device_index)
 
     def max_memory_cached(self, device_index=None):
-        return 0
+        return self.hpu.max_memory_cached(device_index)
 
     def reset_max_memory_cached(self, device_index=None):
-        return 0
+        return None
 
     def memory_stats(self, device_index=None):
-        return {}
+        return self.hpu.memory_stats(device_index)
 
     def reset_peak_memory_stats(self, device_index=None):
-        self.hpu.reset_peak_memory_stats()
+        self.hpu.reset_peak_memory_stats(device_index)
 
     def memory_reserved(self, device_index=None):
-        return 0
+        return self.hpu.memory_reserved(device_index)
 
     def max_memory_reserved(self, device_index=None):
-        return 0
+        return self.hpu.max_memory_reserved(device_index)
 
     def total_memory(self, device_index=None):
-        return 0
+        return self.memory_stats(device_index)['Limit']
 
     def available_memory(self, device_index=None):
         return self.total_memory(device_index) - self.memory_allocated(device_index)
@@ -147,7 +147,7 @@ class HPU_Accelerator(DeepSpeedAccelerator):
     def supported_dtypes(self):
         supported_dtypes = [torch.float, torch.bfloat16]
         if self.is_fp16_supported():
-            supported_dtypes.append(torch.bfloat16)
+            supported_dtypes.append(torch.half)
         return supported_dtypes
 
     # Misc
@@ -174,43 +174,43 @@ class HPU_Accelerator(DeepSpeedAccelerator):
 
     # Graph operations
     def create_graph(self):
-        return None
+        return self.hpu.HPUGraph()
 
     def capture_to_graph(self, graph, pool=None, stream=None):
-        from deepspeed.runtime.utils import noop_context
-        return noop_context()
+        return self.hpu.graph(graph, stream=stream)
 
     def replay_graph(self, graph):
+        graph.replay()
         return
 
     # Tensor operations
     @property
     def BFloat16Tensor(self):
-        return torch.hpu.BFloat16Tensor
+        return self.hpu.BFloat16Tensor
 
     @property
     def ByteTensor(self):
-        return torch.hpu.ByteTensor
+        return self.hpu.ByteTensor
 
     @property
     def DoubleTensor(self):
-        return torch.hpu.DoubleTensor
+        return self.hpu.DoubleTensor
 
     @property
     def FloatTensor(self):
-        return torch.hpu.FloatTensor
+        return self.hpu.FloatTensor
 
     @property
     def HalfTensor(self):
-        return torch.hpu.HalfTensor
+        return self.hpu.HalfTensor
 
     @property
     def IntTensor(self):
-        return torch.hpu.IntTensor
+        return self.hpu.IntTensor
 
     @property
     def LongTensor(self):
-        return torch.hpu.LongTensor
+        return self.hpu.LongTensor
 
     def pin_memory(self, tensor, align_bytes=1):
         return tensor.pin_memory(self.device())
