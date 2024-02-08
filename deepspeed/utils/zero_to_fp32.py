@@ -211,9 +211,11 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir, exclude_frozen_
     print(f'Parsing checkpoint created by deepspeed=={zero_model_states[0].ds_version}')
 
     if zero_stage <= 2:
-        return _get_fp32_state_dict_from_zero2_checkpoint(world_size, fp32_flat_groups, zero_model_states, exclude_frozen_parameters)
+        return _get_fp32_state_dict_from_zero2_checkpoint(world_size, fp32_flat_groups, zero_model_states,
+                                                          exclude_frozen_parameters)
     elif zero_stage == 3:
-        return _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zero_model_states, exclude_frozen_parameters)
+        return _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zero_model_states,
+                                                          exclude_frozen_parameters)
 
 
 def _zero2_merge_frozen_params(state_dict, zero_model_states):
@@ -326,7 +328,8 @@ def _zero2_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero
     print(f"Reconstructed fp32 state dict with {total_params} params {total_numel} elements")
 
 
-def _get_fp32_state_dict_from_zero2_checkpoint(world_size, fp32_flat_groups, zero_model_states, exclude_frozen_parameters):
+def _get_fp32_state_dict_from_zero2_checkpoint(world_size, fp32_flat_groups, zero_model_states,
+                                               exclude_frozen_parameters):
     state_dict = OrderedDict()
 
     # buffers
@@ -445,7 +448,8 @@ def _zero3_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero
     print(f"Reconstructed Trainable fp32 state dict with {total_params} params {total_numel} elements")
 
 
-def _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zero_model_states, exclude_frozen_parameters):
+def _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zero_model_states,
+                                               exclude_frozen_parameters):
     state_dict = OrderedDict()
 
     # buffers
@@ -455,7 +459,7 @@ def _get_fp32_state_dict_from_zero3_checkpoint(world_size, fp32_flat_groups, zer
         print(f"added {len(buffers)} buffers")
 
     if not exclude_frozen_parameters:
-      _zero3_merge_frozen_params(state_dict, world_size, zero_model_states)
+        _zero3_merge_frozen_params(state_dict, world_size, zero_model_states)
 
     _zero3_merge_trainable_params(state_dict, world_size, fp32_flat_groups, zero_model_states)
 
@@ -594,4 +598,7 @@ if __name__ == "__main__":
 
     debug = args.debug
 
-    convert_zero_checkpoint_to_fp32_state_dict(args.checkpoint_dir, args.output_file, tag=args.tag, exclude_frozen_parameters=args.exclude_frozen_parameters)
+    convert_zero_checkpoint_to_fp32_state_dict(args.checkpoint_dir,
+                                               args.output_file,
+                                               tag=args.tag,
+                                               exclude_frozen_parameters=args.exclude_frozen_parameters)
