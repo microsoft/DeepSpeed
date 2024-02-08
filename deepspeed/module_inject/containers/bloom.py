@@ -30,6 +30,7 @@ class DS_BloomContainer(MetaTensorContainer, HybridEngineContainer, BaseTransfor
 
         self.module = DeepSpeedBloomInference(_config, mp_group=self.mp_group)
         self.module.config.scale_attention = self.scale_attention
+        self.module.config.invert_mask = False
         return self.module
 
     def attention_qkv_mp(self, mp_replace, reversed_dim=False):
