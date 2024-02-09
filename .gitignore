@@ -54,7 +54,7 @@ docs/code-docs/build
 # Saved checkpoints for testing
 tests/unit/saved_checkpoint/
 
-# Ignore HIP files created during AMD compilation
+# HIP files created during AMD compilation
 *_hip.cpp
 *_hip.h
 *.hip
