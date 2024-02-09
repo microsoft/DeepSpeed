@@ -88,6 +88,12 @@ def _get_padded_tensor(src_tensor, size):
     return padded_tensor
 
 
+def _pad_tensor_by_size(src_tensor, pad_size, dtype, device):
+    padded_tensor = torch.zeros(src_tensor.numel() + pad_size, dtype=dtype, device=device)
+    padded_tensor.data[:src_tensor.numel()].copy_(src_tensor.data)
+    return padded_tensor
+
+
 class DeepSpeedZeroOptimizer(ZeROOptimizer):
     """
     DeepSpeedZeroOptimizer designed to reduce the memory footprint
@@ -2208,7 +2214,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     # Extract optimizer state for current partition from merged states of all partitions
     def _partition_base_optimizer_state(self, state_key, all_partition_states, group_id):
         partition_id = dist.get_rank(group=self.real_dp_process_group[group_id])
-        alignment = dist.get_world_size(group=self.real_dp_process_group[group_id])
+        alignment = self.nccl_start_alignment_factor * dist.get_world_size(group=self.real_dp_process_group[group_id])
         if torch.is_tensor(all_partition_states[0]):
             flat_merged_partitions = self.flatten_dense_tensors_aligned(all_partition_states, alignment)
             dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions, group_id)
@@ -2217,18 +2223,38 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             # Assume non-tensor states are not partitioned and equal across ranks, so return first one
             return all_partition_states[0]
 
-    def _restore_base_optimizer_state(self, base_optimizer_group_states):
+    def _restore_step_from_elastic_checkpoint(self, all_state_dict):
+        assert BASE_OPTIMIZER_STATE_STEP in all_state_dict[0]
+        assert all(sd[BASE_OPTIMIZER_STATE_STEP] == all_state_dict[0][BASE_OPTIMIZER_STATE_STEP]
+                   for sd in all_state_dict), "State dicts of all partitions must have the same step value"
+        return all_state_dict[0][BASE_OPTIMIZER_STATE_STEP]
+
+    def _restore_base_optimizer_state(self, base_optimizer_group_states, base_optimizer_state_step, group_paddings):
         if type(base_optimizer_group_states) == dict:
             base_optimizer_group_states = base_optimizer_group_states['state']
+
+        saved_keys = base_optimizer_group_states[0].keys()
+
         for i, group in enumerate(self.optimizer.param_groups):
             p = group['params'][0]
-            for key, saved in base_optimizer_group_states[i].items():
-                if torch.is_tensor(self.optimizer.state[p][key]):
-                    dst_tensor = self.optimizer.state[p][key]
-                    src_tensor = _get_padded_tensor(saved, dst_tensor.numel())
-                    self.optimizer.state[p][key].data.copy_(src_tensor.data)
+            padding = 0 if group_paddings is None else group_paddings[i]
+            for key in saved_keys:
+                saved = base_optimizer_group_states[i][key]
+
+                if torch.is_tensor(saved):
+                    if key in self.optimizer.state[p]:
+                        dst_tensor = self.optimizer.state[p][key]
+                        src_tensor = _get_padded_tensor(saved, dst_tensor.numel())
+                        self.optimizer.state[p][key].data.copy_(src_tensor.data)
+                    else:
+                        self.optimizer.state[p][key] = _pad_tensor_by_size(
+                            saved, padding, torch.float32,
+                            torch.device('cpu') if self.cpu_offload else self.device)
                 else:
                     self.optimizer.state[p][key] = saved
+
+        for param_group in self.optimizer.param_groups:
+            param_group['step'] = base_optimizer_state_step
 
     def get_ep_ranks(self, rank=0, group_name=None):
         from deepspeed.utils import groups
@@ -2257,15 +2283,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 partition_states[key] = self._partition_base_optimizer_state(key, all_partition_states, i)
             base_optimizer_group_states.append(partition_states)
 
-        self._restore_base_optimizer_state(base_optimizer_group_states)
-
-        # Restore step
-        if BASE_OPTIMIZER_STATE_STEP in all_state_dict[0]:
-            assert all(sd[BASE_OPTIMIZER_STATE_STEP] == all_state_dict[0][BASE_OPTIMIZER_STATE_STEP]
-                       for sd in all_state_dict), "State dicts of all partitions must have the same step value"
-            loaded_param_groups_step = all_state_dict[0][BASE_OPTIMIZER_STATE_STEP]
-            for param_group in self.optimizer.param_groups:
-                param_group['step'] = loaded_param_groups_step
+        self._restore_base_optimizer_state(base_optimizer_group_states,
+                                           self._restore_step_from_elastic_checkpoint(all_state_dict), None)
 
     def load_state_dict(self,
                         state_dict_list,
@@ -2377,7 +2396,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     self._restore_elastic_base_optimizer_state(state_dict_list)
                 else:
                     # loading an elastic checkpoint into rigid exec
-                    self._restore_base_optimizer_state(current_rank_sd[BASE_OPTIMIZER_STATE])
+                    self._restore_base_optimizer_state(current_rank_sd[BASE_OPTIMIZER_STATE],
+                                                       current_rank_sd[BASE_OPTIMIZER_STATE_STEP],
+                                                       current_rank_sd[GROUP_PADDINGS])
 
         # At this point, the optimizer's references to the model's fp32 parameters are up to date.
         # The optimizer's hyperparameters and internal buffers are also up to date.
