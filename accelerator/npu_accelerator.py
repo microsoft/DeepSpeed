@@ -278,3 +278,6 @@ class NPU_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return ['ASCEND', 'HCCL', 'LD_LIBRARY', 'PATH']
+
+    def is_rocm_device(self):
+        return False

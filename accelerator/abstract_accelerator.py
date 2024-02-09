@@ -287,3 +287,7 @@ class DeepSpeedAccelerator(ABC):
     @abc.abstractmethod
     def export_envs(self):
         ...
+
+    @abc.abstractmethod
+    def is_rocm_device(self):
+        ...
