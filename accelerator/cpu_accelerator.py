@@ -302,6 +302,3 @@ class CPU_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return []
-
-    def is_rocm_device(self):
-        return False

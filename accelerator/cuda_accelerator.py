@@ -359,6 +359,3 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return ['NCCL']
-
-    def is_rocm_device(self):
-        return 'AMD' in torch.cuda.get_device_name()
