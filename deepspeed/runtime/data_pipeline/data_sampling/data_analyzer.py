@@ -416,4 +416,3 @@ class DataAnalyzer(object):
         else:
             self.custom_reduce(self.dataset, self.metric_names, self.metric_types, self.save_path, self.num_workers,
                                self.num_threads, self.num_threads_reduce)
-
