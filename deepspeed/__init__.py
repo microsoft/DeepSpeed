@@ -13,7 +13,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 from packaging import version as pkg_version
 
 # Skip Triton import for AMD due to pytorch-triton-rocm module breaking device API in DeepSpeed
-if 'AMD' not in torch.cuda.get_device_name():
+if 'AMD' not in torch.cuda.get_device_name():  #ignore-cuda
     try:
         import triton  # noqa: F401 # type: ignore
         HAS_TRITON = True
