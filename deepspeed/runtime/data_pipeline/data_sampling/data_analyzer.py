@@ -86,12 +86,12 @@ class DataAnalyzer(object):
 
     def update_metric_results(self, data, metric_types, metric_dtypes, metric_functions, metric_results, batch_start_idx=0):
         for m_idx in range(len(metric_types)):
-            metric_type, metric_dtype, metric_function, metric_result = metric_types[m_idx], \
-                metric_dtypes[m_idx], metric_functions[m_idx], metric_results[m_idx]
-            metric_values = metric_function(data)
+            metric_type, metric_function, metric_result = metric_types[m_idx], \
+                metric_functions[m_idx], metric_results[m_idx]
             assert metric_values.numpy().dtype == metric_dtype, \
                 f"dtype {type(m_value)} returned by metric_function {metric_function} is not consistent with the metric_dtype {metric_dtype}"
             if metric_type == 'single_value_per_sample':
+                metric_values = metric_function(data)
                 for row in range(metric_values.size()[0]):
                     metric_result["sample_to_metric_builder"].add_item(metric_values[row].reshape(-1))
                     metric_result["metric_to_sample_dict"][metric_values[row].item()].append(batch_start_idx + row)
@@ -103,6 +103,7 @@ class DataAnalyzer(object):
                             writer.writerows([metric_result["metric_to_sample_dict"][m_value]])
                         metric_result["metric_to_sample_dict"][m_value] = []
             elif metric_type == 'accumulate_value_over_samples':
+                metric_values = metric_function(data)
                 if metric_result["metric_value"] is None:
                     metric_result["metric_value"] = metric_values
                 else:
