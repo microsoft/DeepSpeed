@@ -72,7 +72,7 @@ def get_accelerator():
                 raise ValueError(
                     f"XPU_Accelerator external requires intel_extension_for_deepspeed, which is not installed on this system."
                 )
-        elif accelerator_name == "cpu":
+        elif accelerator_name == "xeon":
             try:
                 import intel_extension_for_pytorch  # noqa: F401 # type: ignore
             except ImportError as e:
@@ -161,13 +161,13 @@ def get_accelerator():
                 if torch.cuda.is_available():
                     accelerator_name = "cuda"
                 else:
+                    if accel_logger is not None:
+                        accel_logger.warn(
+                            "Setting accelerator to CPU. If you have GPU or other accelerator, we were unable to detect it."
+                        )
                     accelerator_name = "cpu"
             except (RuntimeError, ImportError) as e:
                 pass
-
-        # Default to x86 cpu if we cannot detect anything else
-        # TODO: Add a warning noting that we are default to x86 because we cannot detect anything.
-        accelerator_name = "cpu"
         ds_set_method = "auto detect"
 
     # 3. Set ds_accelerator accordingly

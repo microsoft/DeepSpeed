@@ -26,6 +26,15 @@ class CPU_Accelerator(DeepSpeedAccelerator):
     def is_synchronized_device(self):
         return True
 
+    def use_host_timers(self):
+        return self.is_synchronized_device()
+
+    def resolves_data_dependency(self):
+        return self.is_synchronized_device()
+
+    def handles_memory_backpressure(self):
+        return self.is_synchronized_device()
+
     # Device APIs
     def device_name(self, device_index=None):
         if device_index is None:
@@ -42,7 +51,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return torch.cpu.current_device()
 
     def current_device_name(self):
-        return 'cpu:{}'.format(torch.cpu.current_device())
+        return 'cpu'
 
     def device_count(self):
         return torch.cpu.device_count()
@@ -55,28 +64,22 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return torch.random
 
     def set_rng_state(self, new_state, device_index=None):
-        if device_index is None:
-            return torch.set_rng_state(new_state)
-
-        return torch.set_rng_state(new_state, device_index)
+        return torch.set_rng_state(new_state)
 
     def get_rng_state(self, device_index=None):
-        if device_index is None:
-            return torch.get_rng_state()
-
-        return torch.get_rng_state(device_index)
+        return torch.get_rng_state()
 
     def manual_seed(self, seed):
         return torch.manual_seed(seed)
 
     def manual_seed_all(self, seed):
-        return torch.manual_seed_all(seed)
+        return torch.manual_seed(seed)
 
     def initial_seed(self, seed):
         return torch.initial_seed(seed)
 
     def default_generator(self, device_index):
-        return torch.default_generators[device_index]
+        return torch.default_generator
 
     # Streams/Events
     @property
@@ -94,7 +97,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
 
     @property
     def Event(self):
-        return None
+        return torch.cpu.Event
 
     # Memory management
     def empty_cache(self):
@@ -180,10 +183,10 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return torch.cpu.is_available()
 
     def range_push(self, msg):
-        return
+        return torch.profiler.itt.range_push(msg)
 
     def range_pop(self):
-        return
+        return torch.profiler.itt.range_pop()
 
     def lazy_call(self, callback):
         return callback()
@@ -242,7 +245,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
 
     def on_accelerator(self, tensor):
         device_str = str(tensor.device)
-        if device_str.startswith('cpu:'):
+        if device_str.startswith('cpu'):
             return True
         else:
             return False
@@ -254,7 +257,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
             from op_builder import __deepspeed__  # noqa: F401 # type: ignore
             return "op_builder"
         except ImportError:
-            return "deepspeed.ops.op_builder"
+            return "deepspeed.ops.op_builder.cpu"
 
     # dict that holds class name <--> class type mapping i.e.
     # 'AsyncIOBuilder': <class 'op_builder.async_io.AsyncIOBuilder'>
