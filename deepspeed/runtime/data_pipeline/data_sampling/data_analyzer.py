@@ -84,7 +84,7 @@ class DataAnalyzer(object):
                 metric_results.append({"metric_value": metric_value, "metric_value_fname": metric_value_fname})
         return metric_results
 
-    def update_metric_results(self, data, metric_types, metric_dtypes, metric_functions, metric_results, batch_start_idx=0):
+    def update_metric_results(self, data, metric_types, metric_functions, metric_results, batch_start_idx=0):
         for m_idx in range(len(metric_types)):
             metric_type, metric_function, metric_result = metric_types[m_idx], \
                 metric_functions[m_idx], metric_results[m_idx]
@@ -158,7 +158,7 @@ class DataAnalyzer(object):
                 data = next(iterator)
                 batch_start_idx = start_idx + processed_sample
                 if self.custom_map_update is None:
-                    self.update_metric_results(data, self.metric_types, self.metric_dtypes, self.metric_functions, metric_results, batch_start_idx)
+                    self.update_metric_results(data, self.metric_types, self.metric_functions, metric_results, batch_start_idx)
                 else:
                     self.custom_map_update(data, self.metric_types, self.metric_functions, metric_results, batch_start_idx)
                 processed_sample += self.batch_size
