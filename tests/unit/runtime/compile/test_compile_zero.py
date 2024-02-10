@@ -13,8 +13,8 @@ from unit.runtime.compile.util import compare_loss
 from unit.common import DistributedTest
 from unit.util import bf16_required_version_check
 
-pytestmark = pytest.mark.skipif(not required_torch_version(min_version=2.0),
-                                reason="Compile tests requires Pytorch version 2.0 or above")
+pytestmark = pytest.mark.skipif(not required_torch_version(min_version=2.1),
+                                reason="Compile tests requires Pytorch version 2.1 or above")
 
 
 class TestZeRO(DistributedTest):
