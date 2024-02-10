@@ -84,7 +84,7 @@ class DataAnalyzer(object):
                 metric_results.append({"metric_value": metric_value, "metric_value_fname": metric_value_fname})
         return metric_results
 
-    def update_metric_results(self, data, metric_types, metric_dtypes, metric_functions, metric_results, processed_sample=0):
+    def update_metric_results(self, data, metric_types, metric_dtypes, metric_functions, metric_results, batch_start_idx=0):
         for m_idx in range(len(metric_types)):
             metric_type, metric_dtype, metric_function, metric_result = metric_types[m_idx], \
                 metric_dtypes[m_idx], metric_functions[m_idx], metric_results[m_idx]
@@ -93,9 +93,8 @@ class DataAnalyzer(object):
                 f"dtype {type(m_value)} returned by metric_function {metric_function} is not consistent with the metric_dtype {metric_dtype}"
             if metric_type == 'single_value_per_sample':
                 for row in range(metric_values.size()[0]):
-                    global_sample_idx = self.start_idx + processed_sample + row
                     metric_result["sample_to_metric_builder"].add_item(metric_values[row].reshape(-1))
-                    metric_result["metric_to_sample_dict"][metric_values[row].item()].append(global_sample_idx)
+                    metric_result["metric_to_sample_dict"][metric_values[row].item()].append(batch_start_idx + row)
                 for m_value in metric_result["metric_to_sample_dict"]:
                     if len(metric_result["metric_to_sample_dict"][m_value]) > 100:
                         metric_fname = metric_result["metric_to_sample_fname"]
@@ -131,11 +130,11 @@ class DataAnalyzer(object):
                     close_mmap_dataset_builder(metric_value_builder, metric_result["metric_value_fname"])
 
     def run_map_helper(self, thread_id):
-        self.start_idx, self.end_idx = self.thread_splits[thread_id][0], \
+        start_idx, end_idx = self.thread_splits[thread_id][0], \
             self.thread_splits[thread_id][1]
         logger.info(f"worker {self.worker_id} thread {thread_id}: start working " \
-            f"on data subset {self.start_idx} to {self.end_idx}")
-        thread_dataset = Subset(self.dataset, list(range(self.start_idx, self.end_idx)))
+            f"on data subset {start_idx} to {end_idx}")
+        thread_dataset = Subset(self.dataset, list(range(start_idx, end_idx)))
         sampler = BatchSampler(SequentialSampler(thread_dataset), batch_size=self.batch_size, drop_last=False)
         if self.collate_fn is None:
             iterator = iter(DataLoader(thread_dataset, batch_sampler=sampler, num_workers=0, pin_memory=False))
@@ -158,10 +157,11 @@ class DataAnalyzer(object):
         while True:
             try:
                 data = next(iterator)
+                batch_start_idx = start_idx + processed_sample
                 if self.custom_map_update is None:
-                    self.update_metric_results(data, self.metric_types, self.metric_dtypes, self.metric_functions, metric_results, processed_sample)
+                    self.update_metric_results(data, self.metric_types, self.metric_dtypes, self.metric_functions, metric_results, batch_start_idx)
                 else:
-                    self.custom_map_update(data, self.metric_types, self.metric_functions, metric_results, processed_sample)
+                    self.custom_map_update(data, self.metric_types, self.metric_functions, metric_results, batch_start_idx)
                 processed_sample += self.batch_size
                 duration = (time.time() - start) / 3600.0
                 remain_duration = duration * total_sample / processed_sample - duration
