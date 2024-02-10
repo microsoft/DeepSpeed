@@ -88,8 +88,6 @@ class DataAnalyzer(object):
         for m_idx in range(len(metric_types)):
             metric_type, metric_function, metric_result = metric_types[m_idx], \
                 metric_functions[m_idx], metric_results[m_idx]
-            assert metric_values.numpy().dtype == metric_dtype, \
-                f"dtype {type(m_value)} returned by metric_function {metric_function} is not consistent with the metric_dtype {metric_dtype}"
             if metric_type == 'single_value_per_sample':
                 metric_values = metric_function(data)
                 for row in range(metric_values.size()[0]):
