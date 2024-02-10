@@ -11,10 +11,10 @@ import os
 
 
 # accelerator for Intel CPU
-class CPU_Accelerator(DeepSpeedAccelerator):
+class Xeon_Accelerator(DeepSpeedAccelerator):
 
     def __init__(self):
-        self._name = 'cpu'
+        self._name = 'xeon'
         self._communication_backend_name = 'ccl'
         self.max_mem = psutil.Process().memory_info().rss
 
@@ -258,9 +258,9 @@ class CPU_Accelerator(DeepSpeedAccelerator):
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
             from op_builder import __deepspeed__  # noqa: F401 # type: ignore
-            return "op_builder.cpu"
+            return "op_builder.xeon"
         except ImportError:
-            return "deepspeed.ops.op_builder.cpu"
+            return "deepspeed.ops.op_builder.xeon"
 
     def on_accelerator(self, tensor):
         device_str = str(tensor.device)
@@ -282,9 +282,9 @@ class CPU_Accelerator(DeepSpeedAccelerator):
             # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
             # if successful this also means we're doing a local install and not JIT compile path
             from op_builder import __deepspeed__  # noqa: F401 # type: ignore
-            from op_builder.cpu import CCLCommBuilder, FusedAdamBuilder, CPUAdamBuilder, NotImplementedBuilder
+            from op_builder.xeon import CCLCommBuilder, FusedAdamBuilder, CPUAdamBuilder, NotImplementedBuilder
         except ImportError:
-            from deepspeed.ops.op_builder.cpu import CCLCommBuilder, FusedAdamBuilder, CPUAdamBuilder, NotImplementedBuilder
+            from deepspeed.ops.op_builder.xeon import CCLCommBuilder, FusedAdamBuilder, CPUAdamBuilder, NotImplementedBuilder
 
         if class_name == "CCLCommBuilder":
             return CCLCommBuilder

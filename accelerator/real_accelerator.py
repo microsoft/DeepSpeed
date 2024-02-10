@@ -20,7 +20,7 @@ try:
 except ImportError as e:
     dsa2 = None
 
-SUPPORTED_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'xpu.external', 'npu', 'mps', 'hpu']
+SUPPORTED_ACCELERATOR_LIST = ['cuda', 'xeon', 'xpu', 'xpu.external', 'npu', 'mps', 'hpu']
 
 ds_accelerator = None
 
@@ -72,12 +72,12 @@ def get_accelerator():
                 raise ValueError(
                     f"XPU_Accelerator external requires intel_extension_for_deepspeed, which is not installed on this system."
                 )
-        elif accelerator_name == "cpu":
+        elif accelerator_name == "xeon":
             try:
                 import intel_extension_for_pytorch  # noqa: F401 # type: ignore
             except ImportError as e:
                 raise ValueError(
-                    f"CPU_Accelerator requires intel_extension_for_pytorch, which is not installed on this system.")
+                    f"Xeon_Accelerator requires intel_extension_for_pytorch, which is not installed on this system.")
         elif accelerator_name == "npu":
             try:
                 import torch_npu  # noqa: F401 # type: ignore
@@ -127,7 +127,7 @@ def get_accelerator():
                 if ipex._C._has_xpu():
                     accelerator_name = "xpu"
                 else:
-                    accelerator_name = "cpu"
+                    accelerator_name = "xeon"
             except ImportError as e:
                 pass
         if accelerator_name is None:
@@ -163,10 +163,10 @@ def get_accelerator():
         from .cuda_accelerator import CUDA_Accelerator
 
         ds_accelerator = CUDA_Accelerator()
-    elif accelerator_name == "cpu":
-        from .cpu_accelerator import CPU_Accelerator
+    elif accelerator_name == "xeon":
+        from .xeon_accelerator import Xeon_Accelerator
 
-        ds_accelerator = CPU_Accelerator()
+        ds_accelerator = Xeon_Accelerator()
     elif accelerator_name == "xpu.external":
         # XPU_Accelerator is already imported in detection stage
         ds_accelerator = XPU_Accelerator()
