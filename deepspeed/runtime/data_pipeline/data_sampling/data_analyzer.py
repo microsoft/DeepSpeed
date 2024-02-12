@@ -158,9 +158,11 @@ class DataAnalyzer(object):
                 data = next(iterator)
                 batch_start_idx = start_idx + processed_sample
                 if self.custom_map_update is None:
-                    self.update_metric_results(data, self.metric_types, self.metric_functions, metric_results, batch_start_idx)
+                    self.update_metric_results(data, self.metric_types, self.metric_functions, metric_results,
+                                               batch_start_idx)
                 else:
-                    self.custom_map_update(data, self.metric_types, self.metric_functions, metric_results, batch_start_idx)
+                    self.custom_map_update(data, self.metric_types, self.metric_functions, metric_results,
+                                           batch_start_idx)
                 processed_sample += self.batch_size
                 duration = (time.time() - start) / 3600.0
                 remain_duration = duration * total_sample / processed_sample - duration
