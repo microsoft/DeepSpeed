@@ -53,10 +53,16 @@ jobs:
         run: |
           pip list
 
-      - name: Unit tests
+      - name: Unit tests (seq_inference)
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
           pytest $PYTEST_OPTS -m 'seq_inference' unit/ --torch_ver="1.13" --cuda_ver="11.6"
+
+      - name: Unit tests (inference_ops)
+        run: |
           pytest $PYTEST_OPTS -m 'inference_ops' unit/ --torch_ver="1.13" --cuda_ver="11.6"
+
+      - name: Unit tests (inference)
+        run: |
           pytest $PYTEST_OPTS --forked -n 4 -m 'inference' unit/ --torch_ver="1.13" --cuda_ver="11.6"
