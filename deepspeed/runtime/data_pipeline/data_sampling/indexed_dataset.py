@@ -110,7 +110,7 @@ dtypes = {
     8: (np.uint64, None),
 }
 
-valid_dtypes = set( [dt[0] for dt in dtypes.values()] + [dt[1] for dt in dtypes.values() if dt[1] is not None] )
+valid_dtypes = set([dt[0] for dt in dtypes.values()] + [dt[1] for dt in dtypes.values() if dt[1] is not None])
 
 
 def code(dtype):
@@ -154,7 +154,7 @@ class IndexedDataset(torch.utils.data.Dataset):
             version = f.read(8)
             assert struct.unpack('<Q', version) == (1, )
             code, self.element_size = struct.unpack('<QQ', f.read(16))
-            self.dtype = dtypes[code][0] #numpy type
+            self.dtype = dtypes[code][0]  #numpy type
             self._len, self.s = struct.unpack('<QQ', f.read(16))
             self.doc_count = struct.unpack('<Q', f.read(8))
             self.dim_offsets = read_longs(f, self._len + 1)
@@ -427,7 +427,7 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
                 assert (1, ) == version
 
                 dtype_code, = struct.unpack('<B', stream.read(1))
-                self._dtype = dtypes[dtype_code][0] #numpy type
+                self._dtype = dtypes[dtype_code][0]  #numpy type
                 self._dtype_size = self._dtype().itemsize
 
                 self._len = struct.unpack('<Q', stream.read(8))[0]
@@ -576,7 +576,7 @@ class MMapIndexedDatasetBuilder(object):
 
     def __init__(self, out_file, dtype=np.int64):
         self._data_file = open(out_file, 'wb')
-        self._dtype = [ np_dt for np_dt, torch_dt in dtypes.values() if dtype in [np_dt, torch_dt]][0] 
+        self._dtype = [np_dt for np_dt, torch_dt in dtypes.values() if dtype in [np_dt, torch_dt]][0]
         self._sizes = []
         self._doc_idx = [0]
 

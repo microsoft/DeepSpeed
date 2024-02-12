@@ -17,7 +17,6 @@ from .indexed_dataset import MMapIndexedDataset, valid_dtypes
 from .utils import split_dataset, split_index, create_mmap_dataset_builder, close_mmap_dataset_builder, find_fit_int_dtype
 
 
-
 class DataAnalyzer(object):
 
     def __init__(self,
@@ -94,7 +93,7 @@ class DataAnalyzer(object):
                 f"metric_function result dtype {metric_values.dtype} doesnt match metric_dtype {metric_dtype}"
             if isinstance(metric_values, np.ndarray):
                 metric_values = torch.from_numpy(metric_values)
-            
+
             if metric_type == 'single_value_per_sample':
                 for row in range(metric_values.size()[0]):
                     metric_result["sample_to_metric_builder"].add_item(metric_values[row].reshape(-1))
@@ -160,9 +159,11 @@ class DataAnalyzer(object):
             try:
                 data = next(iterator)
                 if self.custom_map_update is None:
-                    self.update_metric_results(data, self.metric_types, self.metric_dtypes, self.metric_functions, metric_results)
+                    self.update_metric_results(data, self.metric_types, self.metric_dtypes, self.metric_functions,
+                                               metric_results)
                 else:
-                    self.custom_map_update(data, self.metric_types, self.metric_dtypes, self.metric_functions, metric_results)
+                    self.custom_map_update(data, self.metric_types, self.metric_dtypes, self.metric_functions,
+                                           metric_results)
                 processed_sample += self.batch_size
                 duration = (time.time() - start) / 3600.0
                 remain_duration = duration * total_sample / processed_sample - duration
