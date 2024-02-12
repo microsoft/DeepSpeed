@@ -88,9 +88,9 @@ class DataAnalyzer(object):
                 metric_dtypes[m_idx], metric_functions[m_idx], metric_results[m_idx]
             metric_values = metric_function(data)
             assert torch.is_tensor(metric_values) or isinstance(metric_values, np.ndarray), \
-                "metric_function must return a tensor or array"
+                    "metric_function must return a tensor or array"
             assert metric_values.dtype == metric_dtype, \
-                f"metric_function result dtype {metric_values.dtype} doesnt match metric_dtype {metric_dtype}"
+                    f"metric_function result dtype {metric_values.dtype} does not match metric_dtype {metric_dtype}"
             if isinstance(metric_values, np.ndarray):
                 metric_values = torch.from_numpy(metric_values)
 
