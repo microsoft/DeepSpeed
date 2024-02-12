@@ -159,7 +159,8 @@ class DataAnalyzer(object):
             try:
                 data = next(iterator)
                 if self.custom_map_update is None:
-                    self.update_metric_results(data, self.metric_types, self.metric_dtypes, self.metric_functions, metric_results)
+                    self.update_metric_results(data, self.metric_types, self.metric_dtypes, self.metric_functions,
+                                               metric_results)
                 else:
                     self.custom_map_update(data, self.metric_types, self.metric_functions, metric_results)
                 processed_sample += self.batch_size
@@ -416,4 +417,3 @@ class DataAnalyzer(object):
         else:
             self.custom_reduce(self.dataset, self.metric_names, self.metric_types, self.save_path, self.num_workers,
                                self.num_threads, self.num_threads_reduce)
-

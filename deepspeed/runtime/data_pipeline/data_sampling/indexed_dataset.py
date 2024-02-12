@@ -612,7 +612,6 @@ class MMapIndexedDatasetBuilder(object):
         self._data_file.flush()
         assert os.stat(self._data_file.name).st_size != 0, f"Zero-sized file: {self._data_file.name}"
 
-
     def finalize(self, index_file):
         self._data_file.close()
 
