@@ -155,6 +155,7 @@ def get_accelerator():
                 pass
         if accelerator_name is None:
             try:
+                import torch
                 if hasattr(torch.version, 'hip') and torch.version.hip is not None:
                     accelerator_name = "hip"
             except ImportError as e:
