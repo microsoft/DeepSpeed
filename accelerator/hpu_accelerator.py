@@ -30,6 +30,15 @@ class HPU_Accelerator(DeepSpeedAccelerator):
     def is_synchronized_device(self):
         return False
 
+    def use_host_timers(self):
+        return False
+
+    def resolves_data_dependency(self):
+        return True
+
+    def handles_memory_backpressure(self):
+        return True
+
     def device_name(self, device_index=None):
         if device_index is None:
             return 'hpu'
@@ -147,7 +156,7 @@ class HPU_Accelerator(DeepSpeedAccelerator):
     def supported_dtypes(self):
         supported_dtypes = [torch.float, torch.bfloat16]
         if self.is_fp16_supported():
-            supported_dtypes.append(torch.bfloat16)
+            supported_dtypes.append(torch.half)
         return supported_dtypes
 
     # Misc
