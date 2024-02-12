@@ -122,12 +122,12 @@ class DeepSpeedDataSampler(object):
     def get_start_end_idx(self, batch_len=None):
         """
         given the length of a minibatch (defaults to micro-batch size * data_parallel_size),
-        return the start and end indices of the current data parallel rank 
+        return the start and end indices of the current data parallel rank
         """
         batch_len = batch_len or self.micro_batch_times_data_parallel_size
-        start_idx_fn = lambda r : round(r * batch_len/self.data_parallel_group.size()) 
+        start_idx_fn = lambda r: round(r * batch_len / self.data_parallel_group.size())
         start_idx = start_idx_fn(self.data_parallel_rank)
-        end_idx = start_idx_fn(self.data_parallel_rank+1)
+        end_idx = start_idx_fn(self.data_parallel_rank + 1)
         return start_idx, end_idx
 
     def get_sample_based_on_metric_value(self, metric, value_start, value_end):
