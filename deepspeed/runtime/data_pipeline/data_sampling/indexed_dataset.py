@@ -610,7 +610,6 @@ class MMapIndexedDatasetBuilder(object):
         with open(data_file_path(another_file), 'rb') as f:
             shutil.copyfileobj(f, self._data_file)
 
-
     def finalize(self, index_file):
         self._data_file.close()
 
