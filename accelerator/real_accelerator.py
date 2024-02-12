@@ -154,8 +154,11 @@ def get_accelerator():
             except ImportError as e:
                 pass
         if accelerator_name is None:
-            if hasattr(torch.version, 'hip') and torch.version.hip is not None:
-                accelerator_name = "hip"
+            try:
+                if hasattr(torch.version, 'hip') and torch.version.hip is not None:
+                    accelerator_name = "hip"
+            except ImportError as e:
+                pass
         if accelerator_name is None:
             accelerator_name = "cuda"
 
