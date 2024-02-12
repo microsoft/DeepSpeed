@@ -291,7 +291,6 @@ class DeepSpeedDataSampler(object):
                                     device=get_accelerator().current_device_name(),
                                     dtype=torch.long)
             dist.broadcast(batch, 0, group=self.data_parallel_group)
-
             batch = batch[batch!=-1] # remove trailing -1s used to fill incomplete batch tensor 
             self.batch = batch.tolist()
 
