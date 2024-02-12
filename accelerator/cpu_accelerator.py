@@ -17,10 +17,11 @@ except ImportError:
     pass
 
 
-class x86_Accelerator(DeepSpeedAccelerator):
+# accelerator for generic x86 cpus
+class CPU_Accelerator(DeepSpeedAccelerator):
 
     def __init__(self):
-        self._name = 'x86'
+        self._name = 'cpu'
 
     def is_synchronized_device(self):
         return True
@@ -28,8 +29,8 @@ class x86_Accelerator(DeepSpeedAccelerator):
     # Device APIs
     def device_name(self, device_index=None):
         if device_index is None:
-            return 'x86'
-        return 'x86:{}'.format(device_index)
+            return 'cpu'
+        return 'cpu:{}'.format(device_index)
 
     def device(self, device_index=None):
         return torch.device(device_index)
@@ -41,7 +42,7 @@ class x86_Accelerator(DeepSpeedAccelerator):
         return torch.cpu.current_device()
 
     def current_device_name(self):
-        return 'x86:{}'.format(torch.cpu.current_device())
+        return 'cpu:{}'.format(torch.cpu.current_device())
 
     def device_count(self):
         return torch.cpu.device_count()
@@ -241,7 +242,7 @@ class x86_Accelerator(DeepSpeedAccelerator):
 
     def on_accelerator(self, tensor):
         device_str = str(tensor.device)
-        if device_str.startswith('x86:'):
+        if device_str.startswith('cpu:'):
             return True
         else:
             return False

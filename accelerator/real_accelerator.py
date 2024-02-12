@@ -20,7 +20,7 @@ try:
 except ImportError as e:
     dsa2 = None
 
-SUPPORTED_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'xpu.external', 'npu', 'mps', 'hpu', 'x86']
+SUPPORTED_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'xpu.external', 'npu', 'mps', 'hpu', 'xeon']
 
 ds_accelerator = None
 
@@ -127,7 +127,7 @@ def get_accelerator():
                 if ipex._C._has_xpu():
                     accelerator_name = "xpu"
                 else:
-                    accelerator_name = "cpu"
+                    accelerator_name = "xeon"
             except ImportError as e:
                 pass
         if accelerator_name is None:
@@ -161,13 +161,13 @@ def get_accelerator():
                 if torch.cuda.is_available():
                     accelerator_name = "cuda"
                 else:
-                    accelerator_name = "x86"
+                    accelerator_name = "cpu"
             except (RuntimeError, ImportError) as e:
                 pass
 
-        # Default to x86 if we cannot detect anything else
+        # Default to x86 cpu if we cannot detect anything else
         # TODO: Add a warning noting that we are default to x86 because we cannot detect anything.
-        accelerator_name = "x86"
+        accelerator_name = "cpu"
         ds_set_method = "auto detect"
 
     # 3. Set ds_accelerator accordingly
@@ -192,9 +192,9 @@ def get_accelerator():
     elif accelerator_name == 'hpu':
         from .hpu_accelerator import HPU_Accelerator
         ds_accelerator = HPU_Accelerator()
-    elif accelerator_name == 'x86':
-        from .x86_accelerator import x86_Accelerator
-        ds_accelerator = x86_Accelerator()
+    elif accelerator_name == 'xeon':
+        from .xeon_accelerator import Xeon_Accelerator
+        ds_accelerator = Xeon_Accelerator()
     _validate_accelerator(ds_accelerator)
     if accel_logger is not None:
         accel_logger.info(f"Setting ds_accelerator to {ds_accelerator._name} ({ds_set_method})")

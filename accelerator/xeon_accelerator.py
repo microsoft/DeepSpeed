@@ -10,11 +10,11 @@ import psutil
 import os
 
 
-# accelerator for Intel CPU
-class CPU_Accelerator(DeepSpeedAccelerator):
+# accelerator for Intel Xeon CPU
+class Xeon_Accelerator(DeepSpeedAccelerator):
 
     def __init__(self):
-        self._name = 'cpu'
+        self._name = 'xeon'
         self._communication_backend_name = 'ccl'
         self.max_mem = psutil.Process().memory_info().rss
 
@@ -52,7 +52,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
             return device_count
         else:
             from deepspeed.utils.numa import get_numa_cores
-            # Count NUMA node for number of cpu accelerators. On machine with HBM
+            # Count NUMA node for number of xeon cpu accelerators. On machine with HBM
             # In flat mode, HBM is in separate NUMA node with no cores on this node.
             # Ignore these NUMA nodes with no cores.
             numa_core_lists = get_numa_cores()
