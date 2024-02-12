@@ -17,6 +17,7 @@ from .indexed_dataset import MMapIndexedDataset, valid_dtypes
 from .utils import split_dataset, split_index, create_mmap_dataset_builder, close_mmap_dataset_builder, find_fit_int_dtype
 
 
+
 class DataAnalyzer(object):
 
     def __init__(self,

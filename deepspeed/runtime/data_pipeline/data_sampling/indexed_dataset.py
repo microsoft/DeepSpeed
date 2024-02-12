@@ -112,6 +112,7 @@ dtypes = {
 
 valid_dtypes = set( [dt[0] for dt in dtypes.values()] + [dt[1] for dt in dtypes.values() if dt[1] is not None] )
 
+
 def code(dtype):
     for c, (np_dt, torch_dt) in dtypes.items():
         if dtype in [np_dt, torch_dt]:
