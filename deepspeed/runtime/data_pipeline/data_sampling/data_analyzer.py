@@ -90,7 +90,7 @@ class DataAnalyzer(object):
                 metric_dtypes[m_idx], metric_functions[m_idx], metric_results[m_idx]
             metric_values = metric_function(data)
             assert metric_values.numpy().dtype == metric_dtype, \
-                f"dtype {type(m_value)} returned by metric_function {metric_function} is not consistent with the metric_dtype {metric_dtype}"
+                f"dtype {metric_values.numpy().dtype} returned by metric_function {metric_function} is not consistent with the metric_dtype {metric_dtype}"
             if metric_type == 'single_value_per_sample':
                 for row in range(metric_values.size()[0]):
                     metric_result["sample_to_metric_builder"].add_item(metric_values[row].reshape(-1))
