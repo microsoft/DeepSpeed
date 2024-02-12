@@ -12,8 +12,13 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from packaging import version as pkg_version
 
-# Skip Triton import for AMD due to pytorch-triton-rocm module breaking device API in DeepSpeed
-if not (hasattr(torch.version, 'hip') and torch.version.hip is not None):
+# Import utils so logger in accelerator properly logs output
+import deepspeed.utils
+from .accelerator import get_accelerator
+
+# Skip Triton import if not supported by accelerator
+# e.g. pytorch-triton-rocm module breaks device API on AMD w/ DeepSpeed
+if get_accelerator().is_triton_supported():
     try:
         import triton  # noqa: F401 # type: ignore
         HAS_TRITON = True
@@ -25,7 +30,6 @@ else:
 from . import ops
 from . import module_inject
 
-from .accelerator import get_accelerator
 from .runtime.engine import DeepSpeedEngine, DeepSpeedOptimizerCallable, DeepSpeedSchedulerCallable
 from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from .runtime.hybrid_engine import DeepSpeedHybridEngine

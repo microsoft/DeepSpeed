@@ -20,7 +20,7 @@ try:
 except ImportError as e:
     dsa2 = None
 
-SUPPORTED_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'xpu.external', 'npu', 'mps', 'hpu']
+SUPPORTED_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'xpu.external', 'npu', 'mps', 'hpu', 'hip']
 
 ds_accelerator = None
 
@@ -154,6 +154,9 @@ def get_accelerator():
             except ImportError as e:
                 pass
         if accelerator_name is None:
+            if hasattr(torch.version, 'hip') and torch.version.hip is not None:
+                accelerator_name = "hip"
+        if accelerator_name is None:
             accelerator_name = "cuda"
 
         ds_set_method = "auto detect"
@@ -186,6 +189,10 @@ def get_accelerator():
         from .hpu_accelerator import HPU_Accelerator
 
         ds_accelerator = HPU_Accelerator()
+    elif accelerator_name == 'hip':
+        from .hip_accelerator import HIP_Accelerator
+
+        ds_accelerator = HIP_Accelerator()
     _validate_accelerator(ds_accelerator)
     if accel_logger is not None:
         accel_logger.info(f"Setting ds_accelerator to {ds_accelerator._name} ({ds_set_method})")
