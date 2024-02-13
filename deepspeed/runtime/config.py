@@ -31,6 +31,7 @@ from .activation_checkpointing.config import DeepSpeedActivationCheckpointingCon
 from ..comm.config import DeepSpeedCommsConfig
 from ..monitor.config import get_monitor_config
 from ..inference.config import WeightQuantConfig
+from .compiler import get_compile_config
 
 from deepspeed import comm as dist
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
@@ -165,6 +166,14 @@ def get_bfloat16_enabled(param_dict):
     for key in [BFLOAT16, BFLOAT16_OLD]:
         if key in param_dict.keys():
             return get_scalar_param(param_dict[key], BFLOAT16_ENABLED, BFLOAT16_ENABLED_DEFAULT)
+    return False
+
+
+def get_bfloat16_immediate_grad_update(param_dict):
+    for key in [BFLOAT16, BFLOAT16_OLD]:
+        if key in param_dict.keys():
+            return get_scalar_param(param_dict[key], BFLOAT16_IMMEDIATE_GRAD_UPDATE,
+                                    BFLOAT16_IMMEDIATE_GRAD_UPDATE_DEFAULT)
     return False
 
 
@@ -817,6 +826,7 @@ class DeepSpeedConfig(object):
         self.fp16_enabled = get_fp16_enabled(param_dict)
         self.fp16_auto_cast = get_fp16_auto_cast(param_dict)
         self.bfloat16_enabled = get_bfloat16_enabled(param_dict)
+        self.bfloat16_immediate_grad_update = get_bfloat16_immediate_grad_update(param_dict)
         assert not (self.fp16_enabled
                     and self.bfloat16_enabled), 'bfloat16 and fp16 modes cannot be simultaneously enabled'
         self.fp16_master_weights_and_gradients = get_fp16_master_weights_and_grads_enabled(param_dict)
@@ -898,6 +908,8 @@ class DeepSpeedConfig(object):
 
         self.weight_quantization_config = WeightQuantConfig(
             **param_dict['weight_quantization']) if 'weight_quantization' in param_dict else None
+
+        self.compile_config = get_compile_config(param_dict)
 
     def _batch_assertion(self):
 
