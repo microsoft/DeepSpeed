@@ -1975,7 +1975,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         for p in params:
             if p.grad is not None:
                 invalid_grad_count += self._has_inf_or_nan(p.grad)
-        return invalid_grad_count
+        return invalid_grad_count.bool()
 
     def has_overflow_partitioned_grads_serial(self):
         invalid_grad_count = torch.zeros([1], dtype=torch.float, device=get_accelerator().current_device_name())
@@ -1983,13 +1983,13 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             for j, grad in enumerate(self.averaged_gradients[i]):
                 if grad is not None:
                     invalid_grad_count += self._has_inf_or_nan(grad)
-        return invalid_grad_count
+        return invalid_grad_count.bool()
 
     def has_overflow(self, partition_gradients=True):
-        device = torch.device(get_accelerator().current_device_name())
         if partition_gradients:
             overflow = self.local_overflow if self.cpu_offload else self.has_overflow_partitioned_grads_serial()
-            overflow_gpu = get_accelerator().ByteTensor([overflow]) if self.cpu_offload else overflow.to(device)
+            overflow_gpu = get_accelerator().ByteTensor([overflow]) if self.cpu_offload else overflow.byte().to(
+                get_accelerator().current_device_name())
             '''This will capture overflow across all data parallel and expert parallel process
             Since expert parallel process are a subset of data parallel process'''
             dist.all_reduce(overflow_gpu, op=dist.ReduceOp.MAX, group=self.dp_process_group)
@@ -1999,7 +1999,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             for group in self.bit16_groups:
                 for param in group:
                     params.append(param)
-            overflow_gpu = self.has_overflow_serial(params)
+            overflow_gpu = self.has_overflow_serial(params).byte().to(get_accelerator().current_device_name())
 
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
