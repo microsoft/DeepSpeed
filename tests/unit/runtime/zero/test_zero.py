@@ -14,6 +14,7 @@ from torch.nn import Linear, Module
 from torch.nn.modules.container import ModuleList
 from torch.nn.modules.loss import L1Loss
 from torch.nn.parameter import Parameter
+from torch.nn.utils import skip_init
 
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel, random_dataloader
@@ -85,11 +86,16 @@ class TestZeroUnbalancedGradients(DistributedTest):
 
 
 # testing the fix https://github.com/microsoft/DeepSpeed/pull/1227
+@pytest.mark.parametrize("mics_enabled", [True, False])
 class TestZero3RepeatForwardLoop(DistributedTest):
     world_size = 1
 
-    def test(self, zero_stage=3):
+    def test(self, mics_enabled, zero_stage=3):
         # force all params to be partitioned by forcing threshold=0
+        mics_shard_size = -1
+        if mics_enabled:
+            mics_shard_size = self.world_size
+
         config_dict = {
             "train_micro_batch_size_per_gpu": 2,
             "gradient_accumulation_steps": 2,
@@ -97,6 +103,7 @@ class TestZero3RepeatForwardLoop(DistributedTest):
             "zero_optimization": {
                 "stage": zero_stage,
                 "stage3_param_persistence_threshold": 0,
+                "mics_shard_size": mics_shard_size,
             },
             "optimizer": {
                 "type": "Adam",
@@ -1187,6 +1194,82 @@ class TestZero3ParamPartitioningBaseBF16(DistributedTest):
         _assert_partition_status(ds_engine, {ZeroParamStatus.NOT_AVAILABLE})
 
 
+class TestParamPartitioningSkipInit(DistributedTest):
+    world_size = 2
+
+    def test(self):
+        config_dict = {
+            "train_batch_size": 4,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 1e-4
+                }
+            },
+            "fp16": {
+                "enabled": True
+            },
+            "zero_optimization": {
+                "stage": 3
+            },
+        }
+        hidden_dim = 10
+
+        class SubModel(torch.nn.Module):
+
+            def __init__(self, input_size, output_size, dropout_prob=0.5, device=None):
+                super(SubModel, self).__init__()
+                self.linear = torch.nn.Linear(input_size, output_size, device=device)
+                self.dropout = torch.nn.Dropout(dropout_prob)
+                self.module_list = torch.nn.ModuleList([torch.nn.Linear(input_size, output_size, device=device)])
+
+            def forward(self, x):
+                x = self.linear(x)
+                x = self.dropout(x)
+                x = self.module_list[0](x)
+                return x
+
+        class MyModel(torch.nn.Module):
+
+            def __init__(self, hidden_dim):
+                super(MyModel, self).__init__()
+                self.l1 = skip_init(Linear, hidden_dim, hidden_dim)
+                self.l2 = skip_init(SubModel, hidden_dim, hidden_dim)
+                self.l3 = torch.nn.Linear(hidden_dim, hidden_dim)
+                self.cel = torch.nn.CrossEntropyLoss()
+                self.l4 = skip_init(SubModel, hidden_dim, hidden_dim)
+
+            def forward(self, x, y):
+                x = self.l1(x)
+                x = self.l2(x)
+                x = self.l3(x)
+                x = self.l4(x)
+                loss = self.cel(x, y)
+                val = [x, loss]
+                return val
+
+        with deepspeed.zero.Init(config=config_dict):
+            model = MyModel(hidden_dim)
+        world_size = dist.get_world_size()
+        ds_tensor_numel = math.ceil(hidden_dim * hidden_dim / world_size)
+        assert model.l1.weight.ds_tensor.numel() == ds_tensor_numel
+        assert model.l2.linear.weight.ds_tensor.numel() == ds_tensor_numel
+        assert model.l2.module_list[0].weight.ds_tensor.numel() == ds_tensor_numel
+        assert model.l3.weight.ds_tensor.numel() == ds_tensor_numel
+        assert model.l4.linear.weight.ds_tensor.numel() == ds_tensor_numel
+        assert model.l4.module_list[0].weight.ds_tensor.numel() == ds_tensor_numel
+
+        model, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=config_dict)
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
+        dist.barrier()
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            loss = loss[1]
+            model.backward(loss)
+            model.step()
+
+
 class TestZeroOffloadStage1(DistributedTest):
     world_size = 2
 
@@ -1287,6 +1370,11 @@ class TestZeroAdamOptimizerStepCount(DistributedTest):
     world_size = 1
 
     def test(self, zero_stage):
+        # We verify trhee conditions:
+        # 1. global_steps starts at 0
+        # 2. All subgroups have the same step count
+        # 3. The global step count is the same as the step count of the first subgroup
+
         # force all params to be partitioned by forcing threshold=0
         config_dict = {
             "train_micro_batch_size_per_gpu": 2,
@@ -1316,24 +1404,31 @@ class TestZeroAdamOptimizerStepCount(DistributedTest):
                                                       model_parameters=model.parameters())
         data_loader = random_dataloader(model=model, total_samples=16, hidden_dim=hidden_dim, device=model.device)
 
-        for i, batch in enumerate(data_loader):
+        assert model.global_steps == 0
+
+        for batch in data_loader:
             loss = model(batch[0], batch[1])
             model.backward(loss)
+
+            is_gradient_accumulation_boundary = model.is_gradient_accumulation_boundary()
             model.step()
 
-            step_counts = []
-            if zero_stage == 3:
-                for sub_group_id, _ in enumerate(optimizer.fp16_groups):
-                    fp32_param = optimizer.fp32_partitioned_groups_flat[sub_group_id]
-                    state = optimizer.optimizer.state[fp32_param]
-                    step_counts.append(state["step"])
-                assert all(step == step_counts[0] for step in step_counts)
-            elif zero_stage == 1 or zero_stage == 2:
-                for param_group in optimizer.optimizer.param_groups:
-                    for param in param_group["params"]:
-                        state = optimizer.optimizer.state[param]
+            if is_gradient_accumulation_boundary:
+                step_counts = []
+
+                if zero_stage == 3:
+                    for sub_group_id, _ in enumerate(optimizer.fp16_groups):
+                        fp32_param = optimizer.fp32_partitioned_groups_flat[sub_group_id]
+                        state = optimizer.optimizer.state[fp32_param]
                         step_counts.append(state["step"])
+                elif zero_stage == 1 or zero_stage == 2:
+                    for param_group in optimizer.optimizer.param_groups:
+                        for param in param_group["params"]:
+                            state = optimizer.optimizer.state[param]
+                            step_counts.append(state["step"])
+
                 assert all(step == step_counts[0] for step in step_counts)
+                assert model.global_steps == step_counts[0]
 
 
 @pytest.mark.parametrize("zero_stage", [1, 2, 3])
