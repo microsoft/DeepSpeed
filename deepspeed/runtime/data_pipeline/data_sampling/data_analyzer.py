@@ -198,7 +198,6 @@ class DataAnalyzer(object):
         else:
             assert self.num_threads == 1
             self.run_map_helper(0)
-        dist.barrier(group=self.comm_group)
 
     def get_metric_value_percentiles(self, metric_name, num_sample_per_value, total_num_samples):
         logger.info(f"Checking the value percentiles of metric {metric_name}...")
@@ -413,11 +412,16 @@ class DataAnalyzer(object):
                 close_mmap_dataset_builder(metric_value_builder, metric_value_fname)
 
     def run_reduce(self):
-        if self.worker_id == 0:  # only one node does merging of files
-            if self.custom_reduce is None:
-                self.merge_map_results(self.dataset, self.metric_names, self.metric_types, self.save_path,
-                                       self.num_workers, self.num_threads, self.num_threads_reduce)
-            else:
-                self.custom_reduce(self.dataset, self.metric_names, self.metric_types, self.save_path,
+        if self.custom_reduce is None:
+            self.merge_map_results(self.dataset, self.metric_names, self.metric_types, self.save_path,
                                    self.num_workers, self.num_threads, self.num_threads_reduce)
+        else:
+            self.custom_reduce(self.dataset, self.metric_names, self.metric_types, self.save_path, self.num_workers,
+                               self.num_threads, self.num_threads_reduce)
+
+    def run_map_reduce(self):
+        self.run_map()
+        dist.barrier(group=self.comm_group)
+        if self.worker_id == 0:
+            self.run_reduce()
         dist.barrier(group=self.comm_group)
