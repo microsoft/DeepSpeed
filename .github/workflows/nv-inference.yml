@@ -60,4 +60,3 @@ jobs:
           #pytest $PYTEST_OPTS -m 'seq_inference' unit/ --torch_ver="2.2" --cuda_ver="11.8"
           pytest $PYTEST_OPTS -m 'inference_ops' unit/ --torch_ver="2.2" --cuda_ver="11.8"
           pytest $PYTEST_OPTS --forked -n 4 -m 'inference' unit/ --torch_ver="2.2" --cuda_ver="11.8"
-
