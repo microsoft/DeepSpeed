@@ -13,6 +13,7 @@ import torch
 from torch.utils.data import BatchSampler, SequentialSampler, DataLoader, Subset
 
 from deepspeed.utils import logger
+import deepspeed.comm as dist
 from .indexed_dataset import MMapIndexedDataset
 from .utils import split_dataset, split_index, create_mmap_dataset_builder, close_mmap_dataset_builder, find_fit_int_dtype
 
@@ -86,14 +87,12 @@ class DataAnalyzer(object):
                 metric_results.append({"metric_value": metric_value, "metric_value_fname": metric_value_fname})
         return metric_results
 
-    def update_metric_results(self, data, metric_types, metric_dtypes, metric_functions, metric_results):
+    def update_metric_results(self, data, metric_types, metric_functions, metric_results):
         for m_idx in range(len(metric_types)):
-            metric_type, metric_dtype, metric_function, metric_result = metric_types[m_idx], \
-                metric_dtypes[m_idx], metric_functions[m_idx], metric_results[m_idx]
-            metric_values = metric_function(data)
-            assert metric_values.numpy().dtype == metric_dtype, \
-                f"dtype {type(m_value)} returned by metric_function {metric_function} is not consistent with the metric_dtype {metric_dtype}"
+            metric_type, metric_function, metric_result = metric_types[m_idx], \
+                metric_functions[m_idx], metric_results[m_idx]
             if metric_type == 'single_value_per_sample':
+                metric_values = metric_function(data)
                 for row in range(metric_values.size()[0]):
                     metric_result["sample_to_metric_builder"].add_item(metric_values[row].reshape(-1))
                     metric_result["metric_to_sample_dict"][metric_values[row].item()].append(
@@ -106,6 +105,7 @@ class DataAnalyzer(object):
                             writer.writerows([metric_result["metric_to_sample_dict"][m_value]])
                         metric_result["metric_to_sample_dict"][m_value] = []
             elif metric_type == 'accumulate_value_over_samples':
+                metric_values = metric_function(data)
                 if metric_result["metric_value"] is None:
                     metric_result["metric_value"] = metric_values
                 else:
@@ -161,7 +161,7 @@ class DataAnalyzer(object):
             try:
                 data = next(iterator)
                 if self.custom_map_update is None:
-                    self.update_metric_results(data, self.metric_types, self.metric_dtypes, self.metric_functions, metric_results)
+                    self.update_metric_results(data, self.metric_types, self.metric_functions, metric_results)
                 else:
                     self.custom_map_update(data, self.metric_types, self.metric_functions, metric_results)
                 processed_sample += self.batch_size
@@ -413,12 +413,11 @@ class DataAnalyzer(object):
                 close_mmap_dataset_builder(metric_value_builder, metric_value_fname)
 
     def run_reduce(self):
-        if self.worker_id == 0: # only one node does merging of files
-          if self.custom_reduce is None:
-            self.merge_map_results(self.dataset, self.metric_names, self.metric_types, self.save_path,
+        if self.worker_id == 0:  # only one node does merging of files
+            if self.custom_reduce is None:
+                self.merge_map_results(self.dataset, self.metric_names, self.metric_types, self.save_path,
+                                       self.num_workers, self.num_threads, self.num_threads_reduce)
+            else:
+                self.custom_reduce(self.dataset, self.metric_names, self.metric_types, self.save_path,
                                    self.num_workers, self.num_threads, self.num_threads_reduce)
-          else:
-            self.custom_reduce(self.dataset, self.metric_names, self.metric_types, self.save_path, self.num_workers,
-                               self.num_threads, self.num_threads_reduce)
         dist.barrier(group=self.comm_group)
-
