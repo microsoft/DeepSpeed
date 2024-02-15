@@ -204,7 +204,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.backup_optimizer = torch.optim.AdamW(
                 [backup_gpu_param],
                 lr=self.optimizer.param_groups[0]["lr"],
-                bias_correction=self.optimizer.param_groups[0]["bias_correction"],
                 betas=self.optimizer.param_groups[0]["betas"],
                 eps=self.optimizer.param_groups[0]["eps"],
                 weight_decay=self.optimizer.param_groups[0]["weight_decay"],
