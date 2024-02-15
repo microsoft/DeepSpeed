@@ -893,11 +893,12 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, use_graph=F
         for t in input_tensors:
             all_norms.append(t.data.abs().max().float())
         total_norm = torch.stack(all_norms).max()
-        total_norm = total_norm.to(get_accelerator().current_device_name())
+        device_total_norm = total_norm.to(get_accelerator().current_device_name())
         if mpu is not None:
-            dist.all_reduce(total_norm, op=dist.ReduceOp.MAX, group=mpu.get_model_parallel_group())
+            dist.all_reduce(device_total_norm, op=dist.ReduceOp.MAX, group=mpu.get_model_parallel_group())
         if moe_ep_group is not None:
-            dist.all_reduce(total_norm, op=dist.ReduceOp.MAX, group=moe_ep_group)
+            dist.all_reduce(device_total_norm, op=dist.ReduceOp.MAX, group=moe_ep_group)
+        total_norm = device_total_norm
     else:
         if use_graph:
             if 'norm_tensors_compute_buffer' not in graph_cache:
@@ -913,18 +914,18 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, use_graph=F
             graph_process(False, _norm_tensors, input_tensors, compute_buffer, norm_type)
 
             total_norm = compute_buffer[0]
-            total_norm = total_norm.to(get_accelerator().current_device_name()).float().detach()
+            device_total_norm = total_norm.to(get_accelerator().current_device_name()).float().detach()
         else:
             for t in input_tensors:
                 all_norms.append(t.data.float().norm(norm_type))
             total_norm = torch.stack(all_norms).pow(norm_type).sum()
-            total_norm = total_norm.to(get_accelerator().current_device_name())
+            device_total_norm = total_norm.to(get_accelerator().current_device_name())
 
         if mpu is not None:
-            dist.all_reduce(total_norm, op=dist.ReduceOp.SUM, group=mpu.get_model_parallel_group())
+            dist.all_reduce(device_total_norm, op=dist.ReduceOp.SUM, group=mpu.get_model_parallel_group())
         if moe_ep_group is not None:
-            dist.all_reduce(total_norm, op=dist.ReduceOp.SUM, group=moe_ep_group)
-        total_norm = total_norm.pow(1. / norm_type)
+            dist.all_reduce(device_total_norm, op=dist.ReduceOp.SUM, group=moe_ep_group)
+        total_norm = device_total_norm.pow(1. / norm_type)
 
     inf_or_nan = total_norm.isinf().logical_or(total_norm.isnan())
     total_norm.masked_fill_(inf_or_nan, -1)
