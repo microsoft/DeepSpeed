@@ -60,7 +60,6 @@ jobs:
       - name: Python environment check
         run: |
           pip list
-          source oneCCL/build/_install/env/setvars.sh
           export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
           # check whether the environment is properly setup
           python -c "import torch;import intel_extension_for_pytorch as ipex;import oneccl_bindings_for_pytorch;print('done')"
