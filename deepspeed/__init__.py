@@ -12,10 +12,14 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from packaging import version as pkg_version
 
-try:
-    import triton  # noqa: F401 # type: ignore
-    HAS_TRITON = True
-except ImportError:
+# Skip Triton import for AMD due to pytorch-triton-rocm module breaking device API in DeepSpeed
+if not (hasattr(torch.version, 'hip') and torch.version.hip is not None):
+    try:
+        import triton  # noqa: F401 # type: ignore
+        HAS_TRITON = True
+    except ImportError:
+        HAS_TRITON = False
+else:
     HAS_TRITON = False
 
 from . import ops
@@ -39,6 +43,7 @@ from .comm.comm import init_distributed
 
 from .runtime import zero
 from .runtime import DeepSpeedOptimizer, ZeROOptimizer
+from .runtime.compiler import is_compile_supported
 
 from .pipe import PipelineModule
 
@@ -286,7 +291,7 @@ def init_inference(model, config=None, **kwargs):
     .. code-block:: python
 
         generator.model = deepspeed.init_inference(generator.model,
-                                                    mp_size=world_size,
+                                                    tensor_parallel={"tp_size": world_size},
                                                     dtype=torch.half,
                                                     replace_with_kernel_inject=True)
         string = generator("DeepSpeed is")
