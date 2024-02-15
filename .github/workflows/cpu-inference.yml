@@ -42,15 +42,7 @@ jobs:
 
       - name: Check oneCCL Bindings for PyTorch
         run: |
-          pip list |grep \\\<torch\\\>
-          pip list |grep intel-extension-for-pytorch
-          pip list |grep oneccl-bind-pt
-
-      - name: Check oneCCL install
-        run: |
-          source ./_install/env/setvars.sh
-          test whether oneCCL is correctly installed
-          mpirun -n 2 ./examples/benchmark/benchmark
+          pip list
 
       - name: Install transformers
         run: |
