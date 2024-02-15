@@ -1,0 +1,71 @@
+FROM nvcr.io/nvidia/pytorch:22.12-py3 as base
+FROM singularitybase.azurecr.io/installer/base/singularity-installer:20230418T111834288 as installer
+FROM singularitybase.azurecr.io/validations/base/singularity-tests:20220407T114418630 as validator
+
+FROM base
+
+ENV DEBIAN_FRONTEND noninteractive
+
+RUN apt-get update -y && \
+    apt-get install -y software-properties-common && \
+    rm -rf /var/lib/apt/lists/*
+
+# install gcc 9
+# set gcc-9 and g++9 to default
+RUN add-apt-repository -u ppa:ubuntu-toolchain-r/test && \
+    apt install -y gcc-9 g++-9
+
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 99 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 99
+
+# check gcc version
+RUN gcc --version
+RUN g++ --version
+
+# install Intel PyTorch extensions
+RUN lscpu
+RUN python -m pip install cmake && \
+	git clone https://github.com/intel/intel-extension-for-pytorch && \
+    cd intel-extension-for-pytorch/tests/cpu/isa && \
+    cmake . && \
+    make && \
+    ./cpu_features
+
+# install numactl
+RUN apt-get install -y numactl
+
+# install oneCCL bindings for PyTorch
+RUN python -m pip install torch && \
+    python -m pip install intel_extension_for_pytorch && \
+    python -m pip install oneccl_bind_pt --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/cpu/us/ && \
+    python -m pip install py-cpuinfo && \
+    python -m pip list | grep \\\<torch\\\> && \
+    python -m pip list | grep intel-extension-for-pytorch && \
+    python -m pip list | grep oneccl-bind-pt
+
+# install oneCCL
+RUN git clone https://github.com/oneapi-src/oneCCL && \
+    cd oneCCL && \
+    mkdir build && \
+    cd build && \
+    cmake .. && \
+    make && \
+    make install
+
+# get the installation scripts
+COPY --from=installer /installer /opt/microsoft/_singularity/installations/
+
+# install components required for running this image in Singularity
+RUN /opt/microsoft/_singularity/installations/singularity/installer.sh
+
+# install jupyter as it isn't installed above
+RUN python -m pip install jupyter
+
+# get the validation scripts
+COPY --from=validator /validations /opt/microsoft/_singularity/validations/
+
+# optionally set validation arguments to run additional checks for Nvidia drivers
+ENV SINGULARITY_IMAGE_ACCELERATOR="NVIDIA"
+
+# run the validation
+RUN /opt/microsoft/_singularity/validations/validator.sh
