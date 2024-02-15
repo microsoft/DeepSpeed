@@ -423,7 +423,9 @@ class DataAnalyzer(object):
 
     def run_map_reduce(self, comm_group=None):
         self.run_map()
+        # wait for the mapping operation, where all nodes outputs their (partial) result files
         dist.barrier(group=comm_group)
         if self.worker_id == 0:
             self.run_reduce()
+        # wait for the reduce, where rank 0 merges all (partial) files. Dataset can then be used by all nodes.
         dist.barrier(group=comm_group)
