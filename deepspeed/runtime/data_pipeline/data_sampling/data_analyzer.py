@@ -13,7 +13,7 @@ import torch
 from torch.utils.data import BatchSampler, SequentialSampler, DataLoader, Subset
 
 from deepspeed.utils import logger
-import deepspeed.comm as dist
+import torch.distributed as dist
 from .indexed_dataset import MMapIndexedDataset
 from .utils import split_dataset, split_index, create_mmap_dataset_builder, close_mmap_dataset_builder, find_fit_int_dtype
 
@@ -37,8 +37,7 @@ class DataAnalyzer(object):
                  custom_map_init=None,
                  custom_map_update=None,
                  custom_map_finalize=None,
-                 custom_reduce=None,
-                 comm_group=None):
+                 custom_reduce=None):
         super().__init__()
         self.dataset = dataset
         self.num_workers = num_workers
@@ -57,7 +56,6 @@ class DataAnalyzer(object):
         self.custom_map_update = custom_map_update
         self.custom_map_finalize = custom_map_finalize
         self.custom_reduce = custom_reduce
-        self.comm_group = comm_group
 
     def init_metric_results(self, thread_id, metric_names, metric_types, metric_dtypes, save_path, worker_id):
         metric_results = []
@@ -418,9 +416,9 @@ class DataAnalyzer(object):
             self.custom_reduce(self.dataset, self.metric_names, self.metric_types, self.save_path, self.num_workers,
                                self.num_threads, self.num_threads_reduce)
 
-    def run_map_reduce(self):
+    def run_map_reduce(self, comm_group=None):
         self.run_map()
-        dist.barrier(group=self.comm_group)
+        dist.barrier(group=comm_group)
         if self.worker_id == 0:
             self.run_reduce()
-        dist.barrier(group=self.comm_group)
+        dist.barrier(group=comm_group)
