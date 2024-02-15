@@ -423,7 +423,7 @@ class DataAnalyzer(object):
 
     def run_map_reduce(self, comm_group=None):
         self.run_map()
-        # wait for the mapping operation, where all nodes outputs their (partial) result files
+        # wait for the mapping operation, where all nodes outputs their own (partial) result files
         dist.barrier(group=comm_group)
         if self.worker_id == 0:
             self.run_reduce()
