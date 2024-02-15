@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   unit-tests:
-    runs-on: [self-hosted, cpu]
+    runs-on: [self-hosted, cpu, test]
 
     steps:
       - uses: actions/checkout@v3
