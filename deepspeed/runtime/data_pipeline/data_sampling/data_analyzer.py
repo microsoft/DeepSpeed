@@ -82,8 +82,13 @@ class DataAnalyzer(object):
                 metric_results.append({"metric_value": metric_value, "metric_value_fname": metric_value_fname})
         return metric_results
 
-
-    def update_metric_results(self, data, metric_types, metric_dtypes, metric_functions, metric_results, batch_start_idx=0):
+    def update_metric_results(self,
+                              data,
+                              metric_types,
+                              metric_dtypes,
+                              metric_functions,
+                              metric_results,
+                              batch_start_idx=0):
         for m_idx in range(len(metric_types)):
             metric_type, metric_dtype, metric_function, metric_result = metric_types[m_idx], \
                 metric_dtypes[m_idx], metric_functions[m_idx], metric_results[m_idx]
