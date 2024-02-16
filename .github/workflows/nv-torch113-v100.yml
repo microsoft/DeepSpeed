@@ -26,7 +26,7 @@ jobs:
 
       - name: Install pytorch
         run: |
-          pip install -U --cache-dir $TORCH_CACHE torch==1.13.1+cu116 torchvision -f https://download.pytorch.org/whl/torch_stable.html
+          pip install -U --cache-dir $TORCH_CACHE torch==1.11.0+cu113 torchvision -f https://download.pytorch.org/whl/torch_stable.html
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -52,8 +52,8 @@ jobs:
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
-          pytest $PYTEST_OPTS --forked -n 4  unit/ --torch_ver="1.13" --cuda_ver="11"
-          pytest $PYTEST_OPTS --forked -m 'sequential' unit/ --torch_ver="1.13" --cuda_ver="11"
+          pytest $PYTEST_OPTS --forked -n 4  unit/ --torch_ver="1.11" --cuda_ver="11"
+          pytest $PYTEST_OPTS --forked -m 'sequential' unit/ --torch_ver="1.11" --cuda_ver="11"
 
       - name: Open GitHub issue if nightly CI fails
         if: ${{ failure() && (github.event_name == 'schedule') }}
