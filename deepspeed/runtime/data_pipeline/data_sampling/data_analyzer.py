@@ -13,6 +13,7 @@ import torch
 from torch.utils.data import BatchSampler, SequentialSampler, DataLoader, Subset
 
 from deepspeed.utils import logger
+import deepspeed.comm as dist
 from .indexed_dataset import MMapIndexedDataset, valid_dtypes
 from .utils import split_dataset, split_index, create_mmap_dataset_builder, close_mmap_dataset_builder, find_fit_int_dtype
 
@@ -106,7 +107,7 @@ class DataAnalyzer(object):
             if metric_type == 'single_value_per_sample':
                 for row in range(metric_values.size()[0]):
                     sample_idx = batch_start_idx + row  # sample idx following dataset iteration order
-                    if 'index' in data:  # Megatron use case, sample idx provided in 'index' field
+                    if isinstance(data, dict) and 'index' in data:  # Megatron use case, idx provided in 'index' field
                         sample_idx = data['index'][row][0].item()
                     elif self.sample_indices is not None:  # user defined shuffling of indices
                         sample_idx = self.sample_indices[sample_idx]
@@ -432,3 +433,12 @@ class DataAnalyzer(object):
         else:
             self.custom_reduce(self.dataset, self.metric_names, self.metric_types, self.save_path, self.num_workers,
                                self.num_threads, self.num_threads_reduce)
+
+    def run_map_reduce(self, comm_group=None):
+        self.run_map()
+        # wait for the mapping operation, where all nodes outputs their own (partial) result files
+        dist.barrier(group=comm_group)
+        if self.worker_id == 0:
+            self.run_reduce()
+        # wait for the reduce, where rank 0 merges all (partial) files. Dataset can then be used by all nodes.
+        dist.barrier(group=comm_group)
