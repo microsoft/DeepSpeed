@@ -1,4 +1,4 @@
-name: nv-torch110-p40
+name: nv-torch113-p40
 
 on:
   workflow_dispatch:
