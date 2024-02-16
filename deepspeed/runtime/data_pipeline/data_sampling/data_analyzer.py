@@ -13,7 +13,7 @@ import torch
 from torch.utils.data import BatchSampler, SequentialSampler, DataLoader, Subset
 
 from deepspeed.utils import logger
-from .indexed_dataset import MMapIndexedDataset
+from .indexed_dataset import MMapIndexedDataset, valid_dtypes
 from .utils import split_dataset, split_index, create_mmap_dataset_builder, close_mmap_dataset_builder, find_fit_int_dtype
 
 
@@ -37,7 +37,7 @@ class DataAnalyzer(object):
                  custom_map_update=None,
                  custom_map_finalize=None,
                  custom_reduce=None,
-                 comm_group=None):
+                 sample_indices=None):
         super().__init__()
         self.dataset = dataset
         self.num_workers = num_workers
@@ -56,16 +56,14 @@ class DataAnalyzer(object):
         self.custom_map_update = custom_map_update
         self.custom_map_finalize = custom_map_finalize
         self.custom_reduce = custom_reduce
-        self.comm_group = comm_group
+        self.sample_indices = sample_indices
 
     def init_metric_results(self, thread_id, metric_names, metric_types, metric_dtypes, save_path, worker_id):
         metric_results = []
         for m_idx in range(len(metric_names)):
             metric_name, metric_type, metric_dtype = metric_names[m_idx], \
                 metric_types[m_idx], metric_dtypes[m_idx]
-            assert metric_dtype not in [
-                np.float64, np.double
-            ], "Currently floating point metric values are not supported. Please change your metric into integer values (and potentially multiply a larger coefficient to keep the precision)."
+            assert metric_dtype in valid_dtypes, f"metric_dtype {metric_dtype} not supported. Supported dtypes {valid_dtypes}"
             metric_save_path = f"{save_path}/{metric_name}/worker{worker_id}_thread{thread_id}/"
             os.makedirs(metric_save_path, exist_ok=True)
             if metric_type == 'single_value_per_sample':
@@ -86,18 +84,34 @@ class DataAnalyzer(object):
                 metric_results.append({"metric_value": metric_value, "metric_value_fname": metric_value_fname})
         return metric_results
 
-    def update_metric_results(self, data, metric_types, metric_dtypes, metric_functions, metric_results):
+    def update_metric_results(self,
+                              data,
+                              metric_types,
+                              metric_dtypes,
+                              metric_functions,
+                              metric_results,
+                              batch_start_idx=0):
         for m_idx in range(len(metric_types)):
             metric_type, metric_dtype, metric_function, metric_result = metric_types[m_idx], \
                 metric_dtypes[m_idx], metric_functions[m_idx], metric_results[m_idx]
             metric_values = metric_function(data)
-            assert metric_values.numpy().dtype == metric_dtype, \
-                f"dtype {type(m_value)} returned by metric_function {metric_function} is not consistent with the metric_dtype {metric_dtype}"
+
+            assert torch.is_tensor(metric_values) or isinstance(metric_values, np.ndarray), \
+                    "metric_function must return a tensor or array"
+            assert metric_values.dtype == metric_dtype, \
+                    f"metric_function result dtype {metric_values.dtype} does not match metric_dtype {metric_dtype}"
+            if isinstance(metric_values, np.ndarray):
+                metric_values = torch.from_numpy(metric_values)
+
             if metric_type == 'single_value_per_sample':
                 for row in range(metric_values.size()[0]):
+                    sample_idx = batch_start_idx + row  # sample idx following dataset iteration order
+                    if isinstance(data, dict) and 'index' in data:  # Megatron use case, idx provided in 'index' field
+                        sample_idx = data['index'][row][0].item()
+                    elif self.sample_indices is not None:  # user defined shuffling of indices
+                        sample_idx = self.sample_indices[sample_idx]
                     metric_result["sample_to_metric_builder"].add_item(metric_values[row].reshape(-1))
-                    metric_result["metric_to_sample_dict"][metric_values[row].item()].append(
-                        data['index'][row][0].item())
+                    metric_result["metric_to_sample_dict"][metric_values[row].item()].append(sample_idx)
                 for m_value in metric_result["metric_to_sample_dict"]:
                     if len(metric_result["metric_to_sample_dict"][m_value]) > 100:
                         metric_fname = metric_result["metric_to_sample_fname"]
@@ -139,15 +153,12 @@ class DataAnalyzer(object):
             f"on data subset {start_idx} to {end_idx}")
         thread_dataset = Subset(self.dataset, list(range(start_idx, end_idx)))
         sampler = BatchSampler(SequentialSampler(thread_dataset), batch_size=self.batch_size, drop_last=False)
-        if self.collate_fn is None:
-            iterator = iter(DataLoader(thread_dataset, batch_sampler=sampler, num_workers=0, pin_memory=False))
-        else:
-            iterator = iter(
-                DataLoader(thread_dataset,
-                           batch_sampler=sampler,
-                           num_workers=0,
-                           collate_fn=self.collate_fn,
-                           pin_memory=False))
+        iterator = iter(
+            DataLoader(thread_dataset,
+                       batch_sampler=sampler,
+                       num_workers=0,
+                       collate_fn=self.collate_fn,
+                       pin_memory=False))
         if self.custom_map_init is None:
             metric_results = self.init_metric_results(thread_id, self.metric_names, self.metric_types,
                                                       self.metric_dtypes, self.save_path, self.worker_id)
@@ -160,10 +171,13 @@ class DataAnalyzer(object):
         while True:
             try:
                 data = next(iterator)
+                batch_start_idx = start_idx + processed_sample
                 if self.custom_map_update is None:
-                    self.update_metric_results(data, self.metric_types, self.metric_dtypes, self.metric_functions, metric_results)
+                    self.update_metric_results(data, self.metric_types, self.metric_dtypes, self.metric_functions,
+                                               metric_results, batch_start_idx)
                 else:
-                    self.custom_map_update(data, self.metric_types, self.metric_functions, metric_results)
+                    self.custom_map_update(data, self.metric_types, self.metric_dtypes, self.metric_functions,
+                                           metric_results, batch_start_idx)
                 processed_sample += self.batch_size
                 duration = (time.time() - start) / 3600.0
                 remain_duration = duration * total_sample / processed_sample - duration
@@ -198,7 +212,6 @@ class DataAnalyzer(object):
         else:
             assert self.num_threads == 1
             self.run_map_helper(0)
-        dist.barrier(group=self.comm_group)
 
     def get_metric_value_percentiles(self, metric_name, num_sample_per_value, total_num_samples):
         logger.info(f"Checking the value percentiles of metric {metric_name}...")
@@ -413,12 +426,9 @@ class DataAnalyzer(object):
                 close_mmap_dataset_builder(metric_value_builder, metric_value_fname)
 
     def run_reduce(self):
-        if self.worker_id == 0: # only one node does merging of files
-          if self.custom_reduce is None:
+        if self.custom_reduce is None:
             self.merge_map_results(self.dataset, self.metric_names, self.metric_types, self.save_path,
                                    self.num_workers, self.num_threads, self.num_threads_reduce)
-          else:
+        else:
             self.custom_reduce(self.dataset, self.metric_names, self.metric_types, self.save_path, self.num_workers,
                                self.num_threads, self.num_threads_reduce)
-        dist.barrier(group=self.comm_group)
-
