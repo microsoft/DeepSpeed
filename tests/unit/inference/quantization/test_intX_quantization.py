@@ -11,7 +11,7 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.quantization.quantization import _init_group_wise_weight_quantization
 from deepspeed.inference.quantization.utils import Quantizer, DeQuantizer
 from deepspeed.inference.quantization.layers import QuantizedLinear
-from deepspeed.runtime.utils import required_torch_version
+from deepspeed.runtime.utils import skip_on_arch, required_torch_version
 from transformers.models.opt.modeling_opt import OPTDecoderLayer
 from transformers import AutoConfig, OPTConfig, AutoModel
 import pytest
@@ -23,6 +23,9 @@ device = get_accelerator().device_name() if get_accelerator().is_available() els
 if not required_torch_version(min_version=1.11):
     pytest.skip("torch.Tensor.bitwise_left_shift in INT4 quantizer needs torch 1.11 or above.",
                 allow_module_level=True)
+
+if skip_on_arch(min_arch=7):
+    pytest.skip("P40 not supported", allow_module_level=True)
 
 
 def reset_random(seed=1234):
