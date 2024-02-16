@@ -13,7 +13,7 @@ import torch
 from torch.utils.data import BatchSampler, SequentialSampler, DataLoader, Subset
 
 from deepspeed.utils import logger
-import torch.distributed as dist
+import deepspeed.comm as dist
 from .indexed_dataset import MMapIndexedDataset, valid_dtypes
 from .utils import split_dataset, split_index, create_mmap_dataset_builder, close_mmap_dataset_builder, find_fit_int_dtype
 
