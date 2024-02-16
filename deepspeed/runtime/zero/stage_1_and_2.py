@@ -28,7 +28,7 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.checkpoint.constants import (DS_VERSION, GROUP_PADDINGS, PARTITION_COUNT, LOSS_SCALER,
                                             SINGLE_PARTITION_OF_FP32_GROUPS, BASE_OPTIMIZER_STATE,
                                             BASE_OPTIMIZER_STATE_STEP, CLIP_GRAD, ZERO_STAGE, PARAM_SLICE_MAPPINGS)
-from deepspeed.utils import link_hp_params
+from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state
 from deepspeed.checkpoint import enable_universal_checkpoint
 
 from deepspeed.utils import groups
@@ -85,6 +85,12 @@ def _get_padded_tensor(src_tensor, size):
     padded_tensor = torch.zeros(size, dtype=src_tensor.dtype, device=src_tensor.device)
     slice_tensor = torch.narrow(padded_tensor, 0, 0, src_tensor.numel())
     slice_tensor.data.copy_(src_tensor.data)
+    return padded_tensor
+
+
+def _pad_tensor_by_size(src_tensor, pad_size, dtype, device):
+    padded_tensor = torch.zeros(src_tensor.numel() + pad_size, dtype=dtype, device=device)
+    padded_tensor.data[:src_tensor.numel()].copy_(src_tensor.data)
     return padded_tensor
 
 
@@ -536,6 +542,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             see_memory_usage(f"After initializing ZeRO optimizer", force=True)
 
         self._link_all_hp_params()
+        self._hp_optimizer_states_linked = False
+
         self._enable_universal_checkpoint()
         self._param_slice_mappings = self._create_param_mapping()
 
@@ -578,8 +586,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                            param_group_index=i,
                            partition_start=partition_id * partition_size,
                            partition_size=partition_size,
-                           partition_optimizer_state=self.optimizer.state[flat_hp_partition],
                            dp_group=self.real_dp_process_group[i])
+
+    def _lazy_init_hp_params_optimizer_state(self):
+        if not self._hp_optimizer_states_linked:
+            for i, _ in enumerate(self.optimizer.param_groups):
+                lazy_init_hp_params_optimizer_state(self.bit16_groups[i], self.single_partition_of_fp32_groups[i],
+                                                    self.optimizer.state)
+            self._hp_optimizer_states_linked = True
 
     def is_moe_group(self, group):
         return 'moe' in group and group['moe']
@@ -664,8 +678,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # which do lazy initialization of the state at the first call to step.
         if isinstance(self.optimizer, torch.optim.Adagrad):
             self.optimizer = torch.optim.Adagrad(self.single_partition_of_fp32_groups, **self.optimizer.defaults)
-        else:
-            self.optimizer.step()
 
         if not self.cpu_offload:
             for group in self.single_partition_of_fp32_groups:
@@ -744,7 +756,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.params_already_reduced[i] = False
 
         if self.overlap_comm:
-            get_accelerator().synchronize()
+            if not get_accelerator().resolves_data_dependency():
+                get_accelerator().synchronize()
             # It is safe to clear previously reduced grads of other partitions
             self._clear_previous_reduced_grads()
 
@@ -1020,7 +1033,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def average_tensor(self, tensor):
         if self.overlap_comm:
             stream = self.reduction_stream
-            if not get_accelerator().is_synchronized_device():
+            if not get_accelerator().resolves_data_dependency():
                 stream.wait_stream(get_accelerator().current_stream())
         else:
             stream = get_accelerator().current_stream()
@@ -1501,7 +1514,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def allreduce_and_copy(self, small_bucket, rank=None, log=None, divide=True, process_group=None):
         process_group = self.dp_process_group if process_group is None else process_group
         if self.overlap_comm:
-            get_accelerator().synchronize()
+            if not get_accelerator().resolves_data_dependency():
+                get_accelerator().synchronize()
             # It is safe to clear the previously reduced grads of other partitions
             self._clear_previous_reduced_grads()
             stream = self.reduction_stream
@@ -1791,6 +1805,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.optimizer.step()
         self.optimizer.param_groups = original_param_groups
 
+        # We need to link optimizer state after the first step() call
+        self._lazy_init_hp_params_optimizer_state()
+
     def step(self, closure=None):
         """
         Not supporting closure.
@@ -1953,24 +1970,26 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.overflow = self.has_overflow(partition_gradients)
 
     # `params` is a list / generator of torch.Variable
-    def has_overflow_serial(self, params, is_grad_list=False):
+    def has_overflow_serial(self, params):
+        invalid_grad_count = torch.zeros([1], dtype=torch.float, device=get_accelerator().current_device_name())
         for p in params:
-            if p.grad is not None and self._has_inf_or_nan(p.grad.data):
-                return True
-
-        return False
+            if p.grad is not None:
+                invalid_grad_count += self._has_inf_or_nan(p.grad)
+        return invalid_grad_count.bool()
 
     def has_overflow_partitioned_grads_serial(self):
+        invalid_grad_count = torch.zeros([1], dtype=torch.float, device=get_accelerator().current_device_name())
         for i in range(len(self.bit16_groups)):
             for j, grad in enumerate(self.averaged_gradients[i]):
-                if grad is not None and self._has_inf_or_nan(grad.data, j):
-                    return True
-        return False
+                if grad is not None:
+                    invalid_grad_count += self._has_inf_or_nan(grad)
+        return invalid_grad_count.bool()
 
     def has_overflow(self, partition_gradients=True):
         if partition_gradients:
             overflow = self.local_overflow if self.cpu_offload else self.has_overflow_partitioned_grads_serial()
-            overflow_gpu = get_accelerator().ByteTensor([overflow])
+            overflow_gpu = get_accelerator().ByteTensor([overflow]) if self.cpu_offload else overflow.byte().to(
+                get_accelerator().current_device_name())
             '''This will capture overflow across all data parallel and expert parallel process
             Since expert parallel process are a subset of data parallel process'''
             dist.all_reduce(overflow_gpu, op=dist.ReduceOp.MAX, group=self.dp_process_group)
@@ -1980,9 +1999,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             for group in self.bit16_groups:
                 for param in group:
                     params.append(param)
-
-            overflow = self.has_overflow_serial(params, is_grad_list=partition_gradients)
-            overflow_gpu = get_accelerator().ByteTensor([overflow])
+            overflow_gpu = self.has_overflow_serial(params).byte().to(get_accelerator().current_device_name())
 
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
@@ -1994,24 +2011,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     # `x` is a torch.Tensor
     @staticmethod
     def _has_inf_or_nan(x, j=None):
-        try:
-            # if x is half, the .float() incurs an additional deep copy, but it's necessary if
-            # Pytorch's .sum() creates a one-element tensor of the same type as x
-            # (which is true for some recent version of pytorch).
-            cpu_sum = float(x.float().sum())
-            # More efficient version that can be used if .sum() returns a Python scalar
-            # cpu_sum = float(x.sum())
-        except RuntimeError as instance:
-            # We want to check if inst is actually an overflow exception.
-            # RuntimeError could come from a different error.
-            # If so, we still want the exception to propagate.
-            if "value cannot be converted" not in instance.args[0]:
-                raise
-            return True
-        else:
-            if cpu_sum == float('inf') or cpu_sum == -float('inf') or cpu_sum != cpu_sum:
-                return True
-            return False
+        float_x = x.float()
+        nan = float_x.isnan()
+        inf = float_x.isinf()
+        inf_or_nan = nan.logical_or(inf)
+        return inf_or_nan.float().max()
 
     def backward(self, loss, retain_graph=False):
         """
@@ -2197,7 +2201,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     # Extract optimizer state for current partition from merged states of all partitions
     def _partition_base_optimizer_state(self, state_key, all_partition_states, group_id):
         partition_id = dist.get_rank(group=self.real_dp_process_group[group_id])
-        alignment = dist.get_world_size(group=self.real_dp_process_group[group_id])
+        alignment = self.nccl_start_alignment_factor * dist.get_world_size(group=self.real_dp_process_group[group_id])
         if torch.is_tensor(all_partition_states[0]):
             flat_merged_partitions = self.flatten_dense_tensors_aligned(all_partition_states, alignment)
             dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions, group_id)
@@ -2206,18 +2210,38 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             # Assume non-tensor states are not partitioned and equal across ranks, so return first one
             return all_partition_states[0]
 
-    def _restore_base_optimizer_state(self, base_optimizer_group_states):
+    def _restore_step_from_elastic_checkpoint(self, all_state_dict):
+        assert BASE_OPTIMIZER_STATE_STEP in all_state_dict[0]
+        assert all(sd[BASE_OPTIMIZER_STATE_STEP] == all_state_dict[0][BASE_OPTIMIZER_STATE_STEP]
+                   for sd in all_state_dict), "State dicts of all partitions must have the same step value"
+        return all_state_dict[0][BASE_OPTIMIZER_STATE_STEP]
+
+    def _restore_base_optimizer_state(self, base_optimizer_group_states, base_optimizer_state_step, group_paddings):
         if type(base_optimizer_group_states) == dict:
             base_optimizer_group_states = base_optimizer_group_states['state']
+
+        saved_keys = base_optimizer_group_states[0].keys()
+
         for i, group in enumerate(self.optimizer.param_groups):
             p = group['params'][0]
-            for key, saved in base_optimizer_group_states[i].items():
-                if torch.is_tensor(self.optimizer.state[p][key]):
-                    dst_tensor = self.optimizer.state[p][key]
-                    src_tensor = _get_padded_tensor(saved, dst_tensor.numel())
-                    self.optimizer.state[p][key].data.copy_(src_tensor.data)
+            padding = 0 if group_paddings is None else group_paddings[i]
+            for key in saved_keys:
+                saved = base_optimizer_group_states[i][key]
+
+                if torch.is_tensor(saved):
+                    if key in self.optimizer.state[p]:
+                        dst_tensor = self.optimizer.state[p][key]
+                        src_tensor = _get_padded_tensor(saved, dst_tensor.numel())
+                        self.optimizer.state[p][key].data.copy_(src_tensor.data)
+                    else:
+                        self.optimizer.state[p][key] = _pad_tensor_by_size(
+                            saved, padding, torch.float32,
+                            torch.device('cpu') if self.cpu_offload else self.device)
                 else:
                     self.optimizer.state[p][key] = saved
+
+        for param_group in self.optimizer.param_groups:
+            param_group['step'] = base_optimizer_state_step
 
     def get_ep_ranks(self, rank=0, group_name=None):
         from deepspeed.utils import groups
@@ -2246,15 +2270,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 partition_states[key] = self._partition_base_optimizer_state(key, all_partition_states, i)
             base_optimizer_group_states.append(partition_states)
 
-        self._restore_base_optimizer_state(base_optimizer_group_states)
-
-        # Restore step
-        if BASE_OPTIMIZER_STATE_STEP in all_state_dict[0]:
-            assert all(sd[BASE_OPTIMIZER_STATE_STEP] == all_state_dict[0][BASE_OPTIMIZER_STATE_STEP]
-                       for sd in all_state_dict), "State dicts of all partitions must have the same step value"
-            loaded_param_groups_step = all_state_dict[0][BASE_OPTIMIZER_STATE_STEP]
-            for param_group in self.optimizer.param_groups:
-                param_group['step'] = loaded_param_groups_step
+        self._restore_base_optimizer_state(base_optimizer_group_states,
+                                           self._restore_step_from_elastic_checkpoint(all_state_dict), None)
 
     def load_state_dict(self,
                         state_dict_list,
@@ -2366,7 +2383,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     self._restore_elastic_base_optimizer_state(state_dict_list)
                 else:
                     # loading an elastic checkpoint into rigid exec
-                    self._restore_base_optimizer_state(current_rank_sd[BASE_OPTIMIZER_STATE])
+                    self._restore_base_optimizer_state(current_rank_sd[BASE_OPTIMIZER_STATE],
+                                                       current_rank_sd[BASE_OPTIMIZER_STATE_STEP],
+                                                       current_rank_sd[GROUP_PADDINGS])
 
         # At this point, the optimizer's references to the model's fp32 parameters are up to date.
         # The optimizer's hyperparameters and internal buffers are also up to date.
