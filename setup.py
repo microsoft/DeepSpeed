@@ -119,7 +119,10 @@ cmdclass = {}
 # For any pre-installed ops force disable ninja.
 if torch_available:
     from accelerator import get_accelerator
-    cmdclass['build_ext'] = get_accelerator().build_extension().with_options()
+    use_ninja = True
+    if int(get_env_if_set("DS_DISABLE_NINJA", 0)):
+        use_ninja = False
+    cmdclass['build_ext'] = get_accelerator().build_extension().with_options(use_ninja=use_ninja)
 
 if torch_available:
     TORCH_MAJOR = torch.__version__.split('.')[0]

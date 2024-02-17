@@ -703,11 +703,18 @@ class CUDAOpBuilder(OpBuilder):
                 '-DROCM_VERSION_MINOR=%s' % ROCM_MINOR
             ]
         else:
+            try:
+                nvcc_threads = int(os.getenv("DS_NVCC_THREADS", ""))
+                if nvcc_threads <= 0:
+                    raise ValueError("")
+            except ValueError:
+                nvcc_threads = min(os.cpu_count(), 8)
+
             cuda_major, _ = installed_cuda_version()
             args += [
                 '-allow-unsupported-compiler' if sys.platform == "win32" else '', '--use_fast_math',
                 '-std=c++17' if cuda_major > 10 else '-std=c++14', '-U__CUDA_NO_HALF_OPERATORS__',
-                '-U__CUDA_NO_HALF_CONVERSIONS__', '-U__CUDA_NO_HALF2_OPERATORS__', '--threads=8'
+                '-U__CUDA_NO_HALF_CONVERSIONS__', '-U__CUDA_NO_HALF2_OPERATORS__', f'--threads={nvcc_threads}'
             ]
             if os.environ.get('DS_DEBUG_CUDA_BUILD', '0') == '1':
                 args.append('--ptxas-options=-v')
