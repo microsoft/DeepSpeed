@@ -289,3 +289,6 @@ class XPU_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return []
+
+    def get_optimizer(self, optimizer_name, cpu_optimization, model_parameters, **optimizer_parameters):
+        return None

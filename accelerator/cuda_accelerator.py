@@ -360,3 +360,6 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return ['NCCL']
+
+    def get_optimizer(self, optimizer_name, cpu_optimization, model_parameters, **optimizer_parameters):
+        return None

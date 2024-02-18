@@ -1283,6 +1283,11 @@ class DeepSpeedEngine(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
 
+        optimizer = get_accelerator().get_optimizer(self.optimizer_name(), self.zero_use_cpu_optimizer(),
+                                                    model_parameters, **optimizer_parameters)
+        if optimizer is not None:
+            return optimizer
+
         if self.optimizer_name() in [ADAM_OPTIMIZER, ADAMW_OPTIMIZER]:
             torch_adam = optimizer_parameters.pop(TORCH_ADAM_PARAM, False)
             adam_w_mode = optimizer_parameters.pop(ADAM_W_MODE, ADAM_W_MODE_DEFAULT)

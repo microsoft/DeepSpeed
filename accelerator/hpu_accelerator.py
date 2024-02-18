@@ -294,3 +294,22 @@ class HPU_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return []
+
+    def get_optimizer(self, optimizer_name, cpu_optimization, model_parameters, **optimizer_parameters):
+        from habana_frameworks.torch.hpex.optimizers import FusedAdamW
+
+        self._optimizers_dict = {
+            'adamw': lambda arg1, **arg2: FusedAdamW(arg1, **arg2),
+            'adam': lambda arg1, **arg2: torch.optim.Adam(arg1, **arg2)
+        }
+        from deepspeed.runtime.config import ADAM_OPTIMIZER, ADAMW_OPTIMIZER, TORCH_ADAM_PARAM, ADAM_W_MODE, \
+            ADAM_W_MODE_DEFAULT
+
+        if optimizer_name in [ADAM_OPTIMIZER, ADAMW_OPTIMIZER]:
+            if cpu_optimization or optimizer_parameters.pop(TORCH_ADAM_PARAM, False):
+                return None
+            if optimizer_name == ADAM_OPTIMIZER and optimizer_parameters.pop(ADAM_W_MODE, ADAM_W_MODE_DEFAULT):
+                optimizer_name = ADAMW_OPTIMIZER
+
+        if optimizer_name in self._optimizers_dict:
+            return self._optimizers_dict[optimizer_name](model_parameters, **optimizer_parameters)

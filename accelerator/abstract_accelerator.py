@@ -287,3 +287,9 @@ class DeepSpeedAccelerator(ABC):
     @abc.abstractmethod
     def export_envs(self):
         ...
+
+    # creates and returns an optimizer, specified by optimizer_name, when the accelerator has its own implementation
+    @abc.abstractmethod
+    def get_optimizer(self, optimizer_name, cpu_optimization, model_parameters, **optimizer_parameters):
+        ...
+
