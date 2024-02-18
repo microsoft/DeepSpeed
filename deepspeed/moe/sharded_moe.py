@@ -282,7 +282,8 @@ def top1gating(logits: Tensor,
 def top2gating(logits: Tensor,
                capacity_factor: float,
                min_capacity: int,
-               drop_tokens: bool = True) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+               drop_tokens: bool = True,
+               top2_2nd_expert_sampling: bool = True) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
     """Implements Top2Gating on logits."""
     # everything is in fp32 in this function
     gates = F.softmax(logits, dim=1)
@@ -292,11 +293,13 @@ def top2gating(logits: Tensor,
     num_experts = int(gates.shape[1])
     mask1 = F.one_hot(indices1_s, num_classes=num_experts)
 
-    # Create a mask for 2nd's expert per token using Gumbel-max trick
-    # https://timvieira.github.io/blog/post/2014/07/31/gumbel-max-trick/
-    logits_w_noise = logits + gumbel_rsample(logits.shape, device=logits.device)
+    if top2_2nd_expert_sampling:
+        # Create a mask for 2nd's expert per token using Gumbel-max trick
+        # https://timvieira.github.io/blog/post/2014/07/31/gumbel-max-trick/
+        logits += gumbel_rsample(logits.shape, device=logits.device)
+
     # Replace top-expert with min value
-    logits_except1 = logits_w_noise.masked_fill(mask1.bool(), float("-inf"))
+    logits_except1 = logits.masked_fill(mask1.bool(), float("-inf"))
     indices2_s = torch.argmax(logits_except1, dim=1)
     mask2 = F.one_hot(indices2_s, num_classes=num_experts)
 
@@ -380,7 +383,8 @@ class TopKGate(Module):
                  min_capacity: int = 8,
                  noisy_gate_policy: Optional[str] = None,
                  drop_tokens: bool = True,
-                 use_rts: bool = True) -> None:
+                 use_rts: bool = True,
+                 top2_2nd_expert_sampling: bool = True) -> None:
         super().__init__()
 
         # Only top-1 and top-2 are supported at the moment.
@@ -397,6 +401,7 @@ class TopKGate(Module):
         self.gate_time = 0.0
         self.drop_tokens = drop_tokens
         self.use_rts = use_rts
+        self.top2_2nd_expert_sampling = top2_2nd_expert_sampling
 
     def forward(self,
                 input: torch.Tensor,
@@ -421,7 +426,7 @@ class TopKGate(Module):
 
         else:
             gate_output = top2gating(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
-                                     self.min_capacity, self.drop_tokens)
+                                     self.min_capacity, self.drop_tokens, self.top2_2nd_expert_sampling)
 
         if self.wall_clock_breakdown:
             self.timers(TOPK_GATE_TIMER).stop()
