@@ -279,12 +279,13 @@ def top1gating(logits: Tensor,
     return l_aux, combine_weights, dispatch_mask, exp_counts
 
 
-def top2gating(logits: Tensor, capacity_factor: float, min_capacity: int) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+def top2gating(logits: Tensor,
+               capacity_factor: float,
+               min_capacity: int,
+               drop_tokens: bool = True) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
     """Implements Top2Gating on logits."""
     # everything is in fp32 in this function
     gates = F.softmax(logits, dim=1)
-
-    capacity = _capacity(gates, torch.tensor(capacity_factor * 2), torch.tensor(min_capacity))
 
     # Create a mask for 1st's expert per token
     indices1_s = torch.argmax(gates, dim=1)
@@ -305,17 +306,24 @@ def top2gating(logits: Tensor, capacity_factor: float, min_capacity: int) -> Tup
     # Update 2nd's location by accounting for locations of 1st
     locations2 += torch.sum(mask1, dim=0, keepdim=True)
 
-    # gating decisions
-    exp_counts = torch.sum(mask1, dim=0).detach().to('cpu')
-
     # Compute l_aux
     me = torch.mean(gates, dim=0)
     ce = torch.mean(mask1.float(), dim=0)
     l_aux = torch.mean(me * ce) * num_experts * num_experts
 
-    # Remove locations outside capacity from mask
-    mask1 *= torch.lt(locations1, capacity)
-    mask2 *= torch.lt(locations2, capacity)
+    # gating decisions
+    exp_counts = torch.sum(mask1 + mask2, dim=0)
+
+    if drop_tokens:
+        # Calculate configured capacity and remove locations outside capacity from mask
+        capacity = _capacity(gates, torch.tensor(capacity_factor * 2), torch.tensor(min_capacity))
+        mask1 *= torch.lt(locations1, capacity)
+        mask2 *= torch.lt(locations2, capacity)
+    else:
+        # Do not drop tokens - set capacity according to current expert assignments
+        new_capacity = torch.max(exp_counts)
+        dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.get_world_group())
+        capacity = new_capacity
 
     # Store the capacity location for each token
     locations1_s = torch.sum(locations1 * mask1, dim=1)
@@ -342,7 +350,7 @@ def top2gating(logits: Tensor, capacity_factor: float, min_capacity: int) -> Tup
     combine_weights = combine1_sec + combine2_sec
     dispatch_mask = combine_weights.bool()
 
-    return l_aux, combine_weights, dispatch_mask, exp_counts
+    return l_aux, combine_weights, dispatch_mask, exp_counts.detach().to('cpu')
 
 
 class TopKGate(Module):
@@ -413,7 +421,7 @@ class TopKGate(Module):
 
         else:
             gate_output = top2gating(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
-                                     self.min_capacity)
+                                     self.min_capacity, self.drop_tokens)
 
         if self.wall_clock_breakdown:
             self.timers(TOPK_GATE_TIMER).stop()
