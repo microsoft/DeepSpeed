@@ -120,6 +120,7 @@ class DataAnalyzer(object):
                             writer.writerows([metric_result["metric_to_sample_dict"][m_value]])
                         metric_result["metric_to_sample_dict"][m_value] = []
             elif metric_type == 'accumulate_value_over_samples':
+                metric_values = metric_values.sum(dim=0) # sum over batch
                 if metric_result["metric_value"] is None:
                     metric_result["metric_value"] = metric_values
                 else:
