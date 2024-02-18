@@ -230,7 +230,7 @@ class DeepSpeedEngine(Module):
 
         self._is_gradient_accumulation_boundary = None
         self.scale_wrt_gas = None
-        self.losses = 0.0
+        self.losses = None
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
@@ -1065,17 +1065,16 @@ class DeepSpeedEngine(Module):
                 return False
             return True
 
-        with torch.no_grad():
-            for p in self.module.parameters():
-                # Broadcast the model for different parameters
-                if is_moe_param(p):
-                    if torch.is_tensor(p) and is_replicated(p):
-                        dist.broadcast(p,
-                                       groups._get_expert_broadcast_src_rank(p.group_name),
-                                       group=self.expert_data_parallel_group[p.group_name])
-                else:
-                    if torch.is_tensor(p) and is_replicated(p):
-                        dist.broadcast(p, groups._get_broadcast_src_rank(), group=self.seq_data_parallel_group)
+        for p in self.module.parameters():
+            # Broadcast the model for different parameters
+            if is_moe_param(p):
+                if torch.is_tensor(p) and is_replicated(p):
+                    dist.broadcast(p.data,
+                                   groups._get_expert_broadcast_src_rank(p.group_name),
+                                   group=self.expert_data_parallel_group[p.group_name])
+            else:
+                if torch.is_tensor(p) and is_replicated(p):
+                    dist.broadcast(p.data, groups._get_broadcast_src_rank(), group=self.seq_data_parallel_group)
 
     @staticmethod
     def __check_params(model: Module, dtype: torch.dtype) -> None:
@@ -1478,7 +1477,8 @@ class DeepSpeedEngine(Module):
                                    dp_process_group=self.seq_data_parallel_group,
                                    timers=timers,
                                    grad_acc_dtype=self.get_data_types()[1],
-                                   graph_harvesting=self.graph_harvesting())
+                                   graph_harvesting=self.graph_harvesting(),
+                                   immediate_grad_update=self._config.bfloat16_immediate_grad_update)
 
         return optimizer
 
@@ -1951,13 +1951,14 @@ class DeepSpeedEngine(Module):
             loss = self._scale_loss_by_gas(loss.float())
 
         # Log training loss
-        self.losses += loss.mean().item()
+        mean_loss = loss.mean().detach()
+        self.losses = mean_loss if self.losses is None else self.losses + mean_loss
         if self.monitor.enabled:
             if self.is_gradient_accumulation_boundary():
                 if self.global_rank == 0:
                     self.summary_events = [(
                         f"Train/Samples/train_loss",
-                        self.losses,
+                        self.losses.item(),
                         self.global_samples,
                     )]
                     self.monitor.write_events(self.summary_events)
@@ -2123,7 +2124,7 @@ class DeepSpeedEngine(Module):
         if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
             self._report_progress(self.global_steps + 1)
 
-        self.losses = 0.0
+        self.losses = None
         self.global_steps += 1
         self.global_samples += self.train_batch_size()
 
