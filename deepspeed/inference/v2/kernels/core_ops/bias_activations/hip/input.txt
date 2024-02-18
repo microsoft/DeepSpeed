@@ -1,0 +1,4 @@
+   # Perf counters group 1
+   pmc : Wavefronts VALUInsts SALUInsts SFetchInsts
+   # Perf counters group 2
+   pmc : TCC_HIT[0], TCC_MISS[0] GRBM_COUNT

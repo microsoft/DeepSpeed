@@ -1,0 +1,2 @@
+Index,KernelName,gpu-id,queue-id,queue-index,pid,tid,grd,wgr,lds,scr,arch_vgpr,accum_vgpr,sgpr,wave_size,sig,obj,Wavefronts,VALUInsts,SALUInsts,SFetchInsts,TCC_HIT[0],TCC_MISS[0],GRBM_COUNT
+0,"void bias_activation_kernel<float, (ActivationType)0>(float*, float const*, int, int) [clone .kd]",4,0,0,10243,10243,1024,512,0,0,20,4,32,64,0x0,0x7fc735fc8640,16.0000000000,724.0000000000,133.0000000000,2.0000000000,38,18,27080
