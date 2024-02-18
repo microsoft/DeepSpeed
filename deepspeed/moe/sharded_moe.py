@@ -309,7 +309,7 @@ def top2gating(logits: Tensor,
     # Compute l_aux
     me = torch.mean(gates, dim=0)
     ce = torch.mean(mask1.float(), dim=0)
-    l_aux = torch.mean(me * ce) * num_experts * num_experts
+    l_aux = torch.mean(me * ce) * num_experts
 
     # gating decisions
     exp_counts = torch.sum(mask1 + mask2, dim=0)
