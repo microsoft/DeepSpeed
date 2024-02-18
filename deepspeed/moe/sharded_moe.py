@@ -214,6 +214,11 @@ def top1gating(logits: Tensor,
     if not drop_tokens:
         new_capacity = torch.max(exp_counts).to(logits.device)
         dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.get_world_group())
+        if groups._get_expert_model_parallel_world_size() == 1:
+            # If the non-expert is tensor-parallel, we need to pad the capacity to 'tp'.
+            # This is since we are going to activate drop_tokens() to drop duplicate tokens.
+            tp = 1 if groups.mpu is None else groups.mpu.get_tensor_model_parallel_world_size()
+            new_capacity = torch.ceil(new_capacity / tp).mul(tp).to(new_capacity.dtype)
         capacity = new_capacity
 
     # Compute l_aux
@@ -326,6 +331,11 @@ def top2gating(logits: Tensor,
         # Do not drop tokens - set capacity according to current expert assignments
         new_capacity = torch.max(exp_counts)
         dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.get_world_group())
+        if groups._get_expert_model_parallel_world_size() == 1:
+            # If the non-expert is tensor-parallel, we need to pad the capacity to 'tp'.
+            # This is since we are going to activate drop_tokens() to drop duplicate tokens.
+            tp = 1 if groups.mpu is None else groups.mpu.get_tensor_model_parallel_world_size()
+            new_capacity = torch.ceil(new_capacity / tp).mul(tp).to(new_capacity.dtype)
         capacity = new_capacity
 
     # Store the capacity location for each token
