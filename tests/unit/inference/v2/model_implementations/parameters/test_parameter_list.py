@@ -13,6 +13,10 @@ from deepspeed.inference.v2.model_implementations.layer_container_base import La
 from deepspeed.inference.v2.model_implementations.common_parameters import *
 
 from .utils import validate_device
+from ....v2.inference_test_utils import skip_on_inference_v2
+
+pytestmark = pytest.mark.skipif(skip_on_inference_v2(),
+                                reason=f'Inference V2 not supported by {get_accelerator().device_name()}.')
 
 
 class SimpleMoELayer(LayerContainer):

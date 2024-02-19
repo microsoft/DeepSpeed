@@ -11,7 +11,10 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.inference_utils import DtypeEnum
 from deepspeed.inference.v2.kernels.ragged_ops import RaggedTopKGating
 from .ragged_testing_utils import build_simple_batch
-from ...inference_test_utils import allclose
+from ...inference_test_utils import allclose, skip_on_inference_v2
+
+pytestmark = pytest.mark.skipif(skip_on_inference_v2(),
+                                reason=f'Inference V2 not supported by {get_accelerator().device_name()}.')
 
 
 def _top_k_gating_testing_helper(n_tokens: int, n_experts: int, n_top_k: int, seed: int = 0xC0FFEE) -> None:

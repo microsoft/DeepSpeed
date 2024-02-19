@@ -15,7 +15,10 @@ from deepspeed.inference.v2.modules.configs import DSMoEConfig
 from deepspeed.inference.v2.modules.interfaces import DSMoERegistry
 
 from ..kernels.ragged_ops.ragged_testing_utils import build_simple_batch
-from ...v2.inference_test_utils import allclose, get_dtypes
+from ...v2.inference_test_utils import allclose, get_dtypes, skip_on_inference_v2
+
+pytestmark = pytest.mark.skipif(skip_on_inference_v2(),
+                                reason=f'Inference V2 not supported by {get_accelerator().device_name()}.')
 
 
 def _gating_reference(logits: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:

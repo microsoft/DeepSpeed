@@ -8,7 +8,10 @@ import torch
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.model_implementations.sharding import *
+from ....v2.inference_test_utils import skip_on_inference_v2
 
+pytestmark = pytest.mark.skipif(skip_on_inference_v2(),
+                                reason=f'Inference V2 not supported by {get_accelerator().device_name()}.')
 # None of the logic should be dependent on head size.
 HEAD_SIZE = 64
 

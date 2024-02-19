@@ -44,3 +44,10 @@ def allclose(x, y, tolerances: Tuple[int, int] = None):
     else:
         rtol, atol = tolerances
     return torch.allclose(x, y, rtol=rtol, atol=atol)
+
+
+def skip_on_inference_v2():
+    if get_accelerator().device_name() == 'hpu':
+        return True
+    else:
+        return False

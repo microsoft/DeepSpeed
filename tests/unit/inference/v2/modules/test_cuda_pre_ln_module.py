@@ -12,7 +12,10 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.modules import ConfigBundle
 from deepspeed.inference.v2.modules.configs import DSNormConfig
 from deepspeed.inference.v2.modules.interfaces import DSPreNormRegistry
-from ...v2.inference_test_utils import get_dtypes, allclose
+from ...v2.inference_test_utils import get_dtypes, allclose, skip_on_inference_v2
+
+pytestmark = pytest.mark.skipif(skip_on_inference_v2(),
+                                reason=f'Inference V2 not supported by {get_accelerator().device_name()}.')
 
 
 def reference_implementation(residual: torch.Tensor, hidden_states: Optional[torch.Tensor], gamma: torch.Tensor,
