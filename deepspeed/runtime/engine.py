@@ -2000,6 +2000,9 @@ class DeepSpeedEngine(Module):
             # Traditional code path that allreduces the module parameter grads
             self.allreduce_gradients()
 
+        if not self.zero_optimization() and self.bfloat16_enabled():
+            self.optimizer.update_hp_grads()
+
         self._stop_timers(self.engine_timers.backward_reduce_timers)
 
         self._stop_timers(self.engine_timers.backward_timers)
