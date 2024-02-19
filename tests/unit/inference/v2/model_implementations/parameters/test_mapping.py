@@ -6,10 +6,15 @@
 import pytest
 import torch
 
+from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.allocator import on_device
 from deepspeed.inference.v2.inference_parameter import InferenceParameter
 from deepspeed.inference.v2.model_implementations.parameter_base import ParameterBase, ParamList
 from deepspeed.inference.v2.model_implementations.layer_container_base import LayerContainer
+from ....v2.inference_test_utils import skip_on_inference_v2
+
+pytestmark = pytest.mark.skipif(skip_on_inference_v2(),
+                                reason=f'Inference V2 not supported by {get_accelerator().device_name()}.')
 
 
 class MultiDependencyContainer(ParameterBase):

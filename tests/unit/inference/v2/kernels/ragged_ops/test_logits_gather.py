@@ -10,8 +10,11 @@ import torch
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.kernels.ragged_ops import RaggedLogitsGather
-from ....v2.inference_test_utils import allclose, get_dtypes
+from ....v2.inference_test_utils import allclose, get_dtypes, skip_on_inference_v2
 from .ragged_testing_utils import build_simple_batch
+
+pytestmark = pytest.mark.skipif(skip_on_inference_v2(),
+                                reason=f'Inference V2 not supported by {get_accelerator().device_name()}.')
 
 
 def baseline_implementation(hidden_states: torch.Tensor, seq_lens: List[int]) -> torch.Tensor:

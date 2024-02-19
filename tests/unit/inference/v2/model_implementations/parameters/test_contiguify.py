@@ -15,6 +15,10 @@ from deepspeed.inference.v2.model_implementations.flat_model_helpers import (
 )
 from deepspeed.inference.v2.model_implementations.layer_container_base import LayerContainer
 from .utils import SimpleParam, DummyInferenceModel
+from ....v2.inference_test_utils import skip_on_inference_v2
+
+pytestmark = pytest.mark.skipif(skip_on_inference_v2(),
+                                reason=f'Inference V2 not supported by {get_accelerator().device_name()}.')
 
 
 class TransformerLayerContainer(LayerContainer):

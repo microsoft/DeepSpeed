@@ -9,8 +9,10 @@ import torch
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.inference_utils import ActivationType, DtypeEnum
 from deepspeed.inference.v2.kernels.cutlass_ops import MoEGEMM
-from ....v2.inference_test_utils import allclose
+from ....v2.inference_test_utils import allclose, skip_on_inference_v2
 
+pytestmark = pytest.mark.skipif(skip_on_inference_v2(),
+                                reason=f'Inference V2 not supported by {get_accelerator().device_name()}.')
 SINGLE_EXPERT_CASES = [(13, 2048, 2048), (256, 1024, 4096), (278, 5120, 2048), (893, 5120, 2560)]
 
 PYTORCH_ACT_FN_MAP = {

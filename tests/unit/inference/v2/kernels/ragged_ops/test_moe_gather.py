@@ -14,12 +14,15 @@ from deepspeed.inference.v2.kernels.ragged_ops import (
     RaggedTopKGating,
 )
 from .ragged_testing_utils import build_simple_batch
+from ....v2.inference_test_utils import skip_on_inference_v2
 """
 For simplicity's sake, these tests do rely on ``RaggedTopKGating``  and
 ``MoEScatter`` to produce correct inputs. If either of these kernels is broken
 these tests will fail, so double check the unit test results there before
 debugging here.
 """
+pytestmark = pytest.mark.skipif(skip_on_inference_v2(),
+                                reason=f'Inference V2 not supported by {get_accelerator().device_name()}.')
 
 TEST_CASES = [
     # (n_tokens, n_experts, n_top_k)

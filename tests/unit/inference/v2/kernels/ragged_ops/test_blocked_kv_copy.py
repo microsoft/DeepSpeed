@@ -9,6 +9,10 @@ import torch
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.kernels.ragged_ops import LinearBlockedKVCopy
 from .ragged_testing_utils import build_batch_and_manager, validate_kv_cache
+from ....v2.inference_test_utils import skip_on_inference_v2
+
+pytestmark = pytest.mark.skipif(skip_on_inference_v2(),
+                                reason=f'Inference V2 not supported by {get_accelerator().device_name()}.')
 
 
 @pytest.mark.inference_v2_ops

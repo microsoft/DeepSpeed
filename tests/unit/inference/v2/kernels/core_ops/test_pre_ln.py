@@ -8,7 +8,10 @@ import torch
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.kernels.core_ops import CUDAFPPreLN
-from ....v2.inference_test_utils import get_dtypes, allclose
+from ....v2.inference_test_utils import get_dtypes, allclose, skip_on_inference_v2
+
+pytestmark = pytest.mark.skipif(skip_on_inference_v2(),
+                                reason=f'Inference V2 not supported by {get_accelerator().device_name()}.')
 
 
 def reference_implementation(residual: torch.Tensor, hidden_states: torch.Tensor, gamma: torch.Tensor,

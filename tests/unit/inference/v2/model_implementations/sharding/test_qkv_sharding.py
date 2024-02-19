@@ -10,6 +10,10 @@ import torch
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.model_implementations.sharding import *
+from ....v2.inference_test_utils import skip_on_inference_v2
+
+pytestmark = pytest.mark.skipif(skip_on_inference_v2(),
+                                reason=f'Inference V2 not supported by {get_accelerator().device_name()}.')
 
 
 def fill_with_head_ids(head_size: int, n_heads_q: int, n_heads_kv: Optional[int] = None) -> torch.Tensor:
