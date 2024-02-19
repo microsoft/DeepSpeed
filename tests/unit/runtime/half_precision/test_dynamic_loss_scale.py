@@ -4,10 +4,12 @@
 # DeepSpeed Team
 
 import torch
+import pytest
 import deepspeed
 import numpy as np
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel
+from deepspeed.ops.op_builder import FusedLambBuilder
 
 
 def run_model_step(model, gradient_list):
@@ -143,6 +145,7 @@ class TestFused(DistributedTest):
         assert optim.cur_iter == expected_iteration
 
 
+@pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="lamb is not compatible")
 class TestUnfused(DistributedTest):
     world_size = 1
 
