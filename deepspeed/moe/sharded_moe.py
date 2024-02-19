@@ -400,7 +400,7 @@ class TopKGate(Module):
         # Only top-1 and top-2 are supported at the moment.
         if k != 1 and k != 2:
             raise ValueError('Only top-1 and top-2 gatings are supported.')
-        self.wg = torch.nn.Linear(model_dim, num_experts, bias=False).float()
+        self.wg = torch.nn.Linear(model_dim, num_experts, bias=False)
         self.k = k
         self.capacity_factor = capacity_factor
         self.eval_capacity_factor = eval_capacity_factor
@@ -421,13 +421,11 @@ class TopKGate(Module):
         if self.wall_clock_breakdown:
             self.timers(TOPK_GATE_TIMER).start()
 
-        if self.wg.weight.dtype != torch.float32:
-            self.wg = self.wg.float()
         input_fp32 = input.float()
         # input jittering
         if self.noisy_gate_policy == 'Jitter' and self.training:
             input_fp32 = multiplicative_jitter(input_fp32, device=input.device)
-        logits = self.wg(input_fp32)
+        logits = torch.nn.functional.linear(input_fp32, weight=self.wg.weight.float(), bias=None)
 
         if self.k == 1:
             gate_output = top1gating(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
