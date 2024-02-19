@@ -18,6 +18,7 @@ from deepspeed.ops.adam import FusedAdam
 from deepspeed.runtime.lr_schedules import WARMUP_LR, WarmupLR
 from deepspeed.runtime.config import ADAM_OPTIMIZER
 from deepspeed.runtime.utils import see_memory_usage, required_torch_version
+from deepspeed.ops.op_builder import FusedAdamBuilder
 
 
 @pytest.mark.parametrize('zero_stage', [0, 3])
@@ -68,6 +69,9 @@ class TestClientOptimizer(DistributedTest):
         def _optimizer_callable(params) -> Optimizer:
             return AdamW(params=params)
 
+        if (optimizer_type is None) and (not deepspeed.ops.__compatible_ops__[FusedAdamBuilder.NAME]):
+            pytest.skip("FusedAdam is not compatible")
+
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
 
@@ -96,6 +100,8 @@ class TestClientOptimizer(DistributedTest):
 class TestConfigOptimizer(DistributedTest):
     world_size = 1
 
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedAdamBuilder.NAME],
+                        reason="FusedAdam is not compatible")
     def test(self, client_parameters):
         ds_config = {"train_batch_size": 1, "optimizer": {"type": "Adam", "params": {"lr": 0.001}}}
 
