@@ -280,14 +280,8 @@ class BF16_Optimizer(ZeROOptimizer):
 
         self.clear_hp_grads()
 
-    def backward(self, loss, update_hp_grads=True, clear_lp_grads=False, **bwd_kwargs):
-        """Perform a backward pass and copy the low-precision gradients to the
-        high-precision copy.
-
-        We copy/accumulate to the high-precision grads now to prevent accumulating in the
-        bf16 grads after successive backward() calls (i.e., grad accumulation steps > 1)
-
-        The low-precision grads are deallocated during this procedure.
+    def backward(self, loss, **bwd_kwargs):
+        """Clears BF16 gradients and calls backward.
         """
         self.clear_lp_grads()
         loss.backward(**bwd_kwargs)

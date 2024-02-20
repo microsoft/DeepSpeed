@@ -1984,8 +1984,6 @@ class DeepSpeedEngine(Module):
                 self.optimizer.backward(loss, create_graph=True, retain_graph=True)
             else:
                 self.optimizer.backward(loss, retain_graph=retain_graph)
-        elif self.bfloat16_enabled():
-            self.optimizer.backward(loss)
         else:
             if self.eigenvalue_enabled():
                 loss.backward(create_graph=True, retain_graph=True)
@@ -2000,8 +1998,16 @@ class DeepSpeedEngine(Module):
             # Traditional code path that allreduces the module parameter grads
             self.allreduce_gradients()
 
-        if not self.zero_optimization() and self.bfloat16_enabled():
-            self.optimizer.update_hp_grads()
+        if not self.zero_optimization() and self.bfloat16_enabled() and self.is_gradient_accumulation_boundary():
+            # When BF16 and ZeRO 0 are both enabled, gradients are accumulated in BF16 and then all-reduced
+            # at the gradient accumulation boundary.
+            # Currently BF16_Optimizer's backward() clears BF16 gradients, but we *shouldn't* call it
+            # unless the step is on the gradient accumulation boundary.
+            # Thus we calls backward() of the loss value directly at each step, and
+            # convert the gradients to FP32 after allreduce and then clear BF16 gradients.
+            # only at the gradient accumulation boundary.
+            # See: https://github.com/microsoft/DeepSpeed/pull/5154
+            self.optimizer.update_hp_grads(clear_lp_grads=True)
 
         self._stop_timers(self.engine_timers.backward_reduce_timers)
 
