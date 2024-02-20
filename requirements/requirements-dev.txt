@@ -15,5 +15,5 @@ sphinx
 sphinx-rtd-theme
 tensorboard
 torchvision
-transformers>=4.32.1
+transformers @ git+https://github.com/huggingface/transformers@main
 wandb
