@@ -3,7 +3,6 @@
 
 # DeepSpeed Team
 
-import functools
 import os
 import pkgutil
 import importlib
@@ -261,31 +260,31 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     @property
     def BFloat16Tensor(self):
-        return functools.partial(torch.tensor, dtype=torch.bfloat16, device='cuda')
+        return torch.cuda.BFloat16Tensor
 
     @property
     def ByteTensor(self):
-        return functools.partial(torch.tensor, dtype=torch.uint8, device='cuda')
+        return torch.cuda.ByteTensor
 
     @property
     def DoubleTensor(self):
-        return functools.partial(torch.tensor, dtype=torch.double, device='cuda')
+        return torch.cuda.DoubleTensor
 
     @property
     def FloatTensor(self):
-        return functools.partial(torch.tensor, dtype=torch.float, device='cuda')
+        return torch.cuda.FloatTensor
 
     @property
     def HalfTensor(self):
-        return functools.partial(torch.tensor, dtype=torch.half, device='cuda')
+        return torch.cuda.HalfTensor
 
     @property
     def IntTensor(self):
-        return functools.partial(torch.tensor, dtype=torch.int, device='cuda')
+        return torch.cuda.IntTensor
 
     @property
     def LongTensor(self):
-        return functools.partial(torch.tensor, dtype=torch.long, device='cuda')
+        return torch.cuda.LongTensor
 
     def pin_memory(self, tensor, align_bytes=1):
         return tensor.pin_memory()
