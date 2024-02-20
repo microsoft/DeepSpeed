@@ -75,7 +75,6 @@ void shared_close(SharedData* data)
 #define NAME_BUF_SIZE 1000
 #define MAX_BUF_SIZE 1048576
 #define SHM_BUFFER_NAME "deepspeed_allreduce_buffer"
-SharedData allreduce_buffer;
 struct allreduce_workspace {
     enum coll_state state;
     char buffer[MAX_BUF_SIZE];
@@ -383,8 +382,9 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
     if (addr_string == NULL) { addr_string = ""; }
     auto port_string = std::getenv("MASTER_PORT");
     if (port_string == NULL) { port_string = ""; }
+    char shm_name_prefix[NAME_BUF_SIZE];
     char shm_name[NAME_BUF_SIZE];
-    snprintf(shm_name,
+    snprintf(shm_name_prefix,
              NAME_BUF_SIZE,
              "%s_%d_%s_%s",
              SHM_BUFFER_NAME,
@@ -392,8 +392,11 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
              addr_string,
              port_string);
     // create shared workspace for SHM based allreduce
+    #if 0
     if (all_ranks_local_p) {
+        snprintf(shm_name, NAME_BUF_SIZE, "%s", shm_name_prefix);
         struct allreduce_workspace *workspace_buf;
+        SharedData allreduce_buffer;
         if (rank == 0) {
             workspace_buf =
                 (struct allreduce_workspace*)malloc(size * sizeof(struct allreduce_workspace));
@@ -412,6 +415,38 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
             workspace[i] = workspace_buf + i;
         }
     }
+    #else
+    if (all_ranks_local_p) {
+        SharedData allreduce_buffer;
+        // allocate workspace_buf for current rank
+        struct allreduce_workspace *workspace_buf;
+        workspace_buf = (struct allreduce_workspace*)malloc(sizeof(struct allreduce_workspace));
+        snprintf(shm_name, NAME_BUF_SIZE, "%s_%d", shm_name_prefix, rank);
+        printf("create %s, %d\n", shm_name, rank);
+        shared_create(&allreduce_buffer, shm_name, workspace_buf, sizeof(struct allreduce_workspace));
+        workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
+        workspace_buf->state = coll_begin;
+
+        // wait until all ranks created their shm
+        CCLCHECK(ccl::barrier(_get_comm_from_group()).wait());
+
+        // create the workspace pointer lis
+        workspace = (struct allreduce_workspace**)malloc(size * sizeof(struct allreduce_workspace*));
+
+        // map shm of all ranks
+        for (int i=0; i<size; i++) {
+            if (i==rank) {
+                workspace[i] = workspace_buf;
+            } else {
+                snprintf(shm_name, NAME_BUF_SIZE, "%s_%d", shm_name_prefix, i);
+                printf("open %s, %d\n", shm_name, rank);
+                shared_open(&allreduce_buffer, shm_name, sizeof(struct allreduce_workspace));
+                workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
+                workspace[i] = workspace_buf;
+            }
+        }
+    }
+    #endif
 }
 
 /*
