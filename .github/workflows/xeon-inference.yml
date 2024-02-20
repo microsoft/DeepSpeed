@@ -1,12 +1,15 @@
-name: cpu-inference
+name: xeon-inference
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
-      - '.github/workflows/cpu-inference.yml'
+      - '.github/workflows/xeon-inference.yml'
       - 'requirements/**'
       - 'deepspeed/__init__.py'
+      - 'accelerator/abstract_accelerator.py'
+      - 'accelerator/real_accelerator.py'
+      - 'accelerator/xeon_accelerator.py'
       - 'deepspeed/inference/**'
       - '!deepspeed/inference/v2/**' # exclude v2 dir
       - 'tests/unit/inference/**'
