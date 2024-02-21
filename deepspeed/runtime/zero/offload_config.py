@@ -58,7 +58,7 @@ class DeepSpeedZeroOffloadOptimizerConfig(DeepSpeedConfigModel):
     `nvme`. Optimizer computation is offload to CPU regardless of device option.
     """
 
-    nvme_path: Path = None
+    nvme_path: Optional[Path] = None
     """ Filesystem path for NVMe device for optimizer state offloading. """
 
     buffer_count: int = Field(4, ge=0)

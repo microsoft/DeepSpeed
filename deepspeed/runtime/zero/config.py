@@ -169,25 +169,35 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
 
     cpu_offload_param: Optional[bool] = Field(
         None,
-        deprecated=True,
-        new_param="offload_param",
-        new_param_fn=(lambda val: DeepSpeedZeroOffloadParamConfig(device=OffloadDeviceEnum.cpu) if val else None),
+        json_schema_extra={
+            "deprecated": True,
+            "new_param": "offload_param",
+            "new_param_fn": (lambda val: DeepSpeedZeroOffloadParamConfig(device=OffloadDeviceEnum.cpu)
+                             if val else None)
+        },
     )
     """ Deprecated, please use ``offload_param`` """
 
     cpu_offload_use_pin_memory: Optional[bool] = Field(
         None,
-        deprecated=True,
-        new_param="offload_param or offload_optimizer",
-        set_new_param=False,
+        json_schema_extra={
+            "deprecated": True,
+            "new_param": "offload_param or offload_optimizer",
+            "set_new_param": False
+        },
     )
     """ Deprecated, please use ``offload_param`` or ``offload_optimizer`` """
 
     cpu_offload: Optional[bool] = Field(
         None,
-        deprecated=True,
-        new_param="offload_optimizer",
-        new_param_fn=(lambda val: DeepSpeedZeroOffloadOptimizerConfig(device=OffloadDeviceEnum.cpu) if val else None),
+        json_schema_extra={
+            "deprecated":
+            True,
+            "new_param":
+            "offload_optimizer",
+            "new_param_fn": (lambda val: DeepSpeedZeroOffloadOptimizerConfig(device=OffloadDeviceEnum.cpu)
+                             if val else None)
+        },
     )
     """ Deprecated, please use ``offload_optimizer`` """
 
@@ -235,8 +245,10 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     """
 
     stage3_gather_fp16_weights_on_model_save: bool = Field(False,
-                                                           deprecated=True,
-                                                           new_param="gather_16bit_weights_on_model_save")
+                                                           json_schema_extra={
+                                                               "deprecated": True,
+                                                               "new_param": "gather_16bit_weights_on_model_save"
+                                                           })
     """ Deprecated, please use ``gather_16bit_weights_on_model_save`` """
 
     ignore_unused_parameters: bool = True

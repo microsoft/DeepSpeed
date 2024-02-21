@@ -16,7 +16,12 @@ from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 class SimpleConf(DeepSpeedConfigModel):
     param_1: int = 0
-    param_2_old: Optional[str] = Field(None, deprecated=True, new_param="param_2", new_param_fn=(lambda x: [x]))
+    param_2_old: Optional[str] = Field(None,
+                                       json_schema_extra={
+                                           "deprecated": True,
+                                           "new_param": "param_2",
+                                           "new_param_fn": (lambda x: [x])
+                                       })
     param_2: Optional[List[str]] = None
     param_3: int = Field(0, alias="param_3_alias")
 

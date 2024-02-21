@@ -7,6 +7,7 @@ Collection of DeepSpeed configuration utilities
 """
 import collections
 import json
+import torch
 from functools import reduce
 from pydantic import BaseModel, ConfigDict
 
@@ -59,8 +60,8 @@ class DeepSpeedConfigModel(BaseModel):
     def _process_deprecated_field(self, dep_field):
         # Get information about the deprecated field
         pydantic_config = self
-        fields_set = pydantic_config.__fields_set__
-        kwargs = pydantic_config.__fields__[dep_field].json_schema_extra
+        fields_set = pydantic_config.model_fields_set
+        kwargs = pydantic_config.model_fields[dep_field].json_schema_extra
         new_param_fn = kwargs.get("new_param_fn", lambda x: x)
         param_value = new_param_fn(getattr(pydantic_config, dep_field))
         new_field = kwargs.get("new_param", "")
@@ -83,7 +84,7 @@ class DeepSpeedConfigModel(BaseModel):
                     # If the new param exists in a subconfig, we need to get
                     # the fields set for that subconfig
                     pydantic_config = reduce(getattr, new_param_nested[:-1], pydantic_config)
-                    fields_set = pydantic_config.__fields_set__
+                    fields_set = pydantic_config.model_fields_set
                 new_param_name = new_param_nested[-1]
                 assert (
                     new_param_name not in fields_set
@@ -96,7 +97,7 @@ class DeepSpeedConfigModel(BaseModel):
                     raise e
 
     def _deprecated_fields_check(self):
-        fields = self.__fields__
+        fields = self.model_fields
         for field_name, field_info in fields.items():
             if field_info.json_schema_extra and field_info.json_schema_extra.get("deprecated", False):
                 self._process_deprecated_field(field_name)
@@ -109,14 +110,15 @@ class DeepSpeedConfigModel(BaseModel):
         extra="forbid",
         arbitrary_types_allowed=True,
         protected_namespaces=(),
+        json_encoders={torch.dtype: lambda x: str(x)},
     )
 
 
 def get_config_default(config, field_name):
-    assert field_name in config.__fields__, f"'{field_name}' is not a field in {config}"
-    assert not config.__fields__.get(
+    assert field_name in config.model_fields, f"'{field_name}' is not a field in {config}"
+    assert not config.model_fields.get(
         field_name).is_required(), f"'{field_name}' is a required field and does not have a default value"
-    return config.__fields__.get(field_name).get_default()
+    return config.model_fields.get(field_name).get_default()
 
 
 class pp_int(int):

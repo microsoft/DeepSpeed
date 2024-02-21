@@ -3,21 +3,12 @@
 
 # DeepSpeed Team
 
-from pydantic import BaseModel
+from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 from .constants import *
 
 
-class CommsConfig(BaseModel):
-
-    class Config:
-        validate_default = True
-        validate_assignment = True
-        use_enum_values = True
-        extra = 'forbid'
-
-
-class CommsLoggerConfig(CommsConfig):
+class CommsLoggerConfig(DeepSpeedConfigModel):
     enabled: bool = COMMS_LOGGER_ENABLED_DEFAULT
     prof_all: bool = COMMS_LOGGER_PROF_ALL_DEFAULT
     prof_ops: list = COMMS_LOGGER_PROF_OPS_DEFAULT
