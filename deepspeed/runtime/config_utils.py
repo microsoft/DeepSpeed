@@ -58,10 +58,11 @@ class DeepSpeedConfigModel(BaseModel):
 
     def _process_deprecated_field(self, dep_field):
         # Get information about the deprecated field
-        fields_set = self.__fields_set__
-        kwargs = self.__fields__[dep_field].json_schema_extra
+        pydantic_config = self
+        fields_set = pydantic_config.__fields_set__
+        kwargs = pydantic_config.__fields__[dep_field].json_schema_extra
         new_param_fn = kwargs.get("new_param_fn", lambda x: x)
-        param_value = new_param_fn(getattr(self, dep_field))
+        param_value = new_param_fn(getattr(pydantic_config, dep_field))
         new_field = kwargs.get("new_param", "")
         dep_msg = kwargs.get("deprecated_msg", "")
         if dep_field in fields_set:
@@ -71,7 +72,7 @@ class DeepSpeedConfigModel(BaseModel):
             if new_field and kwargs.get("set_new_param", True):
                 # Remove the deprecate field if there is a replacing field
                 try:
-                    delattr(self, dep_field)
+                    delattr(pydantic_config, dep_field)
                 except Exception as e:
                     logger.error(f"Tried removing deprecated '{dep_field}' from config")
                     raise e
@@ -81,7 +82,6 @@ class DeepSpeedConfigModel(BaseModel):
                 if len(new_param_nested) > 1:
                     # If the new param exists in a subconfig, we need to get
                     # the fields set for that subconfig
-                    pydantic_config = self
                     pydantic_config = reduce(getattr, new_param_nested[:-1], pydantic_config)
                     fields_set = pydantic_config.__fields_set__
                 new_param_name = new_param_nested[-1]
@@ -90,7 +90,7 @@ class DeepSpeedConfigModel(BaseModel):
                 ), f"Cannot provide deprecated parameter '{dep_field}' and replacing parameter '{new_field}' together"
                 # A custom function for converting the old param value to new param value can be provided
                 try:
-                    setattr(self, new_param_name, param_value)
+                    setattr(pydantic_config, new_param_name, param_value)
                 except Exception as e:
                     logger.error(f"Tried setting value for '{new_field}' with value from deprecated '{dep_field}'")
                     raise e
