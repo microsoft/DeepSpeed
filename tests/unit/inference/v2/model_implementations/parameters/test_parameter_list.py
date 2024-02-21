@@ -11,7 +11,7 @@ from deepspeed.inference.v2.inference_parameter import InferenceParameter
 from deepspeed.inference.v2.model_implementations.parameter_base import ParameterBase, ParamList
 from deepspeed.inference.v2.model_implementations.layer_container_base import LayerContainer
 from deepspeed.inference.v2.model_implementations.common_parameters import *
-
+from deepspeed.accelerator import get_accelerator
 from .utils import validate_device
 from ....v2.inference_test_utils import skip_on_inference_v2
 
