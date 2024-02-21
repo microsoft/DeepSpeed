@@ -6,7 +6,6 @@
 import torch
 import pytest
 import random
-import deepspeed
 import numpy as np
 from unit.megatron_model import get_gpt2_model
 from deepspeed.compression.compress import init_compression
@@ -17,7 +16,6 @@ from deepspeed.compression.helper import convert_conv1d_to_linear
 from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.utils import required_torch_version
 from unit.common import DistributedTest
-from deepspeed.ops.op_builder import FusedLambBuilder
 
 pytestmark = pytest.mark.skipif(not required_torch_version(min_version=1.5),
                                 reason='Megatron-LM package requires Pytorch version 1.5 or above')
@@ -218,7 +216,6 @@ class TestCompression(DistributedTest):
 
         return ds_config_dict
 
-    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="lamb is not compatible")
     def test_linear_layer_compress(self, tmpdir):
         model = create_bert_model()
         compressed_model = init_compression(model, self.get_ds_config())
@@ -228,7 +225,6 @@ class TestCompression(DistributedTest):
         assert isinstance(compressed_model.layer[0].attention.self.value, LinearLayer_Compress)
 
     @pytest.mark.skip(reason="megatron-lm is currently broken so this test cannot be run.")
-    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="lamb is not compatible")
     def test_mpu_compress(self, tmpdir):
         if not required_torch_version(max_version=1.13):
             pytest.skip("megatron not compatible with torch >1.13")
