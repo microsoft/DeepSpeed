@@ -6,6 +6,8 @@
 from enum import Enum
 from pathlib import Path
 from pydantic import Field, model_validator
+from typing import Optional
+
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel, pp_int
 
 
@@ -25,7 +27,7 @@ class DeepSpeedZeroOffloadParamConfig(DeepSpeedConfigModel):
     `nvme`.
     """
 
-    nvme_path: Path = None
+    nvme_path: Optional[Path] = None
     """ Filesystem path for NVMe device for parameter offloading. """
 
     buffer_count: int = Field(5, ge=0)
