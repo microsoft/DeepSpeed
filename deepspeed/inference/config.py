@@ -5,7 +5,7 @@
 
 import torch
 import deepspeed
-from deepspeed.pydantic_v1 import Field, validator
+from pydantic import Field, field_validator
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 from typing import Dict, Union
@@ -91,24 +91,24 @@ class QuantTypeEnum(str, Enum):
 
 
 class BaseQuantConfig(DeepSpeedConfigModel):
-    enabled = True
-    num_bits = 8
+    enabled: bool = True
+    num_bits: int = 8
     q_type: QuantTypeEnum = QuantTypeEnum.sym
     q_groups: int = 1
 
 
 class WeightQuantConfig(BaseQuantConfig):
-    enabled = True
+    enabled: bool = True
     quantized_initialization: Dict = {}
     post_init_quant: Dict = {}
 
 
 class ActivationQuantConfig(BaseQuantConfig):
-    enabled = True
+    enabled: bool = True
 
 
 class QKVQuantConfig(DeepSpeedConfigModel):
-    enabled = True
+    enabled: bool = True
 
 
 class QuantizationConfig(DeepSpeedConfigModel):
@@ -287,13 +287,13 @@ class DeepSpeedInferenceConfig(DeepSpeedConfigModel):
     moe_experts: list = Field([1], deprecated=True, new_param="moe.moe_experts")
     moe_type: MoETypeEnum = Field(MoETypeEnum.standard, deprecated=True, new_param="moe.type")
 
-    @validator("moe")
+    @field_validator("moe")
     def moe_backward_compat(cls, field_value, values):
         if isinstance(field_value, bool):
             return DeepSpeedMoEConfig(moe=field_value)
         return field_value
 
-    @validator("use_triton")
+    @field_validator("use_triton")
     def has_triton(cls, field_value, values):
         if field_value and not deepspeed.HAS_TRITON:
             raise ValueError('Triton needs to be installed to use deepspeed with triton kernels')

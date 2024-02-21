@@ -5,7 +5,7 @@
 
 from enum import Enum
 from pathlib import Path
-from deepspeed.pydantic_v1 import Field, validator
+from pydantic import Field, field_validator
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel, pp_int
 
 
@@ -88,10 +88,11 @@ class DeepSpeedZeroOffloadOptimizerConfig(DeepSpeedConfigModel):
     fast_init: bool = False
     """ Enable fast optimizer initialization when offloading to NVMe. """
 
-    @validator("pipeline_read", "pipeline_write", always=True)
+    ratio: float = Field(1.0, ge=0.0, le=1.0)
+    """ Percentage of offloaded optimizer states to CPU Adam. Only valid with ZeRO Stage 3."""
+
+    @field_validator("pipeline_read", "pipeline_write", always=True)
+    @classmethod
     def set_pipeline(cls, field_value, values):
         values["pipeline"] = field_value or values.get("pipeline", False)
         return field_value
-
-    ratio: float = Field(1.0, ge=0.0, le=1.0)
-    """ Percentage of offloaded optimizer states to CPU Adam. Only valid with ZeRO Stage 3."""

@@ -3,7 +3,7 @@
 
 # DeepSpeed Team
 
-from deepspeed.pydantic_v1 import Field
+from pydantic import Field
 
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from .ragged import DSStateManagerConfig

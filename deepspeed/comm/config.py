@@ -3,14 +3,15 @@
 
 # DeepSpeed Team
 
+from pydantic import BaseModel
+
 from .constants import *
-from ..pydantic_v1 import BaseModel
 
 
 class CommsConfig(BaseModel):
 
     class Config:
-        validate_all = True
+        validate_default = True
         validate_assignment = True
         use_enum_values = True
         extra = 'forbid'
