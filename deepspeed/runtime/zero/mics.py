@@ -12,8 +12,9 @@ from typing import List
 import deepspeed
 import torch
 from deepspeed import comm as dist
+from deepspeed.runtime.zero.utils import is_zero_param
 from deepspeed.runtime.zero.mics_utils import (MiCS_CommGroups, create_mics_comm_groups, scale_tensors)
-from deepspeed.runtime.zero.parameter_offload import (DeepSpeedZeRoOffload, is_zero_param)
+from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
 from deepspeed.runtime.zero.partition_parameters import Init, AllGatherCoalescedHandle, ZeroParamStatus
 from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
 from deepspeed.utils import instrument_w_nvtx, log_dist
@@ -42,8 +43,9 @@ class MiCS_AllGatherCoalescedHandle(AllGatherCoalescedHandle):
         """
         # let the current stream to op
         try:
+            print("HANDLE", self.allgather_handle)
             instrument_w_nvtx(self.allgather_handle.wait)()
-        except RuntimeError as e:
+        except (ValueError, RuntimeError) as e:
             log_dist(
                 f"WARNING: Runtime Error while waiting the collective all-gather, possibly due to the _IllegalWork",
                 ranks=[0])
