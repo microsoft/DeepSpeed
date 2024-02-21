@@ -12,7 +12,7 @@ import numpy as np
 import torch
 from torch.utils.data import BatchSampler, SequentialSampler, DataLoader, Subset
 
-from deepspeed.utils import logger
+from deepspeed.utils import logger, groups
 import deepspeed.comm as dist
 from deepspeed.runtime.data_pipeline.data_sampling.indexed_dataset import MMapIndexedDataset, valid_dtypes
 from deepspeed.runtime.data_pipeline.data_sampling.utils import split_dataset, split_index, create_mmap_dataset_builder, close_mmap_dataset_builder, find_fit_int_dtype
@@ -601,6 +601,7 @@ class DistributedDataAnalyzer(object):
                 metric_value_fname = f"{metric_save_path}/{metric_name}_metric_value"
                 dist.reduce(metric_values, dst=0, op=dist.ReduceOp.SUM, group=self.comm_group)
                 metric_value_dtype = find_fit_int_dtype(metric_values.min(), metric_values.max())
+
                 if self.worker_id == 0:
                     builder = create_mmap_dataset_builder(metric_value_fname, metric_value_dtype)
                     builder.add_item(metric_values.cpu())
