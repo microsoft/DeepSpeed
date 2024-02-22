@@ -48,7 +48,7 @@ def test_human_eval(model_name):
 
     # Base Pipeline Teardown
     del base_pipe
-    torch.cuda.empty_cache()
+    get_accelerator().empty_cache()
 
     # Initializing DeepSpeed-MII Pipeline
     mii_pipe = mii.pipeline(model_name)
