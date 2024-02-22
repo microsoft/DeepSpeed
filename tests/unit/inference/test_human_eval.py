@@ -26,8 +26,8 @@ def test_human_eval(model_name):
 
     def generate_samples(pipe, generation_function):
         samples = [
-            dict(task_id=task_id, completion=generation_function(pipe, problems[task_id]["prompt"])) for task_id in problems
-            for _ in range(num_samples_per_task)
+            dict(task_id=task_id, completion=generation_function(pipe, problems[task_id]["prompt"]))
+            for task_id in problems for _ in range(num_samples_per_task)
         ]
         return samples
 
