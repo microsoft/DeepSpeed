@@ -18,15 +18,15 @@ def test_human_eval(model_name):
     from human_eval.data import write_jsonl, read_problems
     from human_eval.evaluation import evaluate_functional_correctness
 
-    def generate_base_completion(problem_prompt: str) -> str:
-        return base_pipe(problem_prompt, do_sample=True)[0]["generated_text"]
+    def generate_base_completion(pipe, problem_prompt: str) -> str:
+        return pipe(problem_prompt, do_sample=True)[0]["generated_text"]
 
-    def generate_mii_completion(problem_prompt: str) -> str:
-        return mii_pipe(problem_prompt, max_new_tokens=512)[0].generated_text
+    def generate_mii_completion(pipe, problem_prompt: str) -> str:
+        return pipe(problem_prompt, max_new_tokens=512)[0].generated_text
 
-    def generate_samples(generation_function):
+    def generate_samples(pipe, generation_function):
         samples = [
-            dict(task_id=task_id, completion=generation_function(problems[task_id]["prompt"])) for task_id in problems
+            dict(task_id=task_id, completion=generation_function(pipe, problems[task_id]["prompt"])) for task_id in problems
             for _ in range(num_samples_per_task)
         ]
         return samples
@@ -44,7 +44,7 @@ def test_human_eval(model_name):
                          return_full_text=False)
 
     # Generating Base Samples
-    base_samples = generate_samples(generate_base_completion)
+    base_samples = generate_samples(base_pipe, generate_base_completion)
 
     # Base Pipeline Teardown
     del base_pipe
@@ -54,7 +54,7 @@ def test_human_eval(model_name):
     mii_pipe = mii.pipeline(model_name)
 
     # Generating MII Samples
-    mii_samples = generate_samples(generate_mii_completion)
+    mii_samples = generate_samples(mii_pipe, generate_mii_completion)
 
     # MII Pipeline Teardown
     mii_pipe.destroy()
