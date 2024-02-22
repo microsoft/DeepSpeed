@@ -10,7 +10,7 @@ from deepspeed.accelerator import get_accelerator
 
 
 @pytest.mark.evaluation
-@pytest.mark.parametrize("model_name", ["facebook/opt-6.7b"])
+@pytest.mark.parametrize("model_name", ["codellama/CodeLlama-7b-Python-hf"])
 def test_human_eval(model_name):
     import mii
     import numpy
@@ -22,7 +22,7 @@ def test_human_eval(model_name):
         return base_pipe(problem_prompt, do_sample=True)[0]["generated_text"]
 
     def generate_mii_completion(problem_prompt: str) -> str:
-        return mii_pipe(problem_prompt, max_new_tokens=256)[0].generated_text
+        return mii_pipe(problem_prompt, max_new_tokens=512)[0].generated_text
 
     def generate_samples(generation_function):
         samples = [
@@ -31,40 +31,43 @@ def test_human_eval(model_name):
         ]
         return samples
 
+    # Loading Problems
+    problems = read_problems("../../human-eval/data/HumanEval.jsonl.gz")
+    num_samples_per_task = 20
+
     # Initializing HuggingFace Pipeline
     local_rank = os.getenv("LOCAL_RANK", "0")
     device = torch.device(get_accelerator().device_name(local_rank))
     base_pipe = pipeline(model=model_name,
                          device=torch.device(get_accelerator().device_name(local_rank)),
-                         max_length=256,
+                         max_length=512,
                          return_full_text=False)
+
+    # Generating Base Samples
+    base_samples = generate_samples(generate_base_completion)
+
+    # Base Pipeline Teardown
+    del base_pipe
+    torch.cuda.empty_cache()
 
     # Initializing DeepSpeed-MII Pipeline
     mii_pipe = mii.pipeline(model_name)
 
-    # Loading Problems
-    problems = read_problems("../../human-eval/data/HumanEvalTest.jsonl.gz")
-
-    # Generating Base Samples
-    num_samples_per_task = 1
-    base_samples = generate_samples(generate_base_completion)
-
     # Generating MII Samples
     mii_samples = generate_samples(generate_mii_completion)
+
+    # MII Pipeline Teardown
+    mii_pipe.destroy()
 
     # Writing Samples
     write_jsonl("base_samples.jsonl", base_samples)
     write_jsonl("mii_samples.jsonl", mii_samples)
 
     # Evaluating Samples
-    # TODO: use code execution container
     base_results = evaluate_functional_correctness("base_samples.jsonl")
     mii_results = evaluate_functional_correctness("mii_samples.jsonl")
 
     # Executing Assertions
     for key in base_results.keys():
-        assert numpy.allclose(base_results[key], mii_results[key], rtol=0.2), \
+        assert numpy.allclose(base_results[key], mii_results[key], rtol=0.10), \
             f"Base result: {base_results[key]}, MII result: {mii_results[key]}, outside of rtol."
-
-    # Teardown MII Pipeline
-    mii_pipe.destroy()
