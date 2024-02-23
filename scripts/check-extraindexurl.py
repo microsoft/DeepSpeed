@@ -32,7 +32,8 @@ res = subprocess.run(
     capture_output=True,
 )
 if res.returncode == 0:
-    err('Error: The string "--extra-index-url" was found.\nPlease replace all calls to --extra-index-url with "--index-url"')
+    err('Error: The string "--extra-index-url" was found.\nPlease replace all calls to --extra-index-url with "--index-url"'
+        )
     err(res.stdout.decode("utf-8"))
     sys.exit(1)
 elif res.returncode == 2:
