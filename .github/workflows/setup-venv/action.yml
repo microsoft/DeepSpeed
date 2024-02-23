@@ -13,7 +13,7 @@ runs:
     - id: create-venv
       run: |
         rm -rf ./unit-test-venv
-        python -m venv unit-test-venv
+        python -m venv --system-site-packages unit-test-venv
         source ./unit-test-venv/bin/activate
         python -m pip install --upgrade pip
         pip install wheel # required after pip>=23.1
