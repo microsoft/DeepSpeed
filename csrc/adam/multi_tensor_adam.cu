@@ -71,7 +71,8 @@ struct AdamFunctor {
         n -= chunk_idx * chunk_size;
 
         // see note in multi_tensor_scale_kernel.cu
-        for (index_t i_start = 0; i_start < n && i_start < chunk_size; i_start += blockDim.x * ILP) {
+        for (index_t i_start = 0; i_start < n && i_start < chunk_size;
+             i_start += blockDim.x * ILP) {
             MATH_T r_g[ILP];
             MATH_T r_p[ILP];
             MATH_T r_m[ILP];
@@ -150,54 +151,52 @@ void multi_tensor_adam_cuda(int chunk_size,
     bool requires_64bit_indexing = false;
     for (auto it = tensor_lists.begin(); it != tensor_lists.end(); it++) {
         for (auto it2 = it->begin(); it2 != it->end(); it2++) {
-        if (it2->numel() > max_size) {
-            max_size = it2->numel();
-        if (max_size >= INT_MAX) {
-            requires_64bit_indexing = true;
-        break;
+            if (it2->numel() > max_size) {
+                max_size = it2->numel();
+                if (max_size >= INT_MAX) {
+                    requires_64bit_indexing = true;
+                    break;
+                }
             }
         }
-        }
-        if (requires_64bit_indexing) {
-        break;
-        }
+        if (requires_64bit_indexing) { break; }
     }
 
     // Assume single type across p,g,m1,m2 now
     if (requires_64bit_indexing) {
         DISPATCH_DOUBLE_FLOAT_AND_HALF(tensor_lists[0][0].scalar_type(),
-                                   0,
-                                   "adam",
-                                   multi_tensor_apply<4>((int64_t) BLOCK_SIZE,
-                                                         (int64_t) chunk_size,
-                                                         noop_flag,
-                                                         tensor_lists,
-                                                         AdamFunctor<scalar_t_0, int64_t>(),
-                                                         beta1,
-                                                         beta2,
-                                                         bias_correction1,
-                                                         bias_correction2,
-                                                         epsilon,
-                                                         lr,
-                                                         (adamMode_t)mode,
-                                                         weight_decay);)
+                                       0,
+                                       "adam",
+                                       multi_tensor_apply<4>((int64_t)BLOCK_SIZE,
+                                                             (int64_t)chunk_size,
+                                                             noop_flag,
+                                                             tensor_lists,
+                                                             AdamFunctor<scalar_t_0, int64_t>(),
+                                                             beta1,
+                                                             beta2,
+                                                             bias_correction1,
+                                                             bias_correction2,
+                                                             epsilon,
+                                                             lr,
+                                                             (adamMode_t)mode,
+                                                             weight_decay);)
     } else {
         DISPATCH_DOUBLE_FLOAT_AND_HALF(tensor_lists[0][0].scalar_type(),
-                                    0,
-                                    "adam",
-                                    multi_tensor_apply<4>(BLOCK_SIZE,
-                                                          chunk_size,
-                                                          noop_flag,
-                                                          tensor_lists,
-                                                          AdamFunctor<scalar_t_0, int32_t>(),
-                                                          beta1,
-                                                          beta2,
-                                                          bias_correction1,
-                                                          bias_correction2,
-                                                          epsilon,
-                                                          lr,
-                                                          (adamMode_t)mode,
-                                                          weight_decay);)
+                                       0,
+                                       "adam",
+                                       multi_tensor_apply<4>(BLOCK_SIZE,
+                                                             chunk_size,
+                                                             noop_flag,
+                                                             tensor_lists,
+                                                             AdamFunctor<scalar_t_0, int32_t>(),
+                                                             beta1,
+                                                             beta2,
+                                                             bias_correction1,
+                                                             bias_correction2,
+                                                             epsilon,
+                                                             lr,
+                                                             (adamMode_t)mode,
+                                                             weight_decay);)
     }
 
     AT_CUDA_CHECK(cudaGetLastError());
