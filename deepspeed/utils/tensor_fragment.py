@@ -7,6 +7,7 @@ import torch
 from dataclasses import dataclass
 from deepspeed import comm as dist
 from typing import Dict
+from transformer_engine.pytorch.float8_tensor import Float8Tensor
 
 
 @dataclass
@@ -267,6 +268,7 @@ def get_hp_fragment_mapping(lp_param, lp_start, flat_hp_partition, gradient_dict
     hp_start = partition_start
     hp_end = partition_start + partition_size
 
+
     fragment_start = max(lp_start, hp_start)
     fragment_end = min(lp_end, hp_end)
     assert fragment_start < fragment_end, \
@@ -277,7 +279,10 @@ def get_hp_fragment_mapping(lp_param, lp_start, flat_hp_partition, gradient_dict
     hp_fragment_tensor = flat_hp_partition.narrow(0, hp_frag_address.start, hp_frag_address.numel)
 
     lp_frag_address = fragment_address(start=fragment_start - lp_start, numel=fragment_numel)
-    lp_fragment_tensor = lp_param.flatten().narrow(0, lp_frag_address.start, lp_frag_address.numel)
+    if isinstance(lp_param, Float8Tensor):
+        lp_fragment_tensor = lp_param._data.flatten().narrow(0, lp_frag_address.start, lp_frag_address.numel)
+    else:
+        lp_fragment_tensor = lp_param.flatten().narrow(0, lp_frag_address.start, lp_frag_address.numel)
 
     return tensor_fragment(lp_fragment=lp_fragment_tensor,
                            lp_fragment_address=lp_frag_address,

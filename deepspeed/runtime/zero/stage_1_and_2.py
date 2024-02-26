@@ -32,6 +32,7 @@ from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state
 from deepspeed.checkpoint import enable_universal_checkpoint
 
 from deepspeed.utils import groups
+from transformer_engine.pytorch.float8_tensor import Float8Tensor
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
 pg_correctness_test = False
@@ -323,11 +324,15 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             orig_group_numel = 0
             for param in self.bit16_groups[i]:
                 orig_group_numel += param.numel()
-                param.cpu_data = param.data.cpu()
-                param.data = torch.empty(1).to(param.device)
+                if isinstance(param.data, Float8Tensor):
+                    param.cpu_data = param._data.cpu()
+                    param._data = torch.empty(1).to(param.device, dtype=torch.uint8)
+                else:
+                    param.cpu_data = param.data.cpu()
+                    param.data = torch.empty(1).to(param.device)
 
             empty_cache()
-            see_memory_usage(f"After moving param group {i} to CPU", force=False)
+            see_memory_usage(f"After moving param group {i} to CPU")
 
             # Reorder group parameters for load balancing of gradient partitioning during backward among ranks.
             # This ensures that gradients are reduced in a fashion such that ownership round robins among the ranks.
@@ -363,7 +368,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.bit16_groups_flat.append(flattened_buffer.to(get_accelerator().current_device_name()))
             del flattened_buffer
 
-            see_memory_usage(f"After flattening and moving param group {i} to GPU", force=False)
+            see_memory_usage(f"After flattening and moving param group {i} to GPU")
 
             # Record padding required for alignment
             if partition_id == dist.get_world_size(group=self.real_dp_process_group[i]) - 1:
@@ -373,7 +378,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.groups_padding.append(padding)
 
             if dist.get_rank(group=self.real_dp_process_group[i]) == 0:
-                see_memory_usage(f"After Flattening and after emptying param group {i} cache", force=False)
+                see_memory_usage(f"After Flattening and after emptying param group {i} cache", force=True)
 
             # set model bit16 weight to slices of flattened buffer
             self._update_model_bit16_weights(i)
@@ -628,12 +633,18 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def _update_model_bit16_weights(self, group_index):
         updated_params = self.unflatten(self.bit16_groups_flat[group_index], self.round_robin_bit16_meta[group_index])
         for p, q in zip(self.round_robin_bit16_groups[group_index], updated_params):
-            p.data = q.data
+            if isinstance(p, Float8Tensor):
+                p._data = q.data
+            else:
+                p.data = q.data
 
         # set model fp16 weight to slices of reordered flattened buffer
         for param_index, param in enumerate(self.bit16_groups[group_index]):
             new_index = self.round_robin_bit16_indices[group_index][param_index]
-            param.data = self.round_robin_bit16_groups[group_index][new_index].data
+            if isinstance(param, Float8Tensor):
+                param._data = self.round_robin_bit16_groups[group_index][new_index]._data
+            else:
+                param.data = self.round_robin_bit16_groups[group_index][new_index].data
 
     def _round_robin_reorder(self, tensor_list, num_partitions):
 
