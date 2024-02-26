@@ -50,7 +50,7 @@ jobs:
           # check whether node has enough memory to load model check point
           cat /proc/meminfo
           # check whether blob has enough space for model check point
-          df -k |grep blob
+          df -k |grep "/blob$"
           pip install cmake
           git clone https://github.com/intel/intel-extension-for-pytorch
           cd intel-extension-for-pytorch/tests/cpu/isa
