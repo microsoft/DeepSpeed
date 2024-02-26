@@ -843,7 +843,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     else:
                         unpinned_fp32_buffer = torch.empty(num_elements, device=self.device, dtype=torch.float)
                         self._swap_in_sub_group_to_flat_buffer(unpinned_fp32_buffer, i)
-                        unpinned_fp32_buffer.ds_id = ds_id
+                        self.fp32_partitioned_groups_flat[i].ds_id = ds_id
                         self.optimizer_swapper.initialize_parameters(parameters=[self.fp32_partitioned_groups_flat[i]],
                                                                      src_tensors=[unpinned_fp32_buffer])
                 else:
