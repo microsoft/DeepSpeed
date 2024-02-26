@@ -5,7 +5,13 @@
 
 import torch
 from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
-import oneccl_bindings_for_pytorch  # noqa: F401 # type: ignore
+
+try:
+    import oneccl_bindings_for_pytorch  # noqa: F401 # type: ignore
+    oneccl_imported_p = True
+except ImportError as e:
+    oneccl_imported_p = False
+
 import psutil
 import os
 
@@ -15,7 +21,11 @@ class CPU_Accelerator(DeepSpeedAccelerator):
 
     def __init__(self):
         self._name = 'cpu'
-        self._communication_backend_name = 'ccl'
+        if oneccl_imported_p:
+            self._communication_backend_name = 'ccl'
+        else:
+            # fallback to gloo if oneccl_binding_for_pytorch is not installed
+            self._communication_backend_name = 'gloo'
         self.max_mem = psutil.Process().memory_info().rss
 
     def is_synchronized_device(self):
