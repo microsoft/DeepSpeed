@@ -47,6 +47,10 @@ jobs:
       - name: Detect instruction sets on instance
         run: |
           lscpu
+          # check whether node has enough memory to load model check point
+          cat /proc/meminfo
+          # check whether blob has enough space for model check point
+          df -k |grep blob
           pip install cmake
           git clone https://github.com/intel/intel-extension-for-pytorch
           cd intel-extension-for-pytorch/tests/cpu/isa
@@ -78,11 +82,7 @@ jobs:
           mkdir build
           cd build
           cmake ..
-          make
-          make install
-          #source ./_install/env/setvars.sh
-          # test whether oneCCL is correctly installed
-          #mpirun -n 2 ./examples/benchmark/benchmark
+          make -j install
 
       - name: Install transformers
         run: |
@@ -93,7 +93,8 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          # check why the host does not have AVX2 support
+          # sanity check for condition that DeepSpeed would install CPU_Accelerator
+          python -c "import torch;import intel_extension_for_pytorch as ipex;print(ipex._C._has_xpu())"
           pip install .[dev,1bit,autotuning,inf]
           ds_report
 
@@ -116,3 +117,123 @@ jobs:
           # LOCAL_SIZE=2 enforce CPU to report 2 devices, this helps run the test on github default runner
           LOCAL_SIZE=2 COLUMNS=240 TRANSFORMERS_CACHE=~/tmp/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest -m 'seq_inference' unit/
           LOCAL_SIZE=2 COLUMNS=240 TRANSFORMERS_CACHE=~/tmp/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest -m 'inference_ops' -m 'inference' unit/
+
+      - name: Download DeepSpeedExamples
+        run: |
+          git clone https://github.com/Microsoft/DeepSpeedExamples
+
+      - name: Sanity check minimal
+        run: |
+          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+          source oneCCL/build/_install/env/setvars.sh
+          python -c "import torch;import intel_extension_for_pytorch as ipex;print(ipex._C._has_xpu())"
+
+      - name: AutoTP test (facebook/opt-1.3b)
+        run: |
+          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+          source oneCCL/build/_install/env/setvars.sh
+          # modify MODEL to change the model name, other lines are the same
+          export MODEL=facebook/opt-1.3b
+          cd DeepSpeedExamples/inference/huggingface/text-generation
+          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+
+      - name: AutoTP test (bigscience/bloom-3b)
+        run: |
+          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+          source oneCCL/build/_install/env/setvars.sh
+          # modify MODEL to change the model name, other lines are the same
+          export MODEL=bigscience/bloom-3b
+          cd DeepSpeedExamples/inference/huggingface/text-generation
+          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+
+      - name: AutoTP test (tiiuae/falcon-7b)
+        run: |
+          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+          source oneCCL/build/_install/env/setvars.sh
+          # modify MODEL to change the model name, other lines are the same
+          export MODEL=tiiuae/falcon-7b
+          cd DeepSpeedExamples/inference/huggingface/text-generation
+          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+
+#      - name: AutoTP test (baichuan-inc/Baichuan-7B)
+#        run: |
+#          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+#          source oneCCL/build/_install/env/setvars.sh
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=baichuan-inc/Baichuan-7B
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+#
+#      - name: AutoTP test (EleutherAI/gpt-j-6b)
+#        run: |
+#          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+#          source oneCCL/build/_install/env/setvars.sh
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=EleutherAI/gpt-j-6b
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+#
+#      - name: AutoTP test (bigcode/starcoder)
+#        run: |
+#          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+#          source oneCCL/build/_install/env/setvars.sh
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=bigcode/starcoder
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+#
+#      - name: AutoTP test (google/flan-t5-xl)
+#        run: |
+#          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+#          source oneCCL/build/_install/env/setvars.sh
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=google/flan-t5-xl
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+#
+#      - name: AutoTP test (mistralai/Mistral-7B-v0.1)
+#        run: |
+#          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+#          source oneCCL/build/_install/env/setvars.sh
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=mistralai/Mistral-7B-v0.1
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+#
+#      - name: AutoTP test (mosaicml/mpt-7b)
+#        run: |
+#          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+#          source oneCCL/build/_install/env/setvars.sh
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=mosaicml/mpt-7b
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+#
+#      - name: AutoTP test (meta-llama/Llama-2-7b-hf)
+#        run: |
+#          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+#          source oneCCL/build/_install/env/setvars.sh
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=meta-llama/Llama-2-7b-hf
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+#
+#      - name: AutoTP test (EleutherAI/gpt-neox-20b)
+#        run: |
+#          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+#          source oneCCL/build/_install/env/setvars.sh
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=EleutherAI/gpt-neox-20
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
+#          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
