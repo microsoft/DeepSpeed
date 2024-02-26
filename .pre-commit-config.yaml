@@ -86,3 +86,4 @@ repos:
         entry: ./scripts/check-extraindexurl.py
         language: python
         files: \.(yml|yaml|sh|py)$
+        exclude: ^(scripts/check-extraindexurl.py)
