@@ -35,7 +35,7 @@ except ImportError:
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
 
 from op_builder import get_default_compute_capabilities, OpBuilder
-from op_builder.all_ops import ALL_OPS
+from op_builder.all_ops import ALL_OPS, accelerator_name
 from op_builder.builder import installed_cuda_version
 
 # Fetch rocm state.
@@ -280,6 +280,7 @@ with open('deepspeed/git_version_info_installed.py', 'w') as fd:
     fd.write(f"git_hash='{git_hash}'\n")
     fd.write(f"git_branch='{git_branch}'\n")
     fd.write(f"installed_ops={install_ops}\n")
+    fd.write(f"accelerator_name={accelerator_name}\n")
     fd.write(f"compatible_ops={compatible_ops}\n")
     fd.write(f"torch_info={torch_info}\n")
 
