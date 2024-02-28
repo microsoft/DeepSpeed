@@ -9,7 +9,7 @@ import collections
 import json
 import torch
 from functools import reduce
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 from deepspeed.utils import logger
 
@@ -110,8 +110,11 @@ class DeepSpeedConfigModel(BaseModel):
         extra="forbid",
         arbitrary_types_allowed=True,
         protected_namespaces=(),
-        json_encoders={torch.dtype: lambda x: str(x)},
     )
+
+    @field_serializer("dtype", check_fields=False)
+    def serialize_torch_dtype(dtype: torch.dtype) -> str:
+        return str(dtype)
 
 
 def get_config_default(config, field_name):
