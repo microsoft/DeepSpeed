@@ -2785,7 +2785,7 @@ class DeepSpeedEngine(Module):
         if self.load_universal_checkpoint():
             self.optimizer.update_lp_params()
             if load_zero_checkpoint:
-                self.update_optimizer_step(step=client_states['iteration'] + 1)
+                self.update_optimizer_step(step=client_states['iteration'])
 
         return load_path, client_states
 
