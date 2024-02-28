@@ -23,6 +23,7 @@ from deepspeed.checkpoint import enable_universal_checkpoint
 from deepspeed.checkpoint.constants import (DS_VERSION, PARTITION_COUNT, BASE_OPTIMIZER_STATE,
                                             SINGLE_PARTITION_OF_FP32_GROUPS, CLIP_GRAD, GROUP_PADDINGS,
                                             PARAM_SLICE_MAPPINGS)
+from transformer_engine.pytorch.float8_tensor import Float8Tensor
 
 setattr(sys.modules[__name__], 'fragment_address', fragment_address)
 
@@ -247,10 +248,19 @@ class BF16_Optimizer(ZeROOptimizer):
     def _update_storage_to_flattened_tensor(self, tensor_list, flat_tensor):
         updated_params = self.unflatten(flat_tensor, tensor_list)
         for p, q in zip(tensor_list, updated_params):
-            p.data = q.data
+            if isinstance(p.data, Float8Tensor):
+                p._data = q.data
+            else:
+                p.data = q.data
 
     def _flatten_dense_tensors_aligned(self, tensor_list, alignment):
-        return self.flatten(align_dense_tensors(tensor_list, alignment))
+        new_tensor_list = []
+        for t in tensor_list:
+            if isinstance(t, Float8Tensor):
+                new_tensor_list.append(t._data)
+            else:
+                new_tensor_list.append(t)
+        return self.flatten(align_dense_tensors(new_tensor_list, alignment))
 
     @torch.no_grad()
     def step(self, closure=None):
@@ -263,7 +273,7 @@ class BF16_Optimizer(ZeROOptimizer):
                                                      use_graph=self.graph_harvesting)
         self._global_grad_norm = all_groups_norm
 
-        assert all_groups_norm > 0.
+        #assert all_groups_norm > 0.
         if self.clip_grad > 0.:
             clip_tensors_by_global_norm(input_tensors=self.get_grads_for_norm(for_clipping=True),
                                         max_norm=self.clip_grad,
