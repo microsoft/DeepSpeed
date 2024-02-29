@@ -67,8 +67,7 @@ jobs:
           mkdir build
           cd build
           cmake ..
-          make
-          make install
+          make -j install
 
       - name: Install transformers
         run: |
