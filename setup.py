@@ -277,7 +277,7 @@ with open('deepspeed/git_version_info_installed.py', 'w') as fd:
     fd.write(f"git_hash='{git_hash}'\n")
     fd.write(f"git_branch='{git_branch}'\n")
     fd.write(f"installed_ops={install_ops}\n")
-    fd.write(f"accelerator_name={accelerator_name}\n")
+    fd.write(f"accelerator_name='{accelerator_name}'\n")
     fd.write(f"torch_info={torch_info}\n")
 
 print(f'install_requires={install_requires}')
