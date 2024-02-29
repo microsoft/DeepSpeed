@@ -46,7 +46,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          DS_ACCELERATOR=CPU pip install .[dev,1bit,autotuning,inf]
+          DS_ACCELERATOR=cpu pip install .[dev,1bit,autotuning,inf]
           #pip install .[dev,1bit,autotuning,inf,triton]
           ds_report
 
