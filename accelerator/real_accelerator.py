@@ -155,7 +155,7 @@ def get_accelerator():
                 import torch
 
                 # Determine if we are on a GPU or x86 CPU with torch.
-                if torch.cuda.is_available():
+                if torch.cuda.is_available():  #ignore-cuda
                     accelerator_name = "cuda"
                 else:
                     if accel_logger is not None:
