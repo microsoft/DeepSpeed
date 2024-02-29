@@ -27,7 +27,9 @@ def get_shard_size(total_size, mp_size, name=None, rank=None):
     last_linear = ["lm_head", "embed_out"]
     # When we have num_kv_heads defined, uneven division is possible, otherwise enforce near even division
     if rank == None:
-        rank = dist.get_rank()
+        rank = 0
+        if dist.initialized():
+            rank = dist.get_rank()
     if num_kv_heads != None and total_size % num_kv_heads == 0 and "mlp" not in str(name) and str(
             name) not in last_linear:
         my_slices = (num_kv_heads // mp_size) + (1 if rank < (num_kv_heads % mp_size) else 0)
