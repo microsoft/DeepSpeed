@@ -61,6 +61,7 @@ jobs:
 
       - name: Install oneCCL
         run: |
+          pip install cmake
           git clone https://github.com/oneapi-src/oneCCL
           cd oneCCL
           mkdir build
