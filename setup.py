@@ -168,12 +168,9 @@ def op_enabled(op_name):
     return int(get_env_if_set(env_var, BUILD_OP_DEFAULT))
 
 
-compatible_ops = dict.fromkeys(ALL_OPS.keys(), False)
 install_ops = dict.fromkeys(ALL_OPS.keys(), False)
 for op_name, builder in ALL_OPS.items():
     op_compatible = builder.is_compatible()
-    compatible_ops[op_name] = op_compatible
-    compatible_ops["deepspeed_not_implemented"] = False
 
     # If op is requested but not available, throw an error.
     if op_enabled(op_name) and not op_compatible:
@@ -281,11 +278,9 @@ with open('deepspeed/git_version_info_installed.py', 'w') as fd:
     fd.write(f"git_branch='{git_branch}'\n")
     fd.write(f"installed_ops={install_ops}\n")
     fd.write(f"accelerator_name={accelerator_name}\n")
-    fd.write(f"compatible_ops={compatible_ops}\n")
     fd.write(f"torch_info={torch_info}\n")
 
 print(f'install_requires={install_requires}')
-print(f'compatible_ops={compatible_ops}')
 print(f'ext_modules={ext_modules}')
 
 # Parse README.md to make long_description for PyPI page.
