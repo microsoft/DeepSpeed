@@ -1782,8 +1782,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             else:
                 norm_groups.append(self.get_grad_norm_direct(self.averaged_gradients[i], self.params_in_partition[i]))
 
-        if self.has_moe_layers:
-            self._average_expert_grad_norms(norm_groups)
+        if self.has_moe_layers and self.device != 'cpu':
+                self._average_expert_grad_norms(norm_groups)
 
         # calculating L2 norm
         return torch.norm(torch.stack(norm_groups), p=norm_type)
