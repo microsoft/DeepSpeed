@@ -52,7 +52,7 @@ jobs:
         run: |
           sudo apt-get install -y numactl
 
-      - name: Install oneCCL Bindings for PyTorch
+      - name: Install dependencies
         run: |
           pip install torch
           pip install py-cpuinfo

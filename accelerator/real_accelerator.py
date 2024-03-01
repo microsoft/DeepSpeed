@@ -167,7 +167,6 @@ def get_accelerator():
                 # TODO need a more decent way to detect which accelerator to use, consider using nvidia-smi command for detection
                 accelerator_name = "cuda"
                 pass
-            accelerator_name = "cuda"
 
         ds_set_method = "auto detect"
 
