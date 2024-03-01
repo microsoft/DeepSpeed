@@ -273,7 +273,7 @@ class BF16_Optimizer(ZeROOptimizer):
                                                      use_graph=self.graph_harvesting)
         self._global_grad_norm = all_groups_norm
 
-        #assert all_groups_norm > 0.
+        assert all_groups_norm > 0.
         if self.clip_grad > 0.:
             clip_tensors_by_global_norm(input_tensors=self.get_grads_for_norm(for_clipping=True),
                                         max_norm=self.clip_grad,
