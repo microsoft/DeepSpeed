@@ -83,13 +83,20 @@ def reduce_scatter_coalesced(
     tensors: List[Tensor],
     group: ProcessGroup = None,
 ) -> List[Tensor]:
-    """simultaneously reduce-scatter a list of tensors - this can be done more
-    efficiently than individual reduce scatter calls
-    TODO. see if PyTorch team wants a c++ version of this for ProcessGroupNCCL
-    """
+
     this_rank = dist.get_rank(group)
     world_sz = dist.get_world_size(group)
+    if dist.has_reduce_scatter_coalesced():
+        flattened_tensor_list = [tensor.view(-1).div_(world_sz) for tensor in tensors]
+        chunked_tensors = [torch.chunk(flattened_tensor, world_sz) for flattened_tensor in flattened_tensor_list]
+        output_lst = [chunked_tensor[this_rank] for chunked_tensor in chunked_tensors]
+        dist.reduce_scatter_coalesced(output_tensors=output_lst,
+                                      input_tensors=flattened_tensor_list,
+                                      group=group,
+                                      async_op=False)
+        return output_lst
 
+    # simultaneously reduce-scatter a list of tensors
     partition_lst_for_each_tensor = [None] * len(tensors)
     for tensor_idx, tensor in enumerate(tensors):
         flattened_tensor = tensor.view(-1)

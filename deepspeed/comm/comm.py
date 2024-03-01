@@ -472,6 +472,20 @@ def has_coalescing_manager():
     return cdb.has_coalescing_manager
 
 
+def reduce_scatter_coalesced(output_tensors, input_tensors, op=ReduceOp.SUM, group=None, async_op=False):
+    global cdb
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    return cdb.reduce_scatter_coalesced(output_tensors, input_tensors, op=op, group=group, async_op=async_op)
+
+
+def has_reduce_scatter_coalesced():
+    global cdb
+    assert cdb is not None and cdb.is_initialized(
+    ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    return cdb.has_reduce_scatter_coalesced()
+
+
 def all_gather_coalesced(output_tensors, input_tensors, group=None, async_op=False):
     global cdb
     assert cdb is not None and cdb.is_initialized(
