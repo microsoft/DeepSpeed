@@ -156,10 +156,10 @@ dynamically link them at runtime.
 ## Contributed HW support
 * DeepSpeed now support various HW accelerators and CPU contributed from DeepSpeed community
 
-| Contributor | Hardware | Contributor validated | Upstream validated |
-| ----------- | -------- | --------------------- | ------------------ |
-| Intel | Intel(R) Xeon(R) Processors | Yes | Yes |
-| Intel | Intel(R) Data Center GPU Max series | Yes | No |
+| Contributor | Hardware | Accelerator Name | Contributor validated | Upstream validated |
+| ----------- | -------- | ---------------- | --------------------- | ------------------ |
+| Intel | Intel(R) Xeon(R) Processors | cpu | Yes | Yes |
+| Intel | Intel(R) Data Center GPU Max series | xpu | Yes | No |
 
 ## PyPI
 We regularly push releases to [PyPI](https://pypi.org/project/deepspeed/) and encourage users to install from there in most cases.
