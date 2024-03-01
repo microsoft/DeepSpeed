@@ -1649,7 +1649,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     param.ds_secondary_tensor.narrow(0, 0, elements_to_copy_sec).copy_(
                         one_dim_param.narrow(0, secondary_start, elements_to_copy_sec))
 
-            # TODO: This is a temporary fix to avoid the issue of 2nd tensor all-gather happens before 2nd tensor partitioning (copy_ is async d2d copy) is done
+            # TODO: This is a temporary fix to avoid the issue of 2nd tensor all-gather happens before 2nd tensor partition is done
             get_accelerator().synchronize()
 
             print_rank_0(f"{param.ds_id} partitioned type {param.dtype} dev {param.device} shape {param.shape}",
