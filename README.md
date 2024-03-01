@@ -155,6 +155,7 @@ dynamically link them at runtime.
 
 ## Contributed HW support
 * DeepSpeed now support various HW accelerators and CPU contributed from DeepSpeed community
+
 | Contributor | Hardware | Contributor validated | Upstream validated |
 | ----------- | -------- | --------------------- | ------------------ |
 | Intel | Intel(R) Xeon(R) Processors | Yes | Yes |
