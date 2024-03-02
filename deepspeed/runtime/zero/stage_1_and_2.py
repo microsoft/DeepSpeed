@@ -1782,7 +1782,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             else:
                 norm_groups.append(self.get_grad_norm_direct(self.averaged_gradients[i], self.params_in_partition[i]))
 
-        if self.has_moe_layers and self.device != 'cpu':
+        if self.has_moe_layers:
             self._average_expert_grad_norms(norm_groups)
 
         # calculating L2 norm
@@ -1946,8 +1946,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         for i, norm in enumerate(norm_groups):
             if self.is_moe_param_group[i]:
                 scaled_norm_tensor = norm * 1.0 / dist.get_world_size(group=self.real_dp_process_group[i])
+                if self.device == 'cpu':
+                    scaled_norm_tensor = scaled_norm_tensor.to(get_accelerator().current_device_name())
                 dist.all_reduce(scaled_norm_tensor, group=self.real_dp_process_group[i])
-                norm_groups[i] = scaled_norm_tensor
+                norm_groups[i] = scaled_norm_tensor.to(self.device)
 
     def unscale_and_clip_grads(self, grad_groups_flat, total_norm):
         # compute combined scale factor for this group
