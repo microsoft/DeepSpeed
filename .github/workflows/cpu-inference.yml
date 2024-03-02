@@ -55,7 +55,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install torch
-          pip install py-cpuinfo
           # check installed version
           pip list |grep \\\<torch\\\>
 

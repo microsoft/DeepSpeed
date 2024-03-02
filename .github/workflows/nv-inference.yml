@@ -46,7 +46,6 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          pip install py-cpuinfo psutil
           DS_ACCELERATOR=cpu pip install .[dev,1bit,autotuning,inf]
           #pip install .[dev,1bit,autotuning,inf,triton]
           ds_report
