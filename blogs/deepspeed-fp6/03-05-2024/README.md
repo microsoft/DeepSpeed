@@ -29,14 +29,14 @@ To cite DeepSpeed-FP6, please cite the following two arxiv reports:
 }
 ```
 # Table of Contents
-1. [Why 6-bit Floating Point(FP6)?](#introduction)
+1. [Why 6-bit Floating Point (FP6)?](#introduction)
 2. [System Support for FP6](#system-fp6)
 3. [LLMs serving with FP6](#serving-llm)
 4. [How to start](#how-to-start)
 5. [Software Improvements](#software-improvements)
 6. [Acknowledgments and Contributions](#ac)
 
-# 1.Why Floating Point 6-bit (FP6) <a name="introduction"></a>
+# 1.Why 6-bit Floating Point (FP6) <a name="introduction"></a>
 The realm of Large Language Models (LLMs) like GPT has been evolving rapidly, with a focus on enhancing performance while managing the computational and storage demands.
 
 *Diving Deep into 4-Bit Quantization's Challenges.* In our [recent research](https://arxiv.org/abs/2312.08583), we examine the drawbacks of using 4-bit quantization techniques such as GPTQ in large language models (LLMs). While these techniques hold the potential to decrease model size and computational requirements, they often fall short in critical more general tasks due to overfitting issues.  We extend the examination to include more generative tasks like code generation and summarization, areas where standard quantization methods have not been thoroughly explored. We found that INT4 weight quantization does not perform well in these broader applications, underscoring the urgent need for new approaches that improve both the efficiency and effectiveness of LLMs.
