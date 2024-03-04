@@ -97,8 +97,7 @@ class _AllToAll(torch.autograd.Function):
     @staticmethod
     def forward(
             ctx: Any,
-            # TODO: replace with DS process group
-            group: torch.distributed.ProcessGroup,
+            group: dist.ProcessGroup,
             input: Tensor) -> Tensor:  # type: ignore
         ctx.group = group
         input = input.contiguous()
