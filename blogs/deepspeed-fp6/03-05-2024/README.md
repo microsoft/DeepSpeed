@@ -10,7 +10,8 @@
 
 </div>
 
-To cite DeepSpeed-FP6, please cite our the following two arxiv reports:
+
+To cite DeepSpeed-FP6, please cite the following two arxiv reports:
 
 ```
 @article{wu2023zeroquant,
@@ -28,7 +29,7 @@ To cite DeepSpeed-FP6, please cite our the following two arxiv reports:
 }
 ```
 # Table of Contents
-1. [Why Floating Point 6-bit (FP6)?](#introduction)
+1. [Why 6-bit Floating Point(FP6)?](#introduction)
 2. [System Support for FP6](#system-fp6)
 3. [LLMs serving with FP6](#serving-llm)
 4. [How to start](#how-to-start)
@@ -45,7 +46,7 @@ The realm of Large Language Models (LLMs) like GPT has been evolving rapidly, wi
 
 # 2 System Support for FP6 <a name="system-fp6"></a>
 
-*Pioneering Full-Stack GPU Kernel Design*. One challenge of FP6 quantization is that there lacks an efficient GPU kernel design for this irregular bit-width. In our [recent research](https://arxiv.org/abs/2401.14112), we introduce TC-FPx, the first full-stack GPU system design scheme with unified Tensor Core support of float-point weights for FP6 and various quantization bit-width (6-bit, 5-bit, 3-bit, etc.), mitigating the "memory wall" issues during LLM inference.TC-FPx breaks the limitations of the underlying GPU hardware, allowing the GPU to support linear layer calculations involving model weights of arbitrary bit width. In TC-FPx, Tensor Cores are utilized for intensive computation of matrix multiplications, while SIMT cores are effectively leveraged for weight dequantization, transforming the x-bit model weights to FP16 type during runtime before feeding them to Tensor Cores. It has the following key innovations:
+*Pioneering Full-Stack GPU Kernel Design*. One challenge of FP6 quantization is that there lacks an efficient GPU kernel design for this irregular bit-width. In our [recent research](https://arxiv.org/abs/2401.14112), we introduce TC-FPx, the first full-stack GPU system design scheme with unified Tensor Core support of float-point weights for FP6 and various quantization bit-width (6-bit, 5-bit, 3-bit, etc.), mitigating the "memory wall" issues during LLM inference. TC-FPx breaks the limitations of the underlying GPU hardware, allowing the GPU to support linear layer calculations involving model weights of arbitrary bit width. In TC-FPx, Tensor Cores are utilized for intensive computation of matrix multiplications, while SIMT cores are effectively leveraged for weight dequantization, transforming the x-bit model weights to FP16 type during runtime before feeding them to Tensor Cores. It has the following key innovations:
 <div align="center">
   <img src="./assets/fp6-design.png" alt="fp6 design" width="600"/>
 
@@ -59,7 +60,7 @@ The realm of Large Language Models (LLMs) like GPT has been evolving rapidly, wi
 
 
 
-On average, the TC-FPx kernel demonstrates a 2.1-fold enhancement in processing speed over the FP16 cuBLAS benchmark during memory-intensive matrix-matrix multiplications on NVIDIA A100 GPUs. Notably, the implementation of the FP6 kernel through FP6 quantization facilitates the operation of LLaMA-70b on a solitary A100 GPU. This remarkable feat results in a normalized inference throughput that is 1.69 to 2.65 times superior to the FP16 benchmark when conducting inference tasks with batch sizes under 32.
+On average, the TC-FPx kernel demonstrates a 2.1-fold enhancement in processing speed over the FP16 cuBLAS benchmark during memory-intensive matrix-matrix multiplications on NVIDIA A100 GPUs. Notably, the implementation of the FP6 kernel through FP6 quantization facilitates the operation of LLaMA-70b on a solitary A100 GPU. This remarkable feat results in a normalized inference throughput that is 1.69 to 2.65 times superior to the FP16 benchmark when conducting inference tasks with batch-size under 32.
 
 
 # 3. LLMs serving with FP6 <a name="serving-llm"></a>
@@ -68,7 +69,9 @@ We have successfully integrated the FP6 quantization kernel into DeepSpeed-FastG
 
 We assessed the LLaMA-70b model's serving performance using FP6 quantization on two A100 GPUs-80G, achieving a *1.5x* decrease in inference latency and a *3.5x* increase in inference throughput compared to the FP16 baseline. FP6 quantization offers two key benefits for model inference: it enables the deployment of large language models (LLMs) on fewer GPUs—for instance, LLaMA-70b fits on a single A100-80G GPU with FP6, versus at least two GPUs required for the FP16 baseline. Additionally, it significantly accelerates linear layers in memory-bound scenarios, common in LLM inference. Moreover, FP6 quantization reduces GPU memory requirements for model weights, allowing for more queries to be served simultaneously, leading to higher serving throughputs.
 
-Our system demonstrates exceptional efficiency in handling long generation sequences. As illustrated in Figure 2, for generation lengths surpassing the prompt length, our system exhibits a notable performance superiority. The disparity in performance between FP6 and the FP16 baseline widens with the extension of the generation sequence length. This trend is primarily attributed to the inference process becoming increasingly memory-constrained as the decoding length expands, favoring our weight-quantized GPU kernels by facilitating greater kernel speed enhancements relative to the FP16 baseline. It's important to highlight two factors contributing to the increased memory constraints in longer decoding scenarios. Firstly, the memory usage for the KV cache escalates with the sequence length, reducing the feasible batch sizes and leading to memory-bound General Matrix Multiply (GEMM) operations. Secondly, within the context of DeepSpeed-FastGen's prefill-decoding-mixed-batch technique, scenarios involving extended token generation encounter a reduction in prefill-chunks available for mixing with decodings. This results in a higher frequency of batches dedicated solely to decodings, further intensifying the memory-bound conditions.
+Our system demonstrates exceptional efficiency in handling long generation sequences. As illustrated in Figure 1, for generation lengths surpassing the prompt length, our system exhibits a notable performance superiority. The disparity in performance between FP6 and the FP16 baseline widens with the extension of the generation sequence length. This trend is primarily attributed to the inference process becoming increasingly memory-constrained as the decoding length expands, favoring our weight-quantized GPU kernels by facilitating greater kernel speed enhancements relative to the FP16 baseline. It is important to highlight two factors contributing to the increased memory constraints in longer decoding scenarios. 
+ - Firstly, the memory usage for the KV cache escalates with the sequence length, reducing the feasible batch sizes and leading to memory-bound General Matrix Multiply (GEMM) operations. 
+ - Secondly, within the context of DeepSpeed-FastGen's prefill-decoding-mixed-batch technique, scenarios involving extended token generation encounter a reduction in prefill-chunks available for mixing with decodings. This results in a higher frequency of batches dedicated solely to decodings, further intensifying the memory-bound conditions.
 
 <p align="center">
   <img src="./assets/servingllm/100-250.png" alt="Caption1" width="30%">
@@ -76,7 +79,7 @@ Our system demonstrates exceptional efficiency in handling long generation seque
   <img src="./assets/servingllm/100-1000.png" alt="Caption3" width="30%">
 </p>
 
-  *Figure 1:  End-to-end serving performances in DeepSpeed-MII with 128 number of requests and 32 clients, for LLaMA-2-70B model on 2xA100-80g with two-way tensor parallelism. We experimented with different number of requests between 128, 256 and 512 and found that the speedup is simillar. 
+  *Figure 1*:  End-to-end serving performances in DeepSpeed-MII with 128 number of requests and 32 clients, for LLaMA-2-70B model on 2xA100-80g with two-way tensor parallelism. We experimented with different number of requests between 128, 256 and 512 and found that the speedup is simillar. 
 
 Despite the significant benefits of FP6 quantization, the current implementation faces limitations. Notably, in scenarios where GEMM operations become compute-bound due to large batch sizes or sufficient GPU memory, our weight-only quantization kernel may not sustain its latency advantage, especially against optimized libraries like cuBlas. However, our system's memory efficiency remains a key benefit. Currently, support is limited to Non-Mixture of Experts (Non-MoE) structures, with efforts underway to extend support to MoE structures. Additionally, the system is compatible only with FP16 input models, as the FP6 kernel processes FP16 activations exclusively.
 
@@ -123,6 +126,6 @@ We welcome your contributions to DeepSpeed! We encourage you to report issues, 
 We thank the collaboration of the University of Sydney and Rutgers University. We also thank the open-source library [aspuru-guzik-group/qtorch](https://github.com/aspuru-guzik-group/qtorch).
 
 Contributions:  
-Xiaoxia Wu\*$^1$, Zhen Zheng\*$^1$, Haojun Xia\*$^2$, Arash Bakhtiari $^1$, Michael Wyatt $^1$, Shiyang Chen $^3$, Stephen Youn $^1$, Yuxiong He, Tunji Ruwase $^1$,  Zhewei Yao, Leon Song $^1$ $^2$  
+Xiaoxia Wu\* $^1$, Zhen Zheng\* $^1$, Haojun Xia\* $^2$, Arash Bakhtiari $^1$, Michael Wyatt $^1$, Shiyang Chen $^3$, Stephen Youn $^1$, Yuxiong He, Tunji Ruwase $^1$,  Zhewei Yao, Leon Song $^1$ $^2$  
 \* equal contribution  
 1: Microsoft  2: University of Sydney  3: Rutgers University
