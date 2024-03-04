@@ -108,6 +108,9 @@ To benchmark with our DeepSpeed-FP6, please visit the following script:
 https://github.com/microsoft/DeepSpeedExamples/blob/master/benchmarks/inference/mii/run_all.sh
 ```
 
+Please also visit the [FP6-LLM github](https://github.com/usyd-fsalab/fp6_llm) for standalone kernel of FP6 and star the repo!
+
+
 # 5. Software Improvement  <a name="software-improvements"></a>
 
 
@@ -127,5 +130,8 @@ We thank the collaboration of the University of Sydney and Rutgers University. W
 
 Contributions:  
 Xiaoxia Wu\* $^1$, Zhen Zheng\* $^1$, Haojun Xia\* $^2$, Arash Bakhtiari $^1$, Michael Wyatt $^1$, Shiyang Chen $^3$, Stephen Youn $^1$, Yuxiong He, Tunji Ruwase $^1$,  Zhewei Yao, Leon Song $^1$ $^2$  
-\* equal contribution  
-1: Microsoft  2: University of Sydney  3: Rutgers University
+
+\* Equal Contribution  
+1: Microsoft  
+2: University of Sydney  
+3: Rutgers University
