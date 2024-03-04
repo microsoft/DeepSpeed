@@ -108,7 +108,7 @@ To benchmark with our DeepSpeed-FP6, please visit the following script:
 https://github.com/microsoft/DeepSpeedExamples/blob/master/benchmarks/inference/mii/run_all.sh
 ```
 
-Please also visit the [FP6-LLM github](https://github.com/usyd-fsalab/fp6_llm) for standalone kernel of FP6 and star the repo!
+Please also visit the [FP6-LLM github](https://github.com/usyd-fsalab/fp6_llm) for the standalone kernel of FP6.  Don't forget to star the repo to show your support!
 
 
 # 5. Software Improvement  <a name="software-improvements"></a>
