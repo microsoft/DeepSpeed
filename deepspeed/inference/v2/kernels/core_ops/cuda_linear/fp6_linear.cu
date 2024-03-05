@@ -31,9 +31,6 @@ static void Kernel_Ex(cudaStream_t stream,
                       const size_t K_Global,
                       int Split_K)
 {
-// The current implementation only supports SM >= 8.0
-#if __CUDA_ARCH__ >= 800
-
 #ifdef DEBUG_MODE
     printf("\n");
     printf("Launcher.cu->Kernel_Ex():\n");
@@ -69,8 +66,6 @@ static void Kernel_Ex(cudaStream_t stream,
 #endif
     QUANT_GEMM_Kernel<TilingConfig, OutputDataType><<<GridDim, BlockDim, SHMEM_SZ, stream>>>(
         Weight1, Weight2, Scales, B, C, M_Global, N_Global, K_Global, Split_K);
-
-#endif  // __CUDA_ARCH__ >= 800
 }
 
 /*
