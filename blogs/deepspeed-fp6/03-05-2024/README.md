@@ -114,8 +114,7 @@ Please also visit the [FP6-LLM github](https://github.com/usyd-fsalab/fp6_llm) f
 # 5. Software Improvements  <a name="software-improvements"></a>
 
 
-
-* Our DeepSpeed-FP6 currently only support for linear GEMM. We are looking forward the support for  MoE GEMM. We will continue to improve DeepSpeed-FP6 with your feedback and support. DeepSpeed-FP6 is a component of the larger DeepSpeed ecosystem, which includes a range of Deep Learning systems and modeling technologies. To learn more,
+Our DeepSpeed-FP6 currently only support for linear GEMM. We are looking forward the support for  MoE GEMM. We will continue to improve DeepSpeed-FP6 with your feedback and support. DeepSpeed-FP6 is a component of the larger DeepSpeed ecosystem, which includes a range of Deep Learning systems and modeling technologies. To learn more,
 
 * Please visit our [website](https://www.deepspeed.ai/) for detailed blog posts, tutorials, and helpful documentation.
 * Follow us on our [English X(Twitter)](https://twitter.com/MSFTDeepSpeed), [Japanese X(Twitter)](https://twitter.com/MSFTDeepSpeedJP), and [Chinese Zhihu](https://www.zhihu.com/people/deepspeed) for latest news on DeepSpeed.
