@@ -111,7 +111,7 @@ https://github.com/microsoft/DeepSpeedExamples/blob/master/benchmarks/inference/
 Please also visit the [FP6-LLM github](https://github.com/usyd-fsalab/fp6_llm) for the standalone kernel of FP6.  Don't forget to star the repo to show your support!
 
 
-# 5. Software Improvement  <a name="software-improvements"></a>
+# 5. Software Improvements  <a name="software-improvements"></a>
 
 
 
