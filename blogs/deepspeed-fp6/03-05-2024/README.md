@@ -60,7 +60,7 @@ The realm of Large Language Models (LLMs) like GPT has been evolving rapidly, wi
 
 
 
-On average, the TC-FPx kernel demonstrates a 2.1-fold enhancement in processing speed over the FP16 cuBLAS benchmark during memory-intensive matrix-matrix multiplications on NVIDIA A100 GPUs. Notably, the implementation of the FP6 kernel through FP6 quantization facilitates the operation of LLaMA-70b on a solitary A100 GPU. This remarkable feat results in a normalized inference throughput that is 1.69 to 2.65 times superior to the FP16 benchmark when conducting inference tasks with batch-size under 32.
+On average, the TC-FPx kernel demonstrates a 2.1-fold enhancement in processing speed over the FP16 cuBLAS benchmark during memory-intensive matrix-matrix multiplications on NVIDIA A100 GPUs. Notably, the implementation of the FP6 kernel through FP6 quantization facilitates the operation of LLaMA-70b on a solitary A100 GPU. This remarkable feat results in a normalized inference throughput that is 1.69 to 2.65 times superior to the FP16 benchmark when conducting inference tasks with batch-size under 32. Currently, TC-FPx kernel only supports NVIDIA Ampere GPUs and is only tested and verified on A100 GPUs
 
 
 # 3. LLMs serving with FP6 <a name="serving-llm"></a>
