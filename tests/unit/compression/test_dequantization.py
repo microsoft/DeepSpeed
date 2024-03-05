@@ -13,8 +13,8 @@ import deepspeed
 from deepspeed.accelerator import get_accelerator
 
 
-
 class TestDequantization(DistributedTest):
+
     def init(self):
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         self.device = torch.device(get_accelerator().device_name(local_rank))

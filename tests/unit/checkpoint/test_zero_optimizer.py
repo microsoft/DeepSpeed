@@ -56,7 +56,6 @@ class TestZeROCheckpoint(DistributedTest):
         if not get_accelerator().is_fp16_supported():
             pytest.skip("fp16 is not supported")
 
-
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
