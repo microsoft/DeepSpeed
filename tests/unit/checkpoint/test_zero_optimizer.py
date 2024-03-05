@@ -23,6 +23,8 @@ class TestZeROCheckpoint(DistributedTest):
 
     @pytest.mark.parametrize('zero_stage', [3])
     def test_pipeline_checkpoint_loading(self, tmpdir, zero_stage):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "optimizer": {
@@ -51,6 +53,9 @@ class TestZeROCheckpoint(DistributedTest):
     def test_load_optimizer_state(self, tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
+
 
         config_dict = {
             "train_batch_size": 2,
@@ -91,6 +96,8 @@ class TestZeROCheckpoint(DistributedTest):
     def test_not_load_optimizer_state(self, tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
 
         config_dict = {
             "train_batch_size": 2,
@@ -126,6 +133,8 @@ class TestZeROCheckpoint(DistributedTest):
 
     @pytest.mark.parametrize('zero_stage', [1, 2])
     def test_hybrid_optimizer_state(self, tmpdir, zero_stage):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_micro_batch_size_per_gpu": 2,
             "gradient_accumulation_steps": 2,
@@ -152,6 +161,8 @@ class TestZeROCheckpoint(DistributedTest):
 
     @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
     def test_load_module_only(self, tmpdir, zero_stage):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "optimizer": {
@@ -216,6 +227,8 @@ class TestZeROElasticCheckpoint(DistributedTest):
     world_size = 2
 
     def test_elastic_checkpoint_fixed_dp(self, tmpdir, elastic_save, elastic_load, load_optim):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         ds_config = {
             "train_batch_size": 2,
             "optimizer": {
@@ -269,6 +282,8 @@ class TestZeROElasticCheckpoint(DistributedTest):
 
     def test_elastic_checkpoint_change_dp(self, ws4_model_checkpoint, class_tmpdir, elastic_save, elastic_load,
                                           load_optim):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         ds_config = {
             "train_batch_size": 4,
             "optimizer": {
@@ -300,6 +315,8 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
 
     @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
     def test_immediate_save_load(self, tmpdir, zero_stage):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 4,
             "optimizer": {
@@ -325,6 +342,8 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
 
     @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
     def test_load_immediate_save(self, tmpdir, zero_stage):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 4,
             "optimizer": {
@@ -367,6 +386,8 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
 
     @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
     def test_save_before_accum_grad_is_done(self, tmpdir, zero_stage):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "optimizer": {
                 "type": 'Adam'
@@ -417,6 +438,8 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
     @pytest.mark.parametrize('zero_stage', [1, 2, 3])
     def test_load_optimizer_state(self, tmpdir, zero_stage):
 
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -448,6 +471,8 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
     @pytest.mark.parametrize('zero_stage', [1, 2, 3])
     def test_not_load_optimizer_state(self, tmpdir, zero_stage):
 
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -476,6 +501,8 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
 
     @pytest.mark.parametrize('zero_stage', [1, 2, 3])
     def test_load_module_only(self, tmpdir, zero_stage):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "optimizer": {
@@ -499,6 +526,8 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
     @pytest.mark.parametrize('zero_stage', [1, 2])
     def test_save_exclude_frozen_weights(self, tmpdir, zero_stage):
         world_size = 1
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
             "optimizer": {
@@ -547,6 +576,8 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
     @pytest.mark.parametrize('zero_stage', [1, 2])
     def test_save_exclude_custom_frozen_weights(self, tmpdir, zero_stage):
         world_size = 1
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
             "optimizer": {

@@ -5,6 +5,7 @@
 
 import deepspeed
 from deepspeed.ops.op_builder import CPUAdamBuilder
+from deepspeed.accelerator import get_accelerator
 
 from unit.common import DistributedTest
 from unit.simple_model import *
@@ -22,6 +23,8 @@ class TestLRSchedulerCheckpoint(DistributedTest):
     def test_checkpoint_lr_scheduler(self, tmpdir, zero_stage, use_cpu_offload):
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
 
         config_dict = {
             "train_batch_size": 2,
@@ -71,6 +74,8 @@ class TestLRSchedulerCheckpoint(DistributedTest):
     def test_checkpoint_no_lr_scheduler(self, tmpdir, zero_stage, use_cpu_offload):
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
 
         config_dict = {
             "train_batch_size": 2,

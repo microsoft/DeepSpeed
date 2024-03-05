@@ -19,6 +19,8 @@ class TestOtherOptimizerCheckpoint(DistributedTest):
 
     @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="lamb is not compatible")
     def test_checkpoint_unfused_optimizer(self, tmpdir):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
@@ -69,6 +71,8 @@ class TestOtherOptimizerCheckpoint(DistributedTest):
                                             load_optimizer_states=False)
 
     def test_checkpoint_fused_optimizer(self, tmpdir):
+        if not get_accelerator().is_fp16_supported():
+            pytest.skip("fp16 is not supported")
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
