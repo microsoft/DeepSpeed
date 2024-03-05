@@ -11,7 +11,7 @@
 </div>
 
 
-To cite DeepSpeed-FP6, please cite the following two arxiv reports:
+To cite DeepSpeed-FP6, please cite the following two arxiv reports - ZeroQuant(4+2) and FP6-LLM:
 
 ```
 @article{wu2023zeroquant,
@@ -39,14 +39,14 @@ To cite DeepSpeed-FP6, please cite the following two arxiv reports:
 # 1. Why 6-bit Floating Point (FP6) <a name="introduction"></a>
 The realm of Large Language Models (LLMs) like GPT has been evolving rapidly, with a focus on enhancing performance while managing the computational and storage demands.
 
-*Diving Deep into 4-Bit Quantization's Challenges.* In our [recent research](https://arxiv.org/abs/2312.08583), we examine the drawbacks of using 4-bit quantization techniques such as GPTQ in large language models (LLMs). While these techniques hold the potential to decrease model size and computational requirements, they often fall short in critical more general tasks due to overfitting issues.  We extend the examination to include more generative tasks like code generation and summarization, areas where standard quantization methods have not been thoroughly explored. We found that INT4 weight quantization does not perform well in these broader applications, underscoring the urgent need for new approaches that improve both the efficiency and effectiveness of LLMs.
+*Diving Deep into 4-Bit Quantization's Challenges.* In our recent research - ZeroQuant(4+2)[1], we examine the drawbacks of using 4-bit quantization techniques such as GPTQ in large language models (LLMs). While these techniques hold the potential to decrease model size and computational requirements, they often fall short in critical more general tasks due to overfitting issues.  We extend the examination to include more generative tasks like code generation and summarization, areas where standard quantization methods have not been thoroughly explored. We found that INT4 weight quantization does not perform well in these broader applications, underscoring the urgent need for new approaches that improve both the efficiency and effectiveness of LLMs.
 
-*Breakthrough with FP6.* Our exploration of different quantization methods brought us to the FP6 precision standard. Despite the difficulties in integrating and speeding up FP6 with current AI hardware — a challenge we will address in the following section —this format excels in performance and flexibility for a variety of tasks. Notably, models quantized with FP6, like the StarCoder-15B, achieve results comparable to their FP16 equivalents in code generation, and smaller models (like BART-406M) meet standard FP16 performance levels in summarization. To improve the efficiency of AI hardware and equal the best performance seen with INT4 quantization, we propose a novel 4+2 FP6 scheme. This innovation makes FP6 a promising avenue for enhancing the efficiency of LLMs, marking a significant leap in the progress of AI technologies.  For more details, please refer to our [research paper](https://arxiv.org/abs/2312.08583). 
+*Breakthrough with FP6.* Our exploration of different quantization methods brought us to the FP6 precision standard. Despite the difficulties in integrating and speeding up FP6 with current AI hardware — a challenge we will address in the following section —this format excels in performance and flexibility for a variety of tasks. Notably, models quantized with FP6, like the StarCoder-15B, achieve results comparable to their FP16 equivalents in code generation, and smaller models (like BART-406M) meet standard FP16 performance levels in summarization. To improve the efficiency of AI hardware and equal the best performance seen with INT4 quantization, we propose a novel 4+2 FP6 scheme. This innovation makes FP6 a promising avenue for enhancing the efficiency of LLMs, marking a significant leap in the progress of AI technologies.  For more details, please refer to our research paper - ZeroQuant(4+2)[1]. 
 
 
 # 2. System Support for FP6 <a name="system-fp6"></a>
 
-*Pioneering Full-Stack GPU Kernel Design.* One challenge of FP6 quantization is that there lacks an efficient GPU kernel design for this irregular bit-width. In our [recent research](https://arxiv.org/abs/2401.14112), we introduce TC-FPx, the first full-stack GPU system design scheme with unified Tensor Core support of floating point weights for FP6 and various quantization bit-width (6-bit, 5-bit, 3-bit, etc.), mitigating the "memory wall" issues during LLM inference. TC-FPx breaks the limitations of the underlying GPU hardware, allowing the GPU to support linear layer calculations involving model weights of arbitrary bit width. In TC-FPx, Tensor Cores are utilized for intensive computation of matrix multiplications, while SIMT cores are effectively leveraged for weight dequantization, transforming the x-bit model weights to FP16 type during runtime before feeding them to Tensor Cores. It has the following key innovations:
+*Pioneering Full-Stack GPU Kernel Design.* One challenge of FP6 quantization is that there lacks an efficient GPU kernel design for this irregular bit-width. In our recent research - FP6-LLM [2], we introduce TC-FPx, the first full-stack GPU system design scheme with unified Tensor Core support of floating point weights for FP6 and various quantization bit-width (6-bit, 5-bit, 3-bit, etc.), mitigating the "memory wall" issues during LLM inference. TC-FPx breaks the limitations of the underlying GPU hardware, allowing the GPU to support linear layer calculations involving model weights of arbitrary bit width. In TC-FPx, Tensor Cores are utilized for intensive computation of matrix multiplications, while SIMT cores are effectively leveraged for weight dequantization, transforming the x-bit model weights to FP16 type during runtime before feeding them to Tensor Cores. It has the following key innovations:
 <div align="center">
   <img src="./assets/fp6-design.png" alt="fp6 design" width="600"/>
 
@@ -65,7 +65,7 @@ On average, the TC-FPx kernel demonstrates a 2.1-fold enhancement in processing 
 
 # 3. LLMs serving with FP6 <a name="serving-llm"></a>
 
-We have successfully integrated the FP6 quantization kernel into DeepSpeed-FastGen, facilitating on-the-fly, weight-only quantization. This enhancement permits the efficient quantization and deployment of large language models (LLMs) through a unified configuration option within DeepSpeed-FastGen. Detailed information regarding this feature will be provided in due course. Via our interface, users have the flexibility to input either a HuggingFace model name or a local checkpoint directory. Upon input, our system initiates the loading of the specified checkpoint, implements FP6 round-to-nearest quantization across each linear layer, and transforms the quantized weights into 6-bit prepacked tensors. These tensors then serve as the updated weights, while the original FP16 weights are discarded to optimize memory usage. Throughout the inference stage, the FP6 kernels leverage these 6-bit prepacked weights, ensuring a seamless experience for users engaging with our platform.
+We have successfully integrated the FP6 quantization kernel [3] into DeepSpeed-FastGen, facilitating on-the-fly, weight-only quantization. This enhancement permits the efficient quantization and deployment of large language models (LLMs) through a unified configuration option within DeepSpeed-FastGen. Detailed information regarding this feature will be provided in due course. Via our interface, users have the flexibility to input either a HuggingFace model name or a local checkpoint directory. Upon input, our system initiates the loading of the specified checkpoint, implements FP6 round-to-nearest quantization across each linear layer, and transforms the quantized weights into 6-bit prepacked tensors. These tensors then serve as the updated weights, while the original FP16 weights are discarded to optimize memory usage. Throughout the inference stage, the FP6 kernels leverage these 6-bit prepacked weights, ensuring a seamless experience for users engaging with our platform.
 
 We assessed the LLaMA-70b model's serving performance using FP6 quantization on two A100 GPUs-80G, achieving a *1.5x* decrease in inference latency and a *3.5x* increase in inference throughput compared to the FP16 baseline. FP6 quantization offers two key benefits for model inference: it enables the deployment of large language models (LLMs) on fewer GPUs — for instance, LLaMA-70b fits on a single A100-80G GPU with FP6, versus at least two GPUs required for the FP16 baseline. Additionally, it significantly accelerates linear layers in memory-bound scenarios, common in LLM inference. Moreover, FP6 quantization reduces GPU memory requirements for model weights, allowing for more queries to be served simultaneously, leading to higher serving throughputs.
 
@@ -134,3 +134,11 @@ Xiaoxia Wu\* $^1$, Zhen Zheng\* $^1$, Haojun Xia\* $^2$, Arash Bakhtiari $^1$, M
 1: Microsoft  
 2: University of Sydney  
 3: Rutgers University
+
+Reference:
+
+- [1] ZeroQuant(4+2): Redefining LLMs Quantization with a New FP6-Centric Strategy for Diverse Generative Tasks. arXiv. https://arxiv.org/abs/2312.08583
+
+- [2] FP6-LLM: Efficiently Serving Large Language Models Through FP6-Centric Algorithm-System Co-Design. arXiv. https://arxiv.org/abs/2401.14112
+
+- [3] FP6-LLM kernel release. GitHub. https://github.com/usyd-fsalab/fp6_llm
