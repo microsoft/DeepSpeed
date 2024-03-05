@@ -60,7 +60,7 @@ def fp_quantize(input: torch.FloatTensor,
     orig_device = input.device
     input = input.to(torch.float32).to(get_accelerator().current_device())
     if num_bits == 6:
-        if exp_bits == 3:  # this is defulat
+        if exp_bits == 3:  # this is default
             q_range = 28
         else:
             raise NotImplementedError
