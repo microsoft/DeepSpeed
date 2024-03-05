@@ -7,7 +7,6 @@ from typing import Optional
 
 import pytest
 import torch
-import warnings
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.inference.v2.inference_utils import ActivationType, DtypeEnum, is_gated
@@ -89,7 +88,8 @@ def _fp6_quantized_linear_helper(tokens: int,
                                  out_channels: int,
                                  dtype: DtypeEnum,
                                  act_fn: ActivationType,
-                                 use_bias: bool = True) -> None:
+                                 use_bias: bool = True,
+                                 expect_failure: bool = False) -> None:
     # The current FP6 kernel only supports NVIDIA Ampere GPUs.
     if not 'cuda' in get_accelerator().current_device_name():
         return
@@ -123,15 +123,13 @@ def _fp6_quantized_linear_helper(tokens: int,
     bundle = ConfigBundle(name='quantized_wf6af16_linear', config=linear_config)
     fp6_linear_module = DSLinearRegistry.instantiate_config(bundle)
     weight_fp6 = fp6_linear_module.transform_param(weight.clone().cpu()).to(get_accelerator().current_device_name())
-    try:
-        ds_output = fp6_linear_module(hidden_states, weight_fp6, bias)
-    except ValueError as e:
-        if str(e) != "The out and in channel should be multiple of 256 and 64 respectively.":
-            raise
-        else:
-            warnings.warn("The out and in channel should be multiple of 256 and 64 respectively. Skipping the test. "
-                          f"tokens: {tokens}, in_channels: {in_channels}, out_channels: {out_channels}")
+
+    if expect_failure:
+        with pytest.raises(ValueError) as excinfo:
+            ds_output = fp6_linear_module(hidden_states, weight_fp6, bias)
+        assert "The out and in channel should be multiple of 256 and 64 respectively." in str(excinfo.value)
     else:
+        ds_output = fp6_linear_module(hidden_states, weight_fp6, bias)
         # The current FP6 kernel uses FP16 Tensor Core.
         tolerances = (3e-2, 2e-3)  # tolerances for fp16
 
@@ -158,9 +156,6 @@ all_in_out_channels = [
     (8192, 8192),
     (8192, 28672),
     (28672, 8192),
-    # Other shapes, not supported by FP6 kernels. Will raise ValueError.
-    (4608, 1728),
-    (3072, 6144)
 ]
 
 
@@ -171,4 +166,26 @@ all_in_out_channels = [
 @pytest.mark.parametrize("use_bias", [True, False])
 def test_fp6_quantized_linear_act_fn(tokens: int, in_channels: int, out_channels: int, act_fn: ActivationType,
                                      use_bias: bool) -> None:
-    _fp6_quantized_linear_helper(tokens, in_channels, out_channels, DtypeEnum.fp16, act_fn, use_bias=use_bias)
+    _fp6_quantized_linear_helper(tokens=tokens,
+                                 in_channels=in_channels,
+                                 out_channels=out_channels,
+                                 dtype=DtypeEnum.fp16,
+                                 act_fn=act_fn,
+                                 use_bias=use_bias)
+
+
+# Other shapes, not supported by FP6 kernels. Will raise ValueError.
+@pytest.mark.inference_v2_ops
+@pytest.mark.parametrize("tokens", all_tokens)
+@pytest.mark.parametrize("in_channels, out_channels", [(4608, 1728)])
+@pytest.mark.parametrize("act_fn", all_acts)
+@pytest.mark.parametrize("use_bias", [True, False])
+def test_fp6_quantized_linear_act_fn_fail(tokens: int, in_channels: int, out_channels: int, act_fn: ActivationType,
+                                          use_bias: bool) -> None:
+    _fp6_quantized_linear_helper(tokens=tokens,
+                                 in_channels=in_channels,
+                                 out_channels=out_channels,
+                                 dtype=DtypeEnum.fp16,
+                                 act_fn=act_fn,
+                                 use_bias=use_bias,
+                                 expect_failure=True)

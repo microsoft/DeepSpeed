@@ -3,8 +3,8 @@
 
 # DeepSpeed Team
 
+from typing import Optional
 from deepspeed.pydantic_v1 import Field
-
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 from .ragged import DSStateManagerConfig
 
