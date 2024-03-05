@@ -9,6 +9,7 @@ import os
 import torch
 import pytest
 from unit.common import DistributedTest
+import deepspeed
 from deepspeed.accelerator import get_accelerator
 
 
@@ -19,7 +20,7 @@ class TestDequantization(DistributedTest):
         self.device = torch.device(get_accelerator().device_name(local_rank))
 
         from deepspeed.ops.op_builder import InferenceBuilder
-        if InferenceBuilder().absolute_name() == "deepspeed.ops.comm.deepspeed_not_implemented_op":
+        if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
             pytest.skip("InferenceBuilder is not implemented")
         else:
             self.dequantize_func = InferenceBuilder().load().dequantize_fp16
