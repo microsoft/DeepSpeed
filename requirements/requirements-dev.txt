@@ -15,5 +15,5 @@ sphinx
 sphinx-rtd-theme
 tensorboard
 torchvision
-transformers @ git+https://github.com/loadams/transformers@loadams/fix-pytest-import
+transformers>=4.38.2
 wandb
