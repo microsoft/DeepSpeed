@@ -19,7 +19,7 @@ class DeepSpeedTPConfig(DeepSpeedConfigModel):
 class QuantizationConfig(DeepSpeedConfigModel):
     """ Configure tensor parallelism settings """
 
-    quantization_mode: str = None
+    quantization_mode: Optional[str] = None
     """ The quantization mode in string format. The supported modes are as follows:
         - 'wf6af16', weight-only quantization with FP6 weight and FP16 activation.
     """
