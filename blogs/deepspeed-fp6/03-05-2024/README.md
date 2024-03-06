@@ -1,6 +1,6 @@
 <div align="center">
 
-# DeepSpeed-FP6: The Power of FP6-Centric Serving for Large Language Models 
+# DeepSpeed-FP6: The Power of FP6-Centric Serving for Large Language Models
 
 </div>
 
@@ -43,7 +43,7 @@ The realm of Large Language Models (LLMs) like GPT has been evolving rapidly, wi
 
 *Diving Deep into 4-Bit Quantization's Challenges.* In our recent research — ZeroQuant(4+2) [1], we examine the drawbacks of using 4-bit quantization techniques such as GPTQ in large language models (LLMs). While these techniques hold the potential to decrease model size and computational requirements, they often fall short in critical more general tasks due to overfitting issues.  We extend the examination to include more generative tasks like code generation and summarization, areas where standard quantization methods have not been thoroughly explored. We found that INT4 weight quantization does not perform well in these broader applications, underscoring the urgent need for new approaches that improve both the efficiency and effectiveness of LLMs.
 
-*Breakthrough with FP6.* Our exploration of different quantization methods brought us to the FP6 precision standard. Despite the difficulties in integrating and speeding up FP6 with current AI hardware — a challenge we will address in the following section — this format excels in performance and flexibility for a variety of tasks. Notably, models quantized with FP6, like the StarCoder-15B, achieve results comparable to their FP16 equivalents in code generation, and smaller models (like BART-406M) meet standard FP16 performance levels in summarization. To improve the efficiency of AI hardware and equal the best performance seen with INT4 quantization, we propose a novel 4+2 FP6 scheme. This innovation makes FP6 a promising avenue for enhancing the efficiency of LLMs, marking a significant leap in the progress of AI technologies.  For more details, please refer to our research paper — ZeroQuant(4+2) [1]. 
+*Breakthrough with FP6.* Our exploration of different quantization methods brought us to the FP6 precision standard. Despite the difficulties in integrating and speeding up FP6 with current AI hardware — a challenge we will address in the following section — this format excels in performance and flexibility for a variety of tasks. Notably, models quantized with FP6, like the StarCoder-15B, achieve results comparable to their FP16 equivalents in code generation, and smaller models (like BART-406M) meet standard FP16 performance levels in summarization. To improve the efficiency of AI hardware and equal the best performance seen with INT4 quantization, we propose a novel 4+2 FP6 scheme. This innovation makes FP6 a promising avenue for enhancing the efficiency of LLMs, marking a significant leap in the progress of AI technologies.  For more details, please refer to our research paper — ZeroQuant(4+2) [1].
 
 
 # 2. System Support for FP6 <a name="system-fp6"></a>
@@ -71,8 +71,8 @@ We have successfully integrated the FP6 quantization kernel [3] into DeepSpeed-F
 
 We assessed the LLaMA-70b model's serving performance using FP6 quantization on two A100 GPUs-80G, achieving a *1.5x* decrease in inference latency and a *3.5x* increase in inference throughput compared to the FP16 baseline. FP6 quantization offers two key benefits for model inference: it enables the deployment of large language models (LLMs) on fewer GPUs — for instance, LLaMA-70b fits on a single A100-80G GPU with FP6, versus at least two GPUs required for the FP16 baseline. Additionally, it significantly accelerates linear layers in memory-bound scenarios, common in LLM inference. Moreover, FP6 quantization reduces GPU memory requirements for model weights, allowing for more queries to be served simultaneously, leading to higher serving throughputs.
 
-Our system demonstrates exceptional efficiency in handling long generation sequences. As illustrated in Figure 1, for generation lengths surpassing the prompt length, our system exhibits a notable performance superiority. The disparity in performance between FP6 and the FP16 baseline widens with the extension of the generation sequence length. This trend is primarily attributed to the inference process becoming increasingly memory-constrained as the decoding length expands, favoring our weight-quantized GPU kernels by facilitating greater kernel speed enhancements relative to the FP16 baseline. It is important to highlight two factors contributing to the increased memory constraints in longer decoding scenarios. 
- - Firstly, the memory usage for the KV cache escalates with the sequence length, reducing the feasible batch sizes and leading to memory-bound General Matrix Multiply (GEMM) operations. 
+Our system demonstrates exceptional efficiency in handling long generation sequences. As illustrated in Figure 1, for generation lengths surpassing the prompt length, our system exhibits a notable performance superiority. The disparity in performance between FP6 and the FP16 baseline widens with the extension of the generation sequence length. This trend is primarily attributed to the inference process becoming increasingly memory-constrained as the decoding length expands, favoring our weight-quantized GPU kernels by facilitating greater kernel speed enhancements relative to the FP16 baseline. It is important to highlight two factors contributing to the increased memory constraints in longer decoding scenarios.
+ - Firstly, the memory usage for the KV cache escalates with the sequence length, reducing the feasible batch sizes and leading to memory-bound General Matrix Multiply (GEMM) operations.
  - Secondly, within the context of DeepSpeed-FastGen's prefill-decoding-mixed-batch technique, scenarios involving extended token generation encounter a reduction in prefill-chunks available for mixing with decodings. This results in a higher frequency of batches dedicated solely to decodings, further intensifying the memory-bound conditions.
 
 <p align="center">
@@ -81,7 +81,7 @@ Our system demonstrates exceptional efficiency in handling long generation seque
   <img src="./assets/servingllm/100-1000.png" alt="Caption3" width="30%">
 </p>
 
-  *Figure 1*:  End-to-end serving performances in DeepSpeed-MII with 128 number of requests and 32 clients, for LLaMA-2-70B model on 2xA100-80g with two-way tensor parallelism. We experimented with different number of requests between 128, 256 and 512 and found that the speedup is simillar. 
+  *Figure 1*:  End-to-end serving performances in DeepSpeed-MII with 128 number of requests and 32 clients, for LLaMA-2-70B model on 2xA100-80g with two-way tensor parallelism. We experimented with different number of requests between 128, 256 and 512 and found that the speedup is simillar.
 
 Despite the significant benefits of FP6 quantization, the current implementation faces limitations. Notably, in scenarios where GEMM operations become compute-bound due to large batch sizes or sufficient GPU memory, our weight-only quantization kernel may not sustain its latency advantage, especially against optimized libraries like cuBlas. However, our system's memory efficiency remains a key benefit. Currently, support is limited to Non-Mixture of Experts (Non-MoE) structures, with efforts underway to extend support to MoE structures. Additionally, the system is compatible only with FP16 input models, as the FP6 kernel processes FP16 activations exclusively.
 
@@ -104,7 +104,7 @@ pip install deepspeed-mii
 pip install qtorch
 ```
 
-To benchmark with our DeepSpeed-FP6, please visit the following script: 
+To benchmark with our DeepSpeed-FP6, please visit the following script:
 ```bash
 https://github.com/microsoft/DeepSpeedExamples/blob/master/benchmarks/inference/mii/run_fp6.sh
 ```
@@ -128,12 +128,12 @@ We welcome your contributions to DeepSpeed! We encourage you to report issues, 
 # 6. Acknowledgments and Contributions <a name="ac"></a>
 We thank the collaboration of the University of Sydney and Rutgers University. We also thank the open-source library [aspuru-guzik-group/qtorch](https://github.com/aspuru-guzik-group/qtorch).
 
-Contributions:  
-Xiaoxia Wu\* $^1$, Zhen Zheng\* $^1$, Haojun Xia\* $^2$, Arash Bakhtiari $^1$, Michael Wyatt $^1$, Shiyang Chen $^3$, Stephen Youn $^1$, Reza Yazdani Aminabadi, Yuxiong He, Olatunji Ruwase $^1$,  Zhewei Yao, Leon Song $^1$ $^2$ (project lead)  
+Contributions:
+Xiaoxia Wu\* $^1$, Zhen Zheng\* $^1$, Haojun Xia\* $^2$, Arash Bakhtiari $^1$, Michael Wyatt $^1$, Shiyang Chen $^3$, Stephen Youn $^1$, Reza Yazdani Aminabadi, Yuxiong He, Olatunji Ruwase $^1$,  Zhewei Yao, Leon Song $^1$ $^2$ (project lead)
 
-\* Equal Contribution  
-1: Microsoft  
-2: University of Sydney  
+\* Equal Contribution
+1: Microsoft
+2: University of Sydney
 3: Rutgers University
 
 Reference:
@@ -143,4 +143,3 @@ Reference:
 [2] FP6-LLM: Efficiently Serving Large Language Models Through FP6-Centric Algorithm-System Co-Design. arXiv. https://arxiv.org/abs/2401.14112
 
 [3] FP6-LLM kernel release. GitHub. https://github.com/usyd-fsalab/fp6_llm
-
