@@ -128,7 +128,7 @@ We welcome your contributions to DeepSpeed! We encourage you to report issues, 
 We thank the collaboration of the University of Sydney and Rutgers University. We also thank the open-source library [aspuru-guzik-group/qtorch](https://github.com/aspuru-guzik-group/qtorch).
 
 Contributions:  
-Xiaoxia Wu\* $^1$, Zhen Zheng\* $^1$, Haojun Xia\* $^2$, Arash Bakhtiari $^1$, Michael Wyatt $^1$, Shiyang Chen $^3$, Stephen Youn $^1$, Yuxiong He, Olatunji Ruwase $^1$,  Zhewei Yao, Leon Song $^2$  
+Xiaoxia Wu\* $^1$, Zhen Zheng\* $^1$, Haojun Xia\* $^2$, Arash Bakhtiari $^1$, Michael Wyatt $^1$, Shiyang Chen $^3$, Stephen Youn $^1$, Reza Yazdani Aminabadi, Yuxiong He, Olatunji Ruwase $^1$,  Zhewei Yao, Leon Song $^2$  
 
 \* Equal Contribution  
 1: Microsoft  
