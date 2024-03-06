@@ -59,11 +59,10 @@ def fp_quantize(input: torch.FloatTensor,
 
     orig_device = input.device
     input = input.to(torch.float32).to(get_accelerator().current_device())
-    if num_bits == 6:
-        if exp_bits == 3:  # this is default
-            q_range = 28
-        else:
-            raise NotImplementedError
+    if num_bits == 6 and exp_bits == 3:  # this is default
+        q_range = 28
+    else:
+        raise NotImplementedError
 
     man_bits = num_bits - exp_bits - 1
     input_shape = input.shape

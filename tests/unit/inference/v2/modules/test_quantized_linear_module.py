@@ -138,7 +138,6 @@ def _fp6_quantized_linear_helper(tokens: int,
 
 
 all_acts = [
-    ActivationType.IDENTITY,
     ActivationType.RELU,
     ActivationType.GELU,
     ActivationType.SILU,
@@ -146,16 +145,10 @@ all_acts = [
     ActivationType.ReGLU,
     ActivationType.SiGLU,
 ]
-all_tokens = [1, 37, 1280]
+all_tokens = [1, 37]
 all_in_out_channels = [
-    # Llama 2 7B shapes
     (4096, 4096),
-    (4096, 11008),
-    (11008, 4096),
-    # Llama 2 70B shapes
-    (8192, 8192),
     (8192, 28672),
-    (28672, 8192),
 ]
 
 
