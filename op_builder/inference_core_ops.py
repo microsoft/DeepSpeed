@@ -57,6 +57,8 @@ class InferenceCoreBuilder(CUDAOpBuilder):
         return "deepspeed" if os.path.isdir(ds_path) else ".."
 
     def sources(self):
+        import torch
+
         sources = [
             "inference/v2/kernels/core_ops/core_ops.cpp",
             "inference/v2/kernels/core_ops/bias_activations/bias_activation.cpp",
