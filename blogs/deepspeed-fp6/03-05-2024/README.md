@@ -28,6 +28,8 @@ To cite DeepSpeed-FP6, please cite the following two arxiv reports - ZeroQuant(4
   year={2024}
 }
 ```
+
+
 # Table of Contents
 1. [Why 6-bit Floating Point (FP6)?](#introduction)
 2. [System Support for FP6](#system-fp6)
@@ -98,14 +100,13 @@ print(response)
 
 You need to install the following:
 ```
-pip install deepspeed
 pip install deepspeed-mii
 pip install qtorch
 ```
 
 To benchmark with our DeepSpeed-FP6, please visit the following script: 
 ```bash
-https://github.com/microsoft/DeepSpeedExamples/blob/master/benchmarks/inference/mii/run_all.sh
+https://github.com/microsoft/DeepSpeedExamples/blob/master/benchmarks/inference/mii/run_fp6.sh
 ```
 
 Please also visit the [FP6-LLM github](https://github.com/usyd-fsalab/fp6_llm) for the standalone kernel of FP6.  Don't forget to star the repo to show your support!
