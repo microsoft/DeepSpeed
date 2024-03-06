@@ -15,7 +15,7 @@ To cite DeepSpeed-FP6, please cite the following two arxiv reports - ZeroQuant(4
 
 ```
 @article{wu2023zeroquant,
-  title={Zeroquant (4+ 2): Redefining llms quantization with a new fp6-centric strategy for diverse generative tasks},
+  title={Zeroquant(4+2): Redefining llms quantization with a new fp6-centric strategy for diverse generative tasks},
   author={Wu, Xiaoxia and Xia, Haojun and Youn, Stephen and Zheng, Zhen and Chen, Shiyang and Bakhtiari, Arash and Wyatt, Michael and Aminabadi, Reza Yazdani and He, Yuxiong and Ruwase, Olatunji and Song, Leon and others},
   journal={arXiv preprint arXiv:2312.08583},
   year={2023}
