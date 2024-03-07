@@ -56,7 +56,8 @@ class NoGatherHandle:
         self.__param = param
 
     def wait(self) -> None:
-        get_accelerator().current_stream().synchronize()
+        if not get_accelerator().is_synchronized_device():
+            get_accelerator().current_stream().synchronize()
         self.__param.ds_status = ZeroParamStatus.AVAILABLE
 
 
@@ -81,7 +82,8 @@ class NoGatherCoalescedHandle:
         if self.__complete:
             return
 
-        get_accelerator().current_stream().synchronize()
+        if not get_accelerator().is_synchronized_device():
+            get_accelerator().current_stream().synchronize()
         for param in self.__params:
             assert param.ds_status == ZeroParamStatus.INFLIGHT, f"expected param {param.ds_summary()} to be inflight"
             param.ds_status = ZeroParamStatus.AVAILABLE
