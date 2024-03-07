@@ -228,6 +228,8 @@ class TestInitNoOptimizer(DistributedTest):
     world_size = 1
 
     def test(self, base_config):
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("This test timeout with CPU accelerator")
         del base_config["optimizer"]
         hidden_dim = 10
 
