@@ -47,10 +47,11 @@ def base_config():
                 "lr": 0.00015
             }
         },
-        "fp16": {
-            "enabled": True
-        }
     }
+    if get_accelerator().is_fp16_supported():
+        config_dict["fp16"] = {"enabled": True}
+    elif get_accelerator().is_bf16_supported():
+        config_dict["bf16"] = {"enabled": True}
     return config_dict
 
 
