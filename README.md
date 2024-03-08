@@ -154,7 +154,7 @@ dynamically link them at runtime.
   * AMD: MI100 and MI200
 
 ## Contributed HW support
-* DeepSpeed now support various HW accelerators and CPU contributed from DeepSpeed community
+* DeepSpeed now support various HW accelerators
 
 | Contributor | Hardware | Accelerator Name | Contributor validated | Upstream validated |
 | ----------- | -------- | ---------------- | --------------------- | ------------------ |
