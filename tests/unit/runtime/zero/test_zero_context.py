@@ -251,7 +251,7 @@ class TestSerialContext(DistributedTest):
             assert net.linear1.weight.numel() == net.dim**2
 
         input = torch.rand(net.dim).to(
-            engine.device).to(torch.float if get_accelerator().is_fp16_supported() else torch.bfloat16)
+            engine.device).to(torch.float16 if get_accelerator().is_fp16_supported() else torch.bfloat16)
         loss = engine(input)
         engine.backward(loss)
         engine.step()
