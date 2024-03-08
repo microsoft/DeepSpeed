@@ -1,0 +1,32 @@
+name: gaudi2
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  unit-tests:
+    # The type of runner that the job will run on
+    runs-on: [self-hosted, intel, gaudi2]
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+
+      - id: setup-venv
+        uses: ./.github/workflows/setup-venv
+
+      - name: Python environment
+        run: |
+          pip list
