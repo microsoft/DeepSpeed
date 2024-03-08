@@ -463,7 +463,7 @@ class BF16_Optimizer(ZeROOptimizer):
         else:
             tp_world_size = self.mpu.get_slice_parallel_world_size() if hasattr(self.mpu, "get_slice_parallel_world_size") \
                 else self.mpu.get_tensor_model_parallel_world_size()
-        #tp_world_size = self.mpu.get_slice_parallel_world_size()
+       
 
         for i, _ in enumerate(self.optimizer.param_groups):
             for lp in self.bf16_groups[i]:
