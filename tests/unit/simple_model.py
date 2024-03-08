@@ -14,7 +14,7 @@ from deepspeed.moe.layer import MoE
 from deepspeed.accelerator import get_accelerator
 
 import deepspeed.comm as dist
-from unit.comm import preferred_dtype
+from .common import preferred_dtype
 
 
 class SimpleModel(torch.nn.Module):
