@@ -1366,6 +1366,12 @@ class PipelineEngine(DeepSpeedEngine):
                 if type(cmd) not in self._INSTRUCTION_MAP:
                     raise RuntimeError(f'{self.__class__.__name__} does not understand instruction {repr(cmd)}')
 
+                if type(cmd) == schedule.OptimizerStep:
+                    try:
+                        self.checkpoint_engine.wait()
+                    except Exception as exc:
+                        logger.error(f"Error during optimizer wait step: {exc}")
+
                 # Equivalent to: self._exec_forward_pass(buffer_id=0)
                 self._exec_instr = MethodType(self._INSTRUCTION_MAP[type(cmd)], self)
                 self._exec_instr(**cmd.kwargs)
