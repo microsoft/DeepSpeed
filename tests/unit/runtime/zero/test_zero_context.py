@@ -11,7 +11,7 @@ from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus, partiti
 import deepspeed.comm as dist
 from deepspeed.accelerator import get_accelerator
 
-from unit.common import DistributedTest
+from unit.common import DistributedTest, preferred_dtype
 from unit.simple_model import SimpleModel
 from utils import setup_serial_env
 
@@ -250,8 +250,7 @@ class TestSerialContext(DistributedTest):
         with deepspeed.zero.GatheredParameters(net.linear1.weight):
             assert net.linear1.weight.numel() == net.dim**2
 
-        input = torch.rand(net.dim).to(
-            engine.device).to(torch.float16 if get_accelerator().is_fp16_supported() else torch.bfloat16)
+        input = torch.rand(net.dim).to(engine.device).to(preferred_dtype)
         loss = engine(input)
         engine.backward(loss)
         engine.step()

@@ -7,7 +7,7 @@ import pytest
 import deepspeed.comm as dist
 import torch
 
-from unit.common import DistributedTest
+from unit.common import DistributedTest, preferred_dtype
 from unit.simple_model import random_dataloader, SimpleModel
 from unit.util import bf16_required_version_check
 
@@ -140,9 +140,7 @@ class TestTensorFragmentGet(DistributedTest):
         validate_after_bwd = lambda model: validate_tensor(model, api_type, opt_states=False)
         validate_after_step = lambda model: validate_tensor(model, api_type, opt_states=True)
 
-        run_fragmented_model(model, config_dict, hidden_dim,
-                             torch.float16 if get_accelerator().is_fp16_supported() else torch.bfloat16,
-                             validate_after_bwd, validate_after_step)
+        run_fragmented_model(model, config_dict, hidden_dim, preferred_dtype, validate_after_bwd, validate_after_step)
 
     def test_bf16_fragments(self, frozen_weights):
         if get_accelerator().device_name() == "cpu":

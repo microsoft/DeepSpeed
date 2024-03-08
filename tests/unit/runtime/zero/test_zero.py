@@ -16,7 +16,7 @@ from torch.nn.modules.loss import L1Loss
 from torch.nn.parameter import Parameter
 from torch.nn.utils import skip_init
 
-from unit.common import DistributedTest
+from unit.common import DistributedTest, preferred_dtype
 from unit.simple_model import SimpleModel, random_dataloader
 
 import deepspeed
@@ -953,12 +953,7 @@ class TestZero3ParamPartitioningManyParams(DistributedTest):
 
         ds_engine = _ds_initialize_for_param_partitioning_testing(model, ds_cfg)
 
-        if get_accelerator().is_fp16_supported():
-            dtype = torch.float16
-        elif get_accelerator().is_fp16_supported():
-            dtype = torch.bfloat16
-        else:
-            dtype = torch.float32
+        dtype = preferred_dtype
         for _ in range(3):  # test multiple iterations to cover prefetching
             activations: List[Tensor] = ds_engine(torch.ones((param_sz, ), dtype=dtype, device=ds_engine.device))
             assert len(activations) == n_layers

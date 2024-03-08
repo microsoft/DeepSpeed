@@ -14,6 +14,7 @@ from deepspeed.moe.layer import MoE
 from deepspeed.accelerator import get_accelerator
 
 import deepspeed.comm as dist
+from unit.comm import preferred_dtype
 
 
 class SimpleModel(torch.nn.Module):
@@ -262,42 +263,21 @@ class PLD_SimpleModel(SimpleModel):
         return hidden_dim
 
 
-def random_dataset(total_samples, hidden_dim, device, dtype=None):
-    if dtype == None:
-        if get_accelerator().is_fp16_supported():
-            dtype = torch.half
-        elif get_accelerator().is_bf16_supported():
-            dtype = torch.bfloat16
-        else:
-            dtype = torch.float
+def random_dataset(total_samples, hidden_dim, device, dtype=preferred_dtype):
     train_data = torch.randn(total_samples, hidden_dim, device=device, dtype=dtype)
     train_label = torch.empty(total_samples, dtype=torch.long, device=device).random_(hidden_dim)
     train_dataset = torch.utils.data.TensorDataset(train_data, train_label)
     return train_dataset
 
 
-def random_dataloader(model, total_samples, hidden_dim, device, dtype=None):
-    if dtype == None:
-        if get_accelerator().is_fp16_supported():
-            dtype = torch.half
-        elif get_accelerator().is_bf16_supported():
-            dtype = torch.bfloat16
-        else:
-            dtype = torch.float
+def random_dataloader(model, total_samples, hidden_dim, device, dtype=preferred_dtype):
     batch_size = model.train_micro_batch_size_per_gpu()
     train_dataset = random_dataset(total_samples, hidden_dim, device, dtype=dtype)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
     return train_loader
 
 
-def sequence_dataloader(model, total_samples, hidden_dim, device, seq_len: int = 32, dtype=None):
-    if dtype == None:
-        if get_accelerator().is_fp16_supported():
-            dtype = torch.half
-        elif get_accelerator().is_bf16_supported():
-            dtype = torch.bfloat16
-        else:
-            dtype = torch.float
+def sequence_dataloader(model, total_samples, hidden_dim, device, seq_len: int = 32, dtype=preferred_dtype):
     batch_size = model.train_micro_batch_size_per_gpu()
     train_data = torch.randn(total_samples, seq_len, hidden_dim, device=device, dtype=dtype)
     train_label = torch.empty(total_samples, dtype=torch.long, device=device).random_(hidden_dim)

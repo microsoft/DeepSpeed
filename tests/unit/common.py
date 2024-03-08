@@ -441,3 +441,12 @@ class DistributedTest(DistributedExec):
 def get_test_path(filename):
     curr_path = Path(__file__).parent
     return str(curr_path.joinpath(filename))
+
+
+# fp16 > bf16 > fp32
+if get_accelerator().is_fp16_supported():
+    prefered_dtype = torch.float16
+elif get_accelerator().is_bf16_supported():
+    preferred_dtype = torch.bfloat16
+else:
+    preferred_dtype = torch.float32

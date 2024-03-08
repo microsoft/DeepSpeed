@@ -11,7 +11,7 @@ from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.accelerator import get_accelerator
 
 from utils import setup_serial_env
-from unit.common import DistributedTest
+from unit.common import DistributedTest, preferred_dtype
 
 
 class DanglingBias(torch.nn.Linear):
@@ -144,8 +144,7 @@ class TestReturnParam(DistributedTest):
         engine, _, _, _ = deepspeed.initialize(args=args, model=net, model_parameters=net.parameters(), config=config)
 
         for _ in range(5):
-            input = torch.rand(net.dim).to(
-                engine.device).to(torch.float16 if get_accelerator().is_fp16_supported() else torch.bfloat16)
+            input = torch.rand(net.dim).to(engine.device).to(preferred_dtype)
             loss = engine(input)
             engine.backward(loss)
             engine.step()
@@ -161,8 +160,7 @@ class TestReturnParam(DistributedTest):
         engine, _, _, _ = deepspeed.initialize(args=args, model=net, model_parameters=net.parameters(), config=config)
 
         for _ in range(5):
-            input = torch.rand(net.dim).to(
-                engine.device).to(torch.float16 if get_accelerator().is_fp16_supported() else torch.bfloat16)
+            input = torch.rand(net.dim).to(engine.device).to(preferred_dtype)
             loss = engine(input)
             assert len(net._external_params) == 1
             assert len(net.dangler._external_params) == 0
@@ -180,8 +178,7 @@ class TestReturnParam(DistributedTest):
         engine, _, _, _ = deepspeed.initialize(args=args, model=net, model_parameters=net.parameters(), config=config)
 
         for _ in range(1):
-            input = torch.rand(net.dim).to(
-                engine.device).to(torch.float16 if get_accelerator().is_fp16_supported() else torch.bfloat16)
+            input = torch.rand(net.dim).to(engine.device).to(preferred_dtype)
             loss = engine(input)
             if loss is not None:
                 if isinstance(loss, dict):
