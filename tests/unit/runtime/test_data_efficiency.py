@@ -99,7 +99,7 @@ class TestDataEfficiency(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "loss_scale": 0, "initial_scale_power": 16}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "loss_scale": 0, "initial_scale_power": 16}
+            config_dict["bf16"] = {"enabled": True}
 
         def data_post_process(data, data_sampler_state_dict):
             assert 'dummy_metric' in data_sampler_state_dict['current_difficulties']
@@ -158,7 +158,7 @@ class TestLegacyCurriculumScheduler(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "loss_scale": 0, "initial_scale_power": 16}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "loss_scale": 0, "initial_scale_power": 16}
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
         ground_truths = {1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4}
 
@@ -203,7 +203,7 @@ class TestLegacyCurriculumScheduler(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "loss_scale": 0, "initial_scale_power": 16}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "loss_scale": 0, "initial_scale_power": 16}
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
         ground_truths = {1: 2, 2: 4, 3: 4, 4: 6, 5: 6, 6: 8, 7: 8, 8: 10, 9: 10, 10: 10}
 

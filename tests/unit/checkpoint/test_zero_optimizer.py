@@ -38,7 +38,7 @@ class TestZeROCheckpoint(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "initial_scale_power": 8}
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
 
         with deepspeed.zero.Init():
@@ -77,7 +77,7 @@ class TestZeROCheckpoint(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "initial_scale_power": 8}
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
 
         if zero_stage == 3:
@@ -147,7 +147,7 @@ class TestZeROCheckpoint(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "initial_scale_power": 8}
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
         models = [SimpleModel(hidden_dim=hidden_dim) for _ in range(2)]
         optimizers = [HybridStateOptimizer(model.parameters()) for model in models]
@@ -175,7 +175,7 @@ class TestZeROCheckpoint(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "initial_scale_power": 8}
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
 
         if zero_stage == 3:
@@ -204,7 +204,7 @@ class ws4_model_checkpoint(DistributedFixture):
         if get_accelerator().is_fp16_supported():
             ds_config["fp16"] = {"enabled": True, "initial_scale_power": 8}
         elif get_accelerator().is_bf16_supported():
-            ds_config["bf16"] = {"enabled": True, "initial_scale_power": 8}
+            ds_config["bf16"] = {"enabled": True}
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
 
@@ -240,7 +240,7 @@ class TestZeROElasticCheckpoint(DistributedTest):
         if get_accelerator().is_fp16_supported():
             ds_config["fp16"] = {"enabled": True, "initial_scale_power": 8}
         elif get_accelerator().is_bf16_supported():
-            ds_config["bf16"] = {"enabled": True, "initial_scale_power": 8}
+            ds_config["bf16"] = {"enabled": True}
         hidden_dim = 10
 
         # torch 1.2.* stores raw tensor id numbers in checkpoint state which leads to
@@ -293,7 +293,7 @@ class TestZeROElasticCheckpoint(DistributedTest):
         if get_accelerator().is_fp16_supported():
             ds_config["fp16"] = {"enabled": True, "initial_scale_power": 8}
         elif get_accelerator().is_bf16_supported():
-            ds_config["bf16"] = {"enabled": True, "initial_scale_power": 8}
+            ds_config["bf16"] = {"enabled": True}
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
 
@@ -323,7 +323,7 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "initial_scale_power": 8}
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
 
@@ -350,7 +350,7 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "initial_scale_power": 8}
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
 
@@ -390,7 +390,7 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "initial_scale_power": 8}
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
 
@@ -443,7 +443,7 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "initial_scale_power": 8}
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
 
         with deepspeed.zero.Init(enabled=zero_stage == 3):
@@ -499,7 +499,7 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "initial_scale_power": 8}
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
 
         with deepspeed.zero.Init(enabled=zero_stage == 3):
@@ -522,7 +522,7 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "initial_scale_power": 8}
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
 
         model = SimpleFrozenModel(hidden_dim, empty_grad=False)
@@ -570,7 +570,7 @@ class TestZeROCheckpointFrozenWeights(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "initial_scale_power": 8}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "initial_scale_power": 8}
+            config_dict["bf16"] = {"enabled": True}
         hidden_dim = 10
 
         model = SimpleFrozenModel(hidden_dim, empty_grad=False)

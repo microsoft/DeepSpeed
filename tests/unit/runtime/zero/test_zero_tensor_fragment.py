@@ -120,7 +120,7 @@ class TestTensorFragmentGet(DistributedTest):
         if get_accelerator().is_fp16_supported():
             config_dict["fp16"] = {"enabled": True, "initial_scale_power": 2}
         elif get_accelerator().is_bf16_supported():
-            config_dict["bf16"] = {"enabled": True, "initial_scale_power": 2}
+            config_dict["bf16"] = {"enabled": True}
 
         if offload_device == OffloadDeviceEnum.cpu:
             config_dict["zero_optimization"]["offload_optimizer"] = {"device": offload_device}
