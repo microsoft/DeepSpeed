@@ -33,8 +33,8 @@ To cite DeepSpeed-FP6, please cite the following two arxiv reports - ZeroQuant(4
 # Table of Contents
 1. [Why 6-bit Floating Point (FP6)?](#introduction)
 2. [System Support for FP6](#system-fp6)
-3. [LLMs serving with FP6](#serving-llm)
-4. [How to start](#how-to-start)
+3. [LLMs Serving with FP6](#serving-llm)
+4. [How to Start](#how-to-start)
 5. [Software Improvements](#software-improvements)
 6. [Acknowledgments and Contributions](#ac)
 
