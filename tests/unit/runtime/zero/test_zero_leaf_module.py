@@ -108,7 +108,7 @@ class TestSetZ3LeafModule(DistributedTest):
         set_z3_leaf_modules(model, [cls])
         assert z3_leaf_module(model)
 
-        run_model(model, config_dict, hidden_dim, preferred_dtype, requires_grad)
+        run_model(model, config_dict, hidden_dim, preferred_dtype(), requires_grad)
 
     def test_choose_module_by_counter(self):
         self._test_set_z3_leaf_modules(ChooseModuleByCounter, True)

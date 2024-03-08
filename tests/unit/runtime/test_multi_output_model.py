@@ -55,7 +55,7 @@ class TestTwoOutputModel(DistributedTest):
             inputs, targets = batch[:midpoint], batch[midpoint:]
             loss_tuple = model(inputs, targets)
 
-            expected_loss = torch.tensor(2.302734375, dtype=preferred_dtype, device=model.device)
+            expected_loss = torch.tensor(2.302734375, dtype=preferred_dtype(), device=model.device)
             for loss in loss_tuple:
                 assert loss.shape == torch.Size([])
                 assert loss.item() == approx(expected_loss.item())
@@ -114,7 +114,7 @@ class TestThreeOutputModel(DistributedTest):
             loss_tuple = model(inputs, targets)
             assert len(loss_tuple) == 3
 
-            expected_loss = torch.tensor(2.302734375, dtype=preferred_dtype, device=model.device)
+            expected_loss = torch.tensor(2.302734375, dtype=preferred_dtype(), device=model.device)
 
             for loss in loss_tuple:
                 assert loss.shape == torch.Size([])

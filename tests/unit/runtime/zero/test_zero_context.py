@@ -250,7 +250,7 @@ class TestSerialContext(DistributedTest):
         with deepspeed.zero.GatheredParameters(net.linear1.weight):
             assert net.linear1.weight.numel() == net.dim**2
 
-        input = torch.rand(net.dim).to(engine.device).to(preferred_dtype)
+        input = torch.rand(net.dim).to(engine.device).to(preferred_dtype())
         loss = engine(input)
         engine.backward(loss)
         engine.step()

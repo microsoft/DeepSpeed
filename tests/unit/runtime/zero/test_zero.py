@@ -953,7 +953,7 @@ class TestZero3ParamPartitioningManyParams(DistributedTest):
 
         ds_engine = _ds_initialize_for_param_partitioning_testing(model, ds_cfg)
 
-        dtype = preferred_dtype
+        dtype = preferred_dtype()
         for _ in range(3):  # test multiple iterations to cover prefetching
             activations: List[Tensor] = ds_engine(torch.ones((param_sz, ), dtype=dtype, device=ds_engine.device))
             assert len(activations) == n_layers

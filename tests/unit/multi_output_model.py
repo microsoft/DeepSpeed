@@ -32,7 +32,7 @@ def multi_output_dataloader(model, total_samples, hidden_dim, device, inputs, ta
         torch.full(size=(total_samples, hidden_dim),
                    fill_value=x,
                    device=device,
-                   dtype=preferred_dtype,
+                   dtype=preferred_dtype(),
                    requires_grad=True) for x in inputs
     ]
 

@@ -144,7 +144,7 @@ class TestReturnParam(DistributedTest):
         engine, _, _, _ = deepspeed.initialize(args=args, model=net, model_parameters=net.parameters(), config=config)
 
         for _ in range(5):
-            input = torch.rand(net.dim).to(engine.device).to(preferred_dtype)
+            input = torch.rand(net.dim).to(engine.device).to(preferred_dtype())
             loss = engine(input)
             engine.backward(loss)
             engine.step()
@@ -160,7 +160,7 @@ class TestReturnParam(DistributedTest):
         engine, _, _, _ = deepspeed.initialize(args=args, model=net, model_parameters=net.parameters(), config=config)
 
         for _ in range(5):
-            input = torch.rand(net.dim).to(engine.device).to(preferred_dtype)
+            input = torch.rand(net.dim).to(engine.device).to(preferred_dtype())
             loss = engine(input)
             assert len(net._external_params) == 1
             assert len(net.dangler._external_params) == 0
@@ -178,7 +178,7 @@ class TestReturnParam(DistributedTest):
         engine, _, _, _ = deepspeed.initialize(args=args, model=net, model_parameters=net.parameters(), config=config)
 
         for _ in range(1):
-            input = torch.rand(net.dim).to(engine.device).to(preferred_dtype)
+            input = torch.rand(net.dim).to(engine.device).to(preferred_dtype())
             loss = engine(input)
             if loss is not None:
                 if isinstance(loss, dict):

@@ -444,9 +444,10 @@ def get_test_path(filename):
 
 
 # fp16 > bf16 > fp32
-if get_accelerator().is_fp16_supported():
-    prefered_dtype = torch.float16
-elif get_accelerator().is_bf16_supported():
-    preferred_dtype = torch.bfloat16
-else:
-    preferred_dtype = torch.float32
+def preferred_dtype():
+    if get_accelerator().is_fp16_supported():
+        return torch.float16
+    elif get_accelerator().is_bf16_supported():
+        return torch.bfloat16
+    else:
+        return torch.float32
