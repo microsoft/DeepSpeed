@@ -9,6 +9,7 @@ import torch
 import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus, partitioned_param_data_shape
 import deepspeed.comm as dist
+from deepspeed.accelerator import get_accelerator
 
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel
@@ -47,15 +48,16 @@ config = {
             "lr": 0.00015
         }
     },
-    "fp16": {
-        "enabled": True,
-        "loss_scale": 138.
-    },
     "zero_optimization": {
         "stage": 3,
         "stage3_param_persistence_threshold": 1,
     }
 }
+
+if get_accelerator().is_fp16_supported():
+    config["fp16"] = {"enabled": True, "loss_scale": 138.}
+elif get_accelerator().is_bf16_supported():
+    config["bf16"] = {"enabled": True}
 
 
 class TestZeroGatheredParametersFree(DistributedTest):
@@ -248,7 +250,8 @@ class TestSerialContext(DistributedTest):
         with deepspeed.zero.GatheredParameters(net.linear1.weight):
             assert net.linear1.weight.numel() == net.dim**2
 
-        input = torch.rand(net.dim).to(engine.device).half()
+        input = torch.rand(net.dim).to(
+            engine.device).to(torch.float if get_accelerator().is_fp16_supported() else torch.bfloat16)
         loss = engine(input)
         engine.backward(loss)
         engine.step()
