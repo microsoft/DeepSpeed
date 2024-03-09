@@ -12,7 +12,10 @@ from deepspeed.ops.lion import DeepSpeedCPULion
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel
 from deepspeed.accelerator import get_accelerator
+from deepspeed.ops.op_builder import CPULionBuilder
 
+if not deepspeed.ops.__compatible_ops__[CPULionBuilder.NAME]:
+    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 if torch.half not in get_accelerator().supported_dtypes():
     pytest.skip(f"fp16 not supported, valid dtype: {get_accelerator().supported_dtypes()}", allow_module_level=True)
 # yapf: disable
@@ -51,8 +54,8 @@ class TestLionConfigs(DistributedTest):
         }
         model = SimpleModel(10)
         model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                              model=model,
-                                              model_parameters=model.parameters())
+                                            model=model,
+                                            model_parameters=model.parameters())
         # get base optimizer under zero
         ds_optimizer = model.optimizer.optimizer
         opt_class = resulting_optimizer

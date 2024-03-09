@@ -12,7 +12,10 @@ from unit.common import DistributedTest
 from unit.simple_model import SimpleModel, SimpleOptimizer, random_dataloader, SimpleMoEModel, sequence_dataloader
 from deepspeed.runtime.utils import required_torch_version
 from deepspeed.accelerator import get_accelerator
-from deepspeed.ops.op_builder import CPUAdamBuilder
+from deepspeed.ops.op_builder import CPUAdamBuilder, FusedLambBuilder
+
+if not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME]:
+    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 
 try:
     from apex import amp  # noqa: F401 # type: ignore

@@ -9,13 +9,19 @@ import pytest
 import random
 import copy
 import os
+import deepspeed
 from torch import nn
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from deepspeed.accelerator import get_accelerator
 from unit.modeling import BertConfig, BertLayerNorm, BertEncoder as BertEncoderPostln
 from unit.modelingpreln import BertEncoder as BertEncoderPreln
 from unit.common import DistributedTest, is_rocm_pytorch
+from deepspeed.ops.op_builder import TransformerBuilder, StochasticTransformerBuilder
 
+if not deepspeed.ops.__compatible_ops__[TransformerBuilder.NAME]:
+    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
+if not deepspeed.ops.__compatible_ops__[StochasticTransformerBuilder.NAME]:
+    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 #if not deepspeed.ops.__installed_ops__['transformer']:
 #pytest.skip(
 #    "transformer kernels are temporarily disabled because of unexplained failures",
@@ -279,4 +285,34 @@ class TestCUDABackward(DistributedTest):
         ds_config.initializer_range = 0.02
         ds_config.fp16 = use_fp16
 
+        # device_name = get_accelerator().device_name()
+        # if device_name == 'xpu':
+        #     import importlib
+        #     import pkgutil
+        #     import inspect
+        #     import deepspeed.ops.op_builder
+        #     package_name = "deepspeed.ops.op_builder.xpu" # search the module will be used in xpu builder module.
+        #     TransformerBuilder = None
+        #     StochasticTransformerBuilder = None
+            
+        #     for _, module_name, _ in pkgutil.iter_modules(importlib.import_module(package_name).__path__):
+        #         module = importlib.import_module(f".{module_name}", package=package_name)
+        #         for name, obj in inspect.getmembers(module):
+        #             if TransformerBuilder == None and name == "TransformerBuilder" and inspect.isclass(obj):
+        #                 TransformerBuilder = obj
+        #                 if StochasticTransformerBuilder is not None:
+        #                     break
+        #             if StochasticTransformerBuilder == None and name == "StochasticTransformerBuilder" and inspect.isclass(obj):
+        #                 StochasticTransformerBuilder = obj
+        #                 if TransformerBuilder is not None:
+        #                     break
+        #         if TransformerBuilder and StochasticTransformerBuilder:
+        #             break
+            
+        #     if not TransformerBuilder and not StochasticTransformerBuilder: 
+        #         pytest.skip("'TransformerBuilder' and 'StochasticTransformerBuilder' are not existing features in xpu")
+        #     elif not TransformerBuilder and StochasticTransformerBuilder: 
+        #         pytest.skip("'TransformerBuilder' is not an existing feature in xpu")
+        #     elif TransformerBuilder and not StochasticTransformerBuilder: 
+        #         pytest.skip("'StochasticTransformerBuilder' is not an existing feature in xpu")
         run_backward(ds_config, seq_len, atol=atol, verbose=True)

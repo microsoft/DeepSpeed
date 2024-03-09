@@ -3,11 +3,16 @@
 
 # DeepSpeed Team
 
+import pytest
 import torch
 import deepspeed
 import numpy as np
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel
+from deepspeed.ops.op_builder import FusedLambBuilder
+
+if not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME]:
+    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 
 
 def run_model_step(model, gradient_list):
@@ -165,6 +170,25 @@ class TestUnfused(DistributedTest):
         }
         hidden_dim = 1
         model = SimpleModel(hidden_dim)
+        # from deepspeed.accelerator import get_accelerator
+        # device_name = get_accelerator().device_name()
+        # if device_name == 'xpu':
+        #     import importlib
+        #     import pkgutil
+        #     import inspect
+        #     import deepspeed.ops.op_builder
+        #     package_name = "deepspeed.ops.op_builder.xpu" # search the module will be used in xpu builder module.
+        #     FusedLambBuilder = None
+        #     for _, module_name, _ in pkgutil.iter_modules(importlib.import_module(package_name).__path__):
+        #         module = importlib.import_module(f".{module_name}", package=package_name)
+        #         for name, obj in inspect.getmembers(module):
+        #             if FusedLambBuilder == None and name == "FusedLambBuilder" and inspect.isclass(obj):
+        #                 FusedLambBuilder = obj
+        #                 break
+        #         if FusedLambBuilder:
+        #             break
+        #     if not FusedLambBuilder:
+        #         pytest.skip("FuseLamb is not an existing feature in xpu")
         model, optim, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
         expected_loss_scale = 2**8
         expected_scale_window = 2
@@ -200,6 +224,25 @@ class TestUnfused(DistributedTest):
         }
         hidden_dim = 1
         model = SimpleModel(hidden_dim)
+        # from deepspeed.accelerator import get_accelerator
+        # device_name = get_accelerator().device_name()
+        # if device_name == 'xpu':
+        #     import importlib
+        #     import pkgutil
+        #     import inspect
+        #     import deepspeed.ops.op_builder
+        #     package_name = "deepspeed.ops.op_builder.xpu" # search the module will be used in xpu builder module.
+        #     FusedLambBuilder = None
+        #     for _, module_name, _ in pkgutil.iter_modules(importlib.import_module(package_name).__path__):
+        #         module = importlib.import_module(f".{module_name}", package=package_name)
+        #         for name, obj in inspect.getmembers(module):
+        #             if FusedLambBuilder == None and name == "FusedLambBuilder" and inspect.isclass(obj):
+        #                 FusedLambBuilder = obj
+        #                 break
+        #         if FusedLambBuilder:
+        #             break
+        #     if not FusedLambBuilder:
+        #         pytest.skip("FuseLamb is not an existing feature in xpu")
         model, optim, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
         expected_loss_scale = 2**4
@@ -235,6 +278,25 @@ class TestUnfused(DistributedTest):
         }
         hidden_dim = 1
         model = SimpleModel(hidden_dim)
+        # from deepspeed.accelerator import get_accelerator
+        # device_name = get_accelerator().device_name()
+        # if device_name == 'xpu':
+        #     import importlib
+        #     import pkgutil
+        #     import inspect
+        #     import deepspeed.ops.op_builder
+        #     package_name = "deepspeed.ops.op_builder.xpu" # search the module will be used in xpu builder module.
+        #     FusedLambBuilder = None
+        #     for _, module_name, _ in pkgutil.iter_modules(importlib.import_module(package_name).__path__):
+        #         module = importlib.import_module(f".{module_name}", package=package_name)
+        #         for name, obj in inspect.getmembers(module):
+        #             if FusedLambBuilder == None and name == "FusedLambBuilder" and inspect.isclass(obj):
+        #                 FusedLambBuilder = obj
+        #                 break
+        #         if FusedLambBuilder:
+        #             break
+        #     if not FusedLambBuilder:
+        #         pytest.skip("FuseLamb is not an existing feature in xpu")
         model, optim, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
         expected_loss_scale = 2**8

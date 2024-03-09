@@ -4,7 +4,7 @@
 # DeepSpeed Team
 
 import deepspeed
-from deepspeed.ops.op_builder import CPUAdamBuilder
+from deepspeed.ops.op_builder import CPUAdamBuilder, CCLCommBuilder
 
 from unit.common import DistributedTest
 from unit.simple_model import *
@@ -13,6 +13,8 @@ from unit.checkpoint.common import checkpoint_correctness_verification
 
 import pytest
 
+if not deepspeed.ops.__compatible_ops__[CCLCommBuilder.NAME]:
+    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 
 @pytest.mark.parametrize('zero_stage, use_cpu_offload', [(0, False), (1, False), (2, False), (2, True), (3, False),
                                                          (3, True)])
