@@ -27,9 +27,9 @@ jobs:
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
 
-      - name: Install numactl
+      - name: Install system packages
         run: |
-          sudo apt-get install -y numactl
+          sudo apt-get install -y numactl pdsh
 
       - name: Install pytorch
         run: |
