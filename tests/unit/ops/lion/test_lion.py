@@ -54,8 +54,8 @@ class TestLionConfigs(DistributedTest):
         }
         model = SimpleModel(10)
         model, _, _, _ = deepspeed.initialize(config=config_dict,
-                                            model=model,
-                                            model_parameters=model.parameters())
+                                              model=model,
+                                              model_parameters=model.parameters())
         # get base optimizer under zero
         ds_optimizer = model.optimizer.optimizer
         opt_class = resulting_optimizer
