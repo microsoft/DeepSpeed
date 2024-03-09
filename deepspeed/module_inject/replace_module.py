@@ -328,11 +328,11 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         # enable tensor parallel for the last linear
         if hasattr(module, "lm_head") and hasattr(module.lm_head,
                                                   "weight") and not module.lm_head.weight.is_meta and isinstance(
-                                                      module.lm_head, torch.nn.Linear) and dist.initialized():
+                                                      module.lm_head, torch.nn.Linear):
             module = replace_wo_policy(module, ("lm_head", ), 0, "lm_head")
         elif hasattr(module, "embed_out") and hasattr(module.embed_out,
                                                       "weight") and not module.embed_out.weight.is_meta and isinstance(
-                                                          module.embed_out, torch.nn.Linear) and dist.initialized():
+                                                          module.embed_out, torch.nn.Linear):
             module = replace_wo_policy(module, ("embed_out", ), 0, "embed_out")
         return module
 
