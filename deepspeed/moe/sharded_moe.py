@@ -17,6 +17,7 @@ The file has been adapted from two fairscale files:
 
 from deepspeed.utils.timer import SynchronizedWallClockTimer
 from deepspeed.utils import logger
+from deepspeed.utils.bwc import bwc_tensor_model_parallel_world_size
 from typing import Callable, Dict, TYPE_CHECKING, Any, Optional, Tuple
 
 import torch
@@ -213,7 +214,7 @@ def top1gating(logits: Tensor,
         if groups._get_expert_model_parallel_world_size() == 1:
             # If the non-expert is tensor-parallel, we need to pad the capacity to 'tp'.
             # This is since we are going to activate drop_tokens() to drop duplicate tokens.
-            tp = 1 if groups.mpu is None else groups.mpu.get_tensor_model_parallel_world_size()
+            tp = 1 if groups.mpu is None else bwc_tensor_model_parallel_world_size(mpu=groups.mpu)
             new_capacity = torch.ceil(new_capacity / tp).mul(tp).to(new_capacity.dtype)
         capacity = new_capacity
 
@@ -330,7 +331,7 @@ def top2gating(logits: Tensor,
         if groups._get_expert_model_parallel_world_size() == 1:
             # If the non-expert is tensor-parallel, we need to pad the capacity to 'tp'.
             # This is since we are going to activate drop_tokens() to drop duplicate tokens.
-            tp = 1 if groups.mpu is None else groups.mpu.get_tensor_model_parallel_world_size()
+            tp = 1 if groups.mpu is None else bwc_tensor_model_parallel_world_size(mpu=groups.mpu)
             new_capacity = torch.ceil(new_capacity / tp).mul(tp).to(new_capacity.dtype)
         capacity = new_capacity
 

@@ -25,6 +25,7 @@ except ModuleNotFoundError:
     from torch import inf
 
 from deepspeed.utils import groups, logger
+from deepspeed.utils.bwc import bwc_tensor_model_parallel_rank
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from numpy import prod
 from deepspeed.accelerator import get_accelerator
@@ -115,44 +116,6 @@ def is_model_parallel_parameter(p) -> bool:
         return True
 
     return False
-
-
-def bwc_tensor_model_parallel_rank(mpu=None):
-    """Backwards-compatible way of querying the tensor model parallel rank from
-    an ``mpu`` object.
-
-    *Tensor* model parallelism means that tensors are physically split across
-    processes. This contrasts with *pipeline* model parallelism, in which the
-    layers are partitioned but tensors left intact.
-
-    The API for tensor model parallelism has changed across versions and this
-    helper provides a best-effort implementation across versions of ``mpu``
-    objects.  The preferred mechanism is
-    ``mpu.get_tensor_model_parallel_rank()``.
-
-    This should "just work" with both Megatron-LM and DeepSpeed's pipeline
-    parallelism.
-
-    Args:
-        mpu (model parallel unit, optional): The tensor model parallel rank.
-            If ``mpu=None``, returns 0. Defaults to ``None``.
-
-    Returns:
-        int: the rank
-    """
-    if mpu is None:
-        # No model parallelism in easy :)
-        return 0
-
-    if hasattr(mpu, 'get_tensor_model_parallel_rank'):
-        # New Megatron and DeepSpeed convention (post pipeline-parallelism release)
-        return mpu.get_tensor_model_parallel_rank()
-    elif hasattr(mpu, 'get_slice_parallel_rank'):
-        # Some DeepSpeed + pipeline parallelism versions
-        return mpu.get_slice_parallel_rank()
-    else:
-        # Deprecated Megatron and DeepSpeed convention
-        return mpu.get_model_parallel_rank()
 
 
 def copy_to_device(item, device, criterion_func):
