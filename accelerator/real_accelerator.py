@@ -20,7 +20,7 @@ try:
 except ImportError as e:
     dsa2 = None
 
-SUPPORTED_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'xpu.external', 'npu', 'mps', 'hpu']
+SUPPORTED_ACCELERATOR_LIST = ['cuda', 'cpu', 'xpu', 'xpu.external', 'npu', 'mps', 'hpu', 'xeon']
 
 ds_accelerator = None
 
@@ -72,7 +72,7 @@ def get_accelerator():
                 raise ValueError(
                     f"XPU_Accelerator external requires intel_extension_for_deepspeed, which is not installed on this system."
                 )
-        elif accelerator_name == "cpu":
+        elif accelerator_name == "xeon":
             try:
                 import intel_extension_for_pytorch  # noqa: F401 # type: ignore
             except ImportError as e:
@@ -127,7 +127,7 @@ def get_accelerator():
                 if ipex._C._has_xpu():
                     accelerator_name = "xpu"
                 else:
-                    accelerator_name = "cpu"
+                    accelerator_name = "xeon"
             except ImportError as e:
                 pass
         if accelerator_name is None:
@@ -154,38 +154,47 @@ def get_accelerator():
             except ImportError as e:
                 pass
         if accelerator_name is None:
-            accelerator_name = "cuda"
+            try:
+                import torch
 
+                # Determine if we are on a GPU or x86 CPU with torch.
+                if torch.cuda.is_available():
+                    accelerator_name = "cuda"
+                else:
+                    if accel_logger is not None:
+                        accel_logger.warn(
+                            "Setting accelerator to CPU. If you have GPU or other accelerator, we were unable to detect it."
+                        )
+                    accelerator_name = "cpu"
+            except (RuntimeError, ImportError) as e:
+                pass
         ds_set_method = "auto detect"
 
     # 3. Set ds_accelerator accordingly
     if accelerator_name == "cuda":
         from .cuda_accelerator import CUDA_Accelerator
-
         ds_accelerator = CUDA_Accelerator()
     elif accelerator_name == "cpu":
         from .cpu_accelerator import CPU_Accelerator
-
         ds_accelerator = CPU_Accelerator()
     elif accelerator_name == "xpu.external":
         # XPU_Accelerator is already imported in detection stage
         ds_accelerator = XPU_Accelerator()
     elif accelerator_name == "xpu":
         from .xpu_accelerator import XPU_Accelerator
-
         ds_accelerator = XPU_Accelerator()
     elif accelerator_name == "npu":
         from .npu_accelerator import NPU_Accelerator
-
         ds_accelerator = NPU_Accelerator()
     elif accelerator_name == "mps":
         from .mps_accelerator import MPS_Accelerator
-
         ds_accelerator = MPS_Accelerator()
     elif accelerator_name == 'hpu':
         from .hpu_accelerator import HPU_Accelerator
-
         ds_accelerator = HPU_Accelerator()
+    elif accelerator_name == 'xeon':
+        from .xeon_accelerator import Xeon_Accelerator
+        ds_accelerator = Xeon_Accelerator()
     _validate_accelerator(ds_accelerator)
     if accel_logger is not None:
         accel_logger.info(f"Setting ds_accelerator to {ds_accelerator._name} ({ds_set_method})")
