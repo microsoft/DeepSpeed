@@ -290,6 +290,6 @@ class DeepSpeedAccelerator(ABC):
 
     # creates and returns an optimizer, specified by optimizer_name, when the accelerator has its own implementation
     @abc.abstractmethod
-    def get_optimizer(self, optimizer_name, cpu_optimization, model_parameters, **optimizer_parameters):
+    def get_optimizer(self, optimizer_name, model_parameters, **optimizer_parameters):
         ...
 

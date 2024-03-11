@@ -88,10 +88,17 @@ from deepspeed.runtime.data_pipeline.data_routing.basic_layer import RandomLayer
 from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
 
+from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
+from deepspeed.ops.lamb import FusedLamb
+from deepspeed.runtime.fp16.onebit.adam import OnebitAdam
+from deepspeed.runtime.fp16.onebit.zoadam import ZeroOneAdam
+from deepspeed.runtime.fp16.onebit.lamb import OnebitLamb
+from deepspeed.ops.lion import DeepSpeedCPULion, FusedLion
+
 from .pipe.module import PipelineModule
 from .utils import get_ma_status
 from .compiler import CompiledModuleWrapper
-from ..ops.adam import FusedAdam
+from ..ops.adam import FusedAdam, DeepSpeedCPUAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE
 from ..moe.utils import is_moe_param
@@ -1273,6 +1280,66 @@ class DeepSpeedEngine(Module):
         self.compression_scheduler = self._configure_compression_scheduler()
         self.quantizer = self._configure_quantization()
 
+    MuAdam_Init, MuAdamW_Init, MuSGD_Init = None, None, None
+
+    def _get_internal_optimizer_name(self, optimizer_parameters):
+        optimizer_name = self.optimizer_name()
+        cpu_optimizer_state = None
+        use_torch = None
+
+        if optimizer_name in [ADAM_OPTIMIZER, ADAMW_OPTIMIZER]:
+            if optimizer_name == ADAM_OPTIMIZER and optimizer_parameters.pop(ADAM_W_MODE, ADAM_W_MODE_DEFAULT):
+                optimizer_name = ADAMW_OPTIMIZER
+            if optimizer_parameters.pop(TORCH_ADAM_PARAM, False):
+                use_torch = "TORCH"
+            elif self.zero_use_cpu_optimizer():
+                cpu_optimizer_state = "CPU"
+
+        elif optimizer_name in [ADAGRAD_OPTIMIZER, LION_OPTIMIZER] and self.zero_use_cpu_optimizer():
+            cpu_optimizer_state = "CPU"
+
+        elif optimizer_name == ONEBIT_ADAM_OPTIMIZER:
+            assert not self.zero_optimization(), "1bit-Adam is not compatible with ZeRO"
+            if not self.fp16_enabled():
+                logger.warning(f"Currently the convergence of 1-bit Adam is only verified under FP16")
+
+        elif optimizer_name == ZERO_ONE_ADAM_OPTIMIZER:
+            assert not self.zero_optimization(), "0/1 Adam is not compatible with ZeRO"
+            if not self.fp16_enabled():
+                logger.warning(f'Currently the convergence of 0/1 Adam is only verified under FP16')
+
+        elif optimizer_name == ONEBIT_LAMB_OPTIMIZER:
+            assert not self.zero_optimization(), "1bit-Lamb is not compatible with ZeRO"
+
+        elif optimizer_name == MUADAM_OPTIMIZER:
+            global MuAdam_Init
+            try:
+                from mup import MuAdam
+                MuAdam_Init = MuAdam
+            except ImportError:
+                logger.error(f"Install mup to use MuAdam optimizer")
+
+        elif optimizer_name == MUADAMW_OPTIMIZER:
+            global MuAdamW_Init
+            try:
+                from mup import MuAdamW
+                MuAdamW_Init = MuAdamW
+            except ImportError:
+                logger.error(f"Install mup to use MuAdamW optimizer")
+
+        elif optimizer_name == MUSGD_OPTIMIZER:
+            global MuSGD_Init
+            try:
+                from mup import MuSGD
+                MuSGD_Init = MuSGD
+            except ImportError:
+                logger.error(f"Install mup to use MuSGD optimizer")
+
+        internal_opt_name = "_" + "_".join(
+            str for str in [use_torch, cpu_optimizer_state, optimizer_name.upper()] if str is not None)
+
+        return internal_opt_name
+
     def _configure_basic_optimizer(self, model_parameters):
         optimizer_parameters = self.optimizer_params()
         if optimizer_parameters is None:
@@ -1283,95 +1350,33 @@ class DeepSpeedEngine(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
 
-        optimizer = get_accelerator().get_optimizer(self.optimizer_name(), self.zero_use_cpu_optimizer(),
-                                                    model_parameters, **optimizer_parameters)
-        if optimizer is not None:
-            return optimizer
+        self._internal_optimizers_dict = {
+            "_TORCH_ADAM": lambda arg1, **arg2: torch.optim.Adam(arg1, **arg2),
+            "_TORCH_ADAMW": lambda arg1, **arg2: torch.optim.AdamW(arg1, **arg2),
+            "_CPU_ADAM": lambda arg1, **arg2: DeepSpeedCPUAdam(arg1, **arg2, adamw_mode=False),
+            "_CPU_ADAMW": lambda arg1, **arg2: DeepSpeedCPUAdam(arg1, **arg2, adamw_mode=True),
+            "_ADAM": lambda arg1, **arg2: FusedAdam(arg1, **arg2, adam_w_mode=False),
+            "_ADAMW": lambda arg1, **arg2: FusedAdam(arg1, **arg2, adam_w_mode=True),
+            "_CPU_ADAGRAD": lambda arg1, **arg2: DeepSpeedCPUAdagrad(arg1, **arg2),
+            "_ADAGRAD": lambda arg1, **arg2: torch.optim.Adagrad(arg1, **arg2),
+            "_LAMB": lambda arg1, **arg2: FusedLamb(arg1, **arg2),
+            "_ONEBITADAM": lambda arg1, **arg2: OnebitAdam(arg1, self, **arg2),
+            "_ZEROONEADAM": lambda arg1, **arg2: ZeroOneAdam(arg1, self, **arg2),
+            "_ONEBITLAMB": lambda arg1, **arg2: OnebitLamb(arg1, self, **arg2),
+            "_CPU_LION": lambda arg1, **arg2: DeepSpeedCPULion(arg1, **arg2),
+            "_LION": lambda arg1, **arg2: FusedLion(arg1, **arg2),
+            "_MUADAM": lambda arg1, **arg2: MuAdam_Init(arg1, **arg2) if MuAdam_Init is not None else None,
+            "_MUADAMW": lambda arg1, **arg2: MuAdamW_Init(arg1, **arg2) if MuAdamW_Init is not None else None,
+            "_MUSGD": lambda arg1, **arg2: MuSGD_Init(arg1, **arg2) if MuSGD_Init is not None else None
+        }
 
-        if self.optimizer_name() in [ADAM_OPTIMIZER, ADAMW_OPTIMIZER]:
-            torch_adam = optimizer_parameters.pop(TORCH_ADAM_PARAM, False)
-            adam_w_mode = optimizer_parameters.pop(ADAM_W_MODE, ADAM_W_MODE_DEFAULT)
+        internal_optimizer_name = self._get_internal_optimizer_name(optimizer_parameters)
 
-            # Optimizer name of Adam forces AdamW logic unless adam_w_mode is explicitly set
-            effective_adam_w_mode = self.optimizer_name() == ADAMW_OPTIMIZER or adam_w_mode
-
-            if torch_adam:
-                if not effective_adam_w_mode:
-                    optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
-                else:
-                    optimizer = torch.optim.AdamW(model_parameters, **optimizer_parameters)
-            else:
-                if self.zero_use_cpu_optimizer():
-                    from deepspeed.ops.adam import DeepSpeedCPUAdam
-                    optimizer = DeepSpeedCPUAdam(model_parameters,
-                                                 **optimizer_parameters,
-                                                 adamw_mode=effective_adam_w_mode)
-                else:
-                    from deepspeed.ops.adam import FusedAdam
-
-                    optimizer = FusedAdam(
-                        model_parameters,
-                        **optimizer_parameters,
-                        adam_w_mode=effective_adam_w_mode,
-                    )
-
-        elif self.optimizer_name() == ADAGRAD_OPTIMIZER:
-            if self.zero_use_cpu_optimizer():
-                from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
-                optimizer = DeepSpeedCPUAdagrad(model_parameters, **optimizer_parameters)
-            else:
-                optimizer = torch.optim.Adagrad(model_parameters, **optimizer_parameters)
-        elif self.optimizer_name() == LAMB_OPTIMIZER:
-            from deepspeed.ops.lamb import FusedLamb
-
-            optimizer = FusedLamb(model_parameters, **optimizer_parameters)
-        elif self.optimizer_name() == ONEBIT_ADAM_OPTIMIZER:
-            assert not self.zero_optimization(), "1bit-Adam is not compatible with ZeRO"
-            from deepspeed.runtime.fp16.onebit.adam import OnebitAdam
-
-            optimizer = OnebitAdam(model_parameters, self, **optimizer_parameters)
-            if not self.fp16_enabled():
-                logger.warning(f"Currently the convergence of 1-bit Adam is only verified under FP16")
-        elif self.optimizer_name() == ZERO_ONE_ADAM_OPTIMIZER:
-            assert not self.zero_optimization(), "0/1 Adam is not compatible with ZeRO"
-            from deepspeed.runtime.fp16.onebit.zoadam import ZeroOneAdam
-
-            optimizer = ZeroOneAdam(model_parameters, self, **optimizer_parameters)
-            if not self.fp16_enabled():
-                logger.warning(f'Currently the convergence of 0/1 Adam is only verified under FP16')
-        elif self.optimizer_name() == ONEBIT_LAMB_OPTIMIZER:
-            assert not self.zero_optimization(), "1bit-Lamb is not compatible with ZeRO"
-            from deepspeed.runtime.fp16.onebit.lamb import OnebitLamb
-
-            optimizer = OnebitLamb(model_parameters, self, **optimizer_parameters)
-            if not self.fp16_enabled():
-                logger.warning(f"Currently the convergence of 1-bit Lamb is only verified under FP16")
-        elif self.optimizer_name() == LION_OPTIMIZER:
-            if self.zero_use_cpu_optimizer():
-                from deepspeed.ops.lion import DeepSpeedCPULion
-                optimizer = DeepSpeedCPULion(model_parameters, **optimizer_parameters)
-            else:
-                from deepspeed.ops.lion import FusedLion
-                optimizer = FusedLion(model_parameters, **optimizer_parameters)
-        elif self.optimizer_name() == MUADAM_OPTIMIZER:
-            try:
-                from mup import MuAdam
-            except ImportError:
-                logger.error(f"Install mup to use MuAdam optimizer")
-            optimizer = MuAdam(model_parameters, **optimizer_parameters)
-        elif self.optimizer_name() == MUADAMW_OPTIMIZER:
-            try:
-                from mup import MuAdamW
-            except ImportError:
-                logger.error(f"Install mup to use MuAdamW optimizer")
-            optimizer = MuAdamW(model_parameters, **optimizer_parameters)
-        elif self.optimizer_name() == MUSGD_OPTIMIZER:
-            try:
-                from mup import MuSGD
-            except ImportError:
-                logger.error(f"Install mup to use MuSGD optimizer")
-            optimizer = MuSGD(model_parameters, **optimizer_parameters)
-        else:
+        optimizer = get_accelerator().get_optimizer(internal_optimizer_name, model_parameters, **optimizer_parameters)
+        if optimizer is None:
+            optimizer = self._internal_optimizers_dict[internal_optimizer_name](model_parameters,
+                                                                                **optimizer_parameters)
+        if optimizer is None:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
         return optimizer
