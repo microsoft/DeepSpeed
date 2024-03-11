@@ -14,6 +14,7 @@ from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 
+from unit.common import preferred_dtype
 from unit.simple_model import *
 from unittest.mock import MagicMock, patch
 
@@ -169,7 +170,7 @@ def checkpoint_correctness_verification(config_dict,
                                         empty_tag=False,
                                         seq_dataloader=False,
                                         load_module_only=False):
-    dtype = torch.half if fp16 else torch.float32
+    dtype = preferred_dtype
     ds_model = create_deepspeed_model(config_dict=config_dict, model=models[0], base_optimizer=base_optimizers[0])
 
     if seq_dataloader:
