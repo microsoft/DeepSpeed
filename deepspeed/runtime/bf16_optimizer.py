@@ -39,11 +39,11 @@ def fp8_to_fp32(fp8_param, fp8_group_flat):
     out = out.view(fp8_group_flat.size())
     return out
 
-def fp32_to_fp8(fp8_param, fp8_partition_size, fp32_partition, out):
+def fp32_to_fp8(fp8_param, fp32_partition, out):
     scale_inv = fp8_param._scale_inv
     scale = scale_inv.reciprocal()
     fp8_dtype = fp8_param._fp8_dtype
-    amax = torch.ones_like(scale)
+    amax = torch.empty_like(scale)
     
     tex.cast_to_fp8_noalloc(
         fp32_partition.view(1, -1),
@@ -169,7 +169,6 @@ class BF16_Optimizer(ZeROOptimizer):
             self.bf16_partitioned_groups.append(bf16_dp_partitions)
 
             # create fp32 params partition
-            # TODO: uint8 --> fp32 --> uint8 is the issue
             if bf16_dp_partitions[partition_id].dtype == torch.uint8:
                 self.fp32_groups_flat_partition.append(fp8_to_fp32(self.bf16_groups[i][0],
                                                        bf16_dp_partitions[partition_id]))
@@ -422,21 +421,27 @@ class BF16_Optimizer(ZeROOptimizer):
 
     @torch.no_grad()
     def update_lp_params(self):
-        #import pdb; pdb.set_trace()
         for i, (bf16_partitions,
                 fp32_partition) in enumerate(zip(self.bf16_partitioned_groups, self.fp32_groups_flat_partition)):
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             if bf16_partitions[partition_id].dtype == torch.uint8:
-                fp32_to_fp8(self.bf16_groups[i][0],
-                            bf16_partitions[partition_id].size(),
-                            fp32_partition.data,
-                            out=bf16_partitions[partition_id].data)
-                            
+                partition_numel = bf16_partitions[partition_id].numel()
+                n, numel = (0,0)
+                while numel < partition_numel:
+                    param = self.bf16_groups[i][n]
+                    param_numel = param.numel()
+                    if param_numel + numel > partition_numel:
+                        idx = partition_numel
+                    else:
+                        idx = numel + param_numel
+                    fp8_data = bf16_partitions[partition_id][numel:idx].data
+                    fp32_data = fp32_partition[numel:idx].data
+                    fp32_to_fp8(param, fp32_data, out=fp8_data)
+
+                    numel = idx
+                    n += 1
             else:
                 bf16_partitions[partition_id].data.copy_(fp32_partition.data)
-            # print_rank_0(f'update_lp_params {i=} {partition_id=}', force=True)
-            # if i == 0:
-            #     print_rank_0(f'{fp32_partition[:10]=}', force=True)
 
         all_gather_dp_groups(groups_flat=self.bf16_groups_flat,
                              partitioned_param_groups=self.bf16_partitioned_groups,
