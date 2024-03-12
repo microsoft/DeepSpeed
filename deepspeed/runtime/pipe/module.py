@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 
+import contextlib
 import os
 import glob
 
@@ -83,16 +84,23 @@ class TiedLayerSpec(LayerSpec):
         self.tied_weight_attr = [tied_weight_attr] if type(tied_weight_attr) == str else tied_weight_attr
 
 
-class _DisableInit(torch.overrides.TorchFunctionMode):
-    def __torch_function__(self, func, types, args=(), kwargs=None):
-        kwargs = kwargs or {}
-        if getattr(func, '__module__', None) == 'torch.nn.init':
-            if 'tensor' in kwargs:
-                return kwargs['tensor']
+if hasattr(torch.overrides, "TorchFunctionMode"):
+
+    class _DisableInit(torch.overrides.TorchFunctionMode):
+
+        def __torch_function__(self, func, types, args=(), kwargs=None):
+            kwargs = kwargs or {}
+            if getattr(func, '__module__', None) == 'torch.nn.init':
+                if 'tensor' in kwargs:
+                    return kwargs['tensor']
+                else:
+                    return args[0]
             else:
-                return args[0]
-        else:
-            return func(*args, **kwargs)
+                return func(*args, **kwargs)
+
+    _disable_init_context_mgr = _DisableInit()
+else:
+    _disable_init_context_mgr = contextlib.suppress()
 
 
 class PipelineModule(nn.Module):
@@ -281,7 +289,7 @@ class PipelineModule(nn.Module):
                 A list of frozen parameter names
         """
         if isinstance(layer, LayerSpec):
-            with _DisableInit():
+            with _disable_init_context_mgr:
                 l = layer.build()
             return [n for n, p in l.named_parameters() if not p.requires_grad]
         elif isinstance(layer, nn.Module):
@@ -300,7 +308,7 @@ class PipelineModule(nn.Module):
         param_counts = [0] * len(self._layer_specs)
         for idx, layer in enumerate(self._layer_specs):
             if isinstance(layer, LayerSpec):
-                with _DisableInit():
+                with _disable_init_context_mgr:
                     l = layer.build()
                 params = filter(lambda p: p.requires_grad, l.parameters())
                 param_counts[idx] = sum(p.numel() for p in params)
