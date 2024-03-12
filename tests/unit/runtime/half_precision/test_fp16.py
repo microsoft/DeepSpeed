@@ -14,7 +14,6 @@ from deepspeed.runtime.utils import required_torch_version
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import CPUAdamBuilder, FusedLambBuilder
 
-
 try:
     from apex import amp  # noqa: F401 # type: ignore
     _amp_available = True

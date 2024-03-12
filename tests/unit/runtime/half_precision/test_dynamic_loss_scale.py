@@ -12,7 +12,6 @@ from unit.simple_model import SimpleModel
 from deepspeed.ops.op_builder import FusedLambBuilder
 
 
-
 def run_model_step(model, gradient_list):
     for value in gradient_list:
         for p in model.parameters():
