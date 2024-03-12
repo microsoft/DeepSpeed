@@ -14,8 +14,6 @@ from deepspeed.runtime.utils import required_torch_version
 from deepspeed.accelerator import get_accelerator
 from deepspeed.ops.op_builder import CPUAdamBuilder, FusedLambBuilder
 
-if not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME]:
-    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 
 try:
     from apex import amp  # noqa: F401 # type: ignore
@@ -28,6 +26,7 @@ amp_available = pytest.mark.skipif(not _amp_available, reason="apex/amp is not i
 class TestLambFP32GradClip(DistributedTest):
     world_size = 2
 
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="FusedLambBuilder had not been implemented on this system.")
     def test(self):
         config_dict = {
             "train_batch_size": 2,
@@ -58,6 +57,7 @@ class TestLambFP32GradClip(DistributedTest):
 class TestLambFP16(DistributedTest):
     world_size = 2
 
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="FusedLambBuilder had not been implemented on this system.")
     def test__basic(self):
         config_dict = {
             "train_batch_size": 2,
@@ -83,6 +83,7 @@ class TestLambFP16(DistributedTest):
             model.backward(loss)
             model.step()
 
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="FusedLambBuilder had not been implemented on this system.")
     def test_empty_grad(self):
         config_dict = {
             "train_batch_size": 2,
@@ -220,6 +221,7 @@ class TestFP16OptimizerForMoE(DistributedTest):
             engine.step()
 
     @pytest.mark.parametrize("fused_lamb_legacy", [(False), (True)])
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="FusedLambBuilder had not been implemented on this system.")
     def test_lamb_gradnorm(self, monkeypatch, fused_lamb_legacy: bool):
         if not required_torch_version(min_version=1.8):
             pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")

@@ -13,8 +13,6 @@ from deepspeed.ops.op_builder import FusedAdamBuilder, FusedLambBuilder
 
 if not deepspeed.ops.__compatible_ops__[FusedAdamBuilder.NAME]:
     pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
-if not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME]:
-    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 
 
 @pytest.fixture
@@ -180,7 +178,7 @@ class TestNonElasticBatchParams(DistributedTest):
         with pytest.raises(deepspeed.elasticity.config.ElasticityError):
             model, _, _, _ = deepspeed.initialize(config=config_dict, model=model, model_parameters=model.parameters())
 
-
+@pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="FusedLambBuilder had not been implemented on this system.")
 class TestNonElasticBatchParamsWithOverride(DistributedTest):
     world_size = 2
 

@@ -11,8 +11,6 @@ from unit.common import DistributedTest
 from unit.simple_model import SimpleModel
 from deepspeed.ops.op_builder import FusedLambBuilder
 
-if not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME]:
-    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 
 
 def run_model_step(model, gradient_list):
@@ -148,6 +146,7 @@ class TestFused(DistributedTest):
         assert optim.cur_iter == expected_iteration
 
 
+@pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME], reason="FusedLambBuilder had not been implemented on this system.")
 class TestUnfused(DistributedTest):
     world_size = 1
 

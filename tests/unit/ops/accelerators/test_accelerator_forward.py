@@ -15,12 +15,8 @@ from unit.modeling import BertLayerNorm, BertConfig, BertEncoder as BertEncoderP
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from deepspeed.accelerator import get_accelerator
 from unit.common import DistributedTest
-from deepspeed.ops.op_builder import TransformerBuilder, StochasticTransformerBuilder
+from deepspeed.ops.op_builder import TransformerBuilder
 
-if not deepspeed.ops.__compatible_ops__[TransformerBuilder.NAME]:
-    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
-if not deepspeed.ops.__compatible_ops__[StochasticTransformerBuilder.NAME]:
-    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 if torch.half not in get_accelerator().supported_dtypes():
     pytest.skip(f"fp16 not supported, valid dtype: {get_accelerator().supported_dtypes()}", allow_module_level=True)
 
@@ -266,6 +262,7 @@ class TestCUDAForward(DistributedTest):
 class TestCUDAForwardSmallBatchSize(DistributedTest):
     world_size = 1
 
+    @pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[TransformerBuilder.NAME], reason="TransformerBuilder had not been implemented on this system.")
     def test_forward_with_small_bsz(self, batch_size, small_bsz, hidden_size, seq_len, heads, num_layers, is_preln,
                                     use_fp16):
         # Only run fp16 test cases on devices with FP16 capability.
