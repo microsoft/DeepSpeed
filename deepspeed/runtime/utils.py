@@ -205,6 +205,16 @@ def move_to_device(item, device, criterion_func):
         return item
 
 
+def get_norm_with_moe_layers(all_groups_norm, group):
+    # Need to allreduce (avg) the norms across different ranks because moe params will not be synced during allreduce
+    scaled_norm = all_groups_norm * 1.0 / float(dist.get_world_size(group=group))
+    scaled_norm_tensor = torch.tensor(scaled_norm, device=get_accelerator().current_device(), dtype=torch.float)
+    dist.all_reduce(scaled_norm_tensor, group=group)
+    all_groups_norm = scaled_norm_tensor.item()
+    #print(f"old = {all_groups_norm_old} and new = {all_groups_norm} at rank: {deepspeed.comm.get_rank()}")
+    return all_groups_norm
+
+
 class CheckOverflow(object):
     '''Checks for overflow in gradient across parallel process'''
 
