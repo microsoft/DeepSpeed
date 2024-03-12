@@ -16,6 +16,7 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
 
     hp_keys = []
     for file in os.listdir(folder):
+        # We expect files named something like "exp_avg.pt", "exp_avg_sq.pt", "fp32.pt"
         pattern = r'(.+).pt'
         match = re.search(pattern, file)
         if match:
