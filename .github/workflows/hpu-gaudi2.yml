@@ -1,4 +1,4 @@
-name: gaudi2
+name: hpu-gaudi2
 
 on:
   workflow_dispatch:
