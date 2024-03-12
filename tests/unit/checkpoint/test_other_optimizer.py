@@ -135,5 +135,4 @@ class TestOtherOptimizerCheckpoint(DistributedTest):
                                             models=models,
                                             hidden_dim=hidden_dim,
                                             tmpdir=tmpdir,
-                                            fp16=False,
                                             dtype=torch.float32)

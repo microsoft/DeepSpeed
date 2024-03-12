@@ -38,7 +38,6 @@ class TestLatestCheckpoint(DistributedTest):
                                             tmpdir=tmpdir,
                                             load_optimizer_states=True,
                                             load_lr_scheduler_states=False,
-                                            fp16=False,
                                             empty_tag=True,
                                             dtype=torch.float)
 

@@ -164,7 +164,6 @@ def checkpoint_correctness_verification(config_dict,
                                         tmpdir,
                                         load_optimizer_states=False,
                                         load_lr_scheduler_states=False,
-                                        fp16=True,
                                         train_batch=False,
                                         base_optimizers=[None, None],
                                         empty_tag=False,
@@ -245,7 +244,7 @@ def checkpoint_correctness_verification(config_dict,
                          load_module_only=load_module_only)
 
     if load_optimizer_states:
-        compare_optimizer_states(trained_model, loaded_model, hidden_dim, fp16)
+        compare_optimizer_states(trained_model, loaded_model, hidden_dim, dtype == torch.float16)
 
     if load_lr_scheduler_states:
         compare_lr_scheduler_states(trained_model, loaded_model)

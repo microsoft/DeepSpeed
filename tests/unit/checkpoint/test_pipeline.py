@@ -58,7 +58,6 @@ class TestPipelineCheckpoint(DistributedTest):
                                             models=models,
                                             hidden_dim=models[0].hidden_dim,
                                             tmpdir=tmpdir,
-                                            fp16=config_dict['fp16']['enabled'],
                                             load_optimizer_states=True,
                                             load_lr_scheduler_states=True,
                                             train_batch=True,
