@@ -5,6 +5,8 @@ on:
   schedule:
     - cron: "0 0 * * *"
   pull_request:
+    paths:
+      - ".github/workflows/hpu-gaudi2.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
