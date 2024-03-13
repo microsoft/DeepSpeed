@@ -51,7 +51,6 @@ jobs:
           cat /proc/meminfo
           # check whether blob has enough space for model check point
           df -k |grep "/blob$"
-          pip install cmake
 
       - name: Install numactl
         run: |
@@ -60,8 +59,11 @@ jobs:
       - name: Install dependencies
         run: |
           pip install torch
+          python -m pip install oneccl_bind_pt --index-url https://pytorch-extension.intel.com/release-whl/stable/cpu/us/
+          pip install py-cpuinfo
           # check installed version
           pip list |grep \\\<torch\\\>
+          pip list |grep oneccl-bind-pt
 
       - name: Install oneCCL
         run: |
@@ -82,8 +84,6 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          # sanity check for condition that DeepSpeed would install CPU_Accelerator
-          python -c "import torch;import intel_extension_for_pytorch as ipex;print(ipex._C._has_xpu())"
           pip install .[dev,1bit,autotuning,inf]
           ds_report
 
