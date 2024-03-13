@@ -19,18 +19,21 @@ from _pytest.outcomes import Skipped
 from _pytest.fixtures import FixtureLookupError, FixtureFunctionMarker
 
 # Worker timeout for tests that hang
-DEEPSPEED_TEST_TIMEOUT = 600
 DEEPSPEED_TEST_TIMEOUT = int(os.environ.get('DS_UNITTEST_TIMEOUT', '600'))
 
 
 def is_rocm_pytorch():
     return hasattr(torch.version, 'hip') and torch.version.hip is not None
+
+
 def get_xdist_worker_id():
     xdist_worker = os.environ.get('PYTEST_XDIST_WORKER', None)
     if xdist_worker is not None:
         xdist_worker_id = xdist_worker.replace('gw', '')
         return int(xdist_worker_id)
     return None
+
+
 def get_master_port(base_port=29500, port_range_size=1000):
     xdist_worker_id = get_xdist_worker_id()
     if xdist_worker_id is not None:
@@ -48,6 +51,8 @@ def get_master_port(base_port=29500, port_range_size=1000):
         except OSError:
             port += 1
     raise IOError('no free ports')
+
+
 def set_accelerator_visible():
     cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
     xdist_worker_id = get_xdist_worker_id()
@@ -72,7 +77,6 @@ def set_accelerator_visible():
                 if match:
                     num_accelerators += 1
         elif get_accelerator().device_name() == 'hpu':
-loadams marked this conversation as resolved.
             hl_smi = subprocess.check_output(['hl-smi', "-L"])
             num_accelerators = re.findall(r"Module ID\s+:\s+(\d+)", hl_smi.decode())
             num_accelerators = sorted(num_accelerators, key=int)
@@ -86,7 +90,6 @@ loadams marked this conversation as resolved.
                 subprocess.check_output('cat /proc/cpuinfo | grep "physical id" | sort -u | wc -l', shell=True))
             num_accelerators = cpu_sockets
 
-        cuda_visible = ",".join(map(str, range(num_accelerators)))
         if isinstance(num_accelerators, list):
             cuda_visible = ",".join(num_accelerators)
         else:
@@ -100,6 +103,8 @@ loadams marked this conversation as resolved.
     dev_id_list = cuda_visible.split(",")
     dev_id_list = dev_id_list[xdist_worker_id:] + dev_id_list[:xdist_worker_id]
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(dev_id_list)
+
+
 class DistributedExec(ABC):
     """
     Base class for distributed execution of functions/methods. Contains common
@@ -114,9 +119,11 @@ class DistributedExec(ABC):
     non_daemonic_procs = False
     _pool_cache = {}
     exec_timeout = DEEPSPEED_TEST_TIMEOUT
+
     @abstractmethod
     def run(self):
         ...
+
     def __call__(self, request=None):
         self._fixture_kwargs = self._get_fixture_kwargs(request, self.run)
         world_size = self.world_size
@@ -126,6 +133,7 @@ class DistributedExec(ABC):
             world_size = [world_size]
         for procs in world_size:
             self._launch_procs(procs)
+
     def _get_fixture_kwargs(self, request, func):
         if not request:
             return {}
@@ -139,6 +147,7 @@ class DistributedExec(ABC):
             except FixtureLookupError:
                 pass  # test methods can have kwargs that are not fixtures
         return fixture_kwargs
+
     def _launch_daemonic_procs(self, num_procs):
         # Create process pool or use cached one
         master_port = None
@@ -166,9 +175,6 @@ class DistributedExec(ABC):
             # usually means an environment error and the rest of tests will
             # hang (causing super long unit test runtimes)
             pytest.exit("Test hanged, exiting", returncode=1)
-
-        # Tear down distributed environment and close process pools
-        self._close_pool(pool, num_procs)
         finally:
             # Regardless of the outcome, ensure proper teardown
             # Tear down distributed environment and close process pools
@@ -178,6 +184,7 @@ class DistributedExec(ABC):
         if any(skip_msgs):
             assert len(set(skip_msgs)) == 1, "Multiple different skip messages received"
             pytest.skip(skip_msgs[0])
+
     def _launch_non_daemonic_procs(self, num_procs):
         assert not self.reuse_dist_env, "Cannot reuse distributed environment with non-daemonic processes"
         master_port = get_master_port()
@@ -219,6 +226,7 @@ class DistributedExec(ABC):
             # This assumed all skip messages are the same, it may be useful to
             # add a check here to assert all exit messages are equal
             pytest.skip(skip_msg.get())
+
     def _launch_procs(self, num_procs):
         # Verify we have enough accelerator devices to run this test
         if get_accelerator().is_available() and get_accelerator().device_count() < num_procs:
@@ -231,6 +239,7 @@ class DistributedExec(ABC):
             self._launch_non_daemonic_procs(num_procs)
         else:
             self._launch_daemonic_procs(num_procs)
+
     def _dist_run(self, local_rank, num_procs, master_port, skip_msg=""):
         if not dist.is_initialized():
             """ Initialize deepspeed.comm and execute the user function. """
@@ -264,15 +273,19 @@ class DistributedExec(ABC):
             else:
                 raise e
         return skip_msg
+
     def _dist_destroy(self):
         if (dist is not None) and dist.is_initialized():
             dist.barrier()
             dist.destroy_process_group()
+
     def _close_pool(self, pool, num_procs, force=False):
         if force or not self.reuse_dist_env:
             msg = pool.starmap(self._dist_destroy, [() for _ in range(num_procs)])
             pool.close()
             pool.join()
+
+
 class DistributedFixture(DistributedExec):
     """
     Implementation that extends @pytest.fixture to allow for distributed execution.
@@ -318,10 +331,13 @@ class DistributedFixture(DistributedExec):
     # These values are just placeholders so that pytest recognizes this as a fixture
     _pytestfixturefunction = FixtureFunctionMarker(scope="function", params=None)
     __name__ = ""
+
     def __init__(self):
         assert isinstance(self.world_size, int), "Only one world size is allowed for distributed fixtures"
         self.__name__ = type(self).__name__
         _pytestfixturefunction = FixtureFunctionMarker(scope="function", params=None, name=self.__name__)
+
+
 class DistributedTest(DistributedExec):
     """
     Implementation for running pytest with distributed execution.
@@ -365,8 +381,10 @@ class DistributedTest(DistributedExec):
     def class_tmpdir(self, tmpdir_factory):
         fn = tmpdir_factory.mktemp(self.__class__.__name__)
         return fn
+
     def run(self, **fixture_kwargs):
         self._current_test(**fixture_kwargs)
+
     def __call__(self, request):
         self._current_test = self._get_current_test_func(request)
         self._fixture_kwargs = self._get_fixture_kwargs(request, self._current_test)
@@ -384,13 +402,18 @@ class DistributedTest(DistributedExec):
         for procs in world_size:
             self._launch_procs(procs)
             time.sleep(0.5)
+
     def _get_current_test_func(self, request):
         # DistributedTest subclasses may have multiple test methods
         func_name = request.function.__name__
         return getattr(self, func_name)
+
+
 def get_test_path(filename):
     curr_path = Path(__file__).parent
     return str(curr_path.joinpath(filename))
+
+
 # fp16 > bf16 > fp32
 def preferred_dtype():
     if get_accelerator().is_fp16_supported():
