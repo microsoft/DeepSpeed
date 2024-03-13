@@ -109,10 +109,10 @@ class BF16_Optimizer(ZeROOptimizer):
         see_memory_usage('end bf16_optimizer', force=True)
 
     def _setup_for_real_optimizer(self):
-        dp_world_size = dist.get_world_size(group=self.dp_process_group)
-        self.partition_count = [dp_world_size for i in range(len(self.optimizer.param_groups))]
+        self.partition_count = [dist.get_world_size(group=pg) for pg in self.real_dp_process_group]
 
         for i, param_group in enumerate(self.optimizer.param_groups):
+            real_dp_world_size = dist.get_world_size(group=self.real_dp_process_group[i])
             see_memory_usage(f'before initializing group {i}', force=True)
 
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
@@ -124,16 +124,16 @@ class BF16_Optimizer(ZeROOptimizer):
             # create flat bf16 params
             self.bf16_groups_flat.append(
                 self._flatten_dense_tensors_aligned(self.bf16_groups[i],
-                                                    self.nccl_start_alignment_factor * dp_world_size))
+                                                    self.nccl_start_alignment_factor * real_dp_world_size))
             # Make bf16 params point to flat tensor storage
             self._update_storage_to_flattened_tensor(tensor_list=self.bf16_groups[i],
                                                      flat_tensor=self.bf16_groups_flat[i])
 
             # divide flat weights into equal sized partitions
-            partition_size = self.bf16_groups_flat[i].numel() // dp_world_size
+            partition_size = self.bf16_groups_flat[i].numel() // real_dp_world_size
             bf16_dp_partitions = [
                 self.bf16_groups_flat[i].narrow(0, dp_index * partition_size, partition_size)
-                for dp_index in range(dp_world_size)
+                for dp_index in range(real_dp_world_size)
             ]
             self.bf16_partitioned_groups.append(bf16_dp_partitions)
 
@@ -217,11 +217,12 @@ class BF16_Optimizer(ZeROOptimizer):
         return param_mapping
 
     def _link_all_hp_params(self):
-        dp_world_size = dist.get_world_size(group=self.dp_process_group)
         for i, _ in enumerate(self.optimizer.param_groups):
+            real_dp_world_size = dist.get_world_size(group=self.real_dp_process_group[i])
+
             # Link bf16 and fp32 params in partition
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
-            partition_size = self.bf16_groups_flat[i].numel() // dp_world_size
+            partition_size = self.bf16_groups_flat[i].numel() // real_dp_world_size
             flat_hp_partition = self.fp32_groups_flat_partition[i]
             link_hp_params(lp_param_list=self.bf16_groups[i],
                            flat_hp_partition=flat_hp_partition,
