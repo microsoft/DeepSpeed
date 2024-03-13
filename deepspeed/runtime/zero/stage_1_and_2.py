@@ -1946,8 +1946,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         for i, norm in enumerate(norm_groups):
             if self.is_moe_param_group[i]:
                 scaled_norm_tensor = norm * 1.0 / dist.get_world_size(group=self.real_dp_process_group[i])
+                if self.device == 'cpu':
+                    scaled_norm_tensor = scaled_norm_tensor.to(get_accelerator().current_device_name())
                 dist.all_reduce(scaled_norm_tensor, group=self.real_dp_process_group[i])
-                norm_groups[i] = scaled_norm_tensor
+                norm_groups[i] = scaled_norm_tensor.to(self.device)
 
     def unscale_and_clip_grads(self, grad_groups_flat, total_norm):
         # compute combined scale factor for this group
@@ -2301,7 +2303,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self._load_global_state(optim_sd)
 
         tp_rank = bwc_tensor_model_parallel_rank(mpu=self.mpu)
-        tp_world_size = self.mpu.get_slice_parallel_world_size() if hasattr(self.mpu, "get_slice_parallel_world_size") \
+        if self.mpu is None:
+            logger.warn("MPU is not provided, setting tp size to 1 in checkpoint loading.")
+            tp_world_size = 1
+        else:
+            tp_world_size = self.mpu.get_slice_parallel_world_size() if hasattr(self.mpu, "get_slice_parallel_world_size") \
                 else self.mpu.get_tensor_model_parallel_world_size()
 
         for i, _ in enumerate(self.optimizer.param_groups):
