@@ -18,7 +18,7 @@ from deepspeed.runtime.utils import (get_global_norm_of_tensors, clip_tensors_by
                                      align_dense_tensors, all_gather_dp_groups, bwc_tensor_model_parallel_rank,
                                      is_model_parallel_parameter, see_memory_usage, graph_process)
 
-from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state, fragment_address
+from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state, fragment_address, logger
 from deepspeed.checkpoint import enable_universal_checkpoint
 from deepspeed.checkpoint.constants import (DS_VERSION, PARTITION_COUNT, BASE_OPTIMIZER_STATE,
                                             SINGLE_PARTITION_OF_FP32_GROUPS, CLIP_GRAD, GROUP_PADDINGS,
@@ -455,7 +455,13 @@ class BF16_Optimizer(ZeROOptimizer):
     def _load_hp_checkpoint_state(self, checkpoint_dir):
         checkpoint_dir = os.path.join(checkpoint_dir, "zero")
         tp_rank = bwc_tensor_model_parallel_rank(mpu=self.mpu)
-        tp_world_size = self.mpu.get_slice_parallel_world_size()
+
+        if self.mpu is None:
+            logger.warn("MPU is not provided, setting tp size to 1 in checkpoint loading.")
+            tp_world_size = 1
+        else:
+            tp_world_size = self.mpu.get_slice_parallel_world_size() if hasattr(self.mpu, "get_slice_parallel_world_size") \
+                else self.mpu.get_tensor_model_parallel_world_size()
 
         for i, _ in enumerate(self.optimizer.param_groups):
             for lp in self.bf16_groups[i]:
