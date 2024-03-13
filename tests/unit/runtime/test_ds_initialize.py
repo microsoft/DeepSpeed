@@ -32,9 +32,6 @@ class TestNoOptim(DistributedTest):
 
         ds_config = {
             'train_batch_size': self.world_size,
-            'fp16': {
-                'enabled': True
-            },
             'zero_optimization': {
                 "stage": zero_stage,
                 "offload_param": {
@@ -42,6 +39,10 @@ class TestNoOptim(DistributedTest):
                 }
             }
         }
+        if get_accelerator().is_fp16_supported():
+            ds_config["fp16"] = {"enabled": True}
+        elif get_accelerator().is_bf16_supported():
+            ds_config["bf16"] = {"enabled": True}
         # 20B test
         #hidden_dim = 16 * 1024
         hidden_dim = 4
@@ -51,11 +52,7 @@ class TestNoOptim(DistributedTest):
         see_memory_usage('pre-init', force=True)
         model, _, _, _ = deepspeed.initialize(model=model, config=ds_config)
         see_memory_usage('post-init', force=True)
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device,
-                                        dtype=torch.half)
+        data_loader = random_dataloader(model=model, total_samples=50, hidden_dim=hidden_dim, device=model.device)
         for batch in data_loader:
             model(batch[0], batch[1])
         see_memory_usage('post-fwds', force=True)
@@ -127,6 +124,9 @@ class TestOptimizerImplementation(DistributedTest):
     reuse_dist_env = True
 
     def test(self, optimizer_extension, model_dtype, grad_accum_dtype):
+        if not get_accelerator().is_fp16_supported():
+            if model_dtype == 'fp16' or grad_accum_dtype == 'fp16':
+                pytest.skip("fp16 is not supported")
         if optimizer_extension == 'zero1':
             zero_stage = 1
         elif optimizer_extension == 'zero2':
