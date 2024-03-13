@@ -25,7 +25,7 @@ from deepspeed.utils import groups
 import deepspeed
 from ..utils import see_memory_usage
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
-from deepspeed.runtime.zero.utils import assert_ints_same_as_other_ranks
+from deepspeed.runtime.zero.utils import assert_ints_same_as_other_ranks, is_zero_param
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.config_utils import get_config_default
 from deepspeed.utils import instrument_w_nvtx, logger
@@ -56,7 +56,8 @@ class NoGatherHandle:
         self.__param = param
 
     def wait(self) -> None:
-        get_accelerator().current_stream().synchronize()
+        if not get_accelerator().is_synchronized_device():
+            get_accelerator().current_stream().synchronize()
         self.__param.ds_status = ZeroParamStatus.AVAILABLE
 
 
@@ -81,7 +82,8 @@ class NoGatherCoalescedHandle:
         if self.__complete:
             return
 
-        get_accelerator().current_stream().synchronize()
+        if not get_accelerator().is_synchronized_device():
+            get_accelerator().current_stream().synchronize()
         for param in self.__params:
             assert param.ds_status == ZeroParamStatus.INFLIGHT, f"expected param {param.ds_summary()} to be inflight"
             param.ds_status = ZeroParamStatus.AVAILABLE
@@ -107,12 +109,6 @@ def print_rank_0(message, debug=False, force=False):
 def debug_rank0(msg: str) -> None:
     if dist.get_rank() == 0:
         logger.debug(msg)
-
-
-def is_zero_param(parameter):
-    if not torch.is_tensor(parameter):
-        return False
-    return hasattr(parameter, 'ds_id')
 
 
 def _init_external_params(module):
@@ -369,7 +365,8 @@ class InsertPostInitMethodToModuleSubClasses(object):
             else:
                 self.dtype = torch.float
         else:
-            self.dtype = dtype or torch.half
+            self.dtype = dtype or torch.float16 if get_accelerator().is_fp16_supported(
+            ) else torch.bfloat16 if get_accelerator().is_bf16_supported else torch.float32
 
     def patch_init_and_builtins(self):
 
@@ -911,7 +908,16 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         _ds_config = deepspeed.runtime.config.DeepSpeedConfig(config_dict_or_path,
                                                               mpu) if config_dict_or_path is not None else None
         if _ds_config is not None:
-            mem_efficient_linear = _ds_config.zero_config.memory_efficient_linear
+            if _ds_config.zero_config.memory_efficient_linear and _ds_config.compile_config.enabled:
+                # memory_efficient_linear displays numerous errors when torch.compile is enabled.
+                # Refer to https://github.com/pytorch/pytorch/issues/119059 for details.
+                # Further investigation into performance is necessary, even after resolving this issue because
+                # the `memory_efficient_linear` module may lead to more graph breaks compared to the original implementation.
+                logger.warning(f'memory_efficient_linear is disabled when torch.compile is enabled.')
+                mem_efficient_linear = False
+            else:
+                mem_efficient_linear = _ds_config.zero_config.memory_efficient_linear
+
         super().__init__(enabled=enabled, mem_efficient_linear=mem_efficient_linear, ds_config=_ds_config, dtype=dtype)
         if not dist.is_initialized():
             init_distributed()
@@ -1005,9 +1011,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
     def _zero_init_param(self, param):
         self._convert_to_deepspeed_param(param)
         if dist.get_world_group() == self.get_dp_process_group():
-            dist.broadcast(param, 0, self.get_dp_process_group())
+            dist.broadcast(param.data, 0, self.get_dp_process_group())
         else:
-            dist.broadcast(param, dist.get_global_rank(self.get_dp_process_group(), 0), self.get_dp_process_group())
+            dist.broadcast(param.data, dist.get_global_rank(self.get_dp_process_group(), 0),
+                           self.get_dp_process_group())
         param.partition()
 
     def _convert_to_zero_parameters(self, param_list):
@@ -1631,19 +1638,16 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             secondary_end = secondary_start + secondary_partition_size
 
             one_dim_param = param.contiguous().view(-1)
-            start = partition_size * self.rank
-            end = start + partition_size
-            if start < param.ds_numel and end <= param.ds_numel:
-                if secondary_start < param.ds_numel and secondary_end <= param.ds_numel:
-                    sec_src_tensor = one_dim_param.narrow(0, secondary_start, secondary_partition_size)
-                    param.ds_secondary_tensor.copy_(sec_src_tensor)
 
-            else:
-                if start < param.ds_numel:
-                    elements_to_copy = param.ds_numel - start
-                    elements_to_copy_sec = elements_to_copy * param.ds_secondary_tensor_num_of_groups
-                    param.ds_secondary_tensor.narrow(0, 0, elements_to_copy_sec).copy_(
-                        one_dim_param.narrow(0, secondary_start, elements_to_copy_sec))
+            # ds_numel is unpadded, so the last chunk of the secondary tensor might not be secondary_partition_size
+            sec_numel = param.ds_numel - secondary_start if secondary_end > param.ds_numel else secondary_partition_size
+
+            # copy from full tensor to secondary tensor
+            param.ds_secondary_tensor.narrow(0, 0,
+                                             sec_numel).copy_(one_dim_param.narrow(0, secondary_start, sec_numel))
+
+            # TODO: This is a temporary fix to avoid the issue that 2nd tensor all-gather happens before 2nd tensor partition is done
+            get_accelerator().current_stream().synchronize()
 
             print_rank_0(f"{param.ds_id} partitioned type {param.dtype} dev {param.device} shape {param.shape}",
                          force=False)
@@ -2174,7 +2178,7 @@ class GatheredParameters:
             self.params[0].partition(param_list=self.params, has_been_updated=False)
             return
 
-        handles = [dist.broadcast(p, self.src_rank, group=p.ds_process_group, async_op=True) for p in self.params]
+        handles = [dist.broadcast(p.data, self.src_rank, group=p.ds_process_group, async_op=True) for p in self.params]
         for h in handles:
             h.wait()
         self.params[0].partition(param_list=self.params, has_been_updated=True)

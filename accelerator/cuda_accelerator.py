@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 
+import functools
 import os
 import pkgutil
 import importlib
@@ -41,6 +42,15 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def is_synchronized_device(self):
         return False
+
+    def use_host_timers(self):
+        return self.is_synchronized_device()
+
+    def resolves_data_dependency(self):
+        return self.is_synchronized_device()
+
+    def handles_memory_backpressure(self):
+        return self.is_synchronized_device()
 
     # Device APIs
     def device_name(self, device_index=None):
@@ -180,9 +190,13 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     # Data types
     def is_bf16_supported(self):
+        if not torch.cuda.is_available():
+            return True
         return torch.cuda.is_bf16_supported()
 
     def is_fp16_supported(self):
+        if not torch.cuda.is_available():
+            return True
         # See https://docs.nvidia.com/deeplearning/tensorrt/support-matrix/index.html#hardware-precision-matrix
         # FP16 on compute capability 6.x is deprecated
         allow_deprecated_fp16 = os.environ.get('DS_ALLOW_DEPRECATED_FP16', '0') == '1'
@@ -247,31 +261,31 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     @property
     def BFloat16Tensor(self):
-        return torch.cuda.BFloat16Tensor
+        return functools.partial(torch.tensor, dtype=torch.bfloat16, device='cuda')
 
     @property
     def ByteTensor(self):
-        return torch.cuda.ByteTensor
+        return functools.partial(torch.tensor, dtype=torch.uint8, device='cuda')
 
     @property
     def DoubleTensor(self):
-        return torch.cuda.DoubleTensor
+        return functools.partial(torch.tensor, dtype=torch.double, device='cuda')
 
     @property
     def FloatTensor(self):
-        return torch.cuda.FloatTensor
+        return functools.partial(torch.tensor, dtype=torch.float, device='cuda')
 
     @property
     def HalfTensor(self):
-        return torch.cuda.HalfTensor
+        return functools.partial(torch.tensor, dtype=torch.half, device='cuda')
 
     @property
     def IntTensor(self):
-        return torch.cuda.IntTensor
+        return functools.partial(torch.tensor, dtype=torch.int, device='cuda')
 
     @property
     def LongTensor(self):
-        return torch.cuda.LongTensor
+        return functools.partial(torch.tensor, dtype=torch.long, device='cuda')
 
     def pin_memory(self, tensor, align_bytes=1):
         return tensor.pin_memory()
