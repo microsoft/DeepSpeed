@@ -143,8 +143,8 @@ jobs:
           # modify MODEL to change the model name, other lines are the same
           export MODEL=baichuan-inc/Baichuan-7B
           cd DeepSpeedExamples/inference/huggingface/text-generation
-          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --use_meta_tensor
-          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1
+          deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype bfloat16 --trust_remote_code
+          deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype bfloat16 --num_inputs 1 --trust_remote_code
 
 #      - name: AutoTP test (tiiuae/falcon-7b)
 #        run: |
