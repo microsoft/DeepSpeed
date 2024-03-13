@@ -24,7 +24,6 @@ from deepspeed.checkpoint.constants import (DS_VERSION, PARTITION_COUNT, BASE_OP
                                             SINGLE_PARTITION_OF_FP32_GROUPS, CLIP_GRAD, GROUP_PADDINGS,
                                             PARAM_SLICE_MAPPINGS)
 
-
 setattr(sys.modules[__name__], 'fragment_address', fragment_address)
 
 
@@ -463,7 +462,6 @@ class BF16_Optimizer(ZeROOptimizer):
         else:
             tp_world_size = self.mpu.get_slice_parallel_world_size() if hasattr(self.mpu, "get_slice_parallel_world_size") \
                 else self.mpu.get_tensor_model_parallel_world_size()
-       
 
         for i, _ in enumerate(self.optimizer.param_groups):
             for lp in self.bf16_groups[i]:
