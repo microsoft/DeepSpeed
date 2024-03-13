@@ -2977,7 +2977,7 @@ class DeepSpeedEngine(Module):
         for group in optimizer.param_groups:
             set_step(group)
             for p in group['params']:
-                if p in state and len(state[p]) > 0 and 'step' in state[p]:
+                if p in state and len(state[p]) > 0:
                     set_step(state[p])
 
     def _get_mp_rank_zero_checkpoint_names(self, load_dir, tag, mp_rank, dp_world_size, bf16_mode):
