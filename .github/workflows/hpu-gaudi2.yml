@@ -107,23 +107,14 @@ jobs:
         run: |
           pip list
 
-      - name: Set up test list
-        run: |
-          # Convert multiline TEST_LIST to an array
-          IFS=$'\n' read -r -d '' -a tests <<< "$TEST_LIST"
-
-          # Construct the test list with 'or' operator
-          for test in "${tests[@]}"; do
-            TEST_STRING+="$test or "
-          done;
-
-          # Remove the trailing 'or'
-          TEST_LIST=${TEST_STRING% or }
-
       - name: Unit tests
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
+          echo "TEST_LIST ${TEST_LIST}"
+          echo "PT_HPU_LAZY_MODE ${PT_HPU_LAZY_MODE}"
+          export PT_HPU_LAZY_MODE=${PT_HPU_LAZY_MODE}
+          TEST_LIST=$(echo "$TEST_LIST" | awk '{printf "%s%s",sep,$0; sep=" or "} END{print ""}')
           echo "TEST_LIST ${TEST_LIST}"
           echo "PT_HPU_LAZY_MODE ${PT_HPU_LAZY_MODE}"
           #pytest --verbose unit/ -k "${TEST_LIST}"
