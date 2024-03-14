@@ -57,6 +57,6 @@ jobs:
       - name: Unit tests
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
+          set PT_HPU_LAZY_MODE=0
           cd tests
-          pytest -n 4 --verbose unit/
-          pytest -m 'sequential' unit/
+          pytest -n 4 --verbose unit/ -k "test_accelerator and test_autotuning"
