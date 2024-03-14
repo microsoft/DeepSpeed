@@ -73,7 +73,7 @@ void shared_close(SharedData* data)
 // SHM based allreduce helper functions
 // buffer that holds shm name
 #define NAME_BUF_SIZE 1000
-#define MAX_BUF_SIZE 1048576
+#define MAX_BUF_SIZE 1048576*128
 #define SHM_BUFFER_NAME "deepspeed_allreduce_buffer"
 struct allreduce_workspace {
     enum coll_state state;
@@ -397,7 +397,7 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
         snprintf(shm_name, NAME_BUF_SIZE, "%s", shm_name_prefix);
         struct allreduce_workspace *workspace_buf;
         SharedData allreduce_buffer;
-        if (rank == 0) {
+        if (rank == 1) {
             workspace_buf =
                 (struct allreduce_workspace*)malloc(size * sizeof(struct allreduce_workspace));
             shared_create(
@@ -406,7 +406,7 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
             for (int i = 0; i < size; i++) { workspace_buf[i].state = coll_begin; }
         }
         CCLCHECK(ccl::barrier(_get_comm_from_group()).wait());
-        if (rank != 0) {
+        if (rank != 1) {
             shared_open(&allreduce_buffer, shm_name, size * sizeof(struct allreduce_workspace));
             workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
         }
@@ -420,9 +420,10 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
         SharedData allreduce_buffer;
         // allocate workspace_buf for current rank
         struct allreduce_workspace *workspace_buf;
+        struct allreduce_workspace *workspace_buf_other;
         workspace_buf = (struct allreduce_workspace*)malloc(sizeof(struct allreduce_workspace));
         snprintf(shm_name, NAME_BUF_SIZE, "%s_%d", shm_name_prefix, rank);
-        printf("create %s, %d\n", shm_name, rank);
+        //printf("create %s, %d\n", shm_name, rank);
         shared_create(&allreduce_buffer, shm_name, workspace_buf, sizeof(struct allreduce_workspace));
         workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
         workspace_buf->state = coll_begin;
@@ -430,18 +431,20 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
         // wait until all ranks created their shm
         CCLCHECK(ccl::barrier(_get_comm_from_group()).wait());
 
-        // create the workspace pointer lis
+        // create the workspace pointer list
         workspace = (struct allreduce_workspace**)malloc(size * sizeof(struct allreduce_workspace*));
 
         // map shm of all ranks
         for (int i=0; i<size; i++) {
             if (i!=rank) {
                 snprintf(shm_name, NAME_BUF_SIZE, "%s_%d", shm_name_prefix, i);
-                printf("open %s, %d\n", shm_name, rank);
+                //printf("open %s, %d\n", shm_name, rank);
                 shared_open(&allreduce_buffer, shm_name, sizeof(struct allreduce_workspace));
-                workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
+                workspace_buf_other = (struct allreduce_workspace*)allreduce_buffer.bytes;
+                workspace[i] = workspace_buf_other;
+            } else {
+                workspace[i] = workspace_buf;
             }
-            workspace[i] = workspace_buf;
         }
     }
     #endif
