@@ -4,7 +4,6 @@
 # DeepSpeed Team
 
 import torch
-import pytest
 import deepspeed
 from deepspeed.accelerator import get_accelerator
 import pytest
