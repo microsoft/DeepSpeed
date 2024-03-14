@@ -73,7 +73,7 @@ void shared_close(SharedData* data)
 // SHM based allreduce helper functions
 // buffer that holds shm name
 #define NAME_BUF_SIZE 1000
-#define MAX_BUF_SIZE 1048576*128
+#define MAX_BUF_SIZE 1048576*32
 #define SHM_BUFFER_NAME "deepspeed_allreduce_buffer"
 struct allreduce_workspace {
     enum coll_state state;
@@ -197,24 +197,20 @@ void reduce_all_buffers(struct allreduce_workspace** workspace,
 
 #define REPEAT(N, x) REPEAT_##N(x)
 #define REPEAT_1(x) x(1)
-#define REPEAT_2(x) \
-    REPEAT_1(x);    \
-    x(2)
-#define REPEAT_3(x) \
-    REPEAT_2(x);    \
-    x(3)
-#define REPEAT_4(x) \
-    REPEAT_3(x);    \
-    x(4)
-#define REPEAT_5(x) \
-    REPEAT_4(x);    \
-    x(5)
-#define REPEAT_6(x) \
-    REPEAT_5(x);    \
-    x(6)
-#define REPEAT_7(x) \
-    REPEAT_6(x);    \
-    x(7)
+#define REPEAT_2(x) REPEAT_1(x); x(2)
+#define REPEAT_3(x) REPEAT_2(x); x(3)
+#define REPEAT_4(x) REPEAT_3(x); x(4)
+#define REPEAT_5(x) REPEAT_4(x); x(5)
+#define REPEAT_6(x) REPEAT_5(x); x(6)
+#define REPEAT_7(x) REPEAT_6(x); x(7)
+#define REPEAT_8(x) REPEAT_7(x); x(8)
+#define REPEAT_9(x) REPEAT_8(x); x(9)
+#define REPEAT_10(x) REPEAT_9(x); x(10)
+#define REPEAT_11(x) REPEAT_10(x); x(11)
+#define REPEAT_12(x) REPEAT_11(x); x(12)
+#define REPEAT_13(x) REPEAT_12(x); x(13)
+#define REPEAT_14(x) REPEAT_13(x); x(14)
+#define REPEAT_15(x) REPEAT_14(x); x(15)
 
 #define CVT_ADD_BF16(x)                                                                \
     do {                                                                               \
@@ -236,6 +232,14 @@ void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_wor
     for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0]->buffer + i)));
         switch (num_buffers) {
+            case 16: REPEAT(15, CVT_ADD_BF16); break;
+            case 15: REPEAT(14, CVT_ADD_BF16); break;
+            case 14: REPEAT(13, CVT_ADD_BF16); break;
+            case 13: REPEAT(12, CVT_ADD_BF16); break;
+            case 12: REPEAT(11, CVT_ADD_BF16); break;
+            case 11: REPEAT(10, CVT_ADD_BF16); break;
+            case 10: REPEAT(9, CVT_ADD_BF16); break;
+            case 9: REPEAT(8, CVT_ADD_BF16); break;
             case 8: REPEAT(7, CVT_ADD_BF16); break;
             case 7: REPEAT(6, CVT_ADD_BF16); break;
             case 6: REPEAT(5, CVT_ADD_BF16); break;
@@ -283,6 +287,14 @@ void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_wor
     for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = _mm256_loadu_ps((float*)(workspace[0]->buffer + i));
         switch (num_buffers) {
+            case 16: REPEAT(15, CVT_ADD_F32); break;
+            case 15: REPEAT(14, CVT_ADD_F32); break;
+            case 14: REPEAT(13, CVT_ADD_F32); break;
+            case 13: REPEAT(12, CVT_ADD_F32); break;
+            case 12: REPEAT(11, CVT_ADD_F32); break;
+            case 11: REPEAT(10, CVT_ADD_F32); break;
+            case 10: REPEAT(9, CVT_ADD_F32); break;
+            case 9: REPEAT(8, CVT_ADD_F32); break;
             case 8: REPEAT(7, CVT_ADD_F32); break;
             case 7: REPEAT(6, CVT_ADD_F32); break;
             case 6: REPEAT(5, CVT_ADD_F32); break;
