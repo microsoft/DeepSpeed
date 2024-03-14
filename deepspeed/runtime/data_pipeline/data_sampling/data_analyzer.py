@@ -12,10 +12,10 @@ import numpy as np
 import torch
 from torch.utils.data import BatchSampler, SequentialSampler, DataLoader, Subset
 
-from deepspeed.utils import logger, groups
 import deepspeed.comm as dist
-from deepspeed.runtime.data_pipeline.data_sampling.indexed_dataset import MMapIndexedDataset, valid_dtypes
-from deepspeed.runtime.data_pipeline.data_sampling.utils import split_dataset, split_index, create_mmap_dataset_builder, close_mmap_dataset_builder, find_fit_int_dtype
+from deepspeed.utils import logger
+from .indexed_dataset import MMapIndexedDataset, valid_dtypes
+from .utils import split_dataset, split_index, create_mmap_dataset_builder, close_mmap_dataset_builder, find_fit_int_dtype
 
 
 class DataAnalyzer(object):
@@ -98,9 +98,9 @@ class DataAnalyzer(object):
             metric_values = metric_function(data)
 
             assert torch.is_tensor(metric_values) or isinstance(metric_values, np.ndarray), \
-                "metric_function must return a tensor or array"
+                    "metric_function must return a tensor or array"
             assert metric_values.dtype == metric_dtype, \
-                f"metric_function result dtype {metric_values.dtype} does not match metric_dtype {metric_dtype}"
+                    f"metric_function result dtype {metric_values.dtype} does not match metric_dtype {metric_dtype}"
             if isinstance(metric_values, np.ndarray):
                 metric_values = torch.from_numpy(metric_values)
 
