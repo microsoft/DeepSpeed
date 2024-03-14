@@ -283,10 +283,9 @@ def _check_for_required_state(ds_checkpoint):
     assert universal_checkpoint_info is not None, f'Required {UNIVERSAL_CHECKPOINT_INFO} state is missing in checkpoint. Verify that client creates this state.'
 
 
-def main():
+def main(args):
     print(f'Convert DeepSpeed Checkpoint to Universal Checkpoint')
 
-    args = parse_arguments()
     print(f'Converting DeepSpeed checkpoint in {args.input_folder} to Universal checkpoint in {args.output_folder}')
 
     ds_checkpoint = DeepSpeedCheckpoint(args.input_folder)
@@ -332,4 +331,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_arguments()
+    main(args)
