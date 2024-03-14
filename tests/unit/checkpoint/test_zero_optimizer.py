@@ -694,7 +694,10 @@ class TestZeROUniversalCheckpoint(DistributedTest):
         model, _, _, _ = deepspeed.initialize(config=ds_config,
                                               model=models[0],
                                               model_parameters=models[0].parameters())
-        data_loader = random_dataloader(model=model, total_samples=test_step, hidden_dim=hidden_dim, device=model.device)
+        data_loader = random_dataloader(model=model,
+                                        total_samples=test_step,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -702,8 +705,13 @@ class TestZeROUniversalCheckpoint(DistributedTest):
         if load_optim:
             opt_state_dict_file = f'opt-state-dict_rank{dist.get_rank()}'
             torch.save(model.optimizer.optimizer.state_dict(), os.path.join(tmpdir, opt_state_dict_file))
-        model.save_checkpoint(tmpdir)
 
+        from deepspeed.checkpoint import (
+            UNIVERSAL_CHECKPOINT_INFO, )
+
+        client_state = {}
+        client_state[UNIVERSAL_CHECKPOINT_INFO] = {}
+        model.save_checkpoint(tmpdir, client_state=client_state)
 
         cp_dir = os.path.join(tmpdir, f"global_step{test_step}")
         write_to_file(f"Saved checkpoint at {tmpdir} {cp_dir}")

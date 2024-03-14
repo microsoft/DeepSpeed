@@ -227,13 +227,21 @@ def _get_chunks(l, n):
 
 
 def _do_parallel_work(do_work, work_chunks, num_workers):
-    pool = multiprocessing.Pool(num_workers)
-    results = []
-    for batch in tqdm.tqdm(work_chunks):
-        res = pool.map(do_work, batch)
-        results.extend(res)
-    pool.close()
-    pool.join()
+    if num_workers > 1:
+        pool = multiprocessing.Pool(num_workers)
+        results = []
+        for batch in tqdm.tqdm(work_chunks):
+            res = pool.map(do_work, batch)
+            results.extend(res)
+        pool.close()
+        pool.join()
+    else:
+        # No parallel pass for unit testing
+        # We can't create child processes in tests
+        results = []
+        for batch in tqdm.tqdm(work_chunks):
+            res = [do_work(x) for x in batch]
+            results.extend(res)
     return results
 
 
