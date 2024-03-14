@@ -408,8 +408,8 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
         CCLCHECK(ccl::barrier(_get_comm_from_group()).wait());
         if (rank != 0) {
             shared_open(&allreduce_buffer, shm_name, size * sizeof(struct allreduce_workspace));
+            workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
         }
-        workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
         workspace = (struct allreduce_workspace**)malloc(size * sizeof(struct allreduce_workspace*));
         for (int i = 0; i < size; i++) {
             workspace[i] = workspace_buf + i;
@@ -435,15 +435,13 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
 
         // map shm of all ranks
         for (int i=0; i<size; i++) {
-            if (i==rank) {
-                workspace[i] = workspace_buf;
-            } else {
+            if (i!=rank) {
                 snprintf(shm_name, NAME_BUF_SIZE, "%s_%d", shm_name_prefix, i);
                 printf("open %s, %d\n", shm_name, rank);
                 shared_open(&allreduce_buffer, shm_name, sizeof(struct allreduce_workspace));
                 workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
-                workspace[i] = workspace_buf;
             }
+            workspace[i] = workspace_buf;
         }
     }
     #endif
@@ -725,8 +723,8 @@ void all_reduce_outer_loop(torch::Tensor& data, size_t numel, int data_size)
         auto data_ptr = ((char*)(data.data_ptr()) + offset);
         size_t chunk_size = data_size - offset > MAX_BUF_SIZE ? MAX_BUF_SIZE : data_size - offset;
         size_t chunk_el = chunk_size / (data_size / numel);
-        //naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
-        ring_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
+        naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
+        //ring_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
     }
 }
 
