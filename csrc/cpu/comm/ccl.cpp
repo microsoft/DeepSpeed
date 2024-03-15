@@ -74,6 +74,7 @@ void shared_close(SharedData* data)
 // buffer that holds shm name
 #define NAME_BUF_SIZE 1000
 #define MAX_BUF_SIZE 1048576*32
+#define NAIVE_ALLREDUCE_THRESHOLD 1048576
 #define SHM_BUFFER_NAME "deepspeed_allreduce_buffer"
 struct allreduce_workspace {
     enum coll_state state;
@@ -742,8 +743,10 @@ void all_reduce_outer_loop(torch::Tensor& data, size_t numel, int data_size)
         auto data_ptr = ((char*)(data.data_ptr()) + offset);
         size_t chunk_size = data_size - offset > MAX_BUF_SIZE ? MAX_BUF_SIZE : data_size - offset;
         size_t chunk_el = chunk_size / (data_size / numel);
-        //naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
-        ring_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
+        if (chunk_size < NAIVE_ALLREDUCE_THRESHOLD)
+            naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
+        else
+            ring_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
     }
 }
 
