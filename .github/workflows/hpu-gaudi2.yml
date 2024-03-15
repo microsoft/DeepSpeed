@@ -60,4 +60,3 @@ jobs:
           set PT_HPU_LAZY_MODE=0
           cd tests
           pytest -n 4 --verbose -vs unit/accelerator/test_accelerator.py unit/autotuning/test_autotuning.py
-y
