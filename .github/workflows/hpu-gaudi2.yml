@@ -47,7 +47,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          pip install .[dev]
+          pip install .[dev,autotuning]
           ds_report
 
       - name: Python environment
@@ -59,4 +59,4 @@ jobs:
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           set PT_HPU_LAZY_MODE=0
           cd tests
-          pytest -n 4 --verbose -vs unit/accelerator/test_accelerator.py unit/autotuning/test_autotuning.py
+          pytest -n 4 --verbose -vs unit/accelerator/test_accelerator.py unit/autotuning/test_autotuning.py unit/compression/test_compression.py
