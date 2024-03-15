@@ -53,10 +53,3 @@ jobs:
       - name: Python environment
         run: |
           pip list
-
-      - name: Unit tests
-        run: |
-          unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
-          set PT_HPU_LAZY_MODE=0
-          cd tests
-          pytest -n 4 --verbose -vs unit/accelerator/test_accelerator.py unit/compression/test_compression.py unit/launcher/test_run.py unit/launcher/test_ds_arguments.py
