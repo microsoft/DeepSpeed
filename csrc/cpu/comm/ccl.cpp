@@ -637,16 +637,16 @@ static void parallel_memcpy(void* to, void* from, size_t n_bytes)
     }
 }
 
+#define positive_mod(num,mod) ((((num)%(mod))+(mod))%(mod))
+#define rank_mod(rank) positive_mod(rank, world_size)
 size_t ring_slice_size(size_t chunk_el, int el_size, int slice_idx)
 {
-    slice_idx = ((slice_idx%world_size)+world_size)%world_size;
     size_t slice_size = chunk_el / world_size;
     return el_size * (slice_idx == world_size-1 ? slice_size+(chunk_el%world_size) : slice_size);
 }
 
 char* ring_slice_data(char* data_ptr, size_t chunk_el, int el_size, int slice_idx)
 {
-    slice_idx = ((slice_idx%world_size)+world_size)%world_size;
     size_t slice_size = chunk_el / world_size;
     size_t el_offset = slice_size * slice_idx;
     return data_ptr + el_offset*el_size;
@@ -660,28 +660,32 @@ void ring_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_s
                     ring_slice_size(chunk_el, data_size, world_rank));
     std::atomic_thread_fence(std::memory_order_release);
 
-    int prev_rank = (world_rank+world_size-1) % world_size;
-    int next_rank = (world_rank+1) % world_size;
+    int prev_rank = rank_mod(world_rank-1);
+    int next_rank = rank_mod(world_rank+1);
 
     workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state+1);
     wait_buffer_state_until_beq(prev_rank, workspace[world_rank]->state);
 
     int step;
 
+    //  reduce_scatter
     for (step=0; step<world_size-1; step++) {
-        reduce_2_bf16_buffers_iio(ring_slice_size(chunk_el, data_size, world_rank-1-step)/data_size,
-                                  ring_slice_data(workspace[prev_rank]->buffer, chunk_el, data_size, world_rank-1-step),
-                                  ring_slice_data(data_ptr, chunk_el, data_size, world_rank-1-step),
-                                  ring_slice_data(workspace[world_rank]->buffer, chunk_el, data_size, world_rank-1-step));
+        auto slice_idx = rank_mod(world_rank-1-step);
+        reduce_2_bf16_buffers_iio(ring_slice_size(chunk_el, data_size, slice_idx),
+                                  ring_slice_data(workspace[prev_rank]->buffer, chunk_el, data_size, slice_idx),
+                                  ring_slice_data(data_ptr, chunk_el, data_size, slice_idx),
+                                  ring_slice_data(workspace[world_rank]->buffer, chunk_el, data_size, slice_idx));
         std::atomic_thread_fence(std::memory_order_release);
         workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state+1);
         wait_buffer_state_until_beq(prev_rank, workspace[world_rank]->state);
     }
 
+    // all_gather
     for (step=0; step<world_size; step++) {
-        parallel_memcpy(ring_slice_data(data_ptr, chunk_el, data_size, world_rank+step),
-                        ring_slice_data(workspace[(world_rank+step-1+world_size)%world_size]->buffer, chunk_el, data_size, world_rank+step),
-                        ring_slice_size(chunk_el, data_size, world_rank+step));
+        auto slice_idx = rank_mod(world_rank+step);
+        parallel_memcpy(ring_slice_data(data_ptr, chunk_el, data_size, slice_idx),
+                        ring_slice_data(workspace[rank_mod(world_rank+step-1)]->buffer, chunk_el, data_size, slice_idx),
+                        ring_slice_size(chunk_el, data_size, slice_idx));
     }
     std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank]->state = coll_begin;
