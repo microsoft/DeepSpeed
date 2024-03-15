@@ -89,20 +89,16 @@ void wait_buffer_state_until(int index, enum coll_state state)
         ;
 }
 
-void wait_buffer_state_until_leq(int index, enum coll_state state)
+void wait_buffer_state_until_range(int index, enum coll_state start, int size)
 {
     volatile enum coll_state* state_ptr = &(workspace[index]->state);
+    enum coll_state end = (enum coll_state)(start+size);
 
-    while (*state_ptr > state)
-        ;
-}
-
-void wait_buffer_state_until_beq(int index, enum coll_state state)
-{
-    volatile enum coll_state* state_ptr = &(workspace[index]->state);
-
-    while (*state_ptr < state)
-        ;
+    while (1) {
+        volatile enum coll_state cur_state = *state_ptr;
+        if (cur_state >= start and cur_state < end)
+            break;
+    }
 }
 
 void wait_buffer_state_until_not(int index, enum coll_state state)
@@ -663,38 +659,42 @@ void ring_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_s
     int prev_rank = rank_mod(world_rank-1);
     int next_rank = rank_mod(world_rank+1);
 
-    workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state+1);
-    wait_buffer_state_until_beq(prev_rank, workspace[world_rank]->state);
 
     int step;
 
     //  reduce_scatter
     for (step=0; step<world_size-1; step++) {
+        // wait until prev rank have data ready -- iter 0: finished copy; iterh >0: finished add
+        auto state = workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state+1);
+        wait_buffer_state_until_range(prev_rank, state, world_size);
+
         auto slice_idx = rank_mod(world_rank-1-step);
-        reduce_2_bf16_buffers_iio(ring_slice_size(chunk_el, data_size, slice_idx),
+        reduce_2_bf16_buffers_iio(ring_slice_size(chunk_el, data_size, slice_idx)/data_size,
                                   ring_slice_data(workspace[prev_rank]->buffer, chunk_el, data_size, slice_idx),
                                   ring_slice_data(data_ptr, chunk_el, data_size, slice_idx),
                                   ring_slice_data(workspace[world_rank]->buffer, chunk_el, data_size, slice_idx));
         std::atomic_thread_fence(std::memory_order_release);
-        workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state+1);
-        wait_buffer_state_until_beq(prev_rank, workspace[world_rank]->state);
     }
+
+    auto state = workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state+1);
 
     // all_gather
     for (step=0; step<world_size; step++) {
+        auto from_rank = rank_mod(world_rank+step-1);
+        wait_buffer_state_until_range(from_rank, state, 2);
         auto slice_idx = rank_mod(world_rank+step);
         parallel_memcpy(ring_slice_data(data_ptr, chunk_el, data_size, slice_idx),
-                        ring_slice_data(workspace[rank_mod(world_rank+step-1)]->buffer, chunk_el, data_size, slice_idx),
+                        ring_slice_data(workspace[from_rank]->buffer, chunk_el, data_size, slice_idx),
                         ring_slice_size(chunk_el, data_size, slice_idx));
+        std::atomic_thread_fence(std::memory_order_release);
     }
-    std::atomic_thread_fence(std::memory_order_release);
-    workspace[world_rank]->state = coll_begin;
+    auto prev_state = workspace[world_rank]->state;
+    state = workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state+1);
+    // we need to reach a global barrier before start next iteration to avoid buffer override
     for (int rank=0; rank<world_size; rank++) {
-        // there could only be two possible state: coll_begin if the other rank didn't spin too fast
-        // coll_begin+1 if the other rank spin too fast
-        // all other state mean the other rank didn't reach this point
-        wait_buffer_state_until_leq(rank, (enum coll_state)(coll_begin+1));
+        wait_buffer_state_until_not(rank, prev_state);
     }
+    workspace[world_rank]->state = coll_begin;
 }
 
 void naive_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_size, size_t chunk_el)
