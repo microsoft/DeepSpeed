@@ -152,7 +152,8 @@ class PipelineEngine(DeepSpeedEngine):
                     tied_params += sum(p.numel() for p in d['module'].parameters())
             unique_params -= tied_params
         params_tensor = torch.LongTensor(data=[num_params, unique_params]).to(self.device)
-        dist.all_reduce(params_tensor, group=self.grid.get_model_parallel_group())
+        if self.is_model_parallel:
+            dist.all_reduce(params_tensor, group=self.grid.get_model_parallel_group())
         params_tensor = params_tensor.tolist()
         total_params = params_tensor[0]
         unique_params = params_tensor[1]
