@@ -76,7 +76,6 @@ jobs:
         test_zero_dynamic_class.py
         test_zero_nesting_init.py
         test_zeropp.py
-        test_zero_tiled.py
         (test_zero.py and (TestZero3ParamPartitioningLargeParam or TestZero3ParamPartitioningLargeParam))
 
     # Steps represent a sequence of tasks that will be executed as part of the job
@@ -100,7 +99,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          pip install .[dev]
+          pip install .[dev,autotuning]
           ds_report
 
       - name: Python environment
@@ -111,10 +110,8 @@ jobs:
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
-          echo "TEST_LIST ${TEST_LIST}"
-          echo "PT_HPU_LAZY_MODE ${PT_HPU_LAZY_MODE}"
           export PT_HPU_LAZY_MODE=${PT_HPU_LAZY_MODE}
-          TEST_LIST=$(echo "$TEST_LIST" | awk '{printf "%s%s",sep,$0; sep=" or "} END{print ""}')
+          TEST_LIST=$(echo "$TEST_LIST" | awk 'NF{printf "%s%s", (NR>1 ? " or " : ""), $0} END{if (NR>1) print ""}')
           echo "TEST_LIST ${TEST_LIST}"
           echo "PT_HPU_LAZY_MODE ${PT_HPU_LAZY_MODE}"
-          #pytest --verbose unit/ -k "${TEST_LIST}"
+          pytest --verbose unit/ -k "${TEST_LIST}"
