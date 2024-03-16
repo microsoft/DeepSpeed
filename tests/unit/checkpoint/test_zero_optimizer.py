@@ -243,7 +243,11 @@ class TestZeROElasticCheckpoint(DistributedTest):
         model, _, _, _ = deepspeed.initialize(config=ds_config,
                                               model=models[0],
                                               model_parameters=models[0].parameters())
-        data_loader = random_dataloader(model=model, total_samples=8, hidden_dim=hidden_dim, device=model.device)
+        run_steps = 8
+        data_loader = random_dataloader(model=model,
+                                        total_samples=run_steps,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
@@ -655,74 +659,3 @@ class TestZeRONonDistributed(DistributedTest):
         engine._change_recovery_script_permissions(fake_recovery_script_dst)
 
         assert log_called, "Expected deepspeed.utils.logger.info to be called."
-
-
-def write_to_file(msg):
-    with open('test.txt', 'a') as f:
-        f.write(f"[r{dist.get_rank()}] {msg}\n")
-
-
-@pytest.mark.parametrize("elastic_save", [True])
-@pytest.mark.parametrize("elastic_load", [True])
-@pytest.mark.parametrize("load_optim", [True])
-class TestZeROUniversalCheckpoint(DistributedTest):
-    world_size = 2
-
-    def test_universal_checkpoint_fixed_dp(self, tmpdir, elastic_save, elastic_load, load_optim):
-        ds_config = {
-            "train_batch_size": 2,
-            "optimizer": {
-                "type": 'Adam'
-            },
-            "zero_optimization": {
-                "stage": 2,
-                "elastic_checkpoint": elastic_save
-            }
-        }
-        if get_accelerator().is_fp16_supported():
-            ds_config["fp16"] = {"enabled": True, "initial_scale_power": 8}
-        elif get_accelerator().is_bf16_supported():
-            ds_config["bf16"] = {"enabled": True}
-        hidden_dim = 10
-        test_step = 8
-
-        # torch 1.2.* stores raw tensor id numbers in checkpoint state which leads to
-        # false positive mismatches in checkpoint state comparisons.
-        # Newer torch versions store tensor ids as 0, 1, 2, ...
-        expected_mismatch_keys = [] if required_torch_version(min_version=1.4) else ['params']
-        models = [SimpleModel(hidden_dim) for _ in range(2)]
-        model, _, _, _ = deepspeed.initialize(config=ds_config,
-                                              model=models[0],
-                                              model_parameters=models[0].parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=test_step,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
-        for n, batch in enumerate(data_loader):
-            loss = model(batch[0], batch[1])
-            model.backward(loss)
-            model.step()
-        if load_optim:
-            opt_state_dict_file = f'opt-state-dict_rank{dist.get_rank()}'
-            torch.save(model.optimizer.optimizer.state_dict(), os.path.join(tmpdir, opt_state_dict_file))
-
-        from deepspeed.checkpoint import (
-            UNIVERSAL_CHECKPOINT_INFO, )
-
-        client_state = {}
-        client_state[UNIVERSAL_CHECKPOINT_INFO] = {}
-        model.save_checkpoint(tmpdir, client_state=client_state)
-
-        cp_dir = os.path.join(tmpdir, f"global_step{test_step}")
-        write_to_file(f"Saved checkpoint at {tmpdir} {cp_dir}")
-
-        from deepspeed.checkpoint.ds_to_universal import main as convert_to_universal
-        args = SimpleNamespace(input_folder=tmpdir, output_folder=os.path.join(tmpdir, "universal"))
-
-        setattr(args, "input_folder", tmpdir)
-        setattr(args, "output_folder", os.path.join(tmpdir, "universal"))
-        setattr(args, "num_extract_workers", 1)
-        setattr(args, "num_merge_workers", 1)
-        setattr(args, "keep_temp_folder", False)
-        setattr(args, "strict", True)
-        convert_to_universal(args)
