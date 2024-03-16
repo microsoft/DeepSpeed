@@ -22,6 +22,7 @@ from deepspeed.checkpoint import (
     OPTIMIZER_STATE_DICT,
     BASE_OPTIMIZER_STATE,
     SINGLE_PARTITION_OF_FP32_GROUPS,
+    PARAM_GROUPS,
     PARAM_SLICE_MAPPINGS,
     PARAM_SHAPES,
     PARAM,
@@ -110,6 +111,9 @@ def extract_zero_shards(dir, ds_checkpoint, indices_3D):
             fp32=fp32_groups[param_group_id],
         )
 
+        if "step" in state_groups[param_group_id]:
+            flat_state["step"] = state_groups[param_group_id]["step"]
+
         for name, fragment_mapping in param_slice_mappings[param_group_id].items():
             if pp_index > 0 and any(re.match(pattern, name) for pattern in pipeline_replicated_params):
                 # Skip tied weights that are replicated in first and last pp stages
@@ -138,17 +142,23 @@ def dump_param_fragment(dir, tp_index, dp_index, state_name, state_flat_tensor, 
 
     #print(f"{param_name}: {offset}: {numel} => {path}")
 
-    t = state_flat_tensor.narrow(0, offset, numel).clone()
+    t = state_flat_tensor.narrow(0, offset, numel).clone() if torch.is_tensor(state_flat_tensor) else state_flat_tensor
     _save_checkpoint(path, t)
 
 
-def _merge_zero_shards(param_base_path, state, tp_degree, slice_shape):
+def _merge_zero_shards(param_base_path, state, tp_degree, slice_shape, step=False):
     slices = []
     for tp_index in range(tp_degree):
         prefix_path = os.path.join(param_base_path, str(tp_index), f"{state}")
         paths = sorted(list(glob.glob(f"{prefix_path}.*")))
         shards = [torch.load(p) for p in paths]
-        slice = torch.cat(shards, dim=0).reshape(slice_shape)
+
+        if step:
+            assert all(v == shards[0] for v in shards), "All shards must have the same step value"
+            slice = shards[0]
+        else:
+            slice = torch.cat(shards, dim=0).reshape(slice_shape)
+
         slices.append(slice)
     return slices
 
@@ -176,6 +186,9 @@ def merge_tp_slices(ds_checkpoint, dir, slice_dir, tp_degree, name_and_shape):
             unmatched_patterns.discard(pattern_)
             return pattern_
         return None
+
+    step_merged = _merge_zero_shards(slice_base_path, "step", tp_degree, shape, step=True)
+    _save_checkpoint(os.path.join(param_base_path, f"step.pt"), step_merged[0])
 
     for state in ("fp32", "exp_avg", "exp_avg_sq"):
         slices = _merge_zero_shards(slice_base_path, state, tp_degree, shape)
@@ -281,6 +294,7 @@ def _save_optimizer_state(args, ds_checkpoint):
 
     optim_sd = sd[OPTIMIZER_STATE_DICT]
     output_sd = {k: v for k, v in optim_sd.items() if k not in sharded_states}
+    output_sd[PARAM_GROUPS] = optim_sd[BASE_OPTIMIZER_STATE][PARAM_GROUPS]
     zero_output_folder = os.path.join(args.output_folder, "zero")
     output_file_path = os.path.join(zero_output_folder, f"optimizer_state.pt")
     _save_checkpoint(output_file_path, output_sd)

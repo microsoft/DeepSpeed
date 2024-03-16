@@ -94,7 +94,7 @@ def compare_state_dicts(state0, state1, expected_mismatch_keys=[]):
             assert id(s0) != id(s1), f'Comparing optimizer state tensor against itself: {id(s0)} <====> {id(s1)}'
             assert torch.equal(s0.to('cpu'), s1.to('cpu'))
         else:
-            assert s0 == s1, f'failures with keys = {k0}, {k1}, values = {type(s0[0])} and {type(s1[0])}'
+            assert s0 == s1, f'failures with keys = {k0}, {k1}, values = {s0} and {s1}'
 
 
 def compare_opt_state_dicts(state0, state1, expected_mismatch_keys=[]):
