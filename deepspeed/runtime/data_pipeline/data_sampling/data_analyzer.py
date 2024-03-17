@@ -694,17 +694,13 @@ class DistributedDataAnalyzer(object):
         def write_buffer_to_file(buff, src, builder):
             assert self.worker_id == 0, "only rank 0 can write to file"
 
-            # # write one buffer at a time
-            # for row_len in row_lens[src]:
-            #     builder.add_item(buff[:row_len].cpu())
-            #     buff = buff[row_len:]
-
-            # collect all buffers and write them all at once
-            buffer_list = []
-            for row_len in row_lens[src]:
-                buffer_list.append(buff[:row_len].cpu())
-                buff = buff[row_len:]
-            builder.add_items(buffer_list)
+            # collect all buffers and write them at once
+            buff = buff.cpu().detach().numpy()
+            row_offsets = np.cumsum([0] + row_lens[src].tolist())
+            arr_list = []
+            for i in range(len(row_lens[src])):
+                arr_list.append(buff[row_offsets[i]:row_offsets[i+1]])
+            builder.add_items(arr_list)
 
         # 5. rank 0 prepares output folder and file
         if self.worker_id == 0:
