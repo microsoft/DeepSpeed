@@ -142,8 +142,10 @@ def dump_param_fragment(dir, tp_index, dp_index, state_name, state_flat_tensor, 
 
     #print(f"{param_name}: {offset}: {numel} => {path}")
 
-    t = state_flat_tensor.narrow(0, offset, numel).clone() if torch.is_tensor(state_flat_tensor) else state_flat_tensor
-    _save_checkpoint(path, t)
+    # State might be a python int or a tensor
+    if state_name != "step" and torch.is_tensor(state_flat_tensor):
+        state_flat_tensor = state_flat_tensor.narrow(0, offset, numel).clone()
+    _save_checkpoint(path, state_flat_tensor)
 
 
 def _merge_zero_shards(param_base_path, state, tp_degree, slice_shape, step=False):
