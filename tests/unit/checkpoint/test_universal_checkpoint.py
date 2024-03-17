@@ -7,15 +7,15 @@ import deepspeed
 from types import SimpleNamespace
 from torch.utils._pytree import tree_map
 
-from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.utils import required_torch_version
 from deepspeed.checkpoint import UNIVERSAL_CHECKPOINT_INFO
 from deepspeed.checkpoint.ds_to_universal import main as convert_to_universal
 
 from unit.common import DistributedTest, DistributedFixture
 from unit.simple_model import *
+from unit.util import bf16_required_version_check
 
-from unit.checkpoint.common import compare_opt_state_dicts, compare_model_states, compare_state_dicts
+from unit.checkpoint.common import compare_opt_state_dicts, compare_state_dicts
 
 import pytest
 import deepspeed.comm as dist
@@ -52,12 +52,22 @@ def remove_pad_in_opt_state(optimizer_state, num_params):
     return tree_map(remove_pad, optimizer_state)
 
 
-def train_save_convert(ds_config, hidden_dim, load_optim, tmpdir, checkpoint_tag):
+CP_TAG = "test_tag"
+
+
+def train_save_convert(ds_config, hidden_dim, load_optim, dtype, tmpdir):
+    if dtype == torch.bfloat16 and not bf16_required_version_check():
+        return
+
     test_step = 8
 
     model = SimpleModel(hidden_dim)
     model, _, _, _ = deepspeed.initialize(config=ds_config, model=model, model_parameters=model.parameters())
-    data_loader = random_dataloader(model=model, total_samples=test_step, hidden_dim=hidden_dim, device=model.device)
+    data_loader = random_dataloader(model=model,
+                                    total_samples=test_step,
+                                    hidden_dim=hidden_dim,
+                                    device=model.device,
+                                    dtype=dtype)
     for batch in data_loader:
         loss = model(batch[0], batch[1])
         model.backward(loss)
@@ -68,9 +78,9 @@ def train_save_convert(ds_config, hidden_dim, load_optim, tmpdir, checkpoint_tag
     client_state = {}
     client_state[UNIVERSAL_CHECKPOINT_INFO] = {}
     client_state['iteration'] = test_step
-    model.save_checkpoint(tmpdir, tag=checkpoint_tag, client_state=client_state)
+    model.save_checkpoint(tmpdir, tag=CP_TAG, client_state=client_state)
 
-    cp_dir = os.path.join(tmpdir, checkpoint_tag)
+    cp_dir = os.path.join(tmpdir, CP_TAG)
     univ_cp_dir = f"{cp_dir}_universal"
 
     args = SimpleNamespace(input_folder=cp_dir,
@@ -79,7 +89,9 @@ def train_save_convert(ds_config, hidden_dim, load_optim, tmpdir, checkpoint_tag
                            num_merge_workers=1,
                            keep_temp_folder=False,
                            strict=True)
-    convert_to_universal(args)
+
+    if dist.get_rank() == 0:
+        convert_to_universal(args)
 
     model_state = model.state_dict()
     optimizer_state = None
@@ -95,9 +107,9 @@ def train_save_convert(ds_config, hidden_dim, load_optim, tmpdir, checkpoint_tag
 
 
 @pytest.fixture
-def ds_config(zero_stage):
+def ds_config(zero_stage, dtype):
     ds_config = {
-        "train_batch_size": 2,
+        "train_batch_size": 8,
         "optimizer": {
             "type": 'Adam'
         },
@@ -105,47 +117,19 @@ def ds_config(zero_stage):
             "stage": zero_stage,
         }
     }
-    if get_accelerator().is_fp16_supported():
+    if dtype == torch.float16:
         ds_config["fp16"] = {"enabled": True, "initial_scale_power": 8}
-    elif get_accelerator().is_bf16_supported():
+    elif dtype == torch.bfloat16:
         ds_config["bf16"] = {"enabled": True}
     return ds_config
-
-
-@pytest.mark.parametrize("load_optim", [False, True])
-class TestZeROUniversalCheckpoint(DistributedTest):
-    world_size = 2
-
-    @pytest.mark.parametrize('zero_stage', [1, 2])
-    def test_universal_checkpoint_no_change(self, tmpdir, ds_config, zero_stage, load_optim):
-        hidden_dim = 10
-        tag = "test_tag"
-        trained_model, trained_sd = train_save_convert(ds_config, hidden_dim, load_optim, tmpdir, tag)
-
-        ds_config["checkpoint"] = {"load_universal": True}
-        loaded_model = SimpleModel(hidden_dim)
-        loaded_model, _, _, _ = deepspeed.initialize(config=ds_config,
-                                                     model=loaded_model,
-                                                     model_parameters=loaded_model.parameters())
-        loaded_model.load_checkpoint(tmpdir, tag=f"{tag}_universal", load_optimizer_states=load_optim)
-
-        compare_model_states(trained_model, loaded_model, compare_optimizer=load_optim, load_module_only=False)
-
-        if load_optim:
-            curr_sd = loaded_model.optimizer.optimizer.state_dict()
-            compare_opt_state_dicts(curr_sd, trained_sd, get_expected_mismatch_keys())
 
 
 class _baseline(DistributedFixture):
     world_size = None
 
-    def run(self, tmpdir, ds_config, zero_stage, tag, load_optim):
+    def run(self, tmpdir, ds_config, zero_stage, dtype, load_optim):
         hidden_dim = 10
-        train_save_convert(ds_config, hidden_dim, load_optim, tmpdir, tag)
-
-
-class baseline_ws1(_baseline):
-    world_size = 1
+        train_save_convert(ds_config, hidden_dim, load_optim, dtype, tmpdir)
 
 
 class baseline_ws2(_baseline):
@@ -156,15 +140,17 @@ class baseline_ws4(_baseline):
     world_size = 4
 
 
-class TestExample2(DistributedTest):
+@pytest.mark.parametrize('dtype', [torch.bfloat16, torch.float16, torch.float32])
+@pytest.mark.parametrize("zero_stage", [1, 2])
+@pytest.mark.parametrize("load_optim", [False, True])
+class TestZeROUniversalCheckpointDP(DistributedTest):
 
-    # # These tests are divided by baseline model worldsize and test model worldsize
-    @pytest.mark.world_size(1)
-    @pytest.mark.parametrize("zero_stage", [1])
-    @pytest.mark.parametrize("load_optim", [True])
-    @pytest.mark.parametrize("tag", ["test_tag"])
-    def test_world_size_2to1(self, baseline_ws2, tmpdir, tag, ds_config, load_optim):
-        print(f"model={baseline_ws2}")
+    def _run_test(self, tmpdir, dtype, ds_config, load_optim):
+        if dtype == torch.bfloat16 and not bf16_required_version_check():
+            pytest.skip(
+                " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
+            )
+
         hidden_dim = 10
         loaded_model_state, loaded_optimizer_state = torch.load(f"{tmpdir}/baseline_state.pt")
 
@@ -173,7 +159,7 @@ class TestExample2(DistributedTest):
         univ_model, _, _, _ = deepspeed.initialize(config=ds_config,
                                                    model=univ_model,
                                                    model_parameters=univ_model.parameters())
-        univ_model.load_checkpoint(tmpdir, tag=f"{tag}_universal", load_optimizer_states=load_optim)
+        univ_model.load_checkpoint(tmpdir, tag=f"{CP_TAG}_universal", load_optimizer_states=load_optim)
 
         model_state = univ_model.state_dict()
         compare_state_dicts(model_state, loaded_model_state)
@@ -186,3 +172,15 @@ class TestExample2(DistributedTest):
             loaded_optimizer_state = remove_pad_in_opt_state(loaded_optimizer_state, param_count)
 
             compare_opt_state_dicts(optimizer_state, loaded_optimizer_state, get_expected_mismatch_keys())
+
+    @pytest.mark.world_size(2)
+    def test_dp_world_size_2to2(self, baseline_ws2, tmpdir, dtype, ds_config, load_optim):
+        self._run_test(tmpdir, dtype, ds_config, load_optim)
+
+    @pytest.mark.world_size(2)
+    def test_dp_world_size_4to2(self, baseline_ws4, tmpdir, dtype, ds_config, load_optim):
+        self._run_test(tmpdir, dtype, ds_config, load_optim)
+
+    @pytest.mark.world_size(4)
+    def test_dp_world_size_2to4(self, baseline_ws2, tmpdir, dtype, ds_config, load_optim):
+        self._run_test(tmpdir, dtype, ds_config, load_optim)
