@@ -41,6 +41,17 @@ def gather_opt_state(optimizer_state):
     return tree_map(gather_tensor, optimizer_state)
 
 
+def remove_pad_in_opt_state(optimizer_state, num_params):
+
+    def remove_pad(t):
+        if torch.is_tensor(t):
+            return t[:num_params]
+        else:
+            return t
+
+    return tree_map(remove_pad, optimizer_state)
+
+
 def train_save_convert(ds_config, hidden_dim, load_optim, tmpdir, checkpoint_tag):
     test_step = 8
 
@@ -169,6 +180,9 @@ class TestExample2(DistributedTest):
 
         if load_optim:
             optimizer_state = gather_opt_state(univ_model.optimizer.optimizer.state_dict())
-            print(f"loaded_optimizer_state={loaded_optimizer_state} optimizer_state={optimizer_state}")
+            # padding sizes may differ when dp sizes are different
+            param_count = sum(p.numel() for p in univ_model.parameters())
+            optimizer_state = remove_pad_in_opt_state(optimizer_state, param_count)
+            loaded_optimizer_state = remove_pad_in_opt_state(loaded_optimizer_state, param_count)
 
             compare_opt_state_dicts(optimizer_state, loaded_optimizer_state, get_expected_mismatch_keys())

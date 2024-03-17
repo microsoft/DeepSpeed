@@ -141,7 +141,8 @@ def load_hp_checkpoint_state_from_checkpoint_dir(zero_optimizer: ZeROOptimizer, 
         opt_keys = set()
         steps = []
 
-        for lp in getattr(zero_optimizer, lp_groups_name)[i]:
+        lp_groups = getattr(zero_optimizer, lp_groups_name)
+        for lp in lp_groups[i]:
             if lp._hp_mapping is not None:
                 #print(f"Loading {self.param_names[lp]} {tp_rank=} {tp_world_size=}")
                 step = lp.load_hp_checkpoint_state(os.path.join(checkpoint_dir, zero_optimizer.param_names[lp]),
@@ -155,7 +156,7 @@ def load_hp_checkpoint_state_from_checkpoint_dir(zero_optimizer: ZeROOptimizer, 
         if steps[0] is not None:
             zero_optimizer.optimizer.state[hp_param]['step'] = steps[0]
 
-        map_to_flat_opt_states(hp_param, zero_optimizer.bit16_groups[i], zero_optimizer.optimizer.state, opt_keys)
+        map_to_flat_opt_states(hp_param, lp_groups[i], zero_optimizer.optimizer.state, opt_keys)
 
         if 'step' in loaded_param_group:
             param_group['step'] = loaded_param_group['step']
