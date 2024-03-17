@@ -7,10 +7,15 @@ import pytest
 import torch
 
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
+from deepspeed.runtime.utils import required_torch_version
+from deepspeed.accelerator import get_accelerator
 
 from unit.runtime.compile.util import compare_loss
 from unit.common import DistributedTest
 from unit.util import bf16_required_version_check
+
+pytestmark = pytest.mark.skipif(not required_torch_version(min_version=2.1),
+                                reason="Compile tests requires Pytorch version 2.1 or above")
 
 
 class TestZeRO(DistributedTest):
@@ -25,6 +30,8 @@ class TestZeRO(DistributedTest):
             pytest.skip(
                 " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
             )
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU does not support this test yet")
 
         if offload_device == OffloadDeviceEnum.nvme:
             if zero_stage != 3:
@@ -48,6 +55,8 @@ class TestZeRO(DistributedTest):
             }
         }
 
+        if get_accelerator().device_name() == 'hpu':
+            config_dict['compile']['backend'] = 'hpu_backend'
         if offload_device == OffloadDeviceEnum.cpu:
             config_dict["zero_optimization"]["offload_optimizer"] = {"device": offload_device}
         elif offload_device == OffloadDeviceEnum.nvme:

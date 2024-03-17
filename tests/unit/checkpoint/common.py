@@ -14,6 +14,7 @@ from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 
+from unit.common import preferred_dtype
 from unit.simple_model import *
 from unittest.mock import MagicMock, patch
 
@@ -96,6 +97,19 @@ def compare_state_dicts(state0, state1, expected_mismatch_keys=[]):
             assert s0 == s1, f'failures with keys = {k0}, {k1}, values = {type(s0[0])} and {type(s1[0])}'
 
 
+def compare_opt_state_dicts(state0, state1, expected_mismatch_keys=[]):
+    for param_group0, saved_param_group1 in zip(state0['param_groups'], state1['param_groups']):
+        compare_state_dicts(param_group0, saved_param_group1, expected_mismatch_keys)
+
+    assert "state" in state0
+    assert "state" in state1
+    assert len([state0["state"].keys()]) == len([state1["state"].keys()])
+
+    for (k0, s0), (k1, s1) in zip(state0["state"].items(), state1["state"].items()):
+        assert k0 == k1, f'failure due to key mismatch {k0} != {k1}'
+        compare_state_dicts(s0, s1, expected_mismatch_keys)
+
+
 def compare_optimizer_states(saved_model, loaded_model, hidden_dim, fp16=True):
     saved_optimizer = saved_model.optimizer.optimizer if fp16 else saved_model.optimizer
     loaded_optimizer = loaded_model.optimizer.optimizer if fp16 else loaded_model.optimizer
@@ -150,13 +164,15 @@ def checkpoint_correctness_verification(config_dict,
                                         tmpdir,
                                         load_optimizer_states=False,
                                         load_lr_scheduler_states=False,
-                                        fp16=True,
                                         train_batch=False,
                                         base_optimizers=[None, None],
                                         empty_tag=False,
                                         seq_dataloader=False,
-                                        load_module_only=False):
-    dtype = torch.half if fp16 else torch.float32
+                                        load_module_only=False,
+                                        dtype=None):
+    if dtype == None:
+        dtype = preferred_dtype()
+
     ds_model = create_deepspeed_model(config_dict=config_dict, model=models[0], base_optimizer=base_optimizers[0])
 
     if seq_dataloader:
@@ -228,7 +244,7 @@ def checkpoint_correctness_verification(config_dict,
                          load_module_only=load_module_only)
 
     if load_optimizer_states:
-        compare_optimizer_states(trained_model, loaded_model, hidden_dim, fp16)
+        compare_optimizer_states(trained_model, loaded_model, hidden_dim, dtype == torch.float16)
 
     if load_lr_scheduler_states:
         compare_lr_scheduler_states(trained_model, loaded_model)

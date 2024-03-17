@@ -8,8 +8,12 @@ import torch
 
 import deepspeed
 from deepspeed.accelerator import get_accelerator
+from deepspeed.runtime.utils import required_torch_version
 
 from unit.common import DistributedTest
+
+pytestmark = pytest.mark.skipif(not required_torch_version(min_version=2.1),
+                                reason="Compile tests requires Pytorch version 2.1 or above")
 
 
 @pytest.fixture
@@ -30,6 +34,8 @@ def base_config():
             "backend": "inductor"
         }
     }
+    if get_accelerator().device_name() == 'hpu':
+        config_dict['compile']['backend'] = 'hpu_backend'
     return config_dict
 
 
@@ -68,6 +74,8 @@ class TestCustomMethod(DistributedTest):
 
     @pytest.mark.skipif(not deepspeed.is_compile_supported(), reason="torch.compile is not supported")
     def test_custom_function(self, base_config):
+        if get_accelerator().device_name() == "cpu":
+            pytest.skip("CPU accelerator does not support this test yet.")
         test_value = 10
 
         engine = self._init_engine(base_config, test_value)
