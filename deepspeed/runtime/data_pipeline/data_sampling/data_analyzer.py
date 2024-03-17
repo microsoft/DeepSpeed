@@ -10,7 +10,6 @@ import csv
 import time
 import multiprocessing
 from multiprocessing import Process, Manager
-from multiprocess.shared_memory import SharedMemory
 import numpy as np
 import torch
 from torch.utils.data import BatchSampler, SequentialSampler, DataLoader, Subset
