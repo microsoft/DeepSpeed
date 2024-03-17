@@ -498,7 +498,6 @@ class DistributedDataAnalyzer(object):
         if self.worker_id == 0:
             logger.info(f"Distributed data analyzer initialized with {self.num_workers} workers.")
 
-
     def run_map_helper(self, thread_id=0, metric_queues=None):
         thread_start_idx, thread_end_idx = self.thread_splits[thread_id][0], self.thread_splits[thread_id][1]
         worker_dataset = Subset(self.dataset, list(range(thread_start_idx, thread_end_idx)))
