@@ -28,7 +28,7 @@ from deepspeed.accelerator import get_accelerator
 from deepspeed.checkpoint.constants import (DS_VERSION, GROUP_PADDINGS, PARTITION_COUNT, LOSS_SCALER,
                                             SINGLE_PARTITION_OF_FP32_GROUPS, BASE_OPTIMIZER_STATE,
                                             BASE_OPTIMIZER_STATE_STEP, CLIP_GRAD, ZERO_STAGE, PARAM_SLICE_MAPPINGS)
-from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state
+from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state, map_to_flat_opt_states
 from deepspeed.checkpoint import enable_universal_checkpoint
 
 from deepspeed.utils import groups
@@ -1360,7 +1360,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 self.average_tensor(extra_large_grad_reduc.view(-1))
                 self.extra_large_param_to_reduce = None
             else:
-                self.average_tensor(self.ipg_buffer[self.ipg_index])
+                self.average_tensor(self.ipg_buffer[self.ipg_index].narrow(0, 0, self.elements_in_ipg_bucket))
         else:
             self.buffered_reduce_fallback(None,
                                           self.grads_in_ipg_bucket,
@@ -1946,8 +1946,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         for i, norm in enumerate(norm_groups):
             if self.is_moe_param_group[i]:
                 scaled_norm_tensor = norm * 1.0 / dist.get_world_size(group=self.real_dp_process_group[i])
+                if self.device == 'cpu':
+                    scaled_norm_tensor = scaled_norm_tensor.to(get_accelerator().current_device_name())
                 dist.all_reduce(scaled_norm_tensor, group=self.real_dp_process_group[i])
-                norm_groups[i] = scaled_norm_tensor
+                norm_groups[i] = scaled_norm_tensor.to(self.device)
 
     def unscale_and_clip_grads(self, grad_groups_flat, total_norm):
         # compute combined scale factor for this group
@@ -2301,15 +2303,25 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self._load_global_state(optim_sd)
 
         tp_rank = bwc_tensor_model_parallel_rank(mpu=self.mpu)
-        tp_world_size = self.mpu.get_slice_parallel_world_size() if hasattr(self.mpu, "get_slice_parallel_world_size") \
+        if self.mpu is None:
+            logger.warn("MPU is not provided, setting tp size to 1 in checkpoint loading.")
+            tp_world_size = 1
+        else:
+            tp_world_size = self.mpu.get_slice_parallel_world_size() if hasattr(self.mpu, "get_slice_parallel_world_size") \
                 else self.mpu.get_tensor_model_parallel_world_size()
 
-        for i, _ in enumerate(self.optimizer.param_groups):
+        for i, param_group in enumerate(self.optimizer.param_groups):
+            # We have an assumption that all params in the same param_group have the same keys
+            opt_keys = set()
+
             for lp in self.bit16_groups[i]:
                 if lp._hp_mapping is not None:
                     #print(f"Loading {self.param_names[lp]} {tp_rank=} {tp_world_size=}")
                     lp.load_hp_checkpoint_state(os.path.join(checkpoint_dir, self.param_names[lp]), tp_rank,
                                                 tp_world_size)
+                    for key in lp._hp_mapping.get_optim_state_keys():
+                        opt_keys.add(key)
+            map_to_flat_opt_states(param_group['params'][0], self.bit16_groups[i], self.optimizer.state, opt_keys)
 
     def _load_global_state(self, sd):
         self.loss_scaler = sd.get(LOSS_SCALER, self.loss_scaler)
