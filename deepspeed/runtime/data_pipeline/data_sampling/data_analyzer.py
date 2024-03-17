@@ -8,7 +8,6 @@ import sys
 from collections import defaultdict
 import csv
 import time
-import multiprocessing
 from multiprocessing import Process, Manager
 import numpy as np
 import torch
@@ -576,33 +575,35 @@ class DistributedDataAnalyzer(object):
         else:
 
             # create a shared queue of results per metric to be populated by individual threads
-            thread_ids = list(range(self.num_threads))
-            metric_queues = [multiprocessing.Queue() for _ in self.metric_names]
-            procs = [Process(target=self.run_map_helper, args=(t, metric_queues)) for t in thread_ids]
-            for thread in thread_ids:
-                procs[thread].start()
-            for thread in thread_ids:
-                procs[thread].join()
+            with Manager() as manager:
+                metric_queues = [manager.Queue() for _ in self.metric_names]
+                threads = [
+                    Process(target=self.run_map_helper, args=(t, metric_queues)) for t in range(self.num_threads)
+                ]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join()
 
-            # gather results from shared queues into metric_results
-            metric_results = [None for _ in self.metric_names]
-            for m_idx, (queue, metric_type) in enumerate(zip(metric_queues, self.metric_types)):
-                while not queue.empty():
-                    t_idx, t_results = queue.get()
-                    t_start_idx, t_end_idx = self.thread_splits[t_idx]
-                    if t_start_idx >= t_end_idx:  # no results from this thread
-                        continue  #corner case for small datasets and high thread count
-                    t_results = torch.tensor(t_results)
-                    if metric_type == 'single_value_per_sample':
-                        # add thread results to the metric_results list, ordered by thread idx
-                        if metric_results[m_idx] is None:  # initialize if needed
-                            metric_results[m_idx] = torch.zeros(node_end_idx - node_start_idx,
-                                                                t_results.size(1)).to(self.device)
-                        metric_results[m_idx][t_start_idx - node_start_idx:t_end_idx - node_start_idx] = t_results
-                    else:
-                        if metric_results[m_idx] is None:  # initialize if needed
-                            metric_results[m_idx] = torch.zeros(t_results.size()).to(self.device)
-                        metric_results[m_idx].add_(t_results)
+                # gather results from shared queues into metric_results
+                metric_results = [None for _ in self.metric_names]
+                for m_idx, (queue, metric_type) in enumerate(zip(metric_queues, self.metric_types)):
+                    while not queue.empty():
+                        t_idx, t_results = queue.get()
+                        t_start_idx, t_end_idx = self.thread_splits[t_idx]
+                        if t_start_idx >= t_end_idx:  # no results from this thread
+                            continue  #corner case for small datasets and high thread count
+                        t_results = torch.tensor(t_results)
+                        if metric_type == 'single_value_per_sample':
+                            # add thread results to the metric_results list, ordered by thread idx
+                            if metric_results[m_idx] is None:  # initialize if needed
+                                metric_results[m_idx] = torch.zeros(node_end_idx - node_start_idx,
+                                                                    t_results.size(1)).to(self.device)
+                            metric_results[m_idx][t_start_idx - node_start_idx:t_end_idx - node_start_idx] = t_results
+                        else:
+                            if metric_results[m_idx] is None:  # initialize if needed
+                                metric_results[m_idx] = torch.zeros(t_results.size()).to(self.device)
+                            metric_results[m_idx].add_(t_results)
 
         # compute dtype for sample ids
         total_num_samples = len(self.dataset)
@@ -668,8 +669,8 @@ class DistributedDataAnalyzer(object):
     def file_write_ordered(self, tensor_list, fname, numpy_dtype):
         """ MPI_file_write_ordered extended to write a list of tensors, by one rank, iteratively """
 
-        # each not has a list of rows (tensors) to be written to the file.
-        # we will serialize it to communicate it in one comm step.
+        # each node has a list of rows (tensors) to be written to the file.
+        # we will serialize it in order to communicate it in one comm step.
 
         tkwargs = dict(dtype=torch.int64, device=self.device)
 
@@ -757,7 +758,7 @@ class Dist:
         # all_gather requires all tensors to be of same size so we need to pad them
         max_size = max(sizes).item()
         buffer = torch.empty(max_size, dtype=tensor.dtype, device=tensor.device)
-        buffer[0:size] = torch.tensor(tensor, dtype=tensor.dtype, device=tensor.device)
+        buffer[0:size] = tensor.data
         buffer_list = None
         if worker_id == 0:  # create padded recv buffers
             buffer_list = [torch.empty(max_size, dtype=tensor.dtype, device=tensor.device) for _ in range(num_workers)]
@@ -822,15 +823,16 @@ def test_compare_both_data_analyzers(dataset):
 
     id = lambda t: t.to(torch.int64)  # identity
     batch_sum = lambda t: id(t).sum()  #sum batch
+    num_threads = 4
     kwargs = dict(
         dataset=dataset,
-        batch_size=16,
+        batch_size=2**10,
         worker_id=int(os.environ['RANK']),
         num_workers=int(os.environ['WORLD_SIZE']),
         metric_names=["mod", "batch_sum"],
         metric_functions=[id, batch_sum],
         metric_types=['single_value_per_sample', 'accumulate_value_over_samples'],
-        num_threads=2,
+        num_threads=num_threads,
     )
 
     dda = DistributedDataAnalyzer(
@@ -843,7 +845,7 @@ def test_compare_both_data_analyzers(dataset):
     if dda.worker_id == 0:
         print("DistributedDataAnalyzer runtime: %s seconds " % (time.time() - start_time))
 
-    da = DataAnalyzer(num_threads_reduce=2,
+    da = DataAnalyzer(num_threads_reduce=num_threads,
                       save_path="./output_disk",
                       metric_dtypes=[torch.int64, torch.int64],
                       **kwargs)
@@ -872,8 +874,8 @@ if __name__ == "__main__":
 
     class TestDataset(torch.utils.data.Dataset):
 
-        def __init__(self, size=10000):
-            self.values = [1001 + x % 6 for x in range(size)]
+        def __init__(self, size=10_000_000):
+            self.values = [(x + 7) % 10_000 for x in range(size)]
             self.size = size
 
         __len__ = lambda self: self.size
