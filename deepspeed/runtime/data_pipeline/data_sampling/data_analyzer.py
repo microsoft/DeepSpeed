@@ -699,7 +699,7 @@ class DistributedDataAnalyzer(object):
             row_offsets = np.cumsum([0] + row_lens[src].tolist())
             arr_list = []
             for i in range(len(row_lens[src])):
-                arr_list.append(buff[row_offsets[i]:row_offsets[i+1]])
+                arr_list.append(buff[row_offsets[i]:row_offsets[i + 1]])
             builder.add_items(arr_list)
 
         # 5. rank 0 prepares output folder and file
