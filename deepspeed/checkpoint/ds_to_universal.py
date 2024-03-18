@@ -148,14 +148,14 @@ def dump_param_fragment(dir, tp_index, dp_index, state_name, state_flat_tensor, 
     _save_checkpoint(path, state_flat_tensor)
 
 
-def _merge_zero_shards(param_base_path, state, tp_degree, slice_shape, step=False):
+def _merge_zero_shards(param_base_path, state, tp_degree, slice_shape):
     slices = []
     for tp_index in range(tp_degree):
         prefix_path = os.path.join(param_base_path, str(tp_index), f"{state}")
         paths = sorted(list(glob.glob(f"{prefix_path}.*")))
         shards = [torch.load(p) for p in paths]
 
-        if step:
+        if state == "step":
             assert all(v == shards[0] for v in shards), "All shards must have the same step value"
             slice = shards[0]
         else:
@@ -189,7 +189,7 @@ def merge_tp_slices(ds_checkpoint, dir, slice_dir, tp_degree, name_and_shape):
             return pattern_
         return None
 
-    step_merged = _merge_zero_shards(slice_base_path, "step", tp_degree, shape, step=True)
+    step_merged = _merge_zero_shards(slice_base_path, "step", tp_degree, shape)
     _save_checkpoint(os.path.join(param_base_path, f"step.pt"), step_merged[0])
 
     for state in ("fp32", "exp_avg", "exp_avg_sq"):
