@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <oneapi/ccl.hpp>
+#include <ATen/ATen.h>
 
 // states for collectives
 enum coll_state {
@@ -262,12 +263,26 @@ void reduce_2_bf16_buffers_io(int num_elements, void* in_out, void* in1)
 
 void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out)
 {
+    const int element_size = 2;
+    const int vector_length = VECTOR_LENGTH_IN_BYTES/element_size;
+    int bulk_elements = num_elements - (num_elements % vector_length);
+    int remain_elements = num_elements % vector_length;
+
 #pragma omp parallel for
-    for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
+    for (int i = 0; i < bulk_elements * element_size; i += VECTOR_LENGTH_IN_BYTES) {
         auto in0_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in0 + i)));
         auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
         auto out_val = _mm512_add_ps(in0_val, in1_val);
         _mm256_storeu_si256((__m256i*)((char*)out + i), cvt_fp32_to_bf16(out_val));
+    }
+
+    int i = bulk_elements * element_size;
+    while (remain_elements > 0) {
+        float in0_val = *((at::BFloat16*)((char*)in0 + i));
+        float in1_val = *((at::BFloat16*)((char*)in1 + i));
+        *((at::BFloat16*)((char*)out + i))  = in0_val + in1_val;
+        remain_elements --;
+        i += element_size;
     }
 }
 
@@ -317,16 +332,30 @@ void reduce_2_fp32_buffers_io(int num_elements, void* in_out, void* in1)
 
 void reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out)
 {
+    const int element_size = 4;
+    const int vector_length = VECTOR_LENGTH_IN_BYTES / element_size;
+    int bulk_elements = num_elements - (num_elements % vector_length);
+    int remain_elements = num_elements % vector_length;
+
 #pragma omp parallel for
-    for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
+    for (int i = 0; i < bulk_elements * element_size; i += VECTOR_LENGTH_IN_BYTES) {
         auto in0_val = _mm256_loadu_ps((float*)((char*)in0 + i));
         auto in1_val = _mm256_loadu_ps((float*)((char*)in1 + i));
         auto out_val = _mm256_add_ps(in0_val, in1_val);
         _mm256_storeu_ps((float*)((char*)out + i), out_val);
     }
+
+    int i = bulk_elements * element_size;
+    while (remain_elements > 0) {
+        float in0_val = *((float*)((char*)in0 + i));
+        float in1_val = *((float*)((char*)in1 + i));
+        *((float*)((char*)out + i))  = in0_val + in1_val;
+        remain_elements --;
+        i += element_size;
+    }
 }
 
-// Communicatiooon settings
+// Communication settings
 int world_rank = -1;
 int world_size = -1;
 
@@ -743,10 +772,11 @@ void all_reduce_outer_loop(torch::Tensor& data, size_t numel, int data_size)
         auto data_ptr = ((char*)(data.data_ptr()) + offset);
         size_t chunk_size = data_size - offset > MAX_BUF_SIZE ? MAX_BUF_SIZE : data_size - offset;
         size_t chunk_el = chunk_size / (data_size / numel);
-        if (chunk_size < NAIVE_ALLREDUCE_THRESHOLD)
-            naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
-        else
-            ring_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
+        ring_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
+        //if (chunk_size < NAIVE_ALLREDUCE_THRESHOLD)
+            //naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
+        //else
+            //ring_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
     }
 }
 
