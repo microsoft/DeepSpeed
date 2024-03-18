@@ -1308,7 +1308,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
         if total_norm == float('inf') or total_norm == -float('inf') or total_norm != total_norm:
-            total_norm = -1
+            total_norm = -1.
 
         return total_norm
 
