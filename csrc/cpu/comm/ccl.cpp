@@ -699,10 +699,21 @@ void ring_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_s
         wait_buffer_state_until_range(prev_rank, state, world_size);
 
         auto slice_idx = rank_mod(world_rank-1-step);
-        reduce_2_bf16_buffers_iio(ring_slice_size(chunk_el, data_size, slice_idx)/data_size,
-                                  ring_slice_data(workspace[prev_rank]->buffer, chunk_el, data_size, slice_idx),
-                                  ring_slice_data(data_ptr, chunk_el, data_size, slice_idx),
-                                  ring_slice_data(workspace[world_rank]->buffer, chunk_el, data_size, slice_idx));
+        switch (scalar_type) {
+        case c10::ScalarType::BFloat16:
+            reduce_2_bf16_buffers_iio(ring_slice_size(chunk_el, data_size, slice_idx)/data_size,
+                                      ring_slice_data(workspace[prev_rank]->buffer, chunk_el, data_size, slice_idx),
+                                      ring_slice_data(data_ptr, chunk_el, data_size, slice_idx),
+                                      ring_slice_data(workspace[world_rank]->buffer, chunk_el, data_size, slice_idx));
+            break;
+        case c10::ScalarType::Float:
+            reduce_2_fp32_buffers_iio(ring_slice_size(chunk_el, data_size, slice_idx)/data_size,
+                                      ring_slice_data(workspace[prev_rank]->buffer, chunk_el, data_size, slice_idx),
+                                      ring_slice_data(data_ptr, chunk_el, data_size, slice_idx),
+                                      ring_slice_data(workspace[world_rank]->buffer, chunk_el, data_size, slice_idx));
+            break;
+        default: assert(!"Should not get here");
+        }
         std::atomic_thread_fence(std::memory_order_release);
     }
 
