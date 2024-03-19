@@ -24,7 +24,9 @@ class TestZeRO(DistributedTest):
 
     @pytest.mark.parametrize('dtype', [torch.bfloat16, torch.float16, torch.float32])
     @pytest.mark.parametrize('zero_stage', [1, 2, 3])
-    @pytest.mark.parametrize('offload_device', [OffloadDeviceEnum.none, OffloadDeviceEnum.cpu, OffloadDeviceEnum.nvme, OffloadDeviceEnum.hpu])
+    @pytest.mark.parametrize(
+        'offload_device',
+        [OffloadDeviceEnum.none, OffloadDeviceEnum.cpu, OffloadDeviceEnum.nvme, OffloadDeviceEnum.hpu])
     def test_compile_zero(self, tmpdir, zero_stage, dtype, offload_device):
         if dtype == torch.bfloat16 and not bf16_required_version_check():
             pytest.skip(
