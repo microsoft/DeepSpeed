@@ -14,6 +14,7 @@ class OffloadDeviceEnum(str, Enum):
     none = "none"
     cpu = "cpu"
     nvme = "nvme"
+    hpu = "hpu"
 
 
 class DeepSpeedZeroOffloadParamConfig(DeepSpeedConfigModel):

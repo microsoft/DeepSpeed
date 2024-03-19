@@ -360,3 +360,6 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return ['NCCL']
+
+    def get_accelerator_backend(self, device_index=None):
+        return "inductor"

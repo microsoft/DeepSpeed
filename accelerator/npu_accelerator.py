@@ -278,3 +278,6 @@ class NPU_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return ['ASCEND', 'HCCL', 'LD_LIBRARY', 'PATH']
+
+    def get_accelerator_backend(self, device_index=None):
+        return "inductor"

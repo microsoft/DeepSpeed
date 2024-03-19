@@ -24,7 +24,7 @@ class TestZeRO(DistributedTest):
 
     @pytest.mark.parametrize('dtype', [torch.bfloat16, torch.float16, torch.float32])
     @pytest.mark.parametrize('zero_stage', [1, 2, 3])
-    @pytest.mark.parametrize('offload_device', [OffloadDeviceEnum.none, OffloadDeviceEnum.cpu, OffloadDeviceEnum.nvme])
+    @pytest.mark.parametrize('offload_device', [OffloadDeviceEnum.none, OffloadDeviceEnum.cpu, OffloadDeviceEnum.nvme, OffloadDeviceEnum.hpu])
     def test_compile_zero(self, tmpdir, zero_stage, dtype, offload_device):
         if dtype == torch.bfloat16 and not bf16_required_version_check():
             pytest.skip(
@@ -51,12 +51,10 @@ class TestZeRO(DistributedTest):
             },
             "compile": {
                 "enabled": True,
-                "backend": "inductor"
+                "backend": get_accelerator().get_accelerator_backend()
             }
         }
 
-        if get_accelerator().device_name() == 'hpu':
-            config_dict['compile']['backend'] = 'hpu_backend'
         if offload_device == OffloadDeviceEnum.cpu:
             config_dict["zero_optimization"]["offload_optimizer"] = {"device": offload_device}
         elif offload_device == OffloadDeviceEnum.nvme:

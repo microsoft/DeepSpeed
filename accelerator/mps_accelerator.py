@@ -258,3 +258,6 @@ class MPS_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return []
+
+    def get_accelerator_backend(self, device_index=None):
+        return "inductor"
