@@ -151,7 +151,6 @@ class BF16_Optimizer(ZeROOptimizer):
             if self.has_moe_layers and self._is_moe_param_group(param_group):
                 self.expert_gradients[param_group['name']].append(fp32_flat_buffer)
             else:
-                # self.moe_name_list_with_index.append(None)
                 self.non_expert_gradients.append(fp32_flat_buffer)
 
             # track individual fp32 gradients for entire model
