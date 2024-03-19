@@ -304,7 +304,7 @@ To gain better insight into DeepSpeed-Chat training, new [instrumentation featur
 
 
 ### TensorBoard
-TensorBoard logging can be enabled in each of the three training steps, with some slight nuances in Step 3. To start, for each training step, the `enable_tensorboard` argument can be used to enable a TensorBoard monitor at the Runtime Engine level ([see documentation](https://www.deepspeed.ai/docs/config-json/#monitoring-module-tensorboard-wandb-csv)) and is reflected in the corresponding model training configuration:
+TensorBoard logging can be enabled in each of the three training steps, with some slight nuances in Step 3. To start, for each training step, the `enable_tensorboard` argument can be used to enable a TensorBoard monitor at the Runtime Engine level ([see documentation](https://www.deepspeed.ai/docs/config-json/#monitoring-module-aim-tensorboard-wandb-csv)) and is reflected in the corresponding model training configuration:
 ```python
 "tensorboard": {
     "enabled": enable_tensorboard,

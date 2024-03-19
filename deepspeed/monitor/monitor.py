@@ -3,7 +3,7 @@
 
 # DeepSpeed Team
 """
-Support different forms of monitoring such as wandb and tensorboard
+Support different forms of monitoring such as aim, wandb and tensorboard
 """
 
 from abc import ABC, abstractmethod
@@ -21,6 +21,7 @@ class Monitor(ABC):
         pass
 
 
+from .aim import AimMonitor
 from .wandb import WandbMonitor
 from .tensorboard import TensorBoardMonitor
 from .csv_monitor import csvMonitor
@@ -30,12 +31,15 @@ class MonitorMaster(Monitor):
 
     def __init__(self, monitor_config):
         super().__init__(monitor_config)
+        self.aim_monitor = None
         self.tb_monitor = None
         self.wandb_monitor = None
         self.csv_monitor = None
         self.enabled = monitor_config.enabled
 
         if dist.get_rank() == 0:
+            if monitor_config.aim.enabled:
+                self.aim_monitor = AimMonitor(monitor_config.aim)
             if monitor_config.tensorboard.enabled:
                 self.tb_monitor = TensorBoardMonitor(monitor_config.tensorboard)
             if monitor_config.wandb.enabled:
@@ -45,6 +49,8 @@ class MonitorMaster(Monitor):
 
     def write_events(self, event_list):
         if dist.get_rank() == 0:
+            if self.aim_monitor is not None:
+                self.aim_monitor.write_events(event_list)
             if self.tb_monitor is not None:
                 self.tb_monitor.write_events(event_list)
             if self.wandb_monitor is not None:
