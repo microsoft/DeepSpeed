@@ -153,6 +153,9 @@ def _merge_zero_shards(param_base_path, state, tp_degree, slice_shape):
     for tp_index in range(tp_degree):
         prefix_path = os.path.join(param_base_path, str(tp_index), f"{state}")
         paths = sorted(list(glob.glob(f"{prefix_path}.*")))
+        if len(paths) == 0:
+            continue
+
         shards = [torch.load(p) for p in paths]
 
         if state == "step":
@@ -190,7 +193,8 @@ def merge_tp_slices(ds_checkpoint, dir, slice_dir, tp_degree, name_and_shape):
         return None
 
     step_merged = _merge_zero_shards(slice_base_path, "step", tp_degree, shape)
-    _save_checkpoint(os.path.join(param_base_path, f"step.pt"), step_merged[0])
+    if step_merged:
+        _save_checkpoint(os.path.join(param_base_path, f"step.pt"), step_merged[0])
 
     for state in ("fp32", "exp_avg", "exp_avg_sq"):
         slices = _merge_zero_shards(slice_base_path, state, tp_degree, shape)
