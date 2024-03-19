@@ -448,6 +448,9 @@ class BF16_Optimizer(ZeROOptimizer):
     def _load_universal_checkpoint(self, checkpoint_folder, load_optimizer_states, load_from_fp32_weights):
         load_hp_checkpoint_state_from_checkpoint_dir(self, "bf16_groups", checkpoint_folder)
 
+    def _load_global_state(self, sd):
+        pass
+
     @property
     def param_groups(self):
         """Forward the wrapped optimizer's parameters."""
