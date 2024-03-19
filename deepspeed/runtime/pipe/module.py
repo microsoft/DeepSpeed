@@ -9,6 +9,7 @@ import glob
 import re as regex
 
 from functools import partial
+from collections import defaultdict
 
 import torch
 import torch.nn as nn
@@ -25,6 +26,74 @@ from deepspeed.checkpoint.utils import clone_tensors_for_torch_save
 
 class PipelineError(Exception):
     """Errors related to the use of deepspeed.PipelineModule """
+
+
+class Lambda(torch.nn.Module):
+
+    def __init__(self, func):
+        super().__init__()
+        self.func = func
+
+    def forward(self, x):
+        return self.func(x)
+
+
+class SequentialWrapper(torch.nn.Module):
+    """
+    Used to convert a deepspeed PipelineModule to an nn.Sequential like model whilst retaining
+    activation checkpointing.
+    """
+
+    def __init__(self, layers, activation_checkpoint_interval, activation_checkpoint_func, parent_class_name=None):
+        super().__init__()
+        self.sequential = torch.nn.Sequential(*layers)
+        self.activation_checkpoint_interval = activation_checkpoint_interval
+        self.parent_class_name = parent_class_name
+        self.activation_checkpoint_func = activation_checkpoint_func
+
+    def _is_checkpointable(self, funcs):
+        if self.parent_class_name == 'GPT2ModelPipe':
+            return all('ParallelTransformerLayerPipe' in f.__class__.__name__ for f in funcs)
+        params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
+        return any(len(list(p)) > 0 for p in params)
+
+    def forward(self, forward_input):
+
+        def exec_range_func(start, end):
+            ''' Helper function to be used with checkpoint()
+            Adapted from torch.utils.checkpoint:checkpoint_sequential()
+            '''
+
+            def exec_func(*inputs):
+                # Single tensor inputs need to be unwrapped
+                if len(inputs) == 1:
+                    inputs = inputs[0]
+                for idx, layer in enumerate(self.sequential[start:end]):
+                    inputs = layer(inputs)
+                return inputs
+
+            return exec_func
+
+        if self.activation_checkpoint_interval == 0:
+            func = exec_range_func(0, len(self.sequential))
+            x = func(forward_input)
+        else:
+            num_layers = len(self.sequential)
+            x = forward_input
+            for start_idx in range(0, num_layers, self.activation_checkpoint_interval):
+                end_idx = min(start_idx + self.activation_checkpoint_interval, num_layers)
+
+                funcs = self.sequential[start_idx:end_idx]
+                # Since we either pass tensors or tuples of tensors without unpacking, we
+                # need to be careful not to double-wrap tensors with tuple.
+                if not isinstance(x, tuple):
+                    x = (x, )
+
+                if self._is_checkpointable(funcs):
+                    x = self.activation_checkpoint_func(exec_range_func(start_idx, end_idx), *x)
+                else:
+                    x = exec_range_func(start_idx, end_idx)(*x)
+        return x
 
 
 class LayerSpec:
@@ -634,3 +703,33 @@ class PipelineModule(nn.Module):
             return all(f.__class__.__name__ in self.checkpointable_layers for f in funcs)
         params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
         return any(len(list(p)) > 0 for p in params)
+
+    def to_sequential(self):
+        """
+        Transforms the PipelineModule to a plain nn.Sequential-like model
+        :return: `SequentialWrapper` model
+        """
+        layers = []
+        tied_layers = defaultdict(list)
+        for n, spec in enumerate(self.specs):
+            if isinstance(spec, TiedLayerSpec):
+                if spec.key in tied_layers:
+                    # receiver
+                    layers.append(Lambda(lambda x: spec.forward_fn(tied_layers[spec.key][0], x)))
+                else:
+                    # owner
+                    module = spec.build(log=False)
+                    layers.append(module)
+                    tied_layers[spec.key].append(module)
+            elif isinstance(spec, LayerSpec):
+                layers.append(spec.build(log=False))
+            elif hasattr(spec, '__call__'):
+                # check that it's a callable function
+                layers.append(Lambda(spec))
+            else:
+                raise ValueError(f'Layer number {n} ({spec}) Not recognized')
+        model = SequentialWrapper(layers,
+                                  self.activation_checkpoint_interval,
+                                  self.activation_checkpoint_func,
+                                  parent_class_name=self.__class__.__name__)
+        return model
