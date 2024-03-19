@@ -294,3 +294,6 @@ class HPU_Accelerator(DeepSpeedAccelerator):
 
     def export_envs(self):
         return []
+
+    def get_compile_backend(self):
+        return "hpu_backend"

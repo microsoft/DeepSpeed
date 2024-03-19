@@ -287,3 +287,7 @@ class DeepSpeedAccelerator(ABC):
     @abc.abstractmethod
     def export_envs(self):
         ...
+
+    @abc.abstractmethod
+    def get_compile_backend(self):
+        ...
