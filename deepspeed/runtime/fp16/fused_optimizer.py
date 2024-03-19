@@ -11,7 +11,7 @@ import torch
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
 from deepspeed.runtime import DeepSpeedOptimizer
-from deepspeed.runtime.utils import get_global_norm, get_grad_norm, CheckOverflow, get_weight_norm, required_torch_version, get_norm_with_moe_layers
+from deepspeed.runtime.utils import get_global_norm, get_grad_norm, CheckOverflow, get_weight_norm, required_torch_version, get_norm_with_moe_layers_fast
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
 from deepspeed.utils import groups, logger, log_dist
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, CLIP_GRAD
@@ -261,7 +261,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
                 pg = self.deepspeed.mpu.get_data_parallel_group()
             else:
                 pg = groups._get_data_parallel_group()
-            all_groups_norm = get_norm_with_moe_layers(all_groups_norm, pg)
+            all_groups_norm = get_norm_with_moe_layers_fast(all_groups_norm, pg)
 
         scaled_global_grad_norm = get_global_norm(norm_list=[all_groups_norm])
 
