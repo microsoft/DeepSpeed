@@ -2492,10 +2492,10 @@ class DeepSpeedEngine(Module):
             indices = sparse.indices
             values = sparse.values
 
+        if dp_world_size is None:
+            dp_world_size = dist.get_world_size(group=dp_group)
         if self.postscale_gradients():
             if self.gradient_average:
-                if dp_world_size is None:
-                    dp_world_size = dist.get_world_size(group=dp_group)
                 values.mul_(self.gradient_predivide_factor() / dp_world_size / float(self.sequence_parallel_size))
         else:
             values.mul_(1. / dp_world_size / float(self.sequence_parallel_size))
