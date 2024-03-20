@@ -388,6 +388,7 @@ class BF16_Optimizer(ZeROOptimizer):
         all_grads_for_clip = []
 
         tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=self.mpu)
+        assert len(self.bf16_groups) == len(self.optimizer.param_groups)
         for i, group in enumerate(self.bf16_groups):
             for j, lp in enumerate(group):
                 if not for_clipping:
@@ -400,11 +401,11 @@ class BF16_Optimizer(ZeROOptimizer):
                 if not self.fp32_groups_has_gradients[i][j]:
                     continue
                 if not for_clipping:
-                    if self.has_moe_layers and is_moe_param_group(self.optimizer.param_groups[i]):
-                        if self.optimizer.param_groups[i]['name'] not in expert_grads_for_norm:
-                            expert_grads_for_norm[self.optimizer.param_groups[i]['name']] = []
-                        expert_grads_for_norm[self.optimizer.param_groups[i]['name']].append(
-                            self.fp32_groups_gradients[i][j])
+                    param_group = self.optimizer.param_groups[i]
+                    if self.has_moe_layers and is_moe_param_group(param_group):
+                        if param_group['name'] not in expert_grads_for_norm:
+                            expert_grads_for_norm[param_group['name']] = []
+                        expert_grads_for_norm[param_group['name']].append(self.fp32_groups_gradients[i][j])
                     else:
                         non_expert_grads_for_norm.append(self.fp32_groups_gradients[i][j])
                 else:

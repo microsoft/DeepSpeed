@@ -13,10 +13,17 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from deepspeed.runtime import DeepSpeedOptimizer
 from deepspeed.runtime.utils import get_global_norm, get_grad_norm, CheckOverflow, get_weight_norm, required_torch_version, get_norm_with_moe_layers
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
-from deepspeed.utils import groups, logger, log_dist
+from deepspeed.utils import logger, log_dist
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, CLIP_GRAD
 from deepspeed.accelerator import get_accelerator
 from deepspeed.moe.utils import is_moe_param_group
+import deepspeed.comm as dist
+
+
+def print_rank_0(message, debug=False, force=False):
+    if dist.get_rank() == 0 and (debug or force):
+        print(message)
+
 
 OVERFLOW_CHECK_TIMER = 'overflow_check'
 COMPUTE_NORM_TIMER = 'compute_norm'
