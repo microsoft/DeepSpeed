@@ -395,7 +395,11 @@ class BF16_Optimizer(ZeROOptimizer):
                     if hasattr(lp, PIPE_REPLICATED) and lp.ds_pipe_replicated:
                         continue
 
-                    if not (tensor_mp_rank == 0 or is_model_parallel_parameter(lp)):
+                    # skip duplicated parameters. perform norm only on cards with tp_rank=0.
+                    # non-duplicated parameters include:
+                    # - Parameters with tp: Use allreducesum of mp_group.
+                    # - Moe Parameters with ep: Use allreducesum of ep_group.
+                    if not (tensor_mp_rank == 0 or is_model_parallel_parameter(lp) or is_moe_param(lp)):
                         continue
 
                 if not self.fp32_groups_has_gradients[i][j]:
