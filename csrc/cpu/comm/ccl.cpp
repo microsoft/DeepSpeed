@@ -139,22 +139,16 @@ inline __m256i cvt_fp32_to_bf16(const __m512 src)
     return _mm512_cvtusepi32_epi16(t_value);
 }
 
-void reduce_2_bf16_buffers_io(int num_elements, void* in_out, void* in)
-    __attribute__((target("avx512bw")));
-
 void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out)
     __attribute__((target("avx512bw")));
 
-void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace** workspace)
-    __attribute__((target("avx512bw")));
-
-void reduce_2_fp32_buffers_io(int num_elements, void* in_out, void* in)
+void reduce_bf16_buffers(int start_elements, int num_elements, int num_buffers, struct allreduce_workspace** workspace)
     __attribute__((target("avx512bw")));
 
 void reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out)
     __attribute__((target("avx512bw")));
 
-void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_workspace** workspace)
+void reduce_fp32_buffers(int start_elements, int num_elements, int num_buffers, struct allreduce_workspace** workspace)
     __attribute__((target("avx512bw")));
 
 // N_REDUCE_LIMIT is the number of buffers that can be reduced together in one shot.
@@ -166,26 +160,26 @@ void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_wor
 #define N_REDUCE_LIMIT 8
 
 void reduce_all_buffers(struct allreduce_workspace** workspace,
-                        int num_elements,
+                        int start_elements, int num_elements,
                         c10::ScalarType scalar_type,
                         int num_buffers)
 {
     switch (scalar_type) {
         case c10::ScalarType::BFloat16:
-            if (num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
-                reduce_bf16_buffers(num_elements, num_buffers, workspace);
+            if (0 && num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
+                reduce_bf16_buffers(start_elements, num_elements, num_buffers, workspace);
             } else {
                 for (int i = 1; i < num_buffers; i++) {
-                    reduce_2_bf16_buffers_io(num_elements, workspace[0]->buffer, workspace[i]->buffer);
+                    reduce_2_bf16_buffers_iio(num_elements, workspace[i]->buffer+start_elements*2, workspace[0]->buffer+start_elements*2, workspace[0]->buffer+start_elements*2);
                 }
             }
             break;
         case c10::ScalarType::Float:
-            if (num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
-                reduce_fp32_buffers(num_elements, num_buffers, workspace);
+            if (0 && num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
+                reduce_fp32_buffers(start_elements, num_elements, num_buffers, workspace);
             } else {
                 for (int i = 1; i < num_buffers; i++) {
-                    reduce_2_fp32_buffers_io(num_elements, workspace[0]->buffer, workspace[i]->buffer);
+                    reduce_2_fp32_buffers_iio(num_elements, workspace[i]->buffer+start_elements*4, workspace[0]->buffer+start_elements*4, workspace[0]->buffer+start_elements*4);
                 }
             }
             break;
@@ -224,10 +218,10 @@ void reduce_all_buffers(struct allreduce_workspace** workspace,
 #define VECTOR_LENGTH_IN_BYTES 32
 
 // num_elements must be divisible by 16 (caller check)
-void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace** workspace)
+void reduce_bf16_buffers(int start_elements, int num_elements, int num_buffers, struct allreduce_workspace** workspace)
 {
 #pragma omp parallel for
-    for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
+    for (int i = start_elements; i < (start_elements+num_elements) * 2; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0]->buffer + i)));
         switch (num_buffers) {
             case 16: REPEAT(15, CVT_ADD_BF16); break;
@@ -247,17 +241,6 @@ void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_wor
             default: assert(!"Should not get here.");
         }
         _mm256_storeu_si256((__m256i*)(workspace[0]->buffer + i), cvt_fp32_to_bf16(inout_val));
-    }
-}
-
-void reduce_2_bf16_buffers_io(int num_elements, void* in_out, void* in1)
-{
-#pragma omp parallel for
-    for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
-        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in_out + i)));
-        auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
-        inout_val = _mm512_add_ps(inout_val, in1_val);
-        _mm256_storeu_si256((__m256i*)((char*)in_out + i), cvt_fp32_to_bf16(inout_val));
     }
 }
 
@@ -293,10 +276,10 @@ void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out
     } while (0)
 
 // num_elements must be divisible by 16 (caller check)
-void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_workspace** workspace)
+void reduce_fp32_buffers(int start_elements, int num_elements, int num_buffers, struct allreduce_workspace** workspace)
 {
 #pragma omp parallel for
-    for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
+    for (int i = start_elements*4; i < (start_elements+num_elements) * 4; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = _mm256_loadu_ps((float*)(workspace[0]->buffer + i));
         switch (num_buffers) {
             case 16: REPEAT(15, CVT_ADD_F32); break;
@@ -316,17 +299,6 @@ void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_wor
             default: assert(!"Should not get here.");
         }
         _mm256_storeu_ps((float*)(workspace[0]->buffer + i), inout_val);
-    }
-}
-
-void reduce_2_fp32_buffers_io(int num_elements, void* in_out, void* in1)
-{
-#pragma omp parallel for
-    for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
-        auto inout_val = _mm256_loadu_ps((float*)((char*)in_out + i));
-        auto in1_val = _mm256_loadu_ps((float*)((char*)in1 + i));
-        inout_val = _mm256_add_ps(inout_val, in1_val);
-        _mm256_storeu_ps((float*)((char*)in_out + i), inout_val);
     }
 }
 
@@ -750,7 +722,7 @@ void naive_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_
             // wait until the other rank copy the buffer
             wait_buffer_state_until(i, coll_allreduce_naive__copy_in_done);
         }
-        reduce_all_buffers(workspace, chunk_el, scalar_type, world_size);
+        reduce_all_buffers(workspace, 0, chunk_el, scalar_type, world_size);
         std::atomic_thread_fence(std::memory_order_release);
         workspace[world_rank]->state = coll_allreduce_naive__reduce_done;
         parallel_memcpy(data_ptr, workspace[0]->buffer, chunk_size);
@@ -776,6 +748,27 @@ void naive_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_
         workspace[world_rank]->state = coll_begin;
     }
 }
+
+/*
+// nreduce is naive allreduce distributed, each rank do naive reduce on its slice
+void nreduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_size, size_t chunk_el)
+{
+    parallel_memcpy(workspace[world_rank]->buffer, data_ptr, chunk_size);
+    std::atomic_thread_fence(std::memory_order_release);
+    workspace[world_rank]->state = coll_allreduce_naive__copy_in_done;
+
+    // compute allreduce result on rank i
+    for (int i = 0; i < world_size; i++) {
+        if (i != world_rank) {
+            // wait until the other rank copy the buffer
+            wait_buffer_state_until(i, coll_allreduce_naive__copy_in_done);
+        }
+    }
+    reduce_all_buffers(workspace, chunk_el, scalar_type, world_size);
+    std::atomic_thread_fence(std::memory_order_release);
+    workspace[world_rank]->state = coll_allreduce_naive__reduce_done;
+    parallel_memcpy(data_ptr, workspace[0]->buffer, chunk_size);
+}*/
 
 void all_reduce_outer_loop(torch::Tensor& data, size_t numel, int data_size)
 {
