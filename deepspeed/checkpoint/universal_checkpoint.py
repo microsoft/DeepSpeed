@@ -158,8 +158,10 @@ def load_hp_checkpoint_state_from_checkpoint_dir(zero_optimizer: ZeROOptimizer, 
 
         map_to_flat_opt_states(hp_param, lp_groups[i], zero_optimizer.optimizer.state, opt_keys)
 
-        if 'step' in loaded_param_group:
-            param_group['step'] = loaded_param_group['step']
+        for key, value in loaded_param_group.items():
+            if key == 'params':
+                continue
+            param_group[key] = value
 
 
 def enable_universal_checkpoint(param_list):
