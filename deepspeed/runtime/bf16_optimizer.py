@@ -17,7 +17,7 @@ from deepspeed.runtime.utils import (get_global_norm_of_tensors, clip_tensors_by
                                      align_dense_tensors, all_gather_dp_groups, bwc_tensor_model_parallel_rank,
                                      is_model_parallel_parameter, see_memory_usage, graph_process,
                                      get_norm_with_moe_layers)
-from deepspeed.moe.utils import is_moe_param
+from deepspeed.moe.utils import is_moe_param, is_moe_param_group
 from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state, fragment_address, groups, map_to_flat_opt_states
 from deepspeed.checkpoint import enable_universal_checkpoint
 from deepspeed.checkpoint.constants import (DS_VERSION, PARTITION_COUNT, BASE_OPTIMIZER_STATE,
@@ -97,11 +97,11 @@ class BF16_Optimizer(ZeROOptimizer):
 
     def _configure_moe_settings(self):
         assert any(
-            [self._is_moe_param_group(group) for group in self.optimizer.param_groups]
+            [is_moe_param_group(group) for group in self.optimizer.param_groups]
         ), "The model has moe layers, but None of the param groups are marked as MoE. Create a param group with 'moe' key set to True before creating optimizer"
 
         for i, group in enumerate(self.optimizer.param_groups):
-            if self._is_moe_param_group(group):
+            if is_moe_param_group(group):
                 assert all([is_moe_param(param)
                             for param in group['params']]), "All params in MoE group must be MoE params"
                 self.real_dp_process_group[i] = groups._get_expert_data_parallel_group(group['name'])
@@ -148,7 +148,7 @@ class BF16_Optimizer(ZeROOptimizer):
             # create fp32 gradients
             fp32_flat_buffer = torch.zeros_like(self.bf16_groups_flat[i], dtype=self.grad_acc_dtype)
             self.fp32_groups_gradients_flat.append(fp32_flat_buffer)
-            if self.has_moe_layers and self._is_moe_param_group(param_group):
+            if self.has_moe_layers and is_moe_param_group(param_group):
                 self.expert_gradients[param_group['name']].append(fp32_flat_buffer)
             else:
                 self.non_expert_gradients.append(fp32_flat_buffer)
@@ -196,11 +196,6 @@ class BF16_Optimizer(ZeROOptimizer):
         self._hp_optimizer_states_linked = False
         self._enable_universal_checkpoint()
         self._param_slice_mappings = self._create_param_mapping()
-
-    def _is_moe_param_group(self, param_group):
-        if 'moe' in param_group and param_group['moe'] is True:
-            return True
-        return False
 
     def _enable_universal_checkpoint(self):
         for lp_param_group in self.bf16_groups:
@@ -405,7 +400,7 @@ class BF16_Optimizer(ZeROOptimizer):
                 if not self.fp32_groups_has_gradients[i][j]:
                     continue
                 if not for_clipping:
-                    if self.has_moe_layers and self._is_moe_param_group(self.optimizer.param_groups[i]):
+                    if self.has_moe_layers and is_moe_param_group(self.optimizer.param_groups[i]):
                         if self.optimizer.param_groups[i]['name'] not in expert_grads_for_norm:
                             expert_grads_for_norm[self.optimizer.param_groups[i]['name']] = []
                         expert_grads_for_norm[self.optimizer.param_groups[i]['name']].append(
