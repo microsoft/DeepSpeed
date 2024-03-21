@@ -2341,18 +2341,18 @@ class DeepSpeedEngine(Module):
         if self.communication_data_type != tensor.dtype:
             tensor_to_allreduce = tensor.to(self.communication_data_type)
 
+        if dp_world_size is None:
+            dp_world_size = dist.get_world_size(group=dp_group)
         if self.postscale_gradients():
             if self.gradient_predivide_factor() != 1.0:
                 tensor_to_allreduce.mul_(1.0 / self.gradient_predivide_factor())
 
             dist.all_reduce(tensor_to_allreduce, group=dp_group)
             if self.gradient_average:
-                if dp_world_size is None:
-                    dp_world_size = dist.get_world_size(group=dp_group)
                 if self.gradient_predivide_factor() != dp_world_size:
                     tensor_to_allreduce.mul_(self.gradient_predivide_factor() / dp_world_size)
         else:
-            tensor_to_allreduce.mul_(1. / dist.get_world_size(group=dp_group))
+            tensor_to_allreduce.mul_(1. / dp_world_size)
             dist.all_reduce(tensor_to_allreduce, group=dp_group)
 
         if self.communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
@@ -2496,9 +2496,9 @@ class DeepSpeedEngine(Module):
             dp_world_size = dist.get_world_size(group=dp_group)
         if self.postscale_gradients():
             if self.gradient_average:
-                values.mul_(self.gradient_predivide_factor() / dp_world_size / float(self.sequence_parallel_size))
+                values.mul_(self.gradient_predivide_factor() / (dp_world_size / float(self.sequence_parallel_size)))
         else:
-            values.mul_(1. / dp_world_size / float(self.sequence_parallel_size))
+            values.mul_(1. / (dp_world_size / float(self.sequence_parallel_size)))
 
         indices_device_list = self.sparse_all_gather(indices, dp_group)
         values_device_list = self.sparse_all_gather(values, dp_group)
