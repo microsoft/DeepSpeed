@@ -5,6 +5,7 @@
 
 #include <torch/extension.h>
 
+#include <ATen/ATen.h>
 #include <fcntl.h>
 #include <immintrin.h>
 #include <math.h>
@@ -16,7 +17,6 @@
 #include <cstdlib>
 #include <iostream>
 #include <oneapi/ccl.hpp>
-#include <ATen/ATen.h>
 
 // states for collectives
 enum coll_state {
@@ -25,9 +25,9 @@ enum coll_state {
     coll_allreduce_naive__copy_in_done,   // this state is for rank != 0
     coll_allreduce_naive__reduce_done,    // this state is for rank == 0
     coll_allreduce_naive__copy_out_done,  // this state is for rank != 0
-    //coll_allreduce_ring__copy_in_done,
-    //coll_allreduce_ring__copy_out_done,
-    //coll_allreduce_ring__reduce_step_start,
+    // coll_allreduce_ring__copy_in_done,
+    // coll_allreduce_ring__copy_out_done,
+    // coll_allreduce_ring__reduce_step_start,
 };
 
 // SHM building blocks
@@ -74,7 +74,7 @@ void shared_close(SharedData* data)
 // SHM based allreduce helper functions
 // buffer that holds shm name
 #define NAME_BUF_SIZE 1000
-#define MAX_BUF_SIZE 1048576*32
+#define MAX_BUF_SIZE 1048576 * 32
 #define NAIVE_ALLREDUCE_THRESHOLD 1048576
 #define SHM_BUFFER_NAME "deepspeed_allreduce_buffer"
 struct allreduce_workspace {
@@ -87,19 +87,17 @@ void wait_buffer_state_until(int index, enum coll_state state)
 {
     volatile enum coll_state* state_ptr = &(workspace[index]->state);
 
-    while (*state_ptr != state)
-        ;
+    while (*state_ptr != state);
 }
 
 void wait_buffer_state_until_range(int index, enum coll_state start, int size)
 {
     volatile enum coll_state* state_ptr = &(workspace[index]->state);
-    enum coll_state end = (enum coll_state)(start+size);
+    enum coll_state end = (enum coll_state)(start + size);
 
     while (1) {
         volatile enum coll_state cur_state = *state_ptr;
-        if (cur_state >= start and cur_state < end)
-            break;
+        if (cur_state >= start and cur_state < end) break;
     }
 }
 
@@ -107,8 +105,7 @@ void wait_buffer_state_until_not(int index, enum coll_state state)
 {
     volatile enum coll_state* state_ptr = &(workspace[index]->state);
 
-    while (*state_ptr == state)
-        ;
+    while (*state_ptr == state);
 }
 
 __m512 cvt_bf16_to_fp32(const __m256i src) __attribute__((target("avx512bw")));
@@ -142,13 +139,21 @@ inline __m256i cvt_fp32_to_bf16(const __m512 src)
 void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out)
     __attribute__((target("avx512bw")));
 
-void reduce_bf16_buffers(int start_elements, int num_elements, int num_buffers, int to_buffer_idx, struct allreduce_workspace** workspace)
+void reduce_bf16_buffers(int start_elements,
+                         int num_elements,
+                         int num_buffers,
+                         int to_buffer_idx,
+                         struct allreduce_workspace** workspace)
     __attribute__((target("avx512bw")));
 
 void reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out)
     __attribute__((target("avx512bw")));
 
-void reduce_fp32_buffers(int start_elements, int num_elements, int num_buffers, struct allreduce_workspace** workspace)
+void reduce_fp32_buffers(int start_elements,
+                         int num_elements,
+                         int num_buffers,
+                         int to_buffer_idx,
+                         struct allreduce_workspace** workspace)
     __attribute__((target("avx512bw")));
 
 // N_REDUCE_LIMIT is the number of buffers that can be reduced together in one shot.
@@ -157,35 +162,43 @@ void reduce_fp32_buffers(int start_elements, int num_elements, int num_buffers, 
 // When increase N_REDUCE_LIMIT to a bigger number, do the following steps
 // 1. Extend REPEAT_<X> macros list down below
 // 2. Extend switch cases which call "REPEAT(X, ...)" down below
-#define N_REDUCE_LIMIT 8
+#define N_REDUCE_LIMIT 16
 
 void reduce_all_buffers(struct allreduce_workspace** workspace,
-                        int start_elements, int num_elements,
+                        int start_elements,
+                        int num_elements,
                         c10::ScalarType scalar_type,
-                        int num_buffers, int to_buffer_idx)
+                        int num_buffers,
+                        int to_buffer_idx)
 {
     switch (scalar_type) {
         case c10::ScalarType::BFloat16:
             if (num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
-                reduce_bf16_buffers(start_elements, num_elements, num_buffers, to_buffer_idx, workspace);
+                reduce_bf16_buffers(
+                    start_elements, num_elements, num_buffers, to_buffer_idx, workspace);
             } else {
                 for (int i = 0; i < num_buffers; i++) {
-                    if (i==to_buffer_idx) continue;
-                    reduce_2_bf16_buffers_iio(num_elements, workspace[i]->buffer+start_elements*2,
-                                              workspace[to_buffer_idx]->buffer+start_elements*2,
-                                              workspace[to_buffer_idx]->buffer+start_elements*2);
+                    if (i == to_buffer_idx) continue;
+                    reduce_2_bf16_buffers_iio(
+                        num_elements,
+                        workspace[i]->buffer + start_elements * 2,
+                        workspace[to_buffer_idx]->buffer + start_elements * 2,
+                        workspace[to_buffer_idx]->buffer + start_elements * 2);
                 }
             }
             break;
         case c10::ScalarType::Float:
             if (num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
-                reduce_fp32_buffers(start_elements, num_elements, num_buffers, workspace);
+                reduce_fp32_buffers(
+                    start_elements, num_elements, num_buffers, to_buffer_idx, workspace);
             } else {
                 for (int i = 0; i < num_buffers; i++) {
-                    if (i==to_buffer_idx) continue;
-                    reduce_2_fp32_buffers_iio(num_elements, workspace[i]->buffer+start_elements*4,
-                                              workspace[to_buffer_idx]->buffer+start_elements*4,
-                                              workspace[to_buffer_idx]->buffer+start_elements*4);
+                    if (i == to_buffer_idx) continue;
+                    reduce_2_fp32_buffers_iio(
+                        num_elements,
+                        workspace[i]->buffer + start_elements * 4,
+                        workspace[to_buffer_idx]->buffer + start_elements * 4,
+                        workspace[to_buffer_idx]->buffer + start_elements * 4);
                 }
             }
             break;
@@ -195,39 +208,77 @@ void reduce_all_buffers(struct allreduce_workspace** workspace,
 
 #define REPEAT(N, x) REPEAT_##N(x)
 #define REPEAT_1(x) x(1)
-#define REPEAT_2(x) REPEAT_1(x); x(2)
-#define REPEAT_3(x) REPEAT_2(x); x(3)
-#define REPEAT_4(x) REPEAT_3(x); x(4)
-#define REPEAT_5(x) REPEAT_4(x); x(5)
-#define REPEAT_6(x) REPEAT_5(x); x(6)
-#define REPEAT_7(x) REPEAT_6(x); x(7)
-#define REPEAT_8(x) REPEAT_7(x); x(8)
-#define REPEAT_9(x) REPEAT_8(x); x(9)
-#define REPEAT_10(x) REPEAT_9(x); x(10)
-#define REPEAT_11(x) REPEAT_10(x); x(11)
-#define REPEAT_12(x) REPEAT_11(x); x(12)
-#define REPEAT_13(x) REPEAT_12(x); x(13)
-#define REPEAT_14(x) REPEAT_13(x); x(14)
-#define REPEAT_15(x) REPEAT_14(x); x(15)
+#define REPEAT_2(x) \
+    REPEAT_1(x);    \
+    x(2)
+#define REPEAT_3(x) \
+    REPEAT_2(x);    \
+    x(3)
+#define REPEAT_4(x) \
+    REPEAT_3(x);    \
+    x(4)
+#define REPEAT_5(x) \
+    REPEAT_4(x);    \
+    x(5)
+#define REPEAT_6(x) \
+    REPEAT_5(x);    \
+    x(6)
+#define REPEAT_7(x) \
+    REPEAT_6(x);    \
+    x(7)
+#define REPEAT_8(x) \
+    REPEAT_7(x);    \
+    x(8)
+#define REPEAT_9(x) \
+    REPEAT_8(x);    \
+    x(9)
+#define REPEAT_10(x) \
+    REPEAT_9(x);     \
+    x(10)
+#define REPEAT_11(x) \
+    REPEAT_10(x);    \
+    x(11)
+#define REPEAT_12(x) \
+    REPEAT_11(x);    \
+    x(12)
+#define REPEAT_13(x) \
+    REPEAT_12(x);    \
+    x(13)
+#define REPEAT_14(x) \
+    REPEAT_13(x);    \
+    x(14)
+#define REPEAT_15(x) \
+    REPEAT_14(x);    \
+    x(15)
 
-#define CVT_ADD_BF16(x)                                                                \
-    do {                                                                               \
-        auto in##x##_val =                                                             \
+#define CVT_ADD_BF16(x)                                                                 \
+    do {                                                                                \
+        auto in##x##_val =                                                              \
             cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[x]->buffer + i))); \
-        inout_val = _mm512_add_ps(inout_val, in##x##_val);                             \
+        inout_val = _mm512_add_ps(inout_val, in##x##_val);                              \
     } while (0)
 
 // Reduce functions down below use vectorized algorithm, the number of bytes processed each
 // iteration depends on vector length.  256bit vector ==> 32 bytes, 512bit vector ==> 64 bytes
-// If you change implementation of reduce_2_bf16_buffers_io or reduce_2_fp32_buffers_io, check
+// If you change implementation of reduce_2_bf16_buffers_iio or reduce_2_fp32_buffers_iio, check
 // whether this number needs to be changed
 #define VECTOR_LENGTH_IN_BYTES 32
 
-// num_elements must be divisible by 16 (caller check)
-void reduce_bf16_buffers(int start_elements, int num_elements, int num_buffers, int to_buffer_idx, struct allreduce_workspace** workspace)
+void reduce_bf16_buffers(int start_elements,
+                         int num_elements,
+                         int num_buffers,
+                         int to_buffer_idx,
+                         struct allreduce_workspace** workspace)
 {
+    const int element_size = 2;
+    const int vector_length = VECTOR_LENGTH_IN_BYTES / element_size;
+    int main_elements = num_elements - (num_elements % vector_length);
+    int remain_elements = num_elements % vector_length;
+
+    // process aligned part
 #pragma omp parallel for
-    for (int i = start_elements*2; i < (start_elements+num_elements) * 2; i += VECTOR_LENGTH_IN_BYTES) {
+    for (int i = start_elements * element_size; i < (start_elements + main_elements) * element_size;
+         i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0]->buffer + i)));
         switch (num_buffers) {
             case 16: REPEAT(15, CVT_ADD_BF16); break;
@@ -246,46 +297,69 @@ void reduce_bf16_buffers(int start_elements, int num_elements, int num_buffers, 
             case 3: REPEAT(2, CVT_ADD_BF16); break;
             default: assert(!"Should not get here.");
         }
-        _mm256_storeu_si256((__m256i*)(workspace[to_buffer_idx]->buffer + i), cvt_fp32_to_bf16(inout_val));
+        _mm256_storeu_si256((__m256i*)(workspace[to_buffer_idx]->buffer + i),
+                            cvt_fp32_to_bf16(inout_val));
+    }
+
+    // process remaining part
+    int i = (start_elements + main_elements) * element_size;
+    while (remain_elements > 0) {
+        float val = 0.0f;
+        for (int j = 0; j < num_buffers; j++) { val += *(at::BFloat16*)(workspace[j]->buffer + i); }
+        *(at::BFloat16*)(workspace[to_buffer_idx]->buffer + i) = val;
+        remain_elements--;
+        i += element_size;
     }
 }
 
 void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out)
 {
     const int element_size = 2;
-    const int vector_length = VECTOR_LENGTH_IN_BYTES/element_size;
-    int bulk_elements = num_elements - (num_elements % vector_length);
+    const int vector_length = VECTOR_LENGTH_IN_BYTES / element_size;
+    int main_elements = num_elements - (num_elements % vector_length);
     int remain_elements = num_elements % vector_length;
 
+    // process aligned part
 #pragma omp parallel for
-    for (int i = 0; i < bulk_elements * element_size; i += VECTOR_LENGTH_IN_BYTES) {
+    for (int i = 0; i < main_elements * element_size; i += VECTOR_LENGTH_IN_BYTES) {
         auto in0_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in0 + i)));
         auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
         auto out_val = _mm512_add_ps(in0_val, in1_val);
         _mm256_storeu_si256((__m256i*)((char*)out + i), cvt_fp32_to_bf16(out_val));
     }
 
-    int i = bulk_elements * element_size;
+    // process remaining part
+    int i = main_elements * element_size;
     while (remain_elements > 0) {
         float in0_val = *((at::BFloat16*)((char*)in0 + i));
         float in1_val = *((at::BFloat16*)((char*)in1 + i));
-        *((at::BFloat16*)((char*)out + i))  = in0_val + in1_val;
-        remain_elements --;
+        *((at::BFloat16*)((char*)out + i)) = in0_val + in1_val;
+        remain_elements--;
         i += element_size;
     }
 }
 
-#define CVT_ADD_F32(x)                                                         \
-    do {                                                                       \
+#define CVT_ADD_F32(x)                                                          \
+    do {                                                                        \
         auto in##x##_val = _mm256_loadu_ps((float*)(workspace[x]->buffer + i)); \
-        inout_val = _mm256_add_ps(inout_val, in##x##_val);                     \
+        inout_val = _mm256_add_ps(inout_val, in##x##_val);                      \
     } while (0)
 
-// num_elements must be divisible by 16 (caller check)
-void reduce_fp32_buffers(int start_elements, int num_elements, int num_buffers, struct allreduce_workspace** workspace)
+void reduce_fp32_buffers(int start_elements,
+                         int num_elements,
+                         int num_buffers,
+                         int to_buffer_idx,
+                         struct allreduce_workspace** workspace)
 {
+    const int element_size = 4;
+    const int vector_length = VECTOR_LENGTH_IN_BYTES / element_size;
+    int main_elements = num_elements - (num_elements % vector_length);
+    int remain_elements = num_elements % vector_length;
+
+    // process aligned part
 #pragma omp parallel for
-    for (int i = start_elements*4; i < (start_elements+num_elements) * 4; i += VECTOR_LENGTH_IN_BYTES) {
+    for (int i = start_elements * element_size; i < (start_elements + main_elements) * element_size;
+         i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = _mm256_loadu_ps((float*)(workspace[0]->buffer + i));
         switch (num_buffers) {
             case 16: REPEAT(15, CVT_ADD_F32); break;
@@ -304,7 +378,17 @@ void reduce_fp32_buffers(int start_elements, int num_elements, int num_buffers, 
             case 3: REPEAT(2, CVT_ADD_F32); break;
             default: assert(!"Should not get here.");
         }
-        _mm256_storeu_ps((float*)(workspace[0]->buffer + i), inout_val);
+        _mm256_storeu_ps((float*)(workspace[to_buffer_idx]->buffer + i), inout_val);
+    }
+
+    // process remaining part
+    int i = (start_elements + main_elements) * element_size;
+    while (remain_elements > 0) {
+        float val = 0.0f;
+        for (int j = 0; j < num_buffers; j++) { val += *(float*)(workspace[j]->buffer + i); }
+        *(float*)(workspace[to_buffer_idx]->buffer + i) = val;
+        remain_elements--;
+        i += element_size;
     }
 }
 
@@ -312,23 +396,25 @@ void reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out
 {
     const int element_size = 4;
     const int vector_length = VECTOR_LENGTH_IN_BYTES / element_size;
-    int bulk_elements = num_elements - (num_elements % vector_length);
+    int main_elements = num_elements - (num_elements % vector_length);
     int remain_elements = num_elements % vector_length;
 
+    // process aligned part
 #pragma omp parallel for
-    for (int i = 0; i < bulk_elements * element_size; i += VECTOR_LENGTH_IN_BYTES) {
+    for (int i = 0; i < main_elements * element_size; i += VECTOR_LENGTH_IN_BYTES) {
         auto in0_val = _mm256_loadu_ps((float*)((char*)in0 + i));
         auto in1_val = _mm256_loadu_ps((float*)((char*)in1 + i));
         auto out_val = _mm256_add_ps(in0_val, in1_val);
         _mm256_storeu_ps((float*)((char*)out + i), out_val);
     }
 
-    int i = bulk_elements * element_size;
+    // process remaining part
+    int i = main_elements * element_size;
     while (remain_elements > 0) {
         float in0_val = *((float*)((char*)in0 + i));
         float in1_val = *((float*)((char*)in1 + i));
-        *((float*)((char*)out + i))  = in0_val + in1_val;
-        remain_elements --;
+        *((float*)((char*)out + i)) = in0_val + in1_val;
+        remain_elements--;
         i += element_size;
     }
 }
@@ -407,8 +493,8 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
              getuid(),
              addr_string,
              port_string);
-    // create shared workspace for SHM based allreduce
-    #if 0
+// create shared workspace for SHM based allreduce
+#if 0
     if (all_ranks_local_p) {
         snprintf(shm_name, NAME_BUF_SIZE, "%s", shm_name_prefix);
         struct allreduce_workspace *workspace_buf;
@@ -431,16 +517,17 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
             workspace[i] = workspace_buf + i;
         }
     }
-    #else
+#else
     if (all_ranks_local_p) {
         SharedData allreduce_buffer;
         // allocate workspace_buf for current rank
-        struct allreduce_workspace *workspace_buf;
-        struct allreduce_workspace *workspace_buf_other;
+        struct allreduce_workspace* workspace_buf;
+        struct allreduce_workspace* workspace_buf_other;
         workspace_buf = (struct allreduce_workspace*)malloc(sizeof(struct allreduce_workspace));
         snprintf(shm_name, NAME_BUF_SIZE, "%s_%d", shm_name_prefix, rank);
-        //printf("create %s, %d\n", shm_name, rank);
-        shared_create(&allreduce_buffer, shm_name, workspace_buf, sizeof(struct allreduce_workspace));
+        // printf("create %s, %d\n", shm_name, rank);
+        shared_create(
+            &allreduce_buffer, shm_name, workspace_buf, sizeof(struct allreduce_workspace));
         workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
         workspace_buf->state = coll_begin;
 
@@ -448,13 +535,14 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
         CCLCHECK(ccl::barrier(_get_comm_from_group()).wait());
 
         // create the workspace pointer list
-        workspace = (struct allreduce_workspace**)malloc(size * sizeof(struct allreduce_workspace*));
+        workspace =
+            (struct allreduce_workspace**)malloc(size * sizeof(struct allreduce_workspace*));
 
         // map shm of all ranks
-        for (int i=0; i<size; i++) {
-            if (i!=rank) {
+        for (int i = 0; i < size; i++) {
+            if (i != rank) {
                 snprintf(shm_name, NAME_BUF_SIZE, "%s_%d", shm_name_prefix, i);
-                //printf("open %s, %d\n", shm_name, rank);
+                // printf("open %s, %d\n", shm_name, rank);
                 shared_open(&allreduce_buffer, shm_name, sizeof(struct allreduce_workspace));
                 workspace_buf_other = (struct allreduce_workspace*)allreduce_buffer.bytes;
                 workspace[i] = workspace_buf_other;
@@ -463,7 +551,7 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
             }
         }
     }
-    #endif
+#endif
 }
 
 /*
@@ -634,26 +722,31 @@ static void parallel_memcpy(void* to, void* from, size_t n_bytes)
     __attribute__((target("avx512bw")));
 static void parallel_memcpy(void* to, void* from, size_t n_bytes)
 {
+    auto aligned_bytes = n_bytes - (n_bytes % VECTOR_LENGTH_IN_BYTES);
+    // process aligned part
 #pragma omp parallel for
-    for (int i = 0; i < n_bytes; i += VECTOR_LENGTH_IN_BYTES) {
+    for (int i = 0; i < aligned_bytes; i += VECTOR_LENGTH_IN_BYTES) {
         auto val = _mm256_loadu_si256((__m256i*)((char*)from + i));
         _mm256_storeu_si256((__m256i*)((char*)to + i), val);
     }
+
+    // process remaining part
+    for (int i = aligned_bytes; i < n_bytes; i++) { *((char*)to + i) = *((char*)from + i); }
 }
 
-#define positive_mod(num,mod) ((((num)%(mod))+(mod))%(mod))
+#define positive_mod(num, mod) ((((num) % (mod)) + (mod)) % (mod))
 #define rank_mod(rank) positive_mod(rank, world_size)
 size_t slice_size(size_t chunk_el, int slice_idx)
 {
     size_t slice_size = chunk_el / world_size;
-    return slice_idx == world_size-1 ? slice_size+(chunk_el%world_size) : slice_size;
+    return slice_idx == world_size - 1 ? slice_size + (chunk_el % world_size) : slice_size;
 }
 
 char* slice_data(char* data_ptr, size_t chunk_el, int el_size, int slice_idx)
 {
     size_t slice_size = chunk_el / world_size;
     size_t el_offset = slice_size * slice_idx;
-    return data_ptr + el_offset*el_size;
+    return data_ptr + el_offset * el_size;
 }
 
 size_t slice_el_start(size_t chunk_el, int slice_idx)
@@ -662,67 +755,73 @@ size_t slice_el_start(size_t chunk_el, int slice_idx)
     return slice_size * slice_idx;
 }
 
-void ring_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_size, size_t chunk_el)
+void ring_all_reduce(char* data_ptr,
+                     c10::ScalarType scalar_type,
+                     size_t chunk_size,
+                     size_t chunk_el)
 {
-    int data_size = chunk_size/chunk_el;
+    int data_size = chunk_size / chunk_el;
     parallel_memcpy(slice_data(workspace[world_rank]->buffer, chunk_el, data_size, world_rank),
                     slice_data(data_ptr, chunk_el, data_size, world_rank),
-                    slice_size(chunk_el, world_rank)*data_size);
+                    slice_size(chunk_el, world_rank) * data_size);
     std::atomic_thread_fence(std::memory_order_release);
 
-    int prev_rank = rank_mod(world_rank-1);
-    int next_rank = rank_mod(world_rank+1);
-
+    int prev_rank = rank_mod(world_rank - 1);
+    int next_rank = rank_mod(world_rank + 1);
 
     int step;
 
     //  reduce_scatter
-    for (step=0; step<world_size-1; step++) {
+    for (step = 0; step < world_size - 1; step++) {
         // wait until prev rank have data ready -- iter 0: finished copy; iterh >0: finished add
-        auto state = workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state+1);
+        auto state = workspace[world_rank]->state =
+            (enum coll_state)(workspace[world_rank]->state + 1);
         wait_buffer_state_until_range(prev_rank, state, world_size);
 
-        auto slice_idx = rank_mod(world_rank-1-step);
+        auto slice_idx = rank_mod(world_rank - 1 - step);
         switch (scalar_type) {
-        case c10::ScalarType::BFloat16:
-            reduce_2_bf16_buffers_iio(slice_size(chunk_el, slice_idx),
-                                      slice_data(workspace[prev_rank]->buffer, chunk_el, data_size, slice_idx),
-                                      slice_data(data_ptr, chunk_el, data_size, slice_idx),
-                                      slice_data(workspace[world_rank]->buffer, chunk_el, data_size, slice_idx));
-            break;
-        case c10::ScalarType::Float:
-            reduce_2_fp32_buffers_iio(slice_size(chunk_el, slice_idx),
-                                      slice_data(workspace[prev_rank]->buffer, chunk_el, data_size, slice_idx),
-                                      slice_data(data_ptr, chunk_el, data_size, slice_idx),
-                                      slice_data(workspace[world_rank]->buffer, chunk_el, data_size, slice_idx));
-            break;
-        default: assert(!"Should not get here");
+            case c10::ScalarType::BFloat16:
+                reduce_2_bf16_buffers_iio(
+                    slice_size(chunk_el, slice_idx),
+                    slice_data(workspace[prev_rank]->buffer, chunk_el, data_size, slice_idx),
+                    slice_data(data_ptr, chunk_el, data_size, slice_idx),
+                    slice_data(workspace[world_rank]->buffer, chunk_el, data_size, slice_idx));
+                break;
+            case c10::ScalarType::Float:
+                reduce_2_fp32_buffers_iio(
+                    slice_size(chunk_el, slice_idx),
+                    slice_data(workspace[prev_rank]->buffer, chunk_el, data_size, slice_idx),
+                    slice_data(data_ptr, chunk_el, data_size, slice_idx),
+                    slice_data(workspace[world_rank]->buffer, chunk_el, data_size, slice_idx));
+                break;
+            default: assert(!"Should not get here");
         }
         std::atomic_thread_fence(std::memory_order_release);
     }
 
-    auto state = workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state+1);
+    auto state = workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state + 1);
 
     // all_gather
-    for (step=0; step<world_size; step++) {
-        auto from_rank = rank_mod(world_rank+step-1);
+    for (step = 0; step < world_size; step++) {
+        auto from_rank = rank_mod(world_rank + step - 1);
         wait_buffer_state_until_range(from_rank, state, 2);
-        auto slice_idx = rank_mod(world_rank+step);
+        auto slice_idx = rank_mod(world_rank + step);
         parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, slice_idx),
                         slice_data(workspace[from_rank]->buffer, chunk_el, data_size, slice_idx),
-                        slice_size(chunk_el, slice_idx)*data_size);
+                        slice_size(chunk_el, slice_idx) * data_size);
         std::atomic_thread_fence(std::memory_order_release);
     }
     auto prev_state = workspace[world_rank]->state;
-    state = workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state+1);
+    state = workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state + 1);
     // we need to reach a global barrier before start next iteration to avoid buffer override
-    for (int rank=0; rank<world_size; rank++) {
-        wait_buffer_state_until_not(rank, prev_state);
-    }
+    for (int rank = 0; rank < world_size; rank++) { wait_buffer_state_until_not(rank, prev_state); }
     workspace[world_rank]->state = coll_begin;
 }
 
-void naive_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_size, size_t chunk_el)
+void naive_all_reduce(char* data_ptr,
+                      c10::ScalarType scalar_type,
+                      size_t chunk_size,
+                      size_t chunk_el)
 {
     parallel_memcpy(workspace[world_rank]->buffer, data_ptr, chunk_size);
     std::atomic_thread_fence(std::memory_order_release);
@@ -762,9 +861,12 @@ void naive_all_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_
 }
 
 // naive allreduce distributed, each rank do naive reduce on its slice
-void distributed_naive_reduce(char* data_ptr, c10::ScalarType scalar_type, size_t chunk_size, size_t chunk_el)
+void distributed_naive_reduce(char* data_ptr,
+                              c10::ScalarType scalar_type,
+                              size_t chunk_size,
+                              size_t chunk_el)
 {
-    int data_size = chunk_size/chunk_el;
+    int data_size = chunk_size / chunk_el;
     parallel_memcpy(workspace[world_rank]->buffer, data_ptr, chunk_size);
     std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank]->state = coll_allreduce_naive__copy_in_done;
@@ -774,16 +876,21 @@ void distributed_naive_reduce(char* data_ptr, c10::ScalarType scalar_type, size_
         wait_buffer_state_until_range(i, coll_allreduce_naive__copy_in_done, 2);
     }
     // reduce scatter
-    reduce_all_buffers(workspace, slice_el_start(chunk_el, world_rank), slice_size(chunk_el, world_rank), scalar_type, world_size, world_rank);
+    reduce_all_buffers(workspace,
+                       slice_el_start(chunk_el, world_rank),
+                       slice_size(chunk_el, world_rank),
+                       scalar_type,
+                       world_size,
+                       world_rank);
     std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank]->state = coll_allreduce_naive__reduce_done;
 
     for (int i = 0; i < world_size; i++) {
-        int rank = (i+world_rank)%world_size;
+        int rank = (i + world_rank) % world_size;
         // wait until the other rank reduce the buffer
         wait_buffer_state_until_range(rank, coll_allreduce_naive__reduce_done, 2);
         parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, rank),
-                        slice_data(workspace[rank]->buffer, chunk_el, chunk_size/chunk_el, rank),
+                        slice_data(workspace[rank]->buffer, chunk_el, chunk_size / chunk_el, rank),
                         slice_size(chunk_el, rank) * data_size);
     }
     std::atomic_thread_fence(std::memory_order_release);
@@ -795,7 +902,6 @@ void distributed_naive_reduce(char* data_ptr, c10::ScalarType scalar_type, size_
 
     std::atomic_thread_fence(std::memory_order_release);
     workspace[world_rank]->state = coll_begin;
-
 }
 
 void all_reduce_outer_loop(torch::Tensor& data, size_t numel, int data_size)
@@ -829,7 +935,7 @@ void inference_all_reduce(torch::Tensor& data, py::object op, bool async_op)
         default: data_type_fallback = true;
     }
 
-    if (data_type_fallback || (data_size % VECTOR_LENGTH_IN_BYTES) != 0 || !all_ranks_local_p) {
+    if (data_type_fallback || !all_ranks_local_p) {
         // fallback to oneccl allreduce
         CCLCHECK(ccl::allreduce(data.data_ptr(),
                                 data.data_ptr(),
