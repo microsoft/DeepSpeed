@@ -286,7 +286,7 @@ class BF16_Optimizer(ZeROOptimizer):
                                                             mpu=self.mpu,
                                                             norm_type=self.norm_type,
                                                             use_graph=self.graph_harvesting)
-        all_group_norm = non_expert_groups_norm
+        all_groups_norm = non_expert_groups_norm
         if self.has_moe_layers:
             all_groups_norm = get_norm_with_moe_layers(non_expert_groups_norm,
                                                        mpu=self.mpu,
