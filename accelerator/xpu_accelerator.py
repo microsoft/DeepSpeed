@@ -290,5 +290,12 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def export_envs(self):
         return []
 
-    def get_compile_backend(self):
-        return "inductor"
+    def get_compile_backend(self, backend=None):
+        supported_backends = torch._dynamo.list_backends()
+        if backend is None:
+            return "inductor"
+        elif backend in supported_backends:
+            return backend
+        else:
+            raise ValueError(
+                f"{backend} not supported by {self.device_name()}. Supported Backends are {supported_backends}")
