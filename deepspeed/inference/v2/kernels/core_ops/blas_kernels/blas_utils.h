@@ -55,7 +55,7 @@ private:
 
 enum class BlasType { FP32, FP16, BF16 };
 
-#ifdef __HIP_PLATFORM_AMD__
+#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
 rocblas_operation get_trans_op(bool do_trans)
 {
     return (do_trans) ? rocblas_operation_transpose : rocblas_operation_none;
@@ -76,9 +76,15 @@ cublasOperation_t get_trans_op(bool do_trans) { return (do_trans) ? CUBLAS_OP_T 
 cublasDataType_t get_datatype(BlasType type)
 {
     switch (type) {
+#ifdef __HIP_PLATFORM_AMD__
+        case BlasType::FP32: return HIPBLAS_R_32F;
+        case BlasType::FP16: return HIPBLAS_R_16F;
+        case BlasType::BF16: return HIPBLAS_R_16B;
+#else
         case BlasType::FP32: return CUDA_R_32F;
         case BlasType::FP16: return CUDA_R_16F;
         case BlasType::BF16: return CUDA_R_16BF;
+#endif
         default: throw std::runtime_error("Unsupported BlasType");
     }
 }
@@ -99,7 +105,7 @@ int blas_gemm_ex(void* C,
                  const float* beta,
                  BlasType type)
 {
-#ifdef __HIP_PLATFORM_AMD__
+#ifdef __HIP_PLATFORM_AMD__ && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
     rocblas_operation_t transa_op = get_trans_op(transa);
     rocblas_operation_t transb_op = get_trans_op(transb);
 
@@ -151,11 +157,15 @@ int blas_gemm_ex(void* C,
                                          C,
                                          abc_type,
                                          ldc,
+#ifdef __HIP_PLATFORM_AMD__
+                                         HIPBLAS_R_32F,
+#else
                                          CUDA_R_32F,
+#endif
                                          CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
 
-#ifdef __HIP_PLATFORM_AMD__
+#ifdef __HIP_PLATFORM_AMD__ && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
     if (status != rocblas_status_success) {
 #else
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -190,7 +200,7 @@ int blas_strided_batched_gemm(void* C,
                               int batch,
                               BlasType type)
 {
-#ifdef __HIP_PLATFORM_AMD__
+#ifdef __HIP_PLATFORM_AMD__ && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
     rocblas_operation_t transa_op = get_trans_op(transa);
     rocblas_operation_t transb_op = get_trans_op(transb);
 
@@ -253,11 +263,15 @@ int blas_strided_batched_gemm(void* C,
                                                        ldc,
                                                        stride_C,
                                                        batch,
+#ifdef __HIP_PLATFORM_AMD__
+                                                       HIPBLAS_R_32F,
+#else
                                                        CUDA_R_32F,
+#endif
                                                        CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
 
-#ifdef __HIP_PLATFORM_AMD__
+#ifdef __HIP_PLATFORM_AMD__ && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
     if (status != rocblas_status_success) {
 #else
     if (status != CUBLAS_STATUS_SUCCESS) {
