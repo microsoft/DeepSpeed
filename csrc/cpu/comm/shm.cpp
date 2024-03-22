@@ -8,6 +8,7 @@
 #include <ATen/ATen.h>
 #include <fcntl.h>
 #include <immintrin.h>
+#include <semaphore.h>
 #include <sys/mman.h>
 #include "shm.h"
 
@@ -72,6 +73,10 @@ void shared_close(SharedData* data)
 #define SHM_BUFFER_NAME "deepspeed_allreduce_buffer"
 struct allreduce_workspace {
     enum coll_state state;
+    sem_t mutex;
+    sem_t turnstile1;
+    sem_t turnstile2;
+    int counter;
     char buffer[MAX_BUF_SIZE];
 };
 struct allreduce_workspace** workspace;
@@ -99,6 +104,28 @@ void wait_buffer_state_until_not(int index, enum coll_state state)
     volatile enum coll_state* state_ptr = &(workspace[index]->state);
 
     while (*state_ptr == state);
+}
+
+void barrier_wait(int root_idx, int num_ranks)
+{
+    // Phase 1: Wait for all threads to enter the barrier
+    auto shared = workspace[root_idx];
+    sem_wait(&shared->mutex);
+    shared->counter++;
+    if (shared->counter == num_ranks) {
+        for (int i = 0; i < num_ranks; ++i) { sem_post(&shared->turnstile1); }
+    }
+    sem_post(&shared->mutex);
+    sem_wait(&shared->turnstile1);
+
+    // Phase 2: Wait for all threads to exit the barrier
+    sem_wait(&shared->mutex);
+    shared->counter--;
+    if (shared->counter == 0) {
+        for (int i = 0; i < num_ranks; ++i) { sem_post(&shared->turnstile2); }
+    }
+    sem_post(&shared->mutex);
+    sem_wait(&shared->turnstile2);
 }
 
 __m512 cvt_bf16_to_fp32(const __m256i src) __attribute__((target("avx512bw")));
@@ -459,6 +486,10 @@ void shm_initialize(int size, int rank, char* addr_string, char* port_string)
             workspace[i] = workspace_buf_other;
         } else {
             workspace[i] = workspace_buf;
+            workspace_buf->counter = 0;
+            sem_init(&workspace_buf->mutex, 1, 1);
+            sem_init(&workspace_buf->turnstile1, 1, 0);
+            sem_init(&workspace_buf->turnstile2, 1, 0);
         }
     }
 }

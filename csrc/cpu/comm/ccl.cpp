@@ -8,6 +8,12 @@
 #include <oneapi/ccl.hpp>
 #include "shm.h"
 
+// #define DO_PROFILE
+#ifdef DO_PROFILE
+#include <cfloat>
+#include <chrono>
+#endif
+
 // Communication settings
 static int world_rank = -1;
 static int world_size = -1;
@@ -243,6 +249,20 @@ void all_reduce_caching(torch::Tensor& data,
 
 void inference_all_reduce(torch::Tensor& data, py::object op, bool async_op)
 {
+#ifdef DO_PROFILE
+    static double total_time = 0.0;
+    static double total_time_sq = 0.0;
+    static int count = -16;  // warmup
+    static double max_time = 0.0;
+    static double min_time = DBL_MAX;
+    // make sure all rank reach this point before measuring time
+    // turn on this if you suspect each rank didn't reach here at the same time (stragger)
+    // if (all_ranks_local_p) {
+    // barrier_wait(0, world_size);
+    //}
+    auto start = std::chrono::system_clock::now();
+#endif
+
     static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
     static auto ReduceOpSum = (int)py::int_(ReduceOp.attr("SUM").attr("value"));
 
@@ -268,10 +288,31 @@ void inference_all_reduce(torch::Tensor& data, py::object op, bool async_op)
                                 get_ccl_reduce_op(op, data),
                                 _get_comm_from_group())
                      .wait());
-        return;
+    } else {
+        all_reduce_outer_loop(data, numel, data_size);
     }
 
-    all_reduce_outer_loop(data, numel, data_size);
+#ifdef DO_PROFILE
+    auto end = std::chrono::system_clock::now();
+    double elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    count++;
+    if (count > 0) {
+        if (elapsed > max_time) { max_time = elapsed; }
+        if (elapsed < min_time) { min_time = elapsed; }
+        total_time += elapsed;
+        total_time_sq += elapsed * elapsed;
+        if (world_rank == 0 && count == 1000) {
+            auto avg = total_time / count;
+            auto sd =
+                sqrt(total_time_sq / count - total_time * total_time / (count * count)) / avg * 100;
+            printf("      C++ kernel\t\t    %.2f\t  %.2f\t%.2f\t      %.2f\n",
+                   min_time,
+                   max_time,
+                   total_time / count,
+                   sd);
+        }
+    }
+#endif
 }
 
 void barrier(std::vector<int> group, bool async_op)
