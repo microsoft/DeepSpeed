@@ -680,7 +680,9 @@ class CUDAOpBuilder(OpBuilder):
 
         if self.is_rocm_pytorch():
             compile_args['cxx'].append("-D__HIP_PLATFORM_AMD__=1")
+            #cxx compiler args are required to compile cpp files
             compile_args['cxx'].append('-DROCM_WAVEFRONT_SIZE=%s' % self.get_rocm_wavefront_size())
+            #nvcc compiler args are required to compile hip files
             compile_args['nvcc'].append('-DROCM_WAVEFRONT_SIZE=%s' % self.get_rocm_wavefront_size())
             if self.get_rocm_gpu_arch():
                 os.environ["PYTORCH_ROCM_ARCH"] = self.get_rocm_gpu_arch()
