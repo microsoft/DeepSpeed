@@ -21,13 +21,9 @@
 // states for collectives
 enum coll_state {
     coll_begin = 0,
-    // coll states for naive allreduce
     coll_allreduce_naive__copy_in_done,   // this state is for rank != 0
     coll_allreduce_naive__reduce_done,    // this state is for rank == 0
     coll_allreduce_naive__copy_out_done,  // this state is for rank != 0
-    // coll_allreduce_ring__copy_in_done,
-    // coll_allreduce_ring__copy_out_done,
-    // coll_allreduce_ring__reduce_step_start,
 };
 
 // SHM building blocks
@@ -48,7 +44,11 @@ void shared_open(SharedData* data, const char* name, size_t nbytes)
         data->bytes = bytes;
         data->nbytes = nbytes;
     } else {
-        printf("shared_open %s failed\n", name);
+        if (errno != ENOENT) {
+            // don't print if shm can not be found because we want to loop over from
+            // caller again until the other ranks created the shm
+            printf("shared_open %s failed, errno=%d\n", name, errno);
+        }
         data->descriptor = -1;
     }
 }
@@ -419,71 +419,22 @@ void reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out
     }
 }
 
-// Communication settings
-int world_rank = -1;
-int world_size = -1;
+static bool is_initialized = 0;
+static int world_size;
+static int world_rank;
 
-std::set<int> _comm_ids;
-std::set<int> _colors;
-std::vector<ccl::communicator> _ccl_comms;
-ccl::shared_ptr_class<ccl::kvs> sub_kvs;
-std::map<std::vector<int>, int> group_to_comm_id;
-
-ccl::communicator& _get_comm_from_group() { return _ccl_comms[0]; }
-ccl::communicator& _get_comm_from_group(py::object group) { return _ccl_comms[0]; }
-ccl::communicator& _get_comm_from_group(std::vector<int> ranks)
-{
-    if (group_to_comm_id.find(ranks) != group_to_comm_id.end()) {
-        auto id = group_to_comm_id.find(ranks);
-        return _ccl_comms[id->second];
-    }
-    return _ccl_comms[0];
-}
-
-#define CCLCHECK(cmd) \
-    do {              \
-        cmd;          \
-    } while (0)
-
-#define KVS_CREATE_SUCCESS 0
-#define KVS_CREATE_FAILURE -1
-
-bool is_initialized = 0;
-
-ccl::shared_ptr_class<ccl::kvs> kvs;
-
-bool all_ranks_local_p = false;
-
-void initialize(int size, int rank, torch::Tensor& kvs_data)
+void shm_initialize(int size,
+                    int rank,
+                    torch::Tensor& kvs_data,
+                    char* addr_string,
+                    char* port_string)
 {
     if (is_initialized) return;
-
-    // Check whether all ranks is on the same physical machine.
-    // If true, we will use an SHM based low latency allreduce
-
-    auto ls_string = std::getenv("LOCAL_SIZE");
-    int ls = 0;
-    if (ls_string != NULL) { ls = std::stoi(std::getenv("LOCAL_SIZE")); }
-
-    if (size >= 1 && size == ls) { all_ranks_local_p = true; }
+    is_initialized = 1;
 
     world_size = size;
     world_rank = rank;
-    is_initialized = 1;
 
-    ccl::kvs::address_type main_addr;
-
-    if (rank != 0) {
-        memcpy(main_addr.data(), kvs_data.data_ptr(), main_addr.size());
-        kvs = ccl::create_kvs(main_addr);
-    }
-
-    _ccl_comms.emplace_back(ccl::create_communicator(size, rank, kvs));
-
-    auto addr_string = std::getenv("MASTER_ADDR");
-    if (addr_string == NULL) { addr_string = ""; }
-    auto port_string = std::getenv("MASTER_PORT");
-    if (port_string == NULL) { port_string = ""; }
     char shm_name_prefix[NAME_BUF_SIZE];
     char shm_name[NAME_BUF_SIZE];
     snprintf(shm_name_prefix,
@@ -493,229 +444,34 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
              getuid(),
              addr_string,
              port_string);
-// create shared workspace for SHM based allreduce
-#if 0
-    if (all_ranks_local_p) {
-        snprintf(shm_name, NAME_BUF_SIZE, "%s", shm_name_prefix);
-        struct allreduce_workspace *workspace_buf;
-        SharedData allreduce_buffer;
-        if (rank == 1) {
-            workspace_buf =
-                (struct allreduce_workspace*)malloc(size * sizeof(struct allreduce_workspace));
-            shared_create(
-                &allreduce_buffer, shm_name, workspace_buf, size * sizeof(struct allreduce_workspace));
-            workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
-            for (int i = 0; i < size; i++) { workspace_buf[i].state = coll_begin; }
-        }
-        CCLCHECK(ccl::barrier(_get_comm_from_group()).wait());
-        if (rank != 1) {
-            shared_open(&allreduce_buffer, shm_name, size * sizeof(struct allreduce_workspace));
-            workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
-        }
-        workspace = (struct allreduce_workspace**)malloc(size * sizeof(struct allreduce_workspace*));
-        for (int i = 0; i < size; i++) {
-            workspace[i] = workspace_buf + i;
-        }
-    }
-#else
-    if (all_ranks_local_p) {
-        SharedData allreduce_buffer;
-        // allocate workspace_buf for current rank
-        struct allreduce_workspace* workspace_buf;
-        struct allreduce_workspace* workspace_buf_other;
-        workspace_buf = (struct allreduce_workspace*)malloc(sizeof(struct allreduce_workspace));
-        snprintf(shm_name, NAME_BUF_SIZE, "%s_%d", shm_name_prefix, rank);
-        // printf("create %s, %d\n", shm_name, rank);
-        shared_create(
-            &allreduce_buffer, shm_name, workspace_buf, sizeof(struct allreduce_workspace));
-        workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
-        workspace_buf->state = coll_begin;
+    // create shared workspace for SHM based allreduce
+    SharedData allreduce_buffer;
+    // allocate workspace_buf for current rank
+    struct allreduce_workspace* workspace_buf;
+    struct allreduce_workspace* workspace_buf_other;
+    workspace_buf = (struct allreduce_workspace*)malloc(sizeof(struct allreduce_workspace));
+    snprintf(shm_name, NAME_BUF_SIZE, "%s_%d", shm_name_prefix, rank);
+    shared_create(&allreduce_buffer, shm_name, workspace_buf, sizeof(struct allreduce_workspace));
+    workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
+    workspace_buf->state = coll_begin;
 
-        // wait until all ranks created their shm
-        CCLCHECK(ccl::barrier(_get_comm_from_group()).wait());
+    // create the workspace pointer list
+    workspace = (struct allreduce_workspace**)malloc(size * sizeof(struct allreduce_workspace*));
 
-        // create the workspace pointer list
-        workspace =
-            (struct allreduce_workspace**)malloc(size * sizeof(struct allreduce_workspace*));
-
-        // map shm of all ranks
-        for (int i = 0; i < size; i++) {
-            if (i != rank) {
-                snprintf(shm_name, NAME_BUF_SIZE, "%s_%d", shm_name_prefix, i);
-                // printf("open %s, %d\n", shm_name, rank);
+    // map shm of all ranks
+    for (int i = 0; i < size; i++) {
+        if (i != rank) {
+            snprintf(shm_name, NAME_BUF_SIZE, "%s_%d", shm_name_prefix, i);
+            // printf("open %s, %d\n", shm_name, rank);
+            do {
                 shared_open(&allreduce_buffer, shm_name, sizeof(struct allreduce_workspace));
-                workspace_buf_other = (struct allreduce_workspace*)allreduce_buffer.bytes;
-                workspace[i] = workspace_buf_other;
-            } else {
-                workspace[i] = workspace_buf;
-            }
+            } while (allreduce_buffer.descriptor == -1 && errno == ENOENT);
+            workspace_buf_other = (struct allreduce_workspace*)allreduce_buffer.bytes;
+            workspace[i] = workspace_buf_other;
+        } else {
+            workspace[i] = workspace_buf;
         }
     }
-#endif
-}
-
-/*
-    rank == 0: create main kvs and return its address
-    rank == else: return an empty address
-*/
-std::vector<uint8_t> get_kvs_addr(int rank)
-{
-    if (rank == 0) {
-        kvs = ccl::create_main_kvs();
-        ccl::kvs::address_type main_addr = kvs->get_address();
-        auto ccl_kvs_addr = std::vector<uint8_t>(main_addr.begin(), main_addr.end());
-        return ccl_kvs_addr;
-    } else {
-        ccl::kvs::address_type main_addr;
-        auto ccl_kvs_addr = std::vector<uint8_t>(main_addr.begin(), main_addr.end());
-        return ccl_kvs_addr;
-    }
-}
-
-int get_rank(int group = 0) { return world_rank; }
-
-int get_world_size(int group = 0) { return world_size; }
-
-// Find the next ordered, unique value to a set. E.g. <0,1,2,7> --> 3
-int next_unique_val(std::set<int> s)
-{
-    std::set<int>::iterator itr;
-    // Base case. Add 0 to start of set.
-    if (s.empty() || *s.begin() != 0) {
-        return 0;
-        // second base case where s = {0} (the case of s = {n != 0} is caught above)
-    } else if (s.size() == 1) {
-        return 1;
-    } else {
-        int prev_val = *s.begin();
-        for (itr = std::next(s.begin()); itr != s.end(); itr++) {
-            if (*itr != prev_val + 1) { return prev_val + 1; }
-            prev_val = *itr;
-        }
-        return *(s.end()) + 1;
-    }
-}
-
-std::vector<uint8_t> get_sub_kvs_addr(bool first)
-{
-    if (first) {
-        sub_kvs = ccl::create_main_kvs();
-        ccl::kvs::address_type main_addr = sub_kvs->get_address();
-        auto ccl_kvs_addr = std::vector<uint8_t>(main_addr.begin(), main_addr.end());
-        return ccl_kvs_addr;
-    } else {
-        ccl::kvs::address_type main_addr;
-        auto ccl_kvs_addr = std::vector<uint8_t>(main_addr.begin(), main_addr.end());
-        return ccl_kvs_addr;
-    }
-}
-
-void initialize_sub_comm(int size, int rank, torch::Tensor& kvs_data, std::vector<int> ranks)
-{
-    ccl::kvs::address_type main_addr;
-    if (rank != 0) {
-        memcpy(main_addr.data(), kvs_data.data_ptr(), main_addr.size());
-        sub_kvs = ccl::create_kvs(main_addr);
-    }
-    _ccl_comms.push_back(ccl::create_communicator(size, rank, sub_kvs));
-    group_to_comm_id[ranks] = _ccl_comms.size() - 1;
-}
-
-ccl::datatype get_ccl_datatype(c10::ScalarType type)
-{
-    ccl::datatype ccl_type;
-    switch (type) {
-        case c10::ScalarType::Int: ccl_type = ccl::datatype::int32; break;
-        case c10::ScalarType::Long: ccl_type = ccl::datatype::int64; break;
-        case c10::ScalarType::Float: ccl_type = ccl::datatype::float32; break;
-        case c10::ScalarType::Double: ccl_type = ccl::datatype::float64; break;
-        case c10::ScalarType::BFloat16: ccl_type = ccl::datatype::bfloat16; break;
-        case c10::ScalarType::Half: ccl_type = ccl::datatype::float16; break;
-        default: ccl_type = ccl::datatype::int8;
-    }
-    return ccl_type;
-}
-
-ccl::reduction get_ccl_reduce_op(py::object op, at::Tensor& input)
-{
-    py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
-    if (!py::isinstance(op, ReduceOp)) {
-        throw std::runtime_error("Error: Op must be of type ReduceOp");
-    }
-
-    int op_val = py::int_(op.attr("value"));
-    ccl::reduction ccl_op;
-
-    if (input.scalar_type() == at::kBool) {
-        if (op_val == (int)py::int_(ReduceOp.attr("SUM").attr("value"))) {
-            // For bool tensors, map sum to max, which both represent a bitwise or.
-            // This is to prevent overflow issues with sum, since we use uint8 to
-            // represent a bool (see cclDataType mapping).
-            ccl_op = ccl::reduction::max;
-        } else if (op_val == (int)py::int_(ReduceOp.attr("AVG").attr("value"))) {
-            throw std::runtime_error("Error: For bool tensors, op must be of type ReduceOp");
-        }
-    }
-
-    if (op_val == (int)py::int_(ReduceOp.attr("SUM").attr("value"))) {
-        ccl_op = ccl::reduction::sum;
-    } else if (op_val == (int)py::int_(ReduceOp.attr("MIN").attr("value"))) {
-        ccl_op = ccl::reduction::min;
-    } else if (op_val == (int)py::int_(ReduceOp.attr("MAX").attr("value"))) {
-        ccl_op = ccl::reduction::max;
-    } else if (op_val == (int)py::int_(ReduceOp.attr("PRODUCT").attr("value"))) {
-        ccl_op = ccl::reduction::prod;
-    } else {
-        throw std::runtime_error("Error: Unrecognized ReduceOp type");
-    }
-    return ccl_op;
-}
-
-void broadcast(torch::Tensor& data, int src, std::vector<int> group, bool async_op)
-{
-    CCLCHECK(ccl::broadcast(data.data_ptr(),
-                            data.numel(),
-                            get_ccl_datatype(data.scalar_type()),
-                            src,
-                            _get_comm_from_group(group))
-                 .wait());
-}
-
-// TODO: implement torch's async_op behavior, document it.
-void all_reduce(torch::Tensor& data, py::object op, std::vector<int> group, bool async_op)
-{
-    CCLCHECK(ccl::allreduce(data.data_ptr(),
-                            data.data_ptr(),
-                            data.numel(),
-                            get_ccl_datatype(data.scalar_type()),
-                            get_ccl_reduce_op(op, data),
-                            _get_comm_from_group(group))
-                 .wait());
-}
-
-void all_reduce_caching(torch::Tensor& data,
-                        py::object op,
-                        std::string match_id,
-                        std::vector<int> group,
-                        bool async_op)
-{
-    ccl::allreduce_attr attr = ccl::default_allreduce_attr;
-    auto match_str = ccl::v1::string(match_id);
-    attr.template set<ccl::operation_attr_id::to_cache>(true);
-    attr.template set<ccl::operation_attr_id::match_id>(match_str);
-    // To control this, use operation attribute and set true value for to_cache field and unique
-    // string (for example, tensor name) for match_id field. Note that:
-    //   match_id should be the same for a specific communication operation across all ranks.
-    //   If the same tensor is a part of different communication operations, match_id should have
-    //   different values for each of these operations.
-    CCLCHECK(ccl::allreduce(data.data_ptr(),
-                            data.data_ptr(),
-                            data.numel(),
-                            get_ccl_datatype(data.scalar_type()),
-                            get_ccl_reduce_op(op, data),
-                            _get_comm_from_group(group),
-                            attr)
-                 .wait());
 }
 
 static void parallel_memcpy(void* to, void* from, size_t n_bytes)
@@ -753,69 +509,6 @@ size_t slice_el_start(size_t chunk_el, int slice_idx)
 {
     size_t slice_size = chunk_el / world_size;
     return slice_size * slice_idx;
-}
-
-void ring_all_reduce(char* data_ptr,
-                     c10::ScalarType scalar_type,
-                     size_t chunk_size,
-                     size_t chunk_el)
-{
-    int data_size = chunk_size / chunk_el;
-    parallel_memcpy(slice_data(workspace[world_rank]->buffer, chunk_el, data_size, world_rank),
-                    slice_data(data_ptr, chunk_el, data_size, world_rank),
-                    slice_size(chunk_el, world_rank) * data_size);
-    std::atomic_thread_fence(std::memory_order_release);
-
-    int prev_rank = rank_mod(world_rank - 1);
-    int next_rank = rank_mod(world_rank + 1);
-
-    int step;
-
-    //  reduce_scatter
-    for (step = 0; step < world_size - 1; step++) {
-        // wait until prev rank have data ready -- iter 0: finished copy; iterh >0: finished add
-        auto state = workspace[world_rank]->state =
-            (enum coll_state)(workspace[world_rank]->state + 1);
-        wait_buffer_state_until_range(prev_rank, state, world_size);
-
-        auto slice_idx = rank_mod(world_rank - 1 - step);
-        switch (scalar_type) {
-            case c10::ScalarType::BFloat16:
-                reduce_2_bf16_buffers_iio(
-                    slice_size(chunk_el, slice_idx),
-                    slice_data(workspace[prev_rank]->buffer, chunk_el, data_size, slice_idx),
-                    slice_data(data_ptr, chunk_el, data_size, slice_idx),
-                    slice_data(workspace[world_rank]->buffer, chunk_el, data_size, slice_idx));
-                break;
-            case c10::ScalarType::Float:
-                reduce_2_fp32_buffers_iio(
-                    slice_size(chunk_el, slice_idx),
-                    slice_data(workspace[prev_rank]->buffer, chunk_el, data_size, slice_idx),
-                    slice_data(data_ptr, chunk_el, data_size, slice_idx),
-                    slice_data(workspace[world_rank]->buffer, chunk_el, data_size, slice_idx));
-                break;
-            default: assert(!"Should not get here");
-        }
-        std::atomic_thread_fence(std::memory_order_release);
-    }
-
-    auto state = workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state + 1);
-
-    // all_gather
-    for (step = 0; step < world_size; step++) {
-        auto from_rank = rank_mod(world_rank + step - 1);
-        wait_buffer_state_until_range(from_rank, state, 2);
-        auto slice_idx = rank_mod(world_rank + step);
-        parallel_memcpy(slice_data(data_ptr, chunk_el, data_size, slice_idx),
-                        slice_data(workspace[from_rank]->buffer, chunk_el, data_size, slice_idx),
-                        slice_size(chunk_el, slice_idx) * data_size);
-        std::atomic_thread_fence(std::memory_order_release);
-    }
-    auto prev_state = workspace[world_rank]->state;
-    state = workspace[world_rank]->state = (enum coll_state)(workspace[world_rank]->state + 1);
-    // we need to reach a global barrier before start next iteration to avoid buffer override
-    for (int rank = 0; rank < world_size; rank++) { wait_buffer_state_until_not(rank, prev_state); }
-    workspace[world_rank]->state = coll_begin;
 }
 
 void naive_all_reduce(char* data_ptr,
@@ -915,65 +608,4 @@ void all_reduce_outer_loop(torch::Tensor& data, size_t numel, int data_size)
         else
             distributed_naive_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
     }
-}
-
-void inference_all_reduce(torch::Tensor& data, py::object op, bool async_op)
-{
-    static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
-    static auto ReduceOpSum = (int)py::int_(ReduceOp.attr("SUM").attr("value"));
-
-    assert(py::int_(op.attr("value")) == ReduceOpSum);
-
-    auto numel = data.numel();
-
-    int data_size = 0;
-    bool data_type_fallback = false;
-
-    switch (data.scalar_type()) {
-        case c10::ScalarType::BFloat16: data_size = numel * 2; break;
-        case c10::ScalarType::Float: data_size = numel * 4; break;
-        default: data_type_fallback = true;
-    }
-
-    if (data_type_fallback || !all_ranks_local_p) {
-        // fallback to oneccl allreduce
-        CCLCHECK(ccl::allreduce(data.data_ptr(),
-                                data.data_ptr(),
-                                data.numel(),
-                                get_ccl_datatype(data.scalar_type()),
-                                get_ccl_reduce_op(op, data),
-                                _get_comm_from_group())
-                     .wait());
-        return;
-    }
-
-    all_reduce_outer_loop(data, numel, data_size);
-}
-
-void barrier(std::vector<int> group, bool async_op)
-{
-    CCLCHECK(ccl::barrier(_get_comm_from_group(group)).wait());
-}
-
-std::vector<std::string> get_available_coll()
-{
-    std::vector<std::string> colls{
-        "broadcast", "all_reduce", "inference_all_reduce", "all_reduce_caching", "barrier"};
-    return colls;
-}
-
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
-{
-    m.def("get_kvs_addr", &get_kvs_addr, "create and get main kvs addr");
-    m.def("initialize", &initialize, "ccl initialize");
-    m.def("get_rank", &get_rank, "get rank");
-    m.def("get_world_size", &get_world_size, "get world size");
-    m.def("broadcast", &broadcast, "ccl broadcast");
-    m.def("all_reduce", &all_reduce, "ccl all_reduce");
-    m.def("inference_all_reduce", &inference_all_reduce, "low latency all_reduce implementation");
-    m.def("all_reduce_caching", &all_reduce_caching, "ccl all_reduce with caching");
-    m.def("barrier", &barrier, "barrier");
-    m.def("initialize_sub_comm", &initialize_sub_comm, "initialize_sub_comm");
-    m.def("get_sub_kvs_addr", &get_sub_kvs_addr, "get_sub_kvs_addr");
-    m.def("get_available_coll", &get_available_coll, "get_available_coll");
 }
