@@ -5,17 +5,6 @@
 
 #include <torch/extension.h>
 
-#include <ATen/ATen.h>
-#include <fcntl.h>
-#include <immintrin.h>
-#include <math.h>
-#include <omp.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <atomic>
-#include <cstdlib>
-#include <iostream>
 #include <oneapi/ccl.hpp>
 #include "shm.h"
 
@@ -85,7 +74,7 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
     auto port_string = std::getenv("MASTER_PORT");
     if (port_string == NULL) { port_string = ""; }
 
-    if (all_ranks_local_p) { shm_initialize(size, rank, kvs_data, addr_string, port_string); }
+    if (all_ranks_local_p) { shm_initialize(size, rank, addr_string, port_string); }
 }
 
 /*

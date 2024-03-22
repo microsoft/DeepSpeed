@@ -8,15 +8,8 @@
 #include <ATen/ATen.h>
 #include <fcntl.h>
 #include <immintrin.h>
-#include <math.h>
-#include <omp.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <atomic>
-#include <cstdlib>
-#include <iostream>
-#include <oneapi/ccl.hpp>
+#include "shm.h"
 
 // states for collectives
 enum coll_state {
@@ -423,11 +416,7 @@ static bool is_initialized = 0;
 static int world_size;
 static int world_rank;
 
-void shm_initialize(int size,
-                    int rank,
-                    torch::Tensor& kvs_data,
-                    char* addr_string,
-                    char* port_string)
+void shm_initialize(int size, int rank, char* addr_string, char* port_string)
 {
     if (is_initialized) return;
     is_initialized = 1;
