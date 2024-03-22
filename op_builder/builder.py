@@ -253,7 +253,7 @@ class OpBuilder(ABC):
             result = subprocess.check_output(rocm_wavefront_size_cmd, shell=True)
             rocm_wavefront_size = result.decode('utf-8').strip()
         except subprocess.CalledProcessError:
-            rocm_wavefront_size = "default"
+            rocm_wavefront_size = "32"
         OpBuilder._rocm_wavefront_size = rocm_wavefront_size
         return OpBuilder._rocm_wavefront_size
 
