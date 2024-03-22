@@ -8,7 +8,7 @@
 #include <oneapi/ccl.hpp>
 #include "shm.h"
 
-// #define DO_PROFILE
+//#define DO_PROFILE
 #ifdef DO_PROFILE
 #include <cfloat>
 #include <chrono>
@@ -294,9 +294,9 @@ void inference_all_reduce(torch::Tensor& data, py::object op, bool async_op)
 
 #ifdef DO_PROFILE
     auto end = std::chrono::system_clock::now();
-    double elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     count++;
     if (count > 0) {
+        double elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
         if (elapsed > max_time) { max_time = elapsed; }
         if (elapsed < min_time) { min_time = elapsed; }
         total_time += elapsed;
