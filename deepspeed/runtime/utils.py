@@ -25,7 +25,8 @@ except ModuleNotFoundError:
     from torch import inf
 
 from deepspeed.utils import groups, logger
-from deepspeed.utils.bwc import bwc_tensor_model_parallel_rank
+from deepspeed.utils.bwc import (bwc_tensor_model_parallel_rank, bwc_pipeline_parallel_world_size,
+                                 bwc_pipeline_parallel_group)
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from numpy import prod
 from deepspeed.accelerator import get_accelerator
@@ -857,8 +858,16 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, use_graph=F
             all_norms.append(t.data.abs().max().float())
         total_norm = torch.stack(all_norms).max()
         device_total_norm = total_norm.to(get_accelerator().current_device_name())
+        # Max across model parallel
         if mpu is not None:
-            dist.all_reduce(device_total_norm, op=dist.ReduceOp.MAX, group=mpu.get_model_parallel_group())
+            # For MoE grads, max over model parallel only if MoE-TP is enabled
+            if moe_ep_group is None or groups._get_expert_model_parallel_world_size() > 1:
+                dist.all_reduce(device_total_norm, op=dist.ReduceOp.MAX, group=mpu.get_model_parallel_group())
+            # If MoE grads and MoE-TP disabled, max over pipeline parallel
+            elif bwc_pipeline_parallel_world_size(mpu) > 1:
+                dist.all_reduce(device_total_norm, op=dist.ReduceOp.MAX, group=bwc_pipeline_parallel_group(mpu))
+
+        # MoE grads: max across expert parallel group
         if moe_ep_group is not None:
             dist.all_reduce(device_total_norm, op=dist.ReduceOp.MAX, group=moe_ep_group)
         total_norm = device_total_norm.to(input_tensors[0].device)
@@ -885,8 +894,16 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, use_graph=F
 
         device_total_norm = compute_buffer[0].float().detach()
 
+        # Sum across model parallel
         if mpu is not None:
-            dist.all_reduce(device_total_norm, op=dist.ReduceOp.SUM, group=mpu.get_model_parallel_group())
+            # For MoE grads, sum over model parallel only if MoE-TP is enabled
+            if moe_ep_group is None or groups._get_expert_model_parallel_world_size() > 1:
+                dist.all_reduce(device_total_norm, op=dist.ReduceOp.SUM, group=mpu.get_model_parallel_group())
+            # If MoE grads and MoE-TP disabled, sum over pipeline parallel
+            elif bwc_pipeline_parallel_world_size(mpu) > 1:
+                dist.all_reduce(device_total_norm, op=dist.ReduceOp.SUM, group=bwc_pipeline_parallel_group(mpu))
+
+        # MoE grads: sum across expert parallel group
         if moe_ep_group is not None:
             dist.all_reduce(device_total_norm, op=dist.ReduceOp.SUM, group=moe_ep_group)
         total_norm = device_total_norm.to(input_tensors[0].device).pow(1. / norm_type)
