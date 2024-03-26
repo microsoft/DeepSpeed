@@ -897,7 +897,7 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, use_graph=F
             dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.MAX, group=mpu.get_model_parallel_group())
         if moe_ep_group is not None:
             dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.MAX, group=moe_ep_group)
-            total_norm = total_norm_cuda[0].item()
+        total_norm = total_norm_cuda[0].item()
     else:
         if use_graph:
             if 'norm_tensors_compute_buffer' not in graph_cache:
