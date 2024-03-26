@@ -4,9 +4,14 @@
 # DeepSpeed Team
 
 import torch
-from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
-import oneccl_bindings_for_pytorch  # noqa: F401 # type: ignore
-import psutil
+from .abstract_accelerator import DeepSpeedAccelerator
+
+try:
+    import oneccl_bindings_for_pytorch  # noqa: F401 # type: ignore
+    oneccl_imported_p = True
+except ImportError as e:
+    oneccl_imported_p = False
+
 import os
 
 
@@ -15,11 +20,29 @@ class CPU_Accelerator(DeepSpeedAccelerator):
 
     def __init__(self):
         self._name = 'cpu'
-        self._communication_backend_name = 'ccl'
-        self.max_mem = psutil.Process().memory_info().rss
+        if oneccl_imported_p:
+            self._communication_backend_name = 'ccl'
+        else:
+            # fallback to gloo if oneccl_binding_for_pytorch is not installed
+            self._communication_backend_name = 'gloo'
+        try:
+            import psutil
+            mem = psutil.Process().memory_info().rss
+            self.max_mem = mem
+        except ImportError as e:
+            self.max_mem = 0
 
     def is_synchronized_device(self):
         return True
+
+    def use_host_timers(self):
+        return self.is_synchronized_device()
+
+    def resolves_data_dependency(self):
+        return self.is_synchronized_device()
+
+    def handles_memory_backpressure(self):
+        return self.is_synchronized_device()
 
     # Device APIs
     def device_name(self, device_index=None):
@@ -106,12 +129,14 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return
 
     def get_rss(self):
+        import psutil
         mem = psutil.Process().memory_info().rss
         if mem > self.max_mem:
             self.max_mem = mem
         return mem
 
     def reset_rss(self):
+        import psutil
         mem = psutil.Process().memory_info().rss
         self.max_mem = mem
         return mem
@@ -157,9 +182,11 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         return self.max_mem
 
     def total_memory(self, device_index=None):
+        import psutil
         return psutil.virtual_memory().total
 
     def available_memory(self, device_index=None):
+        import psutil
         return psutil.virtual_memory().available
 
     # Misc
@@ -198,8 +225,18 @@ class CPU_Accelerator(DeepSpeedAccelerator):
     def supported_dtypes(self):
         return [torch.float, torch.bfloat16]
 
-    # Tensor operations
+    # Graph operations
+    def create_graph(self):
+        return None
 
+    def capture_to_graph(self, graph, pool=None, stream=None):
+        from deepspeed.runtime.utils import noop_context
+        return noop_context()
+
+    def replay_graph(self, graph):
+        return
+
+    # Tensor operations
     @property
     def BFloat16Tensor(self):
         return torch.BFloat16Tensor
@@ -280,3 +317,6 @@ class CPU_Accelerator(DeepSpeedAccelerator):
     def build_extension(self):
         from torch.utils.cpp_extension import BuildExtension
         return BuildExtension
+
+    def export_envs(self):
+        return []

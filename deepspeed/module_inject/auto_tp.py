@@ -17,6 +17,16 @@ from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw
 from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 
 
+def move(tensor, device):
+    if tensor.is_meta:
+        return torch.empty_like(tensor, device=device)
+    else:
+        # Using new tensors help in freeing memory (after split for example) was done before by calling clone().
+        # Using copy=True instead of clone() will help in case of cpu --> cpu.
+        # Otherwise to() will not create a new copy for the view of the full tensor, and it will not be de-referenced.
+        return tensor.to(device, copy=True)
+
+
 class ReplaceWithTensorSlicing:
 
     def __init__(self, mp_group=None, mp_size=1, out_dim=1, in_dim=0):
@@ -122,7 +132,8 @@ class Loading():
     def is_load_module(module):
         load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm]
         load_layer_names = [
-            "LPLayerNorm", "SharedEmbedding", "OPTLearnedPositionalEmbedding", "LlamaRMSNorm", "FalconLinear"
+            "LPLayerNorm", "SharedEmbedding", "OPTLearnedPositionalEmbedding", "LlamaRMSNorm", "FalconLinear",
+            "MistralRMSNorm", "T5LayerNorm"
         ]
         return module.__class__ in load_layers or module._get_name() in load_layer_names
 
@@ -267,11 +278,13 @@ class AutoTP():
         module_list = AutoTP.get_module_list(model)
         assert AutoTP.supported(model), "AutoTP not supported for model. Please use kernel injection since container policy for model exists." \
         if AutoTP.kernel_supported(module_list) else "AutoTP not supported for model. Please provide policy."
+        norm_layer_name_list = ['LayerNorm', 'layer_norm', 'ln_1', 'ln_2']
+        #ln_1 , ln_2 for Qwen
         for module in module_list:
             for key, submodule in module._modules.items():
                 if isinstance(submodule, nn.Linear):
                     layer_list = layer_list + ["." + key]
-                elif isinstance(submodule, nn.LayerNorm) or key == 'LayerNorm' or key == 'layer_norm':
+                elif isinstance(submodule, nn.LayerNorm) or key in norm_layer_name_list:
                     layer_list = layer_list + ["ln"]
                 else:
                     layer_list = layer_list + AutoTP.get_layers(key, submodule)
@@ -316,9 +329,9 @@ class AutoTP():
             if self.conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
             data = child.weight.data.split(get_shard_size_list(
-                weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size),
+                weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size, name),
                                            dim=1)
-            data_dc = data[mp_replace.gpu_index].to(get_accelerator().current_device_name()).clone().detach()
+            data_dc = move(data[mp_replace.gpu_index], get_accelerator().current_device_name()).detach()
             del data
 
             setattr(child, "replaced", True)
@@ -326,9 +339,10 @@ class AutoTP():
                 return LmHeadLinearAllreduce(
                     torch.nn.parameter.Parameter(data_dc, requires_grad=False), dist.get_rank(), dist.get_world_size(),
                     child.bias if child.bias is None else torch.nn.parameter.Parameter(
-                        child.bias.to(get_accelerator().current_device_name())), self.mp_group)
+                        move(child.bias,
+                             get_accelerator().current_device_name())), self.mp_group)
             return LinearAllreduce(torch.nn.parameter.Parameter(data_dc, requires_grad=False), child.bias if child.bias is None else \
-                        torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), self.mp_group)
+                        torch.nn.parameter.Parameter(move(child.bias, get_accelerator().current_device_name())), self.mp_group)
         else:
 
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
@@ -337,33 +351,33 @@ class AutoTP():
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
 
             if require_tp_fused_qkvw(name, self.mp_size):
-                #for detecting fused type
-                module_str = str(self.module).strip()
+                #Check and handle fused qkv for TP
                 #The copy is a regular copy, The shape of dst and src is the same
-                data_dc = prepare_tp_fused_qkvw(module_str, child.weight.data, self.mp_size, mp_replace.gpu_index)
+                data_dc = move(
+                    prepare_tp_fused_qkvw(self.module, child.weight.data, self.mp_size, mp_replace.gpu_index),
+                    get_accelerator().current_device_name())
 
-                bias_data_dc = None if child.bias is None else prepare_tp_fused_qkvw(
-                    module_str, child.bias.data, self.mp_size, mp_replace.gpu_index).to(
-                        get_accelerator().current_device_name())
+                bias_data_dc = None if child.bias is None else move(
+                    prepare_tp_fused_qkvw(self.module, child.bias.data, self.mp_size, mp_replace.gpu_index),
+                    get_accelerator().current_device_name())
             else:
-                data = child.weight.data.split(get_shard_size_list(weight_shape[0], self.mp_size),
+                data = child.weight.data.split(get_shard_size_list(weight_shape[0], self.mp_size, name),
                                                dim=1 if self.conv_linear_layer else 0)
-                data_dc = data[mp_replace.gpu_index].to(get_accelerator().current_device_name()).clone().detach()
+                data_dc = move(data[mp_replace.gpu_index], get_accelerator().current_device_name()).detach()
                 del data
 
                 if child.bias is not None:
                     bias_data = child.bias.data.split(get_shard_size_list(
-                        weight_shape[1] if self.conv_linear_layer else weight_shape[0], self.mp_size),
+                        weight_shape[1] if self.conv_linear_layer else weight_shape[0], self.mp_size, name),
                                                       dim=0)
-                    bias_data = bias_data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
+                    bias_data = move(bias_data[mp_replace.gpu_index], get_accelerator().current_device_name())
                     bias_data_dc = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
                     del bias_data
                 else:
                     bias_data_dc = None
 
             setattr(child, "replaced", True)
-            return LinearLayer(weight=torch.nn.parameter.Parameter(data_dc.to(get_accelerator().current_device_name()), requires_grad=False), \
-                        bias=bias_data_dc)
+            return LinearLayer(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False), bias=bias_data_dc)
 
     def _slice_embedding(self, child, name, conv_linear_layer):
         if getattr(child, "replaced", False) == True:
@@ -373,11 +387,11 @@ class AutoTP():
         if hasattr(child.weight, 'ds_tensor'):
             data = child.weight.ds_tensor.data.split(get_shard_size_list(child.weight.shape[1], self.mp_size), dim=1)
         else:
-            data = child.weight.data.split(get_shard_size_list(child.weight.shape[1], self.mp_size), dim=1)
+            data = child.weight.data.split(get_shard_size_list(child.weight.shape[1], self.mp_size, name), dim=1)
         data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
         data = torch.nn.parameter.Parameter(data, requires_grad=False)
 
-        new_embedding = nn.Embedding(child.weight.shape[0], get_shard_size(child.weight.shape[1], self.mp_size))
+        new_embedding = nn.Embedding(child.weight.shape[0], get_shard_size(child.weight.shape[1], self.mp_size, name))
         new_embedding.weight.data.copy_(data)
         setattr(child, "replaced", True)
         return new_embedding
@@ -449,7 +463,7 @@ class AutoTP():
 
     def get_model_num_kv_heads(self, config):
         num_kv_heads = None
-        kv_head_names = ['num_key_value_heads', 'num_attention_heads', 'n_heads']
+        kv_head_names = ['num_kv_heads', 'num_key_value_heads', 'num_attention_heads', 'n_heads']
         for name in kv_head_names:
             if hasattr(config, name):
                 num_kv_heads = getattr(config, name)

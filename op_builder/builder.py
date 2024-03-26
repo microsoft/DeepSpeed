@@ -108,6 +108,7 @@ def assert_no_cuda_mismatch(name=""):
 class OpBuilder(ABC):
     _rocm_version = None
     _is_rocm_pytorch = None
+    _is_sycl_enabled = None
     _loaded_ops = {}
 
     def __init__(self, name):
@@ -133,6 +134,9 @@ class OpBuilder(ABC):
         pass
 
     def hipify_extension(self):
+        pass
+
+    def sycl_extension(self):
         pass
 
     @staticmethod
@@ -185,6 +189,22 @@ class OpBuilder(ABC):
                     _is_rocm_pytorch = ROCM_HOME is not None
         OpBuilder._is_rocm_pytorch = _is_rocm_pytorch
         return OpBuilder._is_rocm_pytorch
+
+    @staticmethod
+    def is_sycl_enabled():
+        if OpBuilder._is_sycl_enabled is not None:
+            return OpBuilder._is_sycl_enabled
+
+        _is_sycl_enabled = False
+        try:
+            result = subprocess.run(["c2s", "--version"], capture_output=True)
+        except:
+            pass
+        else:
+            _is_sycl_enabled = True
+
+        OpBuilder._is_sycl_enabled = _is_sycl_enabled
+        return OpBuilder._is_sycl_enabled
 
     @staticmethod
     def installed_rocm_version():
@@ -433,9 +453,10 @@ class OpBuilder(ABC):
 
     def builder(self):
         from torch.utils.cpp_extension import CppExtension
+        include_dirs = [os.path.abspath(x) for x in self.strip_empty_entries(self.include_paths())]
         return CppExtension(name=self.absolute_name(),
                             sources=self.strip_empty_entries(self.sources()),
-                            include_dirs=self.strip_empty_entries(self.include_paths()),
+                            include_dirs=include_dirs,
                             extra_compile_args={'cxx': self.strip_empty_entries(self.cxx_args())},
                             extra_link_args=self.strip_empty_entries(self.extra_ldflags()))
 
@@ -443,8 +464,9 @@ class OpBuilder(ABC):
         if self.name in __class__._loaded_ops:
             return __class__._loaded_ops[self.name]
 
-        from deepspeed.git_version_info import installed_ops, torch_info
-        if installed_ops.get(self.name, False):
+        from deepspeed.git_version_info import installed_ops, torch_info, accelerator_name
+        from deepspeed.accelerator import get_accelerator
+        if installed_ops.get(self.name, False) and accelerator_name == get_accelerator()._name:
             # Ensure the op we're about to load was compiled with the same
             # torch/cuda versions we are currently using at runtime.
             self.validate_torch_version(torch_info)
@@ -618,7 +640,7 @@ class CUDAOpBuilder(OpBuilder):
             from torch.utils.cpp_extension import CppExtension as ExtensionBuilder
         else:
             from torch.utils.cpp_extension import CUDAExtension as ExtensionBuilder
-
+        include_dirs = [os.path.abspath(x) for x in self.strip_empty_entries(self.include_paths())]
         compile_args = {'cxx': self.strip_empty_entries(self.cxx_args())} if self.build_for_cpu else \
                        {'cxx': self.strip_empty_entries(self.cxx_args()), \
                         'nvcc': self.strip_empty_entries(self.nvcc_args())}
@@ -631,7 +653,7 @@ class CUDAOpBuilder(OpBuilder):
 
         cuda_ext = ExtensionBuilder(name=self.absolute_name(),
                                     sources=self.strip_empty_entries(self.sources()),
-                                    include_dirs=self.strip_empty_entries(self.include_paths()),
+                                    include_dirs=include_dirs,
                                     libraries=self.strip_empty_entries(self.libraries_args()),
                                     extra_compile_args=compile_args,
                                     extra_link_args=self.strip_empty_entries(self.extra_ldflags()))
@@ -682,11 +704,18 @@ class CUDAOpBuilder(OpBuilder):
                 '-DROCM_VERSION_MINOR=%s' % ROCM_MINOR
             ]
         else:
+            try:
+                nvcc_threads = int(os.getenv("DS_NVCC_THREADS", ""))
+                if nvcc_threads <= 0:
+                    raise ValueError("")
+            except ValueError:
+                nvcc_threads = min(os.cpu_count(), 8)
+
             cuda_major, _ = installed_cuda_version()
             args += [
                 '-allow-unsupported-compiler' if sys.platform == "win32" else '', '--use_fast_math',
                 '-std=c++17' if cuda_major > 10 else '-std=c++14', '-U__CUDA_NO_HALF_OPERATORS__',
-                '-U__CUDA_NO_HALF_CONVERSIONS__', '-U__CUDA_NO_HALF2_OPERATORS__'
+                '-U__CUDA_NO_HALF_CONVERSIONS__', '-U__CUDA_NO_HALF2_OPERATORS__', f'--threads={nvcc_threads}'
             ]
             if os.environ.get('DS_DEBUG_CUDA_BUILD', '0') == '1':
                 args.append('--ptxas-options=-v')

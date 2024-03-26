@@ -66,7 +66,9 @@ class PipelineEngine(DeepSpeedEngine):
 
     def __init__(self, has_bool_tensors=False, *super_args, **super_kwargs):
         super().__init__(*super_args, **super_kwargs)
-        assert isinstance(self.module, PipelineModule), "model must base PipelineModule"
+        assert isinstance(self.module, PipelineModule) \
+            or (hasattr(self.module, 'wrapped') and isinstance(self.module.wrapped, PipelineModule)), \
+            "model must base PipelineModule"
 
         assert self.zero_optimization_stage(
         ) < ZeroStageEnum.gradients, "ZeRO-2 and ZeRO-3 are incompatible with pipeline parallelism"
@@ -182,6 +184,10 @@ class PipelineEngine(DeepSpeedEngine):
 
         self.first_output_send = True
         self.first_gradient_send = True
+        self.pipe_partition_input_meta_cache = None
+        self.pipe_partition_output_meta_cache = None
+        self.pipe_partition_grad_meta_cache = None
+        self.grad_partition_grad_layer_meta_cache = None
 
         #stores the loss for the current micro batch being processed
         self.loss = torch.tensor(0.0).to(self.device)
@@ -309,6 +315,11 @@ class PipelineEngine(DeepSpeedEngine):
         self.grad_layer = None
         self.meta_buffer = None
 
+        self.pipe_partition_input_meta_cache = None
+        self.pipe_partition_output_meta_cache = None
+        self.pipe_partition_grad_meta_cache = None
+        self.grad_partition_grad_layer_meta_cache = None
+
     def train_batch(self, data_iter=None):
         """Progress the pipeline to train the next batch of data. The engine will ingest
         ``self.train_batch_size()`` total samples collectively across all workers.
@@ -393,7 +404,13 @@ class PipelineEngine(DeepSpeedEngine):
         # TODO: should return precisely what loss returned and allow others to be queried?
         return self.agg_train_loss
 
-    def eval_batch(self, data_iter, return_logits=False, compute_loss=True, reduce_output='avg', bcast_loss=True):
+    def eval_batch(self,
+                   data_iter,
+                   return_logits=False,
+                   compute_loss=True,
+                   reduce_output='avg',
+                   bcast_loss=True,
+                   num_micro_batches=None):
         """Evaluate the pipeline on a batch of data from ``data_iter``. The
         engine will evaluate ``self.train_batch_size()`` total samples
         collectively across all workers.
@@ -442,6 +459,9 @@ class PipelineEngine(DeepSpeedEngine):
         train_iterator = self.data_iterator
         self.set_dataiterator(data_iter)
 
+        # set the number micro batches in case the user chose value than training
+        micro_batches = self.micro_batches if num_micro_batches is None else num_micro_batches
+
         # Do the work
         sched = schedule.InferenceSchedule(micro_batches=self.micro_batches,
                                            stages=self.num_stages,
@@ -454,7 +474,7 @@ class PipelineEngine(DeepSpeedEngine):
             self._exec_schedule(sched)
 
         if self.is_last_stage():
-            eval_output = self._reduce_outputs(self.fwd_outputs, reduce=reduce_output)
+            eval_output = self._reduce_outputs(self.fwd_outputs, reduce=reduce_output, micro_batches=micro_batches)
 
         if compute_loss and (bcast_loss or self.monitor.enabled):
             eval_output = self._bcast_pipe_scalar(eval_output)
@@ -496,7 +516,7 @@ class PipelineEngine(DeepSpeedEngine):
         """True if this process is in the last stage in the pipeline."""
         return self.stage_id == self.num_stages - 1
 
-    def _reduce_outputs(self, outputs, reduce='avg', reduce_dp=True):
+    def _reduce_outputs(self, outputs, reduce='avg', reduce_dp=True, micro_batches=None):
         if reduce is None:
             return outputs
 
@@ -511,7 +531,7 @@ class PipelineEngine(DeepSpeedEngine):
                     reduced[idx] += out
 
             # Average over the microbatches
-            reduced = self._scale_loss_by_gas(reduced)
+            reduced = self._scale_loss_by_gas(reduced, eval_micro_batches=micro_batches)
 
             # Average over DP groups
             if reduce_dp and self.is_data_parallel:
@@ -641,7 +661,9 @@ class PipelineEngine(DeepSpeedEngine):
 
         # collect the partitioned input from the previous stage
         if self.is_pipe_partitioned and not self.is_first_stage():
-            part_input = PartitionedTensor.from_meta(meta=inputs[0],
+            if self.pipe_partition_input_meta_cache is None:
+                self.pipe_partition_input_meta_cache = inputs[0].to('cpu')
+            part_input = PartitionedTensor.from_meta(meta=self.pipe_partition_input_meta_cache,
                                                      local_part=inputs[1],
                                                      group=self.grid.get_slice_parallel_group())
 
@@ -732,7 +754,9 @@ class PipelineEngine(DeepSpeedEngine):
         # careful to also restore the computational graph of the tensors we partitioned.
         if self.is_pipe_partitioned:
             if self.is_grad_partitioned:
-                part_output = PartitionedTensor.from_meta(meta=outputs[0],
+                if self.pipe_partition_output_meta_cache is None:
+                    self.pipe_partition_output_meta_cache = outputs[0].to('cpu')
+                part_output = PartitionedTensor.from_meta(meta=self.pipe_partition_output_meta_cache,
                                                           local_part=outputs[1],
                                                           group=self.grid.get_slice_parallel_group())
                 self.pipe_buffers['output_tensors'][buffer_id].data = part_output.full()
@@ -745,7 +769,9 @@ class PipelineEngine(DeepSpeedEngine):
         grad_tensors = self.grad_layer
         if self.is_grad_partitioned:
             #print(f'RANK={self.global_rank} BEFORE-BWD restoring grad={self.grad_layer[0].size()} {self.grad_layer[1].size()}')
-            part_grad = PartitionedTensor.from_meta(meta=self.grad_layer[0],
+            if self.grad_partition_grad_layer_meta_cache is None:
+                self.grad_partition_grad_layer_meta_cache = self.grad_layer[0].to('cpu')
+            part_grad = PartitionedTensor.from_meta(meta=self.grad_partition_grad_layer_meta_cache,
                                                     local_part=self.grad_layer[1],
                                                     group=self.grid.get_slice_parallel_group())
             grad_tensors = (part_grad.full(), *grad_tensors[2:])
@@ -1088,7 +1114,9 @@ class PipelineEngine(DeepSpeedEngine):
         # XXX these shapes are hardcoded for Megatron
         # Restore partitioned output if it was partitioned and we are sending full gradients
         if self.is_pipe_partitioned and not self.is_grad_partitioned:
-            part_output = PartitionedTensor.from_meta(meta=outputs[0],
+            if self.pipe_partition_grad_meta_cache is None:
+                self.pipe_partition_grad_meta_cache = outputs[0].to('cpu')
+            part_output = PartitionedTensor.from_meta(meta=self.pipe_partition_grad_meta_cache,
                                                       local_part=outputs[1],
                                                       group=self.grid.get_slice_parallel_group())
             outputs[0].data = part_output.full()

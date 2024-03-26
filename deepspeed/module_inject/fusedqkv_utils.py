@@ -4,8 +4,7 @@
 # DeepSpeed Team
 import torch
 from deepspeed.utils.logging import warning_once
-from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list, get_num_kv_heads
-import re
+from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list, get_num_kv_heads, get_n_embd
 
 
 def split_by_qkvlist_and_refuse(qkv_list, split_size, split_dim=0, cat_dim=0):
@@ -17,7 +16,7 @@ def split_by_qkvlist_and_refuse(qkv_list, split_size, split_dim=0, cat_dim=0):
 
 
 def require_tp_fused_qkvw(name, mp_size):
-    fused_qkvw_name_list = ['qkv_proj', 'query_key_value', 'attn.Wqkv']
+    fused_qkvw_name_list = ['qkv_proj', 'query_key_value', 'attn.Wqkv', 'self_attn.W_pack', 'c_attn']
 
     if mp_size == 1:
         return False
@@ -27,7 +26,9 @@ def require_tp_fused_qkvw(name, mp_size):
     return False
 
 
-def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
+def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
+
+    module_str = str(module).strip()
     if src is None:
         return
     fused_type_dict = {
@@ -36,6 +37,11 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
         'GLMBlock': 'glmtype',
         "MPTBlock": 'glmtype',
         "MptBlock": 'glmtype',
+        "BaichuanLayer": 'glmtype',
+        "QWenBlock": 'qwentype',
+        "FalconDecoderLayer": 'bloomtype',
+        "GPTBigCodeBlock": 'bigcodetype',
+        "DecoderLayer": 'glmtype',
     }
 
     def _codegen_type_transpose(input, mp_size, codegen_mp_num=4):
@@ -72,7 +78,22 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
         split_fusedqkv = input.split(get_shard_size_list(shape[0], mp_size), dim=0)
         return split_fusedqkv[gpu_index]
 
-    def _transpose_fused_qkvw(src, mp_size, fused_qkv_type=None):
+    def _qwen_type_transpose(input, mp_size, module):
+        if not hasattr(module, "_ds_fusedqkv_entered"):
+            # Adjust splitting absolute value variables
+            setattr(module, "_ds_fusedqkv_entered", True)
+            module.attn.split_size = get_shard_size(module.attn.split_size, mp_size)
+        return _glm_type_transpose(input, mp_size)
+
+    def _bigcode_type_transpose(input, mp_size):
+        n_embd = get_n_embd()
+        q = input[:n_embd]
+        kv = input[n_embd:]
+        shape = q.shape
+        split_q = q.split(get_shard_size_list(shape[0], mp_size), dim=0)
+        return torch.cat((split_q[gpu_index], kv), dim=0)
+
+    def _transpose_fused_qkvw(src, mp_size, fused_qkv_type=None, module=None):
 
         # suppose num_heads=n, q(n)_w means the n-th q head linear weight, the weight format are as following
         # bloomtype: [q(1)_w,k(1)_w,v(1)_w,q(2)_w,k(2)_w,v(2)_w,...,q(n)_w,k(n)_w,v(n)_w]
@@ -85,12 +106,20 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
             return _codegen_type_transpose(src, mp_size)
         elif fused_qkv_type == 'glmtype':
             return _glm_type_transpose(src, mp_size)
+        elif fused_qkv_type == 'qwentype':
+            return _qwen_type_transpose(src, mp_size, module)
+        elif fused_qkv_type == 'bigcodetype':
+            return _bigcode_type_transpose(src, mp_size)
 
         raise ValueError("unknown fused_qkv_type")
 
-    for module_name, fused_type in fused_type_dict.items():
-        if re.search(module_name, module_str):
-            return _transpose_fused_qkvw(src, mp_size, fused_type)
+    module_name_matches = [k for k in fused_type_dict.keys() if k in module_str]
+    if module_name_matches:
+        # There can be overlap with matches (e.g., "DecoderLayer" and "FalconDecoderLayer").
+        # We take the longest matching module_name
+        module_name = max(module_name_matches, key=len)
+        fused_type = fused_type_dict[module_name]
+        return _transpose_fused_qkvw(src, mp_size, fused_type, module)
     warning_once(f"Unrecognized fusedkqv weight type, default to using bloom type,"
                  f"please check in prepare_tp_fused_qkvw() to avoid potential calculation errors")
     return _bloom_type_transpose(src, mp_size)

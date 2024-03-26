@@ -31,7 +31,7 @@ from ..autotuning import Autotuner
 from deepspeed.accelerator import get_accelerator
 
 DLTS_HOSTFILE = "/job/hostfile"
-EXPORT_ENVS = ['MLFLOW', 'NCCL', 'PYTHON', 'MV2', 'UCX']
+EXPORT_ENVS = ['MLFLOW', 'PYTHON', 'MV2', 'UCX']
 EXPORT_ENVS += NEBULA_EXPORT_ENVS
 DEEPSPEED_ENVIRONMENT_NAME = os.getenv("DS_ENV_FILE", ".deepspeed_env")
 DEEPSPEED_ENVIRONMENT_PATHS = [os.path.expanduser("~"), '.']
@@ -544,17 +544,15 @@ def main(args=None):
                 # key exists in launcher env -> var list should be used
                 excluded_vars += var_list
 
-        exports = ""
+        # load envs from accelerator
+        exports = EXPORT_ENVS + get_accelerator().export_envs()
         for var in env.keys():
-            if any([var.startswith(name) for name in EXPORT_ENVS]):
+            if any([var.startswith(name) for name in exports]):
                 if not any([var == name for name in excluded_vars]):
                     runner.add_export(var, env[var])
 
         for environ_path in DEEPSPEED_ENVIRONMENT_PATHS:
-            environ_file = DEEPSPEED_ENVIRONMENT_NAME
-            # handle if users to enter path for `DS_ENV_FILE`
-            if not os.path.isfile(environ_file):
-                environ_file = os.path.join(environ_path, DEEPSPEED_ENVIRONMENT_NAME)
+            environ_file = os.path.join(environ_path, DEEPSPEED_ENVIRONMENT_NAME)
             if os.path.isfile(environ_file):
                 logger.info(f"deepspeed_env file = {environ_file}")
                 with open(environ_file, 'r') as fd:

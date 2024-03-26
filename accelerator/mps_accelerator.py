@@ -24,6 +24,15 @@ class MPS_Accelerator(DeepSpeedAccelerator):
     def is_synchronized_device(self):
         return False
 
+    def use_host_timers(self):
+        return self.is_synchronized_device()
+
+    def resolves_data_dependency(self):
+        return self.is_synchronized_device()
+
+    def handles_memory_backpressure(self):
+        return self.is_synchronized_device()
+
     # Device APIs
     def device_name(self, device_index=None):
         if device_index is None:
@@ -166,6 +175,17 @@ class MPS_Accelerator(DeepSpeedAccelerator):
     def is_triton_supported(self):
         return False
 
+    # Graph operations
+    def create_graph(self):
+        return None
+
+    def capture_to_graph(self, graph, pool=None, stream=None):
+        from deepspeed.runtime.utils import noop_context
+        return noop_context()
+
+    def replay_graph(self, graph):
+        return
+
     # Tensor operations
     @property
     def BFloat16Tensor(self):
@@ -235,3 +255,6 @@ class MPS_Accelerator(DeepSpeedAccelerator):
         from torch.utils.cpp_extension import BuildExtension
 
         return BuildExtension
+
+    def export_envs(self):
+        return []
