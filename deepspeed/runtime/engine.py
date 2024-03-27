@@ -2360,7 +2360,7 @@ class DeepSpeedEngine(Module):
 
         return tensor
 
-    def allreduce_and_copy(self, small_bucket, dp_group, dp_world_size):
+    def allreduce_and_copy(self, small_bucket, dp_group, dp_world_size=None):
         allreduced = self.allreduce_bucket(small_bucket, dp_group, dp_world_size)
         for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
             buf.copy_(synced)
@@ -2465,7 +2465,7 @@ class DeepSpeedEngine(Module):
         if self.has_moe_layers:
             self._reduce_expert_gradients(expert_grads, elements_per_buffer)
 
-    def sparse_allreduce_no_retain(self, bucket, dp_group, dp_world_size):
+    def sparse_allreduce_no_retain(self, bucket, dp_group, dp_world_size=None):
         allreduced_sparses = self.sparse_allreduce_bucket(bucket, dp_group, dp_world_size)
         # Densify sparse tensor and copy back to original location
         for tensor in allreduced_sparses:
@@ -2474,7 +2474,7 @@ class DeepSpeedEngine(Module):
             else:
                 tensor.orig_dense_tensor.copy_(tensor.to_dense())
 
-    def sparse_allreduce_bucket(self, bucket, dp_group, dp_world_size):
+    def sparse_allreduce_bucket(self, bucket, dp_group, dp_world_size=None):
         sparse_list = []
         for sparse in bucket:
             sparse_list.append(self.sparse_allreduce(sparse, dp_group, dp_world_size))
