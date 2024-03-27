@@ -445,6 +445,8 @@ class BF16_Optimizer(ZeROOptimizer):
             self._link_all_hp_params()
 
     def _load_universal_checkpoint(self, checkpoint_folder, load_optimizer_states, load_from_fp32_weights):
+        self.optimizer.step()
+        self._lazy_init_hp_params_optimizer_state()
         self._load_hp_checkpoint_state(checkpoint_folder)
 
     @property
