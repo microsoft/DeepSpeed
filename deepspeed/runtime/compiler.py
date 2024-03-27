@@ -6,7 +6,7 @@
 from typing import Union, Callable, Dict, Any
 import importlib
 import torch
-from ..pydantic_v1 import validator
+from pydantic import field_validator
 from .config_utils import DeepSpeedConfigModel
 
 COMPILE_CONFIG = "compile"
@@ -76,8 +76,9 @@ class CompileConfig(DeepSpeedConfigModel):
     Passed to `kwargs` argument of torch.compile.
     """
 
-    @validator("enabled")
-    def validate_enabled(cls, field_value, values):
+    @field_validator("enabled")
+    @classmethod
+    def validate_enabled(cls, field_value):
         if field_value and not is_compile_supported():
             raise ValueError("torch.compile is not supported on this version of PyTorch.")
         return field_value
