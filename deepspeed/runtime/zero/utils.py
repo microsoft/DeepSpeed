@@ -65,7 +65,7 @@ def get_lst_from_rank0(lst: List[int]) -> None:
     lst_tensor = torch.tensor(
         lst if dist.get_rank() == 0 else [-1] * len(lst),
         dtype=int,
-        device=get_accelerator().device(os.environ["LOCAL_RANK"]),
+        device=torch.device(get_accelerator().device_name(os.environ["LOCAL_RANK"])),
         requires_grad=False,
     )
     dist.broadcast(lst_tensor, src=0, async_op=False)
