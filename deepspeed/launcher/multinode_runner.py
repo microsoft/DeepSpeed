@@ -73,7 +73,7 @@ class PDSHRunner(MultiNodeRunner):
 
     def get_cmd(self, environment, active_resources):
         environment['PDSH_RCMD_TYPE'] = 'ssh'
-        if self.args.ssh_port is not None:   # only specify ssh port if it is specified
+        if self.args.ssh_port is not None:  # only specify ssh port if it is specified
             environment["PDSH_SSH_ARGS_APPEND"] = f"{environment.get('PDSH_SSH_ARGS_APPEND', '')} -p {self.args.ssh_port}"
 
         active_workers = ",".join(active_resources.keys())
