@@ -34,7 +34,7 @@ jobs:
           git clone https://github.com/huggingface/transformers
           cd transformers
           # if needed switch to the last known good SHA until transformers@master is fixed
-          git checkout fe085560d05b3a4a00464f9dd693dda34dc93d63
+          git checkout 2f9a3edbb93ab5b7ec2b107a67e9b6c980277a38
           git rev-parse --short HEAD
           pip install .
 
