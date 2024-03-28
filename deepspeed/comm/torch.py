@@ -144,6 +144,9 @@ class TorchBackend(Backend):
     def has_reduce_scatter_tensor(self):
         return self.reduce_scatter_function is not None
 
+    def has_reduce_scatter_coalesced(self):
+        return is_torch_ver_ge_2_1() and has_coalescing_manager()
+
     def init_process_group(self, backend, timeout, init_method, rank, world_size):
         if not torch.distributed.is_initialized():
             torch.distributed.init_process_group(backend,
@@ -238,6 +241,17 @@ class TorchBackend(Backend):
                                      "torch.distributed.reduce_scatter which will result in suboptimal performance. "
                                      "please consider upgrading your pytorch installation.")
                 pass
+
+    @compiler.disable
+    def reduce_scatter_coalesced(self, output_tensors, input_tensors, op=ReduceOp.SUM, group=None, async_op=False):
+        reqs = []
+        with get_coalescing_manager(group, input_tensors[0].device, reqs, async_op):
+            for output, input in zip(output_tensors, input_tensors):
+                torch.distributed.distributed_c10d.reduce_scatter_tensor(output,
+                                                                         input,
+                                                                         op=self._reduce_op(op),
+                                                                         group=group,
+                                                                         async_op=True)
 
     @compiler.disable
     def all_gather_coalesced(self, output_tensors, input_tensors, group=None, async_op=False):
