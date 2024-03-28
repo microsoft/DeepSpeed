@@ -12,7 +12,7 @@
 #include <sys/mman.h>
 #include "shm.h"
 
-//#define DO_PROFILE
+// #define DO_PROFILE
 #ifdef DO_PROFILE
 #include <cfloat>
 #include <chrono>
@@ -91,7 +91,8 @@ void wait_buffer_state_until(int index, enum coll_state state)
 {
     volatile enum coll_state* state_ptr = &(workspace[index]->state);
 
-    while (*state_ptr != state);
+    while (*state_ptr != state)
+        ;
 }
 
 void wait_buffer_state_until_range(int index, enum coll_state start, int size)
@@ -109,7 +110,8 @@ void wait_buffer_state_until_not(int index, enum coll_state state)
 {
     volatile enum coll_state* state_ptr = &(workspace[index]->state);
 
-    while (*state_ptr == state);
+    while (*state_ptr == state)
+        ;
 }
 
 void barrier_wait(int root_idx, int num_ranks)
@@ -659,12 +661,12 @@ void distributed_naive_reduce(char* data_ptr,
         total_t4_t3 += std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count();
         total_t5_t4 += std::chrono::duration_cast<std::chrono::microseconds>(t5 - t4).count();
         if (world_rank == 0 && count == 1000) {
-            printf ("distributed_naive_reduce time breakdown:\n");
-            printf ("\tcopy input buffer: %.2f\n", total_t1_t0/count);
-            printf ("\twait for copy: %.2f\n", total_t2_t1/count);
-            printf ("\treduce: %.2f\n", total_t3_t2/count);
-            printf ("\tcopy buffer to output: %.2f\n", total_t4_t3/count);
-            printf ("\twait finish: %.2f\n", total_t5_t4/count);
+            printf("distributed_naive_reduce time breakdown:\n");
+            printf("\tcopy input buffer: %.2f\n", total_t1_t0 / count);
+            printf("\twait for copy: %.2f\n", total_t2_t1 / count);
+            printf("\treduce: %.2f\n", total_t3_t2 / count);
+            printf("\tcopy buffer to output: %.2f\n", total_t4_t3 / count);
+            printf("\twait finish: %.2f\n", total_t5_t4 / count);
         }
     }
 #endif
