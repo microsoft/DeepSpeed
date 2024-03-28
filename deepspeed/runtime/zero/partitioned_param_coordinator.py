@@ -186,6 +186,7 @@ class PartitionedParameterCoordinator:
         self.__submodule_order.append(sub_module)
         self.__step_id_module_fetched_for[sub_module.id].append(self.__step_id)
 
+    @compiler.disable
     def record_parameters(self, sub_module: Module) -> None:
         """adds sub module to trace"""
         if not self.is_record_trace():
