@@ -9,7 +9,7 @@ import sys
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from deepspeed import comm as dist
 from deepspeed.runtime.constants import PIPE_REPLICATED
-from deepspeed.runtime import ZeROOptimizer
+from deepspeed.runtime.base_optimizer import ZeROOptimizer
 from packaging import version as pkg_version
 from deepspeed.git_version_info import version
 from deepspeed.runtime.utils import (get_global_norm_of_tensors, clip_tensors_by_global_norm, DummyOptim,
