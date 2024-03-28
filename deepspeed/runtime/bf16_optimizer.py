@@ -505,7 +505,7 @@ class BF16_Optimizer(ZeROOptimizer):
             self._link_all_hp_params()
 
     def _load_universal_checkpoint(self, checkpoint_folder, load_optimizer_states, load_from_fp32_weights):
-        self.load_hp_checkpoint_state_from_checkpoint_dir(self, "bf16_groups", checkpoint_folder)
+        self.load_hp_checkpoint_state_from_checkpoint_dir("bf16_groups", checkpoint_folder)
 
     def _load_global_state(self, sd):
         pass
