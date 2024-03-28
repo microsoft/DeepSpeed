@@ -13,6 +13,7 @@ import distutils
 import os
 import psutil
 import subprocess
+from .logging import warning_once, logger
 
 
 # return a list of list for cores to numa mapping
@@ -35,6 +36,19 @@ def get_numa_cores():
                 cores = line.split(' ')[3:]
                 ret.append([int(core) for core in cores])
     return ret
+
+
+# Some docker environment does not support numa memory binding, still allow
+# numa core binding in such situation.  This API probes numa memory binding
+def check_numa_mem_binding():
+    retval = subprocess.call(['numactl', '-m', '0', 'echo'])
+    if retval != 0:
+        warning_once(
+            'numactl -m are not supported.  check whether the system had been configured with set_mempolicy capability.  If using docker, run container with SYS_NICE capability.  This run will continue without memory binding.'
+        )
+        return False
+    else:
+        return True
 
 
 def check_for_numactl_pkg():
@@ -156,30 +170,33 @@ def get_numactl_cmd(bind_core_list, num_local_procs, local_rank):
     elif numa_node_list_list != []:
         numa_mode = "fake"
 
-    if numa_mode == "normal":
-        for i in range(num_numas):
-            if set(core_list_for_rank) <= set(numa_cores[i]):
-                numactl_cmd.append("-m")
-                numactl_cmd.append(f"{i}")
-                break
-    elif numa_mode == "flat_hbm":
-        for i in range(num_numas):
-            if set(core_list_for_rank) <= set(numa_cores[i]):
-                numactl_cmd.append("-p")
-                numactl_cmd.append(f"{numa_dict[i]}")
-                break
-    elif numa_mode == "fake":
-        for i in range(num_numas):
-            if set(core_list_for_rank) <= set(numa_cores[i]):
-                for nodes in numa_node_list_list:
-                    if i in nodes:
-                        numactl_cmd.append("-m")
-                        numactl_cmd.append(f"{','.join(map(str, nodes))}")
-                        break
-                # the following construct break the outer loop if inner loop breaks
-                else:
-                    continue
-                break
+    # Skip numa memory binding under certain environment, i.e. docker without
+    # SYS_NICE capacity
+    if check_numa_mem_binding():
+        if numa_mode == "normal":
+            for i in range(num_numas):
+                if set(core_list_for_rank) <= set(numa_cores[i]):
+                    numactl_cmd.append("-m")
+                    numactl_cmd.append(f"{i}")
+                    break
+        elif numa_mode == "flat_hbm":
+            for i in range(num_numas):
+                if set(core_list_for_rank) <= set(numa_cores[i]):
+                    numactl_cmd.append("-p")
+                    numactl_cmd.append(f"{numa_dict[i]}")
+                    break
+        elif numa_mode == "fake":
+            for i in range(num_numas):
+                if set(core_list_for_rank) <= set(numa_cores[i]):
+                    for nodes in numa_node_list_list:
+                        if i in nodes:
+                            numactl_cmd.append("-m")
+                            numactl_cmd.append(f"{','.join(map(str, nodes))}")
+                            break
+                    # the following construct break the outer loop if inner loop breaks
+                    else:
+                        continue
+                    break
 
     numactl_cmd.append("-C")
     last_core = core_list_for_rank[0]
@@ -199,4 +216,5 @@ def get_numactl_cmd(bind_core_list, num_local_procs, local_rank):
     if first_core != last_core:
         core_list_str = f"{core_list_str}-{last_core}"
     numactl_cmd.append(f"{core_list_str}")
+    logger.info(f'NUMA command prefix: "{numactl_cmd}"')
     return cores_per_rank, numactl_cmd
