@@ -284,10 +284,7 @@ class PipelineEngine(DeepSpeedEngine):
         self._force_grad_boundary = False
 
     def _bf16_reduce_grads(self):
-        # Make our own list of gradients from the optimizer's FP32 grads
-        grads = []
-        self.buffered_allreduce_fallback(grads=self.optimizer.get_grads_for_reduction(),
-                                         elements_per_buffer=MEMORY_OPT_ALLREDUCE_SIZE)
+        self.buffered_allreduce_fallback(grads=None, elements_per_buffer=MEMORY_OPT_ALLREDUCE_SIZE)
 
     def _reserve_pipe_buffers(self, num_buffers):
         """Ensure that each pipeline buffer has at least ``num_buffers`` slots.
