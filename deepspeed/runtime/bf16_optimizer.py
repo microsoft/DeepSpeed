@@ -19,7 +19,6 @@ from deepspeed.runtime.utils import (get_global_norm_of_tensors, clip_tensors_by
 from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state, fragment_address, groups
 from deepspeed.moe.utils import is_moe_param, is_moe_param_group
 from deepspeed.checkpoint import enable_universal_checkpoint
-from deepspeed.checkpoint.universal_checkpoint import load_hp_checkpoint_state_from_checkpoint_dir
 from deepspeed.checkpoint.constants import (DS_VERSION, PARTITION_COUNT, BASE_OPTIMIZER_STATE,
                                             SINGLE_PARTITION_OF_FP32_GROUPS, CLIP_GRAD, GROUP_PADDINGS,
                                             PARAM_SLICE_MAPPINGS)
@@ -506,7 +505,7 @@ class BF16_Optimizer(ZeROOptimizer):
             self._link_all_hp_params()
 
     def _load_universal_checkpoint(self, checkpoint_folder, load_optimizer_states, load_from_fp32_weights):
-        load_hp_checkpoint_state_from_checkpoint_dir(self, "bf16_groups", checkpoint_folder)
+        self.load_hp_checkpoint_state_from_checkpoint_dir(self, "bf16_groups", checkpoint_folder)
 
     def _load_global_state(self, sd):
         pass

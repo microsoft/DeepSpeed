@@ -29,7 +29,6 @@ from deepspeed.checkpoint.constants import (DS_VERSION, GROUP_PADDINGS, PARTITIO
                                             BASE_OPTIMIZER_STATE_STEP, CLIP_GRAD, ZERO_STAGE, PARAM_SLICE_MAPPINGS)
 from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state
 from deepspeed.checkpoint import enable_universal_checkpoint
-from deepspeed.checkpoint.universal_checkpoint import load_hp_checkpoint_state_from_checkpoint_dir
 
 from deepspeed.utils import groups
 # Toggle this to true to enable correctness test
@@ -2287,7 +2286,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self._load_legacy_checkpoint(state_dict_list, load_optimizer_states, load_from_fp32_weights)
 
     def _load_universal_checkpoint(self, checkpoint_folder, load_optimizer_states, load_from_fp32_weights):
-        load_hp_checkpoint_state_from_checkpoint_dir(self, "bit16_groups", checkpoint_folder)
+        self.load_hp_checkpoint_state_from_checkpoint_dir(self, "bit16_groups", checkpoint_folder)
 
     @property
     def param_groups(self):
