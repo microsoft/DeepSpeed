@@ -10,7 +10,7 @@
 #include <torch/extension.h>
 #include "ds_kernel_utils.h"
 
-#include "linear_kernels_cuda.cuh"
+#include "linear_kernels_cuda.h"
 
 void cuda_wf6af16_linear(torch::Tensor& output,
                          torch::Tensor& hidden_states,

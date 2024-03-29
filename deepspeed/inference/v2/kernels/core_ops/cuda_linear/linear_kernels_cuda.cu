@@ -19,7 +19,7 @@
 #include <assert.h>
 #include <stdio.h>
 
-#include "linear_kernels_cuda.cuh"
+#include "linear_kernels_cuda.h"
 
 template <typename TilingConfig, typename OutputDataType>
 static void Kernel_Ex(cudaStream_t stream,
