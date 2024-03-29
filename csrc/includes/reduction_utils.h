@@ -160,6 +160,12 @@ DS_D_INLINE float element<ROpType::Add>(const float lhs, const float rhs)
 }
 
 template <>
+DS_D_INLINE double element<ROpType::Add>(const double lhs, const double rhs)
+{
+    return lhs + rhs;
+}
+
+template <>
 DS_D_INLINE float element<ROpType::Max>(const float lhs, const float rhs)
 {
     return fmaxf(lhs, rhs);
@@ -180,6 +186,17 @@ DS_D_INLINE __half element<ROpType::Add>(const __half lhs, const __half rhs)
 
 template <>
 DS_D_INLINE __half element<ROpType::Max>(const __half lhs, const __half rhs)
+{
+#if __CUDA_ARCH__ >= 800
+    // Intrinsic limited to Ampere + newer
+    return __hmax(lhs, rhs);
+#else
+    return (lhs > rhs) ? lhs : rhs;
+#endif
+}
+
+template <>
+DS_D_INLINE __nv_bfloat16 element<ROpType::Max>(const __nv_bfloat16 lhs, const __nv_bfloat16 rhs)
 {
 #if __CUDA_ARCH__ >= 800
     // Intrinsic limited to Ampere + newer
@@ -214,6 +231,19 @@ DS_D_INLINE __half2 element<ROpType::Max>(const __half2 lhs, const __half2 rhs)
     return __hmax2(lhs, rhs);
 #else
     __half2 ret_val;
+    ret_val.x = (lhs.x > rhs.x) ? lhs.x : rhs.x;
+    ret_val.y = (lhs.y > rhs.y) ? lhs.y : rhs.y;
+    return ret_val;
+#endif
+}
+
+template <>
+DS_D_INLINE __nv_bfloat162 element<ROpType::Max>(const __nv_bfloat162 lhs, const __nv_bfloat162 rhs)
+{
+#if __CUDA_ARCH__ >= 800
+    return __hmax2(lhs, rhs);
+#else
+    __nv_bfloat162 ret_val;
     ret_val.x = (lhs.x > rhs.x) ? lhs.x : rhs.x;
     ret_val.y = (lhs.y > rhs.y) ? lhs.y : rhs.y;
     return ret_val;
@@ -295,6 +325,11 @@ DS_D_INLINE float init<ROpType::Add>()
 {
     return 0.0f;
 }
+template <>
+DS_D_INLINE double init<ROpType::Add>()
+{
+    return (double)0.0f;
+}
 
 template <>
 DS_D_INLINE float init<ROpType::Min>()
@@ -329,6 +364,13 @@ DS_D_INLINE __half init<ROpType::Max>()
 {
     constexpr __half_raw neg_inf = {0xFC00};
     return __half(neg_inf);
+}
+
+template <>
+DS_D_INLINE __nv_bfloat16 init<ROpType::Max>()
+{
+    constexpr __nv_bfloat16_raw neg_inf = {0xFF80};
+    return __nv_bfloat16(neg_inf);
 }
 
 template <>
