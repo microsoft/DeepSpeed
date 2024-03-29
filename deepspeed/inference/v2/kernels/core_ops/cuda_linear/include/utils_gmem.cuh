@@ -5,12 +5,14 @@
 
 // This is a copy of FP6-LLM kernel code: https://arxiv.org/abs/2401.14112
 
-#ifndef UTILS_GMEM_CUH
-#define UTILS_GMEM_CUH
+#ifndef DEEPSPEED_CUDA_LINEAR_UTILS_GMEM_CUH
+#define DEEPSPEED_CUDA_LINEAR_UTILS_GMEM_CUH
 
 #include <assert.h>
 #include "configs.h"
 #include "ptx_cp.async.cuh"
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 
 /*
  * Copying A1/A2 from global memory to shared memory.
@@ -82,5 +84,7 @@ __device__ __forceinline__ void CopyFromGlobalToShared(
         SharedPTR += NumOfGroups;
     }
 }
+
+#endif
 
 #endif
