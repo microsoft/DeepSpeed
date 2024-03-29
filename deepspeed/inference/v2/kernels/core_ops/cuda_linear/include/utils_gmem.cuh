@@ -12,8 +12,6 @@
 #include "configs.h"
 #include "ptx_cp.async.cuh"
 
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-
 /*
  * Copying A1/A2 from global memory to shared memory.
  * Usually 1024 or 2048 Bytes
@@ -84,7 +82,5 @@ __device__ __forceinline__ void CopyFromGlobalToShared(
         SharedPTR += NumOfGroups;
     }
 }
-
-#endif
 
 #endif
