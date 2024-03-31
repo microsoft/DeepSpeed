@@ -10,6 +10,10 @@ from qtorch.quant import float_quantize
 from deepspeed.ops.fp_quantizer import FP_Quantize
 
 
+if not deepspeed.ops.__compatible_ops__[FPQuantizerBuilder.NAME]:
+    pytest.skip("FPQuantizer op is not available on this system", allow_module_level=True)
+
+
 def qtorch_quantize(input, exp_bits=4, man_bits=3, rounding="nearest", group_size=1024):
     ori_dt = input.dtype
     ori_shape = input.shape
