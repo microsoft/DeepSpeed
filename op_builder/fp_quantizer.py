@@ -29,8 +29,8 @@ class FPQuantizerBuilder(CUDAOpBuilder):
             sys_cuda_major, _ = installed_cuda_version()
             torch_cuda_major = int(torch.version.cuda.split('.')[0])
             cuda_capability = torch.cuda.get_device_properties(0).major  #ignore-cuda
-            if cuda_capability < 6:
-                self.warning("NVIDIA Inference is only supported on Pascal and newer architectures")
+            if cuda_capability < 8:
+                self.warning("NVIDIA Inference is only supported on Ampere and newer architectures")
                 cuda_okay = False
             if cuda_capability >= 8:
                 if torch_cuda_major < 11 or sys_cuda_major < 11:
@@ -42,7 +42,7 @@ class FPQuantizerBuilder(CUDAOpBuilder):
         ccs_retained = []
         ccs_pruned = []
         for cc in ccs:
-            if int(cc[0]) >= 6:
+            if int(cc[0]) >= 8:
                 ccs_retained.append(cc)
             else:
                 ccs_pruned.append(cc)
