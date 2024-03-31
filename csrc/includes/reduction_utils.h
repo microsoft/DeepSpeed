@@ -195,6 +195,7 @@ DS_D_INLINE __half element<ROpType::Max>(const __half lhs, const __half rhs)
 #endif
 }
 
+#ifdef BF16_AVAILABLE
 template <>
 DS_D_INLINE __nv_bfloat16 element<ROpType::Max>(const __nv_bfloat16 lhs, const __nv_bfloat16 rhs)
 {
@@ -205,6 +206,7 @@ DS_D_INLINE __nv_bfloat16 element<ROpType::Max>(const __nv_bfloat16 lhs, const _
     return (lhs > rhs) ? lhs : rhs;
 #endif
 }
+#endif
 
 template <>
 DS_D_INLINE __half element<ROpType::Min>(const __half lhs, const __half rhs)
@@ -237,6 +239,7 @@ DS_D_INLINE __half2 element<ROpType::Max>(const __half2 lhs, const __half2 rhs)
 #endif
 }
 
+#ifdef BF16_AVAILABLE
 template <>
 DS_D_INLINE __nv_bfloat162 element<ROpType::Max>(const __nv_bfloat162 lhs, const __nv_bfloat162 rhs)
 {
@@ -249,6 +252,7 @@ DS_D_INLINE __nv_bfloat162 element<ROpType::Max>(const __nv_bfloat162 lhs, const
     return ret_val;
 #endif
 }
+#endif
 
 template <>
 DS_D_INLINE __half2 element<ROpType::Min>(const __half2 lhs, const __half2 rhs)
@@ -366,12 +370,14 @@ DS_D_INLINE __half init<ROpType::Max>()
     return __half(neg_inf);
 }
 
+#ifdef BF16_AVAILABLE
 template <>
 DS_D_INLINE __nv_bfloat16 init<ROpType::Max>()
 {
     constexpr __nv_bfloat16_raw neg_inf = {0xFF80};
     return __nv_bfloat16(neg_inf);
 }
+#endif
 
 template <>
 DS_D_INLINE __half2 init<ROpType::Add>()
