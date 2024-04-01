@@ -7,12 +7,14 @@ import pytest
 import torch
 import deepspeed
 
-from qtorch.quant import float_quantize
 from deepspeed.ops.fp_quantizer import FP_Quantize
 from deepspeed.ops.op_builder import FPQuantizerBuilder
 
 if not deepspeed.ops.__compatible_ops__[FPQuantizerBuilder.NAME]:
     pytest.skip("FPQuantizer op is not available on this system", allow_module_level=True)
+
+# warning: this import silently JIT builds a set of kernels and may take a minute
+from qtorch.quant import float_quantize
 
 
 def qtorch_quantize(input, exp_bits=4, man_bits=3, rounding="nearest", group_size=1024):
