@@ -1,0 +1,66 @@
+
+name: xpu
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
+  pull_request:
+    paths:
+      - ".github/workflows/xpu.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+
+jobs:
+  unit-tests:
+    runs-on: [self-hosted, intel]
+    container:
+      image: intel/intel-extension-for-pytorch:2.1.20-xpu
+      ports:
+        - 80
+      options: --privileged -it --rm --device /dev/dri:/dev/dri -v /dev/dri/by-path:/dev/dri/by-path --ipc=host --cap-add=ALL
+
+    env:
+      TEST_LIST: |
+        test_accelerator.py
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Check container state
+      shell: bash
+      run: |
+        ldd --version
+        python -c "import torch; print('torch:', torch.__version__, torch)"
+        python -c "import torch; import intel_extension_for_pytorch; print('XPU available:', torch.xpu.is_available())"
+
+    - name: Install transformers
+      run: |
+        git clone https://github.com/huggingface/transformers
+        cd transformers
+        git rev-parse --short HEAD
+        pip install .
+
+    - name: Install deepspeed
+      run: |
+        pip install py-cpuinfo
+        pip install .[dev,autotuning]
+          ds_report
+
+    - name: Python environment
+      run: |
+        pip list
+
+    - name: Unit tests
+      run: |
+        pip install pytest
+        cd tests
+        TEST_LIST=$(echo "$TEST_LIST" | awk 'NF{printf "%s%s", (NR>1 ? " or " : ""), $0} END{if (NR>1) print ""}')
+        echo "TEST_LIST ${TEST_LIST}"
+        pytest --verbose unit/accelerator -k "${TEST_LIST}"
