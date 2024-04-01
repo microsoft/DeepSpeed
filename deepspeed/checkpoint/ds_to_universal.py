@@ -9,7 +9,7 @@ from functools import partial
 import argparse
 import glob
 import itertools
-import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 import os
 import re
 import shutil
@@ -247,13 +247,13 @@ def _get_chunks(l, n):
 
 def _do_parallel_work(do_work, work_chunks, num_workers):
     if num_workers > 1:
-        pool = multiprocessing.Pool(num_workers)
-        results = []
-        for batch in tqdm.tqdm(work_chunks):
-            res = pool.map(do_work, batch)
-            results.extend(res)
-        pool.close()
-        pool.join()
+        future_list = []
+        with ProcessPoolExecutor(max_workers=num_workers) as executor:
+            for work in work_chunks:
+                future_list.append(executor.submit(do_work, work))
+            results = []
+            for f in tqdm.tqdm(future_list):
+                results.append(f.result())
     else:
         # No parallel pass for unit testing
         # We can't create child processes in tests
@@ -269,20 +269,15 @@ def _extract_zero_shard_files(args, ds_checkpoint, temp_dir):
         itertools.product(range(ds_checkpoint.pp_degree), range(ds_checkpoint.tp_degree),
                           range(ds_checkpoint.dp_degree)))
     #pprint(f'{_3d_range_list=}')
-    work_chunks = list(_get_chunks(_3d_range_list, args.num_extract_workers))
-    #pprint(f'{work_chunks=}')
 
-    # extract_zero_shards(temp_dir, ds_checkpoint, _3d_range_list[0])
     do_work = partial(extract_zero_shards, temp_dir, ds_checkpoint)
-    _do_parallel_work(do_work, work_chunks, args.num_extract_workers)
+    _do_parallel_work(do_work, _3d_range_list, args.num_extract_workers)
 
 
 def _merge_tp_slice_files(args, ds_checkpoint, slice_shapes, temp_dir):
-    work_chunks = list(_get_chunks(list(slice_shapes.items()), args.num_merge_workers))
-    #pprint(work_chunks)
     zero_output_folder = os.path.join(args.output_folder, "zero")
     do_work = partial(merge_tp_slices, ds_checkpoint, zero_output_folder, temp_dir, ds_checkpoint.tp_degree)
-    unmatched_patterns_lists = _do_parallel_work(do_work, work_chunks, args.num_merge_workers)
+    unmatched_patterns_lists = _do_parallel_work(do_work, list(slice_shapes.items()), args.num_merge_workers)
 
     # verify that all patterns were used
     # if a pattern was not used by any of the workers, then it was not used at all -> assert/alert
