@@ -28,8 +28,13 @@ class TestStableDiffusion(DistributedTest):
         model = "prompthero/midjourney-v4-diffusion"
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         device = torch.device(f"{dev}:{local_rank}")
+<<<<<<< HEAD
         dtype = torch.half
         pipe = DiffusionPipeline.from_pretrained(model, torch_dtype=dtype)
+=======
+
+        pipe = DiffusionPipeline.from_pretrained(model, torch_dtype=torch.half)
+>>>>>>> 53d90469 (Removal of cuda hardcoded string with get_device function)
         pipe = pipe.to(device)
         baseline_image = pipe(prompt, guidance_scale=7.5, generator=generator).images[0]
 
