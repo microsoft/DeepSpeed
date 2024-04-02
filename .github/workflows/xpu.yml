@@ -25,11 +25,7 @@ jobs:
       ports:
         - 80
       options: --privileged -it --rm --device /dev/dri:/dev/dri -v /dev/dri/by-path:/dev/dri/by-path --ipc=host --cap-add=ALL
-
-    env:
-      TEST_LIST: |
-        test_accelerator.py
-
+    
     steps:
     - uses: actions/checkout@v3
     - name: Check container state
@@ -59,7 +55,29 @@ jobs:
     - name: Unit tests
       run: |
         pip install pytest
-        cd tests
-        TEST_LIST=$(echo "$TEST_LIST" | awk 'NF{printf "%s%s", (NR>1 ? " or " : ""), $0} END{if (NR>1) print ""}')
-        echo "TEST_LIST ${TEST_LIST}"
-        pytest --verbose unit/accelerator -k "${TEST_LIST}"
+        pip install tabulate
+        cd tests/unit
+        pytest --verbose accelerator/* --timeout=30 --timeout-method=thread
+        pytest --verbose autotuning/* --timeout=30 --timeout-method=thread
+        pytest --verbose checkpoint/test_moe_checkpoint.py checkpoint/test_reshape_checkpoint.py checkpoint/test_shared_weights.py --timeout=30 --timeout-method=thread
+        pytest --verbose compression/* --timeout=30 --timeout-method=thread
+        pytest --verbose elasticity/* --timeout=30 --timeout-method=thread
+        pytest --verbose launcher/test_ds_arguments.py launcher/test_run.py launcher/test_user_args.py --timeout=30 --timeout-method=thread
+        pytest --verbose moe/test_moe_tp.py/* --timeout=30 --timeout-method=thread
+        pytest --verbose monitor/* --timeout=30 --timeout-method=thread
+        pytest --verbose ops/adagrad/test_cpu_adagrad.py --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/test_autocast.py --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/test_data.py --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/test_ds_config_model.py --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/test_mup_optimizers.py --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/test_runtime_utils.py --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/activation_checkpointing/* --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/pipe/test_pipe_schedule.py --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/sparse_tensor/* --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/utils/* --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/zero/test_ignore_unused_parameters.py --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/zero/test_zero_config.py --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/zero/test_zero_dynamic_class.py --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/zero/test_zero_offloadpp.py --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/zero/test_zero_tiled.py --timeout=30 --timeout-method=thread
+        pytest --verbose runtime/zero/test_zeropp.py --timeout=30 --timeout-method=thread
