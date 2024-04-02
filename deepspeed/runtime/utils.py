@@ -900,26 +900,24 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, use_graph=F
             dist.all_reduce(device_total_norm, op=dist.ReduceOp.MAX, group=moe_ep_group)
         total_norm = device_total_norm
     else:
+        
+        if 'norm_tensors_compute_buffer' not in graph_cache or len(graph_cache['norm_tensors_compute_buffer']) != len(input_tensors):
+            graph_cache['norm_tensors_compute_buffer'] = [torch.empty([], dtype=torch.float, device=get_accelerator().current_device_name()) for t in input_tensors]
+        compute_buffer = graph_cache['norm_tensors_compute_buffer']
+
+        def _norm_tensors(tensor_list, _compute_buffer, _norm_type):
+            for i, t in enumerate(tensor_list):
+                _compute_buffer[i].data.copy_(t.data.float().norm(_norm_type)**_norm_type)
+                if i != 0:
+                    _compute_buffer[0].data.add_(_compute_buffer[i].data)
+
         if use_graph:
-            if 'norm_tensors_compute_buffer' not in graph_cache:
-                graph_cache['norm_tensors_compute_buffer'] = [t.data.float().norm(norm_type) for t in input_tensors]
-            compute_buffer = graph_cache['norm_tensors_compute_buffer']
-
-            def _norm_tensors(tensor_list, _compute_buffer, _norm_type):
-                for i, t in enumerate(tensor_list):
-                    _compute_buffer[i].data.copy_(t.data.float().norm(_norm_type)**_norm_type)
-                    if i != 0:
-                        _compute_buffer[0].data.add_(_compute_buffer[i].data)
-
             graph_process(False, _norm_tensors, input_tensors, compute_buffer, norm_type)
-
-            total_norm = compute_buffer[0]
-            device_total_norm = total_norm.to(get_accelerator().current_device_name()).float().detach()
         else:
-            for t in input_tensors:
-                all_norms.append(t.data.float().norm(norm_type))
-            total_norm = torch.stack(all_norms).pow(norm_type).sum()
-            device_total_norm = total_norm.to(get_accelerator().current_device_name())
+            _norm_tensors(input_tensors, compute_buffer, norm_type)
+
+        total_norm = compute_buffer[0]
+        device_total_norm = total_norm.to(get_accelerator().current_device_name()).float().detach()
 
         if mpu is not None:
             dist.all_reduce(device_total_norm, op=dist.ReduceOp.SUM, group=mpu.get_model_parallel_group())
