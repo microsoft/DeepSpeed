@@ -900,9 +900,13 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, use_graph=F
             dist.all_reduce(device_total_norm, op=dist.ReduceOp.MAX, group=moe_ep_group)
         total_norm = device_total_norm
     else:
-        
-        if 'norm_tensors_compute_buffer' not in graph_cache or len(graph_cache['norm_tensors_compute_buffer']) != len(input_tensors):
-            graph_cache['norm_tensors_compute_buffer'] = [torch.empty([], dtype=torch.float, device=get_accelerator().current_device_name()) for t in input_tensors]
+
+        if 'norm_tensors_compute_buffer' not in graph_cache or len(
+                graph_cache['norm_tensors_compute_buffer']) != len(input_tensors):
+            graph_cache['norm_tensors_compute_buffer'] = [
+                torch.empty([], dtype=torch.float, device=get_accelerator().current_device_name())
+                for t in input_tensors
+            ]
         compute_buffer = graph_cache['norm_tensors_compute_buffer']
 
         def _norm_tensors(tensor_list, _compute_buffer, _norm_type):
