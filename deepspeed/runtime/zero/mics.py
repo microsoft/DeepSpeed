@@ -154,7 +154,7 @@ class MiCS_Init(Init):
             ds_process_group = dist.get_world_group()
         else:
             ds_process_group = data_parallel_group
-        
+
         self.mics_comm_groups = create_mics_comm_groups(
             _ds_config.mics_shard_size,
             ds_process_group,
