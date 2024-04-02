@@ -9,6 +9,8 @@ import pytest
 import gc
 from unit.common import DistributedTest
 from unit.simple_model import SimplePRMoEModel, SimpleMoEModel, sequence_dataloader
+import deepspeed.comm as dist
+from deepspeed.moe.sharded_moe import top1gating
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer, is_moe_param
 from deepspeed.runtime.utils import required_torch_version
 
@@ -132,3 +134,25 @@ class TestPRMoE(DistributedTest):
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
+
+
+class TestTopk(DistributedTest):
+    world_size = 2
+
+    def test(self):
+        if dist.get_rank() == 0:
+            logits = torch.tensor([[0.8903, 0.0275], [0.9031, 0.5386]], device='cuda:0')
+        elif dist.get_rank() == 1:
+            logits = torch.tensor(
+                [[0.8903, 0.0275], [0.9031, 0.5386], [0.7312, 0.9047], [0.3370, 0.0347], [0.6334, 0.0201],
+                 [0.9307, 0.5607], [0.1691, 0.5992], [0.6501, 0.3025], [0.7642, 0.5446], [0.1114, 0.6924]],
+                device='cuda:1')
+
+        output = top1gating(logits=logits,
+                            capacity_factor=1,
+                            min_capacity=0,
+                            used_token=None,
+                            noisy_gate_policy=None,
+                            drop_tokens=False,
+                            use_rts=True,
+                            use_tutel=False)
