@@ -15,7 +15,7 @@ from deepspeed.runtime.utils import required_torch_version
 
 @pytest.mark.parametrize("zero_stage", [0, 1, 2])
 class TestSimpleMoE(DistributedTest):
-    world_size = 1
+    world_size = 2
 
     def test(self, zero_stage):
         if not required_torch_version(min_version=1.8):
