@@ -411,11 +411,11 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
 
     dist.all_reduce(scaled_norm_tensor, group=pg)
     total_norm = scaled_norm_tensor
-    total_norm = total_norm.to(get_accelerator().current_device_name())
+    total_norm = total_norm.to(parameters[0].device)
 
-    max_norm = get_accelerator().FloatTensor([float(max_norm)])
+    max_norm = torch.tensor([float(max_norm)], device=total_norm.device)
     clip_coef = max_norm / (total_norm + 1e-6)
-    tmp_tensor = get_accelerator().FloatTensor([1.0])
+    tmp_tensor = torch.tensor([1.0], device=clip_coef.device)
     clip_coef = torch.min(tmp_tensor, clip_coef)
     for p in parameters:
         p.grad.data.mul_(clip_coef)
@@ -898,7 +898,7 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, use_graph=F
             dist.all_reduce(device_total_norm, op=dist.ReduceOp.MAX, group=mpu.get_model_parallel_group())
         if moe_ep_group is not None:
             dist.all_reduce(device_total_norm, op=dist.ReduceOp.MAX, group=moe_ep_group)
-        total_norm = device_total_norm
+        total_norm = device_total_norm.to(input_tensors[0].device)
     else:
 
         if 'norm_tensors_compute_buffer' not in graph_cache or len(
@@ -920,14 +920,13 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, use_graph=F
         else:
             _norm_tensors(input_tensors, compute_buffer, norm_type)
 
-        total_norm = compute_buffer[0]
-        device_total_norm = total_norm.to(get_accelerator().current_device_name()).float().detach()
+        device_total_norm = compute_buffer[0].float().detach()
 
         if mpu is not None:
             dist.all_reduce(device_total_norm, op=dist.ReduceOp.SUM, group=mpu.get_model_parallel_group())
         if moe_ep_group is not None:
             dist.all_reduce(device_total_norm, op=dist.ReduceOp.SUM, group=moe_ep_group)
-        total_norm = device_total_norm.pow(1. / norm_type)
+        total_norm = device_total_norm.to(input_tensors[0].device).pow(1. / norm_type)
 
     inf_or_nan = total_norm.isinf().logical_or(total_norm.isnan())
     total_norm.masked_fill_(inf_or_nan, -1)
