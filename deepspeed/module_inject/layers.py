@@ -7,24 +7,83 @@ import torch
 from deepspeed import comm as dist
 from torch import nn
 from torch.nn import functional as F
-
 from torch.nn.parameter import Parameter
 from deepspeed.accelerator import get_accelerator
 from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
+from abc import ABC, abstractmethod
 
 
-class LinearAllreduce(nn.Module):
+class RowParallel(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, group: dist.ProcessGroup, input_):
+        ctx.group = group
+        if group == None:
+            return input_
+        # for debug ,will apply dist.inference_all_reduce
+        dist.all_reduce(input_, group=group)
+        return input_
+
+    @staticmethod
+    def backward(ctx, grad_output):
+
+        return None, grad_output
+
+
+class ColumnParallel(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, group, input_):
+        ctx.group = group
+        return input_
+
+    @staticmethod
+    def backward(ctx, grad_output):
+
+        if ctx.group == None:
+            return None, grad_output
+        # for debug ,will apply dist.inference_all_reduce
+        dist.all_reduce(grad_output, group=ctx.group)
+        return None, grad_output
+
+
+#Parent class handling common logic
+class Replaced_Layer(nn.Module, ABC):
+
+    def __init__(self):
+        super().__init__()
+        self.support_training = False
+
+    @abstractmethod
+    def forward(self, input):
+        """
+        Forward pass method. Must be implemented by subclasses.
+        """
+        pass
+
+    def config_tp_training(self, weight):
+        assert self.support_training, "No implementation of backward."
+        if weight is not None:
+            weight.requires_grad = True
+            setattr(weight, 'tensor_model_parallel', True)
+
+
+class LinearAllreduce(Replaced_Layer):
 
     def __init__(self, weight, bias=None, mp_group=None):
         super(LinearAllreduce, self).__init__()
         self.weight = weight
         self.bias = bias
+        self.support_training = True
+        self.config_tp_training(self.weight)
+        if self.bias is not None:
+            self.config_tp_training(self.bias)
+
         self.mp_group = mp_group
 
     def forward(self, input):
         output = torch.matmul(input, self.weight.transpose(-1, -2))
-        if self.mp_group is not None:
-            dist.inference_all_reduce(output, group=self.mp_group)
+        output = RowParallel.apply(self.mp_group, output)
         if self.bias is not None:
             output += self.bias
         return output
@@ -59,10 +118,13 @@ class LmHeadLinearAllreduce(nn.Module):
         return output
 
 
-class LinearLayer(nn.Module):
+class LinearLayer(Replaced_Layer):
 
-    def __init__(self, weight_shape=None, dtype=torch.half, weight=None, bias=None):
+    def __init__(self, weight_shape=None, dtype=torch.half, weight=None, bias=None, mp_group=None):
         super(LinearLayer, self).__init__()
+        self.support_training = True
+
+        self.mp_group = mp_group
         if weight is not None:
             self.weight = weight
             self.bias = bias
@@ -75,8 +137,11 @@ class LinearLayer(nn.Module):
                             dtype=dtype,
                             device=get_accelerator().current_device_name())) \
                 if bias is not None else None
+        self.config_tp_training(self.weight)
+        self.config_tp_training(self.bias)
 
     def forward(self, input):
+        input = ColumnParallel.apply(self.mp_group, input)
         output = torch.matmul(input, self.weight.transpose(-1, -2))
         if self.bias is not None:
             output += self.bias

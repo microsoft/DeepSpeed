@@ -34,7 +34,6 @@ from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.bf16_optimizer import BF16_Optimizer
-
 from deepspeed.runtime.config import DEEPSPEED_OPTIMIZERS, \
     ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER, \
     TORCH_ADAM_PARAM, ADAM_W_MODE, ADAM_W_MODE_DEFAULT, ZERO_ONE_ADAM_OPTIMIZER, MUADAM_OPTIMIZER, MUADAMW_OPTIMIZER, \
@@ -73,6 +72,7 @@ from deepspeed.utils.debug import debug_extract_module_and_param_names, debug_cl
 from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.utils import clip_grad_norm_
+from deepspeed.utils import parallel_states
 from deepspeed.runtime.eigenvalue import Eigenvalue
 from deepspeed.runtime.data_pipeline.constants import DATA_SAMPLING, \
     DATA_ROUTING, DATA_SAMPLING_ENABLED, CURRICULUM_LEARNING, \
@@ -364,6 +364,27 @@ class DeepSpeedEngine(Module):
 
         if self._config.compile_config.enabled:
             self._set_client_model(CompiledModuleWrapper(self.module, self._config.compile_config))
+
+        if self.zero_autotp_size() > 0:
+            self._configure_tensor_parallel_states()
+
+    def _configure_tensor_parallel_states(self):
+        # It should have a unified group initialization function,
+        # Like Megatron-LM, including tp, sp, pp, dp, ep, and so on
+
+        # The compatibility has only been validated for 'gpus==autotp_size' at the moment.
+        # Sanity check
+
+        assert self.zero_autotp_size() == dist.get_world_size_from_launcher(
+        ), "Currently, the compatibility between 'autotp' and 'zero' has not been validated"
+        assert self.zero_optimization_stage(
+        ) == 0, "Currently, the compatibility between 'autotp' and 'zero_stage > 0' has not been validated"
+
+        self.mpu = parallel_states
+
+        # disable self.allreduce_gradients() for dp =1 test.
+        self.enable_backward_allreduce = False
+        self.mpu._create_model_parallel(tensor_model_parallel_size=self.zero_autotp_size())
 
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
@@ -789,6 +810,9 @@ class DeepSpeedEngine(Module):
     def zero_ignore_unused_parameters(self):
         return self._config.zero_config.ignore_unused_parameters
 
+    def zero_autotp_size(self):
+        return self._config.zero_config.autotp_size
+
     def graph_harvesting(self):
         return self._config.graph_harvesting
 
@@ -1059,6 +1083,11 @@ class DeepSpeedEngine(Module):
                 f'Client Optimizer (type = {type(self.client_optimizer)} is not instantiated but Client LR Scheduler is instantiated'
 
     def _broadcast_model(self):
+        if self.zero_autotp_size() > 0:
+            # At present, only the 'tp' has been validated with 'dp=1', where the 'seq_data_parallel_group'
+            # will execute an incorrect broadcast. Hard code skip for test.
+            # Unified group creation function is needed
+            return
 
         def is_replicated(p):
             if hasattr(p, "ds_status") and p.ds_status is not ZeroParamStatus.AVAILABLE:
@@ -1996,7 +2025,6 @@ class DeepSpeedEngine(Module):
         self._stop_timers(self.engine_timers.backward_inner_timers)
 
         self._start_timers(self.engine_timers.backward_reduce_timers)
-
         if allreduce_gradients and self.enable_backward_allreduce:
             # Traditional code path that allreduces the module parameter grads
             self.allreduce_gradients()

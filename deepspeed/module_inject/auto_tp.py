@@ -344,7 +344,6 @@ class AutoTP():
             return LinearAllreduce(torch.nn.parameter.Parameter(data_dc, requires_grad=False), child.bias if child.bias is None else \
                         torch.nn.parameter.Parameter(move(child.bias, get_accelerator().current_device_name())), self.mp_group)
         else:
-
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
             # else [weight_shape[0] // mp_size, weight_shape[1]]
             if self.conv_linear_layer:
@@ -377,7 +376,9 @@ class AutoTP():
                     bias_data_dc = None
 
             setattr(child, "replaced", True)
-            return LinearLayer(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False), bias=bias_data_dc)
+            return LinearLayer(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False),
+                               bias=bias_data_dc,
+                               mp_group=self.mp_group)
 
     def _slice_embedding(self, child, name, conv_linear_layer):
         if getattr(child, "replaced", False) == True:
