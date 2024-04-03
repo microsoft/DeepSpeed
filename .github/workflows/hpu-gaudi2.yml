@@ -5,8 +5,11 @@ on:
   schedule:
     - cron: "0 0 * * *"
   pull_request:
-    paths:
-      - ".github/workflows/hpu-gaudi2.yml"
+    paths-ignore:
+      - 'docs/**'
+      - 'blogs/**'
+      - 'deepspeed/inference/v2/**'
+      - 'tests/unit/inference/v2/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
