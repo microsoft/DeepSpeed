@@ -803,6 +803,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                  zero_param_parallel_group=None,
                  zero_quantized_weights=False,
                  zero_quantized_nontrainable_weights=False,
+                 sequence_data_parallel_group=None,
                  param_swapper=None):
         """A context to enable massive model construction for training with
         ZeRO-3. Models are automatically partitioned (or, sharded) across the
@@ -926,6 +927,15 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             self.ds_process_group = dist.get_world_group()
         else:
             self.ds_process_group = data_parallel_group
+
+        if sequence_data_parallel_group is not None:
+            logger.warning(
+                f"sequence_data_parallel_group' is deprecated and will be removed. Use 'data_parallel_group' instead.")
+            if data_parallel_group is not None:
+                raise ValueError(
+                    "Both 'data_parallel_group' and 'sequence_data_parallel_group' were specified. Please provide only one of these arguments."
+                )
+            self.ds_process_group = sequence_data_parallel_group
 
         self.rank = dist.get_rank(group=self.ds_process_group)
         self.dp_world_size = dist.get_world_size(group=self.ds_process_group)
