@@ -44,7 +44,7 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
 
     # Note that both forward and backward are @staticmethods
     @staticmethod
-    @autocast_custom_fwd
+    @autocast_custom_fwd(cast_inputs=torch.bfloat16)
     # bias is an optional argument
     def forward(ctx, input, weight, bias=None):
 
