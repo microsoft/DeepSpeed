@@ -16,7 +16,7 @@ from deepspeed.runtime.utils import (get_global_norm_of_tensors, clip_tensors_by
                                      align_dense_tensors, all_gather_dp_groups, bwc_tensor_model_parallel_rank,
                                      is_model_parallel_parameter, see_memory_usage, graph_process,
                                      get_norm_with_moe_layers)
-from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state, fragment_address, groups
+from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state, fragment_address, groups, logger
 from deepspeed.moe.utils import is_moe_param, is_moe_param_group
 from deepspeed.checkpoint import enable_universal_checkpoint
 from deepspeed.checkpoint.constants import (DS_VERSION, PARTITION_COUNT, BASE_OPTIMIZER_STATE,
@@ -294,6 +294,8 @@ class BF16_Optimizer(ZeROOptimizer):
 
         self._global_grad_norm = all_groups_norm
 
+        if all_groups_norm.item() == float('inf') or all_groups_norm.item() == -float('inf') or all_groups_norm.item() != all_groups_norm.item():
+            logger.warning(f"all_groups_norm overflow in BF16_Optimizer.")
         assert all_groups_norm > 0.
         if self.clip_grad > 0.:
             clip_tensors_by_global_norm(input_tensors=self.get_grads_for_norm(for_clipping=True),
