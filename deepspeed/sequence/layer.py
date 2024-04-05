@@ -18,7 +18,7 @@ def single_all_to_all(input, scatter_idx, gather_idx, group):
     inp_shape[scatter_idx] = inp_shape[scatter_idx] // seq_world_size
     if scatter_idx < 2:
         input_t = input.reshape(
-            [seq_world_size, inp_shape[scatter_idx]] + \
+            [-1, inp_shape[scatter_idx]] + \
             inp_shape[scatter_idx + 1:]
         ).contiguous()
     else:
