@@ -18,7 +18,7 @@ from deepspeed.runtime.utils import (get_global_norm_of_tensors, clip_tensors_by
                                      align_dense_tensors, all_gather_dp_groups, bwc_tensor_model_parallel_rank,
                                      is_model_parallel_parameter, see_memory_usage, graph_process)
 
-from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state, fragment_address
+from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state, fragment_address, logger
 from deepspeed.checkpoint import enable_universal_checkpoint
 from deepspeed.checkpoint.constants import (DS_VERSION, PARTITION_COUNT, BASE_OPTIMIZER_STATE,
                                             SINGLE_PARTITION_OF_FP32_GROUPS, CLIP_GRAD, GROUP_PADDINGS,
@@ -263,7 +263,18 @@ class BF16_Optimizer(ZeROOptimizer):
                                                      use_graph=self.graph_harvesting)
         self._global_grad_norm = all_groups_norm
 
-        assert all_groups_norm > 0.
+        # Overflow check for v0.14.0 only. 
+        # Note: all_groups_norm is float in v0.14.0. (all_groups_norm is single value torch tensor starting from v0.14.1+)
+        if all_groups_norm == float('inf') or all_groups_norm == -float('inf'):
+            logger.warning(f"all_groups_norm Overflow in BF16_Optimizer.")
+        
+        # NaN check for v0.14.0 only.
+        if all_groups_norm == float('nan') or all_groups_norm != all_groups_norm:
+            logger.warning(f"all_groups_norm is NaN in BF16_Optimizer.")
+
+        if all_groups_norm <=0:
+            logger.warning(f"all_groups_norm is not positive, hex val: {all_groups_norm.hex()}")
+        assert all_groups_norm > 0
         if self.clip_grad > 0.:
             clip_tensors_by_global_norm(input_tensors=self.get_grads_for_norm(for_clipping=True),
                                         max_norm=self.clip_grad,
