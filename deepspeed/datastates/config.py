@@ -10,6 +10,5 @@ class DeepSpeedDataStatesConfig(DeepSpeedConfigObject):
         self.config = {}
 
         if "datastates_ckpt" in param_dict.keys():
-            config = param_dict["datastates_ckpt"]
             self.enabled = True
-            self.config['host_cache_size'] = config["host_cache_size"]
+            self.config = param_dict["datastates_ckpt"]

@@ -7,9 +7,9 @@ from datastates import DataStates
 
 class DataStatesCheckpointEngine(CheckpointEngine):
 
-    def __init__(self, config_params, rank):
-        super().__init__(config_params)
-        self.ckpt_engine = DataStates(config_params, rank)
+    def __init__(self, deepspeed_config, rank):
+        super().__init__(deepspeed_config)
+        self.ckpt_engine = DataStates(deepspeed_config, rank)
     
     def create(self, tag):
         log_dist(f"[DataStates] Checkpoint {tag} is about to be saved!", ranks=[0])
