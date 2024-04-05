@@ -59,20 +59,6 @@ def bf16_required_version_check(accelerator_check=True):
         return False
 
 
-def required_torch_version(min_version=None, max_version=None):
-    assert min_version or max_version, "Must provide a min_version or max_version argument"
-
-    torch_version = pkg_version.parse(torch.__version__)
-
-    if min_version and pkg_version.parse(str(min_version)) > torch_version:
-        return False
-
-    if max_version and pkg_version.parse(str(max_version)) < torch_version:
-        return False
-
-    return True
-
-
 def required_amp_check():
     from importlib.util import find_spec
     if find_spec('apex') is None:
