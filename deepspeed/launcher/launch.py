@@ -163,6 +163,10 @@ def main():
     logger.info(f"dist_world_size={dist_world_size}")
     current_env["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, local_gpu_ids))
     logger.info(f"Setting CUDA_VISIBLE_DEVICES={current_env['CUDA_VISIBLE_DEVICES']}")
+    current_env["NPU_VISIBLE_DEVICES"] = ",".join(map(str, local_gpu_ids))
+    logger.info(f"Setting NPU_VISIBLE_DEVICES={current_env['NPU_VISIBLE_DEVICES']}")
+    current_env["ASCEND_RT_VISIBLE_DEVICES"] = ",".join(map(str, local_gpu_ids))
+    logger.info(f"Setting ASCEND_RT_VISIBLE_DEVICES={current_env['ASCEND_RT_VISIBLE_DEVICES']}")
 
     # set PyTorch distributed related environmental variables
     current_env["MASTER_ADDR"] = args.master_addr
