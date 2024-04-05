@@ -153,13 +153,17 @@ def is_moe_param_group(param_group):
 
 
 def configure_moe_param_groups(model_parameters: List):
+    assert isinstance(model_parameters, list), "model_parameters must be a list"
+
+    for p in model_parameters:
+        # match torch.optim.Optimizer expectations, 
+        # see: https://github.com/pytorch/pytorch/blob/2ffab6e663b9c6951048b8c8ba82d2cc5ca5c2fc/torch/optim/optimizer.py#L270-L272
+        if not isinstance(p, (torch.Tensor, dict)):
+            raise TypeError("param argument that would be given to the optimizer should be "
+                            f"an iterable of Tensors or dicts, but got {type(first)}")
+
     # peak at the first element to determine how to proceed
     first = model_parameters[0]
-
-    # match torch.optim.Optimizer expectations
-    if not isinstance(first, (torch.Tensor, dict)):
-        raise TypeError("param argument that would be given to the optimizer should be "
-                        f"an iterable of Tensors or dicts, but got {type(first)}")
 
     # Case 1: model_parameters is a list of torch.nn.Parameter
     #   -> need to create moe compatible param groups
