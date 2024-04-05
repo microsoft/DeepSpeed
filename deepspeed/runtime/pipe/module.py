@@ -21,7 +21,6 @@ from .topology import PipeDataParallelTopology, PipelineParallelGrid
 from deepspeed.runtime.state_dict_factory import SDLoaderFactory
 from deepspeed.accelerator import get_accelerator
 from deepspeed.checkpoint.utils import clone_tensors_for_torch_save
-from deepspeed.runtime.checkpoint_engine.datastates_checkpoint_engine import DataStatesCheckpointEngine
 
 class PipelineError(Exception):
     """Errors related to the use of deepspeed.PipelineModule """
@@ -585,7 +584,7 @@ class PipelineModule(nn.Module):
         layer_list = self.forward_funcs[start:end]
 
         checkpoint_engine.makedirs(save_dir, exist_ok=True)
-        debloat_memory = isinstance(checkpoint_engine, DataStatesCheckpointEngine) # "DataStatesCheckpointEngine" not in str(type(checkpoint_engine))
+        debloat_memory = "DataStatesCheckpointEngine" not in str(type(checkpoint_engine))
         for idx, layer in enumerate(layer_list):
             model_ckpt_path = self.ckpt_layer_path(save_dir, start + idx)
             if not hasattr(layer, 'state_dict'):
