@@ -211,6 +211,7 @@ def top1gating(logits: Tensor,
     # if we don't want to drop any tokens
     if not drop_tokens:
         new_capacity = torch.max(exp_counts).to(logits.device)
+        # Communicate across expert processes to pick the maximum capacity.
         if ep_group is not None:
             dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
         if groups._get_expert_model_parallel_world_size() == 1:
@@ -218,7 +219,8 @@ def top1gating(logits: Tensor,
             # This is since we are going to activate drop_tokens() to drop duplicate tokens.
             tp = 1 if groups.mpu is None else bwc_tensor_model_parallel_world_size(mpu=groups.mpu)
             new_capacity = torch.ceil(new_capacity / tp).mul(tp).to(new_capacity.dtype)
-        capacity = new_capacity
+        # Make sure the capacity value does not exceed the number of tokens.
+        capacity = min(new_capacity, torch.tensor(mask1.size(0)))
 
     # Compute l_aux
     me = torch.mean(gates, dim=0)
