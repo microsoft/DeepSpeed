@@ -94,7 +94,7 @@ from .compiler import CompiledModuleWrapper
 from ..ops.adam import FusedAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE
-from ..moe.utils import is_moe_param
+from ..moe.utils import is_moe_param, configure_moe_param_groups
 from ..git_version_info import version
 
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
@@ -1227,6 +1227,8 @@ class DeepSpeedEngine(Module):
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
         if client_optimizer is None:
+            if self.has_moe_layers:
+                model_parameters = configure_moe_param_groups(model_parameters)
             basic_optimizer = self._configure_basic_optimizer(model_parameters)
             log_dist(f"Using DeepSpeed Optimizer param name {self.optimizer_name()} as basic optimizer", ranks=[0])
         else:
@@ -2769,7 +2771,7 @@ class DeepSpeedEngine(Module):
 
         load_zero_checkpoint = load_path is not None and (self.zero_optimization() or self.bfloat16_enabled())
         if load_zero_checkpoint:
-            if load_optimizer_states and not load_module_only:
+            if (load_optimizer_states and not load_module_only) or self.load_universal_checkpoint():
                 success = self._load_zero_checkpoint(load_dir, tag, load_optimizer_states=load_optimizer_states)
             else:
                 success = False
@@ -2794,8 +2796,6 @@ class DeepSpeedEngine(Module):
 
         if self.load_universal_checkpoint():
             self.optimizer.update_lp_params()
-            if load_zero_checkpoint:
-                self.update_optimizer_step(step=client_states['iteration'])
 
         return load_path, client_states
 
@@ -2972,23 +2972,6 @@ class DeepSpeedEngine(Module):
         else:
             logger.info(f"loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}")
         return True
-
-    def update_optimizer_step(self, step):
-
-        def set_step(d):
-            if 'step' in d and isinstance(d['step'], torch.Tensor):
-                d['step'] = torch.tensor(step, dtype=d['step'].dtype, device=d['step'].device)
-            else:
-                d['step'] = step
-
-        optimizer = self.optimizer
-        base_optimizer = optimizer.optimizer
-        state = base_optimizer.state
-        for group in optimizer.param_groups:
-            set_step(group)
-            for p in group['params']:
-                if p in state and len(state[p]) > 0:
-                    set_step(state[p])
 
     def _get_mp_rank_zero_checkpoint_names(self, load_dir, tag, mp_rank, dp_world_size, bf16_mode):
         zero_ckpt_names = []
