@@ -264,7 +264,6 @@ class BF16_Optimizer(ZeROOptimizer):
                                                      use_graph=self.graph_harvesting)
         self._global_grad_norm = all_groups_norm
 
-        all_groups_norm = -5
         # Overflow check for v0.14.0 only. 
         # Note: all_groups_norm is float in v0.14.0. (all_groups_norm is single value torch tensor starting from v0.14.1+)
         if all_groups_norm == float('inf') or all_groups_norm == -float('inf'):
@@ -274,7 +273,7 @@ class BF16_Optimizer(ZeROOptimizer):
         if all_groups_norm == float('nan') or all_groups_norm != all_groups_norm:
             logger.warning(f"all_groups_norm is NaN in BF16_Optimizer.")
 
-        if all_groups_norm <= 0:
+        if all_groups_norm <=0:
             logger.warning(f"all_groups_norm is not positive, hex val: {hex(struct.unpack('<I', struct.pack('<f', all_groups_norm))[0])}")
         assert all_groups_norm > 0
         if self.clip_grad > 0.:
