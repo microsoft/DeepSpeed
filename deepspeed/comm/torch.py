@@ -29,7 +29,7 @@ def has_all_reduce_coalesced():
 
 
 def get_coalescing_manager(group, device, reqs, async_op):
-    if required_torch_version(min_version=2.0, max_version=2.0)
+    if required_torch_version(min_version=2.0, max_version=2.0):
         return torch.distributed.distributed_c10d._coalescing_manager(group, device=device, reqs=reqs)
     elif required_torch_version(min_version=2.1):
         return torch.distributed.distributed_c10d._coalescing_manager(group, device=device, async_ops=async_op)
