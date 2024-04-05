@@ -7,7 +7,6 @@ import pytest
 import torch
 from deepspeed.accelerator import get_accelerator, is_current_accelerator_supported
 from deepspeed.git_version_info import torch_info
-from packaging import version as pkg_version
 
 
 def skip_on_arch(min_arch=7):
