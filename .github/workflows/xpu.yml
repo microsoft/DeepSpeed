@@ -26,7 +26,7 @@ jobs:
       ports:
         - 80
       options: --privileged -it --rm --device /dev/dri:/dev/dri -v /dev/dri/by-path:/dev/dri/by-path --ipc=host --cap-add=ALL
-    
+
     steps:
     - uses: actions/checkout@v3
     - name: Check container state
