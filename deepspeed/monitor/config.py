@@ -8,8 +8,30 @@ from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 
 def get_monitor_config(param_dict):
-    monitor_dict = {key: param_dict.get(key, {}) for key in ("tensorboard", "wandb", "csv_monitor")}
+    monitor_dict = {key: param_dict.get(key, {}) for key in ("aim", "tensorboard", "wandb", "csv_monitor")}
     return DeepSpeedMonitorConfig(**monitor_dict)
+
+
+class AimConfig(DeepSpeedConfigModel):
+    """Sets parameters for aim monitor."""
+
+    enabled: bool = False
+    """ Whether logging to aim is enabled. Requires `aim` package is installed. """
+
+    repo: str = None
+    """ Path or the url of the repo. """
+
+    experiment_name: str = None
+    """ Name for the experiment. """
+
+    log_system_params: bool = True
+    """ Wether or not log system parameters. """
+
+    run_name: str = None
+    """ Aim run name, for reusing the specified run. """
+
+    run_hash: str = None
+    """ Aim run hash, for reusing the specified run. """
 
 
 class TensorBoardConfig(DeepSpeedConfigModel):
@@ -63,6 +85,9 @@ class CSVConfig(DeepSpeedConfigModel):
 class DeepSpeedMonitorConfig(DeepSpeedConfigModel):
     """Sets parameters for various monitoring methods."""
 
+    aim: AimConfig = {}
+    """ Aim monitor, requires `aim` package is installed. """
+
     tensorboard: TensorBoardConfig = {}
     """ TensorBoard monitor, requires `tensorboard` package is installed. """
 
@@ -74,6 +99,6 @@ class DeepSpeedMonitorConfig(DeepSpeedConfigModel):
 
     @root_validator
     def check_enabled(cls, values):
-        values["enabled"] = values.get("tensorboard").enabled or values.get("wandb").enabled or values.get(
+        values["enabled"] = values.get("aim").enabled or values.get("tensorboard").enabled or values.get("wandb").enabled or values.get(
             "csv_monitor").enabled
         return values

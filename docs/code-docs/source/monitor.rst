@@ -2,7 +2,7 @@ Monitoring
 ==========
 
 Deepspeed’s Monitor module can log training details into a
-Tensorboard-compatible file, to WandB, or to simple CSV files. Below is an
+Aim, Tensorboard-compatible file, to WandB, or to simple CSV files. Below is an
 overview of what DeepSpeed will log automatically.
 
 .. csv-table:: Automatically Logged Data
@@ -18,6 +18,11 @@ overview of what DeepSpeed will log automatically.
     `Train/Samples/elapsed_time_ms_backward_inner`,The backward time that does not include the gradient reduction time. Only in cases where the gradient reduction is not overlapped, if it is overlapped then the inner time should be about the same as the entire backward time.,`flops_profiler.enabled` or `wall_clock_breakdown`.
     `Train/Samples/elapsed_time_ms_backward_allreduce`,The global duration of the allreduce operation.,`flops_profiler.enabled` or `wall_clock_breakdown`.
     `Train/Samples/elapsed_time_ms_step`,The optimizer step time,`flops_profiler.enabled` or `wall_clock_breakdown`.
+
+Aim
+-----------
+.. _AimConfig:
+.. autopydantic_model:: deepspeed.monitor.config.AimConfig
 
 TensorBoard
 -----------
