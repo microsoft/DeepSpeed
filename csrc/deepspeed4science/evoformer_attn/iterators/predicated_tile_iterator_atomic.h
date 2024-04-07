@@ -12,8 +12,7 @@ namespace epilogue {
 namespace threadblock {
 
 template <class AccessType, class Enable = void>
-struct atomic_store {
-};
+struct atomic_store {};
 
 template <class AccessType>
 struct atomic_store<AccessType,
