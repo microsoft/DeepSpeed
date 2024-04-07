@@ -36,13 +36,6 @@ jobs:
         python -c "import torch; print('torch:', torch.__version__, torch)"
         python -c "import torch; import intel_extension_for_pytorch; print('XPU available:', torch.xpu.is_available())"
 
-    - name: Install transformers
-      run: |
-        git clone https://github.com/huggingface/transformers
-        cd transformers
-        git rev-parse --short HEAD
-        pip install .
-
     - name: Install deepspeed
       run: |
         pip install py-cpuinfo
