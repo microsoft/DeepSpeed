@@ -349,7 +349,7 @@ class Autotuner:
             if model_info and "hidden_size" in model_info:
                 hs = model_info["hidden_size"]
                 template_config[ZERO_OPTIMIZATION]['reduce_bucket_size'] = hs * hs
-                template_config[ZERO_OPTIMIZATION]['stage3_prefetch_bucket_size'] = 0.9 * hs * hs
+                template_config[ZERO_OPTIMIZATION]['stage3_prefetch_bucket_size'] = int(0.9 * hs * hs)
                 template_config[ZERO_OPTIMIZATION]['stage3_param_persistence_threshold'] = 10 * hs
             prefix = "z3_"
         else:
