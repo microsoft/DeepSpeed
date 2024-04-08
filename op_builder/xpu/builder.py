@@ -11,9 +11,9 @@ try:
     # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed
     # if successful this also means we're doing a local install and not JIT compile path
     from op_builder import __deepspeed__  # noqa: F401 # type: ignore
-    from op_builder.builder import OpBuilder, TORCH_MAJOR, TORCH_MINOR
+    from op_builder.builder import OpBuilder
 except ImportError:
-    from deepspeed.ops.op_builder.builder import OpBuilder, TORCH_MAJOR, TORCH_MINOR
+    from deepspeed.ops.op_builder.builder import OpBuilder
 
 
 class SYCLOpBuilder(OpBuilder):
@@ -23,11 +23,11 @@ class SYCLOpBuilder(OpBuilder):
             from intel_extension_for_pytorch.xpu.cpp_extension import DPCPPExtension
         except ImportError:
             from intel_extension_for_pytorch.xpu.utils import DPCPPExtension
-
+        include_dirs = [os.path.abspath(x) for x in self.strip_empty_entries(self.include_paths())]
         print("dpcpp sources = {}".format(self.sources()))
         dpcpp_ext = DPCPPExtension(name=self.absolute_name(),
                                    sources=self.strip_empty_entries(self.sources()),
-                                   include_dirs=self.strip_empty_entries(self.include_paths()),
+                                   include_dirs=include_dirs,
                                    extra_compile_args={
                                        'cxx': self.strip_empty_entries(self.cxx_args()),
                                    },
@@ -35,6 +35,10 @@ class SYCLOpBuilder(OpBuilder):
         return dpcpp_ext
 
     def version_dependent_macros(self):
+        try:
+            from op_builder.builder import TORCH_MAJOR, TORCH_MINOR
+        except ImportError:
+            from deepspeed.ops.op_builder.builder import TORCH_MAJOR, TORCH_MINOR
         # Fix from apex that might be relevant for us as well, related to https://github.com/NVIDIA/apex/issues/456
         version_ge_1_1 = []
         if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 0):
@@ -70,8 +74,9 @@ class SYCLOpBuilder(OpBuilder):
         ]
 
     def load(self, verbose=True):
-        from deepspeed.git_version_info import installed_ops, torch_info  # noqa: F401
-        if installed_ops.get(self.name, False):
+        from deepspeed.git_version_info import installed_ops, torch_info, accelerator_name  # noqa: F401
+        from deepspeed.accelerator import get_accelerator
+        if installed_ops.get(self.name, False) and accelerator_name == get_accelerator()._name:
             return importlib.import_module(self.absolute_name())
         else:
             return self.jit_load(verbose)

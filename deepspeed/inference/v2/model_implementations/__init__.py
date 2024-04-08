@@ -15,3 +15,5 @@ from .mistral import *
 from .mixtral import *
 from .falcon import *
 from .phi import *
+from .qwen import *
+from .qwen_v2 import *
