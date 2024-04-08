@@ -5,6 +5,9 @@
 
 from packaging import version as pkg_version
 
+import torch
+
+
 def required_torch_version(min_version=None, max_version=None):
     assert min_version or max_version, "Must provide a min_version or max_version argument"
 

@@ -14,7 +14,6 @@ import os
 import psutil
 import gc
 from math import sqrt
-from packaging import version as pkg_version
 
 import torch
 from deepspeed import comm as dist
