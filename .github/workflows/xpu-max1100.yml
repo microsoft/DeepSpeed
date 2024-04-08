@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   unit-tests:
-    runs-on: [self-hosted, intel]
+    runs-on: [self-hosted, intel, xpu]
     container:
       image: intel/intel-extension-for-pytorch:2.1.20-xpu
       ports:
