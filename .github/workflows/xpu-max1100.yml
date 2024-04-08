@@ -1,4 +1,4 @@
-name: xpu
+name: xpu-max1100
 
 on:
   workflow_dispatch:
