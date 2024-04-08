@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/hpu-gaudi2.yml"
       - "accelerator/hpu_accelerator.py"
+      - "op_builder/hpu/**"
       - "deepspeed/runtime/engine.py"
       - "deepspeed/runtime/bf16_optimizer.py"
       - "deepspeed/runtime/zero/stage_1_and_2.py"
@@ -22,7 +23,6 @@ on:
       - "deepspeed/module_inject/replace_module.py"
       - "deepspeed/module_inject/load_checkpoint.py"
       - "deepspeed/module_inject/inject.py"
-      - "op_builder/hpu/**"
       - "deepspeed/ops/transformer/**"
       - "deepspeed/ops/adam/**"
 
