@@ -5,9 +5,6 @@ on:
   schedule:
     - cron: "0 0 * * *"
   pull_request:
-    paths:
-      - ".github/workflows/xpu.yml"
-      - "accelerator/xpu_accelerator.py"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -40,7 +37,8 @@ jobs:
       run: |
         pip install py-cpuinfo
         pip install .[dev,autotuning]
-          ds_report
+        ds_report
+        python -c "from deepspeed.accelerator import get_accelerator; print('accelerator:', get_accelerator()._name)"
 
     - name: Python environment
       run: |
