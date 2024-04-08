@@ -9,7 +9,7 @@ import typing
 import torch
 from deepspeed import comm as dist
 
-from deepspeed.runtime.utils import required_torch_version
+from deepspeed.utils.torch import required_torch_version
 from deepspeed.accelerator import get_accelerator
 
 _groups = None
