@@ -235,6 +235,10 @@ class DeepSpeedEngine(Module):
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
 
+        mesh_device = dist.initialize_mesh_device((dist.get_world_size(), ), ("data_parallel", ))
+
+        groups.mesh_device = mesh_device
+
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
         self._do_sanity_check()
@@ -1794,6 +1798,13 @@ class DeepSpeedEngine(Module):
             ma = get_ma_status()
         else:
             see_memory_usage("Engine before forward", force=self.memory_breakdown())
+
+        #print(f"DEBUG ENGINE forward: {self.global_rank} input= {inputs} kwargs= {kwargs}")
+        #input_ids = kwargs.get("input_ids", None)
+        #atten_mask = kwargs.get("attention_mask", None)
+
+        #for e, f  in zip(input_ids, atten_mask):
+        #    print(f"DEBUG ENGINE forward: {self.global_rank} input_ids= {e.shape if e else None}, attn_mask= {f.shape if f else None}")
 
         flops_profiler_active = (self.flops_profiler_enabled()
                                  and self.global_steps == self.flops_profiler_profile_step() and self.global_rank == 0)

@@ -30,6 +30,7 @@ from deepspeed.utils import log_dist
 from deepspeed.utils.bwc import bwc_tensor_model_parallel_world_size, bwc_pipeline_parallel_world_size
 from deepspeed.utils.exceptions import DeprecatedException
 from deepspeed.accelerator import get_accelerator
+
 # Expert parallel group that the current rank belongs to.
 _EXPERT_PARALLEL_GROUP = {}
 # Expert data parallel group that the current rank belongs to.
@@ -46,6 +47,8 @@ expert_tensor_parallel_world_size = 1
 _ALL_TO_ALL_GROUP = {}
 
 _DATA_PARALLEL_GROUP = None
+
+mesh_device = None
 
 
 # Deprecated groups initialize function.
@@ -400,6 +403,10 @@ def _get_data_parallel_group():
     global mpu
     if mpu is not None:
         return mpu.get_data_parallel_group()
+
+    if mesh_device is not None:
+        print(f"Using mesh device for data parallel group")
+        return mesh_device.get_group(mesh_dim="data_parallel")
     # Return the clone of dist world group
     return _clone_world_group()
 
