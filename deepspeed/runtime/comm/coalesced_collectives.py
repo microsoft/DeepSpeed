@@ -86,13 +86,38 @@ def reduce_scatter_coalesced(
     this_rank = dist.get_rank(group)
     world_sz = dist.get_world_size(group)
     if dist.has_reduce_scatter_coalesced():
+        padding_size_list = tuple(math.ceil(t.numel() / world_sz) * world_sz - t.numel() for t in tensors)
+
         flattened_tensor_list = [tensor.view(-1).div_(world_sz) for tensor in tensors]
-        chunked_tensors = [torch.chunk(flattened_tensor, world_sz) for flattened_tensor in flattened_tensor_list]
+
+        chunked_tensors = []
+        for tensor_idx, flattened_tensor in enumerate(flattened_tensor_list):
+            if padding_size_list[tensor_idx] > 0:
+                flattened_tensor = torch.cat([
+                    flattened_tensor,
+                    torch.empty(padding_size_list[tensor_idx],
+                                dtype=flattened_tensor.dtype,
+                                device=flattened_tensor.device)
+                ])
+            chunks = torch.chunk(flattened_tensor, world_sz)
+            chunked_tensors.append(chunks)
+
         output_lst = [chunked_tensor[this_rank] for chunked_tensor in chunked_tensors]
         dist.reduce_scatter_coalesced(output_tensors=output_lst,
                                       input_tensors=flattened_tensor_list,
                                       group=group,
                                       async_op=False)
+        for tensor_idx in range(len(output_lst)):
+            if padding_size_list[tensor_idx] > 0:
+                tensor_size = output_lst[tensor_idx].numel()
+                last_real_data_rank = world_sz - (padding_size_list[tensor_idx] // tensor_size + 1)
+                if this_rank > last_real_data_rank:
+                    # drop full pad tensor
+                    output_lst[tensor_idx] = output_lst[tensor_idx][:0]
+                elif this_rank == last_real_data_rank:
+                    # drop pad tensor from index
+                    output_lst[tensor_idx] = output_lst[tensor_idx][:tensor_size -
+                                                                    padding_size_list[tensor_idx] % tensor_size]
         return output_lst
 
     # simultaneously reduce-scatter a list of tensors
