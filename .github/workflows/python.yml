@@ -33,6 +33,7 @@ jobs:
 
         - name: environment
           run: |
+            lsb_release -a
             which python
             python --version
         - name: Install deepspeed
