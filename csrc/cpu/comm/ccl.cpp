@@ -247,7 +247,7 @@ void all_reduce_caching(torch::Tensor& data,
                  .wait());
 }
 
-void inference_all_reduce(torch::Tensor& data, py::object op, bool async_op)
+void inference_all_reduce(torch::Tensor& data)
 {
 #ifdef DO_PROFILE
     static double total_time = 0.0;
@@ -262,11 +262,6 @@ void inference_all_reduce(torch::Tensor& data, py::object op, bool async_op)
     //}
     auto start = std::chrono::system_clock::now();
 #endif
-
-    static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
-    static auto ReduceOpSum = (int)py::int_(ReduceOp.attr("SUM").attr("value"));
-
-    assert(py::int_(op.attr("value")) == ReduceOpSum);
 
     auto numel = data.numel();
 
@@ -285,7 +280,7 @@ void inference_all_reduce(torch::Tensor& data, py::object op, bool async_op)
                                 data.data_ptr(),
                                 data.numel(),
                                 get_ccl_datatype(data.scalar_type()),
-                                get_ccl_reduce_op(op, data),
+                                ccl::reduction::sum,
                                 _get_comm_from_group())
                      .wait());
     } else {
