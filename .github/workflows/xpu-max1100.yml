@@ -5,6 +5,22 @@ on:
   schedule:
     - cron: "0 0 * * *"
   pull_request:
+    paths:
+      - ".github/workflows/xpu.yml"
+      - "accelerator/xpu_accelerator.py"
+      - "accelerator/abstract_accelerator.py"
+      - "accelerator/cpu_accelerator.py"
+      - "accelerator/real_accelerator.py"
+      - "deepspeed/runtime/engine.py"
+      - "deepspeed/runtime/bf16_optimizer.py"
+      - "deepspeed/runtime/zero/stage_1_and_2.py"
+      - "deepspeed/runtime/zero/stage3.py"
+      - "deepspeed/runtime/zero/partition_parameters.py"
+      - "deepspeed/runtime/zero/partitioned_param_coordinator.py"
+      - "deepspeed/runtime/zero/parameter_offload.py"
+      - "deepspeed/runtime/pipe/engine.py"
+      - "deepspeed/runtime/utils.py"
+      - "deepspeed/inference/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
