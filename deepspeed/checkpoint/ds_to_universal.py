@@ -170,7 +170,6 @@ def _merge_zero_shards(param_base_path, state, tp_degree, slice_shape):
                 raise ValueError(f"Cannot parse dp_rank from {p}")
 
         paths = [f"{prefix_path}.{dp_index_to_str(dp_index)}" for dp_index in sorted(list(dp_indices))]
-
         shards = [torch.load(p) for p in paths]
 
         if state == "step":
@@ -288,7 +287,6 @@ def _extract_zero_shard_files(args, ds_checkpoint, temp_dir):
     #pprint(f'{work_chunks=}')
 
     # extract_zero_shards(temp_dir, ds_checkpoint, _3d_range_list[0])
-    print(f"_3d_range_list={_3d_range_list}")
     do_work = partial(extract_zero_shards, temp_dir, ds_checkpoint)
     _do_parallel_work(do_work, work_chunks, args.num_extract_workers)
 
