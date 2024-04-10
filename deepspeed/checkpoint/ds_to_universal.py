@@ -128,6 +128,10 @@ def extract_zero_shards(dir, ds_checkpoint, indices_3D):
 cnt = 0
 
 
+def dp_index_to_str(dp_index):
+    return f"{dp_index:0>2d}"
+
+
 def dump_param_fragment(dir, tp_index, dp_index, state_name, state_flat_tensor, param_name, offset, numel):
 
     global cnt  # temp hack
@@ -136,9 +140,8 @@ def dump_param_fragment(dir, tp_index, dp_index, state_name, state_flat_tensor, 
     os.makedirs(param_base_path, exist_ok=True)
 
     cnt += 1
-    counter = f"{dp_index:0>2d}"
 
-    path = os.path.join(param_base_path, f"{state_name}.{counter}")
+    path = os.path.join(param_base_path, f"{state_name}.{dp_index_to_str(dp_index)}")
 
     #print(f"{param_name}: {offset}: {numel} => {path}")
 
@@ -152,9 +155,21 @@ def _merge_zero_shards(param_base_path, state, tp_degree, slice_shape):
     slices = []
     for tp_index in range(tp_degree):
         prefix_path = os.path.join(param_base_path, str(tp_index), f"{state}")
-        paths = sorted(list(glob.glob(f"{prefix_path}.*")))
+        paths = glob.glob(f"{prefix_path}.*")
+
         if len(paths) == 0:
             continue
+
+        pattern = re.compile(f"{prefix_path}\\.([0-9]+)")
+        dp_indices = set()
+        for p in paths:
+            m = pattern.match(p)
+            if m:
+                dp_indices.add(int(m.group(1)))
+            else:
+                raise ValueError(f"Cannot parse dp_rank from {p}")
+
+        paths = [f"{prefix_path}.{dp_index_to_str(dp_index)}" for dp_index in sorted(list(dp_indices))]
 
         shards = [torch.load(p) for p in paths]
 
@@ -273,6 +288,7 @@ def _extract_zero_shard_files(args, ds_checkpoint, temp_dir):
     #pprint(f'{work_chunks=}')
 
     # extract_zero_shards(temp_dir, ds_checkpoint, _3d_range_list[0])
+    print(f"_3d_range_list={_3d_range_list}")
     do_work = partial(extract_zero_shards, temp_dir, ds_checkpoint)
     _do_parallel_work(do_work, work_chunks, args.num_extract_workers)
 
