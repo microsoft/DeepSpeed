@@ -258,9 +258,8 @@ def _do_parallel_work(do_work, work_chunks, num_workers):
         # No parallel pass for unit testing
         # We can't create child processes in tests
         results = []
-        for batch in tqdm.tqdm(work_chunks):
-            res = [do_work(x) for x in batch]
-            results.extend(res)
+        for work in tqdm.tqdm(work_chunks):
+            results.extend(do_work(work))
     return results
 
 
