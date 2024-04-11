@@ -9,14 +9,15 @@ This file is adapted from FP16_Optimizer in NVIDIA/apex
 
 import torch
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
-
 from deepspeed.runtime.base_optimizer import DeepSpeedOptimizer
-from deepspeed.runtime.utils import get_global_norm, get_grad_norm, CheckOverflow, get_weight_norm, required_torch_version, get_norm_with_moe_layers
+from deepspeed.runtime.utils import get_global_norm, get_flattened_grad_norm, CheckOverflow, get_weight_norm, required_torch_version, get_norm_with_moe_layers, is_model_parallel_parameter
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
 from deepspeed.utils import logger, log_dist
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, CLIP_GRAD
 from deepspeed.accelerator import get_accelerator
 from deepspeed.moe.utils import is_moe_param_group
+from deepspeed.runtime.constants import PIPE_REPLICATED
+from deepspeed.utils.bwc import bwc_tensor_model_parallel_rank
 
 OVERFLOW_CHECK_TIMER = 'overflow_check'
 COMPUTE_NORM_TIMER = 'compute_norm'
@@ -205,6 +206,29 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         self.custom_loss_scaler = True
         self.external_loss_scale = loss_scale
 
+    def _require_avoid_recompute_norm(self, p, tensor_model_parallel_rank):
+
+        if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
+            return True
+            # Filter to avoid over-counting replicated tensors from tensor
+            # model parallelism
+        if (tensor_model_parallel_rank > 0) and not is_model_parallel_parameter(p):
+            return True
+
+    def _get_flat_grad_norm_mask_idx(self, group):
+        group_mask_idx_list = []
+        grad_flat_st_idx = 0
+        grad_flat_en_idx = 0
+
+        for p in group:
+            grad_flat_en_idx = grad_flat_st_idx + p.numel()
+            if p.grad is None or self._require_avoid_recompute_norm(p, bwc_tensor_model_parallel_rank(self.mpu)):
+                group_mask_idx_list.append((grad_flat_st_idx, grad_flat_en_idx))
+            else:
+                grad_flat_st_idx = grad_flat_en_idx
+            p.grad = None
+        return group_mask_idx_list
+
     def step(self, closure=None):
         """
         Not supporting closure.
@@ -237,6 +261,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
             return self.overflow
 
         grads_groups_flat = []
+        flatten_grad_norm_mask_list = []
         non_experts_grads_for_norm = []
         expert_grads_for_norm = {}
         assert len(self.fp16_groups) == len(self.optimizer.param_groups)
@@ -250,11 +275,14 @@ class FP16_Optimizer(DeepSpeedOptimizer):
                     for p in group
                 ]))
 
-            for p in group:
-                p.grad = None
+            # retrieves the required mask for calculating the norm of flat_grad
+            cur_flat_grad_norm_mask = self._get_flat_grad_norm_mask_idx(group)
+            flatten_grad_norm_mask_list.append(cur_flat_grad_norm_mask)
 
             self.fp32_groups_flat[i].grad = grads_groups_flat[i]
             param_group = self.optimizer.param_groups[i]
+
+            # split expert and non_expert grads for norm
             if self.has_moe_layers and is_moe_param_group(param_group):
                 if param_group['name'] not in expert_grads_for_norm:
                     expert_grads_for_norm[param_group['name']] = []
@@ -264,7 +292,9 @@ class FP16_Optimizer(DeepSpeedOptimizer):
 
         self.timers(COMPUTE_NORM_TIMER).start()
 
-        all_groups_norm = get_grad_norm(non_experts_grads_for_norm, mpu=self.mpu)
+        all_groups_norm = get_flattened_grad_norm(non_experts_grads_for_norm,
+                                                  mpu=self.mpu,
+                                                  grad_norm_mask=flatten_grad_norm_mask_list)
 
         self.timers(COMPUTE_NORM_TIMER).stop()
 

@@ -386,7 +386,7 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
     return total_norm
 
 
-def get_grad_norm(parameters, norm_type=2, mpu=None):
+def get_flattened_grad_norm(parameters, norm_type=2, mpu=None, grad_norm_mask=None):
     """Get grad norm of an iterable of parameters.
 
     This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
@@ -398,6 +398,8 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
             single Tensor that will have gradients normalized
         norm_type (float or int): type of the used p-norm. Can be ``'inf'`` for
             infinity norm.
+        grad_norm_mask (List[List[Tuple[int, int]]]): A list of lists, where
+            each inner list contains tuples(start_idx, end_idx) of a flattened grad
 
     Returns:
         Total norm of the parameters (viewed as a single vector).
@@ -416,18 +418,20 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0.
-        tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
-        for p in parameters:
-            # Pipeline parallelism may replicate parameters. Avoid multi-counting.
-            if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
-                continue
+        for id, p in enumerate(parameters):
+            # Use grad_norm_mask to avoid redundant computation of flattened gradient norm
+            # # including, Pipeline parallelism may replicate parameters.
+            # # replicated tensors from tensor model parallelism
+            mask_tensor = torch.ones_like(p, device=p.device, dtype=bool)
+            for mask_idx in grad_norm_mask[id]:
+                mask_tensor[mask_idx[0]:mask_idx[1]] = 0
 
-            # Filter to avoid over-counting replicated tensors from tensor
-            # model parallelism
-            if (tensor_mp_rank > 0) and not is_model_parallel_parameter(p):
-                continue
+            # assert torch.allclose(tmp_mask,grad_norm_mask[id])
+            if grad_norm_mask is not None:
+                param_norm = (p.grad.data * mask_tensor).float().norm(norm_type)
+            else:
+                param_norm = p.grad.data.float().norm(norm_type)
 
-            param_norm = p.grad.data.float().norm(norm_type)
             total_norm += param_norm.item()**norm_type
 
         # Sum across all model parallel GPUs.
