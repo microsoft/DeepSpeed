@@ -240,26 +240,18 @@ def merge_tp_slices(ds_checkpoint, dir, slice_dir, tp_degree, name_and_shape):
     return unmatched_patterns
 
 
-def _get_chunks(l, n):
-    for i in range(0, len(l), n):
-        yield l[i:i + n]
-
-
 def _do_parallel_work(do_work, work_chunks, num_workers):
+    results = []
     if num_workers > 1:
-        future_list = []
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            for work in work_chunks:
-                future_list.append(executor.submit(do_work, work))
-            results = []
+            future_list = [executor.submit(do_work, work) for work in work_chunks]
             for f in tqdm.tqdm(future_list):
                 results.append(f.result())
     else:
         # No parallel pass for unit testing
         # We can't create child processes in tests
-        results = []
         for work in tqdm.tqdm(work_chunks):
-            results.extend(do_work(work))
+            results.append(do_work(work))
     return results
 
 
