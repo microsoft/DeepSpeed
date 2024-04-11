@@ -116,11 +116,11 @@ void launch_dequantization(uint8_t* val,
 
 template <typename T, int mantisa>
 void launch_selective_dequantization(uint8_t* val,
-                           T* q_val,
-                           int32_t *indexes,
-                           int num_groups,
-                           int group_size,
-                           int num_indexes,
-                           int q_mantisa_bits,
-                           int q_exponent_bits,
-                           cudaStream_t stream);
+                                     T* q_val,
+                                     int32_t* indexes,
+                                     int num_groups,
+                                     int group_size,
+                                     int num_indexes,
+                                     int q_mantisa_bits,
+                                     int q_exponent_bits,
+                                     cudaStream_t stream);

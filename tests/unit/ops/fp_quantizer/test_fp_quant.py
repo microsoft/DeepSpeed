@@ -60,6 +60,7 @@ def test_fp_quant_meta(dtype):
 
         assert 0.0004 > abs(qtorch_error.item() - ds_error.item()), f"failed on iteration {i}"
 
+
 @pytest.mark.parametrize("dtype", [torch.bfloat16], ids=["bf16"])
 def test_fp_quant_selective(dtype):
     group_size = 128
@@ -79,7 +80,10 @@ def test_fp_quant_selective(dtype):
         x_quantized = fpq.quantize(ds_x, q_bits=q_bits)
         x_dequantized = fpq.selective_dequantize(x_quantized, indexes, q_bits=q_bits)
 
-        qtorch_out = qtorch_quantize(x.index_select(0, indexes), exp_bits=exp_bits, man_bits=man_bits, group_size=group_size)
+        qtorch_out = qtorch_quantize(x.index_select(0, indexes),
+                                     exp_bits=exp_bits,
+                                     man_bits=man_bits,
+                                     group_size=group_size)
         qtorch_error = (qtorch_out - x.index_select(0, indexes)).abs().sum() / x.numel()
         ds_error = (x_dequantized - x.index_select(0, indexes)).abs().sum() / x.numel()
 

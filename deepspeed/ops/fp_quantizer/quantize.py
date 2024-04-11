@@ -78,14 +78,20 @@ class FP_Quantize:
         fp_quant_module.dequantize(fp_out, input_q, self.group_size, q_mantisa_bits, q_bits - q_mantisa_bits - 1)
         return fp_out
 
-
-    def selective_dequantize(self, input_q, indexes, fp_out=None, q_bits=8, q_mantisa_bits=3, scale=None) -> torch.Tensor:
+    def selective_dequantize(self,
+                             input_q,
+                             indexes,
+                             fp_out=None,
+                             q_bits=8,
+                             q_mantisa_bits=3,
+                             scale=None) -> torch.Tensor:
         assert (not hasattr(self, 'orig_shape') or len(self.orig_shape) == 3), \
             "Selective-Dequantization works on 3d tensor only! Please reshape the tensor before calling dequantize function."
         assert (self.orig_dtype is not None), \
             "[De-quantization Error]: you need to call quantize before dequantizing!"
-        fp_out = torch.empty((indexes.shape[0], *self.orig_shape[1:]), dtype=self.orig_dtype,
-                             device=input_q.device) if fp_out is None else fp_out
+        fp_out = torch.empty(
+            (indexes.shape[0],
+             *self.orig_shape[1:]), dtype=self.orig_dtype, device=input_q.device) if fp_out is None else fp_out
         if q_bits == 8:
             pass
         elif q_bits == 12:
@@ -103,5 +109,6 @@ class FP_Quantize:
             f'[De-quantization Error]: quantized data should have the same size as original tensor when scale is not None!'
             input_q = torch.cat([input_q.reshape(-1, self.group_size), scale], dim=-1).contiguous()
 
-        fp_quant_module.selective_dequantize(fp_out, input_q, indexes, self.group_size, q_mantisa_bits, q_bits - q_mantisa_bits - 1)
+        fp_quant_module.selective_dequantize(fp_out, input_q, indexes, self.group_size, q_mantisa_bits,
+                                             q_bits - q_mantisa_bits - 1)
         return fp_out
