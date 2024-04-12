@@ -17,3 +17,4 @@ from .falcon import *
 from .phi import *
 from .qwen import *
 from .qwen_v2 import *
+from .qwen_v2_moe import *

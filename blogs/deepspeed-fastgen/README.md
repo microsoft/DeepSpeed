@@ -232,6 +232,8 @@ We currently support the following model architectures in this alpha release of 
 * [Mixtral](https://huggingface.co/models?other=mixtral)
 * [Phi-2](https://huggingface.co/models?other=phi-msft)
 * [Qwen](https://huggingface.co/models?other=qwen)
+* [Qwen2](https://huggingface.co/models?other=qwen2)
+* [Qwen2-MoE](https://huggingface.co/models?other=qwen2_moe)
 
 All current models leverage [HuggingFace](https://github.com/huggingface) APIs in our backend to provide both the model weights and the model's corresponding tokenizer.
 
