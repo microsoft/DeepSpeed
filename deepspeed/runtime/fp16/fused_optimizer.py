@@ -207,15 +207,23 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         self.external_loss_scale = loss_scale
 
     def _require_avoid_recompute_norm(self, p, tensor_model_parallel_rank):
-
+        # for filtering  replicated tensors from tensor
         if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
             return True
-            # Filter to avoid over-counting replicated tensors from tensor
-            # model parallelism
         if (tensor_model_parallel_rank > 0) and not is_model_parallel_parameter(p):
             return True
 
-    def _get_flat_grad_norm_mask_idx(self, group):
+    def _clear_grads_and_get_norm_mask_list(self, group):
+        """The function preserves the parallel information for norm
+        from unflattened gradients and clears the unflattened gradients.
+
+        Args:
+            group (Iterable[Tensor] ): params group
+
+        Returns:
+            List[Tuple[int, int]: list of indices to avoid redundant norm computation
+                for the flattened gradient associated with this group
+        """
         group_mask_idx_list = []
         grad_flat_st_idx = 0
         grad_flat_en_idx = 0
@@ -276,7 +284,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
                 ]))
 
             # retrieves the required mask for calculating the norm of flat_grad
-            cur_flat_grad_norm_mask = self._get_flat_grad_norm_mask_idx(group)
+            cur_flat_grad_norm_mask = self._clear_grads_and_get_norm_mask_list(group)
             flatten_grad_norm_mask_list.append(cur_flat_grad_norm_mask)
 
             self.fp32_groups_flat[i].grad = grads_groups_flat[i]
@@ -296,8 +304,6 @@ class FP16_Optimizer(DeepSpeedOptimizer):
                                                   mpu=self.mpu,
                                                   grad_norm_mask=flatten_grad_norm_mask_list)
 
-        self.timers(COMPUTE_NORM_TIMER).stop()
-
         if self.has_moe_layers:
             all_groups_norm = get_norm_with_moe_layers(all_groups_norm,
                                                        mpu=self.mpu,
@@ -305,6 +311,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
                                                        norm_type=self.norm_type)
 
         scaled_global_grad_norm = get_global_norm(norm_list=[all_groups_norm])
+        self.timers(COMPUTE_NORM_TIMER).stop()
 
         # Stash unscaled gradient norm
         self._global_grad_norm = scaled_global_grad_norm / self.cur_scale

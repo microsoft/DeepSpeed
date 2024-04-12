@@ -419,16 +419,15 @@ def get_flattened_grad_norm(parameters, norm_type=2, mpu=None, grad_norm_mask=No
     else:
         total_norm = 0.
         for id, p in enumerate(parameters):
-            # Use grad_norm_mask to avoid redundant computation of flattened gradient norm
-            # # including, Pipeline parallelism may replicate parameters.
-            # # replicated tensors from tensor model parallelism
-            mask_tensor = torch.ones_like(p, device=p.device, dtype=bool)
-            for mask_idx in grad_norm_mask[id]:
-                mask_tensor[mask_idx[0]:mask_idx[1]] = 0
 
-            # assert torch.allclose(tmp_mask,grad_norm_mask[id])
-            if grad_norm_mask is not None:
-                param_norm = (p.grad.data * mask_tensor).float().norm(norm_type)
+            if grad_norm_mask is not None and len(grad_norm_mask[id]) > 0:
+                # Use grad_norm_mask to avoid redundant computation of flattened gradient norm
+                # # including, Pipeline parallelism may replicate parameters.
+                # # replicated tensors from tensor model parallelism
+                mask_tensor = torch.ones_like(p, device=p.device, dtype=bool)
+                for mask_idx in grad_norm_mask[id]:
+                    mask_tensor[mask_idx[0]:mask_idx[1]] = 0
+                    param_norm = (p.grad.data * mask_tensor).float().norm(norm_type)
             else:
                 param_norm = p.grad.data.float().norm(norm_type)
 
