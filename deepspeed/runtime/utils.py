@@ -418,14 +418,14 @@ def get_flattened_grad_norm(parameters, norm_type=2, mpu=None, grad_norm_mask=No
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0.
-        for id, p in enumerate(parameters):
+        for idx, p in enumerate(parameters):
 
-            if grad_norm_mask is not None and len(grad_norm_mask[id]) > 0:
+            if grad_norm_mask is not None and len(grad_norm_mask[idx]) > 0:
                 # Use grad_norm_mask to avoid redundant computation of flattened gradient norm
                 # # including, Pipeline parallelism may replicate parameters.
                 # # replicated tensors from tensor model parallelism
                 mask_tensor = torch.ones_like(p, device=p.device, dtype=bool)
-                for mask_idx in grad_norm_mask[id]:
+                for mask_idx in grad_norm_mask[idx]:
                     mask_tensor[mask_idx[0]:mask_idx[1]] = 0
                     param_norm = (p.grad.data * mask_tensor).float().norm(norm_type)
             else:
@@ -816,25 +816,6 @@ def get_only_unique_item(items):
     unique_item, = item_set
 
     return unique_item
-
-
-def clip_gradients(parameters, max_norm=1.0, global_grad_norm=None, mpu=None, eps=1e-6):
-    """Clip the gradient of a list of parameters.
-    Args:
-        parameters: List of parameters whose .grad will be clipped.
-        global_grad_norm (float, optional): Precomputed gradient norm. Defaults to None.
-        mpu (optional): model parallelism unit. Defaults to None.
-        eps (float, optional): epsilon value added to grad norm. Defaults to 1e-6
-    Returns:
-        float: the global gradient norm
-    """
-    if global_grad_norm is None:
-        global_grad_norm = get_grad_norm(parameters, mpu=mpu)
-    clip_coef = max_norm / (global_grad_norm + eps)
-    if clip_coef < 1:
-        for p in parameters:
-            p.grad.detach().mul_(clip_coef)
-    return global_grad_norm
 
 
 def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None, use_graph=False, moe_ep_group=None):
