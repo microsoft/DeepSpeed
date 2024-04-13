@@ -392,10 +392,18 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             if not fp16_master_weights_and_gradients:
                 weights_partition = self.parallel_partitioned_bit16_groups[i][partition_id].to(
                     self.device).clone().float().detach()
+                if self.cpu_offload:
+                    self.single_partition_of_fp32_groups.append(get_accelerator().pin_memory(weights_partition))
+                else:
+                    self.single_partition_of_fp32_groups.append(weights_partition)
             else:
-                weights_partition = self.parallel_partitioned_bit16_groups[i][partition_id].to(
+                weights_partition_half = self.parallel_partitioned_bit16_groups[i][partition_id].to(
                     self.device).clone().half().detach()
-            self.single_partition_of_fp32_groups.append(get_accelerator().pin_memory(weights_partition))
+                if self.cpu_offload:
+                    self.single_partition_of_fp32_groups.append(get_accelerator().pin_memory(weights_partition_half))
+                else:
+                    self.single_partition_of_fp32_groups.append(weights_partition_half)
+
             # Set local optimizer to have flat params of its own partition.
             # After this, the local optimizer will only contain its own partition of params.
             # In that case, the local optimizer only saves the states(momentum, variance, etc.) related to its partition's params(zero stage1).
