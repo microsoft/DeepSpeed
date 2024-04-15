@@ -208,12 +208,13 @@ def move_to_device(item, device, criterion_func):
 class CheckOverflow(object):
     '''Checks for overflow in gradient across parallel process'''
 
-    def __init__(self, param_groups=None, mpu=None, zero_reduce_scatter=False, deepspeed=None):
+    def __init__(self, param_groups=None, mpu=None, zero_reduce_scatter=False, deepspeed=None, partition_grads=False):
         self.mpu = mpu
         self.params = [] if param_groups else None
         self.zero_reduce_scatter = zero_reduce_scatter
         self.deepspeed = deepspeed
         self.has_moe_params = False
+        self.partition_grads = partition_grads
         if param_groups:
             for group in param_groups:
                 for param in group:
@@ -261,7 +262,7 @@ class CheckOverflow(object):
     # `params` is a list / generator of torch.Variable
     def has_overflow_serial(self, params):
         for i, p in enumerate(params):
-            if p.grad is not None and self._has_inf_or_nan(p.grad.data, i):
+            if p.grad is not None and self._has_inf_or_nan(p.grad.data):
                 return True
         return False
 
@@ -283,12 +284,16 @@ class CheckOverflow(object):
             dist.all_reduce(overflow_gpu, op=dist.ReduceOp.MAX, group=dist.get_world_group())
         elif self.mpu is not None:
             if self.deepspeed is not None:
+                # logger.warning(f"===Guanhua goes here L288")
                 using_pipeline = hasattr(self.deepspeed, 'pipeline_enable_backward_allreduce')
                 if (using_pipeline and self.deepspeed.pipeline_enable_backward_allreduce is False) or (
                         not using_pipeline and self.deepspeed.enable_backward_allreduce is False):
+                    # logger.warning(f"===Guanhua goes here L292")
                     dist.all_reduce(overflow_gpu, op=dist.ReduceOp.MAX, group=self.mpu.get_data_parallel_group())
+            # logger.warning(f"===Guanhua goes here L294")
             dist.all_reduce(overflow_gpu, op=dist.ReduceOp.MAX, group=self.mpu.get_model_parallel_group())
-        elif self.deepspeed is not None and self.deepspeed.enable_backward_allreduce is False:
+        elif self.deepspeed is not None and (self.deepspeed.enable_backward_allreduce is False or self.partition_grads is True):
+            # logger.warning(f"===Guanhua goes here L297")
             dist.all_reduce(overflow_gpu, op=dist.ReduceOp.MAX, group=dist.get_world_group())
 
         overflow = overflow_gpu[0].item()
@@ -296,7 +301,7 @@ class CheckOverflow(object):
 
     # `x` is a torch.Tensor
     @staticmethod
-    def _has_inf_or_nan(x, i):
+    def _has_inf_or_nan(x):
         try:
             # if x is half, the .float() incurs an additional deep copy, but it's necessary if
             # Pytorch's .sum() creates a one-element tensor of the same type as x

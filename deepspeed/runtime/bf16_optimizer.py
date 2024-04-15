@@ -15,7 +15,7 @@ from deepspeed.runtime import ZeROOptimizer
 from packaging import version as pkg_version
 
 from deepspeed.git_version_info import version
-from deepspeed.runtime.utils import (get_global_norm_of_tensors, clip_tensors_by_global_norm, DummyOptim,
+from deepspeed.runtime.utils import (get_global_norm_of_tensors, clip_tensors_by_global_norm, DummyOptim, CheckOverflow, 
                                      align_dense_tensors, all_gather_dp_groups, bwc_tensor_model_parallel_rank,
                                      is_model_parallel_parameter, see_memory_usage, graph_process)
 
@@ -33,6 +33,7 @@ class BF16_Optimizer(ZeROOptimizer):
     def __init__(self,
                  init_optimizer,
                  param_names,
+                 deepspeed=None,
                  mpu=None,
                  clip_grad=0.0,
                  norm_type=2,
@@ -88,6 +89,10 @@ class BF16_Optimizer(ZeROOptimizer):
         self.graph_harvesting = graph_harvesting
         if self.using_real_optimizer:
             self._setup_for_real_optimizer()
+
+        # Overflow check
+        self.overflow = False
+        self.overflow_checker = CheckOverflow(self.bf16_groups, mpu=self.mpu, deepspeed=deepspeed)
 
         see_memory_usage('end bf16_optimizer', force=True)
 
@@ -257,24 +262,34 @@ class BF16_Optimizer(ZeROOptimizer):
     def step(self, closure=None):
         if closure is not None:
             raise NotImplementedError(f'{self.__class__} does not support closure.')
+        # logger.warning(f"===Guanhua overflowcheck go to BF16_Optimizer.")
+        self.overflow = self.overflow_checker.check()
+        if self.overflow:
+            logger.warning(f"all_groups_norm Overflow in BF16_Optimizer. Skipping step.")
 
+            see_memory_usage('After overflow before clearing gradients')
+            self.clear_hp_grads() 
+            see_memory_usage('After overflow after clearing gradients')
+            #TODO: add timer in future
+            #TODO: save ckpt, then crash
+            return
+        
         all_groups_norm = get_global_norm_of_tensors(input_tensors=self.get_grads_for_norm(),
                                                      mpu=self.mpu,
                                                      norm_type=self.norm_type,
                                                      use_graph=self.graph_harvesting)
         self._global_grad_norm = all_groups_norm
-
         # Overflow check for v0.14.0 only. 
         # Note: all_groups_norm is float in v0.14.0. (all_groups_norm is single value torch tensor starting from v0.14.1+)
-        if all_groups_norm == float('inf') or all_groups_norm == -float('inf'):
-            logger.warning(f"all_groups_norm Overflow in BF16_Optimizer.")
+        # if all_groups_norm == float('inf') or all_groups_norm == -float('inf'):
+        #     logger.warning(f"all_groups_norm Overflow in BF16_Optimizer.")
         
         # NaN check for v0.14.0 only.
-        if all_groups_norm == float('nan') or all_groups_norm != all_groups_norm:
-            logger.warning(f"all_groups_norm is NaN in BF16_Optimizer.")
+        # if all_groups_norm == float('nan') or all_groups_norm != all_groups_norm:
+        #     logger.warning(f"all_groups_norm is NaN in BF16_Optimizer.")
 
-        if all_groups_norm <=0:
-            logger.warning(f"all_groups_norm is not positive, hex val: {hex(struct.unpack('<I', struct.pack('<f', all_groups_norm))[0])}")
+        # if all_groups_norm <=0:
+        #     logger.warning(f"all_groups_norm is not positive, hex val: {hex(struct.unpack('<I', struct.pack('<f', all_groups_norm))[0])}")
         assert all_groups_norm > 0
         if self.clip_grad > 0.:
             clip_tensors_by_global_norm(input_tensors=self.get_grads_for_norm(for_clipping=True),

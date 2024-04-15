@@ -1471,6 +1471,7 @@ class DeepSpeedEngine(Module):
         timers = self.timers if self.wall_clock_breakdown() else NoopTimer()
         optimizer = BF16_Optimizer(optimizer,
                                    self.param_names,
+                                   deepspeed=self,
                                    mpu=self.mpu,
                                    clip_grad=clip_grad,
                                    allgather_bucket_size=self.zero_allgather_bucket_size(),
@@ -1529,6 +1530,7 @@ class DeepSpeedEngine(Module):
                 overlap_comm=overlap_comm,
                 offload_optimizer_config=self.zero_offload_optimizer(),
                 mpu=self.mpu,
+                deepspeed=self,
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor(),
                 gradient_accumulation_steps=self.gradient_accumulation_steps(),
