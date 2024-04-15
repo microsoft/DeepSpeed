@@ -123,3 +123,24 @@ def prepare_tp_fused_qkvw(module, src, mp_size, gpu_index):
     warning_once(f"Unrecognized fusedkqv weight type, default to using bloom type,"
                  f"please check in prepare_tp_fused_qkvw() to avoid potential calculation errors")
     return _bloom_type_transpose(src, mp_size)
+
+
+# For phi3 with chunk mlp, adjust the weight order.
+def shard_chunk_mlp(
+    weight,
+    bias,
+    rank,
+    world_size,
+):
+    weight_gate, weight_states = weight.chunk(2, dim=0)
+    total_size = weight_gate.shape[0]
+    split_weight_gate = weight_gate.split(get_shard_size_list(total_size, world_size, "mlp"), dim=0)
+    split_weight_states = weight_states.split(get_shard_size_list(total_size, world_size, "mlp"), dim=0)
+    shard_weight = torch.cat((split_weight_gate[rank], split_weight_states[rank]), dim=0)
+    if bias is not None:
+        bias_gate, bias_states = bias.chunk(2, dim=0)
+        split_bias_gate = bias_gate.split(get_shard_size_list(total_size, world_size, "mlp"), dim=0)
+        split_bias_states = bias_states.split(get_shard_size_list(total_size, world_size, "mlp"), dim=0)
+        return shard_weight, torch.cat((split_bias_gate[rank], split_bias_states[rank]), dim=0)
+
+    return shard_weight, None
