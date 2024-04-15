@@ -18,7 +18,6 @@ from packaging import version as pkg_version
 
 import torch
 from deepspeed import comm as dist
-
 try:
     from torch._six import inf
 except ModuleNotFoundError:
@@ -419,18 +418,26 @@ def get_flattened_grad_norm(parameters, norm_type=2, mpu=None, grad_norm_mask=No
     else:
         total_norm = 0.
         for idx, p in enumerate(parameters):
-
             if grad_norm_mask is not None and len(grad_norm_mask[idx]) > 0:
                 # Use grad_norm_mask to avoid redundant computation of flattened gradient norm
                 # # including, Pipeline parallelism may replicate parameters.
                 # # replicated tensors from tensor model parallelism
-                mask_tensor = torch.ones_like(p, device=p.device, dtype=bool)
-                for mask_idx in grad_norm_mask[idx]:
-                    mask_tensor[mask_idx[0]:mask_idx[1]] = 0
-                    param_norm = (p.grad.data * mask_tensor).float().norm(norm_type)
+
+                # A loop-free implementation to create a mask tensor based on a range list,
+                # which is logically equivalent to the following implementation.
+
+                # # mask_tensor = torch.zeros_like(p, device=p.device, dtype=bool)
+                # # for mask_idx in grad_norm_mask[idx]:
+                # #     mask_tensor[mask_idx[0]:mask_idx[1]] = True
+                cum_sum_pairs = torch.tensor([1, -1], device=get_accelerator().current_device(),
+                                             dtype=p.dtype).repeat(grad_norm_mask[idx].shape[0], 1)
+                mask_tensor = torch.zeros_like(p, device=get_accelerator().current_device(), dtype=p.dtype)
+                mask_tensor = mask_tensor.scatter_(0, grad_norm_mask[idx].view(-1),
+                                                   cum_sum_pairs.view(-1)).cumsum(0).bool()
+
+                param_norm = torch.masked_fill(p.grad.data, mask_tensor, 0).float().norm(norm_type)
             else:
                 param_norm = p.grad.data.float().norm(norm_type)
-
             total_norm += param_norm.item()**norm_type
 
         # Sum across all model parallel GPUs.

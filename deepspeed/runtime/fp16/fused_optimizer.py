@@ -64,6 +64,8 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         self.fp16_groups_flat = []
         self.fp32_groups_flat = []
 
+        self.flatten_grad_norm_mask_list = []
+        self.has_executed_step = False
         self._global_grad_norm = 0.
 
         # loop to deal with groups
@@ -213,16 +215,16 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         if (tensor_model_parallel_rank > 0) and not is_model_parallel_parameter(p):
             return True
 
-    def _clear_grads_and_get_norm_mask_list(self, group):
+    def _get_norm_mask_idx(self, group):
         """The function preserves the parallel information for norm
-        from unflattened gradients and clears the unflattened gradients.
+        from unflattened gradients.
 
         Args:
             group (Iterable[Tensor] ): params group
 
         Returns:
-            List[Tuple[int, int]: list of indices to avoid redundant norm computation
-                for the flattened gradient associated with this group
+            torch.Tensor: A 2D tensor containing index ranges for each group,
+                      where each row represents a [start index, end index].
         """
         group_mask_idx_list = []
         grad_flat_st_idx = 0
@@ -231,11 +233,10 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         for p in group:
             grad_flat_en_idx = grad_flat_st_idx + p.numel()
             if p.grad is None or self._require_avoid_recompute_norm(p, bwc_tensor_model_parallel_rank(self.mpu)):
-                group_mask_idx_list.append((grad_flat_st_idx, grad_flat_en_idx))
+                group_mask_idx_list.append([grad_flat_st_idx, grad_flat_en_idx])
             else:
                 grad_flat_st_idx = grad_flat_en_idx
-            p.grad = None
-        return group_mask_idx_list
+        return torch.tensor(group_mask_idx_list, device=get_accelerator().current_device())
 
     def step(self, closure=None):
         """
@@ -269,7 +270,6 @@ class FP16_Optimizer(DeepSpeedOptimizer):
             return self.overflow
 
         grads_groups_flat = []
-        flatten_grad_norm_mask_list = []
         non_experts_grads_for_norm = []
         expert_grads_for_norm = {}
         assert len(self.fp16_groups) == len(self.optimizer.param_groups)
@@ -283,10 +283,6 @@ class FP16_Optimizer(DeepSpeedOptimizer):
                     for p in group
                 ]))
 
-            # retrieves the required mask for calculating the norm of flat_grad
-            cur_flat_grad_norm_mask = self._clear_grads_and_get_norm_mask_list(group)
-            flatten_grad_norm_mask_list.append(cur_flat_grad_norm_mask)
-
             self.fp32_groups_flat[i].grad = grads_groups_flat[i]
             param_group = self.optimizer.param_groups[i]
 
@@ -294,15 +290,25 @@ class FP16_Optimizer(DeepSpeedOptimizer):
             if self.has_moe_layers and is_moe_param_group(param_group):
                 if param_group['name'] not in expert_grads_for_norm:
                     expert_grads_for_norm[param_group['name']] = []
+
                 expert_grads_for_norm[param_group['name']].append(self.fp32_groups_flat[i])
             else:
+                # retrieves the required mask for calculating the norm of flat_grad
+                # perform this collect operation only once
+                if not self.has_executed_step:
+                    cur_flat_grad_norm_mask = self._get_norm_mask_idx(group)
+                    self.flatten_grad_norm_mask_list.append(cur_flat_grad_norm_mask)
+
                 non_experts_grads_for_norm.append(self.fp32_groups_flat[i])
+
+            for p in group:
+                p.grad = None
 
         self.timers(COMPUTE_NORM_TIMER).start()
 
         all_groups_norm = get_flattened_grad_norm(non_experts_grads_for_norm,
                                                   mpu=self.mpu,
-                                                  grad_norm_mask=flatten_grad_norm_mask_list)
+                                                  grad_norm_mask=self.flatten_grad_norm_mask_list)
 
         if self.has_moe_layers:
             all_groups_norm = get_norm_with_moe_layers(all_groups_norm,
@@ -334,7 +340,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
             updated_params = _unflatten_dense_tensors(self.fp32_groups_flat[i], self.fp16_groups[i])
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data.copy_(q.data)
-
+        self.has_executed_step = True
         self.timers(UPDATE_FP16_TIMER).stop()
 
         self.timers.log(STEP_TIMERS)
