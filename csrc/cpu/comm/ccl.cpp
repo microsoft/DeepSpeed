@@ -285,7 +285,7 @@ void inference_all_reduce(torch::Tensor& data, py::object op)
                                 data.data_ptr(),
                                 data.numel(),
                                 get_ccl_datatype(data.scalar_type()),
-                                ccl::reduction::sum,
+                                get_ccl_reduce_op(op, data),
                                 _get_comm_from_group())
                      .wait());
     } else {
