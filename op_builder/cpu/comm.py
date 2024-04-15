@@ -44,7 +44,7 @@ class CCLCommBuilder(CPUOpBuilder):
             return ['-lccl', f'-L{ccl_root_path}/lib']
 
 
-class SHMCommBuilder(CPUOpBuilder):
+class ShareMemCommBuilder(CPUOpBuilder):
     BUILD_VAR = "DS_BUILD_SHM_COMM"
     NAME = "deepspeed_shm_comm"
 

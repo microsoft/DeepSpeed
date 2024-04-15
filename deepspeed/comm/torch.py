@@ -21,7 +21,7 @@ DS_COMM_REDUCE_OFF = False
 
 
 def build_shm_op():
-    builder = get_accelerator().create_op_builder("SHMCommBuilder")
+    builder = get_accelerator().create_op_builder("ShareMemCommBuilder")
     if builder is None or not deepspeed.ops.__compatible_ops__[builder.NAME]:
         return None
     shm_cpp_module = builder.load()
