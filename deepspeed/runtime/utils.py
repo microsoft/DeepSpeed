@@ -397,9 +397,8 @@ def get_flattened_grad_norm(parameters, norm_type=2, mpu=None, grad_norm_mask=No
             single Tensor that will have gradients normalized
         norm_type (float or int): type of the used p-norm. Can be ``'inf'`` for
             infinity norm.
-        grad_norm_mask (List[List[Tuple[int, int]]]): A list of lists, where
-            each inner list contains tuples(start_idx, end_idx) of a flattened grad
-
+        grad_norm_mask (List[Tensor]): A list of Tensor, where
+            each Tensor is a 2D Tensor containing ranges of [start_index, end_index].
     Returns:
         Total norm of the parameters (viewed as a single vector).
     """
