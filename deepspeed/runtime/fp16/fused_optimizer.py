@@ -232,10 +232,14 @@ class FP16_Optimizer(DeepSpeedOptimizer):
 
         for p in group:
             grad_flat_en_idx = grad_flat_st_idx + p.numel()
-            if p.grad is None or self._require_avoid_recompute_norm(p, bwc_tensor_model_parallel_rank(self.mpu)):
-                group_mask_idx_list.append([grad_flat_st_idx, grad_flat_en_idx])
-            else:
-                grad_flat_st_idx = grad_flat_en_idx
+            if p.grad is not None and self._require_avoid_recompute_norm(p, bwc_tensor_model_parallel_rank(self.mpu)):
+                # merge range
+                if len(group_mask_idx_list) > 0 and grad_flat_st_idx == group_mask_idx_list[-1][-1]:
+                    group_mask_idx_list[-1][-1] = grad_flat_en_idx
+                else:
+                    group_mask_idx_list.append([grad_flat_st_idx, grad_flat_en_idx])
+            grad_flat_st_idx = grad_flat_en_idx
+
         return torch.tensor(group_mask_idx_list, device=get_accelerator().current_device())
 
     def step(self, closure=None):
