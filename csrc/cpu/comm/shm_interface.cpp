@@ -52,7 +52,7 @@ int get_world_size(int group = 0) { return world_size; }
 
 // Success - return 0
 // Fail (cannot hornor the request and need to fall back) - return -1
-int inference_all_reduce(torch::Tensor& data)
+int inference_all_reduce(torch::Tensor& data, py::object op)
 {
     if (!all_ranks_local_p) return -1;
 #ifdef DO_PROFILE
@@ -66,6 +66,11 @@ int inference_all_reduce(torch::Tensor& data)
     // if (all_ranks_local_p) { barrier_wait(0, world_size); }
     auto start = std::chrono::system_clock::now();
 #endif
+
+    static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
+    static auto ReduceOpSum = (int)py::int_(ReduceOp.attr("SUM").attr("value"));
+
+    assert(py::int_(op.attr("value")) == ReduceOpSum);
 
     auto numel = data.numel();
 

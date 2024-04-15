@@ -152,12 +152,10 @@ class TorchBackend(Backend):
         return torch.distributed.all_reduce(tensor=tensor, op=op, group=group, async_op=async_op)
 
     @compiler.disable
-    def inference_all_reduce(self, tensor, group=None):
-        if self.shm_comm_op == None or self.shm_comm_op.inference_all_reduce(tensor) == -1:
-            return torch.distributed.all_reduce(tensor=tensor,
-                                                op=torch.distributed.ReduceOp.SUM,
-                                                group=group,
-                                                async_op=False)
+    def inference_all_reduce(self, tensor, op, group=None):
+        if self.shm_comm_op == None or self.shm_comm_op.inference_all_reduce(tensor, op) == -1:
+            op = self._reduce_op(op)
+            return torch.distributed.all_reduce(tensor=tensor, op=op, group=group, async_op=False)
 
     @compiler.disable
     def all_reduce_coalesced(self, tensors, op=torch.distributed.ReduceOp.SUM, group=None, async_op=False):
