@@ -54,7 +54,7 @@ class DeepSpeedCPULion(torch.optim.Optimizer):
         self.opt_id = DeepSpeedCPULion.optimizer_id
         DeepSpeedCPULion.optimizer_id = DeepSpeedCPULion.optimizer_id + 1
         self.fp32_optimizer_states = fp32_optimizer_states
-        self.ds_opt_lion = CPULionBuilder().load()
+        self.ds_opt_lion = CPULionBuilder().set_dtype(self.param_groups[0]['params'][0].dtype).load()
 
         self.ds_opt_lion.create_lion(self.opt_id, lr, betas[0], betas[1], weight_decay, should_log_le("info"))
 

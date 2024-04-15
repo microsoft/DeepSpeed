@@ -42,3 +42,46 @@ void launch_param_update_half(const float* input, __half* output, int size, cuda
 
     param_update_kernel_half<<<grid_dim, block_dim, 0, stream>>>(input, output, size);
 }
+
+#ifdef BF16_AVAILABLE
+__global__ void param_update_kernel(const float* input, __nv_bfloat16* output, int size)
+{
+    int id = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (id < size) { output[id] = (__nv_bfloat16)input[id]; }
+}
+
+void launch_param_update(const float* input, __nv_bfloat16* output, int size, cudaStream_t stream)
+{
+    int threads = 1024;
+
+    dim3 grid_dim((size - 1) / threads + 1);
+    dim3 block_dim(threads);
+
+    param_update_kernel<<<grid_dim, block_dim, 0, stream>>>(input, output, size);
+}
+
+__global__ void param_update_kernel_half(const float* input, __nv_bfloat16* output, int size)
+{
+    int id = blockIdx.x * blockDim.x + threadIdx.x;
+    __nv_bfloat162* output_cast = reinterpret_cast<__nv_bfloat162*>(output);
+    if (id < size) {
+        float input_f = input[id];
+        __nv_bfloat162* input_h = reinterpret_cast<__nv_bfloat162*>(&input_f);
+        output_cast[id] = *input_h;
+    }
+}
+
+void launch_param_update_half(const float* input,
+                              __nv_bfloat16* output,
+                              int size,
+                              cudaStream_t stream)
+{
+    int threads = 1024;
+    size /= 2;
+    dim3 grid_dim((size - 1) / threads + 1);
+    dim3 block_dim(threads);
+
+    param_update_kernel_half<<<grid_dim, block_dim, 0, stream>>>(input, output, size);
+}
+#endif

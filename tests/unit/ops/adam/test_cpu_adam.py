@@ -43,7 +43,7 @@ def _compare_optimizers(model_size, param1, optimizer1, param2, optimizer2):
     check_equal(param1.float().norm(), param2.float().cpu().norm(), atol=tolerance, verbose=True)
 
 
-@pytest.mark.parametrize('dtype', [torch.half, torch.float], ids=["fp16", "fp32"])
+@pytest.mark.parametrize('dtype', [torch.half, torch.bfloat16, torch.float], ids=["fp16", "bf16", "fp32"])
 @pytest.mark.parametrize('model_size',
                          [
                              (64),
@@ -63,6 +63,9 @@ class TestCPUAdam(DistributedTest):
 
     @pytest.mark.skipif(not get_accelerator().is_available(), reason="only supported in CUDA environments.")
     def test_fused_adam_equal(self, dtype, model_size):
+        if dtype not in get_accelerator().supported_dtypes():
+            pytest.skip(f"dtype {dtype} not supported in current accelerator")
+
         if ("amd" in pytest.cpu_vendor) and (dtype == torch.half):
             pytest.skip("cpu-adam with half precision not supported on AMD CPUs")
 
@@ -97,20 +100,20 @@ class TestCPUAdam(DistributedTest):
                 pytest.skip("torch.optim.AdamW with half precision only supported in CUDA environments.")
             ref_param_device = 'cpu'
 
-            from deepspeed.ops.adam import DeepSpeedCPUAdam
+        from deepspeed.ops.adam import DeepSpeedCPUAdam
 
-            cpu_data = torch.randn(model_size, device='cpu').to(dtype)
-            cpu_param = torch.nn.Parameter(cpu_data)
-            ref_param = torch.nn.Parameter(cpu_data.to(ref_param_device))
+        cpu_data = torch.randn(model_size, device='cpu').to(dtype)
+        cpu_param = torch.nn.Parameter(cpu_data)
+        ref_param = torch.nn.Parameter(cpu_data.to(ref_param_device))
 
-            cpu_optimizer = DeepSpeedCPUAdam([cpu_param])
-            ref_optimizer = torch.optim.AdamW([ref_param])
+        cpu_optimizer = DeepSpeedCPUAdam([cpu_param])
+        ref_optimizer = torch.optim.AdamW([ref_param])
 
-            _compare_optimizers(model_size=model_size,
-                                param1=cpu_param,
-                                optimizer1=cpu_optimizer,
-                                param2=ref_param,
-                                optimizer2=ref_optimizer)
+        _compare_optimizers(model_size=model_size,
+                            param1=cpu_param,
+                            optimizer1=cpu_optimizer,
+                            param2=ref_param,
+                            optimizer2=ref_optimizer)
 
 
 class TestCPUAdamGPUError(DistributedTest):

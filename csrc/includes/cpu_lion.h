@@ -13,22 +13,29 @@
 #include <cassert>
 #include "simd.h"
 
+#ifndef HALF_DTYPE
+#error Must provide compiler option -DHALF_DTYPE=<half data type>
+#endif
+
 #if defined(__ENABLE_CUDA__)
 #include <cuda_fp16.h>
+#ifdef BF16_AVAILABLE
+#include <cuda_bf16.h>
+#endif
 #include <cuda_runtime_api.h>
 #include "cuda.h"
 #include "custom_cuda_layers.h"
-typedef __half ds_half_precision_t;
 #elif defined(__ENABLE_CANN__)
 #include "acl/acl.h"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
-typedef c10::Half ds_half_precision_t;
 #else
 #include <cmath>
-typedef unsigned short ds_half_precision_t;
 #endif
 
+typedef HALF_DTYPE ds_half_precision_t;
+
 #define STEP(SPAN)                                             \
+    template <typename T>                                      \
     void Step_##SPAN(float* _params,                           \
                      float* grads,                             \
                      float* _exp_avg,                          \
@@ -70,7 +77,7 @@ public:
     }
 
 #if defined(__AVX512__) or defined(__AVX256__)
-    template <int span>
+    template <int span, typename T>
     void Step_AVX(size_t* rounded_size,
                   float* _params,
                   float* grads,
@@ -128,7 +135,7 @@ private:
 };
 
 #if defined(__AVX512__) or defined(__AVX256__)
-template <int span>
+template <int span, typename T>
 void Lion_Optimizer::Step_AVX(size_t* rounded_size,
                               float* _params,
                               float* grads,
@@ -137,6 +144,9 @@ void Lion_Optimizer::Step_AVX(size_t* rounded_size,
                               ds_half_precision_t* dev_params,
                               bool half_precision)
 {
+#if !defined(__AVX512__)
+    if (std::is_same_v<T, c10::BFloat16>) { return; }
+#endif
     size_t new_rounded_size = 0;
     int rshft = half_precision ? 1 : 0;
 
@@ -177,13 +187,13 @@ void Lion_Optimizer::Step_AVX(size_t* rounded_size,
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += SIMD_WIDTH * span) {
             AVX_Data grad_4[span];
-            simd_load<span>(grad_4, grads + (i >> rshft), half_precision);
+            simd_load<span, T>(grad_4, grads + (i >> rshft));
 
             AVX_Data momentum_4[span];
-            simd_load<span>(momentum_4, _exp_avg + i, false);
+            simd_load<span, float>(momentum_4, _exp_avg + i);
 
             AVX_Data param_4[span];
-            simd_load<span>(param_4, _params + (i >> rshft), half_precision);
+            simd_load<span, T>(param_4, _params + (i >> rshft));
 
             AVX_Data tmp_4[span];
 
@@ -201,13 +211,11 @@ void Lion_Optimizer::Step_AVX(size_t* rounded_size,
             simd_mul<span>(momentum_4, momentum_4, betta2_4);
             simd_fma<span>(momentum_4, grad_4, betta2_minus1_4, momentum_4);
 
-            simd_store<span>(_params + (i >> rshft), param_4, half_precision);
+            simd_store<span, T>(_params + (i >> rshft), param_4);
 #if defined(__ENABLE_CUDA__) or defined(__ENABLE_CANN__)
-            if (dev_params) {
-                simd_store<span>(_doubled_buffer[_buf_index] + (i - t), param_4, half_precision);
-            }
+            if (dev_params) { simd_store<span, T>(_doubled_buffer[_buf_index] + (i - t), param_4); }
 #endif
-            simd_store<span>(_exp_avg + i, momentum_4, false);
+            simd_store<span, float>(_exp_avg + i, momentum_4);
         }
 #if defined(__ENABLE_CUDA__)
         if (dev_params) {

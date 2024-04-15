@@ -21,6 +21,7 @@ static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 
 // C++ interface
 
+template <typename T>
 void Adagrad_Optimizer::Step_1(float* _params,
                                float* grads,
                                float* _exp_avg_sq,
@@ -30,7 +31,7 @@ void Adagrad_Optimizer::Step_1(float* _params,
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<1>(
+    Step_AVX<1, T>(
         &rounded_size, _params, grads, _exp_avg_sq, _param_size, dev_params, half_precision);
 #endif
     if (_param_size > rounded_size) {
@@ -97,6 +98,7 @@ void Adagrad_Optimizer::Step_1(float* _params,
     }
 }
 
+template <typename T>
 void Adagrad_Optimizer::Step_4(float* _params,
                                float* grads,
                                float* _exp_avg_sq,
@@ -106,16 +108,16 @@ void Adagrad_Optimizer::Step_4(float* _params,
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<4>(
+    Step_AVX<4, T>(
         &rounded_size, _params, grads, _exp_avg_sq, _param_size, dev_params, half_precision);
 #endif
     if (_param_size > rounded_size)
-        Step_1((_params + rounded_size),
-               (grads + rounded_size),
-               (_exp_avg_sq + rounded_size),
-               (_param_size - rounded_size),
-               (dev_params != nullptr ? (dev_params + rounded_size) : dev_params),
-               half_precision);
+        Step_1<T>((_params + rounded_size),
+                  (grads + rounded_size),
+                  (_exp_avg_sq + rounded_size),
+                  (_param_size - rounded_size),
+                  (dev_params != nullptr ? (dev_params + rounded_size) : dev_params),
+                  half_precision);
 }
 
 int create_adagrad_optimizer(int optimizer_id,
@@ -149,6 +151,7 @@ int create_adagrad_optimizer(int optimizer_id,
     return 0;
 }
 
+template <typename T>
 void Adagrad_Optimizer::Step_8(float* _params,
                                float* grads,
                                float* _exp_avg_sq,
@@ -158,16 +161,16 @@ void Adagrad_Optimizer::Step_8(float* _params,
 {
     size_t rounded_size = 0;
 #if defined(__AVX512__) or defined(__AVX256__)
-    Step_AVX<8>(
+    Step_AVX<8, T>(
         &rounded_size, _params, grads, _exp_avg_sq, _param_size, dev_params, half_precision);
 #endif
     if (_param_size > rounded_size)
-        Step_4((_params + rounded_size),
-               (grads + rounded_size),
-               (_exp_avg_sq + rounded_size),
-               (_param_size - rounded_size),
-               (dev_params != nullptr ? (dev_params + rounded_size) : dev_params),
-               half_precision);
+        Step_4<T>((_params + rounded_size),
+                  (grads + rounded_size),
+                  (_exp_avg_sq + rounded_size),
+                  (_param_size - rounded_size),
+                  (dev_params != nullptr ? (dev_params + rounded_size) : dev_params),
+                  half_precision);
 }
 
 int ds_adagrad_step(int optimizer_id,
@@ -191,7 +194,14 @@ int ds_adagrad_step(int optimizer_id,
         std::static_pointer_cast<Adagrad_Optimizer>(s_optimizers[optimizer_id]);
     opt->IncrementStep(step);
     opt->update_state(lr, epsilon, weight_decay);
-    opt->Step_8(params_ptr, grads_ptr, exp_avg_sq_ptr, params_c.numel());
+    if (params.options().dtype() == at::kHalf)
+        opt->Step_8<c10 : Half>(
+            params_ptr, grads_ptr, exp_avg_sq_ptr, params_c.numel(), nullptr, true);
+    else if (params.options().dtype() == at::kBFloat16)
+        opt->Step_8<c10 : BFloat>(
+            params_ptr, grads_ptr, exp_avg_sq_ptr, params_c.numel(), nullptr, true);
+    else
+        opt->Step_8<float>(params_ptr, grads_ptr, exp_avg_sq_ptr, params_c.numel(), nullptr, false);
 
 #if defined(__ENABLE_CUDA__) or defined(__ENABLE_CANN__)
     opt->SynchronizeStreams();
@@ -224,12 +234,20 @@ int ds_adagrad_step_plus_copy(int optimizer_id,
         std::static_pointer_cast<Adagrad_Optimizer>(s_optimizers[optimizer_id]);
     opt->IncrementStep(step);
     opt->update_state(lr, epsilon, weight_decay);
-    opt->Step_8(params_ptr,
-                grads_ptr,
-                exp_avg_sq_ptr,
-                params_c.numel(),
-                gpu_params_ptr,
-                (params.options().dtype() == at::kHalf));
+
+    if (params.options().dtype() == at::kHalf)
+        opt->Step_8<c10::Half>(
+            params_ptr, grads_ptr, exp_avg_sq_ptr, params_c.numel(), gpu_params_ptr, true);
+    else if (params.options().dtype() == at::kBFloat16)
+        opt->Step_8<c10::BFloat>(
+            params_ptr, grads_ptr, exp_avg_sq_ptr, params_c.numel(), gpu_params_ptr, true);
+    else
+        opt->Step_8<float>(params_ptr,
+                           grads_ptr,
+                           exp_avg_sq_ptr,
+                           params_c.numel(),
+                           gpu_params_ptr,
+                           (params.options().dtype() == at::kHalf));
 
     opt->SynchronizeStreams();
 #else

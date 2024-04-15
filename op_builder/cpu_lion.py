@@ -13,6 +13,13 @@ class CPULionBuilder(TorchCPUOpBuilder):
 
     def __init__(self):
         super().__init__(name=self.NAME)
+        self.dtype = None
+
+    def set_dtype(self, dtype):
+        import torch
+        assert (dtype in [torch.bfloat16, torch.half, torch.float32])
+        self.dtype = dtype
+        return self
 
     def absolute_name(self):
         return f'deepspeed.ops.lion.{self.NAME}_op'
@@ -22,6 +29,18 @@ class CPULionBuilder(TorchCPUOpBuilder):
             return ['csrc/lion/cpu_lion.cpp', 'csrc/lion/cpu_lion_impl.cpp']
 
         return ['csrc/lion/cpu_lion.cpp', 'csrc/lion/cpu_lion_impl.cpp', 'csrc/common/custom_cuda_kernel.cu']
+
+    def cxx_args(self):
+        import torch
+        args = super().cxx_args()
+        assert self.dtype is not None, "dype not set"
+        if self.dtype == torch.bfloat16:
+            args += ['-DHALF_DTYPE=c10::BFloat16']
+        elif self.dtype == torch.half:
+            args += ['-DHALF_DTYPE=c10::Half']
+        else:
+            args += ['-DHALF_DTYPE=float']
+        return args
 
     def libraries_args(self):
         args = super().libraries_args()

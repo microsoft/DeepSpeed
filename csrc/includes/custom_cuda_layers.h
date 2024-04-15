@@ -9,6 +9,9 @@
 
 #include <cuda.h>
 #include <cuda_fp16.h>
+#ifdef BF16_AVAILABLE
+#include <cuda_bf16.h>
+#endif
 #include <curand_kernel.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -274,6 +277,13 @@ void launch_fuse_transpose_bias_kernel(const T* inp,
 
 void launch_param_update(const float* input, __half* output, int size, cudaStream_t stream);
 void launch_param_update_half(const float* input, __half* output, int size, cudaStream_t stream);
+#ifdef BF16_AVAILABLE
+void launch_param_update(const float* input, __nv_bfloat16* output, int size, cudaStream_t stream);
+void launch_param_update_half(const float* input,
+                              __nv_bfloat16* output,
+                              int size,
+                              cudaStream_t stream);
+#endif
 
 void launch_token_sort(int32_t* indices,
                        int layers,
