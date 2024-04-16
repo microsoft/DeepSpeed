@@ -12,7 +12,12 @@ class DeepSpeedAccelerator(ABC):
     def __init__(self):
         self._name = None
         self._communication_backend_name = None
-
+        self._capabilities: dict[str, bool] = {
+            "zero1": False,
+            "zero2": False,
+            "zero3": False,
+            "sparse_attn": False
+        }
     @abc.abstractmethod
     def is_synchronized_device(self):
         ...
@@ -287,3 +292,9 @@ class DeepSpeedAccelerator(ABC):
     @abc.abstractmethod
     def export_envs(self):
         ...
+
+    def get_capability(self, key):
+        return self._capabilities[key]
+
+    def set_capability(self, key, value):
+        self._capabilities[key] = value
