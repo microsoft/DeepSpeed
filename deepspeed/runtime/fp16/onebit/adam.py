@@ -101,6 +101,10 @@ class OnebitAdam(torch.optim.Optimizer):
             from deepspeed.runtime.comm.hccl import HcclBackend
             self.using_pipeline = hasattr(self.deepspeed, 'pipeline_enable_backward_allreduce')
             self.comm_backend_handle = HcclBackend(self.deepspeed.mpu)
+        elif self.comm_backend_name == 'xccl':
+            from deepspeed.runtime.comm.xccl import XcclBackend
+            self.using_pipeline = hasattr(self.deepspeed, 'pipeline_enable_backward_allreduce')
+            self.comm_backend_handle = XcclBackend(self.deepspeed.mpu)
         self.size = self.comm_backend_handle.size
 
         self.divider = int(self.size * 8 / np.gcd(self.size, 8))
