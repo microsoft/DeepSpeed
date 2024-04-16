@@ -17,7 +17,7 @@ from deepspeed.runtime.pipe.module import PipelineModule
 from unit.common import DistributedTest
 from unit.simple_model import SimpleModel, random_dataloader
 from unit.alexnet_model import AlexNetPipe, train_cifar
-from deepspeed.runtime.utils import required_torch_version
+from deepspeed.utils.torch import required_torch_version
 from deepspeed.accelerator import get_accelerator
 
 PipeTopo = PipeDataParallelTopology
@@ -32,6 +32,9 @@ rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version[0] > 4:
     pytest.skip("NCCL-based 1-bit compression is not yet supported w. ROCm 5 until cupy supports ROCm 5",
                 allow_module_level=True)
+
+if get_accelerator().device_name() == 'hpu':
+    pytest.skip("1-bit compression is not supported by HPU.", allow_module_level=True)
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16], ids=["fp32", "fp16"])

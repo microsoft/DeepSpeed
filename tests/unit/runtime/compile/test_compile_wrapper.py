@@ -8,7 +8,7 @@ import torch
 
 import deepspeed
 from deepspeed.accelerator import get_accelerator
-from deepspeed.runtime.utils import required_torch_version
+from deepspeed.utils.torch import required_torch_version
 
 from unit.common import DistributedTest
 
@@ -34,6 +34,8 @@ def base_config():
             "backend": "inductor"
         }
     }
+    if get_accelerator().device_name() == 'hpu':
+        config_dict['compile']['backend'] = 'hpu_backend'
     return config_dict
 
 
