@@ -6,6 +6,7 @@
 # DeepSpeed Team
 
 from functools import partial
+from itertools import chain
 import argparse
 import glob
 import itertools
@@ -22,11 +23,13 @@ from deepspeed.checkpoint import (
     OPTIMIZER_STATE_DICT,
     BASE_OPTIMIZER_STATE,
     SINGLE_PARTITION_OF_FP32_GROUPS,
+    PARAM_GROUPS,
     PARAM_SLICE_MAPPINGS,
     PARAM_SHAPES,
     PARAM,
     CAT_DIM,
     PARAM_N_SUB_PARAMS,
+    SUB_PARAM_SHAPE,
     VOCAB_TENSOR,
     UNIVERSAL_CHECKPOINT_INFO,
     VOCABULARY_PARAMETER_PATTERNS,
@@ -35,6 +38,8 @@ from deepspeed.checkpoint import (
     PARAMETER_TO_AVERAGE_PATTERNS,
     PARAMETER_WITH_ROW_PARALLELISM_PATTERNS,
     PARAMETER_WITH_2_SUB_PARAMS_CAT_DIM_0,
+    PARAMETER_WITH_SUB_PARAMS,
+    SubparamShape,
 )
 
 
@@ -110,6 +115,9 @@ def extract_zero_shards(dir, ds_checkpoint, indices_3D):
             fp32=fp32_groups[param_group_id],
         )
 
+        if "step" in state_groups[param_group_id]:
+            flat_state["step"] = state_groups[param_group_id]["step"]
+
         for name, fragment_mapping in param_slice_mappings[param_group_id].items():
             if pp_index > 0 and any(re.match(pattern, name) for pattern in pipeline_replicated_params):
                 # Skip tied weights that are replicated in first and last pp stages
@@ -138,8 +146,10 @@ def dump_param_fragment(dir, tp_index, dp_index, state_name, state_flat_tensor, 
 
     #print(f"{param_name}: {offset}: {numel} => {path}")
 
-    t = state_flat_tensor.narrow(0, offset, numel).clone()
-    _save_checkpoint(path, t)
+    # State might be a python int or a tensor
+    if state_name != "step" and torch.is_tensor(state_flat_tensor):
+        state_flat_tensor = state_flat_tensor.narrow(0, offset, numel).clone()
+    _save_checkpoint(path, state_flat_tensor)
 
 
 def _merge_zero_shards(param_base_path, state, tp_degree, slice_shape):
@@ -147,8 +157,17 @@ def _merge_zero_shards(param_base_path, state, tp_degree, slice_shape):
     for tp_index in range(tp_degree):
         prefix_path = os.path.join(param_base_path, str(tp_index), f"{state}")
         paths = sorted(list(glob.glob(f"{prefix_path}.*")))
+        if len(paths) == 0:
+            continue
+
         shards = [torch.load(p) for p in paths]
-        slice = torch.cat(shards, dim=0).reshape(slice_shape)
+
+        if state == "step":
+            assert all(v == shards[0] for v in shards), "All shards must have the same step value"
+            slice = shards[0]
+        else:
+            slice = torch.cat(shards, dim=0).reshape(slice_shape)
+
         slices.append(slice)
     return slices
 
@@ -165,8 +184,11 @@ def merge_tp_slices(ds_checkpoint, dir, slice_dir, tp_degree, name_and_shape):
     parameters_with_row_parallelism = universal_checkpoint_info.get(PARAMETER_WITH_ROW_PARALLELISM_PATTERNS, [])
     vocabulary_parameters = universal_checkpoint_info.get(VOCABULARY_PARAMETER_PATTERNS, [])
     parameters_with_2_sub_params_cat_dim_0 = universal_checkpoint_info.get(PARAMETER_WITH_2_SUB_PARAMS_CAT_DIM_0, [])
+    parameter_with_sub_params = universal_checkpoint_info.get(PARAMETER_WITH_SUB_PARAMS, [])
+
     unmatched_patterns = set(replicated_parameters + parameters_to_average + parameters_with_row_parallelism +
                              vocabulary_parameters + parameters_with_2_sub_params_cat_dim_0)
+    unmatched_patterns.update(chain.from_iterable(SubparamShape(**s).patterns for s in parameter_with_sub_params))
 
     def get_matched_pattern(patterns_, name_):
         matched_ = [pattern_ for pattern_ in patterns_ if re.match(pattern_, name_)]
@@ -176,6 +198,21 @@ def merge_tp_slices(ds_checkpoint, dir, slice_dir, tp_degree, name_and_shape):
             unmatched_patterns.discard(pattern_)
             return pattern_
         return None
+
+    def get_matched_sub_params_pattern(name_):
+        for subparam_shape_dict in parameter_with_sub_params:
+            subparam_shape = SubparamShape(**subparam_shape_dict)
+            for pattern_ in subparam_shape.patterns:
+                if re.match(pattern_, name_):
+                    unmatched_patterns.discard(pattern_)
+                    return subparam_shape
+        return None
+
+    matched_sub_params_shape = get_matched_sub_params_pattern(name)
+
+    step_merged = _merge_zero_shards(slice_base_path, "step", tp_degree, shape)
+    if step_merged:
+        _save_checkpoint(os.path.join(param_base_path, f"step.pt"), step_merged[0])
 
     for state in ("fp32", "exp_avg", "exp_avg_sq"):
         slices = _merge_zero_shards(slice_base_path, state, tp_degree, shape)
@@ -200,6 +237,26 @@ def merge_tp_slices(ds_checkpoint, dir, slice_dir, tp_degree, name_and_shape):
             param = torch.cat([merged_chunks_0, merged_chunks_1], dim=cat_dim)
             ckpt_dict[CAT_DIM] = cat_dim
             ckpt_dict[PARAM_N_SUB_PARAMS] = 2
+        elif matched_sub_params_shape:
+            merged_chunks = []
+            partition_dim = matched_sub_params_shape.partition_dim
+
+            sub_dim_sizes = matched_sub_params_shape.shape[partition_dim]
+            if not isinstance(sub_dim_sizes, tuple):
+                sub_dim_sizes = (sub_dim_sizes, )
+
+            partition_shape = [sum(d) if isinstance(d, tuple) else d for d in matched_sub_params_shape.shape]
+            partition_shape = [d // tp_degree if i == partition_dim else d for i, d in enumerate(partition_shape)]
+            slices = [s.view(partition_shape) for s in slices]
+
+            offset = 0
+            for sub_dim_size in sub_dim_sizes:
+                part_sub_dim_size = sub_dim_size // tp_degree
+                merged_chunks.append(
+                    torch.cat([s.narrow(partition_dim, offset, part_sub_dim_size) for s in slices], dim=partition_dim))
+                offset += part_sub_dim_size
+            param = torch.cat(merged_chunks, dim=partition_dim)
+            ckpt_dict[SUB_PARAM_SHAPE] = matched_sub_params_shape
         else:
             cat_dim = 1 if get_matched_pattern(parameters_with_row_parallelism, name) else 0
             # print(f"merge {name} with CAT DIM: {cat_dim}")
@@ -227,13 +284,21 @@ def _get_chunks(l, n):
 
 
 def _do_parallel_work(do_work, work_chunks, num_workers):
-    pool = multiprocessing.Pool(num_workers)
-    results = []
-    for batch in tqdm.tqdm(work_chunks):
-        res = pool.map(do_work, batch)
-        results.extend(res)
-    pool.close()
-    pool.join()
+    if num_workers > 1:
+        pool = multiprocessing.Pool(num_workers)
+        results = []
+        for batch in tqdm.tqdm(work_chunks):
+            res = pool.map(do_work, batch)
+            results.extend(res)
+        pool.close()
+        pool.join()
+    else:
+        # No parallel pass for unit testing
+        # We can't create child processes in tests
+        results = []
+        for batch in tqdm.tqdm(work_chunks):
+            res = [do_work(x) for x in batch]
+            results.extend(res)
     return results
 
 
@@ -273,6 +338,7 @@ def _save_optimizer_state(args, ds_checkpoint):
 
     optim_sd = sd[OPTIMIZER_STATE_DICT]
     output_sd = {k: v for k, v in optim_sd.items() if k not in sharded_states}
+    output_sd[PARAM_GROUPS] = optim_sd[BASE_OPTIMIZER_STATE][PARAM_GROUPS]
     zero_output_folder = os.path.join(args.output_folder, "zero")
     output_file_path = os.path.join(zero_output_folder, f"optimizer_state.pt")
     _save_checkpoint(output_file_path, output_sd)
@@ -283,10 +349,9 @@ def _check_for_required_state(ds_checkpoint):
     assert universal_checkpoint_info is not None, f'Required {UNIVERSAL_CHECKPOINT_INFO} state is missing in checkpoint. Verify that client creates this state.'
 
 
-def main():
+def main(args):
     print(f'Convert DeepSpeed Checkpoint to Universal Checkpoint')
 
-    args = parse_arguments()
     print(f'Converting DeepSpeed checkpoint in {args.input_folder} to Universal checkpoint in {args.output_folder}')
 
     ds_checkpoint = DeepSpeedCheckpoint(args.input_folder)
@@ -332,4 +397,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_arguments()
+    main(args)

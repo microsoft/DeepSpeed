@@ -4,21 +4,20 @@
 # DeepSpeed Team
 
 import torch
-import os
 from deepspeed import comm as dist
 from packaging import version as pkg_version
 from collections import OrderedDict
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
-from deepspeed.runtime import ZeROOptimizer
+from deepspeed.runtime.base_optimizer import ZeROOptimizer
 from deepspeed.runtime.fp16.loss_scaler import CreateLossScaler
-from deepspeed.runtime.utils import (bwc_tensor_model_parallel_rank, empty_cache, see_memory_usage, inf,
-                                     is_model_parallel_parameter, align_dense_tensors, all_gather_dp_groups)
-
+from deepspeed.runtime.utils import (empty_cache, see_memory_usage, inf, is_model_parallel_parameter,
+                                     align_dense_tensors, all_gather_dp_groups)
 from deepspeed.runtime.zero.config import ZeroStageEnum
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.utils import logger
+from deepspeed.utils.bwc import bwc_tensor_model_parallel_rank
 from deepspeed.moe.utils import is_moe_param
 from deepspeed.git_version_info import version
 
@@ -391,11 +390,16 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             # Note that the params in single_partition_of_fp32_groups is cloned and detached
             # from the origin params of the model.
             if not fp16_master_weights_and_gradients:
-                self.single_partition_of_fp32_groups.append(self.parallel_partitioned_bit16_groups[i][partition_id].to(
-                    self.device).clone().float().detach())
+                weights_partition = self.parallel_partitioned_bit16_groups[i][partition_id].to(
+                    self.device).clone().float().detach()
             else:
-                self.single_partition_of_fp32_groups.append(self.parallel_partitioned_bit16_groups[i][partition_id].to(
-                    self.device).clone().half().detach())
+                weights_partition = self.parallel_partitioned_bit16_groups[i][partition_id].to(
+                    self.device).clone().half().detach()
+
+            if self.cpu_offload:
+                weights_partition = get_accelerator().pin_memory(weights_partition)
+
+            self.single_partition_of_fp32_groups.append(weights_partition)
 
             # Set local optimizer to have flat params of its own partition.
             # After this, the local optimizer will only contain its own partition of params.
@@ -1360,7 +1364,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 self.average_tensor(extra_large_grad_reduc.view(-1))
                 self.extra_large_param_to_reduce = None
             else:
-                self.average_tensor(self.ipg_buffer[self.ipg_index])
+                self.average_tensor(self.ipg_buffer[self.ipg_index].narrow(0, 0, self.elements_in_ipg_bucket))
         else:
             self.buffered_reduce_fallback(None,
                                           self.grads_in_ipg_bucket,
@@ -1863,7 +1867,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 #    bit16_partitions[partition_id].data.copy_(fp32_partition.data)
                 bit16_partitions = self.parallel_partitioned_bit16_groups[i]
                 fp32_partition = self.single_partition_of_fp32_groups[i]
-                bit16_partitions[partition_id].data.copy_(fp32_partition.data)
+                bit16_partitions[partition_id].data.copy_(
+                    fp32_partition.to(get_accelerator().current_device_name()).data)
 
                 self.timers(OPTIMIZER_STEP_TIMER).stop()
             else:
@@ -2287,35 +2292,12 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self._load_legacy_checkpoint(state_dict_list, load_optimizer_states, load_from_fp32_weights)
 
     def _load_universal_checkpoint(self, checkpoint_folder, load_optimizer_states, load_from_fp32_weights):
-        self._load_hp_checkpoint_state(checkpoint_folder)
+        self.load_hp_checkpoint_state_from_checkpoint_dir("bit16_groups", checkpoint_folder)
 
     @property
     def param_groups(self):
         """Forward the wrapped optimizer's parameters."""
         return self.optimizer.param_groups
-
-    def _load_hp_checkpoint_state(self, checkpoint_dir):
-        checkpoint_dir = os.path.join(checkpoint_dir, "zero")
-        optim_state_path = os.path.join(checkpoint_dir, "optimizer_state.pt")
-        assert os.path.isfile(
-            optim_state_path), f'{optim_state_path} containing optimizer global state is missing! Cannot proceed.'
-        optim_sd = torch.load(optim_state_path)
-        self._load_global_state(optim_sd)
-
-        tp_rank = bwc_tensor_model_parallel_rank(mpu=self.mpu)
-        if self.mpu is None:
-            logger.warn("MPU is not provided, setting tp size to 1 in checkpoint loading.")
-            tp_world_size = 1
-        else:
-            tp_world_size = self.mpu.get_slice_parallel_world_size() if hasattr(self.mpu, "get_slice_parallel_world_size") \
-                else self.mpu.get_tensor_model_parallel_world_size()
-
-        for i, _ in enumerate(self.optimizer.param_groups):
-            for lp in self.bit16_groups[i]:
-                if lp._hp_mapping is not None:
-                    #print(f"Loading {self.param_names[lp]} {tp_rank=} {tp_world_size=}")
-                    lp.load_hp_checkpoint_state(os.path.join(checkpoint_dir, self.param_names[lp]), tp_rank,
-                                                tp_world_size)
 
     def _load_global_state(self, sd):
         self.loss_scaler = sd.get(LOSS_SCALER, self.loss_scaler)

@@ -23,6 +23,7 @@ pynvml = None
 class CUDA_Accelerator(DeepSpeedAccelerator):
 
     def __init__(self):
+        super().__init__()
         self._name = 'cuda'
         self._communication_backend_name = 'nccl'
         if pynvml is None:
