@@ -74,13 +74,6 @@ class SYCLOpBuilder(OpBuilder):
         ]
 
     def load(self, verbose=True):
-        if self.name in ["transformer_inference"]:
-            try:
-                import intel_extension_for_pytorch.deepspeed
-                return intel_extension_for_pytorch.deepspeed
-            except ImportError:
-                raise ImportError("Please install intel-extension-for-pytorch >= 2.1.30 to include DeepSpeed kernels.")
-
         from deepspeed.git_version_info import installed_ops, torch_info, accelerator_name  # noqa: F401
         from deepspeed.accelerator import get_accelerator
         if installed_ops.get(self.name, False) and accelerator_name == get_accelerator()._name:
