@@ -6,7 +6,7 @@
 import torch
 import math
 import torch.nn as nn
-
+import torch.nn.functional as F
 from deepspeed.accelerator import get_accelerator
 import deepspeed.comm as dist
 
@@ -84,7 +84,7 @@ class DSOptimizedLinear(nn.Module):
         self.zero_shards = self.lora_config.base_weight_sharding
         self.sharded_weight_size = int(float(self.input_dim) // self.zero_shards)
         w = torch.nn.Parameter(torch.empty((self.output_dim, self.sharded_weight_size), dtype=dtype))
-
+        torch.nn.init.xavier_uniform_(w)
         if self.quantization_config is not None:
             self.base_weight = QuantizedParameter(w)
         else:
@@ -136,6 +136,10 @@ class DSOptimizedLinear(nn.Module):
         else:
             base_weight = self.base_weight
 
-        base_weight_output = self.linear_without_F_linear(input_tensor, base_weight)
+        # if torch.distributed.get_rank() == 0:
+        #     import pdb; pdb.set_trace()
+        # torch.distributed.barrier()
+        base_weight_output = F.linear(input_tensor, base_weight)
         lora_output = self.lora_weight_2(self.lora_weight_1(input_tensor))
+        torch.distributed.barrier()
         return base_weight_output + self.lora_scaling_factor * lora_output
