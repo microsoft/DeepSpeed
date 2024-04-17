@@ -7,6 +7,24 @@ on:
   pull_request:
     paths:
       - ".github/workflows/hpu-gaudi2.yml"
+      - "accelerator/hpu_accelerator.py"
+      - "op_builder/hpu/**"
+      - "deepspeed/runtime/engine.py"
+      - "deepspeed/runtime/bf16_optimizer.py"
+      - "deepspeed/runtime/zero/stage_1_and_2.py"
+      - "deepspeed/runtime/zero/stage3.py"
+      - "deepspeed/runtime/zero/partition_parameters.py"
+      - "deepspeed/runtime/zero/partitioned_param_coordinator.py"
+      - "deepspeed/runtime/zero/parameter_offload.py"
+      - "deepspeed/runtime/pipe/engine.py"
+      - "deepspeed/runtime/utils.py"
+      - "deepspeed/inference/engine.py"
+      - "deepspeed/module_inject/auto_tp.py"
+      - "deepspeed/module_inject/replace_module.py"
+      - "deepspeed/module_inject/load_checkpoint.py"
+      - "deepspeed/module_inject/inject.py"
+      - "deepspeed/ops/transformer/**"
+      - "deepspeed/ops/adam/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,7 +39,7 @@ jobs:
     # The type of runner that the job will run on
     runs-on: [self-hosted, intel, gaudi2]
     container:
-      image: vault.habana.ai/gaudi-docker/1.14.0/ubuntu22.04/habanalabs/pytorch-installer-2.1.1:latest
+      image: vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
       ports:
         - 80
       options: --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice
@@ -81,7 +99,7 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Check container state
         run: |
