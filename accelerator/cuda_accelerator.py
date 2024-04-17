@@ -9,6 +9,8 @@ import pkgutil
 import importlib
 
 from .abstract_accelerator import DeepSpeedAccelerator
+from .constants import *
+
 # During setup stage torch may not be installed, pass on no torch will
 # allow op builder related API to be executed.
 try:
@@ -28,10 +30,10 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         self._communication_backend_name = 'nccl'
         if pynvml is None:
             self._init_pynvml()
-        self.set_capability('zero1', True)
-        self.set_capability('zero2', True)
-        self.set_capability('zero3', True)
-        self.set_capability('sparse_attn', True)
+        self.set_capability(ZERO_1, True)
+        self.set_capability(ZERO_2, True)
+        self.set_capability(ZERO_3, True)
+        self.set_capability(SPARSE_ATTN, True)
 
     def _init_pynvml(self):
         global pynvml

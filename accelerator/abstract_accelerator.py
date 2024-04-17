@@ -5,6 +5,7 @@
 
 import abc
 from abc import ABC
+from .constants import *
 
 
 class DeepSpeedAccelerator(ABC):
@@ -12,12 +13,8 @@ class DeepSpeedAccelerator(ABC):
     def __init__(self):
         self._name = None
         self._communication_backend_name = None
-        self._capabilities: dict[str, bool] = {
-            "zero1": False,
-            "zero2": False,
-            "zero3": False,
-            "sparse_attn": False
-        }
+        self._capabilities: dict[str, bool] = {ZERO_1: False, ZERO_2: False, ZERO_3: False, SPARSE_ATTN: False}
+
     @abc.abstractmethod
     def is_synchronized_device(self):
         ...
