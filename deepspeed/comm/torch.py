@@ -151,7 +151,6 @@ class TorchBackend(Backend):
         op = self._reduce_op(op)
         return torch.distributed.all_reduce(tensor=tensor, op=op, group=group, async_op=async_op)
 
-    @compiler.disable
     def inference_all_reduce(self, tensor, op, group=None):
         if self.shm_comm_op == None or self.shm_comm_op.inference_all_reduce(tensor, op) == -1:
             op = self._reduce_op(op)
