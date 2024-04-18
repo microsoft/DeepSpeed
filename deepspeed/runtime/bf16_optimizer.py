@@ -13,11 +13,11 @@ from deepspeed.runtime.base_optimizer import ZeROOptimizer
 from packaging import version as pkg_version
 from deepspeed.git_version_info import version
 from deepspeed.runtime.utils import (get_global_norm_of_tensors, clip_tensors_by_global_norm, DummyOptim,
-                                     align_dense_tensors, all_gather_dp_groups, bwc_tensor_model_parallel_rank,
-                                     is_model_parallel_parameter, see_memory_usage, graph_process,
-                                     get_norm_with_moe_layers)
+                                     align_dense_tensors, all_gather_dp_groups, is_model_parallel_parameter,
+                                     see_memory_usage, graph_process, get_norm_with_moe_layers)
 from deepspeed.utils import link_hp_params, lazy_init_hp_params_optimizer_state, fragment_address, groups
 from deepspeed.moe.utils import is_moe_param, is_moe_param_group
+from deepspeed.utils.bwc import bwc_tensor_model_parallel_rank
 from deepspeed.checkpoint import enable_universal_checkpoint
 from deepspeed.checkpoint.constants import (DS_VERSION, PARTITION_COUNT, BASE_OPTIMIZER_STATE,
                                             SINGLE_PARTITION_OF_FP32_GROUPS, CLIP_GRAD, GROUP_PADDINGS,
@@ -517,7 +517,7 @@ class BF16_Optimizer(ZeROOptimizer):
 
     def accumulate_hp_grads_and_remove_lp(self, lp_param, group_idx, param_idx):
         assert self.immediate_grad_update
-        self._update_hp_grad(lp_param, group_idx, param_idx, clear_lp_grads=False)
+        self._update_hp_grad(lp_param, group_idx, param_idx, clear_lp_grads=True)
 
     def create_grad_acc_hooks(self):
         self.grad_accs = []
