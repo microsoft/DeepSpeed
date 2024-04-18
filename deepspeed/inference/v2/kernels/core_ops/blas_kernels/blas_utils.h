@@ -105,7 +105,7 @@ int blas_gemm_ex(void* C,
                  const float* beta,
                  BlasType type)
 {
-#ifdef __HIP_PLATFORM_AMD__ && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
+#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
     rocblas_operation_t transa_op = get_trans_op(transa);
     rocblas_operation_t transb_op = get_trans_op(transb);
 
@@ -157,7 +157,9 @@ int blas_gemm_ex(void* C,
                                          C,
                                          abc_type,
                                          ldc,
-#ifdef __HIP_PLATFORM_AMD__
+#if defined(__HIP_PLATFORM_AMD__) && HIPBLAS_V2
+                                         HIPBLAS_COMPUTE_32F,
+#elif defined(__HIP_PLATFORM_AMD__)
                                          HIPBLAS_R_32F,
 #else
                                          CUDA_R_32F,
@@ -165,7 +167,7 @@ int blas_gemm_ex(void* C,
                                          CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
 
-#ifdef __HIP_PLATFORM_AMD__ && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
+#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
     if (status != rocblas_status_success) {
 #else
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -200,7 +202,7 @@ int blas_strided_batched_gemm(void* C,
                               int batch,
                               BlasType type)
 {
-#ifdef __HIP_PLATFORM_AMD__ && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
+#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
     rocblas_operation_t transa_op = get_trans_op(transa);
     rocblas_operation_t transb_op = get_trans_op(transb);
 
@@ -263,7 +265,9 @@ int blas_strided_batched_gemm(void* C,
                                                        ldc,
                                                        stride_C,
                                                        batch,
-#ifdef __HIP_PLATFORM_AMD__
+#if defined(__HIP_PLATFORM_AMD__) && HIPBLAS_V2
+                                                       HIPBLAS_COMPUTE_32F,
+#elif defined(__HIP_PLATFORM_AMD__)
                                                        HIPBLAS_R_32F,
 #else
                                                        CUDA_R_32F,
@@ -271,7 +275,7 @@ int blas_strided_batched_gemm(void* C,
                                                        CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
 
-#ifdef __HIP_PLATFORM_AMD__ && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
+#if defined(__HIP_PLATFORM_AMD__) && TORCH_VERSION_MAJOR <= 2 && TORCH_VERSION_MINOR <=0
     if (status != rocblas_status_success) {
 #else
     if (status != CUBLAS_STATUS_SUCCESS) {

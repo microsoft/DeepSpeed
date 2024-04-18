@@ -104,7 +104,9 @@ int cublas_gemm_ex(cublasHandle_t handle,
                                          CUDA_R_32F,
 #endif	
                                          m,
-#ifdef __HIP_PLATFORM_AMD__ 
+#if defined(__HIP_PLATFORM_AMD__) && HIPBLAS_V2
+					 HIPBLAS_COMPUTE_32F,
+#elif defined(__HIP_PLATFORM_AMD__)
 					 HIPBLAS_R_32F,
 #else 
                                          CUDA_R_32F,
@@ -210,8 +212,10 @@ int cublas_gemm_ex(cublasHandle_t handle,
                                          (void*)C,
                                          cublas_dtype_16,
                                          m,
-#ifdef __HIP_PLATFORM_AMD__ 
-					 HIPBLAS_R_32F,
+#if defined(__HIP_PLATFORM_AMD__) && HIPBLAS_V2
+                                         HIPBLAS_COMPUTE_32F,
+#elif defined(__HIP_PLATFORM_AMD__)
+                                         HIPBLAS_R_32F,
 #else 
                                          CUDA_R_32F,
 #endif					 
@@ -335,7 +339,9 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
                                                        m,
                                                        stride_C,
                                                        batch,
-#ifdef __HIP_PLATFORM_AMD__
+#if defined(__HIP_PLATFORM_AMD__) && HIPBLAS_V2
+                                                       HIPBLAS_COMPUTE_32F,
+#elif defined(__HIP_PLATFORM_AMD__)
                                                        HIPBLAS_R_32F,
 #else
                                                        CUDA_R_32F,
@@ -457,7 +463,9 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
                                                        m,
                                                        stride_C,
                                                        batch,
-#ifdef __HIP_PLATFORM_AMD__ 
+#if defined(__HIP_PLATFORM_AMD__) && HIPBLAS_V2
+                                                       HIPBLAS_COMPUTE_32F,
+#elif defined(__HIP_PLATFORM_AMD__)
                                                        HIPBLAS_R_32F,
 #else 
                                                        CUDA_R_32F,
