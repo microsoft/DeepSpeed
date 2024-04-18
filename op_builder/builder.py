@@ -248,7 +248,7 @@ class OpBuilder(ABC):
     def get_rocm_wavefront_size():
         if OpBuilder._rocm_wavefront_size:
             return OpBuilder._rocm_wavefront_size
-        rocm_wavefront_size_cmd = "/opt/rocm/bin/rocminfo | grep -Eo -m1 'Wavefront Size:\s+[0-9]+' | grep -Eo '[0-9]+'"
+        rocm_wavefront_size_cmd = "/opt/rocm/bin/rocminfo | grep -Eo -m1 'Wavefront Size:[[:space:]]+[0-9]+' | grep -Eo '[0-9]+'"
         try:
             result = subprocess.check_output(rocm_wavefront_size_cmd, shell=True)
             rocm_wavefront_size = result.decode('utf-8').strip()
