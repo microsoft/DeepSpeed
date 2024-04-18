@@ -66,7 +66,7 @@ from .swap_tensor.aio_config import get_aio_config
 from .data_pipeline.config import get_data_efficiency_enabled, get_data_efficiency_config, get_curriculum_enabled_legacy, get_curriculum_params_legacy
 from .data_pipeline.constants import *
 
-from ..utils.config import DeepSpeedThroughputTimerConfig
+from ..utils.config import get_timers_config
 
 TENSOR_CORE_ALIGN_SIZE = 8
 
@@ -913,7 +913,7 @@ class DeepSpeedConfig(object):
 
         self.compile_config = get_compile_config(param_dict)
 
-        self.timers_config = DeepSpeedThroughputTimerConfig(param_dict)
+        self.timers_config = get_timers_config(param_dict)
 
     def _batch_assertion(self):
 
