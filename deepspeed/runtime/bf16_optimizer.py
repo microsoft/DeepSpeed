@@ -341,7 +341,7 @@ class BF16_Optimizer(ZeROOptimizer):
 
         # clear gradients
         if clear_lp_grads:
-            lp.grad._zero()
+            lp.grad.zero_()
 
     @torch.no_grad()
     def _update_hp_grads_func(self, clear_lp_grads=False):
@@ -447,6 +447,8 @@ class BF16_Optimizer(ZeROOptimizer):
         zero_grads_list = []
         for group in self.bf16_groups:
             for param in group:
+                if param.grad is not None:
+                    assert param.grad.grad_fn == None
                 if set_to_none:
                     param.grad = None
                 elif param.grad is not None:
