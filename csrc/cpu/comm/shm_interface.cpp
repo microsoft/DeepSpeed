@@ -120,7 +120,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 }
 
 TORCH_LIBRARY(deepspeed, m) {
-  m.def("myadd(Tensor self) -> ()");
+  m.def("inference_all(Tensor self) -> ()");
 }
 
 void myadd_cpu(torch::Tensor& self_) {
@@ -133,5 +133,5 @@ void myadd_cpu(torch::Tensor& self_) {
 }
 
 TORCH_LIBRARY_IMPL(deepspeed, CPU, m) {
-  m.impl("myadd", myadd_cpu);
+  m.impl("inference_all", myadd_cpu);
 }
