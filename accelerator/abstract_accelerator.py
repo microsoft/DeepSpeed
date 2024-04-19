@@ -6,14 +6,15 @@
 import abc
 from abc import ABC
 from .constants import *
-
+from ..deepspeed.git_version_info import compatible_ops as __compatible_ops__
 
 class DeepSpeedAccelerator(ABC):
 
     def __init__(self):
         self._name = None
         self._communication_backend_name = None
-        self._capabilities: dict[str, bool] = {ZERO_1: False, ZERO_2: False, ZERO_3: False, SPARSE_ATTN: False}
+        self._ds_features: dict[str, bool] = {ZERO_1: False, ZERO_2: False, ZERO_3: False}
+        self._ds_features.update({op: compatibility for op, compatibility in __compatible_ops__})
 
     @abc.abstractmethod
     def is_synchronized_device(self):
@@ -290,8 +291,8 @@ class DeepSpeedAccelerator(ABC):
     def export_envs(self):
         ...
 
-    def get_capability(self, key):
-        return self._capabilities[key]
+    def get_ds_feature(self, key):
+        return self._ds_features[key]
 
-    def set_capability(self, key, value):
-        self._capabilities[key] = value
+    def set_ds_feature(self, key, value):
+        self._ds_features[key] = value
