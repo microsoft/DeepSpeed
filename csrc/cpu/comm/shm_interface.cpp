@@ -118,3 +118,20 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("get_world_size", &get_world_size, "get world size");
     m.def("inference_all_reduce", &inference_all_reduce, "low latency all_reduce implementation");
 }
+
+TORCH_LIBRARY(deepspeed, m) {
+  m.def("myadd(Tensor self) -> ()");
+}
+
+void myadd_cpu(torch::Tensor& self_) {
+  TORCH_INTERNAL_ASSERT(self_.device().type() == torch::DeviceType::CPU);
+  torch::Tensor self_tensor = self_.contiguous();
+  //static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp").attr("SUM");
+
+  //inference_all_reduce(self_tensor, ReduceOp);
+  return;
+}
+
+TORCH_LIBRARY_IMPL(deepspeed, CPU, m) {
+  m.impl("myadd", myadd_cpu);
+}
