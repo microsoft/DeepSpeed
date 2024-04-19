@@ -30,10 +30,9 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         self._communication_backend_name = 'nccl'
         if pynvml is None:
             self._init_pynvml()
-        self.set_capability(ZERO_1, True)
-        self.set_capability(ZERO_2, True)
-        self.set_capability(ZERO_3, True)
-        self.set_capability(SPARSE_ATTN, True)
+        self.set_ds_feature(ZERO_1, True)
+        self.set_ds_feature(ZERO_2, True)
+        self.set_ds_feature(ZERO_3, True)
 
     def _init_pynvml(self):
         global pynvml
