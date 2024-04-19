@@ -50,11 +50,23 @@ int get_rank(int group = 0) { return world_rank; }
 
 int get_world_size(int group = 0) { return world_size; }
 
-// Success - return 0
-// Fail (cannot hornor the request and need to fall back) - return -1
+int inference_all_reduce_(torch::Tensor& data, int op);
+
 int inference_all_reduce(torch::Tensor& data, py::object op)
 {
+    static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
+    static auto ReduceOpSum = (int)py::int_(ReduceOp.attr("SUM").attr("value"));
+
+    assert(py::int_(op.attr("value")) == ReduceOpSum);
+
+    return inference_all_reduce_(data, 0);
+}
+// Success - return 0
+// Fail (cannot hornor the request and need to fall back) - return -1
+int inference_all_reduce_(torch::Tensor& data, int op)
+{
     if (!all_ranks_local_p) return -1;
+    assert(op == 0);
 #ifdef DO_PROFILE
     static double total_time = 0.0;
     static double total_time_sq = 0.0;
@@ -67,10 +79,6 @@ int inference_all_reduce(torch::Tensor& data, py::object op)
     auto start = std::chrono::system_clock::now();
 #endif
 
-    static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
-    static auto ReduceOpSum = (int)py::int_(ReduceOp.attr("SUM").attr("value"));
-
-    assert(py::int_(op.attr("value")) == ReduceOpSum);
 
     auto numel = data.numel();
 
@@ -120,18 +128,17 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 }
 
 TORCH_LIBRARY(deepspeed, m) {
-  m.def("inference_all(Tensor self) -> ()");
+  m.def("inference_all_reduce(Tensor self) -> ()");
 }
 
-void myadd_cpu(torch::Tensor& self_) {
+void inference_all_reduce_cpu(torch::Tensor& self_) {
   TORCH_INTERNAL_ASSERT(self_.device().type() == torch::DeviceType::CPU);
   torch::Tensor self_tensor = self_.contiguous();
-  //static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp").attr("SUM");
 
-  //inference_all_reduce(self_tensor, ReduceOp);
+  inference_all_reduce_(self_tensor, 0);
   return;
 }
 
 TORCH_LIBRARY_IMPL(deepspeed, CPU, m) {
-  m.impl("inference_all", myadd_cpu);
+  m.impl("inference_all_reduce", inference_all_reduce_cpu);
 }
