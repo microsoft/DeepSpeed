@@ -192,6 +192,7 @@ class DeepSpeedEngine(Module):
                  collate_fn=None,
                  config=None,
                  config_class=None,
+                 mesh_param=None,
                  dont_change_device=False):
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
@@ -231,13 +232,19 @@ class DeepSpeedEngine(Module):
         self._is_gradient_accumulation_boundary = None
         self.scale_wrt_gas = None
         self.losses = None
+        self.mesh_param = mesh_param
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
 
-        mesh_device = dist.initialize_mesh_device((dist.get_world_size(), ), ("data_parallel", ))
+        #mesh_device = dist.initialize_mesh_device((dist.get_world_size(), ), ("data_parallel", ))
+        ##TODO: pass name of the device to the mesh_device
+        self.mesh_device = None
+        if self.mesh_param:
+            print(f"mesh_param to Initialize mesh device: {self.mesh_param}")
+            self.mesh_device = dist.initialize_mesh_device(self.mesh_param, ("data_parallel", "sequence_parallel"))
 
-        groups.mesh_device = mesh_device
+        groups.mesh_device = self.mesh_device
 
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
@@ -1141,6 +1148,7 @@ class DeepSpeedEngine(Module):
         self.data_parallel_group = groups._get_data_parallel_group()
         self.dp_world_size = groups._get_data_parallel_world_size()
         self.seq_data_parallel_group = groups._get_sequence_data_parallel_group()
+        self.seq_parallel_group = groups._get_sequence_parallel_group()
         self.seq_dp_world_size = groups._get_sequence_data_parallel_world_size()
         self.mp_world_size = groups._get_model_parallel_world_size()
         self.expert_parallel_group = groups._get_expert_parallel_group_dict()
@@ -1148,6 +1156,10 @@ class DeepSpeedEngine(Module):
         self.sequence_parallel_size = groups._get_sequence_parallel_world_size()
         if self.sequence_parallel_size > 1:
             self.communication_data_type = self._config.seq_parallel_communication_data_type
+
+        if dist.get_rank() == 0:
+            print(f"DS Engine SP group size : {self.sequence_parallel_size}")
+        ###DistAttn
 
         if not (self.amp_enabled() or is_zero_init_model):
             self._broadcast_model()

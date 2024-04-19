@@ -77,6 +77,7 @@ def initialize(args=None,
                dist_init_required: Optional[bool] = None,
                collate_fn=None,
                config=None,
+               mesh_param=None,
                config_params=None):
     """Initialize the DeepSpeed Engine.
 
@@ -188,6 +189,7 @@ def initialize(args=None,
                                      dist_init_required=dist_init_required,
                                      collate_fn=collate_fn,
                                      config=config,
+                                     mesh_param=mesh_param,
                                      config_class=config_class)
     else:
         assert mpu is None, "mpu must be None with pipeline parallelism"
@@ -208,7 +210,9 @@ def initialize(args=None,
     # Restore zero.Init context if necessary
     zero.partition_parameters.restore_init_context()
 
-    return_items = [engine, engine.optimizer, engine.training_dataloader, engine.lr_scheduler]
+    return_items = [
+        engine, engine.optimizer, engine.training_dataloader, engine.lr_scheduler, engine.seq_parallel_group
+    ]
     return tuple(return_items)
 
 

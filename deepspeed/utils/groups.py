@@ -405,7 +405,8 @@ def _get_data_parallel_group():
         return mpu.get_data_parallel_group()
 
     if mesh_device is not None:
-        print(f"Using mesh device for data parallel group")
+        if dist.get_rank() == 0:
+            print(f"Using mesh device for data parallel group")
         return mesh_device.get_group(mesh_dim="data_parallel")
     # Return the clone of dist world group
     return _clone_world_group()
@@ -488,7 +489,14 @@ def _get_sequence_parallel_group():
     global mpu
     if mpu is not None and hasattr(mpu, 'get_sequence_parallel_group'):
         return mpu.get_sequence_parallel_group()
-    return None
+    elif mesh_device is not None:
+        if dist.get_rank() == 0:
+            print(f"Using mesh device for sequence parallel group")
+        return mesh_device.get_group(mesh_dim="sequence_parallel")
+    else:
+        KeyError("No sequence parallel group found")
+        ##Should this be None?
+    #return None
 
 
 def _get_sequence_data_parallel_world_size():
