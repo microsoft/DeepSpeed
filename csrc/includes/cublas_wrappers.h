@@ -17,6 +17,7 @@
 #include <rocblas/rocblas.h>
 #endif
 #include <stdio.h>
+#include <torch/version.h>
 
 int cublas_gemm_ex(cublasHandle_t handle,
                    cublasOperation_t transa,
