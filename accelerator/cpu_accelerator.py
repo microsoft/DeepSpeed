@@ -323,6 +323,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
     def export_envs(self):
         return []
 
+    # TODO: cpu's visible envs is confirmed, keep as CUDA_VISIBLE_DEVICES
     def visible_devices_envs(self):
         return ['CUDA_VISIBLE_DEVICES']
 
