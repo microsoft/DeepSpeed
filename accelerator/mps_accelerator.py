@@ -259,6 +259,7 @@ class MPS_Accelerator(DeepSpeedAccelerator):
     def export_envs(self):
         return []
 
+    # TODO: mpu's visible envs is confirmed, keep as CUDA_VISIBLE_DEVICES
     def visible_devices_envs(self):
         # TODO: could not find visible devices env for mps
         return ['CUDA_VISIBLE_DEVICES']
