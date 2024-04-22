@@ -6,7 +6,7 @@
 import abc
 from abc import ABC
 from .constants import *
-from deepspeed.ops import compatible_ops as __compatible_ops__
+from deepspeed.git_version_info import compatible_ops as __compatible_ops__
 
 class DeepSpeedAccelerator(ABC):
 
